@@ -446,17 +446,17 @@ def normalize_license(text):
             return license
     return None
 
-@pandas_udf(StringType())
+@F.pandas_udf(StringType())
 def normalize_license_udf(license_series: pd.Series) -> pd.Series:
     # This Pandas UDF calls your original 'normalize_license' Python function
     return license_series.apply(normalize_license)
 
-@pandas_udf(StringType())
+@F.pandas_udf(StringType())
 def normalize_title_udf(title_series: pd.Series) -> pd.Series:
     # This Pandas UDF calls your original 'normalize_title' Python function
     return title_series.apply(normalize_title)
 
-@pandas_udf(StringType())
+@F.pandas_udf(StringType())
 def get_openalex_type_from_datacite_udf(datacite_type_series: pd.Series) -> pd.Series:
     # This Pandas UDF calls your original 'get_openalex_type_from_datacite' Python function
     return datacite_type_series.apply(get_openalex_type_from_datacite)

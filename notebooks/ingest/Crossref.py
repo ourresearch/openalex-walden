@@ -15,7 +15,8 @@ from notebooks.ingest.utils import *
 # Raw data in single column as items table
 @dlt.table(
   name="crossref_items",
-  table_properties={'quality': 'bronze'}
+  table_properties={'quality': 'bronze'},
+  cluster_by=["DOI"],
 )
 def crossref_items():
   return (spark.readStream
@@ -59,6 +60,7 @@ unallowed_types = ["component"]
     name="crossref_parsed",
     comment="Crossref data transformed to a denormalized, Walden schema",
     table_properties={"quality": "silver"},
+    cluster_by=["DOI","native_id"],
 )
 def crossref_transformed():
     def extract_issn_id_by_type(id_type):
@@ -371,10 +373,16 @@ def crossref_transformed():
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### Create `crossref_works` table, apply changes from `crossref_parsed`
+
+# COMMAND ----------
+
 dlt.create_target_table(
     name="crossref_works",
     comment="Final crossref works table with unique identifiers and in the Walden schema",
-    table_properties={"quality": "gold"}
+    table_properties={"quality": "gold"},
+    cluster_by=["DOI", "native_id"],
 )
 
 dlt.apply_changes(
