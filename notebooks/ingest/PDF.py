@@ -1,9 +1,10 @@
 # Databricks notebook source
+import dlt
 import re
 from datetime import datetime
-# import dlt
+
 from pyspark.sql.functions import *
-from pyspark.sql.types import StructType, StructField, StringType, ArrayType, DateType
+from pyspark.sql.types import *
 import xml.etree.ElementTree as ET
 
 # COMMAND ----------
@@ -217,9 +218,15 @@ def extract_fields(xml_content):
                 "funders": []
             }
 
-@udf(fields_schema)
-def extract_fields_udf(xml_content):
-    return extract_fields(xml_content)
+@pandas_udf(fields_schema)
+def extract_fields_udf(xml_content_series: pd.Series) -> pd.Series:
+    """
+    Pandas UDF to extract structured fields from an XML content string.
+    The wrapped Python function 'extract_fields' is applied to each XML string.
+    """
+    # The .apply() method will call your 'extract_fields' function for each item
+    # in the xml_content_series. 'extract_fields' should handle individual strings.
+    return xml_content_series.apply(extract_fields)
 
 # COMMAND ----------
 

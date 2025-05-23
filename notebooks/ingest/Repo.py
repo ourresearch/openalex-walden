@@ -1,52 +1,11 @@
 # Databricks notebook source
-import re
-import unicodedata
-import dlt
-import pyspark.sql.functions as F
-from pyspark.sql.types import *
+# MAGIC %pip install nameparser
 
 # COMMAND ----------
 
-# UDFs
+import dlt
 
-def clean_html(raw_html):
-    cleanr = re.compile('<\w+.*?>')
-    cleantext = re.sub(cleanr, '', raw_html)
-    return cleantext
-
-def remove_everything_but_alphas(input_string):
-    if input_string:
-        return "".join(e for e in input_string if e.isalpha())
-    return ""
-
-def remove_accents(text):
-    normalized = unicodedata.normalize('NFD', text)
-    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
-
-def normalize_title(title):
-    if not title:
-        return ""
-
-    if isinstance(title, bytes):
-        title = str(title, 'ascii')
-
-    text = title[0:500]
-
-    text = text.lower()
-
-    # handle unicode characters
-    text = remove_accents(text)
-
-    # remove HTML tags
-    text = clean_html(text)
-
-    # remove articles and common prepositions
-    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
-
-    # remove everything except alphabetic characters
-    text = remove_everything_but_alphas(text)
-
-    return text.strip()
+from dlt_utils import *
 
 def get_openalex_type_from_repo(input_type):
     """
@@ -302,11 +261,25 @@ def has_oa_domain(native_id):
                 return True
     return False
 
-normalize_license_udf = F.udf(normalize_license, StringType())
-normalize_title_udf = F.udf(normalize_title, StringType())
-get_openalex_type_from_repo_udf = F.udf(get_openalex_type_from_repo, StringType())
-normalize_language_code_udf = F.udf(normalize_language_code, StringType())
-has_oa_domain_udf = F.udf(has_oa_domain, BooleanType())
+@pandas_udf(StringType())
+def normalize_license_udf(license_series: pd.Series) -> pd.Series:
+    return license_series.apply(normalize_license)
+
+@pandas_udf(StringType())
+def normalize_title_udf(title_series: pd.Series) -> pd.Series:
+    return title_series.apply(normalize_title)
+
+@pandas_udf(StringType())
+def get_openalex_type_from_repo_udf(repo_type_series: pd.Series) -> pd.Series:
+    return repo_type_series.apply(get_openalex_type_from_repo)
+
+@pandas_udf(StringType())
+def normalize_language_code_udf(language_code_series: pd.Series) -> pd.Series:
+    return language_code_series.apply(normalize_language_code)
+
+@pandas_udf(BooleanType())
+def has_oa_domain_udf(url_series: pd.Series) -> pd.Series:
+    return url_series.apply(has_oa_domain)
 
 # COMMAND ----------
 

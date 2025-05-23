@@ -5,11 +5,75 @@
 
 import dlt
 
-import re
-import unicodedata
-import pyspark.sql.functions as F
-from pyspark.sql.types import *
-from notebooks.ingest.utils import *
+from dlt_utils import *
+
+def get_openalex_type_from_datacite(datacite_type):
+    """
+    Convert DataCite resource types to OpenAlex types.
+    Returns 'other' for types that don't map to OpenAlex types.
+    """
+    datacite_to_openalex = {
+        # article types
+        "JournalArticle": "article",
+        "ConferencePaper": "article",
+        "DataPaper": "article",
+        "Text": "article",
+        
+        # book types
+        "Book": "book",
+        "BookChapter": "book-chapter",
+        
+        # dataset
+        "Dataset": "dataset",
+        "Model": "dataset",
+        "DatasetOutputManagementPlan": "dataset",
+        
+        # dissertation
+        "Dissertation": "dissertation",
+        
+        # preprint
+        "Preprint": "preprint",
+        
+        # report
+        "Report": "report",
+        "ProjectReport": "report",
+        
+        # standard
+        "Standard": "standard",
+        
+        # peer review
+        "PeerReview": "peer-review",
+        
+        # map everything else to other
+        "Audiovisual": "other",
+        "Award": "other",
+        "Collection": "other",
+        "ComputationalNotebook": "other",
+        "ConferenceProceeding": "other",
+        "Event": "other",
+        "Image": "other",
+        "InteractiveResource": "other",
+        "Instrument": "other",
+        "Journal": "other",
+        "ModelOutput": "other",
+        "PhysicalObject": "other",
+        "Service": "other",
+        "Software": "other",
+        "Sound": "other",
+        "StudyRegistration": "other",
+        "Workflow": "other",
+        "Other": "other"
+    }
+    
+    if not datacite_type:
+        return None
+        
+    return datacite_to_openalex.get(datacite_type, "other")
+
+@F.pandas_udf(StringType())
+def get_openalex_type_from_datacite_udf(series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'get_openalex_type_from_datacite' Python function
+    return series.apply(get_openalex_type_from_datacite)
 
 # COMMAND ----------
 
@@ -50,8 +114,6 @@ MAX_TITLE_LENGTH = 5000
 MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
 MAX_AFFILIATION_STRING_LENGTH = 1000
-
-# COMMAND ----------
 
 @dlt.table(
     name="datacite_parsed",

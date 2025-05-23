@@ -1,6 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.types import *
 from nameparser import HumanName # Will be installed via pipeline libraries
+
 import re
 import unicodedata
 from functools import reduce
@@ -339,69 +340,6 @@ def normalize_title(title):
 
     return text.strip()
 
-def get_openalex_type_from_datacite(datacite_type):
-    """
-    Convert DataCite resource types to OpenAlex types.
-    Returns 'other' for types that don't map to OpenAlex types.
-    """
-    datacite_to_openalex = {
-        # article types
-        "JournalArticle": "article",
-        "ConferencePaper": "article",
-        "DataPaper": "article",
-        "Text": "article",
-        
-        # book types
-        "Book": "book",
-        "BookChapter": "book-chapter",
-        
-        # dataset
-        "Dataset": "dataset",
-        "Model": "dataset",
-        "DatasetOutputManagementPlan": "dataset",
-        
-        # dissertation
-        "Dissertation": "dissertation",
-        
-        # preprint
-        "Preprint": "preprint",
-        
-        # report
-        "Report": "report",
-        "ProjectReport": "report",
-        
-        # standard
-        "Standard": "standard",
-        
-        # peer review
-        "PeerReview": "peer-review",
-        
-        # map everything else to other
-        "Audiovisual": "other",
-        "Award": "other",
-        "Collection": "other",
-        "ComputationalNotebook": "other",
-        "ConferenceProceeding": "other",
-        "Event": "other",
-        "Image": "other",
-        "InteractiveResource": "other",
-        "Instrument": "other",
-        "Journal": "other",
-        "ModelOutput": "other",
-        "PhysicalObject": "other",
-        "Service": "other",
-        "Software": "other",
-        "Sound": "other",
-        "StudyRegistration": "other",
-        "Workflow": "other",
-        "Other": "other"
-    }
-    
-    if not datacite_type:
-        return None
-        
-    return datacite_to_openalex.get(datacite_type, "other")
-
 def normalize_license(text):
     if not text:
         return None
@@ -455,8 +393,3 @@ def normalize_license_udf(license_series: pd.Series) -> pd.Series:
 def normalize_title_udf(title_series: pd.Series) -> pd.Series:
     # This Pandas UDF calls your original 'normalize_title' Python function
     return title_series.apply(normalize_title)
-
-@F.pandas_udf(StringType())
-def get_openalex_type_from_datacite_udf(datacite_type_series: pd.Series) -> pd.Series:
-    # This Pandas UDF calls your original 'get_openalex_type_from_datacite' Python function
-    return datacite_type_series.apply(get_openalex_type_from_datacite)

@@ -4,19 +4,59 @@
 # COMMAND ----------
 
 import dlt
-import re
-import unicodedata
-from pyspark.sql.types import *
-import pyspark.sql.functions as F
-from notebooks.ingest.utils import *
+
+from dlt_utils import *
+
+def get_openalex_type(crossref_type):
+    """
+    Convert Crossref types to OpenAlex types based on mappings.
+    """
+    crossref_to_openalex = {
+        # article
+        "journal-article": "article",
+        "proceedings-article": "article",
+        "posted-content": "article",
+        
+        # book
+        "book-set": "book",
+        "edited-book": "book",
+        "monograph": "book",
+        "reference-book": "book",
+        
+        # book-chapter
+        "book-part": "book-chapter",
+        
+        # paratext
+        "book-series": "paratext",
+        "component": "paratext",
+        "journal": "paratext", 
+        "journal-issue": "paratext",
+        "journal-volume": "paratext",
+        "proceedings": "paratext",
+        "proceedings-series": "paratext",
+        "report-series": "paratext",
+
+        # pass-through types
+        "dataset": "dataset",
+        "dissertation": "dissertation",
+        "standard": "standard",
+        "peer-review": "peer-review",
+        "report": "report",
+        "other": "other"
+    }
+    
+    return crossref_to_openalex.get(crossref_type, crossref_type)
+
+@F.pandas_udf(StringType())
+def get_openalex_type_udf(series: pd.Series) -> pd.Series:
+    return series.apply(get_openalex_type)   
 
 # COMMAND ----------
 
 # Raw data in single column as items table
 @dlt.table(
   name="crossref_items",
-  table_properties={'quality': 'bronze'},
-  cluster_by=["DOI"],
+  table_properties={'quality': 'bronze'}
 )
 def crossref_items():
   return (spark.readStream
@@ -60,7 +100,7 @@ unallowed_types = ["component"]
     name="crossref_parsed",
     comment="Crossref data transformed to a denormalized, Walden schema",
     table_properties={"quality": "silver"},
-    cluster_by=["DOI","native_id"],
+    cluster_by=["native_id"],
 )
 def crossref_transformed():
     def extract_issn_id_by_type(id_type):
@@ -382,7 +422,7 @@ dlt.create_target_table(
     name="crossref_works",
     comment="Final crossref works table with unique identifiers and in the Walden schema",
     table_properties={"quality": "gold"},
-    cluster_by=["DOI", "native_id"],
+    cluster_by=["native_id"],
 )
 
 dlt.apply_changes(

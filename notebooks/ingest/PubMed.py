@@ -1,54 +1,15 @@
 # Databricks notebook source
+# MAGIC %pip install nameparser
+
+# COMMAND ----------
+
 import dlt
-import pyspark.sql.functions as F
-from pyspark.sql.types import StringType, StructField, StructType, IntegerType, LongType, BooleanType, TimestampType, ArrayType, DoubleType
-import re
-import unicodedata
+
+from dlt_utils import *
 
 # COMMAND ----------
 
 # normalize title UDF
-
-def clean_html(raw_html):
-    cleanr = re.compile('<\w+.*?>')
-    cleantext = re.sub(cleanr, '', raw_html)
-    return cleantext
-
-def remove_everything_but_alphas(input_string):
-    if input_string:
-        return "".join(e for e in input_string if e.isalpha())
-    return ""
-
-def remove_accents(text):
-    normalized = unicodedata.normalize('NFD', text)
-    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
-
-def normalize_title(title):
-    if not title:
-        return ""
-
-    if isinstance(title, bytes):
-        title = str(title, 'ascii')
-
-    text = title[0:500]
-
-    text = text.lower()
-
-    # handle unicode characters
-    text = remove_accents(text)
-
-    # remove HTML tags
-    text = clean_html(text)
-
-    # remove articles and common prepositions
-    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
-
-    # remove everything except alphabetic characters
-    text = remove_everything_but_alphas(text)
-
-    return text.strip()
-
-
 def get_openalex_type_from_pubmed(pubmed_type):
     """
     Convert PubMed publication types to OpenAlex types.
@@ -158,8 +119,9 @@ def get_openalex_type_from_pubmed(pubmed_type):
     
     return pubmed_to_openalex.get(pubmed_type, "other")
 
-normalize_title_udf = F.udf(normalize_title, StringType())
-get_openalex_type_from_pubmed_udf = F.udf(get_openalex_type_from_pubmed, StringType())
+@F.pandas_udf(StringType())
+def get_openalex_type_from_pubmed_udf(series: pd.Series) -> pd.Series:
+    return series.apply(get_openalex_type_from_pubmed)
 
 # COMMAND ----------
 

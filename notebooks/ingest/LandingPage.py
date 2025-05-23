@@ -1,16 +1,20 @@
 # Databricks notebook source
+# MAGIC %run ./utils
+
+# COMMAND ----------
+
+import dlt
+import pyspark.sql.functions as F
+from pyspark.sql.types import *
+
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 import time
 from datetime import datetime
 from time import sleep
-import re
+
 import requests
 from requests.exceptions import Timeout
 import json
-import pandas as pd
-from pyspark.sql import functions as F
-from pyspark.sql.types import StructType, StructField, StringType, ArrayType, BooleanType, TimestampType
-import dlt
 
 # COMMAND ----------
 
