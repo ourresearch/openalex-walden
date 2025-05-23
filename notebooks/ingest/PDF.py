@@ -7,7 +7,16 @@ from pyspark.sql.functions import *
 from pyspark.sql.types import *
 import xml.etree.ElementTree as ET
 
+import unicodedata
+from functools import reduce
+import pandas as pd
+
 # COMMAND ----------
+
+MAX_TITLE_LENGTH = 5000
+MAX_ABSTRACT_LENGTH = 10000
+MAX_AUTHOR_NAME_LENGTH = 500
+MAX_AFFILIATION_STRING_LENGTH = 1000
 
 # define the schema for extracted fields
 fields_schema = StructType([
@@ -218,22 +227,25 @@ def extract_fields(xml_content):
                 "funders": []
             }
 
-@pandas_udf(fields_schema)
-def extract_fields_udf(xml_content_series: pd.Series) -> pd.Series:
-    """
-    Pandas UDF to extract structured fields from an XML content string.
-    The wrapped Python function 'extract_fields' is applied to each XML string.
-    """
-    # The .apply() method will call your 'extract_fields' function for each item
-    # in the xml_content_series. 'extract_fields' should handle individual strings.
-    return xml_content_series.apply(extract_fields)
+@udf(fields_schema)
+def extract_fields_udf(xml_content):
+    return extract_fields(xml_content)
 
-# COMMAND ----------
-
-MAX_TITLE_LENGTH = 5000
-MAX_ABSTRACT_LENGTH = 10000
-MAX_AUTHOR_NAME_LENGTH = 500
-MAX_AFFILIATION_STRING_LENGTH = 1000 
+# @pandas_udf(fields_schema)
+# def extract_fields_udf(xml_content_series: pd.Series) -> pd.DataFrame: # Return type hint is pd.DataFrame
+#     """
+#     Pandas UDF to extract structured fields from an XML content string.
+#     The wrapped Python function 'extract_fields' is applied to each XML string.
+#     Returns a Pandas DataFrame with columns matching fields_schema.
+#     """
+#     # Apply your existing 'extract_fields' function (which returns a dict) to each element
+#     # This will result in a Pandas Series where each element is a dictionary or None.
+#     list_of_dicts = xml_content_series.apply(extract_fields).tolist()
+    
+#     # Convert the list of dictionaries into a Pandas DataFrame.
+#     # The columns of this DataFrame will be created from the keys of the dictionaries.
+#     # It's crucial that these keys match the field names in 'fields_schema'.
+#     return pd.DataFrame(list_of_dicts)
 
 # COMMAND ----------
 

@@ -1,11 +1,52 @@
 # Databricks notebook source
-# MAGIC %pip install nameparser
+import dlt
+import re
+import unicodedata
+from pyspark.sql.types import *
+import pyspark.sql.functions as F
+import pandas as pd
 
 # COMMAND ----------
 
-import dlt
+# UDF Functions - Will refactor later on if time allows
+def clean_html(raw_html):
+    cleanr = re.compile('<\w+.*?>')
+    cleantext = re.sub(cleanr, '', raw_html)
+    return cleantext
 
-from dlt_utils import *
+def remove_everything_but_alphas(input_string):
+    if input_string:
+        return "".join(e for e in input_string if e.isalpha())
+    return ""
+
+def remove_accents(text):
+    normalized = unicodedata.normalize('NFD', text)
+    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
+
+def normalize_title(title):
+    if not title:
+        return ""
+
+    if isinstance(title, bytes):
+        title = str(title, 'ascii')
+
+    text = title[0:500]
+
+    text = text.lower()
+
+    # handle unicode characters
+    text = remove_accents(text)
+
+    # remove HTML tags
+    text = clean_html(text)
+
+    # remove articles and common prepositions
+    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
+
+    # remove everything except alphabetic characters
+    text = remove_everything_but_alphas(text)
+
+    return text.strip()
 
 def get_openalex_type(crossref_type):
     """
@@ -47,9 +88,82 @@ def get_openalex_type(crossref_type):
     
     return crossref_to_openalex.get(crossref_type, crossref_type)
 
+
+def clean_native_id(df, column_name="native_id"):
+    return (
+        df.withColumn(column_name,
+            # Step 1: Remove https:// and http://
+            F.regexp_replace(F.col(column_name), r"https?://", "")
+        )
+        .withColumn(column_name,
+            # Step 2: Remove any trailing `/`
+            F.regexp_replace(F.col(column_name), r"/+$", "")
+        )
+        .withColumn(column_name,
+            # Step 3: Remove any characters not matching the regex [^a-zA-Z0-9./]
+            F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./]", "")
+        )
+    )
+
+def normalize_license(text):
+    if not text:
+        return None
+
+    normalized_text = text.replace(" ", "").replace("-", "").lower()
+
+    license_lookups = [
+        # open Access patterns
+        ("infoeureposematicsaccess", "other-oa"),
+        ("openaccess", "other-oa"),
+
+        # publisher-specific
+        ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
+        ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
+        ("arxiv.orgperpetual", "publisher-specific-oa"),
+        ("arxiv.orgnonexclusive", "publisher-specific-oa"),
+
+        # creative Commons licenses
+        ("byncnd", "cc-by-nc-nd"),
+        ("byncsa", "cc-by-nc-sa"),
+        ("bynd", "cc-by-nd"),
+        ("bysa", "cc-by-sa"),
+        ("bync", "cc-by-nc"),
+        ("ccby", "cc-by"),
+        ("creativecommons.org/licenses/by/", "cc-by"),
+
+        # public domain
+        ("publicdomain", "public-domain"),
+
+        # software/Dataset licenses
+        ("mit ", "mit"),
+        ("gpl3", "gpl-3"),
+        ("gpl2", "gpl-2"),
+        ("gpl", "gpl"),
+        ("apache2", "apache-2.0")
+    ]
+
+    for lookup, license in license_lookups:
+        if lookup in normalized_text:
+            if license == "public-domain" and "worksnotinthepublicdomain" in normalized_text:
+                continue
+            return license
+
+    return None
+
+@F.pandas_udf(StringType())
+def normalize_license_udf(license_series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'normalize_license' Python function
+    return license_series.apply(normalize_license)
+
+@F.pandas_udf(StringType())
+def normalize_title_udf(title_series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'normalize_title' Python function
+    return title_series.apply(normalize_title)
+
 @F.pandas_udf(StringType())
 def get_openalex_type_udf(series: pd.Series) -> pd.Series:
-    return series.apply(get_openalex_type)   
+    # This Pandas UDF calls your original 'get_openalex_type_from_datacite' Python function
+    return series.apply(get_openalex_type)
 
 # COMMAND ----------
 
@@ -62,13 +176,26 @@ def crossref_items():
   return (spark.readStream
       .format("cloudFiles")
       .option("cloudFiles.format", "json")
-      .option("cloudFiles.inferColumnTypes", "true")
-      .option("inferSchema", "true")
-      .option("mergeSchema", "true")
-      .option("sampleSize", "10000")
-      .option("multiLine", "true")
+      .option("cloudFiles.inferColumnTypes", "true") 
+      .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+      .option("cloudFiles.maxFilesPerTrigger", 50000)
+      .option("cloudFiles.maxBytesPerTrigger", "10gb")
+      .option("cloudFiles.fetchParallelism", 64)
+      .option("multiLine", "true") 
       .load("s3a://openalex-ingest/crossref/")
   )
+
+# def crossref_items():
+#   return (spark.readStream
+#       .format("cloudFiles")
+#       .option("cloudFiles.format", "json")
+#       .option("cloudFiles.inferColumnTypes", "true")
+#       .option("inferSchema", "true")
+#       .option("mergeSchema", "true")
+#       .option("sampleSize", "10000")
+#       .option("multiLine", "true")
+#       .load("s3a://openalex-ingest/crossref/")
+#   )
 
 # COMMAND ----------
 
@@ -100,7 +227,6 @@ unallowed_types = ["component"]
     name="crossref_parsed",
     comment="Crossref data transformed to a denormalized, Walden schema",
     table_properties={"quality": "silver"},
-    cluster_by=["native_id"],
 )
 def crossref_transformed():
     def extract_issn_id_by_type(id_type):
@@ -413,16 +539,10 @@ def crossref_transformed():
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ### Create `crossref_works` table, apply changes from `crossref_parsed`
-
-# COMMAND ----------
-
-dlt.create_target_table(
+dlt.create_streaming_table(
     name="crossref_works",
     comment="Final crossref works table with unique identifiers and in the Walden schema",
-    table_properties={"quality": "gold"},
-    cluster_by=["native_id"],
+    table_properties={"quality": "gold"}
 )
 
 dlt.apply_changes(

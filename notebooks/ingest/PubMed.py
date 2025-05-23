@@ -3,13 +3,61 @@
 
 # COMMAND ----------
 
+import sys, os
 import dlt
+import pyspark.sql.functions as F
+from pyspark.sql.types import *
 
-from dlt_utils import *
+import re
+import unicodedata
+from functools import reduce
+import pandas as pd
+
+def clean_html(raw_html):
+    cleanr = re.compile('<\w+.*?>')
+    cleantext = re.sub(cleanr, '', raw_html)
+    return cleantext
+
+def remove_everything_but_alphas(input_string):
+    if input_string:
+        return "".join(e for e in input_string if e.isalpha())
+    return ""
+
+def remove_accents(text):
+    normalized = unicodedata.normalize('NFD', text)
+    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
+    
+def normalize_title(title):
+    if not title:
+        return ""
+
+    if isinstance(title, bytes):
+        title = str(title, 'ascii')
+
+    text = title[0:500]
+
+    text = text.lower()
+
+    # handle unicode characters
+    text = remove_accents(text)
+
+    # remove HTML tags
+    text = clean_html(text)
+
+    # remove articles and common prepositions
+    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
+
+    # remove everything except alphabetic characters
+    text = remove_everything_but_alphas(text)
+
+    return text.strip()
+    
+@F.pandas_udf(StringType())
+def normalize_title_udf(title_series: pd.Series) -> pd.Series:
+    return title_series.apply(normalize_title)
 
 # COMMAND ----------
 
-# normalize title UDF
 def get_openalex_type_from_pubmed(pubmed_type):
     """
     Convert PubMed publication types to OpenAlex types.

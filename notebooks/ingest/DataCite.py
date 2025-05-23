@@ -1,11 +1,106 @@
 # Databricks notebook source
-# MAGIC %pip install nameparser
-
-# COMMAND ----------
-
 import dlt
+import pyspark.sql.functions as F
+from pyspark.sql.types import *
 
-from dlt_utils import *
+import re
+import unicodedata
+import pandas as pd
+
+# normalize title and types UDFs
+
+def clean_html(raw_html):
+    cleanr = re.compile('<\w+.*?>')
+    cleantext = re.sub(cleanr, '', raw_html)
+    return cleantext
+
+def remove_everything_but_alphas(input_string):
+    if input_string:
+        return "".join(e for e in input_string if e.isalpha())
+    return ""
+
+def remove_accents(text):
+    normalized = unicodedata.normalize('NFD', text)
+    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
+
+def normalize_title(title):
+    if not title:
+        return ""
+
+    if isinstance(title, bytes):
+        title = str(title, 'ascii')
+
+    text = title[0:500]
+
+    text = text.lower()
+
+    # handle unicode characters
+    text = remove_accents(text)
+
+    # remove HTML tags
+    text = clean_html(text)
+
+    # remove articles and common prepositions
+    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
+
+    # remove everything except alphabetic characters
+    text = remove_everything_but_alphas(text)
+
+    return text.strip()
+
+def normalize_license(text):
+    if not text:
+        return None
+
+    normalized_text = text.replace(" ", "").replace("-", "").lower()
+
+    license_lookups = [
+        # open Access patterns
+        ("infoeureposematicsaccess", "other-oa"),
+        ("openaccess", "other-oa"),
+        
+        # publisher-specific
+        ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
+        ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
+        ("arxiv.orgperpetual", "publisher-specific-oa"),
+        ("arxiv.orgnonexclusive", "publisher-specific-oa"),
+        
+        # creative Commons licenses
+        ("ccbyncnd", "cc-by-nc-nd"),
+        ("ccbyncsa", "cc-by-nc-sa"),
+        ("ccbynd", "cc-by-nd"),
+        ("ccbysa", "cc-by-sa"),
+        ("ccbync", "cc-by-nc"),
+        ("ccby", "cc-by"),
+        ("creativecommons.org/licenses/by/", "cc-by"),
+        
+        # public domain
+        ("publicdomain", "public-domain"),
+        
+        # software/Dataset licenses
+        ("mit ", "mit"),
+        ("gpl3", "gpl-3"),
+        ("gpl2", "gpl-2"),
+        ("gpl", "gpl"),
+        ("apache2", "apache-2.0")
+    ]
+
+    for lookup, license in license_lookups:
+        if lookup in normalized_text:
+            if license == "public-domain" and "worksnotinthepublicdomain" in normalized_text:
+                continue
+            return license
+    return None
+
+@F.pandas_udf(StringType())
+def normalize_license_udf(license_series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'normalize_license' Python function
+    return license_series.apply(normalize_license)
+
+@F.pandas_udf(StringType())
+def normalize_title_udf(title_series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'normalize_title' Python function
+    return title_series.apply(normalize_title)
 
 def get_openalex_type_from_datacite(datacite_type):
     """

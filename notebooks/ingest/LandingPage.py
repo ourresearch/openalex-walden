@@ -1,20 +1,16 @@
 # Databricks notebook source
-# MAGIC %run ./utils
-
-# COMMAND ----------
-
-import dlt
-import pyspark.sql.functions as F
-from pyspark.sql.types import *
-
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 import time
 from datetime import datetime
 from time import sleep
-
+import re
 import requests
 from requests.exceptions import Timeout
 import json
+import pandas as pd
+from pyspark.sql import functions as F
+from pyspark.sql.types import StructType, StructField, StringType, ArrayType, BooleanType, TimestampType
+import dlt
 
 # COMMAND ----------
 
@@ -157,6 +153,29 @@ def taxicab_enriched_new():
         dlt.read_stream("taxicab_filtered_new")
         .withColumn("parser_response", parser_udf(F.col("taxicab_id")))
     )
+# def taxicab_enriched_new():
+#     source_stream_df = dlt.read_stream("taxicab_filtered_new")
+#     prod_enriched_data_lookup_df = spark.read.table("openalex.landing_page.taxicab_enriched_new").select("taxicab_id", "parser_response")
+    
+#     df_joined_with_prod_data = source_stream_df.join(
+#         prod_enriched_data_lookup_df, "taxicab_id", "left"
+#     )
+
+#     return df_joined_with_prod_data.withColumn("parser_response",
+#         F.when(F.col("parser_response").isNotNull(),
+#             F.col("parser_response")
+#         ).otherwise(
+#             F.struct( # Default "error" struct
+#                 F.lit(None).cast(ArrayType(author_schema)).alias("authors"),
+#                 F.lit(None).cast(ArrayType(url_schema)).alias("urls"),
+#                 F.lit(None).cast(StringType()).alias("license"),
+#                 F.lit(None).cast(StringType()).alias("version"),
+#                 F.lit(None).cast(StringType()).alias("abstract"),
+#                 F.lit(True).alias("had_error")
+#             ).cast(response_schema)
+#         ).alias("parser_response")
+#     )
+
 
 @dlt.table(
     name="landing_page_works_staged_new",

@@ -1,3 +1,5 @@
+from dlt import *
+
 import pyspark.sql.functions as F
 from pyspark.sql.types import *
 from nameparser import HumanName # Will be installed via pipeline libraries
