@@ -1,4 +1,3 @@
-import dlt
 import pyspark.sql.functions as F
 from pyspark.sql.types import *
 from nameparser import HumanName # Will be installed via pipeline libraries
@@ -275,11 +274,11 @@ def normalize_doi_spark_col(doi_string_col_expr):
 # --- create_merge_column and clean_native_id (VERBATIM from your "Locations Parsed" DLT snippet) ---
 def clean_native_id(df, column_name="native_id"):
     return (
-        df.withColumn("true_native_id", F.col(column_name))
-        .withColumn(column_name, F.regexp_replace(F.col(column_name), r"https?://", ""))
-        .withColumn(column_name, F.regexp_replace(F.col(column_name), r"/+$", ""))
-        .withColumn(column_name, F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./:]", ""))
-        .withColumn(column_name, F.lower(F.col(column_name))) )
+            df.withColumn(column_name, F.regexp_replace(F.col(column_name), r"https?://", ""))
+            .withColumn(column_name, F.regexp_replace(F.col(column_name), r"/+$", ""))
+            .withColumn(column_name, F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./:]", ""))
+            .withColumn(column_name, F.lower(F.col(column_name))) 
+    )
 
 def create_merge_column(df): 
     df_cleaned = clean_native_id(df, "native_id") 
@@ -298,3 +297,166 @@ def create_merge_column(df):
             ).otherwise(F.concat_ws("_", F.col("normalized_title"), F.col("authors").getItem(0).getField("author_key"))
             ).alias("title_author")
         )).drop("title_cleaned_newline")
+    
+# normalize title and types UDFs
+
+def clean_html(raw_html):
+    cleanr = re.compile('<\w+.*?>')
+    cleantext = re.sub(cleanr, '', raw_html)
+    return cleantext
+
+def remove_everything_but_alphas(input_string):
+    if input_string:
+        return "".join(e for e in input_string if e.isalpha())
+    return ""
+
+def remove_accents(text):
+    normalized = unicodedata.normalize('NFD', text)
+    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
+
+def normalize_title(title):
+    if not title:
+        return ""
+
+    if isinstance(title, bytes):
+        title = str(title, 'ascii')
+
+    text = title[0:500]
+
+    text = text.lower()
+
+    # handle unicode characters
+    text = remove_accents(text)
+
+    # remove HTML tags
+    text = clean_html(text)
+
+    # remove articles and common prepositions
+    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
+
+    # remove everything except alphabetic characters
+    text = remove_everything_but_alphas(text)
+
+    return text.strip()
+
+def get_openalex_type_from_datacite(datacite_type):
+    """
+    Convert DataCite resource types to OpenAlex types.
+    Returns 'other' for types that don't map to OpenAlex types.
+    """
+    datacite_to_openalex = {
+        # article types
+        "JournalArticle": "article",
+        "ConferencePaper": "article",
+        "DataPaper": "article",
+        "Text": "article",
+        
+        # book types
+        "Book": "book",
+        "BookChapter": "book-chapter",
+        
+        # dataset
+        "Dataset": "dataset",
+        "Model": "dataset",
+        "DatasetOutputManagementPlan": "dataset",
+        
+        # dissertation
+        "Dissertation": "dissertation",
+        
+        # preprint
+        "Preprint": "preprint",
+        
+        # report
+        "Report": "report",
+        "ProjectReport": "report",
+        
+        # standard
+        "Standard": "standard",
+        
+        # peer review
+        "PeerReview": "peer-review",
+        
+        # map everything else to other
+        "Audiovisual": "other",
+        "Award": "other",
+        "Collection": "other",
+        "ComputationalNotebook": "other",
+        "ConferenceProceeding": "other",
+        "Event": "other",
+        "Image": "other",
+        "InteractiveResource": "other",
+        "Instrument": "other",
+        "Journal": "other",
+        "ModelOutput": "other",
+        "PhysicalObject": "other",
+        "Service": "other",
+        "Software": "other",
+        "Sound": "other",
+        "StudyRegistration": "other",
+        "Workflow": "other",
+        "Other": "other"
+    }
+    
+    if not datacite_type:
+        return None
+        
+    return datacite_to_openalex.get(datacite_type, "other")
+
+def normalize_license(text):
+    if not text:
+        return None
+
+    normalized_text = text.replace(" ", "").replace("-", "").lower()
+
+    license_lookups = [
+        # open Access patterns
+        ("infoeureposematicsaccess", "other-oa"),
+        ("openaccess", "other-oa"),
+        
+        # publisher-specific
+        ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
+        ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
+        ("arxiv.orgperpetual", "publisher-specific-oa"),
+        ("arxiv.orgnonexclusive", "publisher-specific-oa"),
+        
+        # creative Commons licenses
+        ("ccbyncnd", "cc-by-nc-nd"),
+        ("ccbyncsa", "cc-by-nc-sa"),
+        ("ccbynd", "cc-by-nd"),
+        ("ccbysa", "cc-by-sa"),
+        ("ccbync", "cc-by-nc"),
+        ("ccby", "cc-by"),
+        ("creativecommons.org/licenses/by/", "cc-by"),
+        
+        # public domain
+        ("publicdomain", "public-domain"),
+        
+        # software/Dataset licenses
+        ("mit ", "mit"),
+        ("gpl3", "gpl-3"),
+        ("gpl2", "gpl-2"),
+        ("gpl", "gpl"),
+        ("apache2", "apache-2.0")
+    ]
+
+    for lookup, license in license_lookups:
+        if lookup in normalized_text:
+            if license == "public-domain" and "worksnotinthepublicdomain" in normalized_text:
+                continue
+            return license
+    return None
+
+@pandas_udf(StringType())
+def normalize_license_udf(license_series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'normalize_license' Python function
+    return license_series.apply(normalize_license)
+
+@pandas_udf(StringType())
+def normalize_title_udf(title_series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'normalize_title' Python function
+    return title_series.apply(normalize_title)
+
+@pandas_udf(StringType())
+def get_openalex_type_from_datacite_udf(datacite_type_series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'get_openalex_type_from_datacite' Python function
+    return datacite_type_series.apply(get_openalex_type_from_datacite)
