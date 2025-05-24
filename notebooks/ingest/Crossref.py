@@ -208,8 +208,8 @@ def crossref_snapshots_exploded():
   return (dlt.read_stream("crossref_items")
       .select(F.explode(F.col("items")).alias("record"))
       .select("record.*")
-      .withColumn("indexed_date", F.col("indexed.date-time"))
-      .dropDuplicates(["DOI", "indexed_date"]).drop("indexed_date")
+      .withColumn("indexed_date", F.col("indexed.date-time"))#.drop("indexed_date")
+      #.dropDuplicates(["DOI", "indexed_date"]).drop("indexed_date") - deal with these later, apply_changed will de-dup these records DOI == native_id
   )
 
 # COMMAND ----------
