@@ -1,0 +1,130 @@
+from .normalize import *
+
+def f_generate_inverted_index(abstract_string_input): 
+    import re 
+    import json 
+    from collections import OrderedDict 
+    
+    if not abstract_string_input or not isinstance(abstract_string_input, str): 
+        return None
+    
+    abstract_s = abstract_string_input
+    
+    # MODIFIED: Combined regex pattern directly in the re.sub call (inline)
+    # Replaces newlines, tabs, JATS opening/closing tags, <p>, </p> tags with a single space.
+    # The \b replacement was removed as its intent was unclear and potentially problematic.
+    abstract_s = re.sub(
+        r"\n|\t|<jats:[^>]*?>|</jats:[^>]*?>|<p>|</p>", # Inline regex string
+        " ", 
+        abstract_s
+    )
+    
+    # Consolidate multiple spaces and strip
+    abstract_s = " ".join(abstract_s.split()).strip()
+
+    if not abstract_s: 
+        return None
+
+    invertedIndex = OrderedDict()
+    words = abstract_s.split()
+    for i, word in enumerate(words):
+        if word not in invertedIndex: 
+            invertedIndex[word] = []
+        invertedIndex[word].append(i)
+    
+    return json.dumps(invertedIndex, ensure_ascii=False) if invertedIndex else None
+
+@F.pandas_udf(StringType())
+def udf_f_generate_inverted_index(abstract_series: pd.Series) -> pd.Series: # Name matches your original UDF variable
+    # This Pandas UDF calls your 'f_generate_inverted_index' Python function
+    return abstract_series.apply(f_generate_inverted_index)
+    
+def apply_initial_processing(df_input, source_key, target_walden_schema):
+    """
+    Applies Walden schema alignment, source-specific fixes, and DOI normalization.
+    Relies on apply_walden_schema and normalize_doi_spark_col from utils.
+    """
+    df = df_input.withColumn("provenance", F.lit(source_key))
+
+    if source_key == "repo_backfill":
+        df = df.withColumn("ids", F.when(
+            (F.col("native_id").like("oai:arXiv.org:%")) & (F.expr("exists(ids, x -> x['namespace'] = 'doi')") == False),
+            F.array_union(F.col("ids"), F.array(F.struct(
+                F.regexp_replace(F.col("native_id"), "oai:arXiv.org:", "10.48550/arxiv.").alias("id"),
+                F.lit("doi").alias("namespace"), F.lit("self").alias("relationship"))))
+        ).otherwise(F.col("ids")))
+    
+    df_aligned = apply_walden_schema(df, target_walden_schema) 
+
+    if source_key == "landing_page": 
+        df_aligned = df_aligned.withColumn("authors",
+            F.transform( F.col("authors"), lambda auth_s: F.struct(
+                auth_s.getItem("given").alias("given"), auth_s.getItem("family").alias("family"),
+                auth_s.getItem("name").alias("name"), auth_s.getItem("orcid").alias("orcid"),
+                F.transform( auth_s.getItem("affiliations"), lambda aff_s: F.struct(
+                    aff_s.getItem("name").alias("name"), 
+                    F.lit(None).cast(StringType()).alias("department"), 
+                    F.lit(None).cast(StringType()).alias("ror_id"))
+                ).alias("affiliations"), 
+                auth_s.getItem("is_corresponding").cast(BooleanType()).alias("is_corresponding"))))
+    
+    df_doi_normalized = df_aligned.withColumns({
+        "native_id": F.when(F.col("native_id_namespace") == "doi", normalize_doi_spark_col(F.col("native_id"))).otherwise(F.col("native_id")),
+        "ids": F.transform(F.col("ids"), lambda x: F.struct(
+            F.when(x.getItem("namespace") == "doi", normalize_doi_spark_col(x.getItem("id"))).otherwise(x.getItem("id")).alias("id"),
+            x.getItem("namespace").alias("namespace"), x.getItem("relationship").alias("relationship")))})
+    return df_doi_normalized
+
+
+def enrich_with_features_and_author_keys(df_input, 
+                                         # Assuming Pandas UDFs are defined in normalize.py or parsing.py and imported
+                                         # For example, if udf_last_name_only is the Pandas UDF for author arrays
+                                         # and udf_f_generate_inverted_index is the Pandas UDF for abstracts
+                                         ):
+    """
+    Enriches the DataFrame with author keys (using a Pandas UDF for author name parsing)
+    and other derived features like abstract_inverted_index, authors_exist, etc.
+    """
+    # This function now expects that the udf_last_name_only Pandas UDF is defined
+    # (e.g., in utils.normalize or utils.parsing) and imported into this transform module.
+    # Or, the DLT notebook itself defines the Pandas UDFs and passes them as arguments here.
+    # For simplicity, let's assume they are imported and available.
+    
+    df_with_enriched_authors = df_input.withColumn(
+        "authors", 
+        udf_last_name_only(F.col("authors")) # This udf_last_name_only is THE PANDAS UDF
+    )
+    
+    df_final_enriched = df_with_enriched_authors.withColumns({
+        "abstract_inverted_index": udf_f_generate_inverted_index(F.col("abstract")), # PANDAS UDF
+        "authors_exist": F.expr("concat_ws('', authors[0].given, authors[0].family, authors[0].name) != ''"),
+        "affiliations_exist": F.expr("exists(authors, author -> nvl(size(author.affiliations), 0) > 0 AND exists(author.affiliations, aff -> aff.name is not null or aff.department is not null or aff.ror_id is not null))"),
+        "is_corresponding_exists": F.exists(F.col("authors"), lambda x: x.getItem("is_corresponding") == True), 
+        "best_doi": F.when(F.col("native_id_namespace") == "doi", F.col("native_id")).otherwise(F.element_at(F.expr("filter(ids, id_struct -> id_struct.namespace == 'doi')"), 1).getField("id"))
+    })
+    return df_final_enriched
+
+
+def apply_final_merge_key_and_filter(df_enriched_input, merge_key_name_const, bad_titles_table_const):
+    """
+    Applies the create_merge_column logic and the final filtering logic.
+    Assumes create_merge_column is available (e.g. imported from utils.dataframe or defined in normalize).
+    """
+    # create_merge_column is imported or available
+    # It needs to be the version that correctly references bad_titles_table_const and uses merge_key_name_const.
+    # For simplicity, assuming create_merge_column uses global constants MERGE_COLUMN_NAME and BAD_TITLES_TABLE
+    # that are defined in the DLT notebook or accessible scope.
+    # It's cleaner if create_merge_column takes these as parameters.
+    
+    # If create_merge_column is defined as: def create_merge_column(df, actual_merge_key_col_name, actual_bad_titles_table):
+    # df_with_merge_key = create_merge_column(df_enriched_input, merge_key_name_const, bad_titles_table_const)
+    
+    # Assuming create_merge_column uses globally defined MERGE_COLUMN_NAME and BAD_TITLES_TABLE
+    df_with_merge_key = create_merge_column(df_enriched_input) 
+
+    return df_with_keys.filter(F.expr( 
+        f"({merge_key_name_const}.doi is not null) or " +
+        f"({merge_key_name_const}.pmid is not null) or " +
+        f"({merge_key_name_const}.arxiv is not null) or " +
+        f"(({merge_key_name_const}.title_author is not null and {merge_key_name_const}.title_author <> ''))"
+    ))

@@ -11,7 +11,7 @@ import pandas as pd
 # This is the target schema for the first major normalization step.
 # It does NOT initially contain authors_exist or authors.author_key as per your notebook.
 # These will be added in subsequent transformations.
-walden_schema = StructType([
+walden_works_schema = StructType([
     StructField("provenance", StringType(), True), StructField("native_id", StringType(), True),
     StructField("native_id_namespace", StringType(), True), StructField("title", StringType(), True),
     StructField("normalized_title", StringType(), True),
@@ -73,26 +73,26 @@ def clean_author_name(author_name):
     if not author_name: return ""
     return re.sub(r"[ \-‐.'' ́>]", "", author_name).strip()
 
-# def last_name_only(author): 
-#     if not author:
-#         return ["", "", ""] 
-#     author = remove_latin_characters(author)
-#     author = remove_author_prefixes(author)
-#     author_name_obj = HumanName(author) 
-#     first_name = clean_author_name(author_name_obj.first)
-#     last_name = clean_author_name(author_name_obj.last)
-#     first_initial = first_name[0] if first_name else ""
-#     return [ f"{last_name};{first_initial}", f"{first_name}", f"{last_name}" ]
+def last_name_only(author): 
+    if not author:
+        return ["", "", ""] 
+    author = remove_latin_characters(author)
+    author = remove_author_prefixes(author)
+    author_name_obj = HumanName(author) 
+    first_name = clean_author_name(author_name_obj.first)
+    last_name = clean_author_name(author_name_obj.last)
+    first_initial = first_name[0] if first_name else ""
+    return [ f"{last_name};{first_initial}", f"{first_name}", f"{last_name}" ]
 
 # Schema for the enriched author struct (output of the author processing Pandas UDF)
 # This MUST match the structure of the dictionaries returned by the Pandas UDF's internal logic
-# AND the walden_schema's authors element type plus author_key.
+# AND the walden_work_schema's authors element type plus author_key.
 enriched_author_struct_type = StructType([
     StructField("given", StringType(), True),
     StructField("family", StringType(), True),
     StructField("name", StringType(), True),
     StructField("orcid", StringType(), True),
-    StructField("affiliations", walden_schema["authors"].dataType.elementType["affiliations"].dataType, True), 
+    StructField("affiliations", walden_works_schema["authors"].dataType.elementType["affiliations"].dataType, True), 
     StructField("is_corresponding", BooleanType(), True), 
     StructField("author_key", StringType(), True)
 ])
@@ -109,13 +109,13 @@ def apply_walden_schema(df, schema):
     return df.select(*aligned_columns)
 
 # --- create_merge_column and clean_native_id (VERBATIM from your "Locations Parsed" DLT snippet) ---
-# def clean_native_id(df, column_name="native_id"):
-#     return (
-#             df.withColumn(column_name, F.regexp_replace(F.col(column_name), r"https?://", ""))
-#             .withColumn(column_name, F.regexp_replace(F.col(column_name), r"/+$", ""))
-#             .withColumn(column_name, F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./:]", ""))
-#             .withColumn(column_name, F.lower(F.col(column_name))) 
-#     )
+def clean_native_id(df, column_name="native_id"):
+    return (
+            df.withColumn(column_name, F.regexp_replace(F.col(column_name), r"https?://", ""))
+            .withColumn(column_name, F.regexp_replace(F.col(column_name), r"/+$", ""))
+            .withColumn(column_name, F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./:]", ""))
+            .withColumn(column_name, F.lower(F.col(column_name))) 
+    )
 
 def create_merge_column(df): 
     df_cleaned = clean_native_id(df, "native_id") 
@@ -219,3 +219,73 @@ def normalize_license(text):
                 continue
             return license
     return None
+
+# --- DOI Normalization (Spark native version for DLT - no UDF needed) ---
+def normalize_doi_spark_col(doi_string_col_expr):
+    return F.regexp_replace(
+        F.regexp_extract(
+            F.lower(F.trim(F.regexp_replace(doi_string_col_expr, " ", ""))),
+            r"(10\.\d+/[^\s]+)", 1),
+        r"\u0000", "")
+    
+@F.pandas_udf(ArrayType(enriched_author_struct_type))
+def udf_last_name_only(authors_arrays_series: pd.Series) -> pd.Series: # Name matches your original UDF variable
+    results = []
+    for author_list_for_single_record in authors_arrays_series:
+        if author_list_for_single_record is None:
+            results.append(None)
+            continue
+        
+        processed_author_list = []
+        for author_dict in author_list_for_single_record:
+            if author_dict is None:
+                processed_author_list.append(None) 
+                continue
+
+            name_str_for_parser = author_dict.get("name")
+            if not name_str_for_parser:
+                given_original = author_dict.get("given", "") or "" 
+                family_original = author_dict.get("family", "") or ""
+                name_str_for_parser = f"{given_original} {family_original}".strip()
+            
+            parsed_name_components = ["", "", ""] 
+            if name_str_for_parser:
+                try:
+                    # Calling YOUR original last_name_only Python function
+                    parsed_name_components = last_name_only(name_str_for_parser) 
+                except Exception: 
+                    pass 
+
+            new_given = parsed_name_components[1]
+            new_family = parsed_name_components[2]
+            reconstructed_name = author_dict.get("name")
+            if not reconstructed_name and (new_given or new_family):
+                reconstructed_name = f"{new_given or ''} {new_family or ''}".strip()
+            
+            is_corresponding_val = author_dict.get("is_corresponding")
+            is_corresponding_bool = None
+            if isinstance(is_corresponding_val, str):
+                is_corresponding_bool = is_corresponding_val.lower() == 'true'
+            elif isinstance(is_corresponding_val, bool):
+                is_corresponding_bool = is_corresponding_val
+            
+            processed_author_struct = {
+                "given": new_given, "family": new_family, "name": reconstructed_name,
+                "orcid": author_dict.get("orcid"), 
+                "affiliations": author_dict.get("affiliations"), 
+                "is_corresponding": is_corresponding_bool,
+                "author_key": parsed_name_components[0].lower() if parsed_name_components and parsed_name_components[0] else None
+            }
+            processed_author_list.append(processed_author_struct)
+        results.append(processed_author_list)
+    return pd.Series(results)
+
+@F.pandas_udf(StringType())
+def normalize_license_udf(license_series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'normalize_license' Python function
+    return license_series.apply(normalize_license)
+
+@F.pandas_udf(StringType())
+def normalize_title_udf(title_series: pd.Series) -> pd.Series:
+    # This Pandas UDF calls your original 'normalize_title' Python function
+    return title_series.apply(normalize_title)
