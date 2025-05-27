@@ -39,6 +39,60 @@ def udf_f_generate_inverted_index(abstract_series: pd.Series) -> pd.Series: # Na
     # This Pandas UDF calls your 'f_generate_inverted_index' Python function
     return abstract_series.apply(f_generate_inverted_index)
     
+def transform_struct(col_name, source_struct, target_struct):
+    target_fields = {f.name: f for f in target_struct.fields}
+    source_fields = {f.name: f for f in source_struct.fields}
+    expressions = []
+    for field_name, field in target_fields.items():
+        if field_name in source_fields:
+            if isinstance(field.dataType, StructType):
+                expressions.append(
+                    transform_struct(f"{col_name}.{field_name}", source_fields[field_name].dataType, field.dataType)
+                )
+            else:
+                expressions.append(F.col(f"{col_name}.{field_name}").cast(field.dataType).alias(field_name))
+        else:
+            expressions.append(F.lit(None).cast(field.dataType).alias(field_name))
+    return F.struct(*expressions).alias(col_name)
+
+def transform_array_of_structs(col_name, source_array, target_array):
+    target_fields = target_array.elementType.fields
+    source_fields = {f.name: f for f in source_array.elementType.fields}
+    struct_fields_expr = []
+    for field in target_fields:
+        if field.name in source_fields:
+            if isinstance(field.dataType, StructType):
+                nested_expr = transform_struct("x." + field.name, source_fields[field.name].dataType, field.dataType)
+                struct_fields_expr.append(f"{nested_expr} AS {field.name}")
+            else:
+                struct_fields_expr.append(f"x.{field.name} AS {field.name}")
+        else:
+            struct_fields_expr.append(f"CAST(NULL AS STRING) AS {field.name}")
+    struct_expr = f"STRUCT({', '.join(struct_fields_expr)})"
+    return F.expr(f"TRANSFORM({col_name}, x -> {struct_expr})").alias(col_name)
+
+def align_column(col_name, source_type, target_type):
+    if isinstance(target_type, StructType) and isinstance(source_type, StructType):
+        return transform_struct(col_name, source_type, target_type)
+    elif isinstance(target_type, ArrayType) and isinstance(source_type, ArrayType):
+        if isinstance(target_type.elementType, StructType) and isinstance(source_type.elementType, StructType):
+            return transform_array_of_structs(col_name, source_type, target_type)
+        else:
+            return F.col(col_name).cast(target_type)
+    else:
+        return F.col(col_name).cast(target_type)
+
+def apply_walden_schema(df, schema):
+    schema_fields = {field.name: field for field in schema.fields}
+    source_schema_fields = {field.name: field for field in df.schema.fields}
+    aligned_columns = []
+    for col_name, target_field in schema_fields.items():
+        if col_name in source_schema_fields:
+            aligned_columns.append(align_column(col_name, source_schema_fields[col_name].dataType, target_field.dataType))
+        else:
+            aligned_columns.append(F.lit(None).cast(target_field.dataType).alias(col_name))
+    return df.select(*aligned_columns)
+
 def apply_initial_processing(df_input, source_key, target_walden_schema):
     """
     Applies Walden schema alignment, source-specific fixes, and DOI normalization.

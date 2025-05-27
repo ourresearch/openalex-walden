@@ -10,7 +10,7 @@ from pyspark.sql.types import *
 import pyspark.sql.functions as F
 import pandas as pd
 
-from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf
+from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # COMMAND ----------
@@ -426,7 +426,7 @@ def crossref_parsed():
            comment="Crossref data after full parsing and author/feature enrichment.")
 def crossref_enriched():
     df_parsed_input = dlt.read_stream("crossref_parsed")
-    df_walden_works_schema = apply_initial_processing(df_parsed_input)
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "crossref", walden_works_schema)
 
     # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
     # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)

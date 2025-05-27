@@ -97,17 +97,6 @@ enriched_author_struct_type = StructType([
     StructField("author_key", StringType(), True)
 ])
 
-def apply_walden_schema(df, schema):
-    schema_fields = {field.name: field for field in schema.fields}
-    source_schema_fields = {field.name: field for field in df.schema.fields}
-    aligned_columns = []
-    for col_name, target_field in schema_fields.items():
-        if col_name in source_schema_fields:
-            aligned_columns.append(align_column(col_name, source_schema_fields[col_name].dataType, target_field.dataType))
-        else:
-            aligned_columns.append(F.lit(None).cast(target_field.dataType).alias(col_name))
-    return df.select(*aligned_columns)
-
 # --- create_merge_column and clean_native_id (VERBATIM from your "Locations Parsed" DLT snippet) ---
 def clean_native_id(df, column_name="native_id"):
     return (
