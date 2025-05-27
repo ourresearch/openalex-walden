@@ -10,12 +10,13 @@ def get_env() -> str:
 
         if env is None or env == "":  # fail over to using workspace ids
             workspace_id = dbutils.entry_point.getDbutils().notebook().getContext().workspaceId().get()
+            # WARNING: workspace ids are not stable and can change over time, specific to OurResearch environment
             if workspace_id == "3025117139199542":
                 env = "dev"
             elif workspace_id == "3315557480496264":
                 env = "prod"
 
-        return env
+        return lower(env)
     except Exception as e:
         print(f"Error retrieving environment: {e}")
         return None
