@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install nameparser
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.0-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -10,7 +10,7 @@ from pyspark.sql.types import *
 import pyspark.sql.functions as F
 import pandas as pd
 
-from dlt_normalize import normalize_title, normalize_license
+from utils.dlt_normalize import normalize_title, normalize_license
 
 # COMMAND ----------
 
