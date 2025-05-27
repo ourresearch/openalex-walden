@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %pip install nameparser
+
+# COMMAND ----------
+
 import dlt
 import re
 import unicodedata
@@ -6,47 +10,111 @@ from pyspark.sql.types import *
 import pyspark.sql.functions as F
 import pandas as pd
 
+from dlt_normalize import normalize_title, normalize_license
+
 # COMMAND ----------
 
 # UDF Functions - Will refactor later on if time allows
-def clean_html(raw_html):
-    cleanr = re.compile('<\w+.*?>')
-    cleantext = re.sub(cleanr, '', raw_html)
-    return cleantext
 
-def remove_everything_but_alphas(input_string):
-    if input_string:
-        return "".join(e for e in input_string if e.isalpha())
-    return ""
+# def remove_everything_but_alphas(input_string):
+#     if input_string:
+#         return "".join(e for e in input_string if e.isalpha())
+#     return ""
 
-def remove_accents(text):
-    normalized = unicodedata.normalize('NFD', text)
-    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
+# def clean_html(raw_html):
+#     cleanr = re.compile('<\w+.*?>')
+#     cleantext = re.sub(cleanr, '', raw_html)
+#     return cleantext
 
-def normalize_title(title):
-    if not title:
-        return ""
+# def remove_accents(text):
+#     normalized = unicodedata.normalize('NFD', text)
+#     return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
 
-    if isinstance(title, bytes):
-        title = str(title, 'ascii')
+# def normalize_title(title):
+#     if not title:
+#         return ""
 
-    text = title[0:500]
+#     if isinstance(title, bytes):
+#         title = str(title, 'ascii')
 
-    text = text.lower()
+#     text = title[0:500]
 
-    # handle unicode characters
-    text = remove_accents(text)
+#     text = text.lower()
 
-    # remove HTML tags
-    text = clean_html(text)
+#     # handle unicode characters
+#     text = remove_accents(text)
 
-    # remove articles and common prepositions
-    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
+#     # remove HTML tags
+#     text = clean_html(text)
 
-    # remove everything except alphabetic characters
-    text = remove_everything_but_alphas(text)
+#     # remove articles and common prepositions
+#     text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
 
-    return text.strip()
+#     # remove everything except alphabetic characters
+#     text = remove_everything_but_alphas(text)
+
+#     return text.strip()
+
+# def clean_native_id(df, column_name="native_id"):
+#     return (
+#         df.withColumn(column_name,
+#             # Step 1: Remove https:// and http://
+#             F.regexp_replace(F.col(column_name), r"https?://", "")
+#         )
+#         .withColumn(column_name,
+#             # Step 2: Remove any trailing `/`
+#             F.regexp_replace(F.col(column_name), r"/+$", "")
+#         )
+#         .withColumn(column_name,
+#             # Step 3: Remove any characters not matching the regex [^a-zA-Z0-9./]
+#             F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./]", "")
+#         )
+#     )
+
+# def normalize_license(text):
+#     if not text:
+#         return None
+
+#     normalized_text = text.replace(" ", "").replace("-", "").lower()
+
+#     license_lookups = [
+#         # open Access patterns
+#         ("infoeureposematicsaccess", "other-oa"),
+#         ("openaccess", "other-oa"),
+
+#         # publisher-specific
+#         ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
+#         ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
+#         ("arxiv.orgperpetual", "publisher-specific-oa"),
+#         ("arxiv.orgnonexclusive", "publisher-specific-oa"),
+
+#         # creative Commons licenses
+#         ("byncnd", "cc-by-nc-nd"),
+#         ("byncsa", "cc-by-nc-sa"),
+#         ("bynd", "cc-by-nd"),
+#         ("bysa", "cc-by-sa"),
+#         ("bync", "cc-by-nc"),
+#         ("ccby", "cc-by"),
+#         ("creativecommons.org/licenses/by/", "cc-by"),
+
+#         # public domain
+#         ("publicdomain", "public-domain"),
+
+#         # software/Dataset licenses
+#         ("mit ", "mit"),
+#         ("gpl3", "gpl-3"),
+#         ("gpl2", "gpl-2"),
+#         ("gpl", "gpl"),
+#         ("apache2", "apache-2.0")
+#     ]
+
+#     for lookup, license in license_lookups:
+#         if lookup in normalized_text:
+#             if license == "public-domain" and "worksnotinthepublicdomain" in normalized_text:
+#                 continue
+#             return license
+
+#     return None
 
 def get_openalex_type(crossref_type):
     """
@@ -87,68 +155,6 @@ def get_openalex_type(crossref_type):
     }
     
     return crossref_to_openalex.get(crossref_type, crossref_type)
-
-
-def clean_native_id(df, column_name="native_id"):
-    return (
-        df.withColumn(column_name,
-            # Step 1: Remove https:// and http://
-            F.regexp_replace(F.col(column_name), r"https?://", "")
-        )
-        .withColumn(column_name,
-            # Step 2: Remove any trailing `/`
-            F.regexp_replace(F.col(column_name), r"/+$", "")
-        )
-        .withColumn(column_name,
-            # Step 3: Remove any characters not matching the regex [^a-zA-Z0-9./]
-            F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./]", "")
-        )
-    )
-
-def normalize_license(text):
-    if not text:
-        return None
-
-    normalized_text = text.replace(" ", "").replace("-", "").lower()
-
-    license_lookups = [
-        # open Access patterns
-        ("infoeureposematicsaccess", "other-oa"),
-        ("openaccess", "other-oa"),
-
-        # publisher-specific
-        ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
-        ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
-        ("arxiv.orgperpetual", "publisher-specific-oa"),
-        ("arxiv.orgnonexclusive", "publisher-specific-oa"),
-
-        # creative Commons licenses
-        ("byncnd", "cc-by-nc-nd"),
-        ("byncsa", "cc-by-nc-sa"),
-        ("bynd", "cc-by-nd"),
-        ("bysa", "cc-by-sa"),
-        ("bync", "cc-by-nc"),
-        ("ccby", "cc-by"),
-        ("creativecommons.org/licenses/by/", "cc-by"),
-
-        # public domain
-        ("publicdomain", "public-domain"),
-
-        # software/Dataset licenses
-        ("mit ", "mit"),
-        ("gpl3", "gpl-3"),
-        ("gpl2", "gpl-2"),
-        ("gpl", "gpl"),
-        ("apache2", "apache-2.0")
-    ]
-
-    for lookup, license in license_lookups:
-        if lookup in normalized_text:
-            if license == "public-domain" and "worksnotinthepublicdomain" in normalized_text:
-                continue
-            return license
-
-    return None
 
 @F.pandas_udf(StringType())
 def normalize_license_udf(license_series: pd.Series) -> pd.Series:
