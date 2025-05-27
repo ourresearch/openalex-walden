@@ -105,26 +105,18 @@ def enrich_with_features_and_author_keys(df_input,
     return df_final_enriched
 
 
-def apply_final_merge_key_and_filter(df_enriched_input, merge_key_name_const, bad_titles_table_const):
+def apply_final_merge_key_and_filter(df_enriched_input):
+    MERGE_COLUMN_NAME = "merge_key"
+
     """
     Applies the create_merge_column logic and the final filtering logic.
     Assumes create_merge_column is available (e.g. imported from utils.dataframe or defined in normalize).
     """
-    # create_merge_column is imported or available
-    # It needs to be the version that correctly references bad_titles_table_const and uses merge_key_name_const.
-    # For simplicity, assuming create_merge_column uses global constants MERGE_COLUMN_NAME and BAD_TITLES_TABLE
-    # that are defined in the DLT notebook or accessible scope.
-    # It's cleaner if create_merge_column takes these as parameters.
-    
-    # If create_merge_column is defined as: def create_merge_column(df, actual_merge_key_col_name, actual_bad_titles_table):
-    # df_with_merge_key = create_merge_column(df_enriched_input, merge_key_name_const, bad_titles_table_const)
-    
-    # Assuming create_merge_column uses globally defined MERGE_COLUMN_NAME and BAD_TITLES_TABLE
     df_with_merge_key = create_merge_column(df_enriched_input) 
 
     return df_with_keys.filter(F.expr( 
-        f"({merge_key_name_const}.doi is not null) or " +
-        f"({merge_key_name_const}.pmid is not null) or " +
-        f"({merge_key_name_const}.arxiv is not null) or " +
-        f"(({merge_key_name_const}.title_author is not null and {merge_key_name_const}.title_author <> ''))"
+        f"({MERGE_COLUMN_NAME}.doi is not null) or " +
+        f"({MERGE_COLUMN_NAME}.pmid is not null) or " +
+        f"({MERGE_COLUMN_NAME}.arxiv is not null) or " +
+        f"(({MERGE_COLUMN_NAME}.title_author is not null and {MERGE_COLUMN_NAME}.title_author <> ''))"
     ))

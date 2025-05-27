@@ -117,7 +117,7 @@ def clean_native_id(df, column_name="native_id"):
             .withColumn(column_name, F.lower(F.col(column_name))) 
     )
 
-def create_merge_column(df): 
+def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"): 
     df_cleaned = clean_native_id(df, "native_id") 
     df_cleaned = df_cleaned.withColumn("title_cleaned_newline", F.regexp_replace(F.col("title"), "\n", " "))
     return df_cleaned.withColumn(MERGE_COLUMN_NAME,
