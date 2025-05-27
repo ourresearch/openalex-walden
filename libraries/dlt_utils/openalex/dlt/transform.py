@@ -38,7 +38,7 @@ def f_generate_inverted_index(abstract_string_input):
 def udf_f_generate_inverted_index(abstract_series: pd.Series) -> pd.Series: # Name matches your original UDF variable
     # This Pandas UDF calls your 'f_generate_inverted_index' Python function
     return abstract_series.apply(f_generate_inverted_index)
-    
+
 def transform_struct(col_name, source_struct, target_struct):
     target_fields = {f.name: f for f in target_struct.fields}
     source_fields = {f.name: f for f in source_struct.fields}
@@ -168,7 +168,7 @@ def apply_final_merge_key_and_filter(df_enriched_input):
     """
     df_with_merge_key = create_merge_column(df_enriched_input) 
 
-    return df_with_keys.filter(F.expr( 
+    return df_with_merge_key.filter(F.expr( 
         f"({MERGE_COLUMN_NAME}.doi is not null) or " +
         f"({MERGE_COLUMN_NAME}.pmid is not null) or " +
         f"({MERGE_COLUMN_NAME}.arxiv is not null) or " +
