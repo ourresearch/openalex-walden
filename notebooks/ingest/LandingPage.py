@@ -3,10 +3,6 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-connect
-
-# COMMAND ----------
-
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 import time
 from datetime import datetime
@@ -24,6 +20,61 @@ from openalex.utils.environment import *
 from openalex.dlt.normalize import walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
+
+# COMMAND ----------
+
+import os
+
+def get_dbutils():
+        try:
+            import IPython
+            dbutils = IPython.get_ipython().user_ns["dbutils"]
+        except ImportError:
+            from databricks.sdk import WorkspaceClient
+            wc = WorkspaceClient()
+            dbutils = wc.dbutils
+        return dbutils
+
+def get_env() -> str:
+    """
+    Utility method to get environment variable - This is expected to be set at cluster level.
+    :return: value of environment - dev/test/prod.
+    """
+    try:
+        env = os.environ.get("environment")
+
+        if env is None or env == "":  # fail over to using workspace ids
+            env = "" # avoid None, returning lower()
+            dbutils = get_dbutils()
+            workspace_id = dbutils.entry_point.getDbutils().notebook().getContext().workspaceId().get()
+
+            # WARNING: workspace ids can change over time and specific to OurResearch environment
+            if workspace_id == "3025117139199542":
+                env = "dev"
+            elif workspace_id == "3315557480496264":
+                env = "prod"
+            else:
+                env = "prod" # default to prod for now since most of the work is done in prod, change to dev later
+
+        return env.lower()
+    except Exception as e:
+        print(f"Error retrieving environment: {e}")
+        return "prod" # default to prod for now since most of the work is done in prod
+
+# COMMAND ----------
+
+import IPython
+dbutils_user = IPython.get_ipython().user_ns["dbutils"]
+print(dbutils_user.entry_point.getDbutils().notebook().getContext().workspaceId().get())
+
+# COMMAND ----------
+
+dbutils_env = get_dbutils()
+print(dbutils_env.entry_point.getDbutils().notebook().getContext().workspaceId().get())
+
+# COMMAND ----------
+
+print(get_env())
 
 # COMMAND ----------
 
@@ -154,14 +205,13 @@ def taxicab_filtered_new():
     )
 
 @dlt.table(
-    comment="Taxicab data enriched with parser results - permanent table to avoid re-calling API",
+    comment=f"Taxicab data enriched with parser results in {ENV} environment - materilazed table to avoid crawling.",
     table_properties={
         "delta.autoOptimize.optimizeWrite": "true",
         "delta.autoOptimize.autoCompact": "true"
     },
     partition_cols=["native_id_namespace"]
 )
-
 def taxicab_enriched_new():
     if ENV == "dev":
         source_stream_df = dlt.read_stream("taxicab_filtered_new")
