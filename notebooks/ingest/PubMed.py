@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.5-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.7-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -13,48 +13,9 @@ import unicodedata
 from functools import reduce
 import pandas as pd
 
-def clean_html(raw_html):
-    cleanr = re.compile('<\w+.*?>')
-    cleantext = re.sub(cleanr, '', raw_html)
-    return cleantext
-
-def remove_everything_but_alphas(input_string):
-    if input_string:
-        return "".join(e for e in input_string if e.isalpha())
-    return ""
-
-def remove_accents(text):
-    normalized = unicodedata.normalize('NFD', text)
-    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
-    
-def normalize_title(title):
-    if not title:
-        return ""
-
-    if isinstance(title, bytes):
-        title = str(title, 'ascii')
-
-    text = title[0:500]
-
-    text = text.lower()
-
-    # handle unicode characters
-    text = remove_accents(text)
-
-    # remove HTML tags
-    text = clean_html(text)
-
-    # remove articles and common prepositions
-    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
-
-    # remove everything except alphabetic characters
-    text = remove_everything_but_alphas(text)
-
-    return text.strip()
-    
-@F.pandas_udf(StringType())
-def normalize_title_udf(title_series: pd.Series) -> pd.Series:
-    return title_series.apply(normalize_title)
+from openalex.utils.environment import *
+from openalex.dlt.normalize import normalize_title_udf, walden_works_schema
+from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # COMMAND ----------
 
@@ -261,6 +222,7 @@ convert_language_code_udf = F.udf(convert_language_code, StringType())
   name="pubmed_items",
   table_properties={'quality': 'bronze'}
 )
+@dlt.expect("rescued_data_null", "_rescued_data IS NULL")
 def pubmed_items():
   return (spark.readStream
       .format("cloudFiles")
@@ -563,6 +525,17 @@ def pubmed_parsed():
 
 # COMMAND ----------
 
+@dlt.table(name="pubmed_enriched", temporary=True, 
+           comment="PubMed data after full parsing and author/feature enrichment.")
+def pubmed_enriched():
+    df_parsed_input = dlt.read_stream("pubmed_parsed")
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "pubmed", walden_works_schema)
+
+    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
+    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
+    df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+    return apply_final_merge_key_and_filter(df_enriched)
+
 dlt.create_target_table(
     name="pubmed_works",
     comment="Final pubmed works table with unique identifiers",
@@ -571,7 +544,7 @@ dlt.create_target_table(
 
 dlt.apply_changes(
     target="pubmed_works",
-    source="pubmed_parsed",
+    source="pubmed_enriched",
     keys=["native_id"],
     sequence_by="updated_date"
 )

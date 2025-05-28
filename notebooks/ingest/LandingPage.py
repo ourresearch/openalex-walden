@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.6-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.7-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -19,10 +19,6 @@ from openalex.utils.environment import *
 from openalex.dlt.normalize import walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
-
-# COMMAND ----------
-
-print(ENV)
 
 # COMMAND ----------
 

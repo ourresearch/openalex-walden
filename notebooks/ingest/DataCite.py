@@ -10,7 +10,7 @@ from pyspark.sql.types import *
 import pyspark.sql.functions as F
 import pandas as pd
 
-from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
+from openalex.dlt.normalize import normalize_title_udf, normalize_license, normalize_license_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # COMMAND ----------
@@ -80,7 +80,26 @@ def get_openalex_type_from_datacite(datacite_type):
 @F.pandas_udf(StringType())
 def get_openalex_type_from_datacite_udf(series: pd.Series) -> pd.Series:
     # This Pandas UDF calls your original 'get_openalex_type_from_datacite' Python function
-    return series.apply(get_openalex_type_from_datacite)        
+    return series.apply(get_openalex_type_from_datacite)
+
+@F.pandas_udf("string")
+def extract_and_normalize_license(rightslist_col: pd.Series) -> pd.Series:
+    result = []
+
+    for rightslist in rightslist_col:
+        license_value = None
+
+        if rightslist and isinstance(rightslist, list):
+            cc_licenses = [uri for uri in rightslist if "creativecommons.org" in uri]
+            if cc_licenses:
+                license_value = cc_licenses[0]
+            else:
+                license_value = rightslist[0] if rightslist else None
+
+        normalized = normalize_license(license_value)  # ← use your existing Python normalizer function here
+        result.append(normalized)
+
+    return pd.Series(result)     
 
 # COMMAND ----------
 
@@ -89,6 +108,7 @@ def get_openalex_type_from_datacite_udf(series: pd.Series) -> pd.Series:
   comment="Datacite ingest from s3",
   table_properties={'quality': 'bronze'}
 )
+@dlt.expect("rescued_data_null", "_rescued_data IS NULL")
 def datacite_items():
   return (spark.readStream
       .format("cloudFiles")
@@ -166,56 +186,34 @@ def datacite_parsed():
                 ),
             ),
         )
+        # replaced array_union with caoncat+array_distinct to avoid duplicates and improve performane
+        # per thread dumps, array_union appears to get stuck for hours - this transform on 20K 100MB tasks can take 3 hours
         .withColumn(
             "ids",
-            F.array_union(
-                F.array(
-                    F.struct(
+            F.array_distinct(
+                F.concat(
+                    F.array(F.struct(
                         F.col("id").alias("id"),
                         F.lit("doi").alias("namespace"),
-                        F.lit("self").alias("relationship"),
-                    )
-                ),
-                F.filter(
-                    F.transform(
-                        "attributes.relatedIdentifiers",
-                        lambda ids: F.struct(
-                            ids["relatedIdentifier"].alias("id"),
-                            F.lower(ids["relatedIdentifierType"]).alias("namespace"),
-                            ids["relationType"].alias("relationship"),
+                        F.lit("self").alias("relationship")
+                    )),
+                    F.filter(
+                        F.transform(
+                            F.col("attributes.relatedIdentifiers"),
+                            lambda ids: F.struct(
+                                ids["relatedIdentifier"].alias("id"),
+                                F.lower(ids["relatedIdentifierType"]).alias("namespace"),
+                                ids["relationType"].alias("relationship")
+                            )
                         ),
-                    ),
-                    lambda x: F.lower(x.namespace).isin(["url", "references"])
-                    == False,  # Don't include related identifiers that are URLs or References, as these belong in the urls and references columns
-                ),
-            ),
+                        lambda x: ~F.lower(x.namespace).isin("url", "references")
+                    )
+                )
+            )
         )
         .withColumn("type", get_openalex_type_from_datacite_udf(F.col("attributes.types.resourceTypeGeneral")))
         .withColumn("version", F.lit(None).cast("string"))
-        .withColumn(
-            "raw_license",
-            F.when(
-                F.isnull(
-                    F.get(
-                        F.filter(
-                            F.col("attributes.rightslist.rightsUri"),
-                            lambda x: x.contains("creativecommons.org"),
-                        ),
-                        0,
-                    )
-                ),
-                F.get(F.col("attributes.rightslist.rightsUri"), 0),
-            ).otherwise(
-                F.get(
-                    F.filter(
-                        F.col("attributes.rightslist.rightsUri"),
-                        lambda x: x.contains("creativecommons.org"),
-                    ),
-                    0,
-                )
-            ),         # If url with "creativecommons.org" exists, use that one, otherwise grab the first rightsUri
-        )
-        .withColumn("license", normalize_license_udf(F.col("raw_license")))
+        .withColumn("license", extract_and_normalize_license(F.col("attributes.rightslist.rightsUri")))
         .withColumn("language", F.col("attributes.language"))
         .withColumn(
             "published_date",

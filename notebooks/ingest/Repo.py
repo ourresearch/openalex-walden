@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.5-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.7-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -11,6 +11,10 @@ import re
 import unicodedata
 from functools import reduce
 import pandas as pd
+
+from openalex.utils.environment import *
+from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
+from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 def get_openalex_type_from_repo(input_type):
     """
@@ -208,90 +212,6 @@ def normalize_language_code(lang_code):
         
     return None
 
-def clean_html(raw_html):
-    cleanr = re.compile('<\w+.*?>')
-    cleantext = re.sub(cleanr, '', raw_html)
-    return cleantext
-
-def remove_everything_but_alphas(input_string):
-    if input_string:
-        return "".join(e for e in input_string if e.isalpha())
-    return ""
-
-def remove_accents(text):
-    normalized = unicodedata.normalize('NFD', text)
-    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
-
-def normalize_title(title):
-    if not title:
-        return ""
-
-    if isinstance(title, bytes):
-        title = str(title, 'ascii')
-
-    text = title[0:500]
-
-    text = text.lower()
-
-    # handle unicode characters
-    text = remove_accents(text)
-
-    # remove HTML tags
-    text = clean_html(text)
-
-    # remove articles and common prepositions
-    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
-
-    # remove everything except alphabetic characters
-    text = remove_everything_but_alphas(text)
-
-    return text.strip()
-    
-def normalize_license(text):
-    if not text:
-        return None
-
-    normalized_text = text.replace(" ", "").replace("-", "").lower()
-
-    license_lookups = [
-        # open Access patterns
-        ("infoeureposematicsaccess", "other-oa"),
-        ("openaccess", "other-oa"),
-        
-        # publisher-specific
-        ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
-        ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
-        ("arxiv.orgperpetual", "publisher-specific-oa"),
-        ("arxiv.orgnonexclusive", "publisher-specific-oa"),
-        
-        # creative Commons licenses
-        ("ccbyncnd", "cc-by-nc-nd"),
-        ("ccbyncsa", "cc-by-nc-sa"),
-        ("ccbynd", "cc-by-nd"),
-        ("ccbysa", "cc-by-sa"),
-        ("ccbync", "cc-by-nc"),
-        ("ccby", "cc-by"),
-        ("creativecommons.org/licenses/by/", "cc-by"),
-        
-        # public domain
-        ("publicdomain", "public-domain"),
-        
-        # software/Dataset licenses
-        ("mit ", "mit"),
-        ("gpl3", "gpl-3"),
-        ("gpl2", "gpl-2"),
-        ("gpl", "gpl"),
-        ("apache2", "apache-2.0")
-    ]
-
-    for lookup, license in license_lookups:
-        if lookup in normalized_text:
-            if license == "public-domain" and "worksnotinthepublicdomain" in normalized_text:
-                continue
-            return license
-
-    return None
-
 def has_oa_domain(native_id):
     oa_domains = ["arxiv", "osti", "pubmedcentral", "biorxiv", "medrxiv", "zenodo", "figshare"]
     if native_id is None:
@@ -304,14 +224,6 @@ def has_oa_domain(native_id):
             if domain in domain_part:
                 return True
     return False
-
-@F.pandas_udf(StringType())
-def normalize_license_udf(license_series: pd.Series) -> pd.Series:
-    return license_series.apply(normalize_license)
-
-@F.pandas_udf(StringType())
-def normalize_title_udf(title_series: pd.Series) -> pd.Series:
-    return title_series.apply(normalize_title)
 
 @F.pandas_udf(StringType())
 def get_openalex_type_from_repo_udf(repo_type_series: pd.Series) -> pd.Series:
@@ -482,6 +394,7 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
   name="repo_items",
   table_properties={'quality': 'bronze'}
 )
+@dlt.expect("rescued_data_null", "_rescued_data IS NULL")
 def repo_items():
   return (spark.readStream
       .format("cloudFiles")
@@ -696,6 +609,17 @@ def repo_parsed():
 
 # COMMAND ----------
 
+@dlt.table(name="repo_enriched", temporary=True, 
+           comment="repo data after full parsing and author/feature enrichment.")
+def repo_enriched():
+    df_parsed_input = dlt.read_stream("repo_parsed")
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "repo", walden_works_schema)
+
+    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
+    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
+    df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+    return apply_final_merge_key_and_filter(df_enriched)
+
 dlt.create_target_table(
     name="repo_works",
     comment="Final repository works table with unique identifiers",
@@ -703,7 +627,7 @@ dlt.create_target_table(
 
 dlt.apply_changes(
     target="repo_works",
-    source="repo_parsed",
+    source="repo_enriched",
     keys=["native_id"],
     sequence_by="updated_date"
 )

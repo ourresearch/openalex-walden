@@ -15,6 +15,7 @@ import unicodedata
 from functools import reduce
 import pandas as pd
 
+from openalex.dlt.normalize import walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # COMMAND ----------

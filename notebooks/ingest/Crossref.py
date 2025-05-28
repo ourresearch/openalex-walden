@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.5-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.7-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -10,6 +10,7 @@ from pyspark.sql.types import *
 import pyspark.sql.functions as F
 import pandas as pd
 
+from openalex.utils.environment import *
 from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
@@ -65,20 +66,33 @@ def get_openalex_type_udf(series: pd.Series) -> pd.Series:
 # Raw data in single column as items table
 @dlt.table(
   name="crossref_items",
+  comment = f"Reading in files from s3://openalex-ingest/crossref/ in {ENV.upper()}",
   table_properties={'quality': 'bronze'}
 )
+@dlt.expect("rescued_data_null", "_rescued_data IS NULL")
 def crossref_items():
-  return (spark.readStream
+  if ENV == "dev":
+    # fix the schema to match the existing schema
+    prod_schema = spark.table("openalex.crossref.crossref_items").schema
+
+    return ( spark.readStream
       .format("cloudFiles")
       .option("cloudFiles.format", "json")
-      .option("cloudFiles.inferColumnTypes", "true") 
-      .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
-      .option("cloudFiles.maxFilesPerTrigger", 50000)
-      .option("cloudFiles.maxBytesPerTrigger", "10gb")
-      .option("cloudFiles.fetchParallelism", 64)
-      .option("multiLine", "true") 
+      .option("multiline", "true")
+      .schema(prod_schema)  # Explicitly set PROD schema
       .load("s3a://openalex-ingest/crossref/")
-  )
+    )
+  else:
+    return ( spark.readStream # use the code currently in prod, overly permissive - may need to change
+      .format("cloudFiles")
+      .option("cloudFiles.format", "json")
+      .option("cloudFiles.inferColumnTypes", "true")
+      .option("inferSchema", "true")
+      .option("mergeSchema", "true")
+      .option("sampleSize", "10000")
+      .option("multiLine", "true")
+      .load("s3a://openalex-ingest/crossref/")
+    )
 
 # COMMAND ----------
 
@@ -91,8 +105,7 @@ def crossref_snapshots_exploded():
   return (dlt.read_stream("crossref_items")
       .select(F.explode(F.col("items")).alias("record"))
       .select("record.*")
-      .withColumn("indexed_date", F.col("indexed.date-time"))#.drop("indexed_date")
-      #.dropDuplicates(["DOI", "indexed_date"]).drop("indexed_date") - apply_changed will de-dup these records DOI == native_id
+      .withColumn("indexed_date", F.col("indexed.date-time"))
   )
 
 # COMMAND ----------
