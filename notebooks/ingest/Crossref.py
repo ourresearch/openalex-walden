@@ -433,8 +433,6 @@ def crossref_enriched():
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
     return apply_final_merge_key_and_filter(df_enriched)
 
-# COMMAND ----------
-
 dlt.create_target_table(
     name="crossref_works", # Final PUBLISHED table name
     comment="Final Crossref works data including merge_key, filtered, and managed by APPLY CHANGES.",

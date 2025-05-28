@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.5-py3-none-any.whl
+
+# COMMAND ----------
+
 import dlt
 import re
 from datetime import datetime
@@ -10,6 +14,8 @@ import xml.etree.ElementTree as ET
 import unicodedata
 from functools import reduce
 import pandas as pd
+
+from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # COMMAND ----------
 
@@ -370,6 +376,17 @@ def pdf_combined():
 
 # COMMAND ----------
 
+@dlt.table(name="pdf_enriched", temporary=True, 
+           comment="PDF data after full parsing and author/feature enrichment.")
+def pdf_enriched():
+    df_parsed_input = dlt.read_stream("pdf_combined")
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "pdf", walden_works_schema)
+
+    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
+    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
+    df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+    return apply_final_merge_key_and_filter(df_enriched)
+
 dlt.create_target_table(
     name="pdf_works",
     comment="Final PDF works table with unique identifiers and in the Walden schema",
@@ -378,7 +395,7 @@ dlt.create_target_table(
 
 dlt.apply_changes(
     target="pdf_works",
-    source="pdf_combined",
+    source="pdf_enriched",
     keys=["native_id"],
     sequence_by="updated_date"
 )

@@ -1,106 +1,19 @@
 # Databricks notebook source
-import dlt
-import pyspark.sql.functions as F
-from pyspark.sql.types import *
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.5-py3-none-any.whl
 
+# COMMAND ----------
+
+import dlt
 import re
 import unicodedata
+from pyspark.sql.types import *
+import pyspark.sql.functions as F
 import pandas as pd
 
-# normalize title and types UDFs
+from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
+from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
-def clean_html(raw_html):
-    cleanr = re.compile('<\w+.*?>')
-    cleantext = re.sub(cleanr, '', raw_html)
-    return cleantext
-
-def remove_everything_but_alphas(input_string):
-    if input_string:
-        return "".join(e for e in input_string if e.isalpha())
-    return ""
-
-def remove_accents(text):
-    normalized = unicodedata.normalize('NFD', text)
-    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
-
-def normalize_title(title):
-    if not title:
-        return ""
-
-    if isinstance(title, bytes):
-        title = str(title, 'ascii')
-
-    text = title[0:500]
-
-    text = text.lower()
-
-    # handle unicode characters
-    text = remove_accents(text)
-
-    # remove HTML tags
-    text = clean_html(text)
-
-    # remove articles and common prepositions
-    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
-
-    # remove everything except alphabetic characters
-    text = remove_everything_but_alphas(text)
-
-    return text.strip()
-
-def normalize_license(text):
-    if not text:
-        return None
-
-    normalized_text = text.replace(" ", "").replace("-", "").lower()
-
-    license_lookups = [
-        # open Access patterns
-        ("infoeureposematicsaccess", "other-oa"),
-        ("openaccess", "other-oa"),
-        
-        # publisher-specific
-        ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
-        ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
-        ("arxiv.orgperpetual", "publisher-specific-oa"),
-        ("arxiv.orgnonexclusive", "publisher-specific-oa"),
-        
-        # creative Commons licenses
-        ("ccbyncnd", "cc-by-nc-nd"),
-        ("ccbyncsa", "cc-by-nc-sa"),
-        ("ccbynd", "cc-by-nd"),
-        ("ccbysa", "cc-by-sa"),
-        ("ccbync", "cc-by-nc"),
-        ("ccby", "cc-by"),
-        ("creativecommons.org/licenses/by/", "cc-by"),
-        
-        # public domain
-        ("publicdomain", "public-domain"),
-        
-        # software/Dataset licenses
-        ("mit ", "mit"),
-        ("gpl3", "gpl-3"),
-        ("gpl2", "gpl-2"),
-        ("gpl", "gpl"),
-        ("apache2", "apache-2.0")
-    ]
-
-    for lookup, license in license_lookups:
-        if lookup in normalized_text:
-            if license == "public-domain" and "worksnotinthepublicdomain" in normalized_text:
-                continue
-            return license
-    return None
-
-@F.pandas_udf(StringType())
-def normalize_license_udf(license_series: pd.Series) -> pd.Series:
-    # This Pandas UDF calls your original 'normalize_license' Python function
-    return license_series.apply(normalize_license)
-
-@F.pandas_udf(StringType())
-def normalize_title_udf(title_series: pd.Series) -> pd.Series:
-    # This Pandas UDF calls your original 'normalize_title' Python function
-    return title_series.apply(normalize_title)
+# COMMAND ----------
 
 def get_openalex_type_from_datacite(datacite_type):
     """
@@ -138,7 +51,6 @@ def get_openalex_type_from_datacite(datacite_type):
         
         # peer review
         "PeerReview": "peer-review",
-        
         # map everything else to other
         "Audiovisual": "other",
         "Award": "other",
@@ -168,7 +80,7 @@ def get_openalex_type_from_datacite(datacite_type):
 @F.pandas_udf(StringType())
 def get_openalex_type_from_datacite_udf(series: pd.Series) -> pd.Series:
     # This Pandas UDF calls your original 'get_openalex_type_from_datacite' Python function
-    return series.apply(get_openalex_type_from_datacite)
+    return series.apply(get_openalex_type_from_datacite)        
 
 # COMMAND ----------
 
@@ -192,16 +104,18 @@ def datacite_items():
 
 # COMMAND ----------
 
-@dlt.table(
-  name="datacite_exploded",
-  comment="Datacite deduped on created_date and id column",
-  table_properties={"quality": "silver"}
-)
-def datacite_exploded():
-  return (dlt.read_stream("datacite_items")
-    .withColumn("created_date", F.to_date(F.col("attributes.updated")))
-    .dropDuplicates(["id", "created_date"]).drop("created_date")
-  )
+# @TODO This seems to be entirely unnecessary. id is native_id and will get deduped in apply_changes by updated_date
+# which may be more accurate (i.e. you can have 2021 record with multiple 2025 updates and 2022 record with no updates and the deduplication below would keep the latter one)
+# @dlt.table(
+#   name="datacite_exploded",
+#   comment="Datacite deduped on created_date and id column",
+#   table_properties={"quality": "silver"}
+# )
+# def datacite_exploded():
+#   return (dlt.read_stream("datacite_items")
+#     .withColumn("created_date", F.to_date(F.col("attributes.updated")))
+#     .dropDuplicates(["id", "created_date"]).drop("created_date")
+#   )
 
 # COMMAND ----------
 
@@ -217,8 +131,9 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
 )
 def datacite_parsed():
     return (
-        dlt.read_stream("datacite_exploded")
-        .withColumn("native_id", F.col("id")).withColumn("native_id_namespace",
+        dlt.read_stream("datacite_items")
+        .withColumn("native_id", F.col("id"))
+        .withColumn("native_id_namespace",
             F.when(F.col("type") == "dois", "doi").otherwise(F.col("type")))
         .withColumn("title", F.substring(F.get(F.col("attributes.titles"), 0)["title"], 0, MAX_TITLE_LENGTH))
         .withColumn("normalized_title", normalize_title_udf(F.col("title")))
@@ -448,6 +363,17 @@ def datacite_parsed():
 
 # COMMAND ----------
 
+@dlt.table(name="datacite_enriched", temporary=True, 
+           comment="DataCite data after full parsing and author/feature enrichment.")
+def datacite_enriched():
+    df_parsed_input = dlt.read_stream("datacite_parsed")
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "datacite", walden_works_schema)
+
+    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
+    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
+    df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+    return apply_final_merge_key_and_filter(df_enriched)
+
 dlt.create_target_table(
     name="datacite_works",
     comment="Final datacite works table with unique identifiers and in the Walden schema",
@@ -456,7 +382,7 @@ dlt.create_target_table(
 
 dlt.apply_changes(
     target="datacite_works",
-    source="datacite_parsed",
+    source="datacite_enriched",
     keys=["native_id"],
     sequence_by="updated_date"
 )

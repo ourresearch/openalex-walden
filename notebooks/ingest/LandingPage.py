@@ -1,4 +1,12 @@
 # Databricks notebook source
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.6-py3-none-any.whl
+
+# COMMAND ----------
+
+# MAGIC %pip install databricks-connect
+
+# COMMAND ----------
+
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 import time
 from datetime import datetime
@@ -11,6 +19,11 @@ import pandas as pd
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType, BooleanType, TimestampType
 import dlt
+
+from openalex.utils.environment import *
+from openalex.dlt.normalize import walden_works_schema
+from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
+
 
 # COMMAND ----------
 
@@ -148,34 +161,35 @@ def taxicab_filtered_new():
     },
     partition_cols=["native_id_namespace"]
 )
+
 def taxicab_enriched_new():
-    return (
-        dlt.read_stream("taxicab_filtered_new")
-        .withColumn("parser_response", parser_udf(F.col("taxicab_id")))
-    )
-# def taxicab_enriched_new():
-#     source_stream_df = dlt.read_stream("taxicab_filtered_new")
-#     prod_enriched_data_lookup_df = spark.read.table("openalex.landing_page.taxicab_enriched_new").select("taxicab_id", "parser_response")
-    
-#     df_joined_with_prod_data = source_stream_df.join(
-#         prod_enriched_data_lookup_df, "taxicab_id", "left"
-#     )
+    if ENV == "dev":
+        source_stream_df = dlt.read_stream("taxicab_filtered_new")
+        prod_enriched_data_lookup_df = spark.read.table("openalex.landing_page.taxicab_enriched_new").select("taxicab_id", "parser_response")
+        
+        df_joined_with_prod_data = source_stream_df.join(
+            prod_enriched_data_lookup_df, "taxicab_id", "left"
+        )
 
-#     return df_joined_with_prod_data.withColumn("parser_response",
-#         F.when(F.col("parser_response").isNotNull(),
-#             F.col("parser_response")
-#         ).otherwise(
-#             F.struct( # Default "error" struct
-#                 F.lit(None).cast(ArrayType(author_schema)).alias("authors"),
-#                 F.lit(None).cast(ArrayType(url_schema)).alias("urls"),
-#                 F.lit(None).cast(StringType()).alias("license"),
-#                 F.lit(None).cast(StringType()).alias("version"),
-#                 F.lit(None).cast(StringType()).alias("abstract"),
-#                 F.lit(True).alias("had_error")
-#             ).cast(response_schema)
-#         ).alias("parser_response")
-#     )
-
+        return df_joined_with_prod_data.withColumn("parser_response",
+            F.when(F.col("parser_response").isNotNull(),
+                F.col("parser_response")
+            ).otherwise(
+                F.struct( # Default "error" struct
+                    F.lit(None).cast(ArrayType(author_schema)).alias("authors"),
+                    F.lit(None).cast(ArrayType(url_schema)).alias("urls"),
+                    F.lit(None).cast(StringType()).alias("license"),
+                    F.lit(None).cast(StringType()).alias("version"),
+                    F.lit(None).cast(StringType()).alias("abstract"),
+                    F.lit(True).alias("had_error")
+                ).cast(response_schema)
+            ).alias("parser_response")
+        )
+    else:
+        return (
+            dlt.read_stream("taxicab_filtered_new")
+            .withColumn("parser_response", parser_udf(F.col("taxicab_id")))
+        )
 
 @dlt.table(
     name="landing_page_works_staged_new",
@@ -274,6 +288,17 @@ def landing_page_combined_new():
 
 # COMMAND ----------
 
+@dlt.table(name="landing_page_enriched", temporary=True, 
+           comment="DataCite data after full parsing and author/feature enrichment.")
+def landing_page_enriched():
+    df_parsed_input = dlt.read_stream("landing_page_combined_new")
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "landing_page", walden_works_schema)
+
+    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
+    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
+    df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+    return apply_final_merge_key_and_filter(df_enriched)
+
 dlt.create_target_table(
     name="landing_page_works",
     comment="Final landing page works table with unique records",
@@ -286,7 +311,7 @@ dlt.create_target_table(
 
 dlt.apply_changes(
     target="landing_page_works",
-    source="landing_page_combined_new",
+    source="landing_page_enriched",
     keys=["native_id"],
     sequence_by="updated_date",
     ignore_null_updates=True

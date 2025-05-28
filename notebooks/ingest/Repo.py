@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install nameparser
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.5-py3-none-any.whl
 
 # COMMAND ----------
 
