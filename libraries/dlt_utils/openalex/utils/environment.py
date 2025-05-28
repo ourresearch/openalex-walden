@@ -1,5 +1,15 @@
 import os
 
+def get_dbutils():
+        try:
+            import IPython
+            dbutils = IPython.get_ipython().user_ns["dbutils"]
+        except ImportError:
+            from databricks.sdk import WorkspaceClient
+            wc = WorkspaceClient()
+            dbutils = wc.dbutils
+        return dbutils
+
 def get_env() -> str:
     """
     Utility method to get environment variable - This is expected to be set at cluster level.
@@ -9,6 +19,7 @@ def get_env() -> str:
         env = os.environ.get("environment")
 
         if env is None or env == "":  # fail over to using workspace ids
+            dbutils = get_dbutils()
             workspace_id = dbutils.entry_point.getDbutils().notebook().getContext().workspaceId().get()
             # WARNING: workspace ids are not stable and can change over time, specific to OurResearch environment
             if workspace_id == "3025117139199542":
