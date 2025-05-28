@@ -14,7 +14,6 @@ import json
 import pandas as pd
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType, BooleanType, TimestampType
-import dlt
 
 from openalex.utils.environment import *
 from openalex.dlt.normalize import walden_works_schema
@@ -23,60 +22,11 @@ from openalex.dlt.transform import apply_initial_processing, apply_final_merge_k
 
 # COMMAND ----------
 
-import os
-
-def get_dbutils():
-        try:
-            import IPython
-            dbutils = IPython.get_ipython().user_ns["dbutils"]
-        except ImportError:
-            from databricks.sdk import WorkspaceClient
-            wc = WorkspaceClient()
-            dbutils = wc.dbutils
-        return dbutils
-
-def get_env() -> str:
-    """
-    Utility method to get environment variable - This is expected to be set at cluster level.
-    :return: value of environment - dev/test/prod.
-    """
-    try:
-        env = os.environ.get("environment")
-
-        if env is None or env == "":  # fail over to using workspace ids
-            env = "" # avoid None, returning lower()
-            dbutils = get_dbutils()
-            workspace_id = dbutils.entry_point.getDbutils().notebook().getContext().workspaceId().get()
-
-            # WARNING: workspace ids can change over time and specific to OurResearch environment
-            if workspace_id == "3025117139199542":
-                env = "dev"
-            elif workspace_id == "3315557480496264":
-                env = "prod"
-            else:
-                env = "prod" # default to prod for now since most of the work is done in prod, change to dev later
-
-        return env.lower()
-    except Exception as e:
-        print(f"Error retrieving environment: {e}")
-        return "prod" # default to prod for now since most of the work is done in prod
+print(ENV)
 
 # COMMAND ----------
 
-import IPython
-dbutils_user = IPython.get_ipython().user_ns["dbutils"]
-print(dbutils_user.entry_point.getDbutils().notebook().getContext().workspaceId().get())
-
-# COMMAND ----------
-
-dbutils_env = get_dbutils()
-print(dbutils_env.entry_point.getDbutils().notebook().getContext().workspaceId().get())
-
-# COMMAND ----------
-
-print(get_env())
-
-# COMMAND ----------
+import dlt
 
 author_schema = StructType([
     StructField("name", StringType(), True),
