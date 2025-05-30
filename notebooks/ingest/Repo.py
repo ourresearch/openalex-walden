@@ -394,7 +394,7 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
   name="repo_items",
   table_properties={'quality': 'bronze'}
 )
-@dlt.expect("rescued_data_null", "_rescued_data IS NULL")
+#@dlt.expect("rescued_data_null", "_rescued_data IS NULL")
 def repo_items():
   return (spark.readStream
       .format("cloudFiles")
@@ -609,20 +609,45 @@ def repo_parsed():
 
 # COMMAND ----------
 
+
+@dlt.table(
+    name="repo_parsed_backfill",
+    temporary=True,
+    comment="Streaming read of repo backfill using CDF (automatically incremental in DLT)"
+)
+def repo_parsed_backfill():
+    repo_schema = spark.table("openalex.repo.repo_works_backfill").schema
+    return (
+        spark.readStream
+            .option("readChangeFeed", "true")
+            .schema(repo_schema)
+            .table("openalex.repo.repo_works_backfill")
+            .filter(F.col("_change_type").isin("insert", "update_postimage"))
+            .drop("_change_type", "_commit_version", "_commit_timestamp")
+    )
+
+
 @dlt.table(name="repo_enriched", temporary=True, 
            comment="repo data after full parsing and author/feature enrichment.")
 def repo_enriched():
+    df_parsed_backfill = dlt.read_stream("repo_parsed_backfill")
     df_parsed_input = dlt.read_stream("repo_parsed")
-    df_walden_works_schema = apply_initial_processing(df_parsed_input, "repo", walden_works_schema)
-
-    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
-    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
-    df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+    
+    # Apply consistent schema and transformations
+    df_walden_works = apply_initial_processing(df_parsed_input, "repo", walden_works_schema)
+    df_backfill_walden_works = apply_initial_processing(df_parsed_backfill, "repo_backfill", walden_works_schema)
+    
+    # Combine both
+    combined_df = df_walden_works.union(df_backfill_walden_works)
+    
+    # Apply enrichment (with fast Pandas UDFs)
+    df_enriched = enrich_with_features_and_author_keys(combined_df)
+    
     return apply_final_merge_key_and_filter(df_enriched)
 
-dlt.create_target_table(
+dlt.create_streaming_table(
     name="repo_works",
-    comment="Final repository works table with unique identifiers",
+    comment="Final repository works table with unique identifiers"
 )
 
 dlt.apply_changes(

@@ -1,4 +1,3 @@
-# Databricks notebook source
 import os
 
 def get_env() -> str:

@@ -89,17 +89,17 @@ def extract_and_normalize_license(rightslist_col: pd.Series) -> pd.Series:
     for rightslist in rightslist_col:
         license_value = None
 
-        if rightslist and isinstance(rightslist, list):
+        if rightslist is not None and isinstance(rightslist, list) and len(rightslist) > 0:
             cc_licenses = [uri for uri in rightslist if "creativecommons.org" in uri]
-            if cc_licenses:
+            if len(cc_licenses) > 0:
                 license_value = cc_licenses[0]
             else:
-                license_value = rightslist[0] if rightslist else None
+                license_value = rightslist[0]
 
-        normalized = normalize_license(license_value)  # ← use your existing Python normalizer function here
+        normalized = normalize_license(license_value)  # ← use your existing Python normalizer function
         result.append(normalized)
 
-    return pd.Series(result)     
+    return pd.Series(result)
 
 # COMMAND ----------
 
