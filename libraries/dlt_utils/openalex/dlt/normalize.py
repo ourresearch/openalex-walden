@@ -111,7 +111,7 @@ def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
         df
             # decided together with Casey to keep only one native_id
             # can apply more deduplication cleaning if needed in later steps
-            .withColumn("native_id", F.trim(F.lower(F.col(column_name))))
+            .withColumn("native_id", F.trim(F.lower(F.col("native_id"))))
             .withColumn("title_cleaned_newline", F.trim(F.regexp_replace(F.col("title"), "\n", " ")))
             .withColumn(MERGE_COLUMN_NAME,
                 F.struct(
