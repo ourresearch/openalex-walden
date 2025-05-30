@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.7-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.8-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -435,7 +435,7 @@ def crossref_parsed():
 
 # COMMAND ----------
 
-@dlt.table(name="crossref_enriched", temporary=True, 
+@dlt.table(name="crossref_enriched",
            comment="Crossref data after full parsing and author/feature enrichment.")
 def crossref_enriched():
     df_parsed_input = dlt.read_stream("crossref_parsed")

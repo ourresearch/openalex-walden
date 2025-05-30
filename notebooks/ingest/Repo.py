@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.7-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.8-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -627,7 +627,7 @@ def repo_parsed_backfill():
     )
 
 
-@dlt.table(name="repo_enriched", temporary=True, 
+@dlt.table(name="repo_enriched",
            comment="repo data after full parsing and author/feature enrichment.")
 def repo_enriched():
     df_parsed_backfill = dlt.read_stream("repo_parsed_backfill")

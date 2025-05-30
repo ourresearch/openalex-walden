@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.7-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.8-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -525,7 +525,7 @@ def pubmed_parsed():
 
 # COMMAND ----------
 
-@dlt.table(name="pubmed_enriched", temporary=True, 
+@dlt.table(name="pubmed_enriched",
            comment="PubMed data after full parsing and author/feature enrichment.")
 def pubmed_enriched():
     df_parsed_input = dlt.read_stream("pubmed_parsed")

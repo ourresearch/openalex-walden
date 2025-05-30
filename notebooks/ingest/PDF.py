@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.5-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.8-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -377,7 +377,7 @@ def pdf_combined():
 
 # COMMAND ----------
 
-@dlt.table(name="pdf_enriched", temporary=True, 
+@dlt.table(name="pdf_enriched",
            comment="PDF data after full parsing and author/feature enrichment.")
 def pdf_enriched():
     df_parsed_input = dlt.read_stream("pdf_combined")

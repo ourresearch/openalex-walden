@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.7-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.8-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -284,7 +284,7 @@ def landing_page_combined_new():
 
 # COMMAND ----------
 
-@dlt.table(name="landing_page_enriched", temporary=True, 
+@dlt.table(name="landing_page_enriched",
            comment="DataCite data after full parsing and author/feature enrichment.")
 def landing_page_enriched():
     df_parsed_input = dlt.read_stream("landing_page_combined_new")
