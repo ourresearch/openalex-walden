@@ -160,7 +160,7 @@ def enrich_with_features_and_author_keys(df_input,
 
 
 def apply_final_merge_key_and_filter(df_enriched_input):
-    MERGE_COLUMN_NAME = "merge_key"
+    MERGE_COL = "merge_key"
 
     """
     Applies the create_merge_column logic and the final filtering logic.
@@ -169,8 +169,8 @@ def apply_final_merge_key_and_filter(df_enriched_input):
     df_with_merge_key = create_merge_column(df_enriched_input) 
 
     return df_with_merge_key.filter(F.expr( 
-        f"({MERGE_COLUMN_NAME}.doi is not null) or " +
-        f"({MERGE_COLUMN_NAME}.pmid is not null) or " +
-        f"({MERGE_COLUMN_NAME}.arxiv is not null) or " +
-        f"(({MERGE_COLUMN_NAME}.title_author is not null and {MERGE_COLUMN_NAME}.title_author <> ''))"
+        f"({MERGE_COL}.doi is not null) or " +
+        f"({MERGE_COL}.pmid is not null) or " +
+        f"({MERGE_COL}.arxiv is not null) or " +
+        f"(({MERGE_COL}.title_author is not null and {MERGE_COL}.title_author <> ''))"
     ))
