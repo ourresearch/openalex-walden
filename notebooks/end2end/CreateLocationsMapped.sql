@@ -5,7 +5,7 @@ CREATE OR REPLACE TABLE identifier('openalex' || :env_suffix || '.works.location
   key_lineage STRING,
   provenance STRING,
   native_id STRING,
-  true_native_id STRING,
+  --true_native_id STRING,
   native_id_namespace STRING,
   title STRING,
   normalized_title STRING,
@@ -61,7 +61,7 @@ WITH counted_works AS (
     SELECT 
         *,
         ROW_NUMBER() OVER(PARTITION BY merge_key, native_id, native_id_namespace, provenance ORDER BY updated_date DESC) AS rwcnt
-    FROM identifier('openalex' || :env_suffix || '.works.sources_combined')
+    FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
 ),
 distinct_works AS (
     SELECT *
@@ -85,7 +85,7 @@ WHEN MATCHED
 AND (
     (target.provenance <> source.provenance                       AND target.provenance IS NOT NULL) OR
     (target.native_id <> source.native_id                         AND target.native_id IS NOT NULL) OR
-    (target.true_native_id <> source.true_native_id               AND target.true_native_id IS NOT NULL) OR
+    --(target.true_native_id <> source.true_native_id               AND target.true_native_id IS NOT NULL) OR
     (target.native_id_namespace <> source.native_id_namespace     AND target.native_id_namespace IS NOT NULL) OR
     (target.title <> source.title                                 AND target.title IS NOT NULL) OR
     (target.normalized_title <> source.normalized_title           AND target.normalized_title IS NOT NULL) OR
@@ -122,7 +122,7 @@ AND (
 THEN UPDATE SET 
     target.provenance = source.provenance,
     target.native_id = source.native_id,
-    target.true_native_id = source.true_native_id,
+    --target.true_native_id = source.true_native_id,
     target.native_id_namespace = source.native_id_namespace,
     target.title = source.title,
     target.normalized_title = source.normalized_title,
@@ -165,7 +165,7 @@ WHEN NOT MATCHED THEN INSERT (
     merge_key,
     provenance,
     native_id,
-    true_native_id,
+    --true_native_id,
     native_id_namespace,
     title,
     normalized_title,
@@ -209,7 +209,7 @@ WHEN NOT MATCHED THEN INSERT (
     source.merge_key,
     source.provenance,
     source.native_id,
-    source.true_native_id,
+    --source.true_native_id,
     source.native_id_namespace,
     source.title,
     source.normalized_title,
@@ -787,7 +787,7 @@ repo_walden_works as (
   select
     *,
     case
-      when provenance in ('repo', 'repo_backfill') then lower(true_native_id)
+      when provenance in ('repo', 'repo_backfill') then lower(native_id) --true_native_id
     end as pmh_id_walden
   from
     identifier('openalex' || :env_suffix || '.works.locations_mapped')

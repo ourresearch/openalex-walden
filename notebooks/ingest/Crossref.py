@@ -449,7 +449,12 @@ def crossref_enriched():
 dlt.create_target_table(
     name="crossref_works", # Final PUBLISHED table name
     comment="Final Crossref works data including merge_key, filtered, and managed by APPLY CHANGES.",
-    table_properties={"quality": "gold"}
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+        "quality": "gold"
+    }
 )
 
 dlt.apply_changes(

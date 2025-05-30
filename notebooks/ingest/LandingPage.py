@@ -299,6 +299,7 @@ dlt.create_target_table(
     name="landing_page_works",
     comment="Final landing page works table with unique records",
     table_properties={
+        "delta.enableChangeDataFeed": "true",
         "delta.autoOptimize.optimizeWrite": "true",
         "delta.autoOptimize.autoCompact": "true",
         "quality": "gold"

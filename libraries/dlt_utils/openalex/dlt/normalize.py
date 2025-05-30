@@ -97,33 +97,38 @@ enriched_author_struct_type = StructType([
     StructField("author_key", StringType(), True)
 ])
 
-# --- create_merge_column and clean_native_id (VERBATIM from your "Locations Parsed" DLT snippet) ---
+# --- create_merge_column and clean_native_id ---
 def clean_native_id(df, column_name="native_id"):
     return (
             df.withColumn(column_name, F.regexp_replace(F.col(column_name), r"https?://", ""))
             .withColumn(column_name, F.regexp_replace(F.col(column_name), r"/+$", ""))
-            .withColumn(column_name, F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./:]", ""))
-            .withColumn(column_name, F.lower(F.col(column_name))) 
+            .withColumn(column_name, F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./:-]", ""))
+            .withColumn(column_name, F.lower(F.col(column_name)))
     )
 
-def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"): 
-    df_cleaned = clean_native_id(df, "native_id") 
-    df_cleaned = df_cleaned.withColumn("title_cleaned_newline", F.regexp_replace(F.col("title"), "\n", " "))
-    return df_cleaned.withColumn(MERGE_COLUMN_NAME,
-        F.struct(
-            F.element_at(F.expr("filter(ids, x -> x.namespace = 'doi' and x.id is not null)"), 1).getField("id").alias("doi"),
-            F.element_at(F.expr("filter(ids, x -> x.namespace = 'pmid' and x.id is not null)"), 1).getField("id").alias("pmid"),
-            F.element_at(F.expr("filter(ids, x -> x.namespace = 'arxiv' and x.id is not null)"), 1).getField("id").alias("arxiv"),
-            F.when(
-                (F.expr(f"title_cleaned_newline in (select title from openalex.system.bad_titles)")) |
-                (F.length(F.col("title_cleaned_newline")) < 19) |
-                (F.col("title_cleaned_newline").isNull()),
-                F.concat(F.col("native_id"), F.col("provenance")) 
-            ).when(F.col("authors_exist") == False, F.col("normalized_title")
-            ).otherwise(F.concat_ws("_", F.col("normalized_title"), F.col("authors").getItem(0).getField("author_key"))
-            ).alias("title_author")
-        )).drop("title_cleaned_newline")
-    
+def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
+    return ( 
+        df
+            # decided together with Casey to keep only one native_id
+            # can apply more deduplication cleaning if needed in later steps
+            .withColumn("native_id", F.trim(F.lower(F.col(column_name))))
+            .withColumn("title_cleaned_newline", F.trim(F.regexp_replace(F.col("title"), "\n", " ")))
+            .withColumn(MERGE_COLUMN_NAME,
+                F.struct(
+                    F.element_at(F.expr("filter(ids, x -> x.namespace = 'doi' and x.id is not null)"), 1).getField("id").alias("doi"),
+                    F.element_at(F.expr("filter(ids, x -> x.namespace = 'pmid' and x.id is not null)"), 1).getField("id").alias("pmid"),
+                    F.element_at(F.expr("filter(ids, x -> x.namespace = 'arxiv' and x.id is not null)"), 1).getField("id").alias("arxiv"),
+                    F.when(
+                        (F.expr(f"title_cleaned_newline in (select trim(title) from openalex.system.bad_titles)")) |
+                        (F.length(F.col("title_cleaned_newline")) < 19) |
+                        (F.col("title_cleaned_newline").isNull()),
+                        F.concat(F.col("native_id"), F.col("provenance")) 
+                    ).when(F.col("authors_exist") == False, F.col("normalized_title")
+                    ).otherwise(F.concat_ws("_", F.col("normalized_title"), F.col("authors").getItem(0).getField("author_key"))
+                    ).alias("title_author")
+                )
+            ).drop("title_cleaned_newline")
+    )
 # normalize title and types UDFs
 
 def clean_html(raw_html):

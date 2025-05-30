@@ -388,10 +388,15 @@ def pdf_enriched():
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
     return apply_final_merge_key_and_filter(df_enriched)
 
-dlt.create_target_table(
+dlt.create_streaming_table(
     name="pdf_works",
     comment="Final PDF works table with unique identifiers and in the Walden schema",
-    table_properties={"quality": "gold"}
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+        "quality": "gold"
+    }
 )
 
 dlt.apply_changes(

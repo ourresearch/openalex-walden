@@ -647,7 +647,13 @@ def repo_enriched():
 
 dlt.create_streaming_table(
     name="repo_works",
-    comment="Final repository works table with unique identifiers"
+    comment="Final repository works table with unique identifiers",
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+        "quality": "gold"
+    }
 )
 
 dlt.apply_changes(

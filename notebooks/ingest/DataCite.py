@@ -375,7 +375,12 @@ def datacite_enriched():
 dlt.create_target_table(
     name="datacite_works",
     comment="Final datacite works table with unique identifiers and in the Walden schema",
-    table_properties={"quality": "gold"}
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+        "quality": "gold"
+    }
 )
 
 dlt.apply_changes(
