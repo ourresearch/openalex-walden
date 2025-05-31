@@ -352,7 +352,7 @@ with legacy_doi as (
   SELECT DISTINCT regexp_replace(doi_lower, '[^a-zA-Z0-9.]', '') as doi_lower 
   FROM openalex.works_poc.postgres_mid
   WHERE doi_lower IS NOT NULL
-)s
+)
 , paper_ids as (
   select 
     min(m.paper_id) as paper_id,

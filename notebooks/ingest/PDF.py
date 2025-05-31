@@ -234,25 +234,15 @@ def extract_fields(xml_content):
                 "funders": []
             }
 
-@udf(fields_schema)
-def extract_fields_udf(xml_content):
-    return extract_fields(xml_content)
+# @TODO figure out if we can use pandas_udf here
+# @udf(fields_schema)
+# def extract_fields_udf(xml_content):
+#     return extract_fields(xml_content)
 
-# @pandas_udf(fields_schema)
-# def extract_fields_udf(xml_content_series: pd.Series) -> pd.DataFrame: # Return type hint is pd.DataFrame
-#     """
-#     Pandas UDF to extract structured fields from an XML content string.
-#     The wrapped Python function 'extract_fields' is applied to each XML string.
-#     Returns a Pandas DataFrame with columns matching fields_schema.
-#     """
-#     # Apply your existing 'extract_fields' function (which returns a dict) to each element
-#     # This will result in a Pandas Series where each element is a dictionary or None.
-#     list_of_dicts = xml_content_series.apply(extract_fields).tolist()
-    
-#     # Convert the list of dictionaries into a Pandas DataFrame.
-#     # The columns of this DataFrame will be created from the keys of the dictionaries.
-#     # It's crucial that these keys match the field names in 'fields_schema'.
-#     return pd.DataFrame(list_of_dicts)
+@pandas_udf(fields_schema)
+def extract_fields_udf(xml_series: pd.Series) -> pd.DataFrame:
+    results = [extract_fields(xml) for xml in xml_series]
+    return pd.DataFrame(results)
 
 # COMMAND ----------
 

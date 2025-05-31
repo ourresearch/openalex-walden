@@ -295,7 +295,7 @@ def landing_page_enriched():
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
     return apply_final_merge_key_and_filter(df_enriched)
 
-dlt.create_target_table(
+dlt.create_streaming_table(
     name="landing_page_works",
     comment="Final landing page works table with unique records",
     table_properties={
