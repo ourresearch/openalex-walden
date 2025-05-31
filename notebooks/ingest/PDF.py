@@ -86,13 +86,13 @@ def extract_fields(xml_content):
                 "abstract": None,
                 "authors": [],
                 "source_name": None,
-                "publisher": None,
-                "issue": None,
                 "volume": None,
+                "issue": None,
                 "first_page": None,
                 "last_page": None,
+                "publisher": None,
+                "published_date": pd.NaT,
                 "references": [],
-                "published_date": None,
                 "funders": []
             }
 
@@ -210,29 +210,31 @@ def extract_fields(xml_content):
             "abstract": abstract,
             "authors": authors,
             "source_name": source_name,
-            "publisher": publisher,
-            "issue": issue,
             "volume": volume,
+            "issue": issue,
             "first_page": first_page,
             "last_page": last_page,
+            "publisher": publisher,
+            "published_date": pd.NaT,
             "references": references,
             "funders": funders
         }
     except Exception:
         return {
-                "title": None,
-                "language": None,
-                "abstract": None,
-                "authors": [],
-                "source_name": None,
-                "publisher": None,
-                "issue": None,
-                "volume": None,
-                "first_page": None,
-                "last_page": None,
-                "references": [],
-                "funders": []
-            }
+            "title": None,
+            "language": None,
+            "abstract": None,
+            "authors": [],
+            "source_name": None,
+            "volume": None,
+            "issue": None,
+            "first_page": None,
+            "last_page": None,
+            "publisher": None,
+            "published_date": pd.NaT,
+            "references": [],
+            "funders": []
+        }
 
 # @TODO figure out if we can use pandas_udf here
 # @udf(fields_schema)

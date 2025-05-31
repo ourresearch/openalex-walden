@@ -350,6 +350,7 @@ def extract_ids(identifiers, native_id):
        print(f"Error in extract_ids: {str(e)}")
        return []
 
+# @TODO Convert to Pandas UDF - repo_parsed is slow
 extract_ids_udf = F.udf(extract_ids, ArrayType(id_struct_type))
 
 # COMMAND ----------
