@@ -505,7 +505,7 @@ WITH ids AS (
     MIN(paper_id) AS paper_id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NOT NULL
     AND merge_key.doi IS NOT NULL
   GROUP BY 
@@ -530,7 +530,7 @@ WITH ids AS (
     MIN(paper_id) AS paper_id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NOT NULL
     AND merge_key.pmid IS NOT NULL
   GROUP BY 
@@ -617,7 +617,7 @@ WITH ids AS (
   GROUP BY 
     merge_key.doi
 )
-MERGE INTO identifier('openalex' || :env_suffix || '.works.id_map') AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.doi = source.doi
   AND target.work_id IS NULL
