@@ -1,4 +1,8 @@
 # Databricks notebook source
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.9-py3-none-any.whl
+
+# COMMAND ----------
+
 import dlt
 import re
 from datetime import datetime
@@ -10,6 +14,9 @@ import xml.etree.ElementTree as ET
 import unicodedata
 from functools import reduce
 import pandas as pd
+
+from openalex.dlt.normalize import walden_works_schema
+from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # COMMAND ----------
 
@@ -79,13 +86,13 @@ def extract_fields(xml_content):
                 "abstract": None,
                 "authors": [],
                 "source_name": None,
-                "publisher": None,
-                "issue": None,
                 "volume": None,
+                "issue": None,
                 "first_page": None,
                 "last_page": None,
+                "publisher": None,
+                "published_date": pd.NaT,
                 "references": [],
-                "published_date": None,
                 "funders": []
             }
 
@@ -203,49 +210,41 @@ def extract_fields(xml_content):
             "abstract": abstract,
             "authors": authors,
             "source_name": source_name,
-            "publisher": publisher,
-            "issue": issue,
             "volume": volume,
+            "issue": issue,
             "first_page": first_page,
             "last_page": last_page,
+            "publisher": publisher,
+            "published_date": pd.NaT,
             "references": references,
             "funders": funders
         }
     except Exception:
         return {
-                "title": None,
-                "language": None,
-                "abstract": None,
-                "authors": [],
-                "source_name": None,
-                "publisher": None,
-                "issue": None,
-                "volume": None,
-                "first_page": None,
-                "last_page": None,
-                "references": [],
-                "funders": []
-            }
+            "title": None,
+            "language": None,
+            "abstract": None,
+            "authors": [],
+            "source_name": None,
+            "volume": None,
+            "issue": None,
+            "first_page": None,
+            "last_page": None,
+            "publisher": None,
+            "published_date": pd.NaT,
+            "references": [],
+            "funders": []
+        }
 
-@udf(fields_schema)
-def extract_fields_udf(xml_content):
-    return extract_fields(xml_content)
+# @TODO figure out if we can use pandas_udf here
+# @udf(fields_schema)
+# def extract_fields_udf(xml_content):
+#     return extract_fields(xml_content)
 
-# @pandas_udf(fields_schema)
-# def extract_fields_udf(xml_content_series: pd.Series) -> pd.DataFrame: # Return type hint is pd.DataFrame
-#     """
-#     Pandas UDF to extract structured fields from an XML content string.
-#     The wrapped Python function 'extract_fields' is applied to each XML string.
-#     Returns a Pandas DataFrame with columns matching fields_schema.
-#     """
-#     # Apply your existing 'extract_fields' function (which returns a dict) to each element
-#     # This will result in a Pandas Series where each element is a dictionary or None.
-#     list_of_dicts = xml_content_series.apply(extract_fields).tolist()
-    
-#     # Convert the list of dictionaries into a Pandas DataFrame.
-#     # The columns of this DataFrame will be created from the keys of the dictionaries.
-#     # It's crucial that these keys match the field names in 'fields_schema'.
-#     return pd.DataFrame(list_of_dicts)
+@pandas_udf(fields_schema)
+def extract_fields_udf(xml_series: pd.Series) -> pd.DataFrame:
+    results = [extract_fields(xml) for xml in xml_series]
+    return pd.DataFrame(results)
 
 # COMMAND ----------
 
@@ -370,15 +369,31 @@ def pdf_combined():
 
 # COMMAND ----------
 
-dlt.create_target_table(
+@dlt.table(name="pdf_enriched",
+           comment="PDF data after full parsing and author/feature enrichment.")
+def pdf_enriched():
+    df_parsed_input = dlt.read_stream("pdf_combined")
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "pdf", walden_works_schema)
+
+    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
+    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
+    df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+    return apply_final_merge_key_and_filter(df_enriched)
+
+dlt.create_streaming_table(
     name="pdf_works",
     comment="Final PDF works table with unique identifiers and in the Walden schema",
-    table_properties={"quality": "gold"}
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+        "quality": "gold"
+    }
 )
 
 dlt.apply_changes(
     target="pdf_works",
-    source="pdf_combined",
+    source="pdf_enriched",
     keys=["native_id"],
     sequence_by="updated_date"
 )

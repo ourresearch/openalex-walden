@@ -1,11 +1,11 @@
 -- Databricks notebook source
-CREATE OR REPLACE TABLE openalex.works.locations_mapped (
+CREATE OR REPLACE TABLE identifier('openalex' || :env_suffix || '.works.locations_mapped') (
   work_id BIGINT,
   merge_key STRUCT<doi: STRING, pmid: STRING, arxiv: STRING, title_author: STRING>,
   key_lineage STRING,
   provenance STRING,
   native_id STRING,
-  true_native_id STRING,
+  --true_native_id STRING,
   native_id_namespace STRING,
   title STRING,
   normalized_title STRING,
@@ -61,14 +61,14 @@ WITH counted_works AS (
     SELECT 
         *,
         ROW_NUMBER() OVER(PARTITION BY merge_key, native_id, native_id_namespace, provenance ORDER BY updated_date DESC) AS rwcnt
-    FROM openalex.works.sources_combined
+    FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
 ),
 distinct_works AS (
     SELECT *
     FROM counted_works
     WHERE rwcnt = 1
 )
-MERGE INTO openalex.works.locations_mapped AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING distinct_works AS source
 ON target.merge_key IS NOT DISTINCT FROM source.merge_key
     AND target.native_id IS NOT DISTINCT FROM source.native_id
@@ -85,78 +85,10 @@ WHEN MATCHED
 AND (
     (target.provenance <> source.provenance                       AND target.provenance IS NOT NULL) OR
     (target.native_id <> source.native_id                         AND target.native_id IS NOT NULL) OR
-    (target.true_native_id <> source.true_native_id               AND target.true_native_id IS NOT NULL) OR
+    --(target.true_native_id <> source.true_native_id               AND target.true_native_id IS NOT NULL) OR
     (target.native_id_namespace <> source.native_id_namespace     AND target.native_id_namespace IS NOT NULL) OR
     (target.title <> source.title                                 AND target.title IS NOT NULL) OR
     (target.normalized_title <> source.normalized_title           AND target.normalized_title IS NOT NULL) OR
-    
-    -- sort arrays before comparing
-    -- ids
-    -- (array_sort(transform(target.ids, i -> struct(
-    --     coalesce(i.id, '') as id,
-    --     coalesce(i.namespace, '') as namespace,
-    --     coalesce(i.relationship, '') as relationship
-    -- ))) IS DISTINCT FROM array_sort(transform(source.ids, i -> struct(
-    --     coalesce(i.id, '') as id,
-    --     coalesce(i.namespace, '') as namespace,
-    --     coalesce(i.relationship, '') as relationship
-    -- ))) AND target.ids IS NOT NULL) OR
-    
-    -- urls
-    -- (array_sort(transform(target.urls, u -> struct(
-    --     coalesce(u.url, '') as url,
-    --     coalesce(u.content_type, '') as content_type
-    -- ))) IS DISTINCT FROM array_sort(transform(source.urls, u -> struct(
-    --     coalesce(u.url, '') as url,
-    --     coalesce(u.content_type, '') as content_type
-    -- ))) AND target.urls IS NOT NULL) OR
-
-    -- -- funders
-    -- (array_sort(transform(target.funders, f -> struct(
-    --     coalesce(f.doi, '') as doi,
-    --     coalesce(f.ror, '') as ror,
-    --     coalesce(f.name, '') as name
-    -- ))) IS DISTINCT FROM array_sort(transform(source.funders, f -> struct(
-    --     coalesce(f.doi, '') as doi,
-    --     coalesce(f.ror, '') as ror,
-    --     coalesce(f.name, '') as name
-    -- ))) AND target.funders IS NOT NULL) OR
-    
-    -- references
-    -- (array_sort(transform(target.references, r -> struct(
-    --     coalesce(r.doi, '') as doi,
-    --     coalesce(r.pmid, '') as pmid,
-    --     coalesce(r.arxiv, '') as arxiv,
-    --     coalesce(r.title, '') as title,
-    --     coalesce(r.authors, '') as authors,
-    --     coalesce(r.year, '') as year,
-    --     coalesce(r.raw, '') as raw
-    -- ))) IS DISTINCT FROM array_sort(transform(source.references, r -> struct(
-    --     coalesce(r.doi, '') as doi,
-    --     coalesce(r.pmid, '') as pmid,
-    --     coalesce(r.arxiv, '') as arxiv,
-    --     coalesce(r.title, '') as title,
-    --     coalesce(r.authors, '') as authors,
-    --     coalesce(r.year, '') as year,
-    --     coalesce(r.raw, '') as raw
-    -- ))) AND target.references IS NOT NULL) OR
-    
-    -- authors
-    -- (array_sort(transform(target.authors, a -> struct(
-    --     coalesce(a.given, '') as given,
-    --     coalesce(a.family, '') as family,
-    --     coalesce(a.name, '') as name,
-    --     coalesce(a.orcid, '') as orcid,
-    --     coalesce(a.is_corresponding, false) as is_corresponding,
-    --     coalesce(a.author_key, '') as author_key
-    -- ))) IS DISTINCT FROM array_sort(transform(source.authors, a -> struct(
-    --     coalesce(a.given, '') as given,
-    --     coalesce(a.family, '') as family,
-    --     coalesce(a.name, '') as name,
-    --     coalesce(a.orcid, '') as orcid,
-    --     coalesce(a.is_corresponding, false) as is_corresponding,
-    --     coalesce(a.author_key, '') as author_key
-    -- ))) AND target.authors IS NOT NULL) OR
     
     (target.type <> source.type                                   AND target.type IS NOT NULL) OR
     (target.version <> source.version                             AND target.version IS NOT NULL) OR
@@ -190,7 +122,7 @@ AND (
 THEN UPDATE SET 
     target.provenance = source.provenance,
     target.native_id = source.native_id,
-    target.true_native_id = source.true_native_id,
+    --target.true_native_id = source.true_native_id,
     target.native_id_namespace = source.native_id_namespace,
     target.title = source.title,
     target.normalized_title = source.normalized_title,
@@ -233,7 +165,7 @@ WHEN NOT MATCHED THEN INSERT (
     merge_key,
     provenance,
     native_id,
-    true_native_id,
+    --true_native_id,
     native_id_namespace,
     title,
     normalized_title,
@@ -277,7 +209,7 @@ WHEN NOT MATCHED THEN INSERT (
     source.merge_key,
     source.provenance,
     source.native_id,
-    source.true_native_id,
+    --source.true_native_id,
     source.native_id_namespace,
     source.title,
     source.normalized_title,
@@ -320,7 +252,7 @@ WHEN NOT MATCHED THEN INSERT (
 
 -- COMMAND ----------
 
-CREATE OR REPLACE TABLE openalex.works.id_map (
+CREATE OR REPLACE TABLE identifier('openalex' || :env_suffix || '.works.id_map') (
   id BIGINT GENERATED BY DEFAULT AS IDENTITY (START WITH 6600000001 INCREMENT BY 1),
   paper_id STRING,
   merge_key STRUCT<doi: STRING, pmid: STRING, arxiv: STRING, title_author: STRING>,
@@ -353,9 +285,10 @@ WITH unique_unmapped AS (
     MIN(openalex_created_dt) as openalex_created_dt,
     MAX(openalex_updated_dt) as openalex_updated_dt,
     row_number() over(partition by merge_key order by max(openalex_updated_dt) DESC) as rwcnt
-  FROM openalex.works.locations_mapped
+  FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
   WHERE work_id IS NULL
-    AND openalex_updated_dt > coalesce((select max(openalex_updated_dt) FROM openalex.works.id_map), '1970-01-01')
+    AND openalex_updated_dt > coalesce(
+      (select max(openalex_updated_dt) FROM identifier('openalex' || :env_suffix || '.works.id_map')), '1970-01-01')
   GROUP BY
     merge_key,
     merge_key.doi,
@@ -368,7 +301,7 @@ non_mapped_works AS (
   from unique_unmapped
   where rwcnt = 1
 )
-MERGE into openalex.works.id_map AS target
+MERGE into identifier('openalex' || :env_suffix || '.works.id_map') AS target
 USING non_mapped_works AS source 
   ON target.merge_key.doi = source.merge_key.doi
   OR target.merge_key.pmid = source.merge_key.pmid
@@ -439,7 +372,7 @@ with legacy_doi as (
       ) 
   group by l.doi_lower
 )
-MERGE INTO openalex.works.id_map AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.id_map') AS target
 USING paper_ids AS source
   ON LOWER(regexp_replace(target.merge_key.doi, '[^a-zA-Z0-9.]', '')) = LOWER(source.doi_lower)
   AND target.paper_id IS NULL
@@ -476,7 +409,7 @@ with legacy_pmid AS (
     on l.paper_id = m.paper_id 
   group by l.pmid
 )
-MERGE INTO openalex.works.id_map AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.id_map') AS target
 USING paper_ids AS source
   ON LOWER(TRIM(target.merge_key.pmid)) = LOWER(TRIM(source.pmid))
   AND target.paper_id IS NULL
@@ -511,7 +444,7 @@ with legacy_arxiv AS (
     on l.paper_id = m.paper_id 
   group by l.arxiv_id
 )
-MERGE INTO openalex.works.id_map AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.id_map') AS target
 USING paper_ids AS source
   ON LOWER(TRIM(target.merge_key.arxiv)) = LOWER(TRIM(source.arxiv_id))
   AND target.paper_id IS NULL
@@ -547,7 +480,7 @@ with legacy_titles AS (
     on l.paper_id = m.paper_id 
   group by l.unpaywall_normalize_title
 )
-MERGE INTO openalex.works.id_map AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.id_map') AS target
 USING paper_ids AS source
   ON LOWER(TRIM(target.merge_key.title_author)) = LOWER(TRIM(source.unpaywall_normalize_title))
   AND target.paper_id IS NULL
@@ -572,13 +505,13 @@ WITH ids AS (
     MIN(paper_id) AS paper_id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM openalex.works.id_map
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NOT NULL
     AND merge_key.doi IS NOT NULL
   GROUP BY 
     merge_key.doi
 )
-MERGE INTO openalex.works.locations_mapped AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.doi = source.doi
   AND target.work_id IS NULL
@@ -597,13 +530,13 @@ WITH ids AS (
     MIN(paper_id) AS paper_id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM openalex.works.id_map
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NOT NULL
     AND merge_key.pmid IS NOT NULL
   GROUP BY 
     merge_key.pmid
 )
-MERGE INTO openalex.works.locations_mapped AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.pmid = source.pmid
   AND target.work_id IS NULL
@@ -622,13 +555,13 @@ WITH ids AS (
     MIN(paper_id) AS paper_id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM openalex.works.id_map
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NOT NULL
     AND merge_key.arxiv IS NOT NULL
   GROUP BY 
     merge_key.arxiv
 )
-MERGE INTO openalex.works.locations_mapped AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.arxiv = source.arxiv
   AND target.work_id IS NULL
@@ -647,14 +580,14 @@ WITH ids AS (
     MIN(paper_id) AS paper_id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM openalex.works.id_map
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NOT NULL
     AND (merge_key.doi IS NULL AND merge_key.pmid IS NULL AND merge_key.arxiv IS NULL)
     AND merge_key.title_author IS NOT NULL
   GROUP BY 
     merge_key.title_author
 )
-MERGE INTO openalex.works.locations_mapped AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.title_author = source.title_author
   AND target.work_id IS NULL
@@ -678,13 +611,13 @@ WITH ids AS (
     MIN(id) AS id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM openalex.works.id_map
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NULL
     AND merge_key.doi IS NOT NULL
   GROUP BY 
     merge_key.doi
 )
-MERGE INTO openalex.works.locations_mapped AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.doi = source.doi
   AND target.work_id IS NULL
@@ -703,13 +636,13 @@ WITH ids AS (
     MIN(id) AS id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM openalex.works.id_map
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NULL
     AND merge_key.pmid IS NOT NULL
   GROUP BY 
     merge_key.pmid
 )
-MERGE INTO openalex.works.locations_mapped AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.pmid = source.pmid
   AND target.work_id IS NULL
@@ -728,13 +661,13 @@ WITH ids AS (
     MIN(id) AS id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM openalex.works.id_map
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NULL
     AND merge_key.arxiv IS NOT NULL
   GROUP BY 
     merge_key.arxiv
 )
-MERGE INTO openalex.works.locations_mapped AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.arxiv = source.arxiv
   AND target.work_id IS NULL
@@ -753,14 +686,14 @@ WITH ids AS (
     MIN(id) AS id,
     MAX(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
-  FROM openalex.works.id_map
+  FROM identifier('openalex' || :env_suffix || '.works.id_map')
   WHERE paper_id IS NULL
     AND (merge_key.doi IS NULL AND merge_key.pmid IS NULL AND merge_key.arxiv IS NULL)
     AND merge_key.title_author IS NOT NULL
   GROUP BY 
     merge_key.title_author
 )
-MERGE INTO openalex.works.locations_mapped AS target
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.title_author = source.title_author
   AND target.work_id IS NULL
@@ -778,7 +711,7 @@ WHEN MATCHED THEN UPDATE SET
 
 -- COMMAND ----------
 
-create or replace table openalex.works.locations_mapped as (
+create or replace table identifier('openalex' || :env_suffix || '.works.locations_mapped') as (
 with mag_walden_works as (
   select
     get(filter(ids, x -> x.namespace = 'mag').id, 0) as legacy_work_id,
@@ -787,13 +720,13 @@ with mag_walden_works as (
       ) as assigned_work_id,
     *
   from
-    openalex.works.locations_mapped
+    identifier('openalex' || :env_suffix || '.works.locations_mapped')
   where
     work_id in (
       select
         work_id
       from
-        openalex.works.locations_mapped
+        identifier('openalex' || :env_suffix || '.works.locations_mapped')
       where
         provenance = 'mag'
     )
@@ -814,13 +747,13 @@ unioned as (
   select
     *
   from
-    openalex.works.locations_mapped
+    identifier('openalex' || :env_suffix || '.works.locations_mapped')
   where
     work_id not in (
       select
         work_id
       from
-        openalex.works.locations_mapped
+        identifier('openalex' || :env_suffix || '.works.locations_mapped')
       where
         provenance = 'mag'
     )
@@ -839,7 +772,7 @@ from
 
 -- COMMAND ----------
 
-create or replace table openalex.works.locations_mapped as (
+create or replace table identifier('openalex' || :env_suffix || '.works.locations_mapped') as (
 with pmh_mapping as (
   -- select the lowest work_id (since we have multiple PMH IDs for the same work and a legacy work_id is always lower than a newly minted work_id, which increments starting at 6600000001).
   select
@@ -854,16 +787,16 @@ repo_walden_works as (
   select
     *,
     case
-      when provenance in ('repo', 'repo_backfill') then lower(true_native_id)
+      when provenance in ('repo', 'repo_backfill') then lower(native_id) --true_native_id
     end as pmh_id_walden
   from
-    openalex.works.locations_mapped
+    identifier('openalex' || :env_suffix || '.works.locations_mapped')
   where
     work_id in (
   select
         work_id
       from
-        openalex.works.locations_mapped
+        identifier('openalex' || :env_suffix || '.works.locations_mapped')
       where
         provenance in ('repo', 'repo_backfill')
         and work_id > 6600000000
@@ -880,11 +813,11 @@ updated_repo_walden_works as (
 unioned as (
   select * from updated_repo_walden_works
   union all
-  select * from openalex.works.locations_mapped where work_id not in (
+  select * from identifier('openalex' || :env_suffix || '.works.locations_mapped') where work_id not in (
   select
         work_id
       from
-        openalex.works.locations_mapped
+        identifier('openalex' || :env_suffix || '.works.locations_mapped')
       where
         provenance in ('repo', 'repo_backfill')
         and work_id > 6600000000

@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.0-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.1.9-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -10,111 +10,11 @@ from pyspark.sql.types import *
 import pyspark.sql.functions as F
 import pandas as pd
 
-from utils.dlt_normalize import normalize_title, normalize_license
+from openalex.utils.environment import *
+from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
+from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # COMMAND ----------
-
-# UDF Functions - Will refactor later on if time allows
-
-# def remove_everything_but_alphas(input_string):
-#     if input_string:
-#         return "".join(e for e in input_string if e.isalpha())
-#     return ""
-
-# def clean_html(raw_html):
-#     cleanr = re.compile('<\w+.*?>')
-#     cleantext = re.sub(cleanr, '', raw_html)
-#     return cleantext
-
-# def remove_accents(text):
-#     normalized = unicodedata.normalize('NFD', text)
-#     return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
-
-# def normalize_title(title):
-#     if not title:
-#         return ""
-
-#     if isinstance(title, bytes):
-#         title = str(title, 'ascii')
-
-#     text = title[0:500]
-
-#     text = text.lower()
-
-#     # handle unicode characters
-#     text = remove_accents(text)
-
-#     # remove HTML tags
-#     text = clean_html(text)
-
-#     # remove articles and common prepositions
-#     text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
-
-#     # remove everything except alphabetic characters
-#     text = remove_everything_but_alphas(text)
-
-#     return text.strip()
-
-# def clean_native_id(df, column_name="native_id"):
-#     return (
-#         df.withColumn(column_name,
-#             # Step 1: Remove https:// and http://
-#             F.regexp_replace(F.col(column_name), r"https?://", "")
-#         )
-#         .withColumn(column_name,
-#             # Step 2: Remove any trailing `/`
-#             F.regexp_replace(F.col(column_name), r"/+$", "")
-#         )
-#         .withColumn(column_name,
-#             # Step 3: Remove any characters not matching the regex [^a-zA-Z0-9./]
-#             F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./]", "")
-#         )
-#     )
-
-# def normalize_license(text):
-#     if not text:
-#         return None
-
-#     normalized_text = text.replace(" ", "").replace("-", "").lower()
-
-#     license_lookups = [
-#         # open Access patterns
-#         ("infoeureposematicsaccess", "other-oa"),
-#         ("openaccess", "other-oa"),
-
-#         # publisher-specific
-#         ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
-#         ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
-#         ("arxiv.orgperpetual", "publisher-specific-oa"),
-#         ("arxiv.orgnonexclusive", "publisher-specific-oa"),
-
-#         # creative Commons licenses
-#         ("byncnd", "cc-by-nc-nd"),
-#         ("byncsa", "cc-by-nc-sa"),
-#         ("bynd", "cc-by-nd"),
-#         ("bysa", "cc-by-sa"),
-#         ("bync", "cc-by-nc"),
-#         ("ccby", "cc-by"),
-#         ("creativecommons.org/licenses/by/", "cc-by"),
-
-#         # public domain
-#         ("publicdomain", "public-domain"),
-
-#         # software/Dataset licenses
-#         ("mit ", "mit"),
-#         ("gpl3", "gpl-3"),
-#         ("gpl2", "gpl-2"),
-#         ("gpl", "gpl"),
-#         ("apache2", "apache-2.0")
-#     ]
-
-#     for lookup, license in license_lookups:
-#         if lookup in normalized_text:
-#             if license == "public-domain" and "worksnotinthepublicdomain" in normalized_text:
-#                 continue
-#             return license
-
-#     return None
 
 def get_openalex_type(crossref_type):
     """
@@ -157,16 +57,6 @@ def get_openalex_type(crossref_type):
     return crossref_to_openalex.get(crossref_type, crossref_type)
 
 @F.pandas_udf(StringType())
-def normalize_license_udf(license_series: pd.Series) -> pd.Series:
-    # This Pandas UDF calls your original 'normalize_license' Python function
-    return license_series.apply(normalize_license)
-
-@F.pandas_udf(StringType())
-def normalize_title_udf(title_series: pd.Series) -> pd.Series:
-    # This Pandas UDF calls your original 'normalize_title' Python function
-    return title_series.apply(normalize_title)
-
-@F.pandas_udf(StringType())
 def get_openalex_type_udf(series: pd.Series) -> pd.Series:
     # This Pandas UDF calls your original 'get_openalex_type_from_datacite' Python function
     return series.apply(get_openalex_type)
@@ -176,32 +66,33 @@ def get_openalex_type_udf(series: pd.Series) -> pd.Series:
 # Raw data in single column as items table
 @dlt.table(
   name="crossref_items",
+  comment = f"Reading in files from s3://openalex-ingest/crossref/ in {ENV.upper()}",
   table_properties={'quality': 'bronze'}
 )
+@dlt.expect("rescued_data_null", "_rescued_data IS NULL")
 def crossref_items():
-  return (spark.readStream
+  if ENV == "dev":
+    # fix the schema to match the existing schema
+    prod_schema = spark.table("openalex.crossref.crossref_items").schema
+
+    return ( spark.readStream
       .format("cloudFiles")
       .option("cloudFiles.format", "json")
-      .option("cloudFiles.inferColumnTypes", "true") 
-      .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
-      .option("cloudFiles.maxFilesPerTrigger", 50000)
-      .option("cloudFiles.maxBytesPerTrigger", "10gb")
-      .option("cloudFiles.fetchParallelism", 64)
-      .option("multiLine", "true") 
+      .option("multiline", "true")
+      .schema(prod_schema)  # Explicitly set PROD schema
       .load("s3a://openalex-ingest/crossref/")
-  )
-
-# def crossref_items():
-#   return (spark.readStream
-#       .format("cloudFiles")
-#       .option("cloudFiles.format", "json")
-#       .option("cloudFiles.inferColumnTypes", "true")
-#       .option("inferSchema", "true")
-#       .option("mergeSchema", "true")
-#       .option("sampleSize", "10000")
-#       .option("multiLine", "true")
-#       .load("s3a://openalex-ingest/crossref/")
-#   )
+    )
+  else:
+    return ( spark.readStream # use the code currently in prod, overly permissive - may need to change
+      .format("cloudFiles")
+      .option("cloudFiles.format", "json")
+      .option("cloudFiles.inferColumnTypes", "true")
+      .option("inferSchema", "true")
+      .option("mergeSchema", "true")
+      .option("sampleSize", "10000")
+      .option("multiLine", "true")
+      .load("s3a://openalex-ingest/crossref/")
+    )
 
 # COMMAND ----------
 
@@ -214,8 +105,7 @@ def crossref_snapshots_exploded():
   return (dlt.read_stream("crossref_items")
       .select(F.explode(F.col("items")).alias("record"))
       .select("record.*")
-      .withColumn("indexed_date", F.col("indexed.date-time"))#.drop("indexed_date")
-      #.dropDuplicates(["DOI", "indexed_date"]).drop("indexed_date") - deal with these later, apply_changed will de-dup these records DOI == native_id
+      .withColumn("indexed_date", F.col("indexed.date-time"))
   )
 
 # COMMAND ----------
@@ -232,9 +122,9 @@ unallowed_types = ["component"]
 @dlt.table(
     name="crossref_parsed",
     comment="Crossref data transformed to a denormalized, Walden schema",
-    table_properties={"quality": "silver"},
+    table_properties={"quality": "silver"}
 )
-def crossref_transformed():
+def crossref_parsed():
     def extract_issn_id_by_type(id_type):
         return F.expr(f"filter(`issn-type`, x -> x.type = '{id_type}').value")
 
@@ -545,15 +435,31 @@ def crossref_transformed():
 
 # COMMAND ----------
 
-dlt.create_streaming_table(
-    name="crossref_works",
-    comment="Final crossref works table with unique identifiers and in the Walden schema",
-    table_properties={"quality": "gold"}
+@dlt.table(name="crossref_enriched",
+           comment="Crossref data after full parsing and author/feature enrichment.")
+def crossref_enriched():
+    df_parsed_input = dlt.read_stream("crossref_parsed")
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "crossref", walden_works_schema)
+
+    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
+    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
+    df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+    return apply_final_merge_key_and_filter(df_enriched)
+
+dlt.create_target_table(
+    name="crossref_works", # Final PUBLISHED table name
+    comment="Final Crossref works data including merge_key, filtered, and managed by APPLY CHANGES.",
+    table_properties={
+        "delta.enableChangeDataFeed": "true",
+        "delta.autoOptimize.optimizeWrite": "true",
+        "delta.autoOptimize.autoCompact": "true",
+        "quality": "gold"
+    }
 )
 
 dlt.apply_changes(
     target="crossref_works",
-    source="crossref_parsed",
+    source="crossref_enriched",
     keys=["native_id"],
     sequence_by="updated_date"
 )
