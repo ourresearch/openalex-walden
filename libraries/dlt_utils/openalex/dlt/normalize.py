@@ -223,56 +223,66 @@ def normalize_doi_spark_col(doi_string_col_expr):
         r"\u0000", "")
     
 @F.pandas_udf(ArrayType(enriched_author_struct_type))
-def udf_last_name_only(authors_arrays_series: pd.Series) -> pd.Series: # Name matches your original UDF variable
+def udf_last_name_only(authors_arrays_series: pd.Series) -> pd.Series:
     results = []
-    for author_list_for_single_record in authors_arrays_series:
-        if author_list_for_single_record is None:
+
+    for author_list in authors_arrays_series:
+        if author_list is None:
             results.append(None)
             continue
-        
-        processed_author_list = []
-        for author_dict in author_list_for_single_record:
-            if author_dict is None:
-                processed_author_list.append(None) 
+
+        processed_list = []
+        for author in author_list:
+            if author is None:
+                processed_list.append(None)
                 continue
 
-            name_str_for_parser = author_dict.get("name")
-            if not name_str_for_parser:
-                given_original = author_dict.get("given", "") or "" 
-                family_original = author_dict.get("family", "") or ""
-                name_str_for_parser = f"{given_original} {family_original}".strip()
-            
-            parsed_name_components = ["", "", ""] 
-            if name_str_for_parser:
-                try:
-                    # Calling YOUR original last_name_only Python function
-                    parsed_name_components = last_name_only(name_str_for_parser) 
-                except Exception: 
-                    pass 
+            # Select raw name string
+            raw_name = author.get("name")
+            if not raw_name:
+                raw_given = author.get("given", "") or ""
+                raw_family = author.get("family", "") or ""
+                raw_name = f"{raw_given} {raw_family}".strip()
 
-            new_given = parsed_name_components[1]
-            new_family = parsed_name_components[2]
-            reconstructed_name = author_dict.get("name")
-            if not reconstructed_name and (new_given or new_family):
-                reconstructed_name = f"{new_given or ''} {new_family or ''}".strip()
-            
-            is_corresponding_val = author_dict.get("is_corresponding")
-            is_corresponding_bool = None
-            if isinstance(is_corresponding_val, str):
-                is_corresponding_bool = is_corresponding_val.lower() == 'true'
-            elif isinstance(is_corresponding_val, bool):
-                is_corresponding_bool = is_corresponding_val
-            
-            processed_author_struct = {
-                "given": new_given, "family": new_family, "name": reconstructed_name,
-                "orcid": author_dict.get("orcid"), 
-                "affiliations": author_dict.get("affiliations"), 
-                "is_corresponding": is_corresponding_bool,
-                "author_key": parsed_name_components[0].lower() if parsed_name_components and parsed_name_components[0] else None
+            # Parse components
+            try:
+                parsed_components = last_name_only(raw_name)
+                author_key = parsed_components[0].lower() if parsed_components[0] else None
+                given_clean = parsed_components[1]
+                family_clean = parsed_components[2]
+            except Exception:
+                author_key = None
+                given_clean = author.get("given", "")
+                family_clean = author.get("family", "")
+
+            # Reconstruct display name: prioritize original "name" if present
+            display_name = author.get("name")
+            if not display_name:
+                display_name = f"{raw_given} {raw_family}".strip()
+
+            # Normalize is_corresponding to boolean
+            is_corr = author.get("is_corresponding")
+            if isinstance(is_corr, str):
+                is_corr = is_corr.lower() == "true"
+            elif not isinstance(is_corr, bool):
+                is_corr = None
+
+            processed_author = {
+                "given": given_clean,
+                "family": family_clean,
+                "name": display_name,
+                "orcid": author.get("orcid"),
+                "affiliations": author.get("affiliations"),
+                "is_corresponding": is_corr,
+                "author_key": author_key,
             }
-            processed_author_list.append(processed_author_struct)
-        results.append(processed_author_list)
+
+            processed_list.append(processed_author)
+
+        results.append(processed_list)
+
     return pd.Series(results)
+
 
 @F.pandas_udf(StringType())
 def normalize_license_udf(license_series: pd.Series) -> pd.Series:
