@@ -97,21 +97,22 @@ enriched_author_struct_type = StructType([
     StructField("author_key", StringType(), True)
 ])
 
-# --- create_merge_column and clean_native_id ---
-def clean_native_id(df, column_name="native_id"):
+# removed lower() that exists/used by Locations Parsed
+# if there are any that need to be adjusted, let's deal with that outside of DLTs and preserve fidelity of data
+def clean_native_id(df, column_name="native_id"): # NOT USED by Crossref or Datacite
     return (
             df.withColumn(column_name, F.regexp_replace(F.col(column_name), r"https?://", ""))
             .withColumn(column_name, F.regexp_replace(F.col(column_name), r"/+$", ""))
             .withColumn(column_name, F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./:-]", ""))
-            .withColumn(column_name, F.lower(F.col(column_name)))
     )
 
 def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
-    return ( 
+    return (
         df
             # decided together with Casey to keep only one native_id
             # can apply more deduplication cleaning if needed in later steps
-            .withColumn("native_id", F.trim(F.lower(F.col("native_id"))))
+            # removed lower() - it lowercases URLs from PDF and causes a JSON discrepancy + other ids may be case-sensitive
+            .withColumn("native_id", F.trim(F.col("native_id")))
             .withColumn("title_cleaned_newline", F.trim(F.regexp_replace(F.col("title"), "\n", " ")))
             .withColumn(MERGE_COLUMN_NAME,
                 F.struct(
