@@ -130,11 +130,7 @@ def apply_initial_processing(df_input, source_key, target_walden_schema):
     return df_doi_normalized
 
 
-def enrich_with_features_and_author_keys(df_input, 
-                                         # Assuming Pandas UDFs are defined in normalize.py or parsing.py and imported
-                                         # For example, if udf_last_name_only is the Pandas UDF for author arrays
-                                         # and udf_f_generate_inverted_index is the Pandas UDF for abstracts
-                                         ):
+def enrich_with_features_and_author_keys(df_input):
     """
     Enriches the DataFrame with author keys (using a Pandas UDF for author name parsing)
     and other derived features like abstract_inverted_index, authors_exist, etc.
@@ -145,8 +141,7 @@ def enrich_with_features_and_author_keys(df_input,
     # For simplicity, let's assume they are imported and available.
     
     df_with_enriched_authors = df_input.withColumn(
-        "authors", 
-        udf_last_name_only(F.col("authors")) # This udf_last_name_only is THE PANDAS UDF
+        "authors", udf_last_name_only(F.col("authors")) # This udf_last_name_only is a Pandas UDF
     )
     
     df_final_enriched = df_with_enriched_authors.withColumns({
