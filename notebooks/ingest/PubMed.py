@@ -538,13 +538,14 @@ def pubmed_enriched():
 
 dlt.create_streaming_table(
     name="pubmed_works",
-    comment="Final pubmed works table with unique identifiers",
+    comment=f"Final pubmed works table with unique identifiers in {ENV.upper()} environment",
     table_properties={
         "delta.enableChangeDataFeed": "true",
         "delta.autoOptimize.optimizeWrite": "true",
         "delta.autoOptimize.autoCompact": "true",
         "quality": "gold"
-    }
+    },
+    cluster_by=["native_id"]
 )
 
 dlt.apply_changes(

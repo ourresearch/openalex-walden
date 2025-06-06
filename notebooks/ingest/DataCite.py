@@ -15,91 +15,83 @@ from openalex.dlt.transform import apply_initial_processing, apply_final_merge_k
 
 # COMMAND ----------
 
-def get_openalex_type_from_datacite(datacite_type):
-    """
-    Convert DataCite resource types to OpenAlex types.
-    Returns 'other' for types that don't map to OpenAlex types.
-    """
-    datacite_to_openalex = {
-        # article types
-        "JournalArticle": "article",
-        "ConferencePaper": "article",
-        "DataPaper": "article",
-        "Text": "article",
-        
-        # book types
-        "Book": "book",
-        "BookChapter": "book-chapter",
-        
-        # dataset
-        "Dataset": "dataset",
-        "Model": "dataset",
-        "DatasetOutputManagementPlan": "dataset",
-        
-        # dissertation
-        "Dissertation": "dissertation",
-        
-        # preprint
-        "Preprint": "preprint",
-        
-        # report
-        "Report": "report",
-        "ProjectReport": "report",
-        
-        # standard
-        "Standard": "standard",
-        
-        # peer review
-        "PeerReview": "peer-review",
-        # map everything else to other
-        "Audiovisual": "other",
-        "Award": "other",
-        "Collection": "other",
-        "ComputationalNotebook": "other",
-        "ConferenceProceeding": "other",
-        "Event": "other",
-        "Image": "other",
-        "InteractiveResource": "other",
-        "Instrument": "other",
-        "Journal": "other",
-        "ModelOutput": "other",
-        "PhysicalObject": "other",
-        "Service": "other",
-        "Software": "other",
-        "Sound": "other",
-        "StudyRegistration": "other",
-        "Workflow": "other",
-        "Other": "other"
-    }
+
+"""
+Convert DataCite resource types to OpenAlex types.
+Returns 'other' for types that don't map to OpenAlex types.
+"""
+datacite_to_openalex = {
+    # article types
+    "JournalArticle": "article",
+    "ConferencePaper": "article",
+    "DataPaper": "article",
+    "Text": "article",
     
-    if not datacite_type:
-        return None
-        
-    return datacite_to_openalex.get(datacite_type, "other")
+    # book types
+    "Book": "book",
+    "BookChapter": "book-chapter",
+    
+    # dataset
+    "Dataset": "dataset",
+    "Model": "dataset",
+    "DatasetOutputManagementPlan": "dataset",
+    
+    # dissertation
+    "Dissertation": "dissertation",
+    
+    # preprint
+    "Preprint": "preprint",
+    
+    # report
+    "Report": "report",
+    "ProjectReport": "report",
+    
+    # standard
+    "Standard": "standard",
+    
+    # peer review
+    "PeerReview": "peer-review",
 
-@F.pandas_udf(StringType())
-def get_openalex_type_from_datacite_udf(series: pd.Series) -> pd.Series:
-    # This Pandas UDF calls your original 'get_openalex_type_from_datacite' Python function
-    return series.apply(get_openalex_type_from_datacite)
+    # map everything else to other - AK, we don't *have* to do that - "other" is default anyway
+    "Audiovisual": "other",
+    "Award": "other",
+    "Collection": "other",
+    "ComputationalNotebook": "other",
+    "ConferenceProceeding": "other",
+    "Event": "other",
+    "Image": "other",
+    "InteractiveResource": "other",
+    "Instrument": "other",
+    "Journal": "other",
+    "ModelOutput": "other",
+    "PhysicalObject": "other",
+    "Service": "other",
+    "Software": "other",
+    "Sound": "other",
+    "StudyRegistration": "other",
+    "Workflow": "other",
+    "Other": "other"
+}
+openalex_type_from_datacite_mapping_expr = F.create_map([F.lit(x) for pair in datacite_to_openalex.items() for x in pair])
 
-@F.pandas_udf("string")
-def extract_and_normalize_license(rightslist_col: pd.Series) -> pd.Series:
-    result = []
+@pandas_udf(StringType())
+def normalize_license_udf_vectorized(license_series: pd.Series) -> pd.Series:
+    normalized = (
+        license_series.fillna("")
+        .str.replace(r"[\s\-]", "", regex=True)
+        .str.lower()
+    )
 
-    for rightslist in rightslist_col:
-        license_value = None
+    extracted = normalized.str.extract(master_pattern)
 
-        if rightslist is not None and isinstance(rightslist, list) and len(rightslist) > 0:
-            cc_licenses = [uri for uri in rightslist if "creativecommons.org" in uri]
-            if len(cc_licenses) > 0:
-                license_value = cc_licenses[0]
-            else:
-                license_value = rightslist[0]
+    # Vectorized version using idxmax
+    first_match = extracted.notna().idxmax(axis=1)
+    has_match = extracted.notna().any(axis=1)
 
-        normalized = normalize_license(license_value)  # ← use your existing Python normalizer function
-        result.append(normalized)
+    # Restore formatting from label
+    result = first_match.where(has_match).str.replace("_", "-").str.replace("2-0", "2.0")
 
-    return pd.Series(result)
+    return result
 
 # COMMAND ----------
 
@@ -151,7 +143,7 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
 )
 def datacite_parsed():
     return (
-        dlt.read_stream("datacite_items")
+        dlt.read_stream("datacite_items").repartition(2048)
         .withColumn("native_id", F.col("id"))
         .withColumn("native_id_namespace",
             F.when(F.col("type") == "dois", "doi").otherwise(F.col("type")))
@@ -211,9 +203,35 @@ def datacite_parsed():
                 )
             )
         )
-        .withColumn("type", get_openalex_type_from_datacite_udf(F.col("attributes.types.resourceTypeGeneral")))
+        # Skip UDF usage entirely and pre-build a MapType to use in lookup
+        .withColumn("type", F.coalesce(
+                openalex_type_from_datacite_mapping_expr[F.col("attributes.types.resourceTypeGeneral")], F.lit("other"))
+        )
         .withColumn("version", F.lit(None).cast("string"))
-        .withColumn("license", extract_and_normalize_license(F.col("attributes.rightslist.rightsUri")))
+        .withColumn(
+            "raw_license",
+            F.when(
+                F.isnull(
+                    F.get(
+                        F.filter(
+                            F.col("attributes.rightslist.rightsUri"),
+                            lambda x: x.contains("creativecommons.org"),
+                        ),
+                        0,
+                    )
+                ),
+                F.get(F.col("attributes.rightslist.rightsUri"), 0),
+            ).otherwise(
+                F.get(
+                    F.filter(
+                        F.col("attributes.rightslist.rightsUri"),
+                        lambda x: x.contains("creativecommons.org"),
+                    ),
+                    0,
+                )
+            ),         # If url with "creativecommons.org" exists, use that one, otherwise grab the first rightsUri
+        )
+        .withColumn("license", normalize_license_udf(F.col("raw_license")))
         .withColumn("language", F.col("attributes.language"))
         .withColumn(
             "published_date",
