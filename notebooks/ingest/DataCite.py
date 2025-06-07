@@ -74,7 +74,7 @@ datacite_to_openalex = {
 }
 openalex_type_from_datacite_mapping_expr = F.create_map([F.lit(x) for pair in datacite_to_openalex.items() for x in pair])
 
-@pandas_udf(StringType())
+@F.pandas_udf(StringType())
 def normalize_license_udf_vectorized(license_series: pd.Series) -> pd.Series:
     normalized = (
         license_series.fillna("")
@@ -143,7 +143,7 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
 )
 def datacite_parsed():
     return (
-        dlt.read_stream("datacite_items").repartition(2048)
+        dlt.read_stream("datacite_items")
         .withColumn("native_id", F.col("id"))
         .withColumn("native_id_namespace",
             F.when(F.col("type") == "dois", "doi").otherwise(F.col("type")))

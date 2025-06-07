@@ -71,7 +71,7 @@ def get_openalex_type_udf(series: pd.Series) -> pd.Series:
 )
 @dlt.expect("rescued_data_null", "_rescued_data IS NULL")
 def crossref_items():
-  if ENV == "dev":
+  if ENV == "prod":
     # fix the schema to match the existing schema
     prod_schema = spark.table("openalex.crossref.crossref_items").schema
 
@@ -79,7 +79,7 @@ def crossref_items():
       .format("cloudFiles")
       .option("cloudFiles.format", "json")
       .option("multiline", "true")
-      .schema(prod_schema)  # Explicitly set PROD schema
+      .schema(prod_schema)  # Explicitly use fixed PROD schema
       .load("s3a://openalex-ingest/crossref/")
     )
   else:
@@ -446,9 +446,10 @@ def crossref_enriched():
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
     return apply_final_merge_key_and_filter(df_enriched)
 
-dlt.create_target_table(
+dlt.create_streaming_table(
     name="crossref_works", # Final PUBLISHED table name
     comment="Final Crossref works data including merge_key, filtered, and managed by APPLY CHANGES.",
+    cluster_by=["native_id", "provenance"],
     table_properties={
         "delta.enableChangeDataFeed": "true",
         "delta.autoOptimize.optimizeWrite": "true",
