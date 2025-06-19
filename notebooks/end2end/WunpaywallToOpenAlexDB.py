@@ -102,8 +102,8 @@
 # MAGIC
 # MAGIC     # safety
 # MAGIC     if record_count > 1500000:
-# MAGIC         print("Too many records to process, need to process manually")
-# MAGIC         dbutils.notebook.exit("Too many records to process, need to process manually")
+# MAGIC         print(f"Too many records to process ({record_count}), need to process manually")
+# MAGIC         dbutils.notebook.exit(f"Too many records to process ({record_count}), need to process manually")
 # MAGIC     
 # MAGIC     if record_count > 0:
 # MAGIC         # create a temporary table for the new/updated records

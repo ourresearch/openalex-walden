@@ -118,7 +118,7 @@ print(f"Found {record_count} records updated since {last_run_timestamp}")
 # safety measure
 if record_count > 1500000:
     print("Too many records found to export. Need to run manually")
-    dbutils.notebook.exit("Too many records found to export")
+    dbutils.notebook.exit("Too many records found to export: {record_count:,}")
 
 # COMMAND ----------
 
