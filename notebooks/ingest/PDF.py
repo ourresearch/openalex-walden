@@ -372,13 +372,23 @@ def pdf_combined():
 @dlt.table(name="pdf_enriched",
            comment="PDF data after full parsing and author/feature enrichment.")
 def pdf_enriched():
-    df_parsed_input = dlt.read_stream("pdf_combined")
-    df_walden_works_schema = apply_initial_processing(df_parsed_input, "pdf", walden_works_schema)
+    #pdf_combined = dlt.read_stream("pdf_combined")
+    df_parsed_input = (
+        spark.readStream
+            .option("readChangeFeed", "true")
+            .table("LIVE.pdf_combined")
+            # figure out how to handle deletes at some point
+            .filter(col("_change_type").isin("insert", "update_postimage"))
+            .drop("_change_type", "_commit_version", "_commit_timestamp")  # ✅ Required
+    )
 
-    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
-    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "pdf", walden_works_schema)
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
     return apply_final_merge_key_and_filter(df_enriched)
+
+# @dlt.view(name="pdf_enriched_append_only")
+# def pdf_enriched_append()
+#     return spark.readStream.option("skipChangeCommits", "true").table("pdf_enriched")
 
 dlt.create_streaming_table(
     name="pdf_works",
@@ -395,5 +405,5 @@ dlt.apply_changes(
     target="pdf_works",
     source="pdf_enriched",
     keys=["native_id"],
-    sequence_by="updated_date"
+    sequence_by="updated_date",
 )
