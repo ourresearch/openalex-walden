@@ -71,28 +71,16 @@ def get_openalex_type_udf(series: pd.Series) -> pd.Series:
 )
 @dlt.expect("rescued_data_null", "_rescued_data IS NULL")
 def crossref_items():
-  if ENV == "prod":
-    # fix the schema to match the existing schema
-    prod_schema = spark.table("openalex.crossref.crossref_items").schema
+  # use fixed schema - pipeline breaks with errors to replace structs with strings otherwise
+  current_schema = spark.table("openalex.crossref.crossref_items").schema
 
-    return ( spark.readStream
-      .format("cloudFiles")
-      .option("cloudFiles.format", "json")
-      .option("multiline", "true")
-      .schema(prod_schema)  # Explicitly use fixed PROD schema
-      .load("s3a://openalex-ingest/crossref/")
-    )
-  else:
-    return ( spark.readStream # use the code currently in prod, overly permissive - may need to change
-      .format("cloudFiles")
-      .option("cloudFiles.format", "json")
-      .option("cloudFiles.inferColumnTypes", "true")
-      .option("inferSchema", "true")
-      .option("mergeSchema", "true")
-      .option("sampleSize", "10000")
-      .option("multiLine", "true")
-      .load("s3a://openalex-ingest/crossref/")
-    )
+  return ( spark.readStream
+    .format("cloudFiles")
+    .option("cloudFiles.format", "json")
+    .option("multiline", "true")
+    .schema(current_schema)  # Explicitly use fixed schema to avoid errors and drift (it is 6k lines long)
+    .load("s3a://openalex-ingest/crossref/")
+  )
 
 # COMMAND ----------
 
