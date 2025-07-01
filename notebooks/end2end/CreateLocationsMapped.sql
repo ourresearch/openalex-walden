@@ -258,12 +258,7 @@ WHEN NOT MATCHED THEN INSERT (
 
 -- COMMAND ----------
 
--- MAGIC %md
--- MAGIC ### Optimize `works.locations_mapped` after creation
-
--- COMMAND ----------
-
-OPTIMIZE identifier('openalex' || :env_suffix || '.works.locations_mapped'); --takes 6 min but perhaps will be worth it for this and subsequent steps, monitor
+--OPTIMIZE identifier('openalex' || :env_suffix || '.works.locations_mapped'); --takes 6 min, leave it to liquid clustering
 
 -- COMMAND ----------
 
