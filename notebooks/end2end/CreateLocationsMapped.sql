@@ -36,6 +36,8 @@ CREATE OR REPLACE TABLE identifier('openalex' || :env_suffix || '.works.location
   mesh STRING,
   is_oa BOOLEAN,
   is_oa_source BOOLEAN,
+  referenced_works_count INT,
+  referenced_works ARRAY<BIGINT>,
   abstract_inverted_index STRING,
   authors_exist BOOLEAN,
   affiliations_exist BOOLEAN,
@@ -45,7 +47,7 @@ CREATE OR REPLACE TABLE identifier('openalex' || :env_suffix || '.works.location
   openalex_created_dt DATE,
   openalex_updated_dt TIMESTAMP)
 USING delta
-CLUSTER BY (merge_key.doi, merge_key.pmid, merge_key.arxiv, merge_key.title_author)
+CLUSTER BY (work_id, merge_key.doi, merge_key.pmid, merge_key.arxiv)
 TBLPROPERTIES (
   'delta.checkpoint.writeStatsAsJson' = 'false',
   'delta.checkpoint.writeStatsAsStruct' = 'true',
@@ -196,6 +198,8 @@ WHEN NOT MATCHED THEN INSERT (
     mesh,
     is_oa,
     is_oa_source,
+    referenced_works_count,
+    referenced_works,
     abstract_inverted_index,
     authors_exist,
     affiliations_exist,
@@ -240,6 +244,8 @@ WHEN NOT MATCHED THEN INSERT (
     source.mesh,
     source.is_oa,
     source.is_oa_source,
+    NULL, --referenced_works_count
+    NULL, --referenced_works is calculated from self-join
     source.abstract_inverted_index,
     source.authors_exist,
     source.affiliations_exist,
@@ -249,6 +255,15 @@ WHEN NOT MATCHED THEN INSERT (
     current_date(),
     current_timestamp()
 );
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ### Optimize `works.locations_mapped` after creation
+
+-- COMMAND ----------
+
+OPTIMIZE identifier('openalex' || :env_suffix || '.works.locations_mapped'); --takes 6 min but perhaps will be worth it for this and subsequent steps, monitor
 
 -- COMMAND ----------
 
@@ -493,6 +508,10 @@ UPDATE SET
 
 -- COMMAND ----------
 
+OPTIMIZE identifier('openalex' || :env_suffix || '.works.id_map'); --get it ready to merge into locations_mapped
+
+-- COMMAND ----------
+
 -- MAGIC %md
 -- MAGIC ### Load Values that have a `paper_id`
 
@@ -711,58 +730,34 @@ WHEN MATCHED THEN UPDATE SET
 
 -- COMMAND ----------
 
-create or replace table identifier('openalex' || :env_suffix || '.works.locations_mapped') as (
-with mag_walden_works as (
-  select
-    get(filter(ids, x -> x.namespace = 'mag').id, 0) as legacy_work_id,
-    max(get(filter(ids, x -> x.namespace = 'mag').id, 0)) over (
-        partition by work_id
-      ) as assigned_work_id,
-    *
-  from
-    identifier('openalex' || :env_suffix || '.works.locations_mapped')
-  where
-    work_id in (
-      select
-        work_id
-      from
-        identifier('openalex' || :env_suffix || '.works.locations_mapped')
-      where
-        provenance = 'mag'
-    )
+WITH mag_walden_works AS (
+  SELECT
+    get(filter(ids, x -> x.namespace = 'mag').id, 0) AS legacy_work_id,
+    MAX(get(filter(ids, x -> x.namespace = 'mag').id, 0)) OVER (
+      PARTITION BY work_id
+    ) AS assigned_work_id,
+    work_id
+  FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
+  WHERE provenance = 'mag'
 ),
-updated_mag_walden_works as (
-  select
-    coalesce(legacy_work_id, assigned_work_id) as work_id,
-    * except (legacy_work_id, work_id, assigned_work_id)
-  from
-    mag_walden_works
-),
-unioned as (
-  select
-    *
-  from
-    updated_mag_walden_works
-  union all
-  select
-    *
-  from
-    identifier('openalex' || :env_suffix || '.works.locations_mapped')
-  where
-    work_id not in (
-      select
-        work_id
-      from
-        identifier('openalex' || :env_suffix || '.works.locations_mapped')
-      where
-        provenance = 'mag'
-    )
+updated_mag_walden_works AS (
+  SELECT
+    work_id AS current_work_id,
+    COALESCE(legacy_work_id, assigned_work_id) AS new_work_id
+  FROM mag_walden_works
+  WHERE COALESCE(legacy_work_id, assigned_work_id) IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY work_id
+    ORDER BY COALESCE(legacy_work_id, assigned_work_id)
+  ) = 1
 )
-select
-  *
-from
-  unioned
-)
+
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
+USING updated_mag_walden_works AS source
+ON target.work_id = source.current_work_id
+WHEN MATCHED THEN UPDATE SET
+  target.work_id = source.new_work_id;
+
 
 -- COMMAND ----------
 
@@ -772,59 +767,80 @@ from
 
 -- COMMAND ----------
 
-create or replace table identifier('openalex' || :env_suffix || '.works.locations_mapped') as (
-with pmh_mapping as (
-  -- select the lowest work_id (since we have multiple PMH IDs for the same work and a legacy work_id is always lower than a newly minted work_id, which increments starting at 6600000001).
-  select
-    lower(pmh_id) as pmh_id,
-    min(work_id) as legacy_work_id
-  from
-    openalex.works_poc.work_id_to_pmh_id_final
-  group by
-    pmh_id
+WITH pmh_mapping AS (
+  -- select the lowest work_id (since we have multiple PMH IDs for the same work and a legacy work_id 
+  -- is always lower than a newly minted work_id, which increments starting at 6600000001).
+  SELECT LOWER(pmh_id) AS pmh_id, MIN(work_id) AS legacy_work_id
+  FROM openalex.works_poc.work_id_to_pmh_id_final
+  GROUP BY pmh_id
 ),
-repo_walden_works as (
-  select
-    *,
-    case
-      when provenance in ('repo', 'repo_backfill') then lower(native_id) --true_native_id
-    end as pmh_id_walden
-  from
-    identifier('openalex' || :env_suffix || '.works.locations_mapped')
-  where
-    work_id in (
-  select
-        work_id
-      from
-        identifier('openalex' || :env_suffix || '.works.locations_mapped')
-      where
-        provenance in ('repo', 'repo_backfill')
-        and work_id > 6600000000
-)
+repo_walden_works AS (
+  SELECT *,
+         CASE WHEN provenance IN ('repo', 'repo_backfill') THEN LOWER(native_id) END AS pmh_id_walden
+  FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
+  WHERE provenance IN ('repo', 'repo_backfill') AND work_id > 6600000000
 ),
-updated_repo_walden_works as (
-  select
-     coalesce(max(legacy_work_id) over (partition by work_id), work_id) as work_id, * except (work_id, pmh_id, pmh_id_walden, legacy_work_id)
-  from
-    repo_walden_works
-    left join pmh_mapping on repo_walden_works.pmh_id_walden = pmh_mapping.pmh_id
+updated_repo_walden_works AS ( --partition to get MIN legacy_work_id if multiple per work_id exist
+  SELECT
+    r.work_id AS current_work_id,
+    m.legacy_work_id
+  FROM repo_walden_works r
+  LEFT JOIN pmh_mapping m ON r.pmh_id_walden = m.pmh_id
+  WHERE m.legacy_work_id IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY r.work_id
+    ORDER BY m.legacy_work_id ASC
+  ) = 1
 )
-,
-unioned as (
-  select * from updated_repo_walden_works
-  union all
-  select * from identifier('openalex' || :env_suffix || '.works.locations_mapped') where work_id not in (
-  select
-        work_id
-      from
-        identifier('openalex' || :env_suffix || '.works.locations_mapped')
-      where
-        provenance in ('repo', 'repo_backfill')
-        and work_id > 6600000000
+
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
+USING updated_repo_walden_works AS source
+ON target.work_id = source.current_work_id
+WHEN MATCHED THEN UPDATE SET
+  target.work_id = source.legacy_work_id;
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ### Create `referenced_works` from `references` dois via self-join to get `work_id` values
+
+-- COMMAND ----------
+
+WITH exploded_dois AS (
+  SELECT
+    work_id,
+    EXPLODE(references.doi) AS doi    
+  FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
+),
+mapped_dois AS (
+  SELECT
+    ed.work_id AS citing_work_id,
+    lm.work_id AS cited_work_id
+  FROM exploded_dois ed
+  JOIN identifier('openalex' || :env_suffix || '.works.locations_mapped') lm 
+    ON LOWER(ed.doi) = LOWER(lm.best_doi)
+  WHERE ed.doi IS NOT NULL AND lm.best_doi IS NOT NULL
+),
+aggregated_refs AS (
+  SELECT
+    citing_work_id,
+    SORT_ARRAY(COLLECT_SET(cited_work_id)) AS referenced_works
+  FROM mapped_dois
+  GROUP BY citing_work_id
 )
-)
-select
-  *
-from
-  unioned 
-)
+
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
+USING aggregated_refs AS source
+ON target.work_id = source.citing_work_id
+WHEN MATCHED THEN UPDATE SET
+  target.referenced_works = source.referenced_works,
+  target.referenced_works_count = SIZE(source.referenced_works);
+
+
+-- COMMAND ----------
+
+SELECT COUNT(*) FROM openalex.works.locations_mapped
+
+-- COMMAND ----------
+
+
