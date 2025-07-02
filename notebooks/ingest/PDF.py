@@ -15,8 +15,6 @@ import unicodedata
 from functools import reduce
 import pandas as pd
 
-from openalex.utils.environment import *
-
 from openalex.dlt.normalize import walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
@@ -384,7 +382,7 @@ def pdf_backfill():
         spark.readStream
             .format("delta")
             .option("readChangeFeed", "true")
-            .table(f"openalex{ENV_SUFFIX}.pdf.pdf_works_grobid_backfill")
+            .table("openalex.pdf.pdf_works_grobid_backfill")
             .drop("urls")
             .drop("_change_type", "_commit_version", "_commit_timestamp")
             .withColumn("created_date", to_timestamp(col("created_date")))
