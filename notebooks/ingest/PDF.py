@@ -24,6 +24,7 @@ MAX_TITLE_LENGTH = 5000
 MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
 MAX_AFFILIATION_STRING_LENGTH = 1000
+MAX_FULLTEXT_LENGTH = 200000
 
 # define the schema for extracted fields
 fields_schema = StructType([
@@ -64,7 +65,8 @@ fields_schema = StructType([
             StructField("name", StringType(), True),
             StructField("awards", ArrayType(StringType()), True)
         ])
-    ), True)
+    ), True),
+    StructField("fulltext", StringType(), True)
 ])
 
 # COMMAND ----------
@@ -93,7 +95,8 @@ def extract_fields(xml_content):
                 "publisher": None,
                 "published_date": pd.NaT,
                 "references": [],
-                "funders": []
+                "funders": [],
+                "fulltext": None
             }
 
         root = ET.fromstring(xml_content)
@@ -204,6 +207,25 @@ def extract_fields(xml_content):
                 "name": org_name.text.strip() if org_name is not None else None,
                 "awards": awards if awards else None
             })
+
+        # fulltext
+        fulltext = None
+        text_element = root.find(".//tei:text", namespaces=ns)
+        if text_element is not None:
+            fulltext = ''.join(text_element.itertext()).strip()
+            
+            # clean and truncate
+            if fulltext:
+                # remove XML/HTML tags
+                fulltext = re.sub(r'<[^>]+>', '', fulltext)
+                # normalize whitespace
+                fulltext = ' '.join(fulltext.split())
+                # remove empty lines and normalize line breaks
+                fulltext = '\n'.join([line.strip() for line in fulltext.splitlines() if line.strip()])
+                # truncate to 200k characters
+                if len(fulltext) > MAX_FULLTEXT_LENGTH:
+                    fulltext = fulltext[:MAX_FULLTEXT_LENGTH]
+                
         return {
             "title": title,
             "language": language,
@@ -217,7 +239,8 @@ def extract_fields(xml_content):
             "publisher": publisher,
             "published_date": pd.NaT,
             "references": references,
-            "funders": funders
+            "funders": funders,
+            "fulltext": fulltext
         }
     except Exception:
         return {
@@ -233,7 +256,8 @@ def extract_fields(xml_content):
             "publisher": None,
             "published_date": pd.NaT,
             "references": [],
-            "funders": []
+            "funders": [],
+            "fulltext": None
         }
 
 # @TODO figure out if we can use pandas_udf here
@@ -346,7 +370,8 @@ def pdf_parse():
        col("created_date").alias("created_date"),
        current_timestamp().alias("updated_date"),
        lit(True).alias("is_oa"),
-       version_column.alias("version")
+       version_column.alias("version"),
+       col("fields.fulltext").alias("fulltext")
    )
 
 # COMMAND ----------
