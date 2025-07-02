@@ -404,7 +404,7 @@ def pdf_enriched():
             .table("LIVE.pdf_combined")
             # figure out how to handle deletes at some point
             .filter(col("_change_type").isin("insert", "update_postimage"))
-            .drop("_change_type", "_commit_version", "_commit_timestamp")  # ✅ Required
+            .drop("_change_type", "_commit_version", "_commit_timestamp", "fulltext")
     )
 
     df_walden_works_schema = apply_initial_processing(df_parsed_input, "pdf", walden_works_schema)
