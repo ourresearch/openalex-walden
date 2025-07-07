@@ -374,7 +374,7 @@ def pubmed_parsed():
                     0,
                 )
             ),
-            "version": F.col("PubmedData.PublicationStatus"),
+            "version": F.lit('publishedVersion'),
             "license": F.lit(None).cast("string"),
             "language":  convert_language_code_udf(F.get(F.col("MedlineCitation.Article.Language"), 0)),
             "created_date": F.when(
