@@ -102,8 +102,9 @@
 # MAGIC
 # MAGIC     # safety
 # MAGIC     if record_count > 1500000:
-# MAGIC         print(f"Too many records to process ({record_count}), need to process manually")
-# MAGIC         dbutils.notebook.exit(f"Too many records to process ({record_count}), need to process manually")
+# MAGIC         error_msg = f"Too many records found to export ({record_count:,}). Need to run manually"
+# MAGIC         print(error_msg)
+# MAGIC         raise Exception(error_msg)
 # MAGIC     
 # MAGIC     if record_count > 0:
 # MAGIC         # create a temporary table for the new/updated records
