@@ -1,7 +1,7 @@
 -- Databricks notebook source
 -- MAGIC %md
 -- MAGIC ### Create `locations_mapped` and `id_map` tables IF THEY DO NOT EXIST
--- MAGIC No re-creation and full idempotency are new features.
+-- MAGIC No table re-creation and full idempotency are new features.
 
 -- COMMAND ----------
 
@@ -292,12 +292,6 @@ WHEN NOT MATCHED THEN INSERT (
 
 -- COMMAND ----------
 
-ALTER TABLE openalex.works.id_map CLUSTER BY NONE;
-OPTIMIZE openalex.works.id_map
-ZORDER BY (merge_key.doi, merge_key.pmid, merge_key.arxiv, merge_key.title_author);
-
--- COMMAND ----------
-
 -- MAGIC %md
 -- MAGIC ## Merge into `id_map`
 -- MAGIC Extract unmapped merge_keys from `locations_mapped` where `work_id IS NULL`, and merge them into `id_map` (insert new merge_keys).
@@ -499,7 +493,7 @@ WHEN NOT MATCHED THEN INSERT (
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Set `id_map.paper_id = [table].paper_id` when matched
+-- MAGIC ## Legacy: set `id_map.paper_id = [table].paper_id` when matched
 
 -- COMMAND ----------
 
@@ -785,7 +779,7 @@ WHEN MATCHED THEN UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Populate `locations_mapped.work_id` from `id_map` for work_id is NULL
+-- MAGIC ## Populate `locations_mapped.work_id` from `id_map` WHERE work_id is NULL
 
 -- COMMAND ----------
 
@@ -910,8 +904,7 @@ WHEN MATCHED THEN UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Insert legacy paper_id's based on mag id
--- MAGIC todo: use an UPDATE clause instead of create or replace, still need to test that.
+-- MAGIC ## Insert legacy `paper_id`'s based on mag id
 
 -- COMMAND ----------
 
@@ -948,8 +941,7 @@ UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Insert legacy paper_id's based on pmh_id
--- MAGIC todo: use an UPDATE clause instead of create or replace, still need to test that.
+-- MAGIC ## Insert legacy `paper_id`'s based on pmh_id
 
 -- COMMAND ----------
 
