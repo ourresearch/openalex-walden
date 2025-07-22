@@ -90,7 +90,118 @@ TBLPROPERTIES (
 
 -- COMMAND ----------
 
--- Merge DOI's into locations_mapped 
+-- MAGIC %md
+-- MAGIC #### First merge update by DOI to avoid overly wide merge on overall merge key that produces too many insertions
+
+-- COMMAND ----------
+
+WITH counted_works AS (
+    SELECT  *,
+            ROW_NUMBER() OVER (
+               PARTITION BY merge_key,
+                            native_id,
+                            native_id_namespace,
+                            provenance
+               ORDER BY updated_date DESC) AS rwcnt
+    FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
+),
+distinct_works AS (
+    SELECT *  FROM counted_works  WHERE rwcnt = 1
+)
+
+/* ==========================================================
+   PASS A – DOI-only UPDATE (no inserts)
+   ========================================================== */
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped')    AS target
+USING distinct_works                                                             AS source
+ON target.merge_key.doi = source.merge_key.doi
+    AND target.provenance = source.provenance
+    AND target.native_id = source.native_id
+    AND target.native_id_namespace = source.native_id_namespace
+    AND target.merge_key.doi IS NOT NULL -- both sides have a DOI
+    AND source.merge_key.doi IS NOT NULL
+WHEN MATCHED
+AND (                                                             -- same “diff” test
+      (target.provenance <> source.provenance                       AND target.provenance IS NOT NULL) OR
+      (target.native_id <> source.native_id                         AND target.native_id IS NOT NULL) OR
+      (target.native_id_namespace <> source.native_id_namespace     AND target.native_id_namespace IS NOT NULL) OR
+      (target.title <> source.title                                 AND target.title IS NOT NULL) OR
+      (target.normalized_title <> source.normalized_title           AND target.normalized_title IS NOT NULL) OR
+      
+      (target.type <> source.type                                   AND target.type IS NOT NULL) OR
+      (target.version <> source.version                             AND target.version IS NOT NULL) OR
+      (target.license <> source.license                             AND target.license IS NOT NULL) OR
+      (target.language <> source.language                           AND target.language IS NOT NULL) OR
+      (target.published_date <> source.published_date               AND target.published_date IS NOT NULL) OR
+      (target.created_date <> source.created_date                   AND target.created_date IS NOT NULL) OR
+      (target.issue <> source.issue                                 AND target.issue IS NOT NULL) OR
+      (target.volume <> source.volume                               AND target.volume IS NOT NULL) OR
+      (target.first_page <> source.first_page                       AND target.first_page IS NOT NULL) OR
+      (target.last_page <> source.last_page                         AND target.last_page IS NOT NULL) OR
+      (target.is_retracted <> source.is_retracted                   AND target.is_retracted IS NOT NULL) OR
+      (target.abstract <> source.abstract                           AND target.abstract IS NOT NULL) OR
+      (target.source_name <> source.source_name                     AND target.source_name IS NOT NULL) OR
+      (target.publisher <> source.publisher                         AND target.publisher IS NOT NULL) OR
+      (target.pdf_url <> source.pdf_url                             AND target.pdf_url IS NOT NULL) OR
+      (target.landing_page_url <> source.landing_page_url           AND target.landing_page_url IS NOT NULL) OR
+      (target.pdf_s3_id <> source.pdf_s3_id                         AND target.pdf_s3_id IS NOT NULL) OR
+      (target.grobid_s3_id <> source.grobid_s3_id                   AND target.grobid_s3_id IS NOT NULL) OR
+      (target.mesh <> source.mesh                                   AND target.mesh IS NOT NULL) OR
+      (target.is_oa <> source.is_oa                                 AND target.is_oa IS NOT NULL) OR
+      (target.is_oa_source <> source.is_oa_source                   AND target.is_oa_source IS NOT NULL) OR
+      (target.authors_exist <> source.authors_exist                 AND target.authors_exist IS NOT NULL) OR
+      (target.affiliations_exist <> source.affiliations_exist       AND target.affiliations_exist IS NOT NULL) OR
+      (target.is_corresponding_exists <> source.is_corresponding_exists AND target.is_corresponding_exists IS NOT NULL) OR
+      (target.best_doi <> source.best_doi                           AND target.best_doi IS NOT NULL) OR
+      (target.source_id <> source.source_id                         AND target.source_id IS NOT NULL)
+    )
+THEN UPDATE SET
+    /* identical UPDATE list as in the overall merge */
+    target.provenance = source.provenance,
+    target.native_id = source.native_id,
+    target.native_id_namespace = source.native_id_namespace,
+    target.title = source.title,
+    target.normalized_title = source.normalized_title,
+    target.authors = array_union(coalesce(source.authors,array()),coalesce(target.authors,array())),
+    target.ids = array_union(coalesce(source.ids,array()),coalesce(target.ids,array())),
+    target.type = source.type,
+    target.version = source.version,
+    target.license = source.license,
+    target.language = source.language,
+    target.published_date = source.published_date,
+    target.created_date = source.created_date,
+    target.updated_date = source.updated_date,
+    target.issue = source.issue,
+    target.volume = source.volume,
+    target.first_page = source.first_page,
+    target.last_page = source.last_page,
+    target.is_retracted = source.is_retracted,
+    target.abstract = source.abstract,
+    target.source_name = source.source_name,
+    target.publisher = source.publisher,
+    target.funders = array_union(coalesce(source.funders,array()),coalesce(target.funders,array())),
+    target.references = source.references,
+    target.urls = array_union(coalesce(source.urls,array()),coalesce(target.urls,array())),
+    target.pdf_url = source.pdf_url,
+    target.landing_page_url = source.landing_page_url,
+    target.pdf_s3_id = source.pdf_s3_id,
+    target.grobid_s3_id = source.grobid_s3_id,
+    target.mesh = source.mesh,
+    target.is_oa = source.is_oa,
+    target.is_oa_source = source.is_oa_source,
+    target.abstract_inverted_index = source.abstract_inverted_index,
+    target.authors_exist = source.authors_exist,
+    target.affiliations_exist = source.affiliations_exist,
+    target.is_corresponding_exists = source.is_corresponding_exists,
+    target.best_doi = source.best_doi,
+    target.source_id = source.source_id,
+    target.openalex_updated_dt = current_timestamp()
+
+-- COMMAND ----------
+
+/* ====================================================================
+   PASS B – Original giant MERGE, skipping rows already handled by DOI
+   ==================================================================== */
 WITH counted_works AS (
     SELECT 
         *,
@@ -101,16 +212,27 @@ distinct_works AS (
     SELECT *
     FROM counted_works
     WHERE rwcnt = 1
+),
+-- 🚫 drop rows whose DOI already exists in locations_mapped after DOI Update
+distinct_works_no_doi AS (
+  SELECT d.*
+  FROM   distinct_works d
+  LEFT JOIN identifier('openalex' || :env_suffix || '.works.locations_mapped') lm
+         ON lm.merge_key.doi = d.merge_key.doi
+  WHERE  d.merge_key.doi IS NULL          -- keep no-DOI rows
+     OR  lm.merge_key.doi IS NULL         -- keep DOI that wasn’t updated in Pass A
 )
 MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
-USING distinct_works AS source
+USING distinct_works_no_doi AS source
 ON target.merge_key IS NOT DISTINCT FROM source.merge_key
     AND target.native_id IS NOT DISTINCT FROM source.native_id
     AND target.native_id_namespace IS NOT DISTINCT FROM source.native_id_namespace
     AND target.provenance IS NOT DISTINCT FROM source.provenance
-    -- Ensure merge_key has at least one non-null field (avoid matching {null, null, null, (null or empty)})
+
+    -- Ensure merge_key has at least one non-empty field (avoid matching {null, null, null, (null or empty)})
     AND (
       target.merge_key.doi IS NOT NULL OR
+      TRIM(target.merge_key.doi) <> '' OR
       target.merge_key.pmid IS NOT NULL OR 
       target.merge_key.arxiv IS NOT NULL OR
       target.merge_key.title_author IS NOT NULL OR
@@ -321,11 +443,6 @@ SELECT
   MAX(openalex_updated_dt) AS openalex_updated_dt
 FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
 WHERE work_id IS NULL
-  AND openalex_updated_dt > COALESCE(
-    (SELECT MAX(openalex_updated_dt)
-     FROM identifier('openalex' || :env_suffix || '.works.work_id_map')),
-    '1970-01-01'
-  )
 GROUP BY doi, pmid, arxiv, title_author
 
 
@@ -471,7 +588,7 @@ WHEN NOT MATCHED THEN INSERT (
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Legacy: set `id_map.paper_id = [table].paper_id` when matched
+-- MAGIC ## Legacy: set `work_id_map.paper_id = [table].paper_id` when matched
 
 -- COMMAND ----------
 
@@ -519,7 +636,8 @@ UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ### `PMID` match using `works_poc.postgres_work_extra_ids`.
+-- MAGIC ### `PMID` match using `works_poc.postgres_mid.attribute_value`.
+-- MAGIC Where `attribute_type = 2`
 
 -- COMMAND ----------
 
@@ -560,7 +678,7 @@ UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ### `ARXIV` match using `postgres_work_extra_ids.arxiv_id`
+-- MAGIC ### `ARXIV` match using `postgres_mid.arxiv_id`
 
 -- COMMAND ----------
 
@@ -598,38 +716,34 @@ UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ### `TITLE_AUTHOR` match using `postgres_work_extra_ids.unpaywall_normalize_title`
+-- MAGIC ### `TITLE_AUTHOR` match using `postgres_mid.unpaywall_normalize_title`
 
 -- COMMAND ----------
 
-WITH legacy_titles AS (
-  select
-    w.paper_id as paper_id,
-    w.unpaywall_normalize_title as unpaywall_normalize_title
-  from openalex.works_poc.postgres_mid w
-  inner join openalex.works_poc.postgres_work_extra_ids x
-    on w.paper_id = x.paper_id 
-  where w.arxiv_id is null 
-    and w.doi_lower is null 
-    and w.unpaywall_normalize_title is not null
-)
-, paper_ids as (
-  select 
-    min(m.paper_id) as paper_id,
-    max(m.created_date) as created_dt,
-    max(m.updated_date) as updated_dt,
-    l.unpaywall_normalize_title
-  from legacy_titles l
-  inner join openalex.works_poc.postgres_mid m 
-    on l.paper_id = m.paper_id 
-  group by l.unpaywall_normalize_title
+-- Build paper_ids one-step (already lower-cased / trimmed)
+WITH paper_ids AS (
+  SELECT
+      w.unpaywall_normalize_title                 AS unpaywall_normalize_title,
+      MIN(w.paper_id)                             AS paper_id,      -- choose smallest legacy id
+      MAX(w.created_date)                         AS created_dt,
+      MAX(w.updated_date)                         AS updated_dt
+  FROM openalex.works_poc.postgres_mid            w
+  JOIN openalex.works_poc.postgres_work_extra_ids x
+       ON w.paper_id = x.paper_id
+  WHERE w.arxiv_id IS NULL
+    AND (w.doi IS NULL OR w.doi = '')
+    AND LENGTH(w.unpaywall_normalize_title) > 0
+  GROUP BY w.unpaywall_normalize_title
 )
 MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
 USING paper_ids AS source
-  ON LOWER(TRIM(target.title_author)) = LOWER(TRIM(source.unpaywall_normalize_title))
+  -- AK: join below will *almost* never work since unpaywall_normalize_title doesn't have author
+  -- ON LOWER(TRIM(target.title_author)) = LOWER(TRIM(source.unpaywall_normalize_title))
+  -- stripping the author before join
+  ON element_at(split(target.title_author,'_'),1) = source.unpaywall_normalize_title
   AND target.paper_id IS NULL
-WHEN MATCHED THEN 
-UPDATE SET 
+WHEN MATCHED THEN
+UPDATE SET
   target.paper_id = source.paper_id,
   target.openalex_created_dt = source.created_dt,
   target.openalex_updated_dt = source.updated_dt;
@@ -637,7 +751,7 @@ UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Set `locations_mapped.work_id = id_map.paper_id` when matched
+-- MAGIC ## Set `locations_mapped.work_id = work_id_map.paper_id` when matched
 
 -- COMMAND ----------
 
@@ -753,7 +867,7 @@ WHEN MATCHED THEN UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Populate `locations_mapped.work_id` from `id_map` WHERE work_id is NULL
+-- MAGIC ## Populate `locations_mapped.work_id` from `works_id_map` WHERE work_id is NULL
 -- MAGIC This is not necessarily minting only - `MIN(id)` is used which may result in a match to earlier `work_id`
 
 -- COMMAND ----------
@@ -994,3 +1108,7 @@ THEN UPDATE SET
 
 SELECT format_number(COUNT(*), 0) as row_count
 FROM openalex.works.locations_mapped --618,448,502 - July 16th, 618,777,313 - July 17th
+
+-- COMMAND ----------
+
+
