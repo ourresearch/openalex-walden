@@ -563,7 +563,6 @@ def repo_parsed():
     .withColumn(
         "updated_date", F.col("updated_date").cast("date")
     )  # cast updated_date from timestamp to date
-    .withColumn("version", F.lit(None).cast("string"))
     .withColumn("issue", F.lit(None).cast("string"))
     .withColumn("volume", F.lit(None).cast("string"))
     .withColumn("first_page", F.lit(None).cast("string"))
