@@ -299,8 +299,11 @@ def has_oa_domain_udf(url_series: pd.Series) -> pd.Series:
     return url_series.apply(has_oa_domain)
 
 @F.pandas_udf(StringType())
-def detect_version_udf(args_series: pd.Series) -> pd.Series:
-    return args_series.apply(lambda x: detect_version_from_metadata(x[0], x[1]))
+def detect_version_udf(metadata_series: pd.Series, native_id_series: pd.Series) -> pd.Series:
+    return pd.Series([
+        detect_version_from_metadata(metadata, native_id) 
+        for metadata, native_id in zip(metadata_series, native_id_series)
+    ])
 
 # COMMAND ----------
 
@@ -516,7 +519,8 @@ def repo_parsed():
     .withColumn("type", get_openalex_type_from_repo_udf(F.col("`ns0:metadata`.`ns1:dc`.`dc:type`")))
     .withColumn("metadata_string", F.col("`ns0:metadata`").cast("string"))
     .withColumn("version", detect_version_udf(
-        F.struct(F.col("metadata_string"), F.col("native_id"))
+        F.col("metadata_string"), 
+        F.col("native_id")
     ))
     .withColumn(
         "raw_license",
