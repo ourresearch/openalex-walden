@@ -225,6 +225,67 @@ def has_oa_domain(native_id):
                 return True
     return False
 
+def detect_version_from_metadata(metadata_string, native_id):
+    """
+    Detect version from stringified metadata and native_id based on regex patterns
+    Returns 'acceptedVersion', 'publishedVersion', or 'submittedVersion'
+    """
+    
+    ACCEPTED_VERSION_REPOS = [
+        "oai:catalog.lib.kyushu-u.ac.jp",
+        "oai:cronfa.swan.ac.uk",
+        "oai:dora",
+        "oai:e-space.mmu.ac.uk",
+        "oai:hrcak.srce.hr",
+        "oai:infocom.co.jp",
+        "oai:library.wur.nl",
+        "oai:lirias2repo.kuleuven.be",
+        "oai:mro.massey.ac.nz",
+        "oai:raumplan.iaus.ac.rs",
+        "oai:repository.arizona.edu",
+        "oai:repository.cardiffmet.ac.uk",
+        "oai:researchbank.swinburne.edu.au",
+        "oai:researchonline.gcu.ac.uk",
+        "oai:rke.abertay.ac.uk",
+        "oai:shura.shu.ac.uk",
+        "oai:taju.uniarts.fi"
+    ]
+    
+    if native_id:
+        native_id_str = str(native_id)
+        for repo in ACCEPTED_VERSION_REPOS:
+            if native_id_str.startswith(repo + ":"):
+                return "acceptedVersion"
+    
+    if not metadata_string:
+        return "submittedVersion"
+    
+    search_text = str(metadata_string).lower()
+    
+    accepted_patterns = [
+        r"accepted.?version",
+        r"version.?accepted", 
+        r"accepted.?manuscript",
+        r"peer.?reviewed",
+        r"refereed/peer-reviewed"
+    ]
+    
+    for pattern in accepted_patterns:
+        if re.search(pattern, search_text, re.IGNORECASE | re.MULTILINE | re.DOTALL):
+            return "acceptedVersion"
+    
+    published_patterns = [
+        r"publishedversion",
+        r"published.*version",
+        r"version.*published"
+    ]
+    
+    for pattern in published_patterns:
+        if re.search(pattern, search_text, re.IGNORECASE | re.MULTILINE | re.DOTALL):
+            return "publishedVersion"
+    
+    return "submittedVersion"
+
 @F.pandas_udf(StringType())
 def get_openalex_type_from_repo_udf(repo_type_series: pd.Series) -> pd.Series:
     return repo_type_series.apply(get_openalex_type_from_repo)
@@ -236,6 +297,13 @@ def normalize_language_code_udf(language_code_series: pd.Series) -> pd.Series:
 @F.pandas_udf(BooleanType())
 def has_oa_domain_udf(url_series: pd.Series) -> pd.Series:
     return url_series.apply(has_oa_domain)
+
+@F.pandas_udf(StringType())
+def detect_version_udf(metadata_series: pd.Series, native_id_series: pd.Series) -> pd.Series:
+    return pd.Series([
+        detect_version_from_metadata(metadata, native_id) 
+        for metadata, native_id in zip(metadata_series, native_id_series)
+    ])
 
 # COMMAND ----------
 
@@ -449,7 +517,11 @@ def repo_parsed():
         )
     )
     .withColumn("type", get_openalex_type_from_repo_udf(F.col("`ns0:metadata`.`ns1:dc`.`dc:type`")))
-    .withColumn("version", F.lit(None))
+    .withColumn("metadata_string", F.col("`ns0:metadata`").cast("string"))
+    .withColumn("version", detect_version_udf(
+        F.col("metadata_string"), 
+        F.col("native_id")
+    ))
     .withColumn(
         "raw_license",
         F.when(
@@ -495,7 +567,6 @@ def repo_parsed():
     .withColumn(
         "updated_date", F.col("updated_date").cast("date")
     )  # cast updated_date from timestamp to date
-    .withColumn("version", F.lit(None).cast("string"))
     .withColumn("issue", F.lit(None).cast("string"))
     .withColumn("volume", F.lit(None).cast("string"))
     .withColumn("first_page", F.lit(None).cast("string"))
