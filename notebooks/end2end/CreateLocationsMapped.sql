@@ -129,7 +129,7 @@ AND (                                                             -- same “dif
       (target.normalized_title <> source.normalized_title           AND target.normalized_title IS NOT NULL) OR
       
       (target.type <> source.type                                   AND target.type IS NOT NULL) OR
-      (target.version <> source.version                             AND target.version IS NOT NULL) OR
+      (target.version <> source.version) OR
       (target.license <> source.license                             AND target.license IS NOT NULL) OR
       (target.language <> source.language                           AND target.language IS NOT NULL) OR
       (target.published_date <> source.published_date               AND target.published_date IS NOT NULL) OR
@@ -248,7 +248,7 @@ AND (
     (target.normalized_title <> source.normalized_title           AND target.normalized_title IS NOT NULL) OR
     
     (target.type <> source.type                                   AND target.type IS NOT NULL) OR
-    (target.version <> source.version                             AND target.version IS NOT NULL) OR
+    (target.version <> source.version) OR
     (target.license <> source.license                             AND target.license IS NOT NULL) OR
     (target.language <> source.language                           AND target.language IS NOT NULL) OR
     (target.published_date <> source.published_date               AND target.published_date IS NOT NULL) OR
