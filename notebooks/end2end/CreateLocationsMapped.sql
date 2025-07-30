@@ -115,7 +115,10 @@ distinct_works AS (
 MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped')    AS target
 USING distinct_works                                                             AS source
 ON target.merge_key.doi = source.merge_key.doi
-    AND target.provenance = source.provenance
+    AND (
+      target.provenance = source.provenance OR 
+      (target.provenance IN ('repo', 'repo_backfill') AND source.provenance IN ('repo', 'repo_backfill'))
+    )
     AND target.native_id = source.native_id
     AND target.native_id_namespace = source.native_id_namespace
     AND target.merge_key.doi IS NOT NULL -- both sides have a DOI
@@ -227,7 +230,10 @@ USING distinct_works_no_doi AS source
 ON target.merge_key IS NOT DISTINCT FROM source.merge_key
     AND target.native_id IS NOT DISTINCT FROM source.native_id
     AND target.native_id_namespace IS NOT DISTINCT FROM source.native_id_namespace
-    AND target.provenance IS NOT DISTINCT FROM source.provenance
+    AND (
+      target.provenance = source.provenance OR 
+      (target.provenance IN ('repo', 'repo_backfill') AND source.provenance IN ('repo', 'repo_backfill'))
+    )
 
     -- Ensure merge_key has at least one non-empty field (avoid matching {null, null, null, (null or empty)})
     AND (
