@@ -118,7 +118,7 @@ ON target.merge_key.doi = source.merge_key.doi
     AND (
       target.provenance = source.provenance OR 
       (target.provenance IN ('repo', 'repo_backfill') AND source.provenance IN ('repo', 'repo_backfill'))
-    )
+    ) -- needed because repo and repo_backfill records with the same ID are switching back and forth, maybe in the union step
     AND target.native_id = source.native_id
     AND target.native_id_namespace = source.native_id_namespace
     AND target.merge_key.doi IS NOT NULL -- both sides have a DOI
