@@ -420,7 +420,130 @@ WHEN NOT MATCHED THEN INSERT (
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Prepare `work_id_map` with new data
+-- MAGIC ## FIRST, use PROD data to set `work_id_map.paper_id = [table].paper_id` when matched
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ### Merge to `work_id_map` using `openalex.mid.work.lower_doi`.
+
+-- COMMAND ----------
+
+-- Merge in legacy paper_id's for DOI
+WITH paper_ids AS (
+  SELECT
+    regexp_replace(w.doi_lower, '[^a-zA-Z0-9.]', '') AS cleaned_doi,
+    MIN(w.paper_id) AS paper_id,      -- Choose the smallest legacy ID as the canonical one
+    MAX(w.created_date) AS created_dt,
+    MAX(w.updated_date) AS updated_dt
+  FROM openalex.mid.work w
+  WHERE w.doi_lower IS NOT NULL
+  GROUP BY cleaned_doi
+)
+MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
+USING paper_ids AS source
+  -- The ON condition also cleans the target DOI to ensure a consistent match.
+  ON regexp_replace(LOWER(target.doi), '[^a-zA-Z0-9.]', '') = source.cleaned_doi
+  AND target.paper_id IS NULL -- Only match rows that need a paper_id
+WHEN MATCHED THEN
+UPDATE SET
+  target.paper_id = source.paper_id,
+  target.openalex_created_dt = source.created_dt,
+  target.openalex_updated_dt = source.updated_dt;
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ### `PMID` match using `mid.work.attribute_value`.
+-- MAGIC Where `attribute_type = 2`
+
+-- COMMAND ----------
+
+WITH paper_ids AS (
+  SELECT
+    x.attribute_value AS pmid,
+    MIN(w.paper_id) AS paper_id,      -- Choose the smallest legacy ID as the canonical one
+    MAX(w.created_date) AS created_dt,
+    MAX(w.updated_date) AS updated_dt
+  FROM openalex.mid.work w
+  JOIN openalex.mid.work_extra_ids x ON w.paper_id = x.paper_id
+  WHERE x.attribute_type = 2 -- Corresponds to pmid
+  GROUP BY x.attribute_value
+)
+MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
+USING paper_ids AS source
+  ON LOWER(TRIM(target.pmid)) = LOWER(TRIM(source.pmid))
+  AND target.paper_id IS NULL -- Only match rows that need a paper_id
+WHEN MATCHED THEN
+UPDATE SET
+  target.paper_id = source.paper_id,
+  target.openalex_created_dt = source.created_dt,
+  target.openalex_updated_dt = source.updated_dt;
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ### `ARXIV` match using `mid.work.arxiv_id`
+
+-- COMMAND ----------
+
+WITH paper_ids AS (
+  SELECT
+    w.arxiv_id,
+    MIN(w.paper_id) AS paper_id,      -- Choose the smallest legacy ID as the canonical one
+    MAX(w.created_date) AS created_dt,
+    MAX(w.updated_date) AS updated_dt
+  FROM openalex.mid.work w
+  WHERE w.arxiv_id IS NOT NULL
+  GROUP BY w.arxiv_id
+)
+MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
+USING paper_ids AS source
+  ON LOWER(TRIM(target.arxiv)) = LOWER(TRIM(source.arxiv_id))
+  AND target.paper_id IS NULL -- Only match rows that need a paper_id
+WHEN MATCHED THEN
+UPDATE SET
+  target.paper_id = source.paper_id,
+  target.openalex_created_dt = source.created_dt,
+  target.openalex_updated_dt = source.updated_dt;
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ### `TITLE_AUTHOR` match using `postgres_mid.unpaywall_normalize_title`
+
+-- COMMAND ----------
+
+-- Build paper_ids one-step (already lower-cased / trimmed)
+WITH paper_ids AS (
+  SELECT
+      w.unpaywall_normalize_title AS unpaywall_normalize_title,
+      MIN(w.paper_id) AS paper_id,      -- choose smallest legacy id
+      MAX(w.created_date) AS created_dt,
+      MAX(w.updated_date) AS updated_dt
+  FROM openalex.mid.work w
+  WHERE w.arxiv_id IS NULL
+    AND (w.doi IS NULL OR w.doi = '')
+    AND LENGTH(w.unpaywall_normalize_title) > 0
+  GROUP BY w.unpaywall_normalize_title
+)
+MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
+USING paper_ids AS source
+  -- AK: join below will *almost* never work since unpaywall_normalize_title doesn't have author
+  -- ON LOWER(TRIM(target.title_author)) = LOWER(TRIM(source.unpaywall_normalize_title))
+  -- stripping the author before join
+  ON element_at(split(target.title_author,'_'),1) = source.unpaywall_normalize_title
+  AND target.paper_id IS NULL
+WHEN MATCHED THEN
+UPDATE SET
+  target.paper_id = source.paper_id,
+  target.openalex_created_dt = source.created_dt,
+  target.openalex_updated_dt = source.updated_dt;
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ## SECOND, add new `locations_mapped` data to `work_id_map`
 -- MAGIC Extract unmapped merge_keys from `locations_mapped` where `work_id IS NULL`, and merge them into `id_map` (insert new merge_keys).
 -- MAGIC Inserted records will contain newly minted `work_id` values (they won't necessarily make it into `locations_mapped`).
 
@@ -590,169 +713,6 @@ WHEN NOT MATCHED THEN INSERT (
   source.openalex_created_dt, source.openalex_updated_dt, 'title_author'
 );
 
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC ## Legacy: set `work_id_map.paper_id = [table].paper_id` when matched
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC ### 'DOI' match using `works_poc.postgres_mid`.
-
--- COMMAND ----------
-
--- Merge in legacy paper_id's for DOI
-with legacy_doi as (
-  SELECT DISTINCT regexp_replace(doi_lower, '[^a-zA-Z0-9.]', '') as doi_lower 
-  FROM openalex.works_poc.postgres_mid
-  WHERE doi_lower IS NOT NULL
-)
-, paper_ids as (
-  select 
-    min(m.paper_id) as paper_id,
-    max(m.created_date) as created_dt,
-    max(m.updated_date) as updated_dt,
-    l.doi_lower
-  from legacy_doi l
-  inner join openalex.works_poc.postgres_mid m 
-    on regexp_replace(
-        l.doi_lower,
-        '[^a-zA-Z0-9.]',
-        ''
-      ) = regexp_replace(
-        m.doi_lower,
-        '[^a-zA-Z0-9.]',
-        ''
-      ) 
-  group by l.doi_lower
-)
-MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
-USING paper_ids AS source
-  ON LOWER(regexp_replace(target.doi, '[^a-zA-Z0-9.]', '')) = LOWER(source.doi_lower)
-  AND target.paper_id IS NULL
-WHEN MATCHED THEN
-UPDATE SET
-  target.paper_id = source.paper_id,
-  target.openalex_created_dt = source.created_dt,
-  target.openalex_updated_dt = source.updated_dt
-;
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC ### `PMID` match using `works_poc.postgres_mid.attribute_value`.
--- MAGIC Where `attribute_type = 2`
-
--- COMMAND ----------
-
-with legacy_pmid AS (
-  select
-    w.paper_id as paper_id,
-    x.attribute_value as pmid
-  from openalex.works_poc.postgres_mid w
-  inner join openalex.works_poc.postgres_work_extra_ids x
-    on w.paper_id = x.paper_id
-  where 
-  -- (w.doi is null or w.doi = '') 
-  --   and
-     x.attribute_type = 2 --pmid
-)
-, paper_ids as (
-  select 
-    min(m.paper_id) as paper_id,
-    max(m.created_date) as created_dt,
-    max(m.updated_date) as updated_dt, 
-    l.pmid
-  from legacy_pmid l
-  inner join openalex.works_poc.postgres_mid m 
-    on l.paper_id = m.paper_id 
-  group by l.pmid
-)
-MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
-USING paper_ids AS source
-  ON LOWER(TRIM(target.pmid)) = LOWER(TRIM(source.pmid))
-  AND target.paper_id IS NULL
-WHEN MATCHED THEN 
-UPDATE SET
-  target.paper_id = source.paper_id,
-  target.openalex_created_dt = source.created_dt,
-  target.openalex_updated_dt = source.updated_dt
-;
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC ### `ARXIV` match using `postgres_mid.arxiv_id`
-
--- COMMAND ----------
-
-WITH legacy_arxiv AS (
-  select
-    w.paper_id as paper_id,
-    w.arxiv_id as arxiv_id
-  FROM openalex.works_poc.postgres_mid w
-  inner join openalex.works_poc.postgres_work_extra_ids x
-    on w.paper_id = x.paper_id 
-  where w.arxiv_id is not null 
-    -- and (w.doi_lower is null or w.doi_lower = '')
-),
-paper_ids as (
-  select 
-    min(m.paper_id) as paper_id,
-    max(m.created_date) as created_dt,
-    max(m.updated_date) as updated_dt,
-    l.arxiv_id
-  from legacy_arxiv l
-  inner join openalex.works_poc.postgres_mid m 
-    on l.paper_id = m.paper_id 
-  group by l.arxiv_id
-)
-MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
-USING paper_ids AS source
-  ON LOWER(TRIM(target.arxiv)) = LOWER(TRIM(source.arxiv_id))
-  AND target.paper_id IS NULL
-WHEN MATCHED THEN
-UPDATE SET 
-  target.paper_id = source.paper_id,
-  target.openalex_created_dt = source.created_dt,
-  target.openalex_updated_dt = source.updated_dt;
-
--- COMMAND ----------
-
--- MAGIC %md
--- MAGIC ### `TITLE_AUTHOR` match using `postgres_mid.unpaywall_normalize_title`
-
--- COMMAND ----------
-
--- Build paper_ids one-step (already lower-cased / trimmed)
-WITH paper_ids AS (
-  SELECT
-      w.unpaywall_normalize_title                 AS unpaywall_normalize_title,
-      MIN(w.paper_id)                             AS paper_id,      -- choose smallest legacy id
-      MAX(w.created_date)                         AS created_dt,
-      MAX(w.updated_date)                         AS updated_dt
-  FROM openalex.works_poc.postgres_mid            w
-  JOIN openalex.works_poc.postgres_work_extra_ids x
-       ON w.paper_id = x.paper_id
-  WHERE w.arxiv_id IS NULL
-    AND (w.doi IS NULL OR w.doi = '')
-    AND LENGTH(w.unpaywall_normalize_title) > 0
-  GROUP BY w.unpaywall_normalize_title
-)
-MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
-USING paper_ids AS source
-  -- AK: join below will *almost* never work since unpaywall_normalize_title doesn't have author
-  -- ON LOWER(TRIM(target.title_author)) = LOWER(TRIM(source.unpaywall_normalize_title))
-  -- stripping the author before join
-  ON element_at(split(target.title_author,'_'),1) = source.unpaywall_normalize_title
-  AND target.paper_id IS NULL
-WHEN MATCHED THEN
-UPDATE SET
-  target.paper_id = source.paper_id,
-  target.openalex_created_dt = source.created_dt,
-  target.openalex_updated_dt = source.updated_dt;
 
 -- COMMAND ----------
 
