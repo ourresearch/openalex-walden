@@ -118,55 +118,55 @@ ON target.merge_key.doi = source.merge_key.doi
     AND (
       target.provenance = source.provenance OR 
       (target.provenance IN ('repo', 'repo_backfill') AND source.provenance IN ('repo', 'repo_backfill'))
-    ) -- needed because repo and repo_backfill records with the same ID are switching back and forth, maybe in the union step
-    AND target.native_id = source.native_id
-    AND target.native_id_namespace = source.native_id_namespace
-    AND target.merge_key.doi IS NOT NULL -- both sides have a DOI
-    AND source.merge_key.doi IS NOT NULL
+    ) 
+    -- needed because repo and repo_backfill records with the same ID are switching back and forth
+    -- maybe in the union step
+    AND target.native_id IS NOT DISTINCT FROM source.native_id
+    AND target.native_id_namespace IS NOT DISTINCT FROM source.native_id_namespace
+    AND target.merge_key.doi IS NOT NULL
 WHEN MATCHED
-AND (                                                             -- same “diff” test
-      (target.provenance <> source.provenance                       AND target.provenance IS NOT NULL) OR
-      (target.native_id <> source.native_id                         AND target.native_id IS NOT NULL) OR
-      (target.native_id_namespace <> source.native_id_namespace     AND target.native_id_namespace IS NOT NULL) OR
-      (target.title <> source.title                                 AND target.title IS NOT NULL) OR
-      (target.normalized_title <> source.normalized_title           AND target.normalized_title IS NOT NULL) OR
-      
-      (target.type <> source.type                                   AND target.type IS NOT NULL) OR
-      (target.version IS DISTINCT FROM source.version) OR
-      (target.license <> source.license                             AND target.license IS NOT NULL) OR
-      (target.language <> source.language                           AND target.language IS NOT NULL) OR
-      (target.published_date <> source.published_date               AND target.published_date IS NOT NULL) OR
-      (target.created_date <> source.created_date                   AND target.created_date IS NOT NULL) OR
-      (target.issue <> source.issue                                 AND target.issue IS NOT NULL) OR
-      (target.volume <> source.volume                               AND target.volume IS NOT NULL) OR
-      (target.first_page <> source.first_page                       AND target.first_page IS NOT NULL) OR
-      (target.last_page <> source.last_page                         AND target.last_page IS NOT NULL) OR
-      (target.is_retracted <> source.is_retracted                   AND target.is_retracted IS NOT NULL) OR
-      (target.abstract <> source.abstract                           AND target.abstract IS NOT NULL) OR
-      (target.source_name <> source.source_name                     AND target.source_name IS NOT NULL) OR
-      (target.publisher <> source.publisher                         AND target.publisher IS NOT NULL) OR
-      (target.pdf_url <> source.pdf_url                             AND target.pdf_url IS NOT NULL) OR
-      (target.landing_page_url <> source.landing_page_url           AND target.landing_page_url IS NOT NULL) OR
-      (target.pdf_s3_id <> source.pdf_s3_id                         AND target.pdf_s3_id IS NOT NULL) OR
-      (target.grobid_s3_id <> source.grobid_s3_id                   AND target.grobid_s3_id IS NOT NULL) OR
-      (target.mesh <> source.mesh                                   AND target.mesh IS NOT NULL) OR
-      (target.is_oa <> source.is_oa                                 AND target.is_oa IS NOT NULL) OR
-      (target.is_oa_source <> source.is_oa_source                   AND target.is_oa_source IS NOT NULL) OR
-      (target.authors_exist <> source.authors_exist                 AND target.authors_exist IS NOT NULL) OR
-      (target.affiliations_exist <> source.affiliations_exist       AND target.affiliations_exist IS NOT NULL) OR
-      (target.is_corresponding_exists <> source.is_corresponding_exists AND target.is_corresponding_exists IS NOT NULL) OR
-      (target.best_doi <> source.best_doi                           AND target.best_doi IS NOT NULL) OR
-      (target.source_id <> source.source_id                         AND target.source_id IS NOT NULL)
+AND (
+      target.provenance IS DISTINCT FROM source.provenance OR
+      target.native_id IS DISTINCT FROM source.native_id OR
+      target.native_id_namespace IS DISTINCT FROM source.native_id_namespace OR
+      target.title IS DISTINCT FROM source.title OR
+      target.normalized_title IS DISTINCT FROM source.normalized_title OR
+      target.type IS DISTINCT FROM source.type OR
+      target.version IS DISTINCT FROM source.version OR
+      target.license IS DISTINCT FROM source.license OR
+      target.language IS DISTINCT FROM source.language OR
+      target.published_date IS DISTINCT FROM source.published_date OR
+      target.created_date IS DISTINCT FROM source.created_date OR
+      target.issue IS DISTINCT FROM source.issue OR
+      target.volume IS DISTINCT FROM source.volume OR
+      target.first_page IS DISTINCT FROM source.first_page OR
+      target.last_page IS DISTINCT FROM source.last_page OR
+      target.is_retracted IS DISTINCT FROM source.is_retracted OR
+      target.abstract IS DISTINCT FROM source.abstract OR
+      target.source_name IS DISTINCT FROM source.source_name OR
+      target.publisher IS DISTINCT FROM source.publisher OR
+      target.pdf_url IS DISTINCT FROM source.pdf_url OR
+      target.landing_page_url IS DISTINCT FROM source.landing_page_url OR
+      target.pdf_s3_id IS DISTINCT FROM source.pdf_s3_id OR
+      target.grobid_s3_id IS DISTINCT FROM source.grobid_s3_id OR
+      target.mesh IS DISTINCT FROM source.mesh OR
+      target.is_oa IS DISTINCT FROM source.is_oa OR
+      target.is_oa_source IS DISTINCT FROM source.is_oa_source OR
+      target.authors_exist IS DISTINCT FROM source.authors_exist OR
+      target.affiliations_exist IS DISTINCT FROM source.affiliations_exist OR
+      target.is_corresponding_exists IS DISTINCT FROM source.is_corresponding_exists OR
+      target.best_doi IS DISTINCT FROM source.best_doi OR
+      target.source_id IS DISTINCT FROM source.source_id
     )
 THEN UPDATE SET
     /* identical UPDATE list as in the overall merge */
     target.provenance = source.provenance,
     target.native_id = source.native_id,
     target.native_id_namespace = source.native_id_namespace,
-    target.title = source.title,
-    target.normalized_title = source.normalized_title,
-    target.authors = array_union(coalesce(source.authors,array()),coalesce(target.authors,array())),
-    target.ids = array_union(coalesce(source.ids,array()),coalesce(target.ids,array())),
+    target.title = COALESCE(source.title, target.title),
+    target.normalized_title = COALESCE(source.normalized_title, target.normalized_title),
+    target.authors = array_union(COALESCE(source.authors,array()),COALESCE(target.authors,array())),
+    target.ids = array_union(COALESCE(source.ids,array()),COALESCE(target.ids,array())),
     target.type = source.type,
     target.version = source.version,
     target.license = source.license,
@@ -182,9 +182,9 @@ THEN UPDATE SET
     target.abstract = source.abstract,
     target.source_name = source.source_name,
     target.publisher = source.publisher,
-    target.funders = array_union(coalesce(source.funders,array()),coalesce(target.funders,array())),
+    target.funders = array_union(COALESCE(source.funders,array()),COALESCE(target.funders,array())),
     target.references = source.references,
-    target.urls = array_union(coalesce(source.urls,array()),coalesce(target.urls,array())),
+    target.urls = array_union(COALESCE(source.urls,array()),COALESCE(target.urls,array())),
     target.pdf_url = source.pdf_url,
     target.landing_page_url = source.landing_page_url,
     target.pdf_s3_id = source.pdf_s3_id,
@@ -206,7 +206,7 @@ THEN UPDATE SET
    PASS B – Original giant MERGE, skipping rows already handled by DOI
    ==================================================================== */
 WITH counted_works AS (
-    SELECT 
+    SELECT
         *,
         ROW_NUMBER() OVER(PARTITION BY merge_key, native_id, native_id_namespace, provenance ORDER BY updated_date DESC) AS rwcnt
     FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
@@ -232,57 +232,54 @@ ON target.merge_key IS NOT DISTINCT FROM source.merge_key
     AND target.native_id_namespace IS NOT DISTINCT FROM source.native_id_namespace
     AND (
       target.provenance = source.provenance OR 
-      (target.provenance IN ('repo', 'repo_backfill') AND source.provenance IN ('repo', 'repo_backfill'))
+      (target.provenance IN ('repo', 'repo_backfill') 
+        AND source.provenance IN ('repo', 'repo_backfill'))
     )
-
-    -- Ensure merge_key has at least one non-empty field (avoid matching {null, null, null, (null or empty)})
+    -- Ensure merge_key has at least one non-empty field 
+    -- (avoid matching {null, null, null, (null or empty)})
     AND (
-      target.merge_key.doi IS NOT NULL OR
-      TRIM(target.merge_key.doi) <> '' OR
+      (target.merge_key.doi IS NOT NULL AND
+        TRIM(target.merge_key.doi) <> '') OR
       target.merge_key.pmid IS NOT NULL OR 
       target.merge_key.arxiv IS NOT NULL OR
-      target.merge_key.title_author IS NOT NULL OR
-      target.merge_key.title_author <> ''
+      (target.merge_key.title_author IS NOT NULL AND
+        target.merge_key.title_author <> '')
     )
-WHEN MATCHED 
+WHEN MATCHED
 AND (
-    (target.provenance <> source.provenance                       AND target.provenance IS NOT NULL) OR
-    (target.native_id <> source.native_id                         AND target.native_id IS NOT NULL) OR
-    --(target.true_native_id <> source.true_native_id               AND target.true_native_id IS NOT NULL) OR
-    (target.native_id_namespace <> source.native_id_namespace     AND target.native_id_namespace IS NOT NULL) OR
-    (target.title <> source.title                                 AND target.title IS NOT NULL) OR
-    (target.normalized_title <> source.normalized_title           AND target.normalized_title IS NOT NULL) OR
-    
-    (target.type <> source.type                                   AND target.type IS NOT NULL) OR
-    (target.version IS DISTINCT FROM source.version) OR
-    (target.license <> source.license                             AND target.license IS NOT NULL) OR
-    (target.language <> source.language                           AND target.language IS NOT NULL) OR
-    (target.published_date <> source.published_date               AND target.published_date IS NOT NULL) OR
-    (target.created_date <> source.created_date                   AND target.created_date IS NOT NULL) OR
-    -- (target.updated_date <> source.updated_date                   AND target.updated_date IS NOT NULL) OR
-    (target.issue <> source.issue                                 AND target.issue IS NOT NULL) OR
-    (target.volume <> source.volume                               AND target.volume IS NOT NULL) OR
-    (target.first_page <> source.first_page                       AND target.first_page IS NOT NULL) OR
-    (target.last_page <> source.last_page                         AND target.last_page IS NOT NULL) OR
-    (target.is_retracted <> source.is_retracted                   AND target.is_retracted IS NOT NULL) OR
-    (target.abstract <> source.abstract                           AND target.abstract IS NOT NULL) OR
-    (target.source_name <> source.source_name                     AND target.source_name IS NOT NULL) OR
-    (target.publisher <> source.publisher                         AND target.publisher IS NOT NULL) OR
-    (target.pdf_url <> source.pdf_url                             AND target.pdf_url IS NOT NULL) OR
-    (target.landing_page_url <> source.landing_page_url           AND target.landing_page_url IS NOT NULL) OR
-    (target.pdf_s3_id <> source.pdf_s3_id                         AND target.pdf_s3_id IS NOT NULL) OR
-    (target.grobid_s3_id <> source.grobid_s3_id                   AND target.grobid_s3_id IS NOT NULL) OR
-    (target.mesh <> source.mesh                                   AND target.mesh IS NOT NULL) OR
-    (target.is_oa <> source.is_oa                                 AND target.is_oa IS NOT NULL) OR
-    (target.is_oa_source <> source.is_oa_source                   AND target.is_oa_source IS NOT NULL) OR
-    -- (target.abstract_inverted_index <> source.abstract_inverted_index  AND target.abstract_inverted_index IS NOT NULL) OR
-    (target.authors_exist <> source.authors_exist                 AND target.authors_exist IS NOT NULL) OR
-    (target.affiliations_exist <> source.affiliations_exist       AND target.affiliations_exist IS NOT NULL) OR
-    (target.is_corresponding_exists <> source.is_corresponding_exists AND target.is_corresponding_exists IS NOT NULL) OR
-    (target.best_doi <> source.best_doi                           AND target.best_doi IS NOT NULL) OR
-    (target.source_id <> source.source_id                         AND target.source_id IS NOT NULL)
-)  
-THEN UPDATE SET 
+      target.provenance IS DISTINCT FROM source.provenanceL OR
+      target.native_id IS DISTINCT FROM source.native_id OR
+      target.native_id_namespace IS DISTINCT FROM source.native_id_namespace OR
+      target.title IS DISTINCT FROM source.title OR
+      target.normalized_title IS DISTINCT FROM source.normalized_title OR
+      target.type IS DISTINCT FROM source.type OR
+      target.version IS DISTINCT FROM source.version OR
+      target.license IS DISTINCT FROM source.license OR
+      target.language IS DISTINCT FROM source.language OR
+      target.published_date IS DISTINCT FROM source.published_date OR
+      target.created_date IS DISTINCT FROM source.created_date OR
+      target.issue IS DISTINCT FROM source.issue OR
+      target.volume IS DISTINCT FROM source.volume OR
+      target.first_page IS DISTINCT FROM source.first_page OR
+      target.last_page IS DISTINCT FROM source.last_page OR
+      target.is_retracted IS DISTINCT FROM source.is_retracted OR
+      target.abstract IS DISTINCT FROM source.abstract OR
+      target.source_name IS DISTINCT FROM source.source_name OR
+      target.publisher IS DISTINCT FROM source.publisher OR
+      target.pdf_url IS DISTINCT FROM source.pdf_url OR
+      target.landing_page_url IS DISTINCT FROM source.landing_page_url OR
+      target.pdf_s3_id IS DISTINCT FROM source.pdf_s3_id OR
+      target.grobid_s3_id IS DISTINCT FROM source.grobid_s3_id OR
+      target.mesh IS DISTINCT FROM source.mesh OR
+      target.is_oa IS DISTINCT FROM source.is_oa OR
+      target.is_oa_source IS DISTINCT FROM source.is_oa_source OR
+      target.authors_exist IS DISTINCT FROM source.authors_exist OR
+      target.affiliations_exist IS DISTINCT FROM source.affiliations_exist OR
+      target.is_corresponding_exists IS DISTINCT FROM source.is_corresponding_exists OR
+      target.best_doi IS DISTINCT FROM source.best_doi OR
+      target.source_id IS DISTINCT FROM source.source_id
+    )
+THEN UPDATE SET
     target.provenance = source.provenance,
     target.native_id = source.native_id,
     --target.true_native_id = source.true_native_id,
@@ -449,7 +446,7 @@ SELECT
   MIN(openalex_created_dt) AS openalex_created_dt,
   MAX(openalex_updated_dt) AS openalex_updated_dt
 FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
-WHERE work_id IS NULL
+WHERE work_id IS NULL -- this ensures only freshly inserted locations are considered
 GROUP BY doi, pmid, arxiv, title_author
 
 
@@ -470,7 +467,8 @@ USING (
     ORDER BY key_score DESC, openalex_updated_dt DESC
   ) = 1
 ) AS source
-ON target.doi = source.doi
+ON regexp_replace(MAX(target.doi), '[^a-zA-Z0-9\./-]', '') =
+  regexp_replace(MAX(source.doi), '[^a-zA-Z0-9\./-]', '')
 WHEN MATCHED THEN UPDATE SET
   target.doi = COALESCE(source.doi, target.doi),
   target.pmid = COALESCE(source.pmid, target.pmid),
@@ -758,9 +756,10 @@ WITH ids AS (
 )
 MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
-  ON target.merge_key.doi = doi
-  AND target.work_id IS NULL
-WHEN MATCHED THEN UPDATE SET 
+  ON target.merge_key.doi = source.doi
+  AND (target.work_id IS NULL OR target.work_id > source.paper_id)
+WHEN MATCHED AND target.work_id > source.paper_id 
+THEN UPDATE SET 
   target.work_id = source.paper_id,
   target.openalex_created_dt = source.openalex_created_dt,
   target.openalex_updated_dt = source.openalex_updated_dt;
@@ -786,7 +785,7 @@ WHEN MATCHED THEN UPDATE SET
 MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source
   ON target.merge_key.pmid = source.pmid
-  AND target.work_id IS NULL
+  AND (target.work_id IS NULL OR target.work_id > source.paper_id)
 WHEN MATCHED THEN UPDATE SET 
   target.work_id = source.paper_id,
   target.openalex_created_dt = source.openalex_created_dt,
@@ -814,7 +813,7 @@ WITH ids AS (
 MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.arxiv = source.arxiv
-  AND target.work_id IS NULL
+  AND (target.work_id IS NULL OR target.work_id > source.paper_id)
 WHEN MATCHED THEN UPDATE SET 
   target.work_id = source.paper_id,
   target.openalex_created_dt = source.openalex_created_dt,
@@ -842,8 +841,8 @@ WITH ids AS (
 MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source 
   ON target.merge_key.title_author = source.title_author
-  AND target.work_id IS NULL
-WHEN MATCHED THEN UPDATE SET 
+  AND (target.work_id IS NULL OR target.work_id > source.paper_id)
+WHEN MATCHED THEN UPDATE SET
   target.work_id = source.paper_id,
   target.openalex_created_dt = source.openalex_created_dt,
   target.openalex_updated_dt = source.openalex_updated_dt;
@@ -851,7 +850,7 @@ WHEN MATCHED THEN UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Populate `locations_mapped.work_id` from `works_id_map` WHERE work_id is NULL
+-- MAGIC ## Populate MINTED `locations_mapped.work_id` from `works_id_map` WHERE work_id is NULL
 -- MAGIC This is not necessarily minting only - `MIN(id)` is used which may result in a match to earlier `work_id`
 
 -- COMMAND ----------
@@ -862,7 +861,7 @@ WHEN MATCHED THEN UPDATE SET
 -- COMMAND ----------
 
 WITH ids AS (
-  SELECT DISTINCT
+  SELECT
     doi as doi,
     MIN(id) AS id,
     MAX(openalex_created_dt) AS openalex_created_dt,
@@ -879,8 +878,7 @@ USING ids AS source
 WHEN MATCHED THEN UPDATE SET 
   target.work_id = source.id,
   target.openalex_created_dt = source.openalex_created_dt,
-  target.openalex_updated_dt = source.openalex_updated_dt
-;
+  target.openalex_updated_dt = source.openalex_updated_dt;
 
 -- COMMAND ----------
 
