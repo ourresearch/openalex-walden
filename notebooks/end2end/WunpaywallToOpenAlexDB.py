@@ -11,6 +11,11 @@
 # MAGIC table_name = "unpaywall.unpaywall_from_walden"
 # MAGIC engine = create_engine(f"postgresql+psycopg2://{user}:{password}@openalex-1.cqlclvdbbujw.us-east-1.rds.amazonaws.com:5432/postgres")
 # MAGIC
+# MAGIC # safety to require manual override of large record changes
+# MAGIC LARGE_RECORD_COUNT = 1500000
+# MAGIC dbutils.widgets.dropdown("force_large_load", "false", ["false", "true"], "Force Large Load Override")
+# MAGIC force_large_load = dbutils.widgets.get("force_large_load").lower() == "true"
+# MAGIC
 # MAGIC # check if this is the first run by seeing if the table exists and has data
 # MAGIC with engine.connect() as conn:
 # MAGIC     result = conn.execute(text(f"""
@@ -101,10 +106,12 @@
 # MAGIC     print(f"Found {record_count} records to update")
 # MAGIC
 # MAGIC     # safety
-# MAGIC     if record_count > 1500000:
-# MAGIC         error_msg = f"Too many records found to export ({record_count:,}). Need to run manually"
+# MAGIC     if record_count > LARGE_RECORD_COUNT and not force_large_load:
+# MAGIC         error_msg = f"Too many records found to export ({record_count:,}). Set 'Force Large Load Override' to 'true' to proceed anyway, or run manually"
 # MAGIC         print(error_msg)
 # MAGIC         raise Exception(error_msg)
+# MAGIC     elif record_count > LARGE_RECORD_COUNT and force_large_load:
+# MAGIC         print(f"WARNING: Processing large dataset ({record_count:,} records) due to override being enabled")
 # MAGIC     
 # MAGIC     if record_count > 0:
 # MAGIC         # create a temporary table for the new/updated records
