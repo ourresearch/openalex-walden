@@ -123,11 +123,11 @@ print(f"Found {record_count} records updated since {last_run_timestamp}")
 
 # safety measure
 if record_count > LARGE_RECORD_COUNT and not force_large_load:
-        error_msg = f"Too many records found to export ({record_count:,}). Set 'Force Large Load Override' to 'true' to proceed anyway, or run manually"
-        print(error_msg)
-        raise Exception(error_msg)
-    elif record_count > LARGE_RECORD_COUNT and force_large_load:
-        print(f"WARNING: Processing large dataset ({record_count:,} records) due to override being enabled")
+    error_msg = f"Too many records found to export ({record_count:,}). Set 'Force Large Load Override' to 'true' to proceed anyway, or run manually"
+    print(error_msg)
+    raise Exception(error_msg)
+elif record_count > LARGE_RECORD_COUNT and force_large_load:
+    print(f"WARNING: Processing large dataset ({record_count:,} records) due to override being enabled")
 
 # COMMAND ----------
 
