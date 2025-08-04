@@ -467,8 +467,8 @@ USING (
     ORDER BY key_score DESC, openalex_updated_dt DESC
   ) = 1
 ) AS source
-ON regexp_replace(MAX(target.doi), '[^a-zA-Z0-9\./-]', '') =
-  regexp_replace(MAX(source.doi), '[^a-zA-Z0-9\./-]', '')
+ON regexp_replace(target.doi, '[^a-zA-Z0-9\./-]', '') =
+   regexp_replace(source.doi, '[^a-zA-Z0-9\./-]', '')
 WHEN MATCHED THEN UPDATE SET
   target.doi = COALESCE(source.doi, target.doi),
   target.pmid = COALESCE(source.pmid, target.pmid),
