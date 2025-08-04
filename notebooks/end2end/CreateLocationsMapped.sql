@@ -247,7 +247,7 @@ ON target.merge_key IS NOT DISTINCT FROM source.merge_key
     )
 WHEN MATCHED
 AND (
-      target.provenance IS DISTINCT FROM source.provenanceL OR
+      target.provenance IS DISTINCT FROM source.provenance OR
       target.native_id IS DISTINCT FROM source.native_id OR
       target.native_id_namespace IS DISTINCT FROM source.native_id_namespace OR
       target.title IS DISTINCT FROM source.title OR
