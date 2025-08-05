@@ -199,7 +199,12 @@ def datacite_parsed():
                             )
                         ),
                         lambda x: ~F.lower(x.namespace).isin("url", "references")
-                    )
+                    ),
+                    F.array(F.struct(
+                        F.col("relationships.client.data.id").alias("id"),
+                        F.lit("datacite_client").alias("namespace"),
+                        F.lit("self").alias("relationship")
+                    ))
                 )
             )
         )
