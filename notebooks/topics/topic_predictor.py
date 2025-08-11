@@ -7,9 +7,11 @@ import numpy as np
 import pathlib
 import unicodedata
 import tensorflow as tf
+import re
 from transformers import TFAutoModelForSequenceClassification, pipeline, AutoTokenizer
 from sentence_transformers import SentenceTransformer
 
+import model_config as cfg
 
 def name_to_keep_ind(groups):
     """
@@ -120,7 +122,7 @@ def get_journal_emb(journal_name):
 
         # Check if non-latin characters are dominant (embedding model not good for that)
         elif check_for_non_latin_characters(journal_name) == 1:
-            return emb_model.encode(journal_name)
+            return cfg.emb_model.encode(journal_name)
 
         elif journal_name == '':
             return np.zeros(384, dtype=np.float32)
@@ -140,7 +142,7 @@ def tokenize(seq):
     Output:
     tok_data: dictionary of tokenized text
     """
-    tok_data = tokenizer(seq, max_length=512, truncation=True, padding='max_length')
+    tok_data = cfg.tokenizer(seq, max_length=512, truncation=True, padding='max_length')
     return [tok_data['input_ids'], tok_data['attention_mask']]
 
 def move_level_0_to_1(level_0, level_1):
@@ -185,9 +187,9 @@ def get_final_citations_feature(citations, num_to_keep):
     """
     if citations:
         new_citations = get_final_citations_for_model(citations, num_to_keep)
-        mapped_cites = [gold_to_label_mapping.get(x) for x in new_citations 
-                        if gold_to_label_mapping.get(x)]
-        temp_feature = [citation_feature_vocab[x] for x in mapped_cites]
+        mapped_cites = [cfg.gold_to_label_mapping.get(x) for x in new_citations 
+                        if cfg.gold_to_label_mapping.get(x)]
+        temp_feature = [cfg.citation_feature_vocab[x] for x in mapped_cites]
     
         if len(temp_feature) < num_to_keep:
             return temp_feature + [0]*(num_to_keep - len(temp_feature))
@@ -380,8 +382,8 @@ def clean_abstract(raw_abstract, inverted=False):
             final_abstract = None
     else:
         ab_len = len(raw_abstract)
-        if ab_len > 30:
-            final_abstract = raw_abstract[:2500]
+        if ab_len > 10:
+            final_abstract = raw_abstract[:3000]
             keep_abs = check_for_non_latin_characters(final_abstract)
             if keep_abs == 1:
                 pass
@@ -450,10 +452,10 @@ def get_lang_model_output(input_ids, attention_mask):
     Output:
     last layer output from language model
     """
-    return xla_predict_lang_model(input_ids=input_ids, attention_mask=attention_mask).hidden_states[-1]
+    return cfg.xla_predict_lang_model(input_ids=input_ids, attention_mask=attention_mask).hidden_states[-1]
     
 
-def create_model(num_classes, emb_table_size, model_chkpt, topk=5):
+def create_model(num_classes, emb_table_size, topk=5):
     """
     Function to create full model.
     
@@ -511,8 +513,80 @@ def create_model(num_classes, emb_table_size, model_chkpt, topk=5):
     model = tf.keras.Model(inputs=[citation_0, citation_1, journal, language_model_output], 
                            outputs=output_layer)
 
-    model.load_weights(model_chkpt, skip_mismatch=True)
+    model.load_weights(cfg.model_checkpoint, skip_mismatch=True)
     model.trainable = False
+
+    return model
+
+def create_model_full(num_classes, emb_table_size):
+    # Load finetuned language model
+    model_name = "bert-base-multilingual-cased"
+    task = "openalex-topic-classification-title-abstract"
+    language_model_name = f"OpenAlex/{model_name}-finetuned-{task}"
+    language_model = TFAutoModelForSequenceClassification.from_pretrained(language_model_name, 
+                                                                          output_hidden_states=True)
+    language_model.trainable = False
+
+
+    # Inputs
+    ids = tf.keras.layers.Input((512,), dtype=tf.int64, name='ids')
+    mask = tf.keras.layers.Input((512,), dtype=tf.int64, name='mask')
+    citation_0 = tf.keras.layers.Input((16,), dtype=tf.int64, name='citation_0')
+    citation_1 = tf.keras.layers.Input((128,), dtype=tf.int64, name='citation_1')
+    journal = tf.keras.layers.Input((384,), dtype=tf.float32, name='journal_emb')
+    
+    language_model_output = language_model(input_ids=ids, attention_mask=mask).hidden_states[-1]
+    pooled_language_model_output = tf.keras.layers.GlobalAveragePooling1D()(language_model_output)
+    
+    citation_emb_layer = tf.keras.layers.Embedding(input_dim=emb_table_size, output_dim=256, mask_zero=True, 
+                                                   trainable=True, name='citation_emb_layer')
+
+    citation_0_emb = citation_emb_layer(citation_0)
+    citation_1_emb = citation_emb_layer(citation_1)
+
+    pooled_citation_0 = tf.keras.layers.GlobalAveragePooling1D()(citation_0_emb)
+    pooled_citation_1 = tf.keras.layers.GlobalAveragePooling1D()(citation_1_emb)
+
+    concat_data = tf.keras.layers.Concatenate(name='concat_data', axis=-1)([pooled_language_model_output, 
+                                                                            pooled_citation_0, 
+                                                                            pooled_citation_1, journal])
+
+    # Dense layer 1
+    dense_output = tf.keras.layers.Dense(2048, activation='relu', 
+                                         kernel_regularizer='L2', name="dense_1")(concat_data)
+    dense_output = tf.keras.layers.Dropout(0.20, name="dropout_1")(dense_output)
+    dense_output = tf.keras.layers.LayerNormalization(epsilon=1e-6, name="layer_norm_1")(dense_output)
+    
+    # Dense layer 2
+    dense_output = tf.keras.layers.Dense(1024, activation='relu', 
+                                         kernel_regularizer='L2', name="dense_2")(dense_output)
+    dense_output = tf.keras.layers.Dropout(0.20, name="dropout_2")(dense_output)
+    dense_output = tf.keras.layers.LayerNormalization(epsilon=1e-6, name="layer_norm_2")(dense_output)
+
+    # Dense layer 3
+    dense_output = tf.keras.layers.Dense(512, activation='relu', 
+                                         kernel_regularizer='L2', name="dense_3")(dense_output)
+    dense_output = tf.keras.layers.Dropout(0.20, name="dropout_3")(dense_output)
+    dense_output = tf.keras.layers.LayerNormalization(epsilon=1e-6, name="layer_norm_3")(dense_output)
+
+    class_prior = 1/len(cfg.target_vocab)
+    last_layer_weight_init = tf.keras.initializers.Constant(class_prior)
+    last_layer_bias_init = tf.keras.initializers.Constant(-np.log((1-class_prior)/class_prior))
+    
+    output_layer = tf.keras.layers.Dense(num_classes, kernel_initializer=last_layer_weight_init,
+                                         bias_initializer=last_layer_bias_init,
+                                         activation='sigmoid', name='output_layer')(dense_output)
+    model = tf.keras.Model(inputs=[ids, mask, citation_0, citation_1, journal], outputs=output_layer)
+
+    # loss_fn = tf.keras.losses.CategoricalFocalCrossentropy()
+
+    # # Compile the model
+    # model.compile(optimizer=tf.keras.optimizers.AdamW(), 
+    #               loss=loss_fn,
+    #               metrics=[tf.keras.metrics.CategoricalAccuracy(), 
+    #                        tf.keras.metrics.TopKCategoricalAccuracy(k=2, name='top_2_categorical_accuracy'),
+    #                        tf.keras.metrics.TopKCategoricalAccuracy(k=5, name='top_5_categorical_accuracy'),
+    #                        tf.keras.metrics.TopKCategoricalAccuracy(k=10, name='top_10_categorical_accuracy')])
 
     return model
 
@@ -582,6 +656,54 @@ def create_model(num_classes, emb_table_size, model_chkpt, topk=5):
 #     model.trainable = False
 
 #     return model
+
+def last_pred_check(old_preds, old_scores, old_labels):
+    """
+    Function to apply some rules to get the final prediction based on scores
+    
+    Input:
+    old_preds: all ids for prediction output
+    old_scores: all scores for prediction output
+    old_labels: all labels for prediction output
+    
+    Output:
+    final_ids: post-processed final ids
+    final_scores: post-processed final scores
+    final_labels: post-processed final labels
+    """
+    pred_scores = [[x,y,z] for x,y,z in zip(old_preds, old_scores, old_labels)]
+
+    # if any of scores are over 0.9
+    if [x[1] for x in pred_scores if x[1] > 0.9]:
+        final_pred_scores = [[x[0], x[1], x[2]] for x in pred_scores if x[1] > 0.9]
+    elif len(pred_scores) == 1:
+        final_pred_scores = pred_scores.copy()
+    elif len(pred_scores) == 2:
+        scores = [x[1] for x in pred_scores]
+        if scores[1] < (scores[0]/2):
+            final_pred_scores = pred_scores[:1].copy()
+        else:
+            final_pred_scores = pred_scores.copy()
+    elif len(pred_scores) == 0:
+        final_pred_scores =  [[-1, 0.0, None]]
+    else:
+        preds = [x[0] for x in pred_scores]
+        scores = [x[1] for x in pred_scores]
+        labels = [x[2] for x in pred_scores]
+
+        score_sum = scores[0]
+        final_pred_scores = pred_scores[:1].copy()
+        for i, (pred, score, label) in enumerate(zip(preds[1:], scores[1:], labels[1:])):
+            if score < (score_sum/(i+1)*0.85):
+                break
+            else:
+                final_pred_scores.append([pred, score, label])
+                score_sum += score
+
+    final_preds = [x[0] for x in final_pred_scores]
+    final_scores = [x[1] for x in final_pred_scores]
+    final_labels = [x[2] for x in final_pred_scores]
+    return final_preds, final_scores, final_labels
 
 def get_final_ids_and_scores(topic_ids, score, labels, title, abstract, threshold=0.04):
     """
@@ -725,7 +847,7 @@ def get_final_ids_and_scores(topic_ids, score, labels, title, abstract, threshol
             else:
                 return [-1], [0.0], [None]
 
-def process_data_as_df(new_df):
+def process_data_as_df(new_df: pd.DataFrame):
     """
     Function to process data as a dataframe (in batch).
     
@@ -737,8 +859,8 @@ def process_data_as_df(new_df):
     """
     input_df = new_df.copy()
     # Get citations into integer format
-    input_df['referenced_works'] = input_df['referenced_works'].apply(lambda x: [int(i.split("https://openalex.org/W")[1]) for 
-                                                                             i in x])
+    input_df['referenced_works'] = input_df['referenced_works'].apply(
+        lambda x: [int(i.split("https://openalex.org/W")[1]) for i in x])
 
      # Process title and abstract and tokenize
     input_df['title'] = input_df['title'].apply(lambda x: clean_title(x))
@@ -749,8 +871,8 @@ def process_data_as_df(new_df):
     input_df['attention_mask'] = tok_title_abstract[1]
     
     # Take citations and return only gold citations (and then convert to label ids)
-    input_df['referenced_works'] = input_df['referenced_works'].apply(lambda x: get_gold_citations_from_all_citations(x, gold_dict, 
-                                                                                                                      non_gold_dict))
+    input_df['referenced_works'] = input_df['referenced_works'].apply(
+        lambda x: get_gold_citations_from_all_citations(x, cfg.gold_dict, cfg.non_gold_dict))
     input_df['citation_0'] = input_df['referenced_works'].apply(lambda x: get_final_citations_feature(x[0], 16))
     input_df['citation_1'] = input_df['referenced_works'].apply(lambda x: get_final_citations_feature(x[1], 128))    
     
@@ -758,19 +880,17 @@ def process_data_as_df(new_df):
     input_df['journal_emb'] = input_df['journal_display_name'].apply(get_journal_emb)
 
     # Check completeness of input data
-    input_df['score_data'] = input_df\
-        .apply(lambda x: 0 if ((x.title == "") & 
-                               (not x.abstract_inverted_index) & 
-                               (x.citation_0[0]==1) & 
-                               (x.citation_1[0]==1)) else 1, axis=1)
+    input_df['score_data'] = input_df.apply(
+        lambda x: 0 if ((x.title == "") and (not x.abstract_inverted_index) and
+                (x.citation_0[0]==1) and (x.citation_1[0]==1)) else 1, axis=1)
 
     data_to_score = input_df[input_df['score_data']==1].copy()
     data_to_not_score = input_df[input_df['score_data']==0][['UID']].copy()
 
     if data_to_score.shape[0] > 0:
         # Transform into output for model
-        data_to_score['input_feature'] = data_to_score.apply(lambda x: create_input_feature([x.ids, x.attention_mask, x.citation_0, 
-                                                                                             x.citation_1, x.journal_emb]), axis=1)
+        data_to_score['input_feature'] = data_to_score.apply(
+            lambda x: create_input_feature([x.ids, x.attention_mask, x.citation_0, x.citation_1, x.journal_emb]), axis=1)
     
         all_rows = [tf.convert_to_tensor([x[0][0] for x in data_to_score['input_feature'].tolist()]), 
                     tf.convert_to_tensor([x[1][0] for x in data_to_score['input_feature'].tolist()]),
@@ -779,10 +899,13 @@ def process_data_as_df(new_df):
                     tf.convert_to_tensor([x[4][0] for x in data_to_score['input_feature'].tolist()])]
         
         lang_model_output = get_lang_model_output(*all_rows[:2])
-        preds = xla_predict((*all_rows[2:], lang_model_output))
-    
-        data_to_score['preds'] = preds.indices.numpy().tolist()
-        data_to_score['scores'] = preds.values.numpy().tolist()
+        preds = cfg.xla_predict((*all_rows[2:], lang_model_output))
+        
+        # preds is a tensor of shape [batch_size, num_classes]
+        topk = tf.math.top_k(preds, k=5)
+
+        data_to_score['preds'] = topk.indices.numpy().tolist()
+        data_to_score['scores'] = topk.values.numpy().tolist()
     else:
         data_to_score['preds'] = [[-1]]*data_to_not_score.shape[0]
         data_to_score['scores'] = [[0.0000]]*data_to_not_score.shape[0]
@@ -793,3 +916,97 @@ def process_data_as_df(new_df):
     return input_df[['UID','title','abstract_inverted_index']].merge(pd.concat([data_to_score[['UID','preds','scores']], 
                                               data_to_not_score[['UID','preds','scores']]], axis=0), 
                                    how='left', on='UID')
+    
+def transform_json(input_df):
+    """
+    Return a prediction for the model.
+    
+    Input:
+    dict JSON of data
+    
+    Output:
+    JSON of predictions
+    """
+
+    final_preds = process_data_as_df(input_df)
+    all_tags = []
+    threshold = 0.04
+    for pred,score,title,abstract in zip(final_preds['preds'].tolist(), final_preds['scores'].tolist(), 
+                                final_preds['title'].tolist(), final_preds['abstract_inverted_index'].tolist()):
+        if pred[0] == -1:
+            final_ids = [-1]
+            final_scores = [0.0]
+            final_labels = [None]
+        else:
+            topic_labels = [cfg.inv_target_vocab[i] for i in pred]
+            topic_ids = [int(i.split(': ')[0]) + 10000 for i in topic_labels]
+            
+            if any(topic_id in topic_ids for topic_id in [13241,12705,13003,12718,14377,13686,13723,13064, 13537,11893, 13459,13444]):
+                final_ids, final_scores, final_labels = get_final_ids_and_scores(topic_ids, score, topic_labels, title, abstract)
+            else:
+                final_ids = [x for x,y in zip(topic_ids, score) if y > threshold]
+                final_scores = [y for y in score if y > threshold]
+                final_labels = [x for x,y in zip(topic_labels, score) if y > threshold]
+
+        if final_ids:
+            if final_ids[0] != -1:
+                final_ids, final_scores, final_labels = last_pred_check(final_ids, final_scores, final_labels)
+                final_ids = [x for x,y,z in zip(final_ids, final_scores, final_labels) if x not in [13241,12718,14377,13686,13723]]
+                final_scores = [y for x,y,z in zip(final_ids, final_scores, final_labels) if x not in [13241,12718,14377,13686,13723]]
+                final_labels = [z for x,y,z in zip(final_ids, final_scores, final_labels) if x not in [13241,12718,14377,13686,13723]]
+            else:
+                pass
+        else:
+            pass
+        
+        if not final_ids:
+            final_ids = [-1]
+            final_scores = [0.0]
+            final_labels = [None]
+
+        single_tags = []
+        _ = [single_tags.append({'topic_id': i,
+                                 'topic_label': k, 
+                                 'topic_score': round(float(j), 4)}) if i != -1 else 
+             single_tags.append({'topic_id': -1,
+                                 'topic_label': None, 
+                                 'topic_score': round(0.0, 4)}) for i,j,k in zip(final_ids, final_scores, final_labels)]
+        all_tags.append(single_tags)
+
+    # Transform predictions to JSON
+    result = json.dumps(all_tags)
+    return result
+
+def postprocess_predictions(results):
+    # raw model output
+    preds = results['preds']
+    scores = results['scores']
+    title = results['title']  # you can extract this from your input record if needed
+    abstract = results['abstract_inverted_index']  # same here
+
+    threshold = 0.04
+    topic_labels = [cfg.inv_target_vocab[i] for i in preds]
+    topic_ids = [int(i.split(': ')[0]) + 10000 for i in topic_labels]
+
+    special_ids = {13241,12705,13003,12718,14377,13686,13723,13064,13537,11893,13459,13444}
+    blacklist = {13241,12718,14377,13686,13723}
+
+    if any(tid in topic_ids for tid in special_ids):
+        final_ids, final_scores, final_labels = get_final_ids_and_scores(topic_ids, scores, topic_labels, title, abstract)
+    else:
+        final_ids = [x for x, y in zip(topic_ids, scores) if y > threshold]
+        final_scores = [y for y in scores if y > threshold]
+        final_labels = [x for x, y in zip(topic_labels, scores) if y > threshold]
+
+    if final_ids and final_ids[0] != -1:
+        final_ids, final_scores, final_labels = last_pred_check(final_ids, final_scores, final_labels)
+        final_ids, final_scores, final_labels = zip(*[
+            (i, j, k) for i, j, k in zip(final_ids, final_scores, final_labels) if i not in blacklist
+        ]) if final_ids else ([-1], [0.0], [None])
+    else:
+        final_ids, final_scores, final_labels = [-1], [0.0], [None]
+
+    return [{'topic_id': i,
+             'topic_label': k,
+             'topic_score': round(float(j), 4)} for i, j, k in zip(final_ids, final_scores, final_labels)]
+    
