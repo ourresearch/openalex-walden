@@ -459,16 +459,15 @@ GROUP BY doi, pmid, arxiv, title_author
 
 MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
 USING (
-  SELECT *
+  SELECT regexp_replace(doi, '[^a-zA-Z0-9\./-]', '') as cleaned_doi, *
   FROM identifier('openalex' || :env_suffix || '.works.work_id_map_new_candidates')
   WHERE doi IS NOT NULL
   QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY doi
+    PARTITION BY regexp_replace(doi, '[^a-zA-Z0-9\./-]', '')
     ORDER BY key_score DESC, openalex_updated_dt DESC
   ) = 1
 ) AS source
-ON regexp_replace(target.doi, '[^a-zA-Z0-9\./-]', '') =
-   regexp_replace(source.doi, '[^a-zA-Z0-9\./-]', '')
+ON regexp_replace(target.doi, '[^a-zA-Z0-9\./-]', '') = cleaned_doi
 WHEN MATCHED THEN UPDATE SET
   target.doi = COALESCE(source.doi, target.doi),
   target.pmid = COALESCE(source.pmid, target.pmid),
