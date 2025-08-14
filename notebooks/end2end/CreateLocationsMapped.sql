@@ -841,6 +841,7 @@ MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS
 USING ids AS source 
   ON target.merge_key.title_author = source.title_author
   AND (target.work_id IS NULL OR target.work_id > source.paper_id)
+  AND LENGTH(source.title_author) > 20
 WHEN MATCHED THEN UPDATE SET
   target.work_id = source.paper_id,
   target.openalex_created_dt = source.openalex_created_dt,
