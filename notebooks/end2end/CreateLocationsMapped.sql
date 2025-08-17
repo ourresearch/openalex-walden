@@ -202,6 +202,99 @@ THEN UPDATE SET
     target.best_doi = source.best_doi,
     target.source_id = source.source_id,
     target.openalex_updated_dt = current_timestamp()
+WHEN NOT MATCHED THEN INSERT (
+work_id,
+merge_key,
+provenance,
+native_id,
+--true_native_id,
+native_id_namespace,
+title,
+normalized_title,
+authors,
+ids,
+type,
+version,
+license,
+language,
+published_date,
+created_date,
+updated_date,
+issue,
+volume,
+first_page,
+last_page,
+is_retracted,
+abstract,
+source_name,
+publisher,
+funders,
+references,
+urls,
+pdf_url,
+landing_page_url,
+pdf_s3_id,
+grobid_s3_id,
+mesh,
+is_oa,
+is_oa_source,
+referenced_works_count,
+referenced_works,
+abstract_inverted_index,
+authors_exist,
+affiliations_exist,
+is_corresponding_exists,
+best_doi,
+source_id,
+openalex_created_dt,
+openalex_updated_dt
+) VALUES (
+null,
+source.merge_key,
+source.provenance,
+source.native_id,
+--source.true_native_id,
+source.native_id_namespace,
+source.title,
+source.normalized_title,
+source.authors,
+source.ids,
+source.type,
+source.version,
+source.license,
+source.language,
+source.published_date,
+source.created_date,
+source.updated_date,
+source.issue,
+source.volume,
+source.first_page,
+source.last_page,
+source.is_retracted,
+source.abstract,
+source.source_name,
+source.publisher,
+source.funders,
+source.references,
+source.urls,
+source.pdf_url,
+source.landing_page_url,
+source.pdf_s3_id,
+source.grobid_s3_id,
+source.mesh,
+source.is_oa,
+source.is_oa_source,
+NULL, --referenced_works_count
+NULL, --referenced_works is calculated from self-join
+source.abstract_inverted_index,
+source.authors_exist,
+source.affiliations_exist,
+source.is_corresponding_exists,
+source.best_doi,
+source.source_id,
+current_date(),
+current_timestamp()
+);
 
 -- COMMAND ----------
 
@@ -222,7 +315,7 @@ distinct_works AS (
 -- 🚫 drop rows whose DOI already exists in locations_mapped after DOI Update
 distinct_works_no_doi AS (
   SELECT d.*
-  FROM   distinct_works d
+  FROM distinct_works d
   LEFT JOIN identifier('openalex' || :env_suffix || '.works.locations_mapped') lm
          ON lm.merge_key.doi = d.merge_key.doi
   WHERE  d.merge_key.doi IS NULL          -- keep no-DOI rows
@@ -760,7 +853,7 @@ MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS
 USING ids AS source 
   ON target.merge_key.doi = source.doi
   AND (target.work_id IS NULL OR target.work_id > source.paper_id)
-WHEN MATCHED AND target.work_id > source.paper_id 
+WHEN MATCHED
 THEN UPDATE SET 
   target.work_id = source.paper_id,
   target.openalex_created_dt = source.openalex_created_dt,
