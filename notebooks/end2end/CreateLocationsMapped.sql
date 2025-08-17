@@ -70,11 +70,14 @@ CREATE TABLE IF NOT EXISTS identifier('openalex' || :env_suffix || '.works.work_
   pmid STRING,
   arxiv STRING,
   title_author STRING,
+  work_id_source STRING,
   openalex_created_dt DATE,
   openalex_updated_dt TIMESTAMP
 )
 CLUSTER BY (doi, pmid, arxiv, title_author)
 TBLPROPERTIES (
+  'delta.deletedFileRetentionDuration' = '60 days', -- default is 7
+  'delta.logRetentionDuration' = '60 days',         -- default is 30  
   'delta.checkpoint.writeStatsAsJson' = 'false',
   'delta.checkpoint.writeStatsAsStruct' = 'true',
   'delta.enableDeletionVectors' = 'true',
