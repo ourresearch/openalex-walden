@@ -178,10 +178,6 @@ def normalize_license(text):
     normalized_text = text.replace(" ", "").replace("-", "").lower()
 
     license_lookups = [
-        # open Access patterns
-        ("infoeureposematicsaccess", "other-oa"),
-        ("openaccess", "other-oa"),
-        
         # publisher-specific
         ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
         ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
@@ -199,6 +195,10 @@ def normalize_license(text):
         
         # public domain
         ("publicdomain", "public-domain"),
+
+        # open Access patterns
+        ("infoeureposematicsaccess", "other-oa"),
+        ("openaccess", "other-oa"),
         
         # software/Dataset licenses
         ("mit ", "mit"),
