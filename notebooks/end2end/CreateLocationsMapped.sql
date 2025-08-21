@@ -88,8 +88,8 @@ TBLPROPERTIES (
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ### Merge deduplicated records from `locations_w_sources` into `locations_mapped`
--- MAGIC Merge deduplicated records from `locations_w_sources` into `locations_mapped`, inserting rows with `work_id = NULL` and updating others.
+-- MAGIC ### Merge deduplicated records from `locations_validated` into `locations_mapped`
+-- MAGIC Merge deduplicated records from `locations_validated` into `locations_mapped`, inserting rows with `work_id = NULL` and updating others.
 
 -- COMMAND ----------
 
@@ -106,7 +106,7 @@ WITH distinct_works AS (
                             native_id_namespace,
                             provenance
                ORDER BY updated_date DESC) AS rwcnt
-    FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
+    FROM identifier('openalex' || :env_suffix || '.works.locations_validated')
     QUALIFY rwcnt = 1
 )
 /* ==========================================================
@@ -303,7 +303,7 @@ WITH counted_works AS (
     SELECT
         *,
         ROW_NUMBER() OVER(PARTITION BY merge_key, native_id, native_id_namespace, provenance ORDER BY updated_date DESC) AS rwcnt
-    FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
+    FROM identifier('openalex' || :env_suffix || '.works.locations_validated')
 ),
 distinct_works AS (
     SELECT *
