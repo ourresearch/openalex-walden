@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.2.1-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.2.2-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -423,15 +423,43 @@ def crossref_parsed():
 
 # COMMAND ----------
 
+# @dlt.table(name="crossref_enriched",
+#            comment="Crossref data after full parsing and author/feature enrichment.")
+# def crossref_enriched():
+#     df_parsed_input = dlt.read_stream("crossref_parsed")
+#     df_walden_works_schema = apply_initial_processing(df_parsed_input, "crossref", walden_works_schema)
+
+#     # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
+#     # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
+#     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+#     return apply_final_merge_key_and_filter(df_enriched)
+
+# Break it into 3 Steps
+# Step 1: Apply initial processing and create the first checkpoint.
+# This table is materialized, so if the pipeline fails later, it can restart from here.
+@dlt.table(name="crossref_processed",
+           comment="Crossref data after initial schema application and processing.")
+def crossref_processed():
+    df_parsed_input = dlt.read_stream("crossref_parsed")
+    return apply_initial_processing(df_parsed_input, "crossref", walden_works_schema)
+
+# Step 2: Isolate the expensive enrichment step into its own table.
+# This is the most critical checkpoint. The expensive UDFs run here, and their
+# results are saved.
+@dlt.table(name="crossref_features_and_authors",
+           comment="Applies expensive author and feature enrichment UDFs.")
+def crossref_features_and_authors():
+    df_processed = dlt.read_stream("crossref_processed")
+    # enrich_with_features_and_author_keys is the expensive operation
+    return enrich_with_features_and_author_keys(df_processed)
+
+# Step 3: The final, quick step.
+# If this step fails, the pipeline restarts from the completed 'crossref_features_and_authors'
+# table, saving hours of reprocessing time.
 @dlt.table(name="crossref_enriched",
            comment="Crossref data after full parsing and author/feature enrichment.")
 def crossref_enriched():
-    df_parsed_input = dlt.read_stream("crossref_parsed")
-    df_walden_works_schema = apply_initial_processing(df_parsed_input, "crossref", walden_works_schema)
-
-    # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
-    # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
-    df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
+    df_enriched = dlt.read_stream("crossref_features_and_authors")
     return apply_final_merge_key_and_filter(df_enriched)
 
 dlt.create_streaming_table(
