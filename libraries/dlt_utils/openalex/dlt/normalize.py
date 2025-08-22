@@ -179,7 +179,7 @@ def normalize_license(text):
 
     license_lookups = [
         # publisher-specific
-        ("elsevier.com/openaccess/userlicense", "publisher-specific-oa"),
+        ("elsevier.com/openaccess/userlicense", None),
         ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
         ("arxiv.orgperpetual", "publisher-specific-oa"),
         ("arxiv.orgnonexclusive", "publisher-specific-oa"),
