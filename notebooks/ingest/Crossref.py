@@ -100,32 +100,28 @@ def crossref_items():
 # Exploded data to multiple columns
 @dlt.table(
   name="crossref_exploded",
-  table_properties={'quality': 'silver'}
+  cluster_by = ["native_id"],
+  table_properties = {
+    "delta.enableChangeDataFeed": "true",
+    "delta.enableDeletionVectors": "true",
+    "delta.autoOptimize.optimizeWrite": "true",
+    "delta.autoOptimize.autoCompact": "true",
+    "quality": "silver"
+  }
 )
 def crossref_snapshots_exploded():
   return (dlt.read_stream("crossref_items")
-      .select(F.explode(F.col("items")).alias("record"))
-      .select("record.*")
-      .withColumn("indexed_date", F.col("indexed.date-time"))
+    .select(F.explode(F.col("items")).alias("record"))
+    .select("record.*")
+    .withColumn("indexed_date", F.col("indexed.date-time"))
+    .withColumnRenamed("DOI", "native_id")
+    .withColumn("updated_date", F.make_date(
+        F.get(F.col("indexed.`date-parts`")[0], 0),
+        F.coalesce(F.get(F.col("indexed.`date-parts`")[0], 1), F.lit(1)),
+        F.coalesce(F.get(F.col("indexed.`date-parts`")[0], 2), F.lit(1))
+    ))
+    .filter(~F.col("type").isin(unallowed_types))
   )
-
-# All the transformations are now safely inside a @dlt.table function.
-@dlt.table(
-    name="crossref_dedup_source",
-    comment="Prepares the exploded data with keys for apply_changes.",
-    temporary=True # This is a good practice for intermediate steps
-)
-def crossref_dedup_source():
-    return (
-        dlt.read_stream("crossref_exploded")
-        .withColumn("native_id", F.col("DOI"))
-        .withColumn("updated_date", F.make_date(
-            F.get(F.col("indexed.`date-parts`")[0], 0),
-            F.coalesce(F.get(F.col("indexed.`date-parts`")[0], 1), F.lit(1)),
-            F.coalesce(F.get(F.col("indexed.`date-parts`")[0], 2), F.lit(1))
-        ))
-        .filter(~F.col("type").isin(unallowed_types))
-    )
 
 # This table will be the target for your merge operation
 dlt.create_streaming_table(
@@ -142,9 +138,9 @@ dlt.create_streaming_table(
 )
 
 # NOW, apply_changes reads from the new intermediate table by its string name.
-dlt.apply_changes(
+dlt.create_auto_cdc_flow(
     target="crossref_deduplicated",
-    source="crossref_dedup_source", # Use the name of the new table
+    source="crossref_exploded", # Use the name of the new table
     keys=["native_id"],
     sequence_by="updated_date"
 )
@@ -197,35 +193,23 @@ def crossref_parsed():
             F.transform(
                 "author",
                 lambda author: F.struct(
-                    F.substring(author["given"], 0, MAX_AUTHOR_NAME_LENGTH).alias(
-                        "given"
-                    ),
-                    F.substring(author["family"], 0, MAX_AUTHOR_NAME_LENGTH).alias(
-                        "family"
-                    ),
-                    F.substring(author["name"], 0, MAX_AUTHOR_NAME_LENGTH).alias(
-                        "name"
-                    ),
+                    F.substring(author["given"], 0, MAX_AUTHOR_NAME_LENGTH).alias("given"),
+                    F.substring(author["family"], 0, MAX_AUTHOR_NAME_LENGTH).alias("family"),
+                    F.substring(author["name"], 0, MAX_AUTHOR_NAME_LENGTH).alias("name"),
                     F.regexp_extract(
                         author["ORCID"], r"(\d{4}-\d{4}-\d{4}-\d{4})", 1
                     ).alias("orcid"),
                     F.transform(
                         author["affiliation"],
                         lambda aff: F.struct(
-                            F.substring(
-                                aff["name"], 0, MAX_AFFILIATION_STRING_LENGTH
-                            ).alias("name"),
-                            F.substring(
-                                F.get(aff["department"], 0),
-                                0,
-                                MAX_AFFILIATION_STRING_LENGTH,
-                            ).alias("department"),
+                            F.substring(aff["name"], 0, MAX_AFFILIATION_STRING_LENGTH).alias("name"),
+                            F.substring(F.get(aff["department"], 0),0,MAX_AFFILIATION_STRING_LENGTH).alias("department"),
                             F.when(
                                 F.get(aff["id"]["id-type"], 0) == "ROR",
-                                F.get(aff["id"]["id"], 0),
-                            ).alias("ror_id"),
+                                F.get(aff["id"]["id"], 0)
+                            ).alias("ror_id")
                         )
-                    ).alias("affiliations"),
+                    ).alias("affiliations")
                 )
             )
         )
@@ -234,49 +218,40 @@ def crossref_parsed():
             F.filter(
                 F.array(
                     F.struct(
-                        F.when(
-                            F.isnull(F.get(extract_issn_id_by_type("print"), 0)), None
-                        )
+                        F.when(F.isnull(F.get(extract_issn_id_by_type("print"), 0)), None)
                         .otherwise(F.get(extract_issn_id_by_type("print"), 0))
                         .alias("id"),
                         F.lit("pissn").alias("namespace"),
-                        F.lit(None).cast("string").alias("relationship"),
+                        F.lit(None).cast("string").alias("relationship")
                     ),
                     F.struct(
-                        F.when(
-                            F.isnull(F.get(extract_issn_id_by_type("electronic"), 0)),
-                            None,
-                        )
-                        .otherwise(F.get(extract_issn_id_by_type("electronic"), 0))
-                        .alias("id"),
+                        F.when(F.isnull(F.get(extract_issn_id_by_type("electronic"), 0)), None)
+                            .otherwise(F.get(extract_issn_id_by_type("electronic"), 0))
+                            .alias("id"),
                         F.lit("eissn").alias("namespace"),
-                        F.lit(None).cast("string").alias("relationship"),
+                        F.lit(None).cast("string").alias("relationship")
                     ),
                     F.struct(
-                        F.when(
-                            F.isnull(F.get(extract_isbn_id_by_type("print"), 0)), None
-                        )
+                        F.when(F.isnull(F.get(extract_isbn_id_by_type("print"), 0)), None)
                         .otherwise(F.get(extract_isbn_id_by_type("print"), 0))
                         .alias("id"),
                         F.lit("pisbn").alias("namespace"),
-                        F.lit(None).cast("string").alias("relationship"),
+                        F.lit(None).cast("string").alias("relationship")
                     ),
                     F.struct(
                         F.when(
                             F.isnull(F.get(extract_isbn_id_by_type("electronic"), 0)),
-                            None,
+                            None
                         )
                         .otherwise(F.get(extract_isbn_id_by_type("electronic"), 0))
                         .alias("id"),
                         F.lit("eisbn").alias("namespace"),
-                        F.lit(None).cast("string").alias("relationship"),
+                        F.lit(None).cast("string").alias("relationship")
                     ),
                     F.struct(
-                        F.when(F.isnull(F.col("DOI")), None)
-                        .otherwise(F.col("DOI"))
-                        .alias("id"),
+                        F.when(F.isnull(F.col("native_id")), None).otherwise(F.col("native_id")).alias("id"),
                         F.lit("doi").alias("namespace"),
-                        F.lit("self").alias("relationship"),
+                        F.lit("self").alias("relationship")
                     )
                 ),
                 lambda x: x.id != ""
@@ -477,7 +452,7 @@ dlt.create_streaming_table(
 )
 
 # NOW, apply_changes reads from the new intermediate table by its string name.
-dlt.apply_changes(
+dlt.create_auto_cdc_flow(
     target="crossref_parsed",
     source="crossref_parsed_source", # Use the name of the new table
     keys=["native_id"],
@@ -535,7 +510,7 @@ dlt.create_streaming_table(
 )
 
 # NOW, apply_changes reads from the new intermediate table by its string name.
-dlt.apply_changes(
+dlt.create_auto_cdc_flow(
     target="crossref_works",
     source="crossref_works_source", # Use the name of the new table
     keys=["native_id"],
