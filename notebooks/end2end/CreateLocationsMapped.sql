@@ -1141,34 +1141,23 @@ WHEN MATCHED THEN UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Create `referenced_works` from `references` dois via self-join to get `work_id` values
+-- MAGIC ## Create `referenced_works` ids from `referenced_works` table
+-- MAGIC - Data comes from an exploded table that is populated using matching and parsing of dois, titles and authors
 
 -- COMMAND ----------
 
-WITH exploded_dois AS (
-  SELECT
-    work_id,
-    EXPLODE(references.doi) AS doi    
-  FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
-),
-mapped_dois AS (
-  SELECT
-    ed.work_id AS citing_work_id,
-    lm.work_id AS cited_work_id
-  FROM exploded_dois ed
-  JOIN identifier('openalex' || :env_suffix || '.works.locations_mapped') lm 
-    ON LOWER(ed.doi) = LOWER(lm.best_doi)
-  WHERE ed.doi IS NOT NULL AND lm.best_doi IS NOT NULL
-),
-aggregated_refs AS (
+WITH aggregated_refs AS (
   SELECT
     citing_work_id,
-    SORT_ARRAY(COLLECT_SET(cited_work_id)) AS referenced_works
-  FROM mapped_dois
+    TRANSFORM(
+      SORT_ARRAY(COLLECT_LIST(STRUCT(ref_ind, cited_work_id))),
+      x -> x.cited_work_id
+    ) AS referenced_works
+  FROM openalex.works.work_references
+  WHERE cited_work_id IS NOT NULL
   GROUP BY citing_work_id
 )
-
-MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
+MERGE INTO openalex.works.locations_mapped AS target
 USING aggregated_refs AS source
 ON target.work_id = source.citing_work_id
 WHEN MATCHED AND (
@@ -1178,7 +1167,6 @@ WHEN MATCHED AND (
 THEN UPDATE SET
   target.referenced_works = source.referenced_works,
   target.referenced_works_count = SIZE(source.referenced_works);
-
 
 -- COMMAND ----------
 
