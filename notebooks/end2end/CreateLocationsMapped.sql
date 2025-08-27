@@ -70,11 +70,14 @@ CREATE TABLE IF NOT EXISTS identifier('openalex' || :env_suffix || '.works.work_
   pmid STRING,
   arxiv STRING,
   title_author STRING,
+  work_id_source STRING,
   openalex_created_dt DATE,
   openalex_updated_dt TIMESTAMP
 )
 CLUSTER BY (doi, pmid, arxiv, title_author)
 TBLPROPERTIES (
+  'delta.deletedFileRetentionDuration' = '60 days', -- default is 7
+  'delta.logRetentionDuration' = '60 days',         -- default is 30  
   'delta.checkpoint.writeStatsAsJson' = 'false',
   'delta.checkpoint.writeStatsAsStruct' = 'true',
   'delta.enableDeletionVectors' = 'true',
@@ -85,8 +88,8 @@ TBLPROPERTIES (
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ### Merge deduplicated records from `locations_w_sources` into `locations_mapped`
--- MAGIC Merge deduplicated records from `locations_w_sources` into `locations_mapped`, inserting rows with `work_id = NULL` and updating others.
+-- MAGIC ### Merge deduplicated records from `locations_validated` into `locations_mapped`
+-- MAGIC Merge deduplicated records from `locations_validated` into `locations_mapped`, inserting rows with `work_id = NULL` and updating others.
 
 -- COMMAND ----------
 
@@ -95,7 +98,7 @@ TBLPROPERTIES (
 
 -- COMMAND ----------
 
-WITH counted_works AS (
+WITH distinct_works AS (
     SELECT  *,
             ROW_NUMBER() OVER (
                PARTITION BY merge_key,
@@ -103,12 +106,9 @@ WITH counted_works AS (
                             native_id_namespace,
                             provenance
                ORDER BY updated_date DESC) AS rwcnt
-    FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
-),
-distinct_works AS (
-    SELECT *  FROM counted_works  WHERE rwcnt = 1
+    FROM identifier('openalex' || :env_suffix || '.works.locations_validated')
+    QUALIFY rwcnt = 1
 )
-
 /* ==========================================================
    PASS A – DOI-only UPDATE (no inserts)
    ========================================================== */
@@ -198,7 +198,101 @@ THEN UPDATE SET
     target.is_corresponding_exists = source.is_corresponding_exists,
     target.best_doi = source.best_doi,
     target.source_id = source.source_id,
-    target.openalex_updated_dt = current_timestamp()
+    target.openalex_updated_dt = current_timestamp();
+-- USE ON FULL REFRESH
+-- WHEN NOT MATCHED THEN INSERT (
+-- work_id,
+-- merge_key,
+-- provenance,
+-- native_id,
+-- --true_native_id,
+-- native_id_namespace,
+-- title,
+-- normalized_title,
+-- authors,
+-- ids,
+-- type,
+-- version,
+-- license,
+-- language,
+-- published_date,
+-- created_date,
+-- updated_date,
+-- issue,
+-- volume,
+-- first_page,
+-- last_page,
+-- is_retracted,
+-- abstract,
+-- source_name,
+-- publisher,
+-- funders,
+-- references,
+-- urls,
+-- pdf_url,
+-- landing_page_url,
+-- pdf_s3_id,
+-- grobid_s3_id,
+-- mesh,
+-- is_oa,
+-- is_oa_source,
+-- referenced_works_count,
+-- referenced_works,
+-- abstract_inverted_index,
+-- authors_exist,
+-- affiliations_exist,
+-- is_corresponding_exists,
+-- best_doi,
+-- source_id,
+-- openalex_created_dt,
+-- openalex_updated_dt
+-- ) VALUES (
+-- null,
+-- source.merge_key,
+-- source.provenance,
+-- source.native_id,
+-- --source.true_native_id,
+-- source.native_id_namespace,
+-- source.title,
+-- source.normalized_title,
+-- source.authors,
+-- source.ids,
+-- source.type,
+-- source.version,
+-- source.license,
+-- source.language,
+-- source.published_date,
+-- source.created_date,
+-- source.updated_date,
+-- source.issue,
+-- source.volume,
+-- source.first_page,
+-- source.last_page,
+-- source.is_retracted,
+-- source.abstract,
+-- source.source_name,
+-- source.publisher,
+-- source.funders,
+-- source.references,
+-- source.urls,
+-- source.pdf_url,
+-- source.landing_page_url,
+-- source.pdf_s3_id,
+-- source.grobid_s3_id,
+-- source.mesh,
+-- source.is_oa,
+-- source.is_oa_source,
+-- NULL, --referenced_works_count
+-- NULL, --referenced_works is calculated from self-join
+-- source.abstract_inverted_index,
+-- source.authors_exist,
+-- source.affiliations_exist,
+-- source.is_corresponding_exists,
+-- source.best_doi,
+-- source.source_id,
+-- current_date(),
+-- current_timestamp()
+-- );
 
 -- COMMAND ----------
 
@@ -209,7 +303,7 @@ WITH counted_works AS (
     SELECT
         *,
         ROW_NUMBER() OVER(PARTITION BY merge_key, native_id, native_id_namespace, provenance ORDER BY updated_date DESC) AS rwcnt
-    FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
+    FROM identifier('openalex' || :env_suffix || '.works.locations_validated')
 ),
 distinct_works AS (
     SELECT *
@@ -219,7 +313,7 @@ distinct_works AS (
 -- 🚫 drop rows whose DOI already exists in locations_mapped after DOI Update
 distinct_works_no_doi AS (
   SELECT d.*
-  FROM   distinct_works d
+  FROM distinct_works d
   LEFT JOIN identifier('openalex' || :env_suffix || '.works.locations_mapped') lm
          ON lm.merge_key.doi = d.merge_key.doi
   WHERE  d.merge_key.doi IS NULL          -- keep no-DOI rows
@@ -459,16 +553,15 @@ GROUP BY doi, pmid, arxiv, title_author
 
 MERGE INTO identifier('openalex' || :env_suffix || '.works.work_id_map') AS target
 USING (
-  SELECT *
+  SELECT regexp_replace(doi, '[^a-zA-Z0-9\./-]', '') as cleaned_doi, *
   FROM identifier('openalex' || :env_suffix || '.works.work_id_map_new_candidates')
   WHERE doi IS NOT NULL
   QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY doi
+    PARTITION BY regexp_replace(doi, '[^a-zA-Z0-9\./-]', '')
     ORDER BY key_score DESC, openalex_updated_dt DESC
   ) = 1
 ) AS source
-ON regexp_replace(target.doi, '[^a-zA-Z0-9\./-]', '') =
-   regexp_replace(source.doi, '[^a-zA-Z0-9\./-]', '')
+ON regexp_replace(target.doi, '[^a-zA-Z0-9\./-]', '') = cleaned_doi
 WHEN MATCHED THEN UPDATE SET
   target.doi = COALESCE(source.doi, target.doi),
   target.pmid = COALESCE(source.pmid, target.pmid),
@@ -758,7 +851,7 @@ MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS
 USING ids AS source 
   ON target.merge_key.doi = source.doi
   AND (target.work_id IS NULL OR target.work_id > source.paper_id)
-WHEN MATCHED AND target.work_id > source.paper_id 
+WHEN MATCHED
 THEN UPDATE SET 
   target.work_id = source.paper_id,
   target.openalex_created_dt = source.openalex_created_dt,
@@ -842,6 +935,7 @@ MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS
 USING ids AS source 
   ON target.merge_key.title_author = source.title_author
   AND (target.work_id IS NULL OR target.work_id > source.paper_id)
+  AND LENGTH(source.title_author) > 20
 WHEN MATCHED THEN UPDATE SET
   target.work_id = source.paper_id,
   target.openalex_created_dt = source.openalex_created_dt,
@@ -1255,35 +1349,23 @@ WHEN NOT MATCHED THEN INSERT (
 
 -- COMMAND ----------
 
--- MAGIC %md
--- MAGIC ## Create `referenced_works` from `references` dois via self-join to get `work_id` values
+-- MAGIC %md ## Create `referenced_works` ids from `referenced_works` table
+-- MAGIC - Data comes from an exploded table that is populated using matching and parsing of dois, titles and authors
 
 -- COMMAND ----------
 
-WITH exploded_dois AS (
-  SELECT
-    work_id,
-    EXPLODE(references.doi) AS doi    
-  FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
-),
-mapped_dois AS (
-  SELECT
-    ed.work_id AS citing_work_id,
-    lm.work_id AS cited_work_id
-  FROM exploded_dois ed
-  JOIN identifier('openalex' || :env_suffix || '.works.locations_mapped') lm 
-    ON LOWER(ed.doi) = LOWER(lm.best_doi)
-  WHERE ed.doi IS NOT NULL AND lm.best_doi IS NOT NULL
-),
-aggregated_refs AS (
+WITH aggregated_refs AS (
   SELECT
     citing_work_id,
-    SORT_ARRAY(COLLECT_SET(cited_work_id)) AS referenced_works
-  FROM mapped_dois
+    TRANSFORM(
+      SORT_ARRAY(COLLECT_LIST(STRUCT(ref_ind, cited_work_id))),
+      x -> x.cited_work_id
+    ) AS referenced_works
+  FROM openalex.works.work_references
+  WHERE cited_work_id IS NOT NULL
   GROUP BY citing_work_id
 )
-
-MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
+MERGE INTO openalex.works.locations_mapped AS target
 USING aggregated_refs AS source
 ON target.work_id = source.citing_work_id
 WHEN MATCHED AND (
@@ -1293,7 +1375,6 @@ WHEN MATCHED AND (
 THEN UPDATE SET
   target.referenced_works = source.referenced_works,
   target.referenced_works_count = SIZE(source.referenced_works);
-
 
 -- COMMAND ----------
 
