@@ -1047,6 +1047,215 @@ WHEN MATCHED THEN UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
+-- MAGIC ## Curations
+
+-- COMMAND ----------
+
+-- new locations
+WITH curation_locations AS (
+  SELECT 
+    -- Extract work_id and convert from OpenAlex URL to numeric ID
+    CASE 
+      WHEN get_json_object(property_value, '$.work_id') LIKE 'https://openalex.org/W%'
+      THEN CAST(SUBSTRING(get_json_object(property_value, '$.work_id'), 23) AS BIGINT)
+      ELSE NULL
+    END AS work_id,
+    
+    NULL as work_id_source,
+    
+    -- Create merge_key structure with minimal data
+    STRUCT(
+      NULL as doi,
+      NULL as pmid, 
+      NULL as arxiv,
+      CASE 
+        WHEN get_json_object(property_value, '$.title') IS NOT NULL 
+        THEN CONCAT(
+          get_json_object(property_value, '$.title'), 
+          '_', 
+          CAST(
+            CASE 
+              WHEN get_json_object(property_value, '$.work_id') LIKE 'https://openalex.org/W%'
+              THEN SUBSTRING(get_json_object(property_value, '$.work_id'), 23)
+              ELSE id
+            END AS STRING
+          )
+        )
+        ELSE NULL 
+      END as title_author
+    ) as merge_key,
+    
+    NULL as key_lineage,
+    'curation' as provenance,
+    SPLIT(entity_id, ':')[1] as native_id,
+    'openalex_curation' as native_id_namespace,
+    get_json_object(property_value, '$.title') as title,
+    NULL as normalized_title,
+    CAST(NULL AS ARRAY<STRUCT<given: STRING, family: STRING, name: STRING, orcid: STRING, affiliations: ARRAY<STRUCT<name: STRING, department: STRING, ror_id: STRING>>, is_corresponding: BOOLEAN, author_key: STRING>>) as authors,
+    CAST(NULL AS ARRAY<STRUCT<id: STRING, namespace: STRING, relationship: STRING>>) as ids,
+    NULL as type,
+    'submittedVersion' as version,
+    get_json_object(property_value, '$.license') as license,
+    NULL as language,
+    NULL as published_date,
+    NULL as created_date,
+    current_date() as updated_date,
+    NULL as issue,
+    NULL as volume,
+    NULL as first_page,
+    NULL as last_page,
+    NULL as is_retracted,
+    NULL as abstract,
+    NULL as source_name,
+    NULL as publisher,
+    CAST(NULL AS ARRAY<STRUCT<doi: STRING, ror: STRING, name: STRING, awards: ARRAY<STRING>>>) as funders,
+    CAST(NULL AS ARRAY<STRUCT<doi: STRING, pmid: STRING, arxiv: STRING, title: STRING, authors: STRING, year: STRING, raw: STRING>>) as references,
+    CAST(NULL AS ARRAY<STRUCT<url: STRING, content_type: STRING>>) as urls,
+    get_json_object(property_value, '$.pdf_url') as pdf_url,
+    get_json_object(property_value, '$.landing_page_url') as landing_page_url,
+    NULL as pdf_s3_id,
+    NULL as grobid_s3_id,
+    NULL as mesh,
+    CAST(get_json_object(property_value, '$.is_oa') AS BOOLEAN) as is_oa,
+    NULL as is_oa_source,
+    NULL as referenced_works_count,
+    CAST(NULL AS ARRAY<BIGINT>) as referenced_works,
+    NULL as abstract_inverted_index,
+    NULL as authors_exist,
+    NULL as affiliations_exist,
+    NULL as is_corresponding_exists,
+    NULL as best_doi,
+    
+    -- Extract source_id and convert from OpenAlex URL to numeric ID
+    CASE 
+      WHEN get_json_object(property_value, '$.source_id') LIKE 'https://openalex.org/S%'
+      THEN CAST(SUBSTRING(get_json_object(property_value, '$.source_id'), 23) AS BIGINT)
+      ELSE NULL
+    END AS source_id,
+    
+    current_date() as openalex_created_dt,
+    current_timestamp() as openalex_updated_dt
+    
+  FROM openalex.curations.approved_curations
+  WHERE entity = 'locations'
+    AND status = 'approved'
+    AND create_new = true
+)
+
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
+USING curation_locations AS source
+ON target.native_id = source.native_id 
+   AND target.native_id_namespace = source.native_id_namespace
+   AND target.provenance = source.provenance
+
+WHEN MATCHED THEN UPDATE SET
+    target.title = source.title,
+    target.pdf_url = source.pdf_url,
+    target.landing_page_url = source.landing_page_url,
+    target.license = source.license,
+    target.is_oa = source.is_oa,
+    target.source_id = source.source_id,
+    target.openalex_updated_dt = source.openalex_updated_dt
+
+WHEN NOT MATCHED THEN INSERT (
+    work_id,
+    work_id_source,
+    merge_key,
+    key_lineage,
+    provenance,
+    native_id,
+    native_id_namespace,
+    title,
+    normalized_title,
+    authors,
+    ids,
+    type,
+    version,
+    license,
+    language,
+    published_date,
+    created_date,
+    updated_date,
+    issue,
+    volume,
+    first_page,
+    last_page,
+    is_retracted,
+    abstract,
+    source_name,
+    publisher,
+    funders,
+    references,
+    urls,
+    pdf_url,
+    landing_page_url,
+    pdf_s3_id,
+    grobid_s3_id,
+    mesh,
+    is_oa,
+    is_oa_source,
+    referenced_works_count,
+    referenced_works,
+    abstract_inverted_index,
+    authors_exist,
+    affiliations_exist,
+    is_corresponding_exists,
+    best_doi,
+    source_id,
+    openalex_created_dt,
+    openalex_updated_dt
+) VALUES (
+    source.work_id,
+    source.work_id_source,
+    source.merge_key,
+    source.key_lineage,
+    source.provenance,
+    source.native_id,
+    source.native_id_namespace,
+    source.title,
+    source.normalized_title,
+    source.authors,
+    source.ids,
+    source.type,
+    source.version,
+    source.license,
+    source.language,
+    source.published_date,
+    source.created_date,
+    source.updated_date,
+    source.issue,
+    source.volume,
+    source.first_page,
+    source.last_page,
+    source.is_retracted,
+    source.abstract,
+    source.source_name,
+    source.publisher,
+    source.funders,
+    source.references,
+    source.urls,
+    source.pdf_url,
+    source.landing_page_url,
+    source.pdf_s3_id,
+    source.grobid_s3_id,
+    source.mesh,
+    source.is_oa,
+    source.is_oa_source,
+    source.referenced_works_count,
+    source.referenced_works,
+    source.abstract_inverted_index,
+    source.authors_exist,
+    source.affiliations_exist,
+    source.is_corresponding_exists,
+    source.best_doi,
+    source.source_id,
+    source.openalex_created_dt,
+    source.openalex_updated_dt
+);
+
+-- COMMAND ----------
+
+-- MAGIC %md
 -- MAGIC ## Create `referenced_works` from `references` dois via self-join to get `work_id` values
 
 -- COMMAND ----------
