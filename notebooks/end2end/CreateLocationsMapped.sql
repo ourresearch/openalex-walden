@@ -1141,13 +1141,12 @@ WHEN MATCHED THEN UPDATE SET
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ## Curations
+-- MAGIC ## Curation - new locations
 
 -- COMMAND ----------
 
--- new locations
 WITH curation_locations AS (
-  SELECT 
+  SELECT
     -- Extract work_id and convert from OpenAlex URL to numeric ID
     CASE 
       WHEN get_json_object(property_value, '$.work_id') LIKE 'https://openalex.org/W%'
@@ -1156,6 +1155,7 @@ WITH curation_locations AS (
     END AS work_id,
     
     NULL as work_id_source,
+    TRY_TO_TIMESTAMP(moderated_date) AS moderated_ts,
     
     -- Create merge_key structure with minimal data
     STRUCT(
@@ -1193,7 +1193,7 @@ WITH curation_locations AS (
     NULL as language,
     NULL as published_date,
     NULL as created_date,
-    current_date() as updated_date,
+    CAST(moderated_ts AS DATE) as updated_date,
     NULL as issue,
     NULL as volume,
     NULL as first_page,
@@ -1227,8 +1227,8 @@ WITH curation_locations AS (
       ELSE NULL
     END AS source_id,
     
-    current_date() as openalex_created_dt,
-    current_timestamp() as openalex_updated_dt
+    CAST(moderated_ts AS DATE)  as openalex_created_dt,
+    moderated_ts as openalex_updated_dt
     
   FROM openalex.curations.approved_curations
   WHERE entity = 'locations'
@@ -1242,14 +1242,23 @@ ON target.native_id = source.native_id
    AND target.native_id_namespace = source.native_id_namespace
    AND target.provenance = source.provenance
 
-WHEN MATCHED THEN UPDATE SET
-    target.title = source.title,
-    target.pdf_url = source.pdf_url,
-    target.landing_page_url = source.landing_page_url,
-    target.license = source.license,
-    target.is_oa = source.is_oa,
-    target.source_id = source.source_id,
-    target.openalex_updated_dt = source.openalex_updated_dt
+WHEN MATCHED AND (
+   (source.title            IS NOT NULL AND source.title            IS DISTINCT FROM target.title) OR
+   (source.pdf_url          IS NOT NULL AND source.pdf_url          IS DISTINCT FROM target.pdf_url) OR
+   (source.landing_page_url IS NOT NULL AND source.landing_page_url IS DISTINCT FROM target.landing_page_url) OR
+   (source.license          IS NOT NULL AND source.license          IS DISTINCT FROM target.license) OR
+   (source.is_oa            IS NOT NULL AND source.is_oa            IS DISTINCT FROM target.is_oa) OR
+   (source.source_id        IS NOT NULL AND source.source_id        IS DISTINCT FROM target.source_id)
+)
+THEN UPDATE SET
+  target.title               = COALESCE(source.title,            target.title),
+  target.pdf_url             = COALESCE(source.pdf_url,          target.pdf_url),
+  target.landing_page_url    = COALESCE(source.landing_page_url, target.landing_page_url),
+  target.license             = COALESCE(source.license,          target.license),
+  target.is_oa               = COALESCE(source.is_oa,            target.is_oa),
+  target.source_id           = COALESCE(source.source_id,        target.source_id),
+  target.updated_date        = CAST(source.openalex_updated_dt AS DATE),
+  target.openalex_updated_dt = source.openalex_updated_dt
 
 WHEN NOT MATCHED THEN INSERT (
     work_id,
@@ -1346,6 +1355,131 @@ WHEN NOT MATCHED THEN INSERT (
     source.openalex_created_dt,
     source.openalex_updated_dt
 );
+
+-- COMMAND ----------
+
+-- MAGIC %md
+-- MAGIC ## Curation - location overrides
+
+-- COMMAND ----------
+
+-- 1) Latest approved curation per (entity_id, property)
+WITH latest_per_field AS (
+  SELECT
+    split(entity_id, ':')[1] AS native_id,
+    split(entity_id, ':')[0] AS native_id_namespace,
+    property,
+    NULLIF(TRIM(property_value), 'null') AS property_value,
+    TRY_TO_TIMESTAMP(moderated_date) AS moderated_ts,
+    ROW_NUMBER() OVER (
+      PARTITION BY entity_id, property
+      ORDER BY TRY_TO_TIMESTAMP(moderated_date) DESC NULLS LAST, id DESC
+    ) AS rn
+  FROM openalex.curations.approved_curations
+  WHERE entity = 'locations'
+    AND status = 'approved'
+    AND create_new = false
+),
+dedup AS (
+  SELECT native_id, native_id_namespace, property, property_value, moderated_ts
+  FROM latest_per_field
+  WHERE rn = 1
+),
+
+-- 2) Pivot with a value and an "apply" flag per field, so we can update values to null
+curation_overrides_pivoted AS (
+  SELECT
+    native_id,
+    native_id_namespace,
+
+    -- values
+    MAX(CASE WHEN property='title'             THEN property_value END)                                  AS title_val,
+    MAX(CASE WHEN property='pdf_url'           THEN property_value END)                                  AS pdf_url_val,
+    MAX(CASE WHEN property='landing_page_url'  THEN property_value END)                                  AS landing_page_url_val,
+    MAX(CASE WHEN property='license'           THEN LOWER(property_value) END)                           AS license_val,
+    MAX(CASE WHEN property='is_oa'             THEN CAST(LOWER(property_value) IN ('true','t','1','yes') AS BOOLEAN) END) AS is_oa_val,
+
+    MAX(CASE WHEN property='type'              THEN LOWER(property_value) END)                           AS type_val,
+    MAX(CASE WHEN property='version'           THEN property_value END)                                   AS version_val,
+    MAX(CASE WHEN property='language'          THEN LOWER(property_value) END)                            AS language_val,
+    MAX(CASE WHEN property='issue'             THEN property_value END)                                   AS issue_val,
+    MAX(CASE WHEN property='volume'            THEN property_value END)                                   AS volume_val,
+    MAX(CASE WHEN property='first_page'        THEN property_value END)                                   AS first_page_val,
+    MAX(CASE WHEN property='last_page'         THEN property_value END)                                   AS last_page_val,
+    MAX(CASE WHEN property='is_retracted'      THEN CAST(LOWER(property_value) IN ('true','t','1','yes') AS BOOLEAN) END) AS is_retracted_val,
+
+    -- apply flags (1 if curator set the field, even if to NULL)
+    MAX(CASE WHEN property='title'             THEN 1 ELSE 0 END) AS title_apply,
+    MAX(CASE WHEN property='pdf_url'           THEN 1 ELSE 0 END) AS pdf_url_apply,
+    MAX(CASE WHEN property='landing_page_url'  THEN 1 ELSE 0 END) AS landing_page_url_apply,
+    MAX(CASE WHEN property='license'           THEN 1 ELSE 0 END) AS license_apply,
+    MAX(CASE WHEN property='is_oa'             THEN 1 ELSE 0 END) AS is_oa_apply,
+    MAX(CASE WHEN property='type'              THEN 1 ELSE 0 END) AS type_apply,
+    MAX(CASE WHEN property='version'           THEN 1 ELSE 0 END) AS version_apply,
+    MAX(CASE WHEN property='language'          THEN 1 ELSE 0 END) AS language_apply,
+    MAX(CASE WHEN property='issue'             THEN 1 ELSE 0 END) AS issue_apply,
+    MAX(CASE WHEN property='volume'            THEN 1 ELSE 0 END) AS volume_apply,
+    MAX(CASE WHEN property='first_page'        THEN 1 ELSE 0 END) AS first_page_apply,
+    MAX(CASE WHEN property='last_page'         THEN 1 ELSE 0 END) AS last_page_apply,
+    MAX(CASE WHEN property='is_retracted'      THEN 1 ELSE 0 END) AS is_retracted_apply,
+
+    MAX(moderated_ts) AS latest_moderated_dt
+  FROM dedup
+  GROUP BY native_id, native_id_namespace
+)
+
+-- 3) MERGE: use apply flags, allow NULL values, and only update on real changes
+MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
+USING curation_overrides_pivoted AS source
+ON  target.native_id = source.native_id
+AND target.native_id_namespace = source.native_id_namespace
+
+WHEN MATCHED AND (
+  (source.title_apply            = 1 AND source.title_val            IS DISTINCT FROM target.title)            OR
+  (source.pdf_url_apply          = 1 AND source.pdf_url_val          IS DISTINCT FROM target.pdf_url)          OR
+  (source.pdf_url_apply = 1 AND source.pdf_url_val IS NULL AND
+     EXISTS(target.urls, x -> lower(x.content_type) IN ('pdf','application/pdf'))
+  ) OR
+  (source.landing_page_url_apply = 1 AND source.landing_page_url_val IS DISTINCT FROM target.landing_page_url) OR
+  (source.license_apply          = 1 AND source.license_val          IS DISTINCT FROM target.license)          OR
+  (source.is_oa_apply            = 1 AND source.is_oa_val            IS DISTINCT FROM target.is_oa)            OR
+  (source.type_apply             = 1 AND source.type_val             IS DISTINCT FROM target.`type`)           OR
+  (source.version_apply          = 1 AND source.version_val          IS DISTINCT FROM target.version)          OR
+  (source.language_apply         = 1 AND source.language_val         IS DISTINCT FROM target.language)         OR
+  (source.issue_apply            = 1 AND source.issue_val            IS DISTINCT FROM target.issue)            OR
+  (source.volume_apply           = 1 AND source.volume_val           IS DISTINCT FROM target.volume)           OR
+  (source.first_page_apply       = 1 AND source.first_page_val       IS DISTINCT FROM target.first_page)       OR
+  (source.last_page_apply        = 1 AND source.last_page_val        IS DISTINCT FROM target.last_page)        OR
+  (source.is_retracted_apply     = 1 AND source.is_retracted_val     IS DISTINCT FROM target.is_retracted)
+)
+THEN UPDATE SET
+  target.title            = CASE WHEN source.title_apply            = 1 THEN source.title_val            ELSE target.title            END,
+  target.pdf_url          = CASE WHEN source.pdf_url_apply          = 1 THEN source.pdf_url_val          ELSE target.pdf_url          END,
+  -- when pdf_url is set to null we need to remove pdf urls from the urls array too, or they will be picked up in works. CDM
+  target.urls = CASE
+                  WHEN source.pdf_url_apply = 1 AND source.pdf_url_val IS NULL THEN
+                    CASE WHEN target.urls IS NULL THEN NULL
+                         ELSE FILTER(
+                                target.urls,
+                                x -> lower(x.content_type) NOT IN ('pdf','application/pdf')
+                              )
+                    END
+                  ELSE target.urls
+                END,
+  target.landing_page_url = CASE WHEN source.landing_page_url_apply = 1 THEN source.landing_page_url_val ELSE target.landing_page_url END,
+  target.license          = CASE WHEN source.license_apply          = 1 THEN source.license_val          ELSE target.license          END,
+  target.is_oa            = CASE WHEN source.is_oa_apply            = 1 THEN source.is_oa_val            ELSE target.is_oa            END,
+  target.`type`           = CASE WHEN source.type_apply             = 1 THEN source.type_val             ELSE target.`type`           END,
+  target.version          = CASE WHEN source.version_apply          = 1 THEN source.version_val          ELSE target.version          END,
+  target.language         = CASE WHEN source.language_apply         = 1 THEN source.language_val         ELSE target.language         END,
+  target.issue            = CASE WHEN source.issue_apply            = 1 THEN source.issue_val            ELSE target.issue            END,
+  target.volume           = CASE WHEN source.volume_apply           = 1 THEN source.volume_val           ELSE target.volume           END,
+  target.first_page       = CASE WHEN source.first_page_apply       = 1 THEN source.first_page_val       ELSE target.first_page       END,
+  target.last_page        = CASE WHEN source.last_page_apply        = 1 THEN source.last_page_val        ELSE target.last_page        END,
+  target.is_retracted     = CASE WHEN source.is_retracted_apply     = 1 THEN source.is_retracted_val     ELSE target.is_retracted     END,
+
+  target.openalex_updated_dt = source.latest_moderated_dt
+;
 
 -- COMMAND ----------
 
