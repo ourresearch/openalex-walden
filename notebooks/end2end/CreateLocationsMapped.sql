@@ -1514,7 +1514,3 @@ THEN UPDATE SET
 
 SELECT format_number(COUNT(*), 0) as row_count
 FROM openalex.works.locations_mapped --618,448,502 - July 16th, 618,777,313 - July 17th
-
--- COMMAND ----------
-
-
