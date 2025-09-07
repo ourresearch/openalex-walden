@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS identifier('openalex' || :env_suffix || '.works.locat
   version STRING,
   license STRING,
   language STRING,
+  language_classification struct<language: string, score: double>,
   published_date DATE,
   created_date DATE,
   updated_date DATE,
