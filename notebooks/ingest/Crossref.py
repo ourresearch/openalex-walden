@@ -327,7 +327,10 @@ def crossref_parsed():
         .withColumn("volume", F.col("volume"))
         .withColumn("first_page", F.get(F.split("page", "-"), 0))
         .withColumn("last_page", F.coalesce(F.get(F.split("page", "-"), 1), "first_page"))
-        .withColumn("is_retracted", F.col("update-to.label")[0] == "Retraction")
+        .withColumn("is_retracted",
+            F.exists(F.col("update-to"), lambda x: F.lower(x["label"]) == "retraction") |
+            F.exists(F.col("updated-by"), lambda x: F.lower(x["label"]) == "retraction")
+        )
         .withColumn("abstract", F.substring(F.col("abstract"), 0, MAX_ABSTRACT_LENGTH))
         .withColumn("source_name", F.col("`container-title`")[0])
         .withColumn("publisher", F.col("publisher"))
@@ -407,7 +410,6 @@ def crossref_parsed():
             "native_id_namespace",
             "title",
             "normalized_title",
-            "authors",
             "ids",
             "type",
             "version",
