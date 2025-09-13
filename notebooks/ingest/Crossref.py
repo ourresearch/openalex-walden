@@ -410,6 +410,7 @@ def crossref_parsed():
             "native_id_namespace",
             "title",
             "normalized_title",
+            "authors",
             "ids",
             "type",
             "version",
