@@ -15,7 +15,7 @@ import unicodedata
 from functools import reduce
 import pandas as pd
 
-from openalex.dlt.normalize import walden_works_schema
+from openalex.dlt.normalize import walden_works_schema, normalize_license
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # COMMAND ----------
@@ -270,6 +270,10 @@ def extract_fields_udf(xml_series: pd.Series) -> pd.DataFrame:
     results = [extract_fields(xml) for xml in xml_series]
     return pd.DataFrame(results)
 
+@pandas_udf(StringType())
+def normalize_license_udf(license_series: pd.Series) -> pd.Series:
+    return license_series.apply(normalize_license)
+
 # COMMAND ----------
 
 @dlt.view
@@ -291,7 +295,11 @@ def grobid_raw():
 @dlt.table
 def pdf_parse():
    df = dlt.read_stream("grobid_raw")
-   parsed_df = df.withColumn("fields", extract_fields_udf(col("xml_content")))
+   parsed_df = (
+       df
+       .withColumn("fields", extract_fields_udf(col("xml_content")))
+       .withColumn("license", normalize_license_udf(col("xml_content")))
+   )
 
    version_column = when(
         (col("native_id_namespace") == "pmh") &
@@ -371,6 +379,7 @@ def pdf_parse():
        current_timestamp().alias("updated_date"),
        lit(True).alias("is_oa"),
        version_column.alias("version"),
+       col("license").alias("license"),
        col("fields.fulltext").alias("fulltext")
    )
 
