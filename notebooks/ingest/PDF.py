@@ -15,7 +15,7 @@ import unicodedata
 from functools import reduce
 import pandas as pd
 
-from openalex.dlt.normalize import walden_works_schema, normalize_license
+from openalex.dlt.normalize import walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # COMMAND ----------
@@ -260,10 +260,49 @@ def extract_fields(xml_content):
             "fulltext": None
         }
 
-# @TODO figure out if we can use pandas_udf here
-# @udf(fields_schema)
-# def extract_fields_udf(xml_content):
-#     return extract_fields(xml_content)
+def normalize_license(text):
+    if not text:
+        return None
+
+    normalized_text = text.replace(" ", "").replace("-", "").lower()
+
+    license_lookups = [
+        # publisher-specific
+        ("elsevier.com/openaccess/userlicense", None),
+        ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "publisher-specific-oa"),
+        ("arxiv.orgperpetual", "publisher-specific-oa"),
+        ("arxiv.orgnonexclusive", "publisher-specific-oa"),
+        
+        # creative Commons licenses
+        ("ccbyncnd", "cc-by-nc-nd"),
+        ("ccbyncsa", "cc-by-nc-sa"),
+        ("ccbynd", "cc-by-nd"),
+        ("ccbysa", "cc-by-sa"),
+        ("ccbync", "cc-by-nc"),
+        ("ccby", "cc-by"),
+        ("creativecommons.org/licenses/by/", "cc-by"),
+        
+        # public domain
+        ("publicdomain", "public-domain"),
+
+        # open Access patterns
+        ("infoeureposematicsaccess", "other-oa"),
+        ("openaccess", "other-oa"),
+        
+        # software/Dataset licenses
+        ("mit ", "mit"),
+        ("gpl3", "gpl-3"),
+        ("gpl2", "gpl-2"),
+        # ("gpl", "gpl"),  too many results with this
+        ("apache2", "apache-2.0")
+    ]
+
+    for lookup, license in license_lookups:
+        if lookup in normalized_text:
+            if license == "public-domain" and "worksnotinthepublicdomain" in normalized_text:
+                continue
+            return license
+    return None
 
 @pandas_udf(fields_schema)
 def extract_fields_udf(xml_series: pd.Series) -> pd.DataFrame:
