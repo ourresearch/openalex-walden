@@ -70,7 +70,12 @@ def send_partition_to_elastic(partition, index_name):
 print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 try:
-    df = spark.sql(f"SELECT id, STRUCT(*) as _source FROM {CONFIG['table_name']}").repartition(1024).cache()
+    df = (spark.table(f"{CONFIG['table_name']}")
+        .withColumn("topics", F.slice(F.col("topics"), 1, 5))
+        .withColumn("topic_share", F.slice(F.col("topic_share"), 1, 5))
+        .select("id", F.struct(F.col("*")).alias("_source"))
+    )
+    df = df.repartition(1024).cache()
     print(f"Total records to process: {df.count()}")
     
     def send_partition_wrapper(partition):
@@ -115,8 +120,13 @@ TEST = False
 if (TEST):
     indexed_count = 0
     # --- Your existing setup code remains the same ---
-    df_transformed_rows = spark.sql(f"SELECT id, STRUCT(*) as _source FROM {CONFIG['table_name']} LIMIT 10000").collect()
-    print(f"Total records to process: {len(df_transformed_rows)}")
+    df = (spark.table(f"{CONFIG['table_name']}")
+        .withColumn("topics", F.slice(F.col("topics"), 1, 5))
+        .withColumn("topic_share", F.slice(F.col("topic_share"), 1, 5))
+        .select("id", F.struct(F.col("*")).alias("_source"))
+    )    
+    df_rows = df.limit(10000).collect()
+    print(f"Total records to process: {len(df_rows)}")
 
     client = Elasticsearch(
         hosts=[ELASTIC_URL],
@@ -134,7 +144,7 @@ if (TEST):
     # Use streaming_bulk with a small chunk_size
     for success, info in helpers.streaming_bulk(
         client,
-        generate_prepared_actions(df_transformed_rows, parsing_errors), # Assuming the generator is simplified
+        generate_prepared_actions(df_rows, parsing_errors), # Assuming the generator is simplified
         chunk_size=1000 # Process in batches of 10
     ):
         if success:
