@@ -48,11 +48,6 @@ def send_partition_to_elastic(partition, index_name):
             if not success:
                 print(f"FAILED TO INDEX: {info}")
                 raise Exception(f"Failed to index document: {info}")
-            # we can't see these messages unless we collect them per partition like in Works
-            # elif count % 1000 == 0:
-            #     msg = f"Indexed {count} documents to {index_name}..."
-            #     log.warning(msg)
-            #     print(msg)
         
         print(f"Successfully indexed {count} total documents to {index_name}")
         
