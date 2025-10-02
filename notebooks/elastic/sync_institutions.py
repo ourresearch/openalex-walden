@@ -65,7 +65,7 @@ def send_partition_to_elastic(partition, index_name):
 print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 try:
-    df = (spark.table(f"{CONFIG['table_name']}")
+    df = (spark.sql(f"SELECT * FROM {CONFIG['table_name']}")
         # First cast to timestamp
         .withColumn("created_date", F.to_timestamp("created_date"))
         .withColumn("updated_date", F.to_timestamp("updated_date"))
@@ -86,7 +86,7 @@ try:
         )
         .select("id", F.struct(F.col("*")).alias("_source"))
     )
-    df = df.repartition(8)
+    df = df.repartition(64)
     print(f"Total records to process: {df.count()}")
     
     def send_partition_wrapper(partition):
@@ -104,6 +104,7 @@ except Exception as e:
     log.error(f"Failed to process {CONFIG['table_name']}: {e}", stack_info=True, exc_info=True)
 
 print("\nIndexing operation completed!")
+display(df)
 
 # COMMAND ----------
 
@@ -115,7 +116,3 @@ client = Elasticsearch(
 )
 #if client.indices.exists(index=ELASTIC_INDEX):
 client.indices.refresh(index=CONFIG["index_name"])
-
-# COMMAND ----------
-
-
