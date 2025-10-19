@@ -116,3 +116,7 @@ client = Elasticsearch(
 )
 #if client.indices.exists(index=ELASTIC_INDEX):
 client.indices.refresh(index=CONFIG["index_name"])
+
+# COMMAND ----------
+
+
