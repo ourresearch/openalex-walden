@@ -2,7 +2,13 @@
 
 We document notable changes to the data in this file; it's in reverse chronological order (recent changes up top).
 
-## [Unreleased]
+## [2025-10-20]
+### ADDED
+Add roles attribute to Funders and Publishers
+
+## [2025-10-17]
+### ADDED
+Add roles, repositories and associated_institutions attributes to Institutions
 
 ### Fixed
 
