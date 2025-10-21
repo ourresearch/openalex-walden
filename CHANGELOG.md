@@ -2,13 +2,21 @@
 
 We document notable changes to the data in this file; it's in reverse chronological order (recent changes up top).
 
+## [2025-10-21]
+### Fixed
+* `issn` field added to `Work.locations.source`, ensuring all issns displayed
+* 384,969 bioRxiv works matched to source ID S4306402567 in `Work.locations.source`
+* `Work.locations.source` is null if no source ID is found
+* PubMed host organization was set to 'PubMed' within `Work.locations.source` but has been changed to National Institutes of Health
+* Remove 'mag' from `ids` object if its value is null
+
 ## [2025-10-20]
-### ADDED
-Add roles attribute to Funders and Publishers
+### Added
+* Add roles attribute to Funders and Publishers
 
 ## [2025-10-17]
-### ADDED
-Add roles, repositories and associated_institutions attributes to Institutions
+### Aded
+* Add roles, repositories and associated_institutions attributes to Institutions
 
 ### Fixed
 
