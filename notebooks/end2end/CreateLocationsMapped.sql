@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS identifier('openalex' || :env_suffix || '.works.locat
   version STRING,
   license STRING,
   language STRING,
+  language_classification struct<language: string, score: double>,
   published_date DATE,
   created_date DATE,
   updated_date DATE,
@@ -88,8 +89,8 @@ TBLPROPERTIES (
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC ### Merge deduplicated records from `locations_validated` into `locations_mapped`
--- MAGIC Merge deduplicated records from `locations_validated` into `locations_mapped`, inserting rows with `work_id = NULL` and updating others.
+-- MAGIC > ### Merge deduplicated records from `locations_w_sources` into `locations_mapped`
+-- MAGIC Merge deduplicated records from `locations_w_sources` into `locations_mapped`, inserting rows with `work_id = NULL` and updating others.
 
 -- COMMAND ----------
 
@@ -106,7 +107,7 @@ WITH distinct_works AS (
                             native_id_namespace,
                             provenance
                ORDER BY updated_date DESC) AS rwcnt
-    FROM identifier('openalex' || :env_suffix || '.works.locations_validated')
+    FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
     QUALIFY rwcnt = 1
 )
 /* ==========================================================
@@ -303,7 +304,7 @@ WITH counted_works AS (
     SELECT
         *,
         ROW_NUMBER() OVER(PARTITION BY merge_key, native_id, native_id_namespace, provenance ORDER BY updated_date DESC) AS rwcnt
-    FROM identifier('openalex' || :env_suffix || '.works.locations_validated')
+    FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources')
 ),
 distinct_works AS (
     SELECT *
@@ -1514,7 +1515,3 @@ THEN UPDATE SET
 
 SELECT format_number(COUNT(*), 0) as row_count
 FROM openalex.works.locations_mapped --618,448,502 - July 16th, 618,777,313 - July 17th
-
--- COMMAND ----------
-
-
