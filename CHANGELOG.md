@@ -3,6 +3,9 @@
 We document notable changes to the data in this file; it's in reverse chronological order (recent changes up top).
 
 ## [2025-10-21]
+### Added
+* Added Support for Works Magnet Institutes Moderation
+
 ### Fixed
 * `issn` field added to `Work.locations.source`, ensuring all issns displayed
 * 384,969 bioRxiv works matched to source ID S4306402567 in `Work.locations.source`
