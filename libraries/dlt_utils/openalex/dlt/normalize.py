@@ -26,7 +26,7 @@ walden_works_schema = StructType([
     StructField("ids", ArrayType(StructType([
         StructField("id", StringType(), True), StructField("namespace", StringType(), True),
         StructField("relationship", StringType(), True)])), True),
-    StructField("type", StringType(), True), StructField("version", StringType(), True),
+    StructField("raw_native_type", StringType(), True), StructField("type", StringType(), True), StructField("version", StringType(), True),
     StructField("license", StringType(), True), StructField("language", StringType(), True),
     StructField("published_date", DateType(), True), StructField("created_date", DateType(), True),
     StructField("updated_date", DateType(), True), StructField("issue", StringType(), True),

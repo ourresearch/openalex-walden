@@ -573,8 +573,9 @@ def repo_parsed():
             F.col("native_id")
         )
     )
-    .withColumn("type", get_openalex_type_from_repo_udf(F.col("`ns0:metadata`.`ns1:dc`.`dc:type`")))
-    .filter(~F.lower(F.col("`ns0:metadata`.`ns1:dc`.`dc:type`")).isin(TYPES_TO_DELETE))  # Filter out records marked for deletion (case-insensitive)
+    .withColumn("raw_native_type", F.col("`ns0:metadata`.`ns1:dc`.`dc:type`"))
+    .withColumn("type", get_openalex_type_from_repo_udf(F.col("raw_native_type")))
+    .filter(~F.lower(F.col("raw_native_type")).isin(TYPES_TO_DELETE))  # Filter out records marked for deletion (case-insensitive)
     .withColumn("metadata_string", F.col("`ns0:metadata`").cast("string"))
     .withColumn("version", detect_version_udf(
         F.col("metadata_string"), 
@@ -714,6 +715,7 @@ def repo_parsed():
         "normalized_title",
         "authors",
         "ids",
+        "raw_native_type",
         "type",
         "version",
         "license",
