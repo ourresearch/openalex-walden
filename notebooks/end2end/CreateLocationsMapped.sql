@@ -311,14 +311,17 @@ distinct_works AS (
     FROM counted_works
     WHERE rwcnt = 1
 ),
--- 🚫 drop rows whose DOI already exists in locations_mapped after DOI Update
 distinct_works_no_doi AS (
   SELECT d.*
   FROM distinct_works d
   LEFT JOIN identifier('openalex' || :env_suffix || '.works.locations_mapped') lm
          ON lm.merge_key.doi = d.merge_key.doi
-  WHERE  d.merge_key.doi IS NULL          -- keep no-DOI rows
-     OR  lm.merge_key.doi IS NULL         -- keep DOI that wasn’t updated in Pass A
+         AND lm.native_id = d.native_id
+         AND lm.native_id_namespace = d.native_id_namespace
+  WHERE  d.merge_key.doi IS NULL          
+     OR  lm.merge_key.doi IS NULL         
+     OR  (d.merge_key.pmid IS NOT NULL AND lm.native_id IS NULL)  -- new PMID records only
+     OR  (d.merge_key.arxiv IS NOT NULL AND lm.native_id IS NULL) -- new arXiv records only
 )
 MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING distinct_works_no_doi AS source
