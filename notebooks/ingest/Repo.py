@@ -16,6 +16,131 @@ from openalex.utils.environment import *
 from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
+# Types to filter out (DELETE from CSV mapping) - lowercase normalized
+TYPES_TO_DELETE = [
+    "person", "image", "newspaper", "info:eu-repo/semantics/lecture", "photograph",
+    "bildband", "dvd-video", "video", "fotografia", "cd", "sound recording",
+    "text and image", "moving image", "photographs", "cd-rom",
+    "blu-ray-disc", "stillimage", "image; text", "image;stillimage", "still image",
+    "image;", "ilustraciones y fotos", "fotografie", "fotografía"
+]
+
+# Comprehensive type mappings - combines original logic + CSV mappings (all lowercase keys)
+REPO_TYPE_MAPPING = {
+    # Articles and journal content
+    "article": "article",
+    "journal article": "article",
+    "journal articles": "article",
+    "publishedversion": "article",
+    "contributiontoperiodical": "article",
+    "conference papers": "article",
+    "conferencepaper": "article",
+    "conferenceobject": "article",
+    "conferenceposter": "article",
+    "conferenceproceedings": "article",
+    "conferencecontribution": "article",
+    "conferenceitem": "article",
+    "text": "article",
+    "manuscript": "article",
+    "peerreviewed": "article",  # CSV
+    "peer reviewed": "article",  # CSV
+    "submittedversion": "article",  # CSV (extracted from URI)
+    "acceptedversion": "article",  # CSV
+    "review": "article",  # CSV (extracted from URI)
+    "zeitschrift": "article",  # CSV
+    "conference paper": "article",  # CSV
+    "konferenzschrift": "article",  # CSV
+    "article / letter to editor": "article",  # CSV
+    "inproceedings": "article",  # CSV
+    "text (article)": "article",  # CSV
+    "info:ulb-repo/semantics/openurl/article": "article",  # CSV (different prefix)
+    "vor": "article",  # CSV
+    "journal contribution": "article",  # CSV
+    "artigo de jornal": "article",  # CSV
+    "doc-type:article": "article",  # CSV
+    "letter": "article",  # CSV
+    
+    # Books and book content
+    "book": "book",
+    "books": "book",
+    "book sections": "book-chapter",
+    "bookpart": "book-chapter",
+    "monografische reihe": "book",  # CSV
+    "volume": "book",  # CSV
+    "monograph": "book",  # CSV
+    "book article": "book-chapter",  # CSV
+    "book part": "book-chapter",  # CSV
+    "chapter, part of book": "book-chapter",  # CSV
+    "part of book or chapter of book": "book-chapter",  # CSV
+    "libros": "book",  # CSV
+    "doc-type:bookpart": "book-chapter",  # CSV
+    
+    # Theses and dissertations
+    "thesis": "dissertation",
+    "theses": "dissertation",
+    "masterthesis": "dissertation",
+    "bachelorthesis": "dissertation",
+    "doctoralthesis": "dissertation",
+    "doctor of philosophy": "dissertation",
+    "phd": "dissertation",
+    "dissertation": "dissertation",
+    "undergraduate senior honors thesis": "dissertation",
+    "hochschulschrift": "dissertation",  # CSV
+    "phdthesis": "dissertation",  # CSV
+    "master thesis": "dissertation",  # CSV
+    "diplomová práce": "dissertation",  # CSV
+    "doctoral thesis": "dissertation",  # CSV
+    "doc-type:doctoralthesis": "dissertation",  # CSV
+    "masters paper": "dissertation",  # CSV
+    "masters thesis": "dissertation",  # CSV
+    "dissertação": "dissertation",  # CSV
+    "doctoral_dissertation": "dissertation",  # CSV
+    "tesi doctoral": "dissertation",  # CSV
+    "thesis or dissertation": "dissertation",  # CSV
+    "thèse": "dissertation",  # CSV
+    "electronic dissertation": "dissertation",  # CSV
+    "dissertation-reproduction (electronic)": "dissertation",  # CSV
+    "thesis-reproduction (electronic)": "dissertation",  # CSV
+    
+    # Reports
+    "report": "report",
+    "reports": "report",
+    "technical report": "report",
+    "workingpaper": "report",
+    "working paper": "report",
+    "reportpart": "report",
+    "technical documentation": "report",
+    
+    # Reviews
+    "review": "review",
+    "peer-review": "peer-review",
+    
+    # Preprints
+    "preprint": "preprint",
+    "preprints, working papers, ...": "preprint",
+    
+    # Datasets
+    "dataset": "dataset",
+    "dataset/mass spectrometry": "dataset",  # CSV
+    
+    # Awards
+    "award/grant": "award",  # CSV
+    
+    # Software
+    "software": "software",  # CSV
+    
+    # Images (mapped to other)
+    "image": "other",
+    "chemical structures": "other",
+    
+    # Other types
+    "lecture": "other",
+    "patent": "other",
+    "creative project": "other",
+    "other": "other",
+    "null": "other",
+}
+
 def get_openalex_type_from_repo(input_type):
     """
     Convert various publication type formats to OpenAlex types.
@@ -23,97 +148,29 @@ def get_openalex_type_from_repo(input_type):
     if not input_type or not isinstance(input_type, str):
         return "other"
 
-    input_type = input_type.strip().lower()
+    input_type = input_type.strip()
+    input_type_lower = input_type.lower()
     
-    # handle URI formats
-    if "info:eu-repo/semantics/" in input_type:
-        input_type = input_type.split("info:eu-repo/semantics/")[-1]
-    elif "purl.org/coar/resource_type/" in input_type:
+    # Handle URI formats first
+    if "info:eu-repo/semantics/" in input_type_lower:
+        input_type_lower = input_type_lower.split("info:eu-repo/semantics/")[-1]
+    elif "purl.org/coar/resource_type/" in input_type_lower:
         coar_to_type = {
             "c_93fc": "article",    # contribution to journal
             "c_6501": "article",    # journal article
             "c_bdcc": "article",    # research article
-            "c_db06": "dataset",    # dataset
+            "c_db06": "dissertation",    # dissertation (corrected from CSV)
             "r60j-j5bd": "article", # article
             "c_5794": "article",    # journal article
             "c_2f33": "article",    # article
         }
-        coar_id = input_type.split("/")[-1]
-        return coar_to_type.get(coar_id.lower(), "other")
-    elif "purl.org/coar/version/" in input_type:
+        coar_id = input_type_lower.split("/")[-1]
+        return coar_to_type.get(coar_id, "other")
+    elif "purl.org/coar/version/" in input_type_lower:
         return "article"
     
-    input_variations = {
-        # article
-        "journal article": "article",
-        "journal articles": "article",
-        "article": "article",
-        "publishedversion": "article",
-        "contributiontoperiodical": "article",
-        
-        # book
-        "book": "book",
-        "books": "book",
-        "book sections": "book-chapter",
-        "bookpart": "book-chapter",
-        
-        # conference materials
-        "conference papers": "article",
-        "conferencepaper": "article",
-        "conferenceobject": "article",
-        "conferenceposter": "article",
-        "conferenceproceedings": "article",
-        "conferencecontribution": "article",
-        "conferenceitem": "article",
-        
-        # thesis/dissertation
-        "thesis": "dissertation",
-        "theses": "dissertation",
-        "masterthesis": "dissertation",
-        "bachelorthesis": "dissertation",
-        "doctoralthesis": "dissertation",
-        "doctor of philosophy": "dissertation",
-        "phd": "dissertation",
-        "dissertation": "dissertation",
-        "undergraduate senior honors thesis": "dissertation",
-        
-        # report
-        "report": "report",
-        "reports": "report",
-        "technical report": "report",
-        "workingpaper": "report",
-        "working paper": "report",
-        "reportpart": "report",
-        "technical documentation": "report",
-        
-        # review
-        "review": "review",
-        "peerreviewed": "peer-review",
-        "peer-review": "peer-review",
-        
-        # preprint
-        "preprint": "preprint",
-        "preprints, working papers, ...": "preprint",
-        
-        # image
-        "image": "other",
-        "chemical structures": "other",
-        
-        # text
-        "text": "article",
-        "manuscript": "article",
-        
-        # Other specific types
-        "lecture": "other",
-        "patent": "other",
-        "dataset": "dataset",
-        "creative project": "other",
-        
-        # general catch-alls
-        "other": "other",
-        "null": "other"
-    }
-    return input_variations.get(input_type, "other")
+    # Check comprehensive mapping dictionary
+    return REPO_TYPE_MAPPING.get(input_type_lower, "other")
 
 def normalize_language_code(lang_code):
     """
@@ -517,6 +574,7 @@ def repo_parsed():
         )
     )
     .withColumn("type", get_openalex_type_from_repo_udf(F.col("`ns0:metadata`.`ns1:dc`.`dc:type`")))
+    .filter(~F.lower(F.col("`ns0:metadata`.`ns1:dc`.`dc:type`")).isin(TYPES_TO_DELETE))  # Filter out records marked for deletion (case-insensitive)
     .withColumn("metadata_string", F.col("`ns0:metadata`").cast("string"))
     .withColumn("version", detect_version_udf(
         F.col("metadata_string"), 
