@@ -2,6 +2,11 @@
 
 We document notable changes to the data in this file; it's in reverse chronological order (recent changes up top).
 
+## [2025-10-22]
+### Fixed
+* 160,083 new PubMed and Arxiv records ingested and linked to existing works; ongoing ingest and mapping fixed
+* Adjusted `created_date` so it is stable and does not reset every time a location is added to a work
+
 ## [2025-10-21]
 ### Added
 * Added Support for Works Magnet Institutes Moderation
