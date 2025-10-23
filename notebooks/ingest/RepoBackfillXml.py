@@ -42,10 +42,33 @@ clean_df = df.withColumn("cleaned_xml",
 
 # MAGIC %md
 # MAGIC ## Define XML Schema for from_xml parsing
+# MAGIC
+# MAGIC Example XML structure:
+# MAGIC ```xml
+# MAGIC <record>
+# MAGIC   <header>
+# MAGIC     <identifier>oai:aleph.bib-bvb.de:BVB01-005639317</identifier>
+# MAGIC     <datestamp>2021-12-20T16:32:39Z</datestamp>
+# MAGIC     <setSpec>OpenData</setSpec>
+# MAGIC   </header>
+# MAGIC   <metadata>
+# MAGIC     <dc>
+# MAGIC       <dc:title>...</dc:title>
+# MAGIC       <dc:creator>Pander, Klaus</dc:creator>
+# MAGIC       <dc:type>text</dc:type>
+# MAGIC       <dc:type>Kunstführer</dc:type>  <!-- Can be multiple! -->
+# MAGIC       <dc:identifier>URN:ISBN:3770112261</dc:identifier>
+# MAGIC       <dc:identifier>http://...</dc:identifier>
+# MAGIC       ...
+# MAGIC     </dc>
+# MAGIC   </metadata>
+# MAGIC </record>
+# MAGIC ```
 
 # COMMAND ----------
 
 # Define the OAI-PMH + Dublin Core XML schema
+# Based on real XML structure where many DC fields can be multi-valued
 oai_schema = StructType([
     StructField("header", StructType([
         StructField("identifier", StringType(), True),
@@ -61,13 +84,13 @@ oai_schema = StructType([
             StructField("publisher", StringType(), True),
             StructField("contributor", ArrayType(StringType()), True),
             StructField("date", ArrayType(StringType()), True),
-            StructField("type", StringType(), True),
+            StructField("type", ArrayType(StringType()), True),  # FIXED: Can be multiple values
             StructField("format", ArrayType(StringType()), True),
             StructField("identifier", ArrayType(StringType()), True),
             StructField("source", StringType(), True),
             StructField("language", StringType(), True),
             StructField("relation", ArrayType(StringType()), True),
-            StructField("coverage", StringType(), True),
+            StructField("coverage", ArrayType(StringType()), True),  # FIXED: Can be multiple values
             StructField("rights", ArrayType(StringType()), True)
         ]), True)
     ]), True)
@@ -344,10 +367,11 @@ parsed_df = parsed_xml_df \
             )
         )
     ) \
-    .withColumn("raw_native_type", col("parsed.metadata.dc.type")) \
+    .withColumn("raw_native_type", element_at(col("parsed.metadata.dc.type"), 1)) \
     .withColumn("type", get_openalex_type_from_repo_udf(col("raw_native_type"))) \
     .filter(~lower(col("raw_native_type")).isin(TYPES_TO_DELETE)) \
     .withColumn("identifiers", col("parsed.metadata.dc.identifier")) \
+    .withColumn("version", lit(None).cast("string")) \
     .withColumn("language", normalize_language_code_udf(col("parsed.metadata.dc.language"))) \
     .withColumn("published_date_raw", element_at(col("parsed.metadata.dc.date"), 1)) \
     .withColumn("published_date",
