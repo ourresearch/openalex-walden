@@ -1,6 +1,7 @@
 # Databricks notebook source
 import re
 import unicodedata
+import pandas as pd
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 
@@ -552,7 +553,11 @@ def detect_version_from_xml(cleaned_xml, native_id):
 extract_ids_udf = udf(extract_ids, ArrayType(id_struct_type))
 normalize_license_udf = udf(normalize_license, StringType())
 normalize_title_udf = udf(normalize_title, StringType())
-get_openalex_type_from_repo_udf = udf(get_openalex_type_from_repo, StringType())
+
+@pandas_udf(StringType())
+def get_openalex_type_from_repo_udf(repo_type_series: pd.Series) -> pd.Series:
+    return repo_type_series.apply(get_openalex_type_from_repo)
+
 normalize_language_code_udf = udf(normalize_language_code, StringType())
 has_oa_domain_udf = udf(has_oa_domain, BooleanType())
 detect_version_udf = udf(detect_version_from_xml, StringType())
