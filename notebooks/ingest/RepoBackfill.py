@@ -41,7 +41,7 @@ clean_df = df.withColumn("cleaned_xml",
 
 # udfs
 def clean_html(raw_html):
-    cleanr = re.compile('<\w+.*?>')
+    cleanr = re.compile(r'<\w+.*?>')
     cleantext = re.sub(cleanr, '', raw_html)
     return cleantext
 

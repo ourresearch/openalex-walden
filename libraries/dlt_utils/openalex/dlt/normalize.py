@@ -133,7 +133,7 @@ def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
 # normalize title and types UDFs
 
 def clean_html(raw_html):
-    cleanr = re.compile('<\w+.*?>')
+    cleanr = re.compile(r'<\w+.*?>')
     cleantext = re.sub(cleanr, '', raw_html)
     return cleantext
 
