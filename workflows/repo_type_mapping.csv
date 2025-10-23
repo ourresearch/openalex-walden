@@ -1,0 +1,115 @@
+TYPE,TOTAL COUNT,MAPPING/ACTION
+article,"88,881,413",article
+info:eu-repo/semantics/article,"38,604,956",article
+PeerReviewed,"13,242,941",article
+Journal articles,"9,646,039",article
+info:eu-repo/semantics/publishedVersion,"5,283,103",article
+Conference papers,"4,472,105",article
+person,"3,035,040",DELETE
+info:eu-repo/semantics/conferencePaper,"2,478,878",article
+Article,"2,126,823",article
+info:eu-repo/semantics/bookPart,"1,967,369",book-chapter
+Hochschulschrift,"1,672,420",dissertation
+info:eu-repo/semantics/book,"1,591,051",book
+Image,"1,582,163",DELETE
+Zeitschrift,"1,388,639",article
+Book sections,"1,331,104",book-chapter
+journal article,"1,329,378",article
+Newspaper,"1,316,678",DELETE
+info:eu-repo/semantics/lecture,"1,272,500",DELETE
+bookPart,"1,204,763",book-chapter
+book,"1,103,666",book
+Theses,"1,077,960",dissertation
+http://purl.org/coar/resource_type/c_6501,"1,002,016",article
+Photograph,"889,463",DELETE
+peer reviewed,"882,790",article
+info:eu-repo/semantics/doctoralThesis,"815,750",dissertation
+conference paper,"813,360",article
+publishedVersion,"755,655",article
+info:eu-repo/semantics/preprint,"708,986",preprint
+Dataset,"663,524",dataset
+info:eu-repo/semantics/submittedVersion,"642,654",article
+Konferenzschrift,"574,810",article
+info:eu-repo/semantics/acceptedVersion,"525,575",article
+Thesis,"516,601",dissertation
+phdthesis,"439,731",dissertation
+Article / Letter to editor,"430,786",article
+Journal Article,"419,869",article
+Books,"411,096",book
+"Preprints, Working Papers, ...","400,606",preprint
+info:eu-repo/semantics/review,"394,529",article
+master thesis,"386,915",dissertation
+masterthesis,"366,800",dissertation
+inproceedings,"335,897",article
+text (article),"299,444",article
+info:ulb-repo/semantics/openurl/article,"279,535",article
+VoR,"262,036",article
+acceptedVersion,"256,881",article
+info:eu-repo/semantics/masterThesis,"254,204",dissertation
+Bildband,"251,976",DELETE
+Journal contribution,"245,605",article
+Journal article,"236,626",article
+diplomová práce,"222,253",dissertation
+DVD-Video,"217,480",DELETE
+info:eu-repo/semantics/conferenceProceedings,"214,542",article
+Artigo de jornal,"210,082",article
+Video,"206,269",DELETE
+doc-type:article,"197,843",article
+Letter,"191,945",article
+fotografia,"190,855",DELETE
+Award/Grant,"189,639",award
+CD,"186,872",DELETE
+sound recording,"184,842",DELETE
+dataset,"180,221",dataset
+Monografische Reihe,"163,504",book
+Volume,"162,080",book
+Monograph,"161,648",book
+Book,"140,380",book
+Text and Image,"127,418",DELETE
+doctoral thesis,"125,658",dissertation
+Preprint,"119,648",preprint
+book article,"117,718",book-chapter
+http://purl.org/coar/resource_type/c_5794,"110,589",article
+thesis,"82,737",dissertation
+Dissertation,"80,825",dissertation
+masterThesis,"78,630",dissertation
+IMAGE,"76,311",DELETE
+image,"73,781",DELETE
+Master thesis,"63,672",dissertation
+doctoralThesis,"62,534",dissertation
+moving image,"57,232",DELETE
+book part,"54,502",book-chapter
+dissertation,"53,044",dissertation
+doc-type:doctoralThesis,"50,862",dissertation
+http://purl.org/coar/resource_type/c_db06,"44,454",dissertation
+Photographs,"41,869",DELETE
+"Chapter, Part Of Book","38,800",book-chapter
+Dataset/Mass Spectrometry,"36,083",dataset
+Masters Paper,"32,251",dissertation
+Masters Thesis,"24,767",dissertation
+CD-ROM,"23,440",DELETE
+Master Thesis,"23,371",dissertation
+Part of book or chapter of book,"22,793",book-chapter
+Libros,"22,695",book
+Dissertação,"18,689",dissertation
+doctoral_dissertation,"18,259",dissertation
+Tesi doctoral,"16,869",dissertation
+Blu-Ray-Disc,"16,687",DELETE
+StillImage,"16,476",DELETE
+Thesis or Dissertation,"14,470",dissertation
+doc-type:bookPart,"14,249",book-chapter
+theses,"14,193",dissertation
+Image; Text,"13,768",DELETE
+Software,"13,728",software
+Dissertation-Reproduction (electronic),"12,783",dissertation
+Thesis-Reproduction (electronic),"12,652",dissertation
+Image;StillImage,"12,100",DELETE
+thèse,"11,956",dissertation
+Electronic Dissertation,"11,528",dissertation
+still image,"10,134",DELETE
+Still Image,"8,957",DELETE
+Image;,"3,889",DELETE
+Moving Image,"3,632",DELETE
+Ilustraciones y Fotos,"1,936",DELETE
+Fotografie,904,DELETE
+Fotografía,513,DELETE

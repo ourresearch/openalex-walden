@@ -1,0 +1,174 @@
+resources:
+  jobs:
+    Walden_End_2_End:
+      name: Walden End 2 End
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+          - artem@ourresearch.org
+      schedule:
+        quartz_cron_expression: 18 30 22 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: Crossref_Ingest_DLT
+          pipeline_task:
+            pipeline_id: 7def27a3-968c-4b1a-864b-0fc308756721
+            full_refresh: false
+        - task_key: DataCite_Ingest_DLT
+          pipeline_task:
+            pipeline_id: e5d95673-98e3-47db-8630-48a7739304cc
+            full_refresh: false
+        - task_key: Landing_Page_Ingest_DLT
+          pipeline_task:
+            pipeline_id: ff5e63c2-b1b8-49c2-a7c0-2ee246e89e69
+            full_refresh: false
+        - task_key: Mag_Ingest_DLT
+          pipeline_task:
+            pipeline_id: 38cc5493-8d83-48f1-87f5-95c8c80938ac
+            full_refresh: false
+        - task_key: PDF_Ingest_DLT
+          pipeline_task:
+            pipeline_id: 4b35274b-82f2-41f8-aa4a-87890d282134
+            full_refresh: false
+        - task_key: PubMed_Ingest_DLT
+          pipeline_task:
+            pipeline_id: d327518b-e3e0-484c-a214-c7326f3e51fe
+            full_refresh: false
+        - task_key: Refresh_Prod_Data_MergeKeys
+          notebook_task:
+            notebook_path: notebooks/end2end/RefreshProdMergeKeyData
+            source: GIT
+        - task_key: Repos_Ingest_DLT
+          pipeline_task:
+            pipeline_id: fcd1ea61-2e07-433b-90ad-b3b0a0960158
+            full_refresh: false
+        - task_key: Union
+          depends_on:
+            - task_key: Crossref_Ingest_DLT
+            - task_key: PubMed_Ingest_DLT
+            - task_key: Mag_Ingest_DLT
+            - task_key: Repos_Ingest_DLT
+            - task_key: PDF_Ingest_DLT
+            - task_key: DataCite_Ingest_DLT
+          pipeline_task:
+            pipeline_id: bd9dfc4f-7b7f-42a2-b01b-8101c5ab19d5
+            full_refresh: false
+        - task_key: Crossref_Super_Authorships
+          depends_on:
+            - task_key: Union
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateCrossrefSuperAuthorships
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Repo_Super_Authorships
+          depends_on:
+            - task_key: Union
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateRepoSuperAuthorships
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Superlocations
+          depends_on:
+            - task_key: Repo_Super_Authorships
+            - task_key: Crossref_Super_Authorships
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateSuperLocations
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Locations_with_Sources
+          depends_on:
+            - task_key: Superlocations
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateLocationsWithSources
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Locations_Mapped
+          depends_on:
+            - task_key: Refresh_Prod_Data_MergeKeys
+            - task_key: Locations_with_Sources
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateLocationsMapped
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Authors_and_Affiliations
+          depends_on:
+            - task_key: Locations_Mapped
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateAuthorsAndAffiliations
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: OpenAlex_Works
+          depends_on:
+            - task_key: Authors_and_Affiliations
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateOpenAlexWorks
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Wunpaywall
+          depends_on:
+            - task_key: OpenAlex_Works
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateWunpaywall
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: IS_PROD
+          depends_on:
+            - task_key: Wunpaywall
+          condition_task:
+            op: EQUAL_TO
+            left: "{{job.parameters.env}}"
+            right: prod
+        - task_key: Wunpaywal_Data_Feed
+          depends_on:
+            - task_key: IS_PROD
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/end2end/WunpaywallDataFeed
+            source: GIT
+          job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
+        - task_key: Wunpaywall_to_OpenAlex_DB
+          depends_on:
+            - task_key: IS_PROD
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/end2end/WunpaywallToOpenAlexDB
+            source: GIT
+          job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
+      job_clusters:
+        - job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.master: local[*, 4]
+              spark.databricks.cluster.profile: singleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1c
+              spot_bid_price_percent: 100
+            node_type_id: rd-fleet.8xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            custom_tags:
+              ResourceClass: SingleNode
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      parameters:
+        - name: env
+          default: prod
+        - name: env_suffix
+          default: ""
+        - name: openalex
+          default: openalex
+        - name: force_large_load
+          default: "false"
+      performance_target: PERFORMANCE_OPTIMIZED
