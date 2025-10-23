@@ -43,27 +43,41 @@ clean_df = df.withColumn("cleaned_xml",
 # MAGIC %md
 # MAGIC ## Define XML Schema for from_xml parsing
 # MAGIC
-# MAGIC Example XML structure:
+# MAGIC Example XML structure (many DC fields can have multiple values):
 # MAGIC ```xml
 # MAGIC <record>
 # MAGIC   <header>
-# MAGIC     <identifier>oai:aleph.bib-bvb.de:BVB01-005639317</identifier>
-# MAGIC     <datestamp>2021-12-20T16:32:39Z</datestamp>
-# MAGIC     <setSpec>OpenData</setSpec>
+# MAGIC     <identifier>oai:HAL:halshs-02934869v1</identifier>
+# MAGIC     <datestamp>2022-12-06</datestamp>
+# MAGIC     <setSpec>type:COUV</setSpec>
+# MAGIC     <setSpec>subject:shs</setSpec>
 # MAGIC   </header>
 # MAGIC   <metadata>
 # MAGIC     <dc>
-# MAGIC       <dc:title>...</dc:title>
-# MAGIC       <dc:creator>Pander, Klaus</dc:creator>
-# MAGIC       <dc:type>text</dc:type>
-# MAGIC       <dc:type>Kunstführer</dc:type>  <!-- Can be multiple! -->
-# MAGIC       <dc:identifier>URN:ISBN:3770112261</dc:identifier>
-# MAGIC       <dc:identifier>http://...</dc:identifier>
+# MAGIC       <dc:title xml:lang="en">Les novellisations pour la jeunesse...</dc:title>
+# MAGIC       <dc:creator>Déom, Laurent</dc:creator>
+# MAGIC       <dc:creator>Glaude, Benoît</dc:creator>
+# MAGIC       <!-- Multiple publishers! -->
+# MAGIC       <dc:publisher>HAL CCSD</dc:publisher>
+# MAGIC       <dc:publisher>Academia</dc:publisher>
+# MAGIC       <!-- Multiple sources! -->
+# MAGIC       <dc:source>Les novellisations pour la jeunesse...</dc:source>
+# MAGIC       <dc:source>https://shs.hal.science/halshs-02934869</dc:source>
+# MAGIC       <dc:source>Laurent Déom; Benoît Glaude. Les novellisations...</dc:source>
+# MAGIC       <!-- Multiple types -->
+# MAGIC       <dc:type>info:eu-repo/semantics/bookPart</dc:type>
+# MAGIC       <dc:type>Book sections</dc:type>
+# MAGIC       <!-- Multiple contributors -->
+# MAGIC       <dc:contributor>Analyses littéraires et histoire...</dc:contributor>
+# MAGIC       <dc:contributor>Laurent Déom</dc:contributor>
+# MAGIC       <dc:contributor>Benoît Glaude</dc:contributor>
 # MAGIC       ...
 # MAGIC     </dc>
 # MAGIC   </metadata>
 # MAGIC </record>
 # MAGIC ```
+# MAGIC
+# MAGIC **Note**: For multi-valued fields (publisher, source, type, etc.), we extract the **first** value using `element_at(..., 1)`.
 
 # COMMAND ----------
 
@@ -81,16 +95,16 @@ oai_schema = StructType([
             StructField("creator", ArrayType(StringType()), True),
             StructField("subject", ArrayType(StringType()), True),
             StructField("description", ArrayType(StringType()), True),
-            StructField("publisher", StringType(), True),
+            StructField("publisher", ArrayType(StringType()), True),  # Can be multiple values
             StructField("contributor", ArrayType(StringType()), True),
             StructField("date", ArrayType(StringType()), True),
-            StructField("type", ArrayType(StringType()), True),  # FIXED: Can be multiple values
+            StructField("type", ArrayType(StringType()), True),  # Can be multiple values
             StructField("format", ArrayType(StringType()), True),
             StructField("identifier", ArrayType(StringType()), True),
-            StructField("source", StringType(), True),
+            StructField("source", ArrayType(StringType()), True),  # Can be multiple values
             StructField("language", StringType(), True),
             StructField("relation", ArrayType(StringType()), True),
-            StructField("coverage", ArrayType(StringType()), True),  # FIXED: Can be multiple values
+            StructField("coverage", ArrayType(StringType()), True),  # Can be multiple values
             StructField("rights", ArrayType(StringType()), True)
         ]), True)
     ]), True)
@@ -394,8 +408,8 @@ parsed_df = parsed_xml_df \
         when(length(col("abstract_raw")) >= MIN_ABSTRACT_LENGTH, 
             substring(col("abstract_raw"), 0, MAX_ABSTRACT_LENGTH))
         .otherwise(lit(None))) \
-    .withColumn("source_name", col("parsed.metadata.dc.source")) \
-    .withColumn("publisher", col("parsed.metadata.dc.publisher")) \
+    .withColumn("source_name", element_at(col("parsed.metadata.dc.source"), 1)) \
+    .withColumn("publisher", element_at(col("parsed.metadata.dc.publisher"), 1)) \
     .withColumn("urls",
         transform(
             filter(col("identifiers"), lambda x: x.rlike("^http")),
