@@ -551,16 +551,33 @@ def detect_version_from_xml(cleaned_xml, native_id):
     return "submittedVersion"
 
 extract_ids_udf = udf(extract_ids, ArrayType(id_struct_type))
-normalize_license_udf = udf(normalize_license, StringType())
-normalize_title_udf = udf(normalize_title, StringType())
+
+@pandas_udf(StringType())
+def normalize_license_udf(license_series: pd.Series) -> pd.Series:
+    return license_series.apply(normalize_license)
+
+@pandas_udf(StringType())
+def normalize_title_udf(title_series: pd.Series) -> pd.Series:
+    return title_series.apply(normalize_title)
 
 @pandas_udf(StringType())
 def get_openalex_type_from_repo_udf(repo_type_series: pd.Series) -> pd.Series:
     return repo_type_series.apply(get_openalex_type_from_repo)
 
-normalize_language_code_udf = udf(normalize_language_code, StringType())
-has_oa_domain_udf = udf(has_oa_domain, BooleanType())
-detect_version_udf = udf(detect_version_from_xml, StringType())
+@pandas_udf(StringType())
+def normalize_language_code_udf(language_code_series: pd.Series) -> pd.Series:
+    return language_code_series.apply(normalize_language_code)
+
+@pandas_udf(BooleanType())
+def has_oa_domain_udf(url_series: pd.Series) -> pd.Series:
+    return url_series.apply(has_oa_domain)
+
+@pandas_udf(StringType())
+def detect_version_udf(metadata_series: pd.Series, native_id_series: pd.Series) -> pd.Series:
+    return pd.Series([
+        detect_version_from_xml(metadata, native_id) 
+        for metadata, native_id in zip(metadata_series, native_id_series)
+    ])
 
 
 # COMMAND ----------
