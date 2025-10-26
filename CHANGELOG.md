@@ -2,7 +2,7 @@
 
 We document notable changes to the data in this file; it's in reverse chronological order (recent changes up top).
 
-## [2025-01-XX]
+## [2025-01-27]
 ### Fixed
 * Added `raw_native_type` field to `superlocations` table for all provenances (crossref, repo, datacite, mag, pubmed) to ensure proper schema alignment in UNION operations
 
