@@ -133,3 +133,7 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
+
+# Temporary diagnostic and planning files (do not commit)
+*.md
+*.sql
