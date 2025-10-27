@@ -11,7 +11,7 @@ import re
 from transformers import TFAutoModelForSequenceClassification, pipeline, AutoTokenizer
 from sentence_transformers import SentenceTransformer
 
-import model_config as cfg
+import topics_model_config as cfg
 
 def name_to_keep_ind(groups):
     """
