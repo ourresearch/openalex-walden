@@ -337,8 +337,11 @@ def clean_abstract(raw_abstract, inverted=False):
     Output:
     final_abstract: string of abstract in format for model
     """
-    # Handle None/Null abstracts
-    if raw_abstract is None:
+    # Handle None/Null abstracts (both Python None and Spark null)
+    try:
+        if raw_abstract is None:
+            return None
+    except:
         return None
     
     if inverted:
@@ -385,15 +388,18 @@ def clean_abstract(raw_abstract, inverted=False):
         else:
             final_abstract = None
     else:
-        ab_len = len(raw_abstract)
-        if ab_len > 10:
-            final_abstract = raw_abstract[:3000]
-            keep_abs = check_for_non_latin_characters(final_abstract)
-            if keep_abs == 1:
-                pass
+        try:
+            ab_len = len(raw_abstract)
+            if ab_len > 10:
+                final_abstract = raw_abstract[:3000]
+                keep_abs = check_for_non_latin_characters(final_abstract)
+                if keep_abs == 1:
+                    pass
+                else:
+                    final_abstract = None
             else:
                 final_abstract = None
-        else:
+        except:
             final_abstract = None
             
     return final_abstract
