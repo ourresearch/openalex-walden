@@ -209,7 +209,7 @@ def merge_title_and_abstract(title, abstract):
     Output:
     string of title and abstract merged together"""
     if isinstance(title, str):
-        if isinstance(abstract, str):
+        if isinstance(abstract, str) and abstract is not None:
             if len(abstract) >=30:
                 return f"<TITLE> {title}\n<ABSTRACT> {abstract[:2500]}"
             else:
@@ -217,7 +217,7 @@ def merge_title_and_abstract(title, abstract):
         else:
             return f"<TITLE> {title}"
     else:
-        if isinstance(abstract, str):
+        if isinstance(abstract, str) and abstract is not None:
             if len(abstract) >=30:
                 return f"<TITLE> NONE\n<ABSTRACT> {abstract[:2500]}"
             else:
@@ -337,6 +337,10 @@ def clean_abstract(raw_abstract, inverted=False):
     Output:
     final_abstract: string of abstract in format for model
     """
+    # Handle None/Null abstracts
+    if raw_abstract is None:
+        return None
+    
     if inverted:
         if isinstance(raw_abstract, dict) | isinstance(raw_abstract, str):
             if isinstance(raw_abstract, dict):
