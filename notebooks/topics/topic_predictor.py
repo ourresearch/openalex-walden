@@ -43,6 +43,10 @@ def remove_non_latin_characters(text):
     Output:
     final_char: string of characters with non-latin characters removed
     """
+    # Handle None/Null values
+    if text is None:
+        return None
+    
     final_char = []
     groups_to_skip = ['HIRAGANA', 'CJK', 'KATAKANA','ARABIC', 'HANGUL', 'THAI','DEVANAGARI','BENGALI',
                       'THAANA','GUJARATI','CYRILLIC']
@@ -201,27 +205,29 @@ def get_final_citations_feature(citations, num_to_keep):
 def merge_title_and_abstract(title, abstract):
     """
     Function to merge title and abstract together for model input.
+    Fallback to abstract if title is None or not a string.
     
     Input:
-    title: string of title
-    abstract: string of abstract
+    title: string of title (or None)
+    abstract: string of abstract (or None)
     
     Output:
     string of title and abstract merged together"""
-    if isinstance(title, str):
-        if isinstance(abstract, str) and abstract is not None:
-            if len(abstract) >=30:
-                return f"<TITLE> {title}\n<ABSTRACT> {abstract[:2500]}"
-            else:
-                return f"<TITLE> {title}"
+    # Check if title is valid (string and not None)
+    has_valid_title = isinstance(title, str) and title is not None and len(title.strip()) > 0
+    
+    # Check if abstract is valid (string and not None)
+    has_valid_abstract = isinstance(abstract, str) and abstract is not None and len(abstract) >= 30
+    
+    if has_valid_title:
+        if has_valid_abstract:
+            return f"<TITLE> {title}\n<ABSTRACT> {abstract[:2500]}"
         else:
             return f"<TITLE> {title}"
     else:
-        if isinstance(abstract, str) and abstract is not None:
-            if len(abstract) >=30:
-                return f"<TITLE> NONE\n<ABSTRACT> {abstract[:2500]}"
-            else:
-                return ""
+        # No valid title - use abstract if available
+        if has_valid_abstract:
+            return f"<ABSTRACT> {abstract[:2500]}"
         else:
             return ""
 
@@ -234,8 +240,12 @@ def clean_title(old_title):
     old_title: string of title
     
     Output:
-    new_title: string of title with non-latin characters and HTML tags removed
+    new_title: string of title with non-latin characters and HTML tags removed, or None if title is None
     """
+    # Handle None/Null values
+    if old_title is None:
+        return None
+    
     keep_title = check_for_non_latin_characters(old_title)
     if keep_title == 1:
         new_title = remove_non_latin_characters(old_title)
