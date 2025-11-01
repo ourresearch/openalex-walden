@@ -761,4 +761,27 @@ parsed_df = parsed_df.select(
 # deduplicate based on native_id and most recent updated date
 parsed_df = parsed_df.sort(col("updated_date").desc()).dropDuplicates(["native_id"])
 
-parsed_df.write.format("delta").option("mergeSchema", "true").mode("overwrite").saveAsTable("openalex.repo.repo_works_backfill")
+# Use MERGE instead of overwrite to avoid reprocessing all records in CDF stream
+target_table = "openalex.repo.repo_works_backfill"
+parsed_df.createOrReplaceTempView("repo_works_backfill_updates")
+
+# Check if table exists
+table_exists = spark.catalog.tableExists(target_table)
+
+if table_exists:
+    # Table exists, use MERGE to only update changed/new records
+    # This prevents CDF from seeing all records as new inserts
+    from delta.tables import DeltaTable
+    delta_table = DeltaTable.forName(spark, target_table)
+    delta_table.alias("target").merge(
+        parsed_df.alias("source"),
+        "target.native_id = source.native_id"
+    ).whenMatchedUpdate(
+        condition="source.updated_date >= target.updated_date",
+        set={}  # Updates all columns from source
+    ).whenNotMatchedInsert(
+        values={}  # Inserts all columns from source
+    ).execute()
+else:
+    # Table doesn't exist yet, create it (first run only)
+    parsed_df.write.format("delta").option("mergeSchema", "true").mode("overwrite").saveAsTable(target_table)
