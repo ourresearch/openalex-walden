@@ -612,7 +612,7 @@ def repo_parsed():
                             to_date(date_str, "yyyy-MM"),
                             -- Year only
                             to_date(
-                                when(length(trim(date_str)) = 4, concat(date_str, "-01-01")),
+                                if(length(trim(date_str)) = 4, concat(date_str, "-01-01"), null),
                                 "yyyy-MM-dd"
                             )
                         )

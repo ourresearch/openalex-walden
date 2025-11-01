@@ -650,7 +650,7 @@ parsed_df = clean_df \
                             to_date(regexp_replace(date_str, '\\.', '-'), "yyyy-MM-dd"),
                             -- Year only
                             to_date(
-                                when(length(trim(date_str)) = 4, concat(date_str, "-01-01")),
+                                if(length(trim(date_str)) = 4, concat(date_str, "-01-01"), null),
                                 "yyyy-MM-dd"
                             )
                         )
