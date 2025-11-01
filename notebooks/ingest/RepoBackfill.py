@@ -631,24 +631,34 @@ parsed_df = clean_df \
         )) \
     .withColumn("version", detect_version_udf(col("cleaned_xml"), col("native_id"))) \
     .withColumn("language", normalize_language_code_udf(regexp_extract(col("cleaned_xml"), r"<dc:language.*?>(.*?)</dc:language>", 1))) \
-    .withColumn("published_date_raw", 
-        regexp_extract(col("cleaned_xml"), r"<dc:date.*?>(.*?)</dc:date>", 1)) \
     .withColumn("published_date",
-        coalesce(
-            # Try original formats
-            to_date(to_timestamp(col("published_date_raw"), "yyyy-MM-dd'T'HH:mm:ss'Z'")),
-            to_date(to_timestamp(col("published_date_raw"), "yyyy-MM-dd'T'HH:mm:ss")),
-            to_date(col("published_date_raw"), "yyyy-MM-dd"),
-            to_date(col("published_date_raw"), "yyyy-MM"),
-            # Add period-separated format
-            to_date(regexp_replace(col("published_date_raw"), r'\.', '-'), "yyyy-MM-dd"),
-            # Year only
-            to_date(
-                when(length(trim(col("published_date_raw"))) == 4,
-                    concat(col("published_date_raw"), lit("-01-01"))),
-                "yyyy-MM-dd"
+        expr("""
+            array_min(
+                filter(
+                    transform(
+                        regexp_extract_all(cleaned_xml, '<dc:date.*?>(.*?)</dc:date>'),
+                        date_str -> coalesce(
+                            -- ISO format with timezone
+                            to_date(to_timestamp(date_str, "yyyy-MM-dd'T'HH:mm:ss'Z'")),
+                            -- ISO format without timezone
+                            to_date(to_timestamp(date_str, "yyyy-MM-dd'T'HH:mm:ss")),
+                            -- Regular date
+                            to_date(date_str, "yyyy-MM-dd"),
+                            -- Month and year
+                            to_date(date_str, "yyyy-MM"),
+                            -- Period-separated format
+                            to_date(regexp_replace(date_str, '\\.', '-'), "yyyy-MM-dd"),
+                            -- Year only
+                            to_date(
+                                when(length(trim(date_str)) = 4, concat(date_str, "-01-01")),
+                                "yyyy-MM-dd"
+                            )
+                        )
+                    ),
+                    d -> d is not null and year(d) >= 1900
+                )
             )
-        )) \
+        """)) \
     .withColumn("created_date", col("published_date")) \
     .withColumn("updated_date", to_date(
         regexp_extract(col("cleaned_xml"), r"<datestamp>(.*?)</datestamp>", 1))) \

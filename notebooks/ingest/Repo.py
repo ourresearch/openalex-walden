@@ -595,32 +595,32 @@ def repo_parsed():
     .withColumn("license", normalize_license_udf(F.col("raw_license")))
     .withColumn("language", normalize_language_code_udf(F.col("`ns0:metadata`.`ns1:dc`.`dc:language`")))
     .withColumn(
-        "published_date_raw", F.element_at(F.col("ns0:metadata.ns1:dc.dc:date"), 1)
-    )
-    .withColumn(
         "published_date",
-        F.coalesce(
-            # ISO format with timezone
-            F.to_date(
-                F.to_timestamp(F.col("published_date_raw"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-            ),
-            # ISO format without timezone
-            F.to_date(
-                F.to_timestamp(F.col("published_date_raw"), "yyyy-MM-dd'T'HH:mm:ss")
-            ),
-            # Regular date
-            F.to_date(F.col("published_date_raw"), "yyyy-MM-dd"),
-            # Month and year
-            F.to_date(F.col("published_date_raw"), "yyyy-MM"),
-            # Year only
-            F.to_date(
-                F.when(
-                    F.length(F.trim(F.col("published_date_raw"))) == 4,
-                    F.concat(F.col("published_date_raw"), F.lit("-01-01")),
-                ),
-                "yyyy-MM-dd",
-            ),
-        ),
+        F.expr("""
+            array_min(
+                filter(
+                    transform(
+                        `ns0:metadata`.`ns1:dc`.`dc:date`,
+                        date_str -> coalesce(
+                            -- ISO format with timezone
+                            to_date(to_timestamp(date_str, "yyyy-MM-dd'T'HH:mm:ss'Z'")),
+                            -- ISO format without timezone
+                            to_date(to_timestamp(date_str, "yyyy-MM-dd'T'HH:mm:ss")),
+                            -- Regular date
+                            to_date(date_str, "yyyy-MM-dd"),
+                            -- Month and year
+                            to_date(date_str, "yyyy-MM"),
+                            -- Year only
+                            to_date(
+                                when(length(trim(date_str)) = 4, concat(date_str, "-01-01")),
+                                "yyyy-MM-dd"
+                            )
+                        )
+                    ),
+                    d -> d is not null and year(d) >= 1900
+                )
+            )
+        """)
     )
     .withColumn("created_date", F.col("published_date"))
     .withColumn(
