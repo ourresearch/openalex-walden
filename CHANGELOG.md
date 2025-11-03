@@ -2,6 +2,34 @@
 
 We document notable changes to the data in this file; it's in reverse chronological order (recent changes up top).
 
+## [2025-11-02]
+### Fixed
+* Citations: corrected `cited_by_percentile_year` by computing proper per-year distributions and bounds; min/max now reflect true placement across years.
+
+## [2025-11-01]
+### Changed
+* OAI-PMH: set `publication_date` to the earliest available date; if the earliest parsed date is < 1900, leave `publication_date` null.
+* Keywords: restrict derived keywords to concepts with `level > 0` (more changes may be required).
+
+## [2025-10-30]
+### Changed
+* Sources: minor curation (removed one problematic source), which may shift `primary_location.source` for a small subset of works.
+
+## [2025-10-29]
+### Changed
+* References: stabilize `referenced_works` by unioning backfilled and parsed sources rather than overwriting.
+
+### Added
+* Authorships: populate `author.id` (OpenAlex URL) and `author.orcid`; fill `affiliations.institution_ids`.
+
+## [2025-10-28]
+### Added
+* Authorships: populate `affiliations.institution_ids` in authorships.
+
+## [2025-10-27]
+### Changed
+* Topics: for merged works, include topics from `merge_into_id` while keeping the original `work_id` assignment.
+
 ## [2025-10-26]
 ### Fixed
 * Added `raw_native_type` field to `superlocations` table for all provenances (crossref, repo, datacite, mag, pubmed) to ensure proper schema alignment in UNION operations
