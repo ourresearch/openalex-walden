@@ -541,6 +541,7 @@ SELECT
     IF(merge_key.arxiv IS NOT NULL, 2, 0) +
     IF(merge_key.title_author IS NOT NULL, 1, 0)
   ) AS key_score,
+  MIN(published_date) as published_date,
   MIN(openalex_created_dt) AS openalex_created_dt,
   MAX(openalex_updated_dt) AS openalex_updated_dt
 FROM identifier('openalex' || :env_suffix || '.works.locations_mapped')
@@ -575,7 +576,7 @@ WHEN MATCHED THEN UPDATE SET
   target.openalex_updated_dt = source.openalex_updated_dt,
   target.work_id_source = 'doi'
 WHEN NOT MATCHED THEN INSERT (
-  doi, pmid, arxiv, title_author,
+  doi, pmid, arxiv, title_author, 
   openalex_created_dt, openalex_updated_dt, work_id_source
 ) VALUES (
   source.doi, source.pmid, source.arxiv, source.title_author,
@@ -710,6 +711,7 @@ WITH paper_ids AS (
   SELECT
     regexp_replace(w.doi_lower, '[^a-zA-Z0-9.]', '') AS cleaned_doi,
     MIN(w.paper_id) AS paper_id, -- Choose the smallest legacy ID as the canonical one
+    MIN(DATE(w.publication_date)) AS published_date,
     MIN(DATE(w.created_date)) AS created_dt,
     MAX(DATE(w.updated_date)) AS updated_dt
   FROM openalex.mid.work w
@@ -723,6 +725,7 @@ USING paper_ids AS source
 WHEN MATCHED AND target.paper_id IS NULL THEN
 UPDATE SET
   target.paper_id = source.paper_id,
+  target.published_date = LEAST(target.published_date, source.published_date),
   target.openalex_created_dt = LEAST(target.openalex_created_dt, source.created_dt),
   target.openalex_updated_dt = source.updated_dt;
 -- WHEN NOT MATCHED AND source.paper_id > target.paper_id THEN INSERT  
@@ -746,6 +749,7 @@ WITH paper_ids AS (
   SELECT
     x.attribute_value AS pmid,
     MIN(w.paper_id) AS paper_id,      -- Choose the smallest legacy ID as the canonical one
+    MIN(DATE(w.publication_date)) AS published_date,
     MIN(DATE(w.created_date)) AS created_dt,
     MAX(DATE(w.updated_date)) AS updated_dt
   FROM openalex.mid.work w
@@ -760,6 +764,7 @@ USING paper_ids AS source
 WHEN MATCHED THEN
 UPDATE SET
   target.paper_id = source.paper_id,
+  target.published_date = LEAST(target.published_date, source.published_date),
   target.openalex_created_dt = LEAST(target.openalex_created_dt, source.created_dt),
   target.openalex_updated_dt = source.updated_dt;
 
@@ -774,6 +779,7 @@ WITH paper_ids AS (
   SELECT
     w.arxiv_id,
     MIN(w.paper_id) AS paper_id,      -- Choose the smallest legacy ID as the canonical one
+    MIN(DATE(w.publication_date)) AS published_date,
     MIN(DATE(w.created_date)) AS created_dt,
     MAX(DATE(w.updated_date)) AS updated_dt
   FROM openalex.mid.work w
@@ -787,6 +793,7 @@ USING paper_ids AS source
 WHEN MATCHED THEN
 UPDATE SET
   target.paper_id = source.paper_id,
+  target.published_date = LEAST(target.published_date, source.published_date),
   target.openalex_created_dt = LEAST(target.openalex_created_dt, source.created_dt),
   target.openalex_updated_dt = source.updated_dt;
 
@@ -808,6 +815,7 @@ paper_ids AS (
   SELECT      
       MIN(w.paper_id) AS paper_id, -- choose smallest legacy id
       CONCAT(w.normalized_title, '_', aa.author_key) as title_author,
+      MIN(DATE(w.publication_date)) AS published_date,
       MIN(DATE(w.created_date)) AS created_dt,
       MAX(DATE(w.updated_date)) AS updated_dt
   FROM openalex.mid.work w
@@ -824,6 +832,7 @@ USING paper_ids AS source
 WHEN MATCHED THEN
 UPDATE SET
   target.paper_id = source.paper_id,
+  target.published_date = LEAST(target.published_date, source.published_date),
   target.openalex_created_dt = LEAST(target.openalex_created_dt, source.created_dt),
   target.openalex_updated_dt = source.updated_dt;
 
@@ -844,6 +853,7 @@ WITH ids AS (
   SELECT DISTINCT
     doi,
     MIN(paper_id) AS paper_id,
+    MIN(published_date) AS published_date,
     MIN(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
   FROM identifier('openalex' || :env_suffix || '.works.work_id_map')
@@ -858,6 +868,7 @@ USING ids AS source
 WHEN MATCHED
 THEN UPDATE SET 
   target.work_id = source.paper_id,
+  target.published_date = LEAST(target.published_date, source.published_date),
   target.openalex_created_dt = LEAST(target.openalex_created_dt, source.openalex_created_dt),
   target.openalex_updated_dt = source.openalex_updated_dt;
 
@@ -872,6 +883,7 @@ THEN UPDATE SET
   SELECT DISTINCT
     pmid as pmid,
     MIN(paper_id) AS paper_id,
+    MIN(published_date) AS published_date,
     MIN(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
   FROM identifier('openalex' || :env_suffix || '.works.work_id_map')
@@ -885,6 +897,7 @@ USING ids AS source
   AND (target.work_id IS NULL OR target.work_id > source.paper_id)
 WHEN MATCHED THEN UPDATE SET 
   target.work_id = source.paper_id,
+  target.published_date = LEAST(target.published_date, source.published_date),
   target.openalex_created_dt = LEAST(target.openalex_created_dt, source.openalex_created_dt),
   target.openalex_updated_dt = source.openalex_updated_dt;
 
@@ -900,6 +913,7 @@ WITH ids AS (
   SELECT DISTINCT
     arxiv,
     MIN(paper_id) AS paper_id,
+    MIN(published_date) AS published_date,
     MIN(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
   FROM identifier('openalex' || :env_suffix || '.works.work_id_map')
@@ -913,6 +927,7 @@ USING ids AS source
   AND (target.work_id IS NULL OR target.work_id > source.paper_id)
 WHEN MATCHED THEN UPDATE SET 
   target.work_id = source.paper_id,
+  target.published_date = LEAST(target.published_date, source.published_date),
   target.openalex_created_dt = LEAST(target.openalex_created_dt, source.openalex_created_dt),
   target.openalex_updated_dt = source.openalex_updated_dt;
 
@@ -927,6 +942,7 @@ WITH ids AS (
   SELECT DISTINCT
     title_author,
     MIN(paper_id) AS paper_id,
+    MIN(published_date) AS published_date,
     MIN(openalex_created_dt) AS openalex_created_dt,
     MAX(openalex_updated_dt) AS openalex_updated_dt
   FROM identifier('openalex' || :env_suffix || '.works.work_id_map')
@@ -942,6 +958,7 @@ USING ids AS source
   AND LENGTH(source.title_author) > 20
 WHEN MATCHED THEN UPDATE SET
   target.work_id = source.paper_id,
+  target.published_date = LEAST(target.published_date, source.published_date),
   target.openalex_created_dt = LEAST(target.openalex_created_dt, source.openalex_created_dt),
   target.openalex_updated_dt = source.openalex_updated_dt;
 
