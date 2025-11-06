@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS identifier('openalex' || :env_suffix || '.works.locat
   normalized_title STRING,
   authors ARRAY<STRUCT<given: STRING, family: STRING, name: STRING, orcid: STRING, affiliations: ARRAY<STRUCT<name: STRING, department: STRING, ror_id: STRING>>, is_corresponding: BOOLEAN, author_key: STRING>>,
   ids ARRAY<STRUCT<id: STRING, namespace: STRING, relationship: STRING>>,
+  raw_type STRING,
   type STRING,
   version STRING,
   license STRING,
@@ -132,6 +133,7 @@ AND (
       target.native_id_namespace IS DISTINCT FROM source.native_id_namespace OR
       target.title IS DISTINCT FROM source.title OR
       target.normalized_title IS DISTINCT FROM source.normalized_title OR
+      target.raw_type IS DISTINCT FROM source.raw_type OR
       target.type IS DISTINCT FROM source.type OR
       target.version IS DISTINCT FROM source.version OR
       target.license IS DISTINCT FROM source.license OR
@@ -168,6 +170,7 @@ THEN UPDATE SET
     target.normalized_title = COALESCE(source.normalized_title, target.normalized_title),
     target.authors = array_union(COALESCE(source.authors,array()),COALESCE(target.authors,array())),
     target.ids = array_union(COALESCE(source.ids,array()),COALESCE(target.ids,array())),
+    target.raw_type = source.raw_type,
     target.type = source.type,
     target.version = source.version,
     target.license = source.license,
@@ -350,6 +353,7 @@ AND (
       target.native_id_namespace IS DISTINCT FROM source.native_id_namespace OR
       target.title IS DISTINCT FROM source.title OR
       target.normalized_title IS DISTINCT FROM source.normalized_title OR
+      target.raw_type IS DISTINCT FROM source.raw_type OR
       target.type IS DISTINCT FROM source.type OR
       target.version IS DISTINCT FROM source.version OR
       target.license IS DISTINCT FROM source.license OR
@@ -386,6 +390,7 @@ THEN UPDATE SET
     target.normalized_title = source.normalized_title,
     target.authors = array_union(coalesce(source.authors,array()),coalesce(target.authors,array())),
     target.ids = array_union(coalesce(source.ids,array()),coalesce(target.ids,array())),
+    target.raw_type = source.raw_type,
     target.type = source.type,
     target.version = source.version,
     target.license = source.license,
@@ -429,6 +434,7 @@ WHEN NOT MATCHED THEN INSERT (
     normalized_title,
     authors,
     ids,
+    raw_type,
     type,
     version,
     license,
@@ -475,6 +481,7 @@ WHEN NOT MATCHED THEN INSERT (
     source.normalized_title,
     source.authors,
     source.ids,
+    source.raw_type,
     source.type,
     source.version,
     source.license,
