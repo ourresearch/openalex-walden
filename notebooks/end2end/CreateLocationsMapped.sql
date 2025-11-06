@@ -144,7 +144,7 @@ AND (
       target.volume IS DISTINCT FROM source.volume OR
       target.first_page IS DISTINCT FROM source.first_page OR
       target.last_page IS DISTINCT FROM source.last_page OR
-      target.is_retracted IS DISTINCT FROM source.is_retracted OR
+      target.is_retracted IS DISTINCT FROM COALESCE(source.is_retracted, FALSE) OR
       target.abstract IS DISTINCT FROM source.abstract OR
       target.source_name IS DISTINCT FROM source.source_name OR
       target.publisher IS DISTINCT FROM source.publisher OR
@@ -153,8 +153,8 @@ AND (
       target.pdf_s3_id IS DISTINCT FROM source.pdf_s3_id OR
       target.grobid_s3_id IS DISTINCT FROM source.grobid_s3_id OR
       target.mesh IS DISTINCT FROM source.mesh OR
-      target.is_oa IS DISTINCT FROM source.is_oa OR
-      target.is_oa_source IS DISTINCT FROM source.is_oa_source OR
+      target.is_oa IS DISTINCT FROM COALESCE(source.is_oa, FALSE) OR
+      target.is_oa_source IS DISTINCT FROM COALESCE(source.is_oa_source, FALSE) OR
       target.authors_exist IS DISTINCT FROM source.authors_exist OR
       target.affiliations_exist IS DISTINCT FROM source.affiliations_exist OR
       target.is_corresponding_exists IS DISTINCT FROM source.is_corresponding_exists OR
@@ -182,7 +182,7 @@ THEN UPDATE SET
     target.volume = source.volume,
     target.first_page = source.first_page,
     target.last_page = source.last_page,
-    target.is_retracted = source.is_retracted,
+    target.is_retracted = COALESCE(source.is_retracted, FALSE),
     target.abstract = source.abstract,
     target.source_name = source.source_name,
     target.publisher = source.publisher,
@@ -194,8 +194,8 @@ THEN UPDATE SET
     target.pdf_s3_id = source.pdf_s3_id,
     target.grobid_s3_id = source.grobid_s3_id,
     target.mesh = source.mesh,
-    target.is_oa = source.is_oa,
-    target.is_oa_source = source.is_oa_source,
+    target.is_oa = COALESCE(source.is_oa, FALSE),
+    target.is_oa_source = COALESCE(source.is_oa_source, FALSE),
     target.abstract_inverted_index = source.abstract_inverted_index,
     target.authors_exist = source.authors_exist,
     target.affiliations_exist = source.affiliations_exist,
@@ -364,7 +364,7 @@ AND (
       target.volume IS DISTINCT FROM source.volume OR
       target.first_page IS DISTINCT FROM source.first_page OR
       target.last_page IS DISTINCT FROM source.last_page OR
-      target.is_retracted IS DISTINCT FROM source.is_retracted OR
+      target.is_retracted IS DISTINCT FROM COALESCE(source.is_retracted, FALSE) OR
       target.abstract IS DISTINCT FROM source.abstract OR
       target.source_name IS DISTINCT FROM source.source_name OR
       target.publisher IS DISTINCT FROM source.publisher OR
@@ -373,8 +373,8 @@ AND (
       target.pdf_s3_id IS DISTINCT FROM source.pdf_s3_id OR
       target.grobid_s3_id IS DISTINCT FROM source.grobid_s3_id OR
       target.mesh IS DISTINCT FROM source.mesh OR
-      target.is_oa IS DISTINCT FROM source.is_oa OR
-      target.is_oa_source IS DISTINCT FROM source.is_oa_source OR
+      target.is_oa IS DISTINCT FROM COALESCE(source.is_oa, FALSE) OR
+      target.is_oa_source IS DISTINCT FROM COALESCE(source.is_oa_source, FALSE) OR
       target.authors_exist IS DISTINCT FROM source.authors_exist OR
       target.affiliations_exist IS DISTINCT FROM source.affiliations_exist OR
       target.is_corresponding_exists IS DISTINCT FROM source.is_corresponding_exists OR
@@ -402,7 +402,7 @@ THEN UPDATE SET
     target.volume = source.volume,
     target.first_page = source.first_page,
     target.last_page = source.last_page,
-    target.is_retracted = source.is_retracted,
+    target.is_retracted = COALESCE(source.is_retracted, FALSE),
     target.abstract = source.abstract,
     target.source_name = source.source_name,
     target.publisher = source.publisher,
@@ -414,8 +414,8 @@ THEN UPDATE SET
     target.pdf_s3_id = source.pdf_s3_id,
     target.grobid_s3_id = source.grobid_s3_id,
     target.mesh = source.mesh,
-    target.is_oa = source.is_oa,
-    target.is_oa_source = source.is_oa_source,
+    target.is_oa = COALESCE(source.is_oa, FALSE),
+    target.is_oa_source = COALESCE(source.is_oa_source, FALSE),
     target.abstract_inverted_index = source.abstract_inverted_index,
     target.authors_exist = source.authors_exist,
     target.affiliations_exist = source.affiliations_exist,
@@ -493,7 +493,7 @@ WHEN NOT MATCHED THEN INSERT (
     source.volume,
     source.first_page,
     source.last_page,
-    source.is_retracted,
+    COALESCE(source.is_retracted, FALSE),
     source.abstract,
     source.source_name,
     source.publisher,
@@ -505,8 +505,8 @@ WHEN NOT MATCHED THEN INSERT (
     source.pdf_s3_id,
     source.grobid_s3_id,
     source.mesh,
-    source.is_oa,
-    source.is_oa_source,
+    COALESCE(source.is_oa, FALSE),
+    COALESCE(source.is_oa_source, FALSE),
     NULL, --referenced_works_count
     NULL, --referenced_works is calculated from self-join
     source.abstract_inverted_index,
