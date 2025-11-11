@@ -209,7 +209,7 @@ def datacite_parsed():
             )
         )
         # Skip UDF usage entirely and pre-build a MapType to use in lookup
-        .withColumn("raw_type", F.col("attributes.types.resourceTypeGeneral"))
+        .withColumn("raw_type", F.col("attributes.types.citeproc"))
         .withColumn("type", F.coalesce(
                 openalex_type_from_datacite_mapping_expr[F.col("attributes.types.resourceTypeGeneral")], F.lit("other"))
         )
