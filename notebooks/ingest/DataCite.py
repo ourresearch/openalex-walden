@@ -241,10 +241,18 @@ def datacite_parsed():
         .withColumn("language", F.col("attributes.language"))
         .withColumn(
             "published_date",
-            F.least(
-                F.to_date(F.col("attributes.registered")),
-                F.to_date(F.col("attributes.created")),
+            F.coalesce(
+                F.to_date(F.expr("array_min(filter(attributes.dates, d -> lower(d.dateType) = 'submitted').date)")),
+                F.to_date(F.expr("array_min(attributes.dates.date)")),
+                F.least(
+                    F.to_date(F.col("attributes.registered")),
+                    F.to_date(F.col("attributes.created")),
+                )
             ),
+        )
+        .withColumn(
+            "published_date",
+            F.when(F.year(F.col("published_date")) >= 1900, F.col("published_date")).otherwise(F.lit(None))
         )
         .withColumn("created_date", F.to_date(F.col("attributes.created")))
         .withColumn("updated_date", F.to_date(F.col("attributes.updated")))
