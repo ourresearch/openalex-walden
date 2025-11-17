@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.2.1-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.2.3-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -16,7 +16,7 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType, BooleanType, TimestampType
 
 from openalex.utils.environment import *
-from openalex.dlt.normalize import walden_works_schema
+from openalex.dlt.normalize import normalize_license_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 
@@ -56,7 +56,7 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
 
 # COMMAND ----------
 
-def call_parser_single(id, max_retries=3, timeout=20):
+def call_parser_single(id, max_retries=2, timeout=20):
     """Individual parser call function with increased retries"""
     retries = 0
     while retries <= max_retries:
@@ -87,7 +87,7 @@ def call_parser_single(id, max_retries=3, timeout=20):
     print(f"Max retries reached for {id}")
     return None
 
-def process_batch_with_threadpool(ids, max_workers=30):
+def process_batch_with_threadpool(ids, max_workers=4):
     """Process a batch of IDs using ThreadPool"""
     results = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -183,8 +183,10 @@ def taxicab_enriched_new():
         )
     else:
         return (
-            dlt.read_stream("taxicab_filtered_new")
-            .withColumn("parser_response", parser_udf(F.col("taxicab_id")))
+            dlt
+                .read_stream("taxicab_filtered_new")
+                .repartition(48, F.xxhash64("taxicab_id"))
+                .withColumn("parser_response", parser_udf(F.col("taxicab_id")))
         )
 
 @dlt.table(
@@ -218,9 +220,11 @@ def landing_page_works_staged_new():
             ).alias("ids"),
             F.col("parser_response.version").alias("version"),
             F.when(
-                F.col("parser_response.license") == "other-oa",
-                F.lit(None)  # need to set other-oa to null due to parseland issue of too broad detection
-            ).otherwise(F.col("parser_response.license")).alias("license"),
+                F.col("parser_response.license") == "other-oa",  # need to set to None due to parseland detection too broad
+                F.lit(None)
+            ).otherwise(
+                normalize_license_udf(F.col("parser_response.license"))
+            ).alias("license"),
             F.when(
                 F.length(F.col("parser_response.abstract")) > MAX_ABSTRACT_LENGTH, 
                 F.substring(F.col("parser_response.abstract"), 1, MAX_ABSTRACT_LENGTH)
@@ -269,7 +273,7 @@ def landing_page_backfill():
             F.when(
                 F.col("license") == "other-oa",
                 F.lit(None)
-            ).otherwise(F.col("license"))
+            ).otherwise(normalize_license_udf(F.col("license")))
         )
     )
 
