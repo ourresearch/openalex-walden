@@ -18,7 +18,7 @@ MAX_TITLE_LENGTH = 5000
 MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
 MAX_AFFILIATION_STRING_LENGTH = 1000 
-unallowed_types = ["component"]
+unallowed_types = ["component", "grant"]
 
 @F.pandas_udf(StringType())
 def normalize_license_udf(license_series: pd.Series) -> pd.Series:
