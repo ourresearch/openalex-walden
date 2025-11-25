@@ -85,16 +85,14 @@ def get_openalex_type_from_pubmed(pubmed_type):
         
         # peer-review
         "Peer Review": "peer-review",
-
-        # grant
-        "Research Support, American Recovery and Reinvestment Act": "grant",
-        "Research Support, N.I.H., Extramural": "grant",
-        "Research Support, N.I.H., Intramural": "grant",
-        "Research Support, Non-U.S. Gov't": "grant",
-        "Research Support, U.S. Gov't, Non-P.H.S.": "grant",
-        "Research Support, U.S. Gov't, P.H.S.": "grant",
         
         # everything else maps to "other"
+        "Research Support, American Recovery and Reinvestment Act": "other",
+        "Research Support, N.I.H., Extramural": "other",
+        "Research Support, N.I.H., Intramural": "other",
+        "Research Support, Non-U.S. Gov't": "other",
+        "Research Support, U.S. Gov't, Non-P.H.S.": "other",
+        "Research Support, U.S. Gov't, P.H.S.": "other",
         "Address": "other",
         "Autobiography": "other",
         "Biography": "other",
