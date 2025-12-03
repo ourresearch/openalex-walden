@@ -10,7 +10,6 @@ from pyspark.sql.types import *
 import re
 import unicodedata
 from functools import reduce
-import pandas as pd
 
 from openalex.utils.environment import *
 from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
@@ -269,19 +268,6 @@ def normalize_language_code(lang_code):
         
     return None
 
-def has_oa_domain(native_id):
-    oa_domains = ["arxiv", "osti", "pubmedcentral", "biorxiv", "medrxiv", "zenodo", "figshare"]
-    if native_id is None:
-        return False
-    
-    parts = native_id.lower().split(":")
-    if len(parts) >= 2:
-        domain_part = parts[1]
-        for domain in oa_domains:
-            if domain in domain_part:
-                return True
-    return False
-
 def detect_version_from_metadata(metadata_string, native_id):
     """
     Detect version from stringified metadata and native_id based on regex patterns
@@ -343,24 +329,9 @@ def detect_version_from_metadata(metadata_string, native_id):
     
     return "submittedVersion"
 
-@F.pandas_udf(StringType())
-def get_openalex_type_from_repo_udf(repo_type_series: pd.Series) -> pd.Series:
-    return repo_type_series.apply(get_openalex_type_from_repo)
-
-@F.pandas_udf(StringType())
-def normalize_language_code_udf(language_code_series: pd.Series) -> pd.Series:
-    return language_code_series.apply(normalize_language_code)
-
-@F.pandas_udf(BooleanType())
-def has_oa_domain_udf(url_series: pd.Series) -> pd.Series:
-    return url_series.apply(has_oa_domain)
-
-@F.pandas_udf(StringType())
-def detect_version_udf(metadata_series: pd.Series, native_id_series: pd.Series) -> pd.Series:
-    return pd.Series([
-        detect_version_from_metadata(metadata, native_id) 
-        for metadata, native_id in zip(metadata_series, native_id_series)
-    ])
+get_openalex_type_from_repo_udf = F.udf(get_openalex_type_from_repo, StringType())
+normalize_language_code_udf = F.udf(normalize_language_code, StringType())
+detect_version_udf = F.udf(detect_version_from_metadata, StringType())
 
 # COMMAND ----------
 
@@ -704,7 +675,10 @@ def repo_parsed():
             F.lower(F.col("license")).startswith("cc") | 
             F.lower(F.col("license")).contains("other-oa") |
             F.lower(F.col("license")).contains("public-domain") |
-            has_oa_domain_udf(F.col("native_id")),
+            (
+                (F.size(F.split(F.col("native_id"), ":")) >= 2) &
+                F.lower(F.split(F.col("native_id"), ":")[1]).rlike("arxiv|osti|pubmedcentral|biorxiv|medrxiv|zenodo|figshare")
+            ),
             F.lit(True)
         ).otherwise(F.lit(False))
     )
