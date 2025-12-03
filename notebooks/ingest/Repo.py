@@ -140,36 +140,19 @@ REPO_TYPE_MAPPING = {
     "null": "other",
 }
 
-def get_openalex_type_from_repo(input_type):
-    """
-    Convert various publication type formats to OpenAlex types.
-    """
-    if not input_type or not isinstance(input_type, str):
-        return "other"
+# Native Spark map for type lookups (created from REPO_TYPE_MAPPING)
+TYPE_MAP = F.create_map([F.lit(x) for kv in REPO_TYPE_MAPPING.items() for x in kv])
 
-    input_type = input_type.strip()
-    input_type_lower = input_type.lower()
-    
-    # Handle URI formats first
-    if "info:eu-repo/semantics/" in input_type_lower:
-        input_type_lower = input_type_lower.split("info:eu-repo/semantics/")[-1]
-    elif "purl.org/coar/resource_type/" in input_type_lower:
-        coar_to_type = {
-            "c_93fc": "article",    # contribution to journal
-            "c_6501": "article",    # journal article
-            "c_bdcc": "article",    # research article
-            "c_db06": "dissertation",    # dissertation (corrected from CSV)
-            "r60j-j5bd": "article", # article
-            "c_5794": "article",    # journal article
-            "c_2f33": "article",    # article
-        }
-        coar_id = input_type_lower.split("/")[-1]
-        return coar_to_type.get(coar_id, "other")
-    elif "purl.org/coar/version/" in input_type_lower:
-        return "article"
-    
-    # Check comprehensive mapping dictionary
-    return REPO_TYPE_MAPPING.get(input_type_lower, "other")
+# COAR resource type codes map
+COAR_MAP = F.create_map(
+    F.lit("c_93fc"), F.lit("article"),     # contribution to journal
+    F.lit("c_6501"), F.lit("article"),     # journal article
+    F.lit("c_bdcc"), F.lit("article"),     # research article
+    F.lit("c_db06"), F.lit("dissertation"), # dissertation
+    F.lit("r60j-j5bd"), F.lit("article"),  # article
+    F.lit("c_5794"), F.lit("article"),     # journal article
+    F.lit("c_2f33"), F.lit("article")      # article
+)
 
 def normalize_language_code(lang_code):
     """
@@ -329,7 +312,6 @@ def detect_version_from_metadata(metadata_string, native_id):
     
     return "submittedVersion"
 
-get_openalex_type_from_repo_udf = F.udf(get_openalex_type_from_repo, StringType())
 normalize_language_code_udf = F.udf(normalize_language_code, StringType())
 detect_version_udf = F.udf(detect_version_from_metadata, StringType())
 
@@ -545,7 +527,27 @@ def repo_parsed():
         )
     )
     .withColumn("raw_native_type", F.col("`ns0:metadata`.`ns1:dc`.`dc:type`"))
-    .withColumn("type", get_openalex_type_from_repo_udf(F.col("raw_native_type")))
+    # Compute type lookup key: extract suffix after "info:eu-repo/semantics/" if present
+    .withColumn("_type_key",
+        F.when(
+            F.lower(F.col("raw_native_type")).contains("info:eu-repo/semantics/"),
+            F.element_at(F.split(F.lower(F.col("raw_native_type")), "info:eu-repo/semantics/"), -1)
+        ).otherwise(
+            F.lower(F.trim(F.col("raw_native_type")))
+        )
+    )
+    .withColumn("type",
+        F.when(
+            F.lower(F.col("raw_native_type")).contains("purl.org/coar/resource_type/"),
+            F.coalesce(COAR_MAP[F.element_at(F.split(F.lower(F.col("raw_native_type")), "/"), -1)], F.lit("other"))
+        ).when(
+            F.lower(F.col("raw_native_type")).contains("purl.org/coar/version/"),
+            F.lit("article")
+        ).otherwise(
+            F.coalesce(TYPE_MAP[F.col("_type_key")], F.lit("other"))
+        )
+    )
+    .drop("_type_key")
     .filter(~F.lower(F.col("raw_native_type")).isin(TYPES_TO_DELETE))  # Filter out records marked for deletion (case-insensitive)
     .withColumn("metadata_string", F.col("`ns0:metadata`").cast("string"))
     .withColumn("version", detect_version_udf(
