@@ -4,7 +4,7 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Refresh `openalex.sources.sources_api`
+# MAGIC ### Refresh `openalex.funders.funders_api`
 
 # COMMAND ----------
 
@@ -107,10 +107,10 @@ print("\nIndexing operation completed!")
 
 # COMMAND ----------
 
-# delete index if exists
 client = Elasticsearch(
-    hosts=[ELASTIC_URL],
-    max_retries=5,
-)
-#if client.indices.exists(index=ELASTIC_INDEX):
-client.indices.refresh(index=CONFIG["index_name"])
+        hosts=[ELASTIC_URL],
+        max_retries=3,
+        request_timeout=180
+    )
+
+client.indices.refresh(index=CONFIG['index_name'])
