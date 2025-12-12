@@ -16,8 +16,8 @@ log = logging.getLogger(__name__)
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
-    "table_name": "openalex.authors.authors_api",
-    "index_name": "authors-v16"
+    "table_name": "openalex.authors.openalex_authors",
+    "index_name": "authors-v17"
 }
 
 def send_partition_to_elastic(partition, index_name):
@@ -66,6 +66,7 @@ print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 try:
     df = (spark.table(f"{CONFIG['table_name']}")
+        .withColumn("id", F.concat(F.lit("https://openalex.org/A"), F.col("id").cast("string")))
         .withColumn("topics", F.slice(F.col("topics"), 1, 5))
         .withColumn("topic_share", F.slice(F.col("topic_share"), 1, 5))
         .select("id", F.struct(F.col("*")).alias("_source"))
@@ -166,4 +167,11 @@ if (TEST):
 
 # COMMAND ----------
 
-
+# refresh
+client = Elasticsearch(
+    hosts=[ELASTIC_URL],
+    request_timeout=180,
+    max_retries=5,
+    retry_on_timeout=True
+)
+client.indices.refresh(index=CONFIG["index_name"])
