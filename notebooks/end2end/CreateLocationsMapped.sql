@@ -133,6 +133,7 @@ AND (
       target.native_id_namespace IS DISTINCT FROM source.native_id_namespace OR
       target.title IS DISTINCT FROM source.title OR
       target.normalized_title IS DISTINCT FROM source.normalized_title OR
+      target.authors IS DISTINCT FROM source.authors OR
       target.raw_type IS DISTINCT FROM source.raw_type OR
       target.type IS DISTINCT FROM source.type OR
       target.version IS DISTINCT FROM source.version OR
@@ -168,7 +169,7 @@ THEN UPDATE SET
     target.native_id_namespace = source.native_id_namespace,
     target.title = COALESCE(source.title, target.title),
     target.normalized_title = COALESCE(source.normalized_title, target.normalized_title),
-    target.authors = array_union(COALESCE(source.authors,array()),COALESCE(target.authors,array())),
+    target.authors = source.authors,
     target.ids = array_union(COALESCE(source.ids,array()),COALESCE(target.ids,array())),
     target.raw_type = source.raw_type,
     target.type = source.type,
@@ -353,6 +354,7 @@ AND (
       target.native_id_namespace IS DISTINCT FROM source.native_id_namespace OR
       target.title IS DISTINCT FROM source.title OR
       target.normalized_title IS DISTINCT FROM source.normalized_title OR
+      target.authors IS DISTINCT FROM source.authors OR
       target.raw_type IS DISTINCT FROM source.raw_type OR
       target.type IS DISTINCT FROM source.type OR
       target.version IS DISTINCT FROM source.version OR
@@ -388,7 +390,7 @@ THEN UPDATE SET
     target.native_id_namespace = source.native_id_namespace,
     target.title = source.title,
     target.normalized_title = source.normalized_title,
-    target.authors = array_union(coalesce(source.authors,array()),coalesce(target.authors,array())),
+    target.authors = source.authors,
     target.ids = array_union(coalesce(source.ids,array()),coalesce(target.ids,array())),
     target.raw_type = source.raw_type,
     target.type = source.type,
