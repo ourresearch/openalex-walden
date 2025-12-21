@@ -133,7 +133,7 @@ AND (
       target.native_id_namespace IS DISTINCT FROM source.native_id_namespace OR
       target.title IS DISTINCT FROM source.title OR
       target.normalized_title IS DISTINCT FROM source.normalized_title OR
-      target.authors IS DISTINCT FROM source.authors OR
+      -- target.authors IS DISTINCT FROM source.authors OR
       target.raw_type IS DISTINCT FROM source.raw_type OR
       target.type IS DISTINCT FROM source.type OR
       target.version IS DISTINCT FROM source.version OR
@@ -354,7 +354,7 @@ AND (
       target.native_id_namespace IS DISTINCT FROM source.native_id_namespace OR
       target.title IS DISTINCT FROM source.title OR
       target.normalized_title IS DISTINCT FROM source.normalized_title OR
-      target.authors IS DISTINCT FROM source.authors OR
+      -- target.authors IS DISTINCT FROM source.authors OR
       target.raw_type IS DISTINCT FROM source.raw_type OR
       target.type IS DISTINCT FROM source.type OR
       target.version IS DISTINCT FROM source.version OR
