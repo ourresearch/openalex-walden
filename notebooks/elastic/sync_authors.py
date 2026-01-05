@@ -4,7 +4,7 @@
 # COMMAND ----------
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pyspark.sql import functions as F
 from elasticsearch import Elasticsearch, helpers
 import logging
@@ -65,13 +65,16 @@ def send_partition_to_elastic(partition, index_name):
 print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 try:
+    two_days_ago = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+
     df = (spark.table(f"{CONFIG['table_name']}")
+        .filter(F.col("created_date") >= two_days_ago)
         .withColumn("id", F.concat(F.lit("https://openalex.org/A"), F.col("id").cast("string")))
         .withColumn("topics", F.slice(F.col("topics"), 1, 5))
         .withColumn("topic_share", F.slice(F.col("topic_share"), 1, 5))
         .select("id", F.struct(F.col("*")).alias("_source"))
     )
-    df = df.repartition(1024).cache()
+    df = df.repartition(1024)
     print(f"Total records to process: {df.count()}")
     
     def send_partition_wrapper(partition):
@@ -89,81 +92,6 @@ except Exception as e:
     log.error(f"Failed to process {CONFIG['table_name']}: {e}", stack_info=True, exc_info=True)
 
 print("\nIndexing operation completed!")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Use only for testing
-
-# COMMAND ----------
-
-import pprint # Import the pretty-print library for clean output
-
-def generate_prepared_actions(partition, parsing_errors, op_type = "index"):
-    for row in partition:
-        try:
-            yield {
-                "_op_type": op_type,
-                "_index": CONFIG["index_name"],
-                "_id": row.id,
-                "_source": row._source.asDict(True)
-            }
-        except Exception as e:
-            parsing_errors.append({"row_id": row.id, "error": str(e)})
-
-TEST = False
-
-if (TEST):
-    indexed_count = 0
-    # --- Your existing setup code remains the same ---
-    df = (spark.table(f"{CONFIG['table_name']}")
-        .withColumn("topics", F.slice(F.col("topics"), 1, 5))
-        .withColumn("topic_share", F.slice(F.col("topic_share"), 1, 5))
-        .select("id", F.struct(F.col("*")).alias("_source"))
-    )    
-    df_rows = df.limit(10000).collect()
-    print(f"Total records to process: {len(df_rows)}")
-
-    client = Elasticsearch(
-        hosts=[ELASTIC_URL],
-        request_timeout=180,
-        max_retries=5,
-        retry_on_timeout=True,
-        http_compress=True,
-    )
-
-    # --- Refined bulk indexing with detailed error reporting ---
-    indexed_count = 0
-    failed_docs = []
-    parsing_errors = []
-
-    # Use streaming_bulk with a small chunk_size
-    for success, info in helpers.streaming_bulk(
-        client,
-        generate_prepared_actions(df_rows, parsing_errors), # Assuming the generator is simplified
-        chunk_size=1000 # Process in batches of 10
-    ):
-        if success:
-            indexed_count += 1
-        else:
-            # This block now correctly parses the error info
-            action, result = info.popitem()
-            doc_id = result.get("_id", "[unknown_id]")
-            error_details = result.get("error", {})
-            
-            # Print a clear error message
-            print("---" * 15)
-            print(f"💥 FAILED to index document ID: {doc_id}")
-            pprint.pprint(error_details)
-            print("---" * 15)
-            
-            # Keep track of failed documents
-            failed_docs.append(doc_id)
-        if (indexed_count % 100 == 0):
-            print(f"Indexed {indexed_count} documents so far...")
-
-    client.close()
-    print(parsing_errors)
 
 # COMMAND ----------
 
