@@ -35,14 +35,14 @@ resources:
           pipeline_task:
             pipeline_id: d327518b-e3e0-484c-a214-c7326f3e51fe
             full_refresh: false
-        - task_key: Refresh_Prod_Data_MergeKeys
-          notebook_task:
-            notebook_path: notebooks/end2end/RefreshProdMergeKeyData
-            source: GIT
         - task_key: Repos_Ingest_DLT
           pipeline_task:
             pipeline_id: fcd1ea61-2e07-433b-90ad-b3b0a0960158
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: Union
           depends_on:
             - task_key: Crossref_Ingest_DLT
@@ -85,29 +85,74 @@ resources:
             warehouse_id: 4d37bf76372a2901
         - task_key: Locations_Mapped
           depends_on:
-            - task_key: Refresh_Prod_Data_MergeKeys
             - task_key: Locations_with_Sources
           notebook_task:
             notebook_path: notebooks/end2end/CreateLocationsMapped
             source: GIT
             warehouse_id: 4d37bf76372a2901
-        - task_key: Authors_and_Affiliations
+        - task_key: parse_referenced_works
           depends_on:
             - task_key: Locations_Mapped
           notebook_task:
-            notebook_path: notebooks/end2end/CreateAuthorsAndAffiliations
+            notebook_path: notebooks/parsing/parse_work_references
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: Works_Base
+          depends_on:
+            - task_key: parse_referenced_works
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateWorksBase
             source: GIT
             warehouse_id: 4d37bf76372a2901
-        - task_key: OpenAlex_Works
+        - task_key: Parsed_Author_Names
+          depends_on:
+            - task_key: Works_Base
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateParsedNamesLookup
+            source: GIT
+        - task_key: Prepare_Affiliation_Strings
+          depends_on:
+            - task_key: Works_Base
+          notebook_task:
+            notebook_path: notebooks/end2end/PrepareAffiliationStrings
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Institutions_Frontfill
+          depends_on:
+            - task_key: Prepare_Affiliation_Strings
+          run_job_task:
+            job_id: 462221738638096
+        - task_key: Topics_Frontfill
+          depends_on:
+            - task_key: Works_Base
+          run_job_task:
+            job_id: 751459553624380
+        - task_key: Author_Matching
+          depends_on:
+            - task_key: Parsed_Author_Names
+            - task_key: Institutions_Frontfill
+            - task_key: Topics_Frontfill
+          notebook_task:
+            notebook_path: notebooks/end2end/UpdateWorkAuthorAffiliations
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Authors_and_Affiliations
+          depends_on:
+            - task_key: Author_Matching
+          notebook_task:
+            notebook_path: notebooks/end2end/UpdateWorkAuthorships
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Works_Enriched
           depends_on:
             - task_key: Authors_and_Affiliations
           notebook_task:
-            notebook_path: notebooks/end2end/CreateOpenAlexWorks
+            notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Wunpaywall
           depends_on:
-            - task_key: OpenAlex_Works
+            - task_key: Works_Enriched
           notebook_task:
             notebook_path: notebooks/end2end/CreateWunpaywall
             source: GIT
@@ -127,6 +172,14 @@ resources:
             notebook_path: notebooks/end2end/WunpaywallDataFeed
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
+        - task_key: Wunpaywall_Full_Snapshot
+          depends_on:
+            - task_key: IS_PROD
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/snapshot/export_wunpaywall
+            source: GIT
+          job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
         - task_key: Wunpaywall_to_OpenAlex_DB
           depends_on:
             - task_key: IS_PROD
@@ -140,22 +193,16 @@ resources:
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13
-            spark_conf:
-              spark.master: local[*, 4]
-              spark.databricks.cluster.profile: singleNode
             aws_attributes:
               first_on_demand: 1
-              availability: SPOT_WITH_FALLBACK
-              zone_id: us-east-1c
+              zone_id: auto
               spot_bid_price_percent: 100
             node_type_id: rd-fleet.8xlarge
-            driver_node_type_id: rd-fleet.8xlarge
-            custom_tags:
-              ResourceClass: SingleNode
             enable_elastic_disk: true
-            data_security_mode: SINGLE_USER
+            data_security_mode: DATA_SECURITY_MODE_DEDICATED
             runtime_engine: STANDARD
-            num_workers: 0
+            kind: CLASSIC_PREVIEW
+            is_single_node: true
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
