@@ -8,9 +8,14 @@
 
 ## Prerequisites
 
-Before starting, get this information from the user:
-- **Funder name:** (e.g., "NSF", "DFG", "Wellcome Trust")
-- **Data source:** URL to API or data dump
+Before starting, gather the following information:
+- **Funder name:** Get from the user (e.g., "NSF", "DFG", "Wellcome Trust")
+- **Data source:** URL to API or data dump. **Make every effort to locate this yourself first:**
+  1. Search the web for "{funder name} grants API", "{funder name} awards data", or "{funder name} open data"
+  2. Check the funder's official website for developer/API documentation
+  3. Look for data portals or public data dumps (many funders publish to data.gov or similar)
+  4. Search for existing open-source projects that fetch data from this funder
+  5. **Only ask the user as a last resort** if you cannot find a suitable data source
 - **OpenAlex funder_id:** Look this up using Databricks MCP (see Step 0)
 
 ---
