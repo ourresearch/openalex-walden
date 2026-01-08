@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """
-Gateway to Research (GtR) to S3 Data Pipeline
-==============================================
+NWO (Dutch Research Council) to S3 Data Pipeline
+=================================================
 
-This script downloads all UK Research Council grant data from the GtR API,
+This script downloads all Dutch research grant data from the NWOpen API,
 processes it into a parquet file, and uploads it to S3 for Databricks ingestion.
 
-Data Source: https://gtr.ukri.org/gtr/api
-Output: s3://openalex-ingest/awards/gtr/gtr_projects.parquet
+Data Source: https://nwopen-api.nwo.nl/NWOpen-API/api/Projects
+API Docs: https://data.nwo.nl/en/how-to-use-the-nwopen-api
+Output: s3://openalex-ingest/awards/nwo/nwo_projects.parquet
 
 What this script does:
-1. Fetches all projects from the GtR API (171K+ projects)
-2. Parses XML responses to extract project metadata
+1. Fetches all projects from the NWOpen API (paginated JSON)
+2. Parses JSON responses to extract project metadata
 3. Extracts grant reference, funder, amount, dates, PI, and organization info
-4. Combines into a single DataFrame
-5. Saves as parquet and uploads to S3
+4. Captures Products and summary_updates as JSON strings for later parsing
+5. Combines into a single DataFrame
+6. Saves as parquet and uploads to S3
 
 Features:
 - Checkpointing: Progress is saved every 100 pages; resume with --resume
@@ -22,24 +24,20 @@ Features:
 - ETA reporting: Shows estimated time remaining based on current progress
 - Error tracking: Failed pages are logged and can be retried manually
 
-Output Statistics (expected):
-- Total projects: ~171K
-- Parquet file size: ~100-200 MB
-
 Requirements:
-    pip install pandas pyarrow requests lxml
+    pip install pandas pyarrow requests
 
     AWS CLI must be configured with credentials that have write access to:
-    s3://openalex-ingest/awards/gtr/
+    s3://openalex-ingest/awards/nwo/
 
 Usage:
-    python gtr_to_s3.py
+    python nwo_to_s3.py
 
     # Resume interrupted download:
-    python gtr_to_s3.py --resume
+    python nwo_to_s3.py --resume
 
     # Or with options:
-    python gtr_to_s3.py --output-dir /path/to/output --skip-upload
+    python nwo_to_s3.py --output-dir /path/to/output --skip-upload
 
 Author: OpenAlex Team
 """
@@ -49,7 +47,6 @@ import json
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -62,9 +59,9 @@ import requests
 # Configuration
 # =============================================================================
 
-# GtR API settings
-GTR_API_BASE = "https://gtr.ukri.org/gtr/api"
-PAGE_SIZE = 100  # Max allowed by API
+# NWOpen API settings
+NWO_API_BASE = "https://nwopen-api.nwo.nl/NWOpen-API/api/Projects"
+PAGE_SIZE = 100  # Results per page
 REQUEST_DELAY = 0.1  # Seconds between requests (be polite to API)
 MAX_WORKERS = 5  # Parallel page fetches
 MAX_RETRIES = 3  # Max retries per page
@@ -73,13 +70,7 @@ CHECKPOINT_INTERVAL = 100  # Save checkpoint every N pages
 
 # S3 destination
 S3_BUCKET = "openalex-ingest"
-S3_KEY = "awards/gtr/gtr_projects.parquet"
-
-# XML namespaces (API uses rcuk.ac.uk namespace, not ukri.org)
-NS = {
-    "ns1": "http://gtr.rcuk.ac.uk/gtr/api",
-    "ns2": "http://gtr.rcuk.ac.uk/gtr/api/project",
-}
+S3_KEY = "awards/nwo/nwo_projects.parquet"
 
 
 # =============================================================================
@@ -161,8 +152,8 @@ class CheckpointManager:
     """Manage checkpointing for resumable downloads."""
 
     def __init__(self, output_dir: Path):
-        self.checkpoint_file = output_dir / "gtr_checkpoint.json"
-        self.projects_file = output_dir / "gtr_projects_partial.json"
+        self.checkpoint_file = output_dir / "nwo_checkpoint.json"
+        self.projects_file = output_dir / "nwo_projects_partial.json"
         self.data = {
             "completed_pages": [],
             "failed_pages": [],
@@ -256,16 +247,16 @@ def fetch_page_with_retry(
     Returns:
         Tuple of (page_number, list of project dicts, error message or None)
     """
-    url = f"{GTR_API_BASE}/projects"
-    params = {"p": page, "s": PAGE_SIZE}
+    params = {"page": page, "per_page": PAGE_SIZE}
     last_error = None
 
     for attempt in range(max_retries):
         try:
-            response = session.get(url, params=params, timeout=60)
+            response = session.get(NWO_API_BASE, params=params, timeout=60)
             response.raise_for_status()
 
-            projects = parse_projects_xml(response.content)
+            data = response.json()
+            projects = parse_projects_json(data)
             return (page, projects, None)
 
         except requests.exceptions.Timeout as e:
@@ -282,6 +273,8 @@ def fetch_page_with_retry(
             else:
                 # Client error, don't retry
                 return (page, [], f"HTTP {response.status_code}: {str(e)}")
+        except json.JSONDecodeError as e:
+            last_error = f"JSON parse error (attempt {attempt + 1}/{max_retries})"
         except Exception as e:
             last_error = f"{type(e).__name__}: {str(e)}"
 
@@ -293,147 +286,127 @@ def fetch_page_with_retry(
     return (page, [], last_error)
 
 
-def parse_projects_xml(xml_content: bytes) -> list[dict]:
+def parse_projects_json(data: dict) -> list[dict]:
     """
-    Parse XML response containing multiple projects.
+    Parse JSON response containing multiple projects.
 
     Args:
-        xml_content: Raw XML bytes from API
+        data: Parsed JSON response from API
 
     Returns:
         List of project dictionaries
     """
     projects = []
 
-    try:
-        root = ET.fromstring(xml_content)
+    # NWOpen API returns projects under the "projects" key
+    project_list = data.get("projects", [])
 
-        # Find all project elements (ns2:project)
-        for proj in root.findall(".//ns2:project", NS):
+    if isinstance(project_list, list):
+        for proj in project_list:
             project = parse_single_project(proj)
             if project:
                 projects.append(project)
 
-    except ET.ParseError as e:
-        print(f"  [WARN] XML parse error: {e}")
-
     return projects
 
 
-def parse_single_project(proj: ET.Element) -> Optional[dict]:
+def parse_single_project(proj: dict) -> Optional[dict]:
     """
-    Parse a single project XML element into a dictionary.
+    Parse a single project JSON object into a dictionary.
 
     Args:
-        proj: XML Element for a single project
+        proj: Dictionary for a single project
 
     Returns:
         Dictionary with project fields, or None if parsing fails
     """
-    # Namespace URIs for attribute access
-    NS1 = "{http://gtr.rcuk.ac.uk/gtr/api}"
-    NS2 = "{http://gtr.rcuk.ac.uk/gtr/api/project}"
-
     try:
-        # Helper to get text from element
-        def get_text(elem: Optional[ET.Element]) -> Optional[str]:
-            return elem.text.strip() if elem is not None and elem.text else None
+        # Basic project info
+        project_id = proj.get("project_id")
+        title = proj.get("title")
 
-        # Basic project info (ns1 namespace for attributes)
-        project_id = proj.get(f"{NS1}id")
+        # Abstract: prefer English, fallback to Dutch
+        abstract = proj.get("summary_en") or proj.get("summary_nl")
 
-        # Content fields use ns2 namespace
-        title = get_text(proj.find("ns2:title", NS))
-        abstract = get_text(proj.find("ns2:abstractText", NS))
-        tech_abstract = get_text(proj.find("ns2:techAbstractText", NS))
-        status = get_text(proj.find("ns2:status", NS))
-        grant_category = get_text(proj.find("ns2:grantCategory", NS))
-        lead_funder = get_text(proj.find("ns2:leadFunder", NS))
+        # Dates
+        start_date = proj.get("start_date")
+        end_date = proj.get("end_date")
+        reporting_year = proj.get("reporting_year")
 
-        # Grant reference (RCUK identifier)
-        grant_reference = None
-        identifiers = proj.find("ns2:identifiers", NS)
-        if identifiers is not None:
-            for ident in identifiers.findall("ns2:identifier", NS):
-                if ident.get(f"{NS2}type") == "RCUK":
-                    grant_reference = get_text(ident)
-                    break
+        # Funder/category info
+        # funding_scheme contains the specific program name
+        grant_category = proj.get("funding_scheme")
+        funding_scheme_id = proj.get("funding_scheme_id")
 
-        # Fund details from links (dates are in link attributes)
-        amount = None
-        start_date = None
-        end_date = None
-        lead_org_id = None
+        # department or sub_department contains the NWO division
+        lead_funder = proj.get("department") or proj.get("sub_department")
+
+        # Extract PI and organization from project_members
         pi_id = None
+        pi_given_name = None
+        pi_family_name = None
+        lead_org_name = None
 
-        links = proj.find("ns1:links", NS)
-        if links is not None:
-            for link in links.findall("ns1:link", NS):
-                rel = link.get(f"{NS1}rel")
-
-                if rel == "FUND":
-                    # Get dates from fund link attributes
-                    start_date = link.get(f"{NS1}start")
-                    end_date = link.get(f"{NS1}end")
-
-                elif rel == "LEAD_ORG":
-                    href = link.get(f"{NS1}href", "")
-                    lead_org_id = href.split("/")[-1] if href else None
-
-                elif rel == "PI_PER":
-                    href = link.get(f"{NS1}href", "")
-                    pi_id = href.split("/")[-1] if href else None
-
-        # Get amount from participantValues (grantOffer)
-        participant_values = proj.find("ns2:participantValues", NS)
-        if participant_values is not None:
-            # Look for lead participant's grant offer
-            for participant in participant_values.findall("ns2:participant", NS):
-                role = get_text(participant.find("ns2:role", NS))
-                if role == "LEAD_PARTICIPANT":
-                    offer_elem = participant.find("ns2:grantOffer", NS)
-                    if offer_elem is not None and offer_elem.text:
-                        try:
-                            amount = float(offer_elem.text)
-                        except ValueError:
-                            pass
+        members = proj.get("project_members", [])
+        if members:
+            # Find main applicant first, then project leader
+            main_applicant = None
+            for member in members:
+                role = member.get("role", "")
+                if role == "Main Applicant":
+                    main_applicant = member
                     break
-            # If no lead participant found, try first participant
-            if amount is None:
-                for participant in participant_values.findall("ns2:participant", NS):
-                    offer_elem = participant.find("ns2:grantOffer", NS)
-                    if offer_elem is not None and offer_elem.text:
-                        try:
-                            amount = float(offer_elem.text)
-                        except ValueError:
-                            pass
+
+            # Fall back to project leader
+            if main_applicant is None:
+                for member in members:
+                    role = member.get("role", "")
+                    if role == "Project leader":
+                        main_applicant = member
                         break
 
-        # Get lead org name from participantValues
-        lead_org_name = None
-        if participant_values is not None:
-            for participant in participant_values.findall("ns2:participant", NS):
-                role = get_text(participant.find("ns2:role", NS))
-                if role == "LEAD_PARTICIPANT":
-                    lead_org_name = get_text(participant.find("ns2:organisationName", NS))
-                    break
+            # Fall back to first member if nothing found
+            if main_applicant is None and members:
+                main_applicant = members[0]
+
+            if main_applicant:
+                # ORCID - clean up placeholder values
+                orcid = main_applicant.get("orcid", "")
+                if orcid and orcid != "https://orcid.org/-":
+                    pi_id = orcid
+
+                pi_family_name = main_applicant.get("last_name")
+                pi_given_name = main_applicant.get("first_name")
+
+                # Organisation may contain hierarchy separated by ||
+                org = main_applicant.get("organisation", "")
+                if org:
+                    # Take the top-level org (first part before ||)
+                    lead_org_name = org.split("||")[0].strip()
+
+        # Capture products and summary_updates as JSON strings for later parsing
+        products = proj.get("products", [])
+        products_json = json.dumps(products) if products else None
+
+        summary_updates = proj.get("summary_updates", [])
+        summary_updates_json = json.dumps(summary_updates) if summary_updates else None
 
         return {
             "project_id": project_id,
-            "grant_reference": grant_reference,
             "title": title,
-            "abstract": abstract or tech_abstract,
-            "status": status,
+            "abstract": abstract,
             "grant_category": grant_category,
+            "funding_scheme_id": funding_scheme_id,
             "lead_funder": lead_funder,
-            "amount": amount,
             "start_date": start_date,
             "end_date": end_date,
-            "lead_org_id": lead_org_id,
+            "reporting_year": reporting_year,
             "lead_org_name": lead_org_name,
             "pi_id": pi_id,
-            "pi_given_name": None,  # Not available in list response, would need separate API call
-            "pi_family_name": None,
+            "pi_given_name": pi_given_name,
+            "pi_family_name": pi_family_name,
+            "products_json": products_json,
+            "summary_updates_json": summary_updates_json,
         }
 
     except Exception as e:
@@ -445,24 +418,46 @@ def get_total_pages(session: requests.Session) -> int:
     """
     Get total number of pages from API.
 
+    The NWOpen API returns pagination info in the meta object:
+    - meta.pages: total number of pages
+    - meta.count: total number of projects
+    - meta.per_page: results per page (should match PAGE_SIZE)
+
     Args:
         session: Requests session
 
     Returns:
         Total number of pages
     """
-    url = f"{GTR_API_BASE}/projects"
-    params = {"p": 1, "s": PAGE_SIZE}
+    params = {"page": 1, "per_page": PAGE_SIZE}
 
     for attempt in range(MAX_RETRIES):
         try:
-            response = session.get(url, params=params, timeout=60)
+            response = session.get(NWO_API_BASE, params=params, timeout=60)
             response.raise_for_status()
 
-            root = ET.fromstring(response.content)
-            # totalPages is in ns1 namespace as attribute
-            total_pages = int(root.get("{http://gtr.rcuk.ac.uk/gtr/api}totalPages", 0))
-            return total_pages
+            data = response.json()
+
+            # NWOpen API returns pagination in meta object
+            meta = data.get("meta", {})
+            total_pages = meta.get("pages")
+            total_count = meta.get("count")
+
+            if total_pages:
+                print(f"  [INFO] API reports {total_count:,} total projects across {total_pages:,} pages")
+                return int(total_pages)
+
+            # Fallback: calculate from count
+            if total_count:
+                pages = (int(total_count) + PAGE_SIZE - 1) // PAGE_SIZE
+                print(f"  [INFO] Calculated {pages:,} pages from {total_count:,} projects")
+                return pages
+
+            # Last resort fallback
+            print("  [WARN] Could not determine total pages from API response")
+            print("  [INFO] Will download until we get an empty response")
+            return 10000
+
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
                 print(f"  [WARN] Failed to get total pages (attempt {attempt + 1}): {e}")
@@ -483,7 +478,7 @@ def download_all_projects(
     max_pages: Optional[int] = None
 ) -> list[dict]:
     """
-    Download all projects from the GtR API with checkpointing.
+    Download all projects from the NWOpen API with checkpointing.
 
     Args:
         output_dir: Directory for intermediate files
@@ -494,7 +489,7 @@ def download_all_projects(
         List of all project dictionaries
     """
     print(f"\n{'='*60}")
-    print("Step 1: Downloading projects from GtR API")
+    print("Step 1: Downloading projects from NWOpen API")
     print(f"{'='*60}")
 
     # Initialize checkpoint manager
@@ -503,11 +498,11 @@ def download_all_projects(
     # Initialize session
     session = requests.Session()
     session.headers.update({
-        "Accept": "application/xml",
-        "User-Agent": "OpenAlex-GtR-Ingest/1.0"
+        "Accept": "application/json",
+        "User-Agent": "OpenAlex-NWO-Ingest/1.0"
     })
 
-    # Get total pages
+    # Get total pages (or estimate)
     print("  [INFO] Fetching total page count...")
     total_pages = get_total_pages(session)
 
@@ -541,6 +536,7 @@ def download_all_projects(
     # Track pages completed in this session for checkpointing
     pages_since_checkpoint = 0
     failed_pages = []
+    empty_page_streak = 0  # Track consecutive empty pages to detect end
 
     print(f"\n  Starting download at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  {progress.get_progress_line()}")
@@ -569,10 +565,24 @@ def download_all_projects(
                         progress.update(0, is_error=True)
                         failed_pages.append((page_num, error))
                         checkpoint.mark_failed(page_num)
+                        empty_page_streak = 0
+                    elif not projects:
+                        # Empty page - might be end of data
+                        progress.update(0)
+                        checkpoint.mark_completed(page_num)
+                        empty_page_streak += 1
+
+                        # If we get 5 consecutive empty pages, we've hit the end
+                        if empty_page_streak >= 5:
+                            print(f"\n  [INFO] Detected end of data (5 consecutive empty pages)")
+                            # Update total pages to current progress
+                            progress.total_pages = progress.completed_pages
+                            checkpoint.set_total_pages(progress.completed_pages)
                     else:
                         progress.update(len(projects))
                         checkpoint.mark_completed(page_num)
                         checkpoint.add_projects(projects)
+                        empty_page_streak = 0
 
                     pages_since_checkpoint += 1
 
@@ -594,6 +604,10 @@ def download_all_projects(
                 # Rate limiting
                 time.sleep(REQUEST_DELAY)
 
+            # Stop if we've hit end of data
+            if empty_page_streak >= 5:
+                break
+
             # Save checkpoint after each batch
             checkpoint.save()
 
@@ -601,7 +615,7 @@ def download_all_projects(
     print(f"\n\n  {'='*50}")
     print(f"  Download complete!")
     print(f"  {'='*50}")
-    print(f"  Total pages: {progress.completed_pages:,}/{total_pages:,}")
+    print(f"  Total pages: {progress.completed_pages:,}/{progress.total_pages:,}")
     print(f"  Total projects: {len(checkpoint.projects):,}")
     print(f"  Total time: {progress.get_elapsed()}")
     print(f"  Average rate: {progress.get_rate():.1f} pages/second")
@@ -614,7 +628,7 @@ def download_all_projects(
             print(f"    ... and {len(failed_pages) - 10} more")
 
         # Save failed pages for manual retry
-        failed_file = output_dir / "gtr_failed_pages.json"
+        failed_file = output_dir / "nwo_failed_pages.json"
         with open(failed_file, "w") as f:
             json.dump(failed_pages, f, indent=2)
         print(f"  [INFO] Failed pages saved to {failed_file}")
@@ -648,32 +662,28 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
     df = pd.DataFrame(projects)
     print(f"  Total rows: {len(df):,}")
 
-    # Parse dates - convert to strings for Spark/Databricks compatibility
-    # (Spark can't read parquet files with nanosecond timestamp precision)
-    print("  [INFO] Parsing dates...")
+    # Convert dates to string format (YYYY-MM-DD) to avoid Spark compatibility issues
+    # Spark can't read pandas timestamp columns with nanosecond precision
+    print("  [INFO] Converting dates to string format...")
     for col in ["start_date", "end_date"]:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce", utc=True)
-            # Convert to date strings (YYYY-MM-DD) for Spark compatibility
-            df[col] = df[col].dt.strftime('%Y-%m-%d')
-            df[col] = df[col].replace('NaT', None)
+            # Parse and format as YYYY-MM-DD string
+            df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%Y-%m-%d")
+            # Replace 'NaT' strings with None
+            df[col] = df[col].replace("NaT", None)
 
-    # Clean up grant references
-    if "grant_reference" in df.columns:
-        df["grant_reference"] = df["grant_reference"].str.strip()
-
-    # Remove duplicates by grant_reference (keep first)
-    print("  [INFO] Deduplicating by grant_reference...")
+    # Remove duplicates by project_id (keep first)
+    print("  [INFO] Deduplicating by project_id...")
     original_count = len(df)
-    df = df.drop_duplicates(subset=["grant_reference"], keep="first")
+    df = df.drop_duplicates(subset=["project_id"], keep="first")
     print(f"  Removed {original_count - len(df):,} duplicates")
-    print(f"  Unique grants: {len(df):,}")
+    print(f"  Unique projects: {len(df):,}")
 
-    # Add metadata - use string format for Spark compatibility
-    df["ingested_at"] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    # Add metadata (as string to avoid Spark timestamp issues)
+    df["ingested_at"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
     # Save to parquet
-    output_path = output_dir / "gtr_projects.parquet"
+    output_path = output_dir / "nwo_projects.parquet"
     print(f"\n  [SAVE] Writing to {output_path.name}...")
     df.to_parquet(output_path, index=False)
 
@@ -682,16 +692,20 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
 
     # Print summary stats
     print(f"\n  Summary:")
-    print(f"    - Total grants: {len(df):,}")
-    print(f"    - With amount: {df['amount'].notna().sum():,}")
+    print(f"    - Total projects: {len(df):,}")
     print(f"    - With dates: {df['start_date'].notna().sum():,}")
     print(f"    - With PI: {df['pi_family_name'].notna().sum():,}")
+    print(f"    - With ORCID: {df['pi_id'].notna().sum():,}")
+    print(f"    - With products: {df['products_json'].notna().sum():,}")
+    print(f"    - With summary updates: {df['summary_updates_json'].notna().sum():,}")
 
-    print(f"\n  Funders:")
-    print(df["lead_funder"].value_counts().head(15).to_string())
+    if "lead_funder" in df.columns:
+        print(f"\n  Funders/Departments:")
+        print(df["lead_funder"].value_counts().head(15).to_string())
 
-    print(f"\n  Grant categories:")
-    print(df["grant_category"].value_counts().head(10).to_string())
+    if "grant_category" in df.columns:
+        print(f"\n  Grant categories/Funding schemes:")
+        print(df["grant_category"].value_counts().head(10).to_string())
 
     return output_path
 
@@ -772,13 +786,13 @@ def upload_to_s3(local_path: Path) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download GtR projects and upload to S3"
+        description="Download NWO projects and upload to S3"
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("./gtr_data"),
-        help="Directory for downloaded/processed files (default: ./gtr_data)"
+        default=Path("./nwo_data"),
+        help="Directory for downloaded/processed files (default: ./nwo_data)"
     )
     parser.add_argument(
         "--resume",
@@ -807,7 +821,7 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
-    print("Gateway to Research (GtR) to S3 Data Pipeline")
+    print("NWO (Dutch Research Council) to S3 Data Pipeline")
     print("=" * 60)
     print(f"Output directory: {args.output_dir.absolute()}")
     print(f"S3 destination: s3://{S3_BUCKET}/{S3_KEY}")
@@ -828,7 +842,7 @@ def main():
             checkpoint.cleanup()
     else:
         # Load from existing parquet if skipping download
-        existing_path = args.output_dir / "gtr_projects.parquet"
+        existing_path = args.output_dir / "nwo_projects.parquet"
         if existing_path.exists():
             print(f"\n  [SKIP] Loading existing data from {existing_path}")
             df = pd.read_parquet(existing_path)
@@ -859,7 +873,7 @@ def main():
         print("Pipeline FAILED - S3 upload unsuccessful")
     print(f"{'='*60}")
     print(f"\nNext step:")
-    print(f"  In Databricks, run: notebooks/awards/CreateGTRProjectAwards.ipynb")
+    print(f"  In Databricks, run: notebooks/awards/CreateNWOAwards.ipynb")
 
 
 if __name__ == "__main__":
