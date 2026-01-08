@@ -133,10 +133,10 @@ resources:
             - task_key: Institutions_Frontfill
             - task_key: Topics_Frontfill
           notebook_task:
-            notebook_path: notebooks/end2end/UpdateWorkAuthorAffiliations
+            notebook_path: notebooks/end2end/UpdateWorkAuthors
             source: GIT
             warehouse_id: 4d37bf76372a2901
-        - task_key: Authors_and_Affiliations
+        - task_key: Authorships
           depends_on:
             - task_key: Author_Matching
           notebook_task:
@@ -145,11 +145,18 @@ resources:
             warehouse_id: 4d37bf76372a2901
         - task_key: Works_Enriched
           depends_on:
-            - task_key: Authors_and_Affiliations
+            - task_key: Authorships
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        - task_key: Sync_to_Elasticsearch
+          depends_on:
+            - task_key: Works_Enriched
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+          job_cluster_key: Sync_to_Elasticsearch_cluster
         - task_key: Wunpaywall
           depends_on:
             - task_key: Works_Enriched
@@ -188,24 +195,21 @@ resources:
             notebook_path: notebooks/end2end/WunpaywallToOpenAlexDB
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
-        - task_key: Sync_to_Elasticsearch
-          depends_on:
-            - task_key: Works_Enriched
-          notebook_task:
-            notebook_path: notebooks/elastic/sync_works
-            source: GIT
-          job_cluster_key: Sync_to_Elasticsearch_cluster
       job_clusters:
         - job_cluster_key: Sync_to_Elasticsearch_cluster
           new_cluster:
+            cluster_name: ""
             spark_version: 16.4.x-scala2.12
             aws_attributes:
               first_on_demand: 1
               availability: SPOT_WITH_FALLBACK
               zone_id: us-east-1f
               spot_bid_price_percent: 100
-              ebs_volume_count: 0
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 100
             node_type_id: rgd-fleet.12xlarge
+            driver_node_type_id: rg-fleet.8xlarge
             spark_env_vars:
               PYSPARK_PYTHON: /databricks/python3/bin/python3
             enable_elastic_disk: true
