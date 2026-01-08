@@ -45,7 +45,7 @@ Create a script at `openalex-walden/scripts/local/{funder_name}_to_s3.py`
 Use these as templates (in order of preference based on API type):
 - JSON API: `nwo_to_s3.py`
 - XML API: `gtr_to_s3.py`
-- File download: `nih_exporter_to_s3.py`
+- File download: `nih_exporter_to_s3.py` or `gates_to_s3.py`
 
 ### 1.2 Script requirements
 
@@ -161,7 +161,7 @@ investigators ARRAY<lead_investigator struct>
    - Map funding types appropriately
    - Generate unique ID as `{funder_id}:{lowercase_native_id}`
 
-4. **Verification queries** (see Step 4 for details)
+4. **Verification queries** (see Step 5 for details)
 
 ### 2.3 Common field mappings
 
@@ -176,100 +176,22 @@ investigators ARRAY<lead_investigator struct>
 
 ---
 
-## Step 3: Human Runs Notebook
-
-**STOP: HUMAN ACTION REQUIRED**
-
-Tell the user:
-> The notebook is ready at `notebooks/awards/Create{FunderName}Awards.ipynb`.
-> Please run it in Databricks and let me know when it completes.
-
-Wait for confirmation before proceeding.
-
----
-
-## Step 4: Verify the Data
-
-Use Databricks MCP to run these verification queries:
-
-### 4.1 Basic counts
-```sql
-SELECT COUNT(*) as total FROM openalex.awards.{funder}_awards;
-```
-Should match expected count from Step 1.
-
-### 4.2 Schema validation
-```sql
-DESCRIBE openalex.awards.{funder}_awards;
-```
-Verify all required columns exist with correct types.
-
-### 4.3 Data completeness
-```sql
-SELECT
-    COUNT(*) as total,
-    COUNT(display_name) as has_title,
-    COUNT(description) as has_description,
-    COUNT(amount) as has_amount,
-    COUNT(start_date) as has_start_date,
-    COUNT(lead_investigator) as has_pi,
-    ROUND(COUNT(display_name) * 100.0 / COUNT(*), 1) as pct_title,
-    ROUND(COUNT(start_date) * 100.0 / COUNT(*), 1) as pct_dates
-FROM openalex.awards.{funder}_awards;
-```
-
-### 4.4 Sample inspection
-```sql
-SELECT * FROM openalex.awards.{funder}_awards LIMIT 10;
-```
-Verify data looks reasonable.
-
-### 4.5 Funder consistency
-```sql
-SELECT funder.display_name, COUNT(*)
-FROM openalex.awards.{funder}_awards
-GROUP BY funder.display_name;
-```
-Should show only the expected funder(s).
-
-### 4.6 Year distribution
-```sql
-SELECT start_year, COUNT(*) as cnt
-FROM openalex.awards.{funder}_awards
-WHERE start_year IS NOT NULL
-GROUP BY start_year
-ORDER BY start_year DESC
-LIMIT 20;
-```
-Verify reasonable year range.
-
-### Success criteria:
-- Row count matches expected
-- >90% have display_name
-- >50% have start_date (varies by funder)
-- Funder struct is populated correctly
-- No obviously malformed data in samples
-
-Report any concerns to the user before proceeding.
-
----
-
-## Step 5: Add to CreateAwards.ipynb
+## Step 3: Add to CreateAwards.ipynb
 
 **IMPORTANT:** This step integrates the new funder into the main awards table.
 
 Edit `notebooks/awards/CreateAwards.ipynb` to add the new funder source.
 
-### 5.1 Determine priority
+### 3.1 Determine priority
 
 Priority determines which source wins for duplicate awards (lower = higher priority):
 - 0: GTR Project Awards (authoritative UK grants)
 - 1: Crossref Awards
 - 2: Backfill Awards
-- 3: GTR Awards (legacy)
+- 3: NIH, NSF, GTR Awards (legacy)
 - 4+: New funders (use next available number)
 
-### 5.2 Add UNION ALL block
+### 3.2 Add UNION ALL block
 
 Add a new block in the `combined` CTE:
 
@@ -305,13 +227,118 @@ SELECT
 FROM openalex.awards.{funder}_awards
 ```
 
-### 5.3 Update markdown header
+### 3.3 Update markdown header
 
 Add the new funder to the priority list in the notebook header.
 
 ---
 
-## Step 6: Final Human Approval
+## Step 4: Commit and Push
+
+**IMPORTANT:** The Databricks GUI syncs from the git repo. You must commit and push before the user can see/run the notebooks.
+
+### 4.1 Commit all new files
+
+```bash
+git add scripts/local/{funder}_to_s3.py notebooks/awards/Create{FunderName}Awards.ipynb notebooks/awards/CreateAwards.ipynb
+git commit -m "Add {FunderName} awards pipeline
+
+- Add {funder}_to_s3.py script to download and upload {FunderName} grants
+- Add Create{FunderName}Awards.ipynb notebook to transform data to awards schema
+- Update CreateAwards.ipynb to include {FunderName} at priority N
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+```
+
+### 4.2 Push to remote
+
+```bash
+git pull --rebase && git push
+```
+
+If there are merge conflicts (especially in `CreateAwards.ipynb`), resolve them by keeping BOTH the remote changes AND your new funder addition.
+
+---
+
+## Step 5: Human Runs Notebook
+
+**STOP: HUMAN ACTION REQUIRED**
+
+Tell the user:
+> The notebook is ready at `notebooks/awards/Create{FunderName}Awards.ipynb`.
+> Please run it in Databricks and let me know when it completes.
+
+Wait for confirmation before proceeding.
+
+---
+
+## Step 6: Verify the Data
+
+Use Databricks MCP to run these verification queries:
+
+### 6.1 Basic counts
+```sql
+SELECT COUNT(*) as total FROM openalex.awards.{funder}_awards;
+```
+Should match expected count from Step 1.
+
+### 6.2 Schema validation
+```sql
+DESCRIBE openalex.awards.{funder}_awards;
+```
+Verify all required columns exist with correct types.
+
+### 6.3 Data completeness
+```sql
+SELECT
+    COUNT(*) as total,
+    COUNT(display_name) as has_title,
+    COUNT(description) as has_description,
+    COUNT(amount) as has_amount,
+    COUNT(start_date) as has_start_date,
+    COUNT(lead_investigator) as has_pi,
+    ROUND(COUNT(display_name) * 100.0 / COUNT(*), 1) as pct_title,
+    ROUND(COUNT(start_date) * 100.0 / COUNT(*), 1) as pct_dates
+FROM openalex.awards.{funder}_awards;
+```
+
+### 6.4 Sample inspection
+```sql
+SELECT * FROM openalex.awards.{funder}_awards LIMIT 10;
+```
+Verify data looks reasonable.
+
+### 6.5 Funder consistency
+```sql
+SELECT funder.display_name, COUNT(*)
+FROM openalex.awards.{funder}_awards
+GROUP BY funder.display_name;
+```
+Should show only the expected funder(s).
+
+### 6.6 Year distribution
+```sql
+SELECT start_year, COUNT(*) as cnt
+FROM openalex.awards.{funder}_awards
+WHERE start_year IS NOT NULL
+GROUP BY start_year
+ORDER BY start_year DESC
+LIMIT 20;
+```
+Verify reasonable year range.
+
+### Success criteria:
+- Row count matches expected
+- >90% have display_name
+- >50% have start_date (varies by funder)
+- Funder struct is populated correctly
+- No obviously malformed data in samples
+
+Report any concerns to the user before proceeding.
+
+---
+
+## Step 7: Final Human Approval
 
 **STOP: HUMAN ACTION REQUIRED**
 
@@ -332,6 +359,7 @@ Tell the user:
 | NIH | nih_exporter_to_s3.py | CreateNIHAwards.ipynb | File download |
 | NWO | nwo_to_s3.py | CreateNWOAwards.ipynb | JSON API |
 | GTR | gtr_to_s3.py | CreateGTRProjectAwards.ipynb | XML API |
+| Gates | gates_to_s3.py | CreateGatesAwards.ipynb | CSV download |
 
 ## Reference: S3 Paths
 
