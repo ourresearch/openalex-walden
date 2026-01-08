@@ -648,11 +648,13 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
     df = pd.DataFrame(projects)
     print(f"  Total rows: {len(df):,}")
 
-    # Ensure PI name columns are string type (they may be inferred as int if all NULL)
+    # Ensure PI name columns are string type (they may be inferred as int/null if all NULL)
     # This is critical for Spark/Databricks compatibility
+    # We must use pd.StringDtype() to ensure pyarrow writes as string, not null type
     for col in ["pi_given_name", "pi_family_name"]:
         if col in df.columns:
-            df[col] = df[col].astype("object")  # object = nullable string in pandas
+            # Convert to pandas nullable string type, then to object for parquet compatibility
+            df[col] = df[col].fillna("").astype(str).replace("", None)
 
     # Parse dates - convert to strings for Spark/Databricks compatibility
     # (Spark can't read parquet files with nanosecond timestamp precision)
@@ -678,10 +680,36 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
     # Add metadata - use string format for Spark compatibility
     df["ingested_at"] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Save to parquet
+    # Save to parquet with explicit schema to ensure NULL string columns are typed correctly
+    # (Spark interprets pyarrow 'null' type as int, causing UNION errors)
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
     output_path = output_dir / "gtr_projects.parquet"
     print(f"\n  [SAVE] Writing to {output_path.name}...")
-    df.to_parquet(output_path, index=False)
+
+    # Define explicit schema - ensure pi_given_name and pi_family_name are strings
+    schema = pa.schema([
+        ('project_id', pa.string()),
+        ('grant_reference', pa.string()),
+        ('title', pa.string()),
+        ('abstract', pa.string()),
+        ('status', pa.string()),
+        ('grant_category', pa.string()),
+        ('lead_funder', pa.string()),
+        ('amount', pa.float64()),
+        ('start_date', pa.string()),
+        ('end_date', pa.string()),
+        ('lead_org_id', pa.string()),
+        ('lead_org_name', pa.string()),
+        ('pi_id', pa.string()),
+        ('pi_given_name', pa.string()),  # Explicit string type for NULL columns
+        ('pi_family_name', pa.string()),  # Explicit string type for NULL columns
+        ('ingested_at', pa.string()),
+    ])
+
+    table = pa.Table.from_pandas(df, schema=schema, preserve_index=False)
+    pq.write_table(table, output_path)
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
     print(f"  Output file size: {size_mb:.1f} MB")
