@@ -9,7 +9,7 @@ resources:
       schedule:
         quartz_cron_expression: 18 30 22 * * ?
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       tasks:
         - task_key: Crossref_Ingest_DLT
           pipeline_task:
@@ -188,7 +188,30 @@ resources:
             notebook_path: notebooks/end2end/WunpaywallToOpenAlexDB
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
+        - task_key: Sync_to_Elasticsearch
+          depends_on:
+            - task_key: Works_Enriched
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+          job_cluster_key: Sync_to_Elasticsearch_cluster
       job_clusters:
+        - job_cluster_key: Sync_to_Elasticsearch_cluster
+          new_cluster:
+            spark_version: 16.4.x-scala2.12
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: rgd-fleet.12xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            enable_elastic_disk: true
+            data_security_mode: USER_ISOLATION
+            runtime_engine: STANDARD
+            num_workers: 2
         - job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
           new_cluster:
             cluster_name: ""
@@ -218,4 +241,8 @@ resources:
           default: openalex
         - name: force_large_load
           default: "false"
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
       performance_target: PERFORMANCE_OPTIMIZED
