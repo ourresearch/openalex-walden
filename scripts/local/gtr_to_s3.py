@@ -648,6 +648,12 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
     df = pd.DataFrame(projects)
     print(f"  Total rows: {len(df):,}")
 
+    # Ensure PI name columns are string type (they may be inferred as int if all NULL)
+    # This is critical for Spark/Databricks compatibility
+    for col in ["pi_given_name", "pi_family_name"]:
+        if col in df.columns:
+            df[col] = df[col].astype("object")  # object = nullable string in pandas
+
     # Parse dates - convert to strings for Spark/Databricks compatibility
     # (Spark can't read parquet files with nanosecond timestamp precision)
     print("  [INFO] Parsing dates...")
