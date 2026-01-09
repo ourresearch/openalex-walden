@@ -1,5 +1,6 @@
 # How to Add a Funder
 
+**Location:** `plans/awards/how-to-add-a-funder.md`
 **Purpose:** Instructions for Claude instances to add awards from a new funder to OpenAlex.
 **Human involvement:** Minimal - just running the Databricks notebook and final approval.
 **Parallelization:** Multiple Claude instances can work on different funders simultaneously.
