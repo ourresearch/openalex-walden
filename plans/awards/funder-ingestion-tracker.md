@@ -34,7 +34,7 @@ This document tracks the progress of adding new funders to OpenAlex.
 | KAKEN (Japan Grant-in-Aid for Scientific Research) | Step 1 | Currently downloading, expected to take days to complete |
 | ANR (Agence Nationale de la Recherche) | Complete | Priority 6 - French research agency. 34,435 grants |
 | CIHR (Canadian Institutes of Health Research) | Complete | Priority 7 - Canadian health research. 82,369 grants |
-| Canadian Foundation for Innovation | Step 0 | ~14k grants. Data source: https://www.innovation.ca/projects-results/funded-projects-dashboard#!list-view |
+| Canadian Foundation for Innovation | Step 1 | ~14k grants. Data source: https://www.innovation.ca/projects-results/funded-projects-dashboard#!list-view. Claimed for ingestion. |
 | Swedish Research Council (Vinnova) | Step 0 | Swedish research funder. Data source: https://www.vinnova.se/en/about-us/about-the-website/open-data/ |
 | Armasuisse | Step 0 | Swiss defense research funding. ~43k grants. Data source: https://docs.google.com/spreadsheets/d/1FH7sLNJGV8Jp988INbrQXCQO7JpYRPhgFE0yawWWjL4/edit?usp=sharing |
 | NIHR (National Institute for Health and Care Research) | Step 0 | UK health research funder. Data source: https://fundingawards.nihr.ac.uk/ |
