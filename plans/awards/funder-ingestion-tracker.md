@@ -93,4 +93,17 @@ This document tracks the progress of adding new funders to OpenAlex.
 | Howard Hughes Medical Institute | Step 0 | US philanthropic funder. Data source: philanthropic portal |
 | Simons Foundation | Step 0 | US philanthropic funder. Data source: philanthropic portal |
 | Chan Zuckerberg Initiative | Step 0 | US philanthropic funder. Data source: philanthropic portal |
+| Alfred P. Sloan Foundation | Step 0 | US philanthropic funder. Data source: portal+bulk, public grants database (CSV/XLS) |
+| Arnold Ventures (Laura and John Arnold Foundation) | Step 0 | US philanthropic funder. Data source: portal+bulk, public grant listings |
+| American Heart Association | Step 0 | US philanthropic funder. Data source: portal, funded research listings |
+| Burroughs Wellcome Fund | Step 0 | US philanthropic funder. Data source: html, program awardee pages |
+| Rita Allen Foundation | Step 0 | US philanthropic funder. Data source: html, annual award lists |
+| Arcadia Fund | Step 0 | Philanthropic funder. Data source: html, grant announcements |
+| John Templeton Foundation | Step 0 | US philanthropic funder. Data source: portal, searchable awards (no API) |
+| Open Society Foundations | Step 0 | International philanthropic funder. Data source: portal/pdf, program-level disclosures |
+| Lumina Foundation | Step 0 | US philanthropic funder. Data source: html, incomplete grant coverage |
+| Paul G. Allen Frontiers Group | Step 0 | US philanthropic funder. Data source: html, program awardees only |
+| Rockefeller Foundation | Step 0 | US philanthropic funder. Data source: html, selective disclosure |
+| Ford Foundation | Step 0 | US philanthropic funder. Data source: html, grants public but non-standard |
+| Robert Wood Johnson Foundation | Step 0 | US philanthropic funder. Data source: portal, searchable awards database |
 
