@@ -269,13 +269,15 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
         # Application ID variations
         'app_id': 'app_id',
         'appid': 'app_id',
-        'application_id': 'app_id',
+        'application_id': 'app_id',  # 2025 format
 
         # Title variations
         'grant_title': 'grant_title',
         'title': 'grant_title',
         'application_title': 'grant_title',
         'project_title': 'grant_title',
+        'scientific_title': 'grant_title',  # 2013 format
+        'simplified_title': 'simplified_title',  # 2013/2014 fallback title
 
         # CIA (Chief Investigator A) variations
         'cia': 'cia_name',
@@ -283,45 +285,93 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
         'chief_investigator_a': 'cia_name',
         'chief_investigator': 'cia_name',
         'ci_a': 'cia_name',
+        'chief_investigator_a_project_lead': 'cia_name',  # 2025 format
+
+        # ORCID (2025 has this)
+        'cia_orcid_id': 'cia_orcid',
 
         # Institution variations
         'administering_institution': 'administering_institution',
         'admin_institution': 'administering_institution',
         'institution': 'administering_institution',
 
-        # Amount variations
-        'grant_value': 'grant_value',
-        'total_budget': 'grant_value',
-        'amount': 'grant_value',
-        'funded_amount': 'grant_value',
+        # Amount variations - normalize to 'total'
+        'grant_value': 'total',
+        'total_budget': 'total',
+        'amount': 'total',
+        'funded_amount': 'total',
+        'total': 'total',
+        'total_amount_awarded': 'total',  # 2025 format
 
         # Scheme/Type variations
         'grant_type': 'grant_type',
         'scheme': 'grant_type',
+        'funding_scheme': 'grant_type',  # 2025 format
+        'funding_type': 'grant_type',  # 2013 format
         'grant_sub_type': 'grant_sub_type',
         'sub_type': 'grant_sub_type',
         'category': 'grant_sub_type',
+        'level_stream_or_sub_type': 'grant_sub_type',  # 2025 format
+        'funding_sub_type': 'grant_sub_type',  # 2013 format
 
         # Date variations
         'start_date': 'start_date',
+        'grant_start_date': 'start_date',  # 2025 format
         'start_year': 'start_year',
+        'start_yr': 'start_year',
         'end_date': 'end_date',
+        'grant_end_date': 'end_date',  # 2025 format
         'end_year': 'end_year',
+        'end_yr': 'end_year',
         'date_announced': 'date_announced',
+        'app_year': 'app_year',  # 2013 format
+        'application_year': 'app_year',  # 2025 format
 
         # Location
         'state_territory': 'state_territory',
         'state': 'state_territory',
+        'state_or_territory': 'state_territory',  # 2025 format
 
         # Research classification
         'broad_research_area': 'broad_research_area',
         'bra': 'broad_research_area',
         'for': 'fields_of_research',
         'fields_of_research': 'fields_of_research',
+        'field_of_research': 'fields_of_research',
+        'field_s_of_research': 'fields_of_research',  # 2021 format
+
+        # Description
+        'plain_description': 'plain_description',
+
+        # Sector
+        'sector': 'sector',
+        'organisation_type': 'sector',  # 2025 format
     }
 
     df = df.rename(columns=column_mapping)
+
+    # If grant_title is missing but simplified_title exists, use it
+    if 'grant_title' not in df.columns and 'simplified_title' in df.columns:
+        df['grant_title'] = df['simplified_title']
+
     return df
+
+
+def get_sheet_name(xlsx_path: Path, year: int) -> Optional[str]:
+    """Determine the correct sheet name based on year and file structure."""
+    xl = pd.ExcelFile(xlsx_path)
+    sheets = xl.sheet_names
+
+    # For 2019+ files, data is in 'GRANTS DATA' sheet
+    if 'GRANTS DATA' in sheets:
+        return 'GRANTS DATA'
+
+    # For 2013, data is in '2013 App Data' sheet
+    if '2013 App Data' in sheets:
+        return '2013 App Data'
+
+    # For older files (2014-2018), data is in the first sheet
+    return None  # Will use default (first sheet)
 
 
 def parse_xlsx(year: int, xlsx_path: Path) -> Optional[pd.DataFrame]:
@@ -336,12 +386,16 @@ def parse_xlsx(year: int, xlsx_path: Path) -> Optional[pd.DataFrame]:
         DataFrame with grant data, or None if parsing failed
     """
     try:
+        # Determine correct sheet
+        sheet_name = get_sheet_name(xlsx_path, year)
+        sheet_arg = sheet_name if sheet_name else 0
+
         # First, read to find header row
-        df_preview = pd.read_excel(xlsx_path, header=None, nrows=15, dtype=str)
+        df_preview = pd.read_excel(xlsx_path, sheet_name=sheet_arg, header=None, nrows=15, dtype=str)
         header_row = find_header_row(df_preview)
 
         # Now read the full file with correct header
-        df = pd.read_excel(xlsx_path, header=header_row, dtype=str)
+        df = pd.read_excel(xlsx_path, sheet_name=sheet_arg, header=header_row, dtype=str)
 
         # Handle duplicate column names
         df = deduplicate_columns(df)
@@ -359,6 +413,8 @@ def parse_xlsx(year: int, xlsx_path: Path) -> Optional[pd.DataFrame]:
 
     except Exception as e:
         print(f"    [ERROR] Failed to parse {xlsx_path}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
