@@ -467,8 +467,24 @@ def process_data(all_data: list[tuple[int, pd.DataFrame]], output_dir: Path) -> 
     if app_id_col in combined.columns:
         grouped = combined.groupby(app_id_col, dropna=False).agg(agg_dict)
         print("    Flattening columns...", flush=True)
-        grouped.columns = ['_'.join(col).strip('_') if isinstance(col, tuple) else col
-                          for col in grouped.columns]
+        # Flatten MultiIndex columns: keep original name for single aggregations,
+        # join with underscore for multi-aggregations (like fiscal_year_min, fiscal_year_max)
+        new_cols = []
+        for col in grouped.columns:
+            if isinstance(col, tuple):
+                col_name, agg_name = col
+                # For fiscal_year we want to keep both parts (min/max)
+                # For other single aggregations (first, sum), just use column name
+                if agg_name in ('min', 'max'):
+                    new_cols.append(f'{col_name}_{agg_name}')
+                elif agg_name == 'sum':
+                    new_cols.append(f'{col_name}_sum')
+                else:
+                    # For 'first' and other single aggregations, keep original name
+                    new_cols.append(col_name)
+            else:
+                new_cols.append(col)
+        grouped.columns = new_cols
         grouped = grouped.reset_index()
 
         # Rename aggregated columns
