@@ -17,8 +17,9 @@ The tracker (`funder-ingestion-tracker.md`) maintains the status of all funder i
 **"Get the next funder"** or **"Start a new funder"**:
 1. Read the tracker file
 2. Find funders at Step 0 (not yet started)
-3. Pick the first one and begin working on it
-4. Update the tracker to reflect the current step as you progress
+3. Pick the first one
+4. **IMMEDIATELY update the tracker to Step 1** before doing any other work (this acts as a lock—see below)
+5. Begin working on it
 
 **"Do the next one"** or **"Continue"**:
 1. Read the tracker file
@@ -32,6 +33,18 @@ The tracker (`funder-ingestion-tracker.md`) maintains the status of all funder i
 5. **If no funders are in progress**: Treat as "get the next funder"
 
 ### Updating the Tracker
+
+#### Locking: Mark Progress Immediately
+
+**CRITICAL:** When you start working on a funder, update the tracker **immediately**—before doing any actual work. This serves as a **lock** to prevent other Claude instances from picking the same funder.
+
+Multiple agents may be working in parallel. If you read the tracker, pick a funder at Step 0, and then spend 10 minutes downloading data before updating the tracker, another agent could pick the same funder during that window. By marking Step 1 immediately, you claim the funder and other agents will skip it.
+
+**When starting a new funder:**
+1. Read the tracker, pick a funder at Step 0
+2. **IMMEDIATELY** update the tracker to Step 1 (this is your lock)
+3. Commit and push the tracker update
+4. Now begin the actual work
 
 **After completing each step**, update the tracker:
 1. Read the current tracker file
@@ -61,6 +74,8 @@ Before starting, gather the following information:
 ---
 
 ## Step 0: Look Up funder_id in OpenAlex
+
+**⚠️ LOCK FIRST:** Before doing any work on this funder, update the tracker from "Step 0" to "Step 1" and commit/push immediately. This locks the funder so other agents won't pick it. Then proceed with the lookup below.
 
 Use the Databricks MCP to find the funder in OpenAlex:
 
