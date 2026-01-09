@@ -4,6 +4,45 @@
 **Purpose:** Instructions for Claude instances to add awards from a new funder to OpenAlex.
 **Human involvement:** Minimal - just running the Databricks notebook and final approval.
 **Parallelization:** Multiple Claude instances can work on different funders simultaneously.
+**Tracker:** `plans/awards/funder-ingestion-tracker.md`
+
+---
+
+## Using the Funder Ingestion Tracker
+
+The tracker (`funder-ingestion-tracker.md`) maintains the status of all funder ingestion jobs. **Always keep it updated.**
+
+### Handling User Commands
+
+**"Get the next funder"** or **"Start a new funder"**:
+1. Read the tracker file
+2. Find funders at Step 0 (not yet started)
+3. Pick the first one and begin working on it
+4. Update the tracker to reflect the current step as you progress
+
+**"Do the next one"** or **"Continue"**:
+1. Read the tracker file
+2. Check for in-progress funders (any step between 1-6)
+3. **If multiple funders are in progress at different steps**: Ask the user for clarification:
+   > "I see multiple funders in progress:
+   > - {Funder A} at Step {N}: {description}
+   > - {Funder B} at Step {M}: {description}
+   > Which one should I continue with?"
+4. **If only one funder is in progress**: Continue from where it left off
+5. **If no funders are in progress**: Treat as "get the next funder"
+
+### Updating the Tracker
+
+**After completing each step**, update the tracker:
+1. Read the current tracker file
+2. Update the funder's status to the new step (e.g., "Step 1" → "Step 2")
+3. Add any relevant notes (e.g., grant counts, issues encountered)
+4. Commit the tracker update along with other changes
+
+Example tracker update:
+```markdown
+| KAKEN (Japan Grant-in-Aid for Scientific Research) | Step 2 | Download complete: 450,000 grants. Creating notebook. |
+```
 
 ---
 
@@ -39,6 +78,8 @@ Record these values - you'll need them for the notebook:
 - `doi`: (e.g., "10.13039/100000002")
 
 If the funder doesn't exist in OpenAlex, STOP and tell the user.
+
+**→ Update tracker:** Change status to "Step 1" with funder_id in notes.
 
 ---
 
@@ -106,6 +147,8 @@ python {funder_name}_to_s3.py
 ```
 
 Verify upload succeeded and note the row count.
+
+**→ Update tracker:** Change status to "Step 2" with row count in notes (e.g., "Downloaded 450,000 grants to S3").
 
 ---
 
@@ -284,6 +327,8 @@ COALESCE(
 | funding_type | Map from activity codes or categories |
 | funder_scheme | program_name, funding_scheme, activity_code |
 
+**→ Update tracker:** Change status to "Step 3" with notes (e.g., "Notebook created").
+
 ---
 
 ## Step 3: Add to CreateAwards.ipynb
@@ -341,6 +386,8 @@ FROM openalex.awards.{funder}_awards
 
 Add the new funder to the priority list in the notebook header.
 
+**→ Update tracker:** Change status to "Step 4" with notes (e.g., "Added to CreateAwards.ipynb at priority N").
+
 ---
 
 ## Step 4: Commit and Push
@@ -368,6 +415,8 @@ git pull --rebase && git push
 
 If there are merge conflicts (especially in `CreateAwards.ipynb`), resolve them by keeping BOTH the remote changes AND your new funder addition.
 
+**→ Update tracker:** Change status to "Step 5" with notes (e.g., "Code committed, waiting for human to run notebook").
+
 ---
 
 ## Step 5: Human Runs Notebook
@@ -379,6 +428,8 @@ Tell the user:
 > Please run it in Databricks and let me know when it completes.
 
 Wait for confirmation before proceeding.
+
+**→ Update tracker:** When user confirms notebook ran, change status to "Step 6".
 
 ---
 
@@ -446,6 +497,8 @@ Verify reasonable year range.
 
 Report any concerns to the user before proceeding.
 
+**→ Update tracker:** Change status to "Step 7" with verification results (e.g., "Verified: 450,000 grants, 95% with titles").
+
 ---
 
 ## Step 7: Final Human Approval
@@ -459,6 +512,8 @@ Tell the user:
 > 3. The changes to `notebooks/awards/CreateAwards.ipynb`
 >
 > When you're ready, run CreateAwards.ipynb to merge everything.
+
+**→ Update tracker:** When user approves and runs CreateAwards.ipynb, change status to "Complete" with final grant count (e.g., "Complete | Priority 5 - 450,000 grants").
 
 ---
 
