@@ -43,6 +43,34 @@ If the funder doesn't exist in OpenAlex, STOP and tell the user.
 
 ## Step 1: Download Data and Upload to S3
 
+### ⚠️ CRITICAL: Avoid Silent Download Failures
+
+**Problem:** Download scripts can hang silently for 15+ minutes with no output, wasting enormous time and momentum. Old APIs break, endpoints change, rate limits kick in, and network issues occur—you won't know unless you actively check.
+
+**Required approach:**
+
+1. **Test first (30 seconds):** Before attempting a full download, run a quick test to fetch just 1-2 items. Verify you actually get data back. Many data sources have changed URLs or gone offline.
+
+2. **Verbose logging:** Scripts MUST log frequently:
+   - Every API request (URL, status code, response size)
+   - Items processed count (every 10-100 items)
+   - Estimated time remaining / ETA
+   - Any errors or retries
+
+3. **Progress indicators:** Show running totals like:
+   ```
+   [00:30] Fetched 150/50000 projects (0.3%) - ETA: 2h 45m
+   [01:00] Fetched 320/50000 projects (0.6%) - ETA: 2h 30m
+   ```
+
+4. **Fail fast:** If no data arrives within 30 seconds of starting, something is wrong. Stop and investigate immediately.
+
+5. **Report to user frequently:** Don't go silent. Every 2-3 minutes, update the user on progress so they know whether to wait or cancel.
+
+**If you find yourself waiting >5 minutes with no output, STOP.** The script is likely hung. Check the source URL manually, test the API in a browser, and debug before continuing. Do not let downloads run silently—this wastes massive amounts of time.
+
+---
+
 ### 1.1 Create the download script
 
 Create a script at `openalex-walden/scripts/local/{funder_name}_to_s3.py`
