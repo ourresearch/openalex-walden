@@ -208,13 +208,38 @@ investigators ARRAY<lead_investigator struct>
    - Unexpected data values (e.g., "TBC" instead of a year number)
    - Missing columns you assumed would exist
 
-4. **Step 2: Transform to award schema**
+4. **Step 2: Transform to award schema** (see Step 5 for details)
    - Map native fields to OpenAlex schema
    - Handle date parsing (try multiple formats)
    - Map funding types appropriately
    - Generate unique ID as `{funder_id}:{lowercase_native_id}`
 
-5. **Verification queries** (see Step 5 for details)
+5. **Verification queries**
+=======
+   **⚠️ CRITICAL: Verify column names before writing SQL**
+
+   Before writing any CTEs or intermediate queries that reference columns from the raw table, you MUST verify the actual column names present in the parquet file. Column names in the source data may differ from what you expect based on documentation or similar funders.
+
+   Add a verification cell immediately after loading the raw data:
+   ```sql
+   -- Verify actual column names before writing transformation queries
+   DESCRIBE openalex.awards.{funder}_raw;
+   ```
+
+   Or inspect the schema directly:
+   ```sql
+   SELECT * FROM openalex.awards.{funder}_raw LIMIT 1;
+   ```
+
+   **Common pitfalls:**
+   - Column names may use different casing (e.g., `ProjectId` vs `project_id`)
+   - Fields may be nested in structs differently than expected
+   - Similar funders may use different field names for the same concept
+   - Documentation may be outdated or incomplete
+
+   Only after confirming the actual column names should you write the transformation SQL. Reference the exact column names from the `DESCRIBE` output in all subsequent CTEs and queries.
+
+4. **Verification queries** (see Step 5 for details)
 
 ### 2.3 Defensive SQL Practices
 
