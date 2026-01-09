@@ -44,4 +44,53 @@ This document tracks the progress of adding new funders to OpenAlex.
 | Swedish Research Council | Step 0 | Swedish research funder. Data source: https://www.vr.se/english/swecris.html |
 | ERC (European Research Council) | Step 0 | European research funder. Data source: https://erc.europa.eu/projects-statistics/erc-dashboard |
 | SNSF (Swiss National Science Foundation) | Step 0 | Swiss research funder. Data source: https://data.snf.ch/grants/documentation |
+| NASA | Step 0 | US space agency. Data source: government portal |
+| Wellcome Trust | Step 0 | UK philanthropic funder. Data source: bulk CSV/XLSX download |
+| Academy of Finland | Step 0 | Finnish research funder. Data source: government portal |
+| American Cancer Society | Step 0 | US philanthropic funder. Data source: philanthropic portal |
+| U.S. Department of Energy | Step 0 | US government funder. Data source: government portal |
+| U.S. Department of Defense | Step 0 | US government funder. Data source: government portal |
+| European Commission | Step 0 | EU multilateral funder. Data source: multilateral API |
+| UK Research and Innovation (UKRI) | Step 0 | UK government funder. Data source: government API |
+| Institut National de la Santé et de la Recherche Médicale (INSERM) | Step 0 | French health research. Data source: government portal |
+| Bundesministerium für Bildung und Forschung | Step 0 | German government funder. Data source: government portal |
+| Centre National de la Recherche Scientifique (CNRS) | Step 0 | French research funder. Data source: government portal |
+| ZonMw | Step 0 | Netherlands health research. Data source: government portal |
+| Vetenskapsrådet | Step 0 | Swedish Research Council. Data source: government API |
+| Formas | Step 0 | Swedish research council. Data source: government API |
+| Research Council of Denmark | Step 0 | Danish research funder. Data source: government portal |
+| Independent Research Fund Denmark | Step 0 | Danish research funder. Data source: government portal |
+| Fundação para a Ciência e a Tecnologia (FCT) | Step 0 | Portuguese research funder. Data source: government portal |
+| Agencia Estatal de Investigación | Step 0 | Spanish government funder. Data source: government portal |
+| Instituto de Salud Carlos III | Step 0 | Spanish biomedical research. Data source: government portal |
+| Ministero dell'Istruzione, dell'Università e della Ricerca | Step 0 | Italian government funder. Data source: government portal |
+| Consiglio Nazionale delle Ricerche | Step 0 | Italian research council. Data source: government portal |
+| Narodowe Centrum Nauki | Step 0 | Polish research funder. Data source: government portal |
+| Austrian Science Fund (FWF) | Step 0 | Austrian research funder. Data source: government portal |
+| Grantová Agentura České Republiky | Step 0 | Czech research funder. Data source: government portal |
+| National Natural Science Foundation of China | Step 0 | Chinese government funder. Data source: government portal |
+| National Key R&D Program of China | Step 0 | Chinese government program. Data source: government portal |
+| Chinese Academy of Sciences | Step 0 | Chinese research institution. Data source: government portal |
+| China Postdoctoral Science Foundation | Step 0 | Chinese postdoc funder. Data source: government portal |
+| Natural Science Foundation of Jiangsu Province | Step 0 | Chinese provincial funder. Data source: government portal |
+| Natural Science Foundation of Guangdong Province | Step 0 | Chinese provincial funder. Data source: government portal |
+| Japan Science and Technology Agency | Step 0 | Japanese government funder. Data source: government portal |
+| Japan Agency for Medical Research and Development | Step 0 | Japanese health research. Data source: government portal |
+| National Research Foundation of Korea | Step 0 | South Korean research funder. Data source: government portal |
+| Ministry of Science and ICT (South Korea) | Step 0 | South Korean government. Data source: government portal |
+| National Science and Technology Council (Taiwan) | Step 0 | Taiwanese research funder. Data source: government portal |
+| Department of Science and Technology (India) | Step 0 | Indian government funder. Data source: government portal |
+| Science and Engineering Research Board (India) | Step 0 | Indian research board. Data source: government portal |
+| Department of Biotechnology (India) | Step 0 | Indian government department. Data source: government portal |
+| Council of Scientific & Industrial Research (India) | Step 0 | Indian research council. Data source: government portal |
+| Indian Council of Medical Research | Step 0 | Indian health research. Data source: government portal |
+| CNPq (Conselho Nacional de Desenvolvimento Científico e Tecnológico) | Step 0 | Brazilian research council. Data source: government portal |
+| CAPES (Coordenação de Aperfeiçoamento de Pessoal de Nível Superior) | Step 0 | Brazilian education funder. Data source: government portal |
+| CONICET (Consejo Nacional de Investigaciones Científicas y Técnicas) | Step 0 | Argentine research council. Data source: government portal |
+| ANID (Agencia Nacional de Investigación y Desarrollo) | Step 0 | Chilean research agency. Data source: government portal |
+| Israel Science Foundation | Step 0 | Israeli research funder. Data source: government portal |
+| TÜBİTAK (Scientific and Technological Research Council of Turkey) | Step 0 | Turkish research council. Data source: government portal |
+| Howard Hughes Medical Institute | Step 0 | US philanthropic funder. Data source: philanthropic portal |
+| Simons Foundation | Step 0 | US philanthropic funder. Data source: philanthropic portal |
+| Chan Zuckerberg Initiative | Step 0 | US philanthropic funder. Data source: philanthropic portal |
 
