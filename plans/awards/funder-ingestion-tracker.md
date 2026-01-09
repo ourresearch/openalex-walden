@@ -106,4 +106,18 @@ This document tracks the progress of adding new funders to OpenAlex.
 | Rockefeller Foundation | Step 0 | US philanthropic funder. Data source: html, selective disclosure |
 | Ford Foundation | Step 0 | US philanthropic funder. Data source: html, grants public but non-standard |
 | Robert Wood Johnson Foundation | Step 0 | US philanthropic funder. Data source: portal, searchable awards database |
+| Nobel Prize | Step 0 | Research prize - Multidisciplinary, annual, $1M. Full historical awardees available |
+| Breakthrough Prize | Step 0 | Research prize - Science & Math, annual, $3M. High-value modern prize |
+| Kavli Prize | Step 0 | Research prize - Astro/Nano/Neuro, biennial, $1M |
+| Lasker Awards | Step 0 | Research prize - Biomedical, annual, $250K. Nobel-correlated |
+| Wolf Prize | Step 0 | Research prize - Science, annual, $100K. Strong international reach |
+| Fields Medal | Step 0 | Research prize - Mathematics, quadrennial, prestige non-monetary |
+| Turing Award | Step 0 | Research prize - Computer Science, annual, $1M. ACM administered |
+| Abel Prize | Step 0 | Research prize - Mathematics, annual, $750K. Mathematics Nobel equivalent |
+| Gairdner Awards | Step 0 | Research prize - Biomedical, annual, $100K. Canada-based |
+| Holberg Prize | Step 0 | Research prize - Humanities & social sciences, annual, $750K |
+| Shaw Prize | Step 0 | Research prize - Science, annual, $1.2M. Asia-based |
+| TWAS Prize | Step 0 | Research prize - Science, annual, $30K. Developing world focus |
+| Infosys Prize | Step 0 | Research prize - Science & Humanities, annual, $100K. India-based |
+| Blavatnik Awards | Step 0 | Research prize - Science, annual, $250K. Early-career signal |
 
