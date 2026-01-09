@@ -32,7 +32,7 @@ This document tracks the progress of adding new funders to OpenAlex.
 | NWO (Netherlands Organisation for Scientific Research) | Step 6 | Has notebook (CreateNWOAwards.ipynb) and script (nwo_to_s3.py), not yet in CreateAwards.ipynb |
 | NHMRC (National Health and Medical Research Council) | Step 6 | Has notebook (CreateNHMRCAwards.ipynb) and script (nhmrc_to_s3.py), not yet in CreateAwards.ipynb |
 | KAKEN (Japan Grant-in-Aid for Scientific Research) | Step 1 | Currently downloading, expected to take days to complete |
-| ANR (Agence Nationale de la Recherche) | Step 5 | Priority 6 - French research agency. 34,435 grants. Data uploaded to S3, notebook created. Waiting for human to run. |
+| ANR (Agence Nationale de la Recherche) | Complete | Priority 6 - French research agency. 34,435 grants |
 | CIHR (Canadian Institutes of Health Research) | Complete | Priority 7 - Canadian health research. 82,369 grants |
 | Canadian Foundation for Innovation | Step 0 | ~14k grants. Data source: https://www.innovation.ca/projects-results/funded-projects-dashboard#!list-view |
 | Swedish Research Council (Vinnova) | Step 0 | Swedish research funder. Data source: https://www.vinnova.se/en/about-us/about-the-website/open-data/ |
