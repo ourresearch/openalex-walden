@@ -120,4 +120,5 @@ This document tracks the progress of adding new funders to OpenAlex.
 | TWAS Prize | Step 0 | Research prize - Science, annual, $30K. Developing world focus |
 | Infosys Prize | Step 0 | Research prize - Science & Humanities, annual, $100K. India-based |
 | Blavatnik Awards | Step 0 | Research prize - Science, annual, $250K. Early-career signal |
+| Canada Council Prizes | Step 0 | Arts prizes - Canada-based. Data source: https://canadacouncil.ca/funding/prizes |
 
