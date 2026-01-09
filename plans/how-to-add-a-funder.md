@@ -188,15 +188,66 @@ investigators ARRAY<lead_investigator struct>
    FROM parquet.`s3a://openalex-ingest/awards/{funder}/{funder}_projects.parquet`;
    ```
 
-3. **Step 2: Transform to award schema**
+3. **Step 1.5: INSPECT RAW DATA FIRST** (CRITICAL!)
+
+   **Before writing ANY transformation SQL**, you MUST inspect the raw data using Databricks MCP:
+   ```sql
+   -- Check actual column names
+   DESCRIBE openalex.awards.{funder}_raw;
+
+   -- Sample the data to see actual values
+   SELECT * FROM openalex.awards.{funder}_raw LIMIT 10;
+
+   -- Check for unexpected values in key fields
+   SELECT DISTINCT start_year FROM openalex.awards.{funder}_raw LIMIT 20;
+   SELECT DISTINCT amount FROM openalex.awards.{funder}_raw WHERE amount IS NOT NULL LIMIT 20;
+   ```
+
+   This prevents errors from:
+   - Wrong column names (e.g., `total` vs `grant_value`, `start_yr` vs `start_year`)
+   - Unexpected data values (e.g., "TBC" instead of a year number)
+   - Missing columns you assumed would exist
+
+4. **Step 2: Transform to award schema**
    - Map native fields to OpenAlex schema
    - Handle date parsing (try multiple formats)
    - Map funding types appropriately
    - Generate unique ID as `{funder_id}:{lowercase_native_id}`
 
-4. **Verification queries** (see Step 5 for details)
+5. **Verification queries** (see Step 5 for details)
 
-### 2.3 Common field mappings
+### 2.3 Defensive SQL Practices
+
+**ALWAYS use these patterns to handle dirty data gracefully:**
+
+```sql
+-- For numeric conversions (handles "TBC", "N/A", empty strings, etc.)
+TRY_CAST(amount_column AS DOUBLE) as amount
+
+-- For date conversions from year strings
+CASE
+    WHEN TRY_CAST(year_column AS INT) IS NOT NULL
+    THEN TRY_TO_DATE(CONCAT(year_column, '-01-01'), 'yyyy-MM-dd')
+    ELSE NULL
+END as start_date
+
+-- For year extraction
+TRY_CAST(year_column AS INT) as start_year
+
+-- For date parsing with multiple formats
+COALESCE(
+    TRY_TO_DATE(date_col, 'yyyy-MM-dd'),
+    TRY_TO_DATE(date_col, 'dd/MM/yyyy'),
+    TRY_TO_DATE(date_col, 'MM/dd/yyyy')
+) as parsed_date
+```
+
+**NEVER use:**
+- `CAST()` on external data - use `TRY_CAST()` instead
+- `TO_DATE()` on external data - use `TRY_TO_DATE()` instead
+- Assumed column names without verifying via `DESCRIBE`
+
+### 2.4 Common field mappings
 
 | OpenAlex field | Common source fields |
 |----------------|---------------------|
