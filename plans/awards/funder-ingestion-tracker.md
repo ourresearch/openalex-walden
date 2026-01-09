@@ -39,4 +39,9 @@ This document tracks the progress of adding new funders to OpenAlex.
 | Armasuisse | Step 0 | Swiss defense research funding. ~43k grants. Data source: https://docs.google.com/spreadsheets/d/1FH7sLNJGV8Jp988INbrQXCQO7JpYRPhgFE0yawWWjL4/edit?usp=sharing |
 | NIHR (National Institute for Health and Care Research) | Step 0 | UK health research funder. Data source: https://fundingawards.nihr.ac.uk/ |
 | DFG (Deutsche Forschungsgemeinschaft) | Step 0 | German Research Foundation. Data source: TBD |
+| FAPESP (São Paulo Research Foundation) | Step 0 | Brazilian research funder. Data source: https://bv.fapesp.br/en/ |
+| ARC (Australian Research Council) | Step 0 | Australian research funder. Data source: https://dataportal.arc.gov.au/RGS/Web/Grants |
+| Swedish Research Council | Step 0 | Swedish research funder. Data source: https://www.vr.se/english/swecris.html |
+| ERC (European Research Council) | Step 0 | European research funder. Data source: https://erc.europa.eu/projects-statistics/erc-dashboard |
+| SNSF (Swiss National Science Foundation) | Step 0 | Swiss research funder. Data source: https://data.snf.ch/grants/documentation |
 
