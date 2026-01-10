@@ -138,6 +138,4 @@ Thumbs.db
 *.sql
 
 # Local data files
-scripts/local/gates_data/
-scripts/local/gtr_data/
-scripts/local/nwo_data/
+scripts/local/*_data/

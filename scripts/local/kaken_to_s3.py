@@ -71,8 +71,8 @@ SITEMAP_INDEX_URL = "https://kaken.nii.ac.jp/sitemaps/kakenhi/sitemapindex.xml"
 PROJECT_URL_BASE = "https://kaken.nii.ac.jp/en/grant/"
 
 # Rate limiting - be respectful to the server
-REQUEST_DELAY = 0.5  # Seconds between requests (0.5 = 2 requests/sec)
-MAX_WORKERS = 3  # Parallel page fetches (keep low to avoid rate limiting)
+REQUEST_DELAY = 0.2  # Seconds between requests PER WORKER
+MAX_WORKERS = 10  # Parallel page fetches
 MAX_RETRIES = 3  # Max retries per page
 RETRY_BACKOFF = 2.0  # Exponential backoff multiplier
 CHECKPOINT_INTERVAL = 1000  # Save checkpoint every N projects
@@ -306,7 +306,6 @@ def download_sitemaps(session: requests.Session) -> list[str]:
 
 def fetch_project_with_retry(
     url: str,
-    session: requests.Session,
     max_retries: int = MAX_RETRIES
 ) -> tuple[str, Optional[dict], Optional[str]]:
     """
@@ -314,27 +313,37 @@ def fetch_project_with_retry(
 
     Args:
         url: Project page URL
-        session: Requests session
         max_retries: Maximum retry attempts
 
     Returns:
-        Tuple of (url, project dict or None, error message or None)
+        Tuple of (original_url, project dict or None, error message or None)
     """
+    original_url = url  # Keep original for checkpoint tracking
     last_error = None
+
+    # Rate limit at the start of each request (per-worker throttling)
+    time.sleep(REQUEST_DELAY)
+
+    headers = {
+        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent": "OpenAlex-KAKEN-Ingest/1.0 (research data aggregator; contact@openalex.org)",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
 
     for attempt in range(max_retries):
         try:
             # Use English version of the page
-            if "/ja/" in url:
-                url = url.replace("/ja/", "/en/")
-            elif "/en/" not in url:
-                url = url.replace("/grant/", "/en/grant/")
+            fetch_url = url
+            if "/ja/" in fetch_url:
+                fetch_url = fetch_url.replace("/ja/", "/en/")
+            elif "/en/" not in fetch_url:
+                fetch_url = fetch_url.replace("/grant/", "/en/grant/")
 
-            response = session.get(url, timeout=30)
+            response = requests.get(fetch_url, headers=headers, timeout=30)
             response.raise_for_status()
 
-            project = parse_project_page(response.text, url)
-            return (url, project, None)
+            project = parse_project_page(response.text, fetch_url)
+            return (original_url, project, None)
 
         except requests.exceptions.Timeout:
             last_error = f"Timeout (attempt {attempt + 1}/{max_retries})"
@@ -347,11 +356,11 @@ def fetch_project_with_retry(
                 time.sleep(wait_time)
             elif response.status_code == 404:
                 # Project doesn't exist, skip
-                return (url, None, None)
+                return (original_url, None, None)
             elif response.status_code >= 500:
                 last_error = f"Server error {response.status_code}"
             else:
-                return (url, None, f"HTTP {response.status_code}")
+                return (original_url, None, f"HTTP {response.status_code}")
         except Exception as e:
             last_error = f"{type(e).__name__}: {str(e)}"
 
@@ -359,7 +368,7 @@ def fetch_project_with_retry(
         if attempt < max_retries - 1:
             time.sleep(RETRY_BACKOFF ** attempt)
 
-    return (url, None, last_error)
+    return (original_url, None, last_error)
 
 
 def parse_project_page(html: str, url: str) -> Optional[dict]:
@@ -609,7 +618,7 @@ def download_all_projects(
 
             # Submit batch
             futures = {
-                executor.submit(fetch_project_with_retry, url, session): url
+                executor.submit(fetch_project_with_retry, url): url
                 for url in batch_urls
             }
 
@@ -649,9 +658,6 @@ def download_all_projects(
                     progress.update(is_error=True)
                     failed_urls.append((url, str(e)))
                     checkpoint.mark_failed(url)
-
-                # Rate limiting
-                time.sleep(REQUEST_DELAY)
 
             # Save checkpoint after each batch
             checkpoint.save()
