@@ -1,0 +1,86 @@
+# Fix Plan: Landing Page Parser Regression
+
+## Approach Comparison
+
+### Option 1: Delete and Re-process (NOT RECOMMENDED)
+
+Delete stale records from `taxicab_enriched_new`, let streaming table re-process.
+
+| Metric | Value |
+|--------|-------|
+| Time to complete | ~25 days |
+| API disruption | YES - data disappears during reprocessing |
+| Risk | High |
+
+### Option 2: Batch UPDATE (RECOMMENDED)
+
+Write a notebook that queries affected UUIDs, calls Parseland API, and UPDATEs `parser_response` in place.
+
+| Metric | Value |
+|--------|-------|
+| Time to complete | ~4 hours (50 workers) |
+| API disruption | None |
+| Risk | Low |
+
+---
+
+## Chosen Approach: Option 2
+
+### Implementation
+
+A Databricks notebook that:
+1. Queries `taxicab_enriched_new` for records in the affected date range with 0 authors
+2. Calls Parseland API directly for each UUID using parallel workers
+3. Uses MERGE to UPDATE the `parser_response` column in place
+4. Tracks progress with checkpointing for resumability
+
+### Notebook Location
+
+`fix/RefreshStaleParserResponses.py`
+
+### How to Run
+
+1. Create a new Databricks Job with one task pointing to the notebook
+2. Use a dedicated cluster (e.g., `i3.xlarge` with 4-8 workers)
+3. Set parameters:
+   - `start_date`: `2025-12-27`
+   - `end_date`: `2026-01-03`
+   - `publisher_filter`: `10.1016/%` (start with Elsevier, expand later)
+   - `parallelism`: `50`
+4. Run as one-off job (does not need to coordinate with end2end)
+
+### Expected Runtime
+
+| Scope | Records | Time (50 workers) |
+|-------|---------|-------------------|
+| Elsevier only | ~337K | ~4 hours |
+| All publishers | ~1.22M | ~14 hours |
+
+---
+
+## Rollout Strategy
+
+1. **Phase 1: Elsevier (10.1016)**
+   - Run with `publisher_filter = '10.1016/%'`
+   - ~337K records, ~4 hours
+   - Verify success before continuing
+
+2. **Phase 2: Other major publishers**
+   - Wiley (10.1002): ~24K records
+   - Springer (10.1007): ~17K records
+   - Run each separately to catch any publisher-specific issues
+
+3. **Phase 3: Remaining publishers**
+   - Remove publisher filter
+   - Process all remaining ~850K records
+
+---
+
+## Risks and Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Parseland API overload | Limit parallelism to 50 workers |
+| Partial failures | Checkpointing allows resume |
+| Wrong records updated | Dry run mode available |
+| Stale HTML in Taxicab | Accept - Parseland returns what's available |
