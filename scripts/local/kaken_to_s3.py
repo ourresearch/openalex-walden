@@ -536,12 +536,21 @@ def fetch_project_with_retry(
                 response.raise_for_status()
                 html = response.text
 
-            # Check for CAPTCHA or block page
+            # Check for CAPTCHA or block page - use specific phrases to avoid
+            # false positives (e.g. "robotic" in research content)
             content_lower = html.lower()
-            if any(signal in content_lower for signal in [
-                "captcha", "robot", "blocked", "access denied",
-                "too many requests", "rate limit", "please verify"
-            ]):
+            captcha_signals = [
+                "captcha",
+                "verify you are not a robot",
+                "are you a robot",
+                "i'm not a robot",
+                "access denied",
+                "too many requests",
+                "rate limit exceeded",
+                "please complete the security check",
+                "blocked by",
+            ]
+            if any(signal in content_lower for signal in captcha_signals):
                 last_error = "CAPTCHA or block page detected"
                 error_type = "captcha"
                 if attempt < max_retries - 1:
@@ -1114,14 +1123,19 @@ def main():
     )
     args = parser.parse_args()
 
-    # Set global Zyte flag
-    global USE_ZYTE
+    # Set global Zyte flag and adjust settings for Zyte
+    global USE_ZYTE, MAX_WORKERS, REQUEST_DELAY
     USE_ZYTE = args.use_zyte
 
     # Validate Zyte configuration
     if USE_ZYTE and not ZYTE_API_KEY:
         print("[ERROR] --use-zyte requires ZYTE_API_KEY environment variable")
         sys.exit(1)
+
+    # When using Zyte, we can be more aggressive since they handle rate limiting
+    if USE_ZYTE:
+        MAX_WORKERS = 20  # Zyte can handle many concurrent requests
+        REQUEST_DELAY = 0.1  # Minimal delay since Zyte manages throttling
 
     # Create output directory
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -1132,7 +1146,7 @@ def main():
     print(f"Output directory: {args.output_dir.absolute()}")
     print(f"S3 destination: s3://{S3_BUCKET}/{S3_KEY}")
     if USE_ZYTE:
-        print(f"Proxy: Zyte API (key: {ZYTE_API_KEY[:8]}...)")
+        print(f"Proxy: Zyte API (key: {ZYTE_API_KEY[:8]}..., workers={MAX_WORKERS}, delay={REQUEST_DELAY}s)")
     if args.resume:
         print(f"Mode: RESUME (will continue from checkpoint)")
     if args.max_projects:
