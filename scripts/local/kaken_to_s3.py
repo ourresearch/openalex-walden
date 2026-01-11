@@ -21,7 +21,8 @@ Features:
 - Checkpointing: Progress is saved every 1000 projects; resume with --resume
 - Rate limiting: Configurable delay to avoid overwhelming the server
 - Retry logic: Failed pages are retried up to 3 times
-- ETA reporting: Shows estimated time remaining
+- Ban detection: Detects 403/429/CAPTCHA patterns and backs off (30s to 5min max)
+- ETA reporting: Shows estimated time remaining, including ban status
 
 IMPORTANT: This script scrapes ~1M+ web pages. Expect 24-48 hours for full download.
 Consider running with --max-projects for testing first.
@@ -71,11 +72,18 @@ SITEMAP_INDEX_URL = "https://kaken.nii.ac.jp/sitemaps/kakenhi/sitemapindex.xml"
 PROJECT_URL_BASE = "https://kaken.nii.ac.jp/en/grant/"
 
 # Rate limiting - be respectful to the server
-REQUEST_DELAY = 0.2  # Seconds between requests PER WORKER
-MAX_WORKERS = 10  # Parallel page fetches
+REQUEST_DELAY = 0.5  # Seconds between requests PER WORKER (was 0.2)
+MAX_WORKERS = 5  # Parallel page fetches (was 10)
 MAX_RETRIES = 3  # Max retries per page
 RETRY_BACKOFF = 2.0  # Exponential backoff multiplier
 CHECKPOINT_INTERVAL = 1000  # Save checkpoint every N projects
+
+# Ban detection thresholds - tuned for slow/flaky sites (not aggressive rate limiters)
+BAN_ERROR_THRESHOLD = 25  # Consecutive errors before suspecting ban (was 10)
+BAN_ERROR_WINDOW = 100  # Check error rate in last N requests (was 50)
+BAN_ERROR_RATE_THRESHOLD = 0.6  # Error rate that triggers ban detection (was 0.5)
+BAN_BACKOFF_INITIAL = 30  # Initial backoff when ban detected (seconds) (was 60)
+BAN_BACKOFF_MAX = 300  # Max backoff (5 minutes) (was 3600/1 hour)
 
 # S3 destination
 S3_BUCKET = "openalex-ingest"
@@ -137,17 +145,116 @@ class ProgressTracker:
             return True
         return False
 
-    def get_progress_line(self) -> str:
+    def get_progress_line(self, ban_status: str = "") -> str:
         """Get formatted progress line."""
         pct = (self.completed_items / self.total_items) * 100 if self.total_items > 0 else 0
         rate = self.get_rate()
-        return (
+        line = (
             f"  [{self.completed_items:,}/{self.total_items:,} ({pct:.1f}%)] "
             f"[{rate:.2f}/s] "
             f"[Elapsed: {self.get_elapsed()}] "
             f"[ETA: {self.get_eta()}] "
             f"[Errors: {self.errors}]"
         )
+        if ban_status:
+            line += f" [{ban_status}]"
+        return line
+
+
+# =============================================================================
+# Ban Detection
+# =============================================================================
+
+class BanDetector:
+    """Detect if we're being banned/rate-limited and manage global backoff."""
+
+    def __init__(self):
+        self.recent_results: list[bool] = []  # True = success, False = error
+        self.consecutive_errors = 0
+        self.ban_detected = False
+        self.current_backoff = 0
+        self.total_bans_detected = 0
+        self.last_ban_time: Optional[float] = None
+        self._lock = __import__('threading').Lock()
+
+    def record_result(self, success: bool, error_type: Optional[str] = None):
+        """Record a request result."""
+        with self._lock:
+            self.recent_results.append(success)
+            if len(self.recent_results) > BAN_ERROR_WINDOW:
+                self.recent_results.pop(0)
+
+            if success:
+                self.consecutive_errors = 0
+            else:
+                self.consecutive_errors += 1
+
+            # Check for ban signals - only explicit HTTP ban codes and captcha
+            # (removed "connection_refused" - that's normal for slow/overloaded sites)
+            if error_type in ("403", "429", "captcha"):
+                self._check_ban_status(is_ban_signal=True)
+            elif not success:
+                self._check_ban_status(is_ban_signal=False)
+
+    def _check_ban_status(self, is_ban_signal: bool):
+        """Check if we should trigger ban detection."""
+        # Strong ban signal (403/429/captcha) - require more consecutive errors
+        # to avoid false positives from slow/flaky sites (was 3, now 10)
+        if is_ban_signal and self.consecutive_errors >= 10:
+            self._trigger_ban()
+            return
+
+        # Too many consecutive errors
+        if self.consecutive_errors >= BAN_ERROR_THRESHOLD:
+            self._trigger_ban()
+            return
+
+        # High error rate in recent window
+        if len(self.recent_results) >= BAN_ERROR_WINDOW:
+            error_rate = self.recent_results.count(False) / len(self.recent_results)
+            if error_rate >= BAN_ERROR_RATE_THRESHOLD:
+                self._trigger_ban()
+
+    def _trigger_ban(self):
+        """Trigger ban detection and set backoff."""
+        if not self.ban_detected:
+            self.ban_detected = True
+            self.total_bans_detected += 1
+            self.last_ban_time = time.time()
+            # Exponential backoff based on number of bans
+            self.current_backoff = min(
+                BAN_BACKOFF_INITIAL * (2 ** (self.total_bans_detected - 1)),
+                BAN_BACKOFF_MAX
+            )
+            print(f"\n  [BAN DETECTED] Consecutive errors: {self.consecutive_errors}, "
+                  f"backing off for {self.current_backoff}s...")
+
+    def wait_if_banned(self) -> bool:
+        """Wait if ban is detected. Returns True if we waited."""
+        if not self.ban_detected:
+            return False
+
+        print(f"  [BAN] Waiting {self.current_backoff}s before resuming...")
+        time.sleep(self.current_backoff)
+
+        # Reset state after waiting
+        with self._lock:
+            self.ban_detected = False
+            self.consecutive_errors = 0
+            self.recent_results.clear()
+
+        print(f"  [BAN] Resuming after backoff...")
+        return True
+
+    def get_status(self) -> str:
+        """Get current ban status for display."""
+        if self.ban_detected:
+            return f"BAN DETECTED - backoff {self.current_backoff}s"
+        elif self.total_bans_detected > 0:
+            return f"Bans: {self.total_bans_detected}"
+        elif self.consecutive_errors >= 3:
+            return f"Errors: {self.consecutive_errors} consecutive"
+        return ""
 
 
 # =============================================================================
@@ -307,7 +414,7 @@ def download_sitemaps(session: requests.Session) -> list[str]:
 def fetch_project_with_retry(
     url: str,
     max_retries: int = MAX_RETRIES
-) -> tuple[str, Optional[dict], Optional[str]]:
+) -> tuple[str, Optional[dict], Optional[str], Optional[str]]:
     """
     Fetch and parse a single project page with retry logic.
 
@@ -316,10 +423,12 @@ def fetch_project_with_retry(
         max_retries: Maximum retry attempts
 
     Returns:
-        Tuple of (original_url, project dict or None, error message or None)
+        Tuple of (original_url, project dict or None, error message or None, error_type or None)
+        error_type is one of: "403", "429", "connection_refused", "captcha", "timeout", "server_error", None
     """
     original_url = url  # Keep original for checkpoint tracking
     last_error = None
+    error_type = None
 
     # Rate limit at the start of each request (per-worker throttling)
     time.sleep(REQUEST_DELAY)
@@ -342,33 +451,58 @@ def fetch_project_with_retry(
             response = requests.get(fetch_url, headers=headers, timeout=30)
             response.raise_for_status()
 
+            # Check for CAPTCHA or block page
+            content_lower = response.text.lower()
+            if any(signal in content_lower for signal in [
+                "captcha", "robot", "blocked", "access denied",
+                "too many requests", "rate limit", "please verify"
+            ]):
+                last_error = "CAPTCHA or block page detected"
+                error_type = "captcha"
+                if attempt < max_retries - 1:
+                    time.sleep(RETRY_BACKOFF ** (attempt + 2))
+                continue
+
             project = parse_project_page(response.text, fetch_url)
-            return (original_url, project, None)
+            return (original_url, project, None, None)
 
         except requests.exceptions.Timeout:
             last_error = f"Timeout (attempt {attempt + 1}/{max_retries})"
-        except requests.exceptions.ConnectionError:
-            last_error = f"Connection error (attempt {attempt + 1}/{max_retries})"
+            error_type = "timeout"
+        except requests.exceptions.ConnectionError as e:
+            error_str = str(e).lower()
+            if "refused" in error_str or "reset" in error_str:
+                last_error = f"Connection refused (attempt {attempt + 1}/{max_retries})"
+                error_type = "connection_refused"
+            else:
+                last_error = f"Connection error (attempt {attempt + 1}/{max_retries})"
+                error_type = "connection_error"
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429:  # Rate limited
                 wait_time = RETRY_BACKOFF ** (attempt + 2)
-                last_error = f"Rate limited, waiting {wait_time:.1f}s"
+                last_error = f"Rate limited (429), waiting {wait_time:.1f}s"
+                error_type = "429"
                 time.sleep(wait_time)
+            elif response.status_code == 403:  # Forbidden - likely banned
+                last_error = f"Forbidden (403) - possible ban"
+                error_type = "403"
             elif response.status_code == 404:
                 # Project doesn't exist, skip
-                return (original_url, None, None)
+                return (original_url, None, None, None)
             elif response.status_code >= 500:
                 last_error = f"Server error {response.status_code}"
+                error_type = "server_error"
             else:
-                return (original_url, None, f"HTTP {response.status_code}")
+                return (original_url, None, f"HTTP {response.status_code}", None)
         except Exception as e:
             last_error = f"{type(e).__name__}: {str(e)}"
+            error_type = "other"
 
         # Wait before retry
         if attempt < max_retries - 1:
             time.sleep(RETRY_BACKOFF ** attempt)
 
-    return (original_url, None, last_error)
+    return (original_url, None, last_error, error_type)
 
 
 def parse_project_page(html: str, url: str) -> Optional[dict]:
@@ -582,7 +716,7 @@ def download_all_projects(
 
     # Limit projects if requested
     if max_projects:
-        urls = urls[:max_projects]
+        checkpoint.urls = checkpoint.urls[:max_projects]
         print(f"  [INFO] Limited to {max_projects:,} projects")
 
     # Get remaining URLs to process
@@ -598,8 +732,9 @@ def download_all_projects(
         print("  [INFO] All URLs already downloaded!")
         return checkpoint.projects
 
-    # Initialize progress tracker
+    # Initialize progress tracker and ban detector
     progress = ProgressTracker(len(urls_to_fetch))
+    ban_detector = BanDetector()
 
     # Track progress for checkpointing
     items_since_checkpoint = 0
@@ -626,26 +761,30 @@ def download_all_projects(
             for future in as_completed(futures):
                 url = futures[future]
                 try:
-                    result_url, project, error = future.result()
+                    result_url, project, error, error_type = future.result()
 
                     if error:
                         progress.update(is_error=True)
                         failed_urls.append((result_url, error))
                         checkpoint.mark_failed(result_url)
+                        ban_detector.record_result(success=False, error_type=error_type)
                     elif project:
                         progress.update()
                         checkpoint.mark_completed(result_url)
                         checkpoint.add_project(project)
+                        ban_detector.record_result(success=True)
                     else:
                         # Project page was empty or 404
                         progress.update()
                         checkpoint.mark_completed(result_url)
+                        ban_detector.record_result(success=True)
 
                     items_since_checkpoint += 1
 
                     # Print progress periodically
                     if progress.should_report(30):
-                        print(f"\r{progress.get_progress_line()}", flush=True)
+                        ban_status = ban_detector.get_status()
+                        print(f"\r{progress.get_progress_line(ban_status)}", flush=True)
 
                     # Save checkpoint periodically
                     if items_since_checkpoint >= CHECKPOINT_INTERVAL:
@@ -658,6 +797,12 @@ def download_all_projects(
                     progress.update(is_error=True)
                     failed_urls.append((url, str(e)))
                     checkpoint.mark_failed(url)
+                    ban_detector.record_result(success=False, error_type="other")
+
+            # Check for ban and wait if needed before next batch
+            if ban_detector.wait_if_banned():
+                checkpoint.save()
+                print(f"  [INFO] Saved checkpoint before resuming")
 
             # Save checkpoint after each batch
             checkpoint.save()
@@ -669,6 +814,8 @@ def download_all_projects(
     print(f"  Total processed: {progress.completed_items:,}")
     print(f"  Projects extracted: {len(checkpoint.projects):,}")
     print(f"  Total time: {progress.get_elapsed()}")
+    if ban_detector.total_bans_detected > 0:
+        print(f"  Ban events detected: {ban_detector.total_bans_detected}")
 
     if failed_urls:
         print(f"\n  [WARN] {len(failed_urls)} URLs failed:")
