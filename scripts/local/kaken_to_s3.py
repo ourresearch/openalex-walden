@@ -1121,6 +1121,12 @@ def main():
         action="store_true",
         help="Use Zyte API proxy for requests (requires ZYTE_API_KEY env var)"
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel workers (default: 5, or 20 with --use-zyte)"
+    )
     args = parser.parse_args()
 
     # Set global Zyte flag and adjust settings for Zyte
@@ -1134,8 +1140,10 @@ def main():
 
     # When using Zyte, we can be more aggressive since they handle rate limiting
     if USE_ZYTE:
-        MAX_WORKERS = 20  # Zyte can handle many concurrent requests
+        MAX_WORKERS = args.workers if args.workers else 20
         REQUEST_DELAY = 0.1  # Minimal delay since Zyte manages throttling
+    elif args.workers:
+        MAX_WORKERS = args.workers
 
     # Create output directory
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -1145,8 +1153,9 @@ def main():
     print("=" * 60)
     print(f"Output directory: {args.output_dir.absolute()}")
     print(f"S3 destination: s3://{S3_BUCKET}/{S3_KEY}")
+    print(f"Workers: {MAX_WORKERS}, delay: {REQUEST_DELAY}s")
     if USE_ZYTE:
-        print(f"Proxy: Zyte API (key: {ZYTE_API_KEY[:8]}..., workers={MAX_WORKERS}, delay={REQUEST_DELAY}s)")
+        print(f"Proxy: Zyte API (key: {ZYTE_API_KEY[:8]}...)")
     if args.resume:
         print(f"Mode: RESUME (will continue from checkpoint)")
     if args.max_projects:
