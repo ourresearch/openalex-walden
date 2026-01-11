@@ -861,23 +861,27 @@ def download_all_projects(
                         progress.update(is_error=True)
                         failed_urls.append((result_url, error))
                         checkpoint.mark_failed(result_url)
-                        ban_detector.record_result(success=False, error_type=error_type)
+                        if not USE_ZYTE:
+                            ban_detector.record_result(success=False, error_type=error_type)
                     elif project:
                         progress.update()
                         checkpoint.mark_completed(result_url)
                         checkpoint.add_project(project)
-                        ban_detector.record_result(success=True)
+                        if not USE_ZYTE:
+                            ban_detector.record_result(success=True)
                     else:
                         # Project page was empty or 404
                         progress.update()
                         checkpoint.mark_completed(result_url)
-                        ban_detector.record_result(success=True)
+                        if not USE_ZYTE:
+                            ban_detector.record_result(success=True)
 
                     items_since_checkpoint += 1
 
                     # Print progress periodically
                     if progress.should_report(30):
-                        ban_status = ban_detector.get_status()
+                        # Don't show ban status when using Zyte (they handle rate limiting)
+                        ban_status = "" if USE_ZYTE else ban_detector.get_status()
                         print(f"\r{progress.get_progress_line(ban_status)}", flush=True)
 
                     # Save checkpoint periodically
@@ -891,10 +895,12 @@ def download_all_projects(
                     progress.update(is_error=True)
                     failed_urls.append((url, str(e)))
                     checkpoint.mark_failed(url)
-                    ban_detector.record_result(success=False, error_type="other")
+                    if not USE_ZYTE:
+                        ban_detector.record_result(success=False, error_type="other")
 
             # Check for ban and wait if needed before next batch
-            if ban_detector.wait_if_banned():
+            # Skip ban detection when using Zyte - they handle rate limiting
+            if not USE_ZYTE and ban_detector.wait_if_banned():
                 checkpoint.save()
                 print(f"  [INFO] Saved checkpoint before resuming")
 
@@ -908,7 +914,7 @@ def download_all_projects(
     print(f"  Total processed: {progress.completed_items:,}")
     print(f"  Projects extracted: {len(checkpoint.projects):,}")
     print(f"  Total time: {progress.get_elapsed()}")
-    if ban_detector.total_bans_detected > 0:
+    if not USE_ZYTE and ban_detector.total_bans_detected > 0:
         print(f"  Ban events detected: {ban_detector.total_bans_detected}")
 
     if failed_urls:
