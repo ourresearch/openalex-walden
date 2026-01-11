@@ -33,11 +33,16 @@ Requirements:
     AWS CLI must be configured with credentials that have write access to:
     s3://openalex-ingest/awards/kaken/
 
+    For Zyte proxy support, set ZYTE_API_KEY environment variable.
+
 Usage:
     python kaken_to_s3.py
 
     # Resume interrupted download:
     python kaken_to_s3.py --resume
+
+    # Use Zyte proxy (recommended if getting blocked):
+    python kaken_to_s3.py --resume --use-zyte
 
     # Test with limited projects:
     python kaken_to_s3.py --max-projects 1000 --skip-upload
@@ -48,11 +53,13 @@ Author: OpenAlex Team
 import argparse
 import gzip
 import json
+import os
 import re
 import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+from base64 import standard_b64decode
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -88,6 +95,13 @@ BAN_BACKOFF_MAX = 300  # Max backoff (5 minutes) (was 3600/1 hour)
 # S3 destination
 S3_BUCKET = "openalex-ingest"
 S3_KEY = "awards/kaken/kaken_projects.parquet"
+
+# Zyte API configuration
+ZYTE_API_URL = "https://api.zyte.com/v1/extract"
+ZYTE_API_KEY = os.getenv("ZYTE_API_KEY", "")
+
+# Global flag for Zyte usage (set by command line)
+USE_ZYTE = False
 
 
 # =============================================================================
@@ -411,6 +425,64 @@ def download_sitemaps(session: requests.Session) -> list[str]:
 # Page Scraping Functions
 # =============================================================================
 
+def fetch_via_zyte(url: str, timeout: int = 60) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Fetch a URL via the Zyte API.
+
+    Args:
+        url: URL to fetch
+        timeout: Request timeout in seconds
+
+    Returns:
+        Tuple of (html content or None, error message or None, error_type or None)
+    """
+    if not ZYTE_API_KEY:
+        return None, "ZYTE_API_KEY not set", "config_error"
+
+    zyte_params = {
+        "url": url,
+        "httpResponseBody": True,
+        "httpResponseHeaders": True,
+    }
+
+    try:
+        response = requests.post(
+            ZYTE_API_URL,
+            auth=(ZYTE_API_KEY, ""),
+            json=zyte_params,
+            timeout=timeout
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Decode the base64 response body
+        status_code = data.get("statusCode", 200)
+        if status_code == 404:
+            return None, None, None  # Page doesn't exist, not an error
+
+        if status_code >= 400:
+            return None, f"HTTP {status_code} via Zyte", str(status_code)
+
+        body_b64 = data.get("httpResponseBody", "")
+        if body_b64:
+            html = standard_b64decode(body_b64).decode("utf-8", errors="replace")
+            return html, None, None
+        else:
+            return None, "Empty response from Zyte", "empty_response"
+
+    except requests.exceptions.Timeout:
+        return None, "Zyte API timeout", "timeout"
+    except requests.exceptions.HTTPError as e:
+        if response.status_code == 429:
+            return None, "Zyte rate limited", "429"
+        elif response.status_code == 401:
+            return None, "Zyte API key invalid", "auth_error"
+        else:
+            return None, f"Zyte HTTP {response.status_code}", "zyte_error"
+    except Exception as e:
+        return None, f"Zyte error: {type(e).__name__}: {str(e)}", "zyte_error"
+
+
 def fetch_project_with_retry(
     url: str,
     max_retries: int = MAX_RETRIES
@@ -433,26 +505,39 @@ def fetch_project_with_retry(
     # Rate limit at the start of each request (per-worker throttling)
     time.sleep(REQUEST_DELAY)
 
-    headers = {
-        "Accept": "text/html,application/xhtml+xml",
-        "User-Agent": "OpenAlex-KAKEN-Ingest/1.0 (research data aggregator; contact@openalex.org)",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
+    # Use English version of the page
+    fetch_url = url
+    if "/ja/" in fetch_url:
+        fetch_url = fetch_url.replace("/ja/", "/en/")
+    elif "/en/" not in fetch_url:
+        fetch_url = fetch_url.replace("/grant/", "/en/grant/")
 
     for attempt in range(max_retries):
         try:
-            # Use English version of the page
-            fetch_url = url
-            if "/ja/" in fetch_url:
-                fetch_url = fetch_url.replace("/ja/", "/en/")
-            elif "/en/" not in fetch_url:
-                fetch_url = fetch_url.replace("/grant/", "/en/grant/")
-
-            response = requests.get(fetch_url, headers=headers, timeout=30)
-            response.raise_for_status()
+            # Fetch via Zyte or direct
+            if USE_ZYTE:
+                html, error, err_type = fetch_via_zyte(fetch_url)
+                if error:
+                    last_error = error
+                    error_type = err_type
+                    if attempt < max_retries - 1:
+                        time.sleep(RETRY_BACKOFF ** attempt)
+                    continue
+                if html is None and error is None:
+                    # 404 - page doesn't exist
+                    return (original_url, None, None, None)
+            else:
+                headers = {
+                    "Accept": "text/html,application/xhtml+xml",
+                    "User-Agent": "OpenAlex-KAKEN-Ingest/1.0 (research data aggregator; contact@openalex.org)",
+                    "Accept-Language": "en-US,en;q=0.9",
+                }
+                response = requests.get(fetch_url, headers=headers, timeout=30)
+                response.raise_for_status()
+                html = response.text
 
             # Check for CAPTCHA or block page
-            content_lower = response.text.lower()
+            content_lower = html.lower()
             if any(signal in content_lower for signal in [
                 "captcha", "robot", "blocked", "access denied",
                 "too many requests", "rate limit", "please verify"
@@ -463,7 +548,7 @@ def fetch_project_with_retry(
                     time.sleep(RETRY_BACKOFF ** (attempt + 2))
                 continue
 
-            project = parse_project_page(response.text, fetch_url)
+            project = parse_project_page(html, fetch_url)
             return (original_url, project, None, None)
 
         except requests.exceptions.Timeout:
@@ -1022,7 +1107,21 @@ def main():
         default=None,
         help="Limit to N projects (for testing)"
     )
+    parser.add_argument(
+        "--use-zyte",
+        action="store_true",
+        help="Use Zyte API proxy for requests (requires ZYTE_API_KEY env var)"
+    )
     args = parser.parse_args()
+
+    # Set global Zyte flag
+    global USE_ZYTE
+    USE_ZYTE = args.use_zyte
+
+    # Validate Zyte configuration
+    if USE_ZYTE and not ZYTE_API_KEY:
+        print("[ERROR] --use-zyte requires ZYTE_API_KEY environment variable")
+        sys.exit(1)
 
     # Create output directory
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -1032,6 +1131,8 @@ def main():
     print("=" * 60)
     print(f"Output directory: {args.output_dir.absolute()}")
     print(f"S3 destination: s3://{S3_BUCKET}/{S3_KEY}")
+    if USE_ZYTE:
+        print(f"Proxy: Zyte API (key: {ZYTE_API_KEY[:8]}...)")
     if args.resume:
         print(f"Mode: RESUME (will continue from checkpoint)")
     if args.max_projects:
