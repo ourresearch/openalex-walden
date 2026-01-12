@@ -17,8 +17,93 @@ from openalex.dlt.transform import apply_initial_processing, apply_final_merge_k
 MAX_TITLE_LENGTH = 5000
 MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
-MAX_AFFILIATION_STRING_LENGTH = 1000 
+MAX_AFFILIATION_STRING_LENGTH = 1000
 unallowed_types = ["component", "grant"]
+
+# Affiliation-as-Author Fix - Publishers excluded from filtering
+# These publishers have < 0.1% affected rate and should not have their records modified
+AFFILIATION_AS_AUTHOR_EXCLUDED_PUBLISHERS = [
+    "ACM",
+    "Acoustical Society of America (ASA)",
+    "AIP Publishing",
+    "American Chemical Society (ACS)",
+    "American Geophysical Union (AGU)",
+    "American Institute of Aeronautics & Astronautics",
+    "American Society of Civil Engineers (ASCE)",
+    "American Society of Mechanical Engineers",
+    "Association for Computing Machinery (ACM)",
+    "ASTM International",
+    "Atlantis Press",
+    "Bentham Science Publishers Ltd.",
+    "BRILL",
+    "CAIRN",
+    "Cambridge University Press",
+    "Center for Open Science",
+    "CRC Press",
+    "De Gruyter",
+    "Duke University Press",
+    "Edward Elgar Publishing",
+    "Egyptian Knowledge Bank",
+    "Egypts Presidential Specialized Council",
+    "Elsevier",
+    "Emerald",
+    "ENCODE Data Coordination Center",
+    "Georg Thieme Verlag KG",
+    "H1 Connect",
+    "Hans Publishers",
+    "IEEE",
+    "IGI Global",
+    "Inderscience Publishers",
+    "Informa UK Limited",
+    "Institute of Electrical and Electronics Engineers (IEEE)",
+    "Institution of Engineering and Technology (IET)",
+    "International Union of Crystallography (IUCr)",
+    "IUCN",
+    "Japan Society of Mechanical Engineers",
+    "Nomos Verlagsgesellschaft mbH & Co. KG",
+    "OpenEdition",
+    "Oxford University Press",
+    "PERSEE Program",
+    "Project MUSE",
+    "Research Square Platform LLC",
+    "Routledge",
+    "Royal Society of Chemistry (RSC)",
+    "SAE International",
+    "Sciencedomain International",
+    "Scientific Research Publishing, Inc.",
+    "SPIE",
+    "Springer Berlin Heidelberg",
+    "Springer International Publishing",
+    "Springer Nature Singapore",
+    "Springer Nature Switzerland",
+    "The Conversation",
+    "The Electrochemical Society",
+    "The Royal Society",
+    "Trans Tech Publications, Ltd.",
+    "transcript Verlag",
+    "Universidade de Sao Paulo",
+    "University of Chicago Press",
+    "VS Verlag fur Sozialwissenschaften",
+    "Walter de Gruyter GmbH",
+    "World Scientific Pub Co Pte Lt",
+]
+
+# Institution keywords regex for detecting affiliation-as-author entries (case-insensitive)
+INSTITUTION_KEYWORDS_PATTERN = (
+    r"(?i)\b("
+    # English institution keywords
+    r"University|Institute|College|Hospital|Department|School|Center|Centre|"
+    r"Laboratory|Faculty|Academy|"
+    # Non-English institution keywords
+    r"Universiteit|Universidade|Università|Uniwersytet|Üniversitesi|Universite|"
+    r"Hochschule|Fakultät|Klinikum|Krankenhaus|Politecnico|Politechnika|"
+    # Corporate/organization patterns
+    r"Inc|LLC|Ltd|Corp|Corporation|Company|GmbH|Consortium|Association|"
+    r"Collaboration|Committee|Council|Organization|Organisation|"
+    # Additional keywords
+    r"Clinic|Medical|Research|Museum|Library|Foundation|Polytechnic"
+    r")\b"
+)
 
 @F.pandas_udf(StringType())
 def normalize_license_udf(license_series: pd.Series) -> pd.Series:
@@ -27,6 +112,58 @@ def normalize_license_udf(license_series: pd.Series) -> pd.Series:
 @F.pandas_udf(StringType())
 def normalize_title_udf(title_series: pd.Series) -> pd.Series:
     return title_series.apply(normalize_title)
+
+# COMMAND ----------
+
+def create_author_struct(author):
+    """Transform raw Crossref author to normalized author struct."""
+    return F.struct(
+        F.substring(author["given"], 0, MAX_AUTHOR_NAME_LENGTH).alias("given"),
+        F.substring(author["family"], 0, MAX_AUTHOR_NAME_LENGTH).alias("family"),
+        F.substring(author["name"], 0, MAX_AUTHOR_NAME_LENGTH).alias("name"),
+        F.regexp_extract(
+            author["ORCID"], r"(\d{4}-\d{4}-\d{4}-\d{4})", 1
+        ).alias("orcid"),
+        F.transform(
+            author["affiliation"],
+            lambda aff: F.struct(
+                F.substring(aff["name"], 0, MAX_AFFILIATION_STRING_LENGTH).alias("name"),
+                F.substring(F.get(aff["department"], 0), 0, MAX_AFFILIATION_STRING_LENGTH).alias("department"),
+                F.when(
+                    F.get(aff["id"]["id-type"], 0) == "ROR",
+                    F.get(aff["id"]["id"], 0)
+                ).alias("ror_id")
+            )
+        ).alias("affiliations")
+    )
+
+def is_valid_author(author):
+    """
+    Returns True if the author is NOT an affiliation-as-author entry.
+
+    Detects two patterns:
+    1. Institution keywords in given OR family fields (e.g., given="Kazan", family="University")
+    2. Institution keywords in name field when given/family are empty
+       (e.g., name="University of Professional Studies, Accra, Ghana")
+    """
+    family = F.coalesce(author["family"], F.lit(""))
+    given = F.coalesce(author["given"], F.lit(""))
+    name = F.coalesce(author["name"], F.lit(""))
+
+    # Pattern 1: Institution keywords in given or family
+    has_institution_in_given_family = (
+        family.rlike(INSTITUTION_KEYWORDS_PATTERN) |
+        given.rlike(INSTITUTION_KEYWORDS_PATTERN)
+    )
+
+    # Pattern 2: Institution in name field when given/family are empty
+    has_institution_in_name_only = (
+        (F.trim(given) == "") &
+        (F.trim(family) == "") &
+        name.rlike(INSTITUTION_KEYWORDS_PATTERN)
+    )
+
+    return ~(has_institution_in_given_family | has_institution_in_name_only)
 
 # COMMAND ----------
 
@@ -190,26 +327,15 @@ def crossref_parsed():
         .withColumn("normalized_title", normalize_title_udf(F.col("title")))
         .withColumn(
             "authors",
-            F.transform(
-                "author",
-                lambda author: F.struct(
-                    F.substring(author["given"], 0, MAX_AUTHOR_NAME_LENGTH).alias("given"),
-                    F.substring(author["family"], 0, MAX_AUTHOR_NAME_LENGTH).alias("family"),
-                    F.substring(author["name"], 0, MAX_AUTHOR_NAME_LENGTH).alias("name"),
-                    F.regexp_extract(
-                        author["ORCID"], r"(\d{4}-\d{4}-\d{4}-\d{4})", 1
-                    ).alias("orcid"),
-                    F.transform(
-                        author["affiliation"],
-                        lambda aff: F.struct(
-                            F.substring(aff["name"], 0, MAX_AFFILIATION_STRING_LENGTH).alias("name"),
-                            F.substring(F.get(aff["department"], 0),0,MAX_AFFILIATION_STRING_LENGTH).alias("department"),
-                            F.when(
-                                F.get(aff["id"]["id-type"], 0) == "ROR",
-                                F.get(aff["id"]["id"], 0)
-                            ).alias("ror_id")
-                        )
-                    ).alias("affiliations")
+            F.when(
+                F.col("publisher").isin(AFFILIATION_AS_AUTHOR_EXCLUDED_PUBLISHERS),
+                # Excluded publishers: keep all authors unchanged
+                F.transform("author", create_author_struct)
+            ).otherwise(
+                # Other publishers: filter out affiliation-as-author entries, then transform
+                F.transform(
+                    F.filter(F.col("author"), is_valid_author),
+                    create_author_struct
                 )
             )
         )
