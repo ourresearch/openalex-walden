@@ -45,6 +45,7 @@ resources:
           timeout_seconds: 3600
         - task_key: Union
           depends_on:
+            - task_key: Landing_Page_Ingest_DLT
             - task_key: Crossref_Ingest_DLT
             - task_key: PubMed_Ingest_DLT
             - task_key: Mag_Ingest_DLT
@@ -153,10 +154,8 @@ resources:
         - task_key: Sync_to_Elasticsearch
           depends_on:
             - task_key: Works_Enriched
-          notebook_task:
-            notebook_path: notebooks/elastic/sync_works
-            source: GIT
-          job_cluster_key: Sync_to_Elasticsearch_cluster
+          run_job_task:
+            job_id: 989175517612703
         - task_key: Wunpaywall
           depends_on:
             - task_key: Works_Enriched
@@ -245,8 +244,4 @@ resources:
           default: openalex
         - name: force_large_load
           default: "false"
-      environments:
-        - environment_key: Default
-          spec:
-            environment_version: "4"
       performance_target: PERFORMANCE_OPTIMIZED
