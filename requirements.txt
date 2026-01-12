@@ -2,3 +2,4 @@ databricks-sql-connector>=3.0.0
 databricks-sdk>=0.20.0
 python-dotenv>=1.0.0
 pandas>=1.5.3
+pyarrow>=14.0.0

@@ -1,9 +1,77 @@
 import os
+import re
 from databricks import sql
 from databricks.sdk.core import Config, oauth_service_principal
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+class ReadOnlyViolationError(Exception):
+    """Raised when a query attempts to modify data."""
+    pass
+
+
+def _validate_read_only(query: str) -> None:
+    """
+    Validate that a query is read-only (SELECT, SHOW, DESCRIBE, EXPLAIN, WITH).
+    Raises ReadOnlyViolationError if the query could modify data.
+    """
+    # Normalize: remove comments and extra whitespace
+    # Remove -- comments
+    cleaned = re.sub(r'--.*$', '', query, flags=re.MULTILINE)
+    # Remove /* */ comments
+    cleaned = re.sub(r'/\*.*?\*/', '', cleaned, flags=re.DOTALL)
+    # Normalize whitespace
+    cleaned = ' '.join(cleaned.split()).strip().upper()
+
+    # List of allowed read-only statement prefixes
+    read_only_prefixes = (
+        'SELECT',
+        'WITH',  # CTEs that lead to SELECT
+        'SHOW',
+        'DESCRIBE',
+        'DESC',
+        'EXPLAIN',
+    )
+
+    # List of forbidden keywords that indicate data modification
+    forbidden_patterns = [
+        r'\bINSERT\b',
+        r'\bUPDATE\b',
+        r'\bDELETE\b',
+        r'\bDROP\b',
+        r'\bCREATE\b',
+        r'\bALTER\b',
+        r'\bTRUNCATE\b',
+        r'\bMERGE\b',
+        r'\bREPLACE\b',
+        r'\bGRANT\b',
+        r'\bREVOKE\b',
+        r'\bCOPY\b',
+        r'\bUNLOAD\b',
+        r'\bVACUUM\b',
+        r'\bOPTIMIZE\b',
+        r'\bREFRESH\b',
+        r'\bMSCK\b',
+        r'\bLOAD\b',
+        r'\bSET\b(?!\s+)',  # SET without space after (not part of OFFSET)
+    ]
+
+    # Check if query starts with allowed prefix
+    if not cleaned.startswith(read_only_prefixes):
+        raise ReadOnlyViolationError(
+            f"Query must start with SELECT, WITH, SHOW, DESCRIBE, or EXPLAIN. "
+            f"Got: {cleaned[:50]}..."
+        )
+
+    # Check for forbidden keywords anywhere in query
+    for pattern in forbidden_patterns:
+        if re.search(pattern, cleaned):
+            keyword = re.search(pattern, cleaned).group()
+            raise ReadOnlyViolationError(
+                f"Query contains forbidden keyword '{keyword}'. Only read-only queries are allowed."
+            )
 
 
 def _credential_provider():
@@ -33,17 +101,24 @@ def get_connection():
     )
 
 
-def run_query(query: str, params: dict = None):
+def run_query(query: str, params: dict = None, allow_writes: bool = False):
     """
     Execute a SQL query and return results as a list of dicts.
 
     Args:
         query: SQL query string
         params: Optional dict of parameters for parameterized queries
+        allow_writes: If False (default), validates query is read-only before executing
 
     Returns:
         List of dicts, one per row, with column names as keys
+
+    Raises:
+        ReadOnlyViolationError: If allow_writes=False and query attempts to modify data
     """
+    if not allow_writes:
+        _validate_read_only(query)
+
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(query, params)
