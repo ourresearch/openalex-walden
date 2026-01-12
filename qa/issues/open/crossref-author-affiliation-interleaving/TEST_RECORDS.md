@@ -134,3 +134,49 @@ WHERE native_id IN (
     '10.2979/trancharpeirsoc.57.1.04'  -- Indiana UP: should stay 1
 )
 ```
+
+---
+
+## Verification Queries for openalex_works_base
+
+After running the Union DLT and Works pipeline, verify the fix propagated to `openalex_works_base`:
+
+**Note:** DOIs in `openalex_works_base` have the `https://doi.org/` prefix.
+
+```sql
+-- Check specific DOIs that should be filtered
+SELECT doi, authors_count
+FROM openalex.works.openalex_works_base
+WHERE doi IN (
+    'https://doi.org/10.26907/esd.17.3.14',    -- Should go from 30 to 15 authors
+    'https://doi.org/10.21002/jaki.2024.11',   -- Should go from 4 to 2 authors
+    'https://doi.org/10.22394/1726-1139-2018-10-46-63',  -- Should go from 4 to 2 authors
+    'https://doi.org/10.17705/1jais.00257',    -- Should go from 8 to 4 authors
+    'https://doi.org/10.5840/philtoday20201110368'  -- Should go from 2 to 1 author
+)
+ORDER BY doi
+```
+
+```sql
+-- Check excluded publisher records are unchanged
+SELECT doi, authors_count
+FROM openalex.works.openalex_works_base
+WHERE doi IN (
+    'https://doi.org/10.1093/oso/9780197627112.001.0001',  -- Oxford: should stay 1
+    'https://doi.org/10.1109/glocom.2014.7037162',         -- IEEE: should stay 4
+    'https://doi.org/10.1109/itsc.2011.6082932'            -- IEEE: should stay 5
+)
+ORDER BY doi
+```
+
+```sql
+-- Check clean non-excluded records are unchanged
+SELECT doi, authors_count
+FROM openalex.works.openalex_works_base
+WHERE doi IN (
+    'https://doi.org/10.14361/9783839442494',      -- transcript Verlag: should stay 1
+    'https://doi.org/10.5603/nmr.2016.0019',       -- VM Media: should stay 4
+    'https://doi.org/10.2979/trancharpeirsoc.57.1.04'  -- Indiana UP: should stay 1
+)
+ORDER BY doi
+```
