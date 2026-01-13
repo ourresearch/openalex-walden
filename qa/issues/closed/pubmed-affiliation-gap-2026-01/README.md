@@ -1,6 +1,6 @@
 # Issue: PubMed Affiliations Not Used as Source
 
-**Status**: open
+**Status**: closed
 **Discovered**: 2026-01-12
 **Severity**: high
 **Component**: pipeline
@@ -38,15 +38,23 @@ PubMed is not being used as a source for raw affiliation strings in the walden p
 
 **DOI**: `10.7759/cureus.97342` (PMID: 41426802)
 
-| Source | Authors | Authors with Affiliations |
-|--------|---------|---------------------------|
+### Before Fix
+| Source | Authors | Affiliations |
+|--------|---------|--------------|
 | PubMed | 7 | **7** |
 | Crossref | 7 | 0 |
 | PDF | 0 | 0 |
 | Landing Page | 14 | 0 |
 | **Final openalex_works** | 7 | **0** |
 
-PubMed is the ONLY source with affiliation data for this work, but it's not being used.
+### After Fix
+| DOI | Authors | Affiliations |
+|-----|---------|--------------|
+| `10.7759/cureus.97342` | 7 | **8** |
+| `10.1016/j.bioadv.2025.214692` | 8 | **8** |
+| `10.1016/j.cpm.2025.06.004` | 4 | **4** |
+
+All test DOIs now have PubMed affiliations in `openalex_works`.
 
 ---
 
@@ -58,7 +66,18 @@ PubMed is the ONLY source with affiliation data for this work, but it's not bein
 - [x] Implement fix
 - [x] Deploy to Databricks and run pipeline
 - [x] Run acceptance tests (validated in openalex_works_base)
-- [ ] Close issue
+- [x] Run acceptance tests (validated in openalex_works - final table)
+- [x] Commit changes
+- [x] Close issue
+
+---
+
+## Results
+
+- **~19.6M works** updated with PubMed affiliations
+- **~11.7M additional works** now have institution matches
+- Institution coverage for updated works: **89.8%** (vs 30.8% baseline)
+- Recent years (2023-2025): **~877K additional works** with institutions
 
 ---
 
@@ -70,3 +89,5 @@ PubMed is the ONLY source with affiliation data for this work, but it's not bein
 | 2026-01-12 | claude | Identified ~930K recent works affected |
 | 2026-01-12 | claude | Implemented fix: added 'pubmed' to provenance filter in CreateCrossrefSuperAuthorships.ipynb |
 | 2026-01-12 | claude | Validated fix in openalex_works_base - test DOIs now have affiliations |
+| 2026-01-13 | claude | Validated fix in openalex_works (final table) - all test DOIs confirmed |
+| 2026-01-13 | claude | Confirmed ~11.7M additional works with institutions, issue closed |

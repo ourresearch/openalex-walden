@@ -1,7 +1,8 @@
 # Issue: Crossref Author/Affiliation Interleaving
 
-**Status**: in-progress
+**Status**: closed
 **Discovered**: 2026-01-12
+**Closed**: 2026-01-13
 **Severity**: high
 **Component**: pipeline
 
@@ -13,18 +14,17 @@ Some Crossref publishers submit metadata where author affiliations are incorrect
 
 | Metric | Value |
 |--------|-------|
-| Records affected | ~1.9M (expanded detection) |
+| Records affected | ~1.7M cleaned up |
 | Coverage impact | Inflated author counts, polluted author disambiguation |
 | User-visible symptoms | Fake "authors" like "Kazan University" in API results |
-| Time range | Ongoing, concentrated in 2024-2026 |
+| Resolution | Fixed in Crossref.py, historical records cleaned |
 
 ## Files in This Issue
 
 | File | Status | Description |
 |------|--------|-------------|
-| `INVESTIGATION.md` | pending | Root cause analysis |
 | `PLAN.md` | complete | Fix approach |
-| `ACCEPTANCE.md` | pending | Verification tests |
+| `TEST_RECORDS.md` | complete | Test cases for validation |
 | `evidence/` | complete | Analysis notebook with detection queries |
 | `fix/` | complete | Implementation in `notebooks/ingest/Crossref.py` and `notebooks/maintenance/CleanupAffiliationAsAuthor.py` |
 
@@ -58,14 +58,14 @@ The issue is detected by looking for institution/organization keywords in author
 
 ## Next Steps
 
-- [ ] Complete root cause analysis
+- [x] Complete root cause analysis
 - [x] Write fix plan
-- [ ] Define acceptance criteria
+- [x] Define acceptance criteria
 - [x] Implement fix
-- [ ] Deploy fix to Crossref DLT pipeline
-- [ ] Run cleanup notebook for existing records
-- [ ] Run acceptance tests
-- [ ] Close issue
+- [x] Deploy fix to Crossref DLT pipeline
+- [x] Run cleanup notebook for existing records
+- [x] Run acceptance tests
+- [x] Close issue
 
 ---
 
@@ -75,3 +75,8 @@ The issue is detected by looking for institution/organization keywords in author
 |------|-----|--------|
 | 2026-01-12 | claude | Issue created, expanded detection from 870k to 1.9M records |
 | 2026-01-12 | claude | Created fix plan (PLAN.md), implemented fix in Crossref.py, created cleanup notebook |
+| 2026-01-13 | claude | Refined detection pattern to avoid false positives (School*/Center* surnames) |
+| 2026-01-13 | casey | Deployed fix to Crossref DLT pipeline, ran cleanup notebook |
+| 2026-01-13 | casey | Ran UpdateWorkAuthors and CreateWorksEnriched pipelines |
+| 2026-01-13 | claude | Validated fix in openalex.works.openalex_works - all tests passed |
+| 2026-01-13 | claude | Issue closed - ~1.7M records cleaned, false positives prevented |
