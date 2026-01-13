@@ -89,20 +89,39 @@ AFFILIATION_AS_AUTHOR_EXCLUDED_PUBLISHERS = [
 ]
 
 # Institution keywords regex for detecting affiliation-as-author entries (case-insensitive)
-INSTITUTION_KEYWORDS_PATTERN = (
-    r"(?i)\b("
-    # English institution keywords
-    r"University|Institute|College|Hospital|Department|School|Center|Centre|"
+# Uses a hybrid approach to avoid false positives from surnames containing institution keywords:
+# - Long institution keywords: NO word boundaries (catches concatenated forms like "KazanUniversity")
+# - Short corporate keywords: WITH word boundaries (avoids false positives like "Vincent" containing "Inc")
+# - School/Center: Special handling in is_valid_author() to avoid surnames like Schooler, Centerwall
+
+# Pattern for keywords EXCLUDING School and Center (used for family field)
+INSTITUTION_KEYWORDS_PATTERN_NO_SCHOOL_CENTER = (
+    r"(?i)("
+    # Long institution keywords - no word boundaries needed
+    r"University|Institute|College|Hospital|Department|Centre|"
     r"Laboratory|Faculty|Academy|"
-    # Non-English institution keywords
     r"Universiteit|Universidade|Università|Uniwersytet|Üniversitesi|Universite|"
     r"Hochschule|Fakultät|Klinikum|Krankenhaus|Politecnico|Politechnika|"
-    # Corporate/organization patterns
-    r"Inc|LLC|Ltd|Corp|Corporation|Company|GmbH|Consortium|Association|"
-    r"Collaboration|Committee|Council|Organization|Organisation|"
-    # Additional keywords
-    r"Clinic|Medical|Research|Museum|Library|Foundation|Polytechnic"
-    r")\b"
+    r"Consortium|Association|Collaboration|Committee|Council|Organization|Organisation|"
+    r"Clinic|Museum|Library|Foundation|Polytechnic"
+    r")"
+    r"|"
+    # Short corporate keywords - WITH word boundaries
+    r"\b(Inc|LLC|Ltd|Corp|Corporation|Company|GmbH|Medical|Research)\b"
+)
+
+# Full pattern including School and Center (used for given field and name-only pattern)
+INSTITUTION_KEYWORDS_PATTERN = (
+    r"(?i)("
+    r"University|Institute|College|Hospital|Department|School|Center|Centre|"
+    r"Laboratory|Faculty|Academy|"
+    r"Universiteit|Universidade|Università|Uniwersytet|Üniversitesi|Universite|"
+    r"Hochschule|Fakultät|Klinikum|Krankenhaus|Politecnico|Politechnika|"
+    r"Consortium|Association|Collaboration|Committee|Council|Organization|Organisation|"
+    r"Clinic|Museum|Library|Foundation|Polytechnic"
+    r")"
+    r"|"
+    r"\b(Inc|LLC|Ltd|Corp|Corporation|Company|GmbH|Medical|Research)\b"
 )
 
 @F.pandas_udf(StringType())
@@ -145,15 +164,43 @@ def is_valid_author(author):
     1. Institution keywords in given OR family fields (e.g., given="Kazan", family="University")
     2. Institution keywords in name field when given/family are empty
        (e.g., name="University of Professional Studies, Accra, Ghana")
+
+    Special handling for School and Center keywords in family field to avoid
+    false positives from surnames like Schooler, Schooling, Centerwall:
+    - School: only matches if family is exactly "School" or contains "Schoolof"
+    - Center: only matches if family ends with "Center" or contains "Centerof"
     """
     family = F.coalesce(author["family"], F.lit(""))
     given = F.coalesce(author["given"], F.lit(""))
     name = F.coalesce(author["name"], F.lit(""))
 
-    # Pattern 1: Institution keywords in given or family
+    # Pattern 1a: Non-School/Center keywords in family
+    has_other_institution_in_family = family.rlike(INSTITUTION_KEYWORDS_PATTERN_NO_SCHOOL_CENTER)
+
+    # Pattern 1b: School in family - only if exactly "School" or contains "Schoolof"
+    # This avoids surnames like Schooler, Schooling, Schoolfield, etc.
+    has_school_in_family = (
+        family.rlike(r"(?i)^School$") |  # Exactly "School"
+        family.rlike(r"(?i)Schoolof")     # Contains "Schoolof" (e.g., SchoolofMedicine)
+    )
+
+    # Pattern 1c: Center in family - only if ends with "Center" or contains "Centerof"
+    # This avoids surnames like Centers, Centerwall
+    has_center_in_family = (
+        family.rlike(r"(?i)Center$") |    # Ends with "Center" (e.g., ResearchCenter)
+        family.rlike(r"(?i)Centerof")     # Contains "Centerof" (e.g., CenterofRAS)
+    )
+
+    # Pattern 1d: Any institution keyword in given field (use full pattern)
+    # School/Center in given is typically part of institution name, not surname
+    has_institution_in_given = given.rlike(INSTITUTION_KEYWORDS_PATTERN)
+
+    # Combined Pattern 1: institution in given or family
     has_institution_in_given_family = (
-        family.rlike(INSTITUTION_KEYWORDS_PATTERN) |
-        given.rlike(INSTITUTION_KEYWORDS_PATTERN)
+        has_other_institution_in_family |
+        has_school_in_family |
+        has_center_in_family |
+        has_institution_in_given
     )
 
     # Pattern 2: Institution in name field when given/family are empty

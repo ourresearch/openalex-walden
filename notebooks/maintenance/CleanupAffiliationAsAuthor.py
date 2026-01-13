@@ -12,36 +12,159 @@
 
 # COMMAND ----------
 
-# Institution keywords regex pattern (must match the one in Crossref.py)
+# Version of crossref_works BEFORE the fix was applied (use DESCRIBE HISTORY to find this)
+CROSSREF_WORKS_PRE_FIX_VERSION = 3180
+
+# Institution keywords regex pattern (must match the logic in Crossref.py)
+# Uses a hybrid approach to avoid false positives from surnames:
+# - Long institution keywords: NO word boundaries (catches concatenated forms like "KazanUniversity")
+# - Short corporate keywords: WITH word boundaries (avoids false positives like "Vincent" containing "Inc")
+# - School/Center: Special handling to avoid surnames like Schooler, Centerwall
+
+# Pattern for keywords EXCLUDING School and Center (used for family field)
+INSTITUTION_KEYWORDS_PATTERN_NO_SCHOOL_CENTER = (
+    r"(?i)("
+    r"University|Institute|College|Hospital|Department|Centre|"
+    r"Laboratory|Faculty|Academy|"
+    r"Universiteit|Universidade|Università|Uniwersytet|Üniversitesi|Universite|"
+    r"Hochschule|Fakultät|Klinikum|Krankenhaus|Politecnico|Politechnika|"
+    r"Consortium|Association|Collaboration|Committee|Council|Organization|Organisation|"
+    r"Clinic|Museum|Library|Foundation|Polytechnic"
+    r")"
+    r"|"
+    r"\\b(Inc|LLC|Ltd|Corp|Corporation|Company|GmbH|Medical|Research)\\b"
+)
+
+# Full pattern including School and Center (used for given field and name-only pattern)
 INSTITUTION_KEYWORDS_PATTERN = (
-    r"(?i)\\b("
+    r"(?i)("
     r"University|Institute|College|Hospital|Department|School|Center|Centre|"
     r"Laboratory|Faculty|Academy|"
     r"Universiteit|Universidade|Università|Uniwersytet|Üniversitesi|Universite|"
     r"Hochschule|Fakultät|Klinikum|Krankenhaus|Politecnico|Politechnika|"
-    r"Inc|LLC|Ltd|Corp|Corporation|Company|GmbH|Consortium|Association|"
-    r"Collaboration|Committee|Council|Organization|Organisation|"
-    r"Clinic|Medical|Research|Museum|Library|Foundation|Polytechnic"
-    r")\\b"
+    r"Consortium|Association|Collaboration|Committee|Council|Organization|Organisation|"
+    r"Clinic|Museum|Library|Foundation|Polytechnic"
+    r")"
+    r"|"
+    r"\\b(Inc|LLC|Ltd|Corp|Corporation|Company|GmbH|Medical|Research)\\b"
 )
+
+# Excluded publishers (must match the list in Crossref.py)
+AFFILIATION_AS_AUTHOR_EXCLUDED_PUBLISHERS = [
+    "ACM",
+    "Acoustical Society of America (ASA)",
+    "AIP Publishing",
+    "American Chemical Society (ACS)",
+    "American Geophysical Union (AGU)",
+    "American Institute of Aeronautics & Astronautics",
+    "American Society of Civil Engineers (ASCE)",
+    "American Society of Mechanical Engineers",
+    "Association for Computing Machinery (ACM)",
+    "ASTM International",
+    "Atlantis Press",
+    "Bentham Science Publishers Ltd.",
+    "BRILL",
+    "CAIRN",
+    "Cambridge University Press",
+    "Center for Open Science",
+    "CRC Press",
+    "De Gruyter",
+    "Duke University Press",
+    "Edward Elgar Publishing",
+    "Egyptian Knowledge Bank",
+    "Egypts Presidential Specialized Council",
+    "Elsevier",
+    "Emerald",
+    "ENCODE Data Coordination Center",
+    "Georg Thieme Verlag KG",
+    "H1 Connect",
+    "Hans Publishers",
+    "IEEE",
+    "IGI Global",
+    "Inderscience Publishers",
+    "Informa UK Limited",
+    "Institute of Electrical and Electronics Engineers (IEEE)",
+    "Institution of Engineering and Technology (IET)",
+    "International Union of Crystallography (IUCr)",
+    "IUCN",
+    "Japan Society of Mechanical Engineers",
+    "Nomos Verlagsgesellschaft mbH & Co. KG",
+    "OpenEdition",
+    "Oxford University Press",
+    "PERSEE Program",
+    "Project MUSE",
+    "Research Square Platform LLC",
+    "Routledge",
+    "Royal Society of Chemistry (RSC)",
+    "SAE International",
+    "Sciencedomain International",
+    "Scientific Research Publishing, Inc.",
+    "SPIE",
+    "Springer Berlin Heidelberg",
+    "Springer International Publishing",
+    "Springer Nature Singapore",
+    "Springer Nature Switzerland",
+    "The Conversation",
+    "The Electrochemical Society",
+    "The Royal Society",
+    "Trans Tech Publications, Ltd.",
+    "transcript Verlag",
+    "Universidade de Sao Paulo",
+    "University of Chicago Press",
+    "VS Verlag fur Sozialwissenschaften",
+    "Walter de Gruyter GmbH",
+    "World Scientific Pub Co Pte Lt",
+]
 
 # COMMAND ----------
 
-# Step 1: Identify Affected Work IDs
+# Step 1: Identify Affected Native IDs from pre-fix version of crossref_works
+# Uses the exact same detection logic as the fix in Crossref.py
+# Special handling for School and Center keywords in family field to avoid
+# false positives from surnames like Schooler, Schooling, Centerwall
+
+excluded_publishers_sql = ", ".join([f"'{p}'" for p in AFFILIATION_AS_AUTHOR_EXCLUDED_PUBLISHERS])
 
 spark.sql(f"""
-CREATE OR REPLACE TEMP VIEW affected_work_ids AS
-SELECT DISTINCT w.id as work_id
-FROM openalex.works.openalex_works_base w
-WHERE w.provenance = 'crossref'
-  AND EXISTS(
-    SELECT 1 FROM explode(w.authors) a
-    WHERE a.family RLIKE '{INSTITUTION_KEYWORDS_PATTERN}'
+CREATE OR REPLACE TEMP VIEW affected_native_ids AS
+SELECT DISTINCT native_id
+FROM openalex.crossref.crossref_works VERSION AS OF {CROSSREF_WORKS_PRE_FIX_VERSION}
+WHERE publisher NOT IN ({excluded_publishers_sql})
+  AND size(filter(authors, a ->
+      -- Pattern 1a: Non-School/Center keywords in family
+      a.family RLIKE '{INSTITUTION_KEYWORDS_PATTERN_NO_SCHOOL_CENTER}'
+      -- Pattern 1b: School in family - only if exactly "School" or contains "Schoolof"
+      OR a.family RLIKE '(?i)^School$'
+      OR a.family RLIKE '(?i)Schoolof'
+      -- Pattern 1c: Center in family - only if ends with "Center" or contains "Centerof"
+      OR a.family RLIKE '(?i)Center$'
+      OR a.family RLIKE '(?i)Centerof'
+      -- Pattern 1d: Any institution keyword in given field (use full pattern)
       OR a.given RLIKE '{INSTITUTION_KEYWORDS_PATTERN}'
+      -- Pattern 2: Institution in name field when given/family are empty
       OR (a.name RLIKE '{INSTITUTION_KEYWORDS_PATTERN}'
           AND COALESCE(a.given, '') = ''
           AND COALESCE(a.family, '') = '')
-  )
+  )) > 0
+""")
+
+# COMMAND ----------
+
+# Log count of affected native_ids
+affected_native_count = spark.sql("SELECT COUNT(*) as affected_native_id_count FROM affected_native_ids")
+display(affected_native_count)
+
+# COMMAND ----------
+
+# Step 2: Map native_ids to work_ids using locations_mapped
+
+spark.sql("""
+CREATE OR REPLACE TEMP VIEW affected_work_ids AS
+SELECT DISTINCT lm.work_id
+FROM affected_native_ids ani
+JOIN openalex.works.locations_mapped lm
+  ON ani.native_id = lm.native_id
+  AND lm.provenance = 'crossref'
 """)
 
 # COMMAND ----------
