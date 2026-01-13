@@ -56,8 +56,8 @@ PubMed is the ONLY source with affiliation data for this work, but it's not bein
 - [x] Write fix plan
 - [x] Define acceptance criteria
 - [x] Implement fix
-- [ ] Deploy to Databricks and run pipeline
-- [ ] Run acceptance tests
+- [x] Deploy to Databricks and run pipeline
+- [x] Run acceptance tests (validated in openalex_works_base)
 - [ ] Close issue
 
 ---
@@ -69,3 +69,4 @@ PubMed is the ONLY source with affiliation data for this work, but it's not bein
 | 2026-01-12 | claude | Issue created, validated with database queries |
 | 2026-01-12 | claude | Identified ~930K recent works affected |
 | 2026-01-12 | claude | Implemented fix: added 'pubmed' to provenance filter in CreateCrossrefSuperAuthorships.ipynb |
+| 2026-01-12 | claude | Validated fix in openalex_works_base - test DOIs now have affiliations |
