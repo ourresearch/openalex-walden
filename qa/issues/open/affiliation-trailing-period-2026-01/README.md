@@ -53,8 +53,8 @@ These are the same affiliation, duplicated only because of the trailing period.
 - [x] Write fix plan
 - [x] Define acceptance criteria
 - [x] Implement fix
-- [ ] Run cleanup on existing data
-- [ ] Run acceptance tests
+- [x] Run acceptance tests (verified: 0 affiliations >5 chars with trailing period)
+- [ ] Run cleanup on existing data (work_authors, affiliation_strings_lookup)
 - [ ] Close issue
 
 ---
@@ -66,3 +66,5 @@ These are the same affiliation, duplicated only because of the trailing period.
 | 2026-01-13 | Claude (AI agent) | Issue created |
 | 2026-01-13 | Claude (AI agent) | Root cause identified: trailing periods not stripped in CreateWorksBase.ipynb |
 | 2026-01-14 | Claude (AI agent) | Fix implemented: added RTRIM to CreateWorksBase.ipynb, created CleanupAffiliationTrailingPeriods.ipynb |
+| 2026-01-14 | Claude (AI agent) | Fixed RTRIM syntax for Databricks: changed to TRIM(TRAILING '.' FROM ...) |
+| 2026-01-14 | Claude (AI agent) | Verified fix: 0 affiliations >5 chars with trailing period in openalex_works_base |

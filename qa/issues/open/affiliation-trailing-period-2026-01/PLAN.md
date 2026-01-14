@@ -6,7 +6,7 @@ Raw affiliation strings are duplicated in `openalex_works` when the same affilia
 
 ## Fix Approach
 
-### Step 1: Modify CreateWorksBase.ipynb (Prevent Future Issues)
+### Step 1: Modify CreateWorksBase.ipynb (Prevent Future Issues) ✅
 
 Update the affiliation string cleanup in `notebooks/end2end/CreateWorksBase.ipynb` in the `authors_with_corresponding` CTE.
 
@@ -23,36 +23,7 @@ s -> TRIM(TRAILING '.' FROM TRIM(REPLACE(s, '\\n', '')))
 **File**: `notebooks/end2end/CreateWorksBase.ipynb`
 **Location**: `authors_with_corresponding` CTE, in the TRANSFORM for raw_affiliation_strings
 
-### Step 2: Clean affiliation_strings_lookup Table
-
-Merge duplicates and delete period-ending versions:
-
-```sql
--- Step 2a: Update non-period versions to include institution_ids from period versions
-UPDATE openalex.institutions.affiliation_strings_lookup target
-SET
-    institution_ids = COALESCE(
-        source.institution_ids,
-        target.institution_ids
-    ),
-    institution_ids_override = COALESCE(
-        target.institution_ids_override,
-        source.institution_ids_override
-    )
-FROM openalex.institutions.affiliation_strings_lookup source
-WHERE source.raw_affiliation_string = CONCAT(target.raw_affiliation_string, '.')
-  AND source.raw_affiliation_string LIKE '%.';
-
--- Step 2b: Delete period-ending duplicates
-DELETE FROM openalex.institutions.affiliation_strings_lookup
-WHERE raw_affiliation_string LIKE '%.'
-  AND RTRIM(raw_affiliation_string, '.') IN (
-      SELECT raw_affiliation_string
-      FROM openalex.institutions.affiliation_strings_lookup
-  );
-```
-
-### Step 3: Clean work_authors Table
+### Step 2: Clean work_authors Table
 
 Update raw_affiliation_strings to remove trailing periods and deduplicate:
 
@@ -66,34 +37,96 @@ SET
 WHERE EXISTS(raw_affiliation_strings, s -> s LIKE '%.');
 ```
 
-### Step 4: Re-run Downstream Pipeline Steps
+### Step 3: Re-run Downstream Pipeline Steps
 
 1. Run `UpdateWorkAuthorships.ipynb` - picks up work_authors changes via `updated_at`
 2. Run `CreateWorksEnriched.ipynb` - merges work_authorships into openalex_works
 
-### Step 5: Touch updated_date for Elasticsearch Sync
+### Step 4: Full Sync to Elasticsearch
+
+Run a full sync of data to Elasticsearch (rather than incremental based on updated_date).
+
+## Test Queries for work_authors
+
+### Pre-Cleanup Counts
 
 ```sql
--- Touch updated_date for affected works so sync_works picks them up
-UPDATE openalex.works.openalex_works
-SET updated_date = current_timestamp()
-WHERE id IN (
-  SELECT DISTINCT work_id
-  FROM openalex.works.work_authors
-  WHERE updated_at > [cleanup_timestamp]
-);
+-- Count: Records with any trailing period in affiliations
+-- EXPECTED BEFORE: ~98M | AFTER: 0
+SELECT 'work_authors with trailing period' as metric, COUNT(*) as count
+FROM openalex.works.work_authors
+WHERE EXISTS(raw_affiliation_strings, s -> s LIKE '%.' AND LENGTH(s) > 1);
+
+-- Count: Records with potential duplicates
+SELECT 'records with period duplicates' as metric, COUNT(*) as count
+FROM openalex.works.work_authors
+WHERE SIZE(raw_affiliation_strings) > SIZE(ARRAY_DISTINCT(
+    TRANSFORM(raw_affiliation_strings, s -> TRIM(TRAILING '.' FROM s))
+));
 ```
 
-### Step 6: Run sync_works
+### Examples That SHOULD Change
 
-Elasticsearch sync will pick up records where `updated_date > last_sync_date`.
+```sql
+-- Sample records with trailing periods (periods will be removed)
+SELECT work_id, author_sequence, raw_affiliation_strings
+FROM openalex.works.work_authors
+WHERE EXISTS(raw_affiliation_strings, s -> s LIKE '%.' AND LENGTH(s) > 10)
+LIMIT 5;
 
-## Rollout Strategy
+-- Example work (should have duplicates before, deduplicated after)
+SELECT work_id, author_sequence, raw_affiliation_strings
+FROM openalex.works.work_authors
+WHERE work_id = 4414994979
+LIMIT 3;
+```
 
-1. **Test in dev**: Run fix on development environment first
-2. **Validate**: Run acceptance queries to confirm fix works
-3. **Production**: Apply to production after validation
-4. **Monitor**: Check a sample of work_ids in Elasticsearch API
+### Examples That Should NOT Change
+
+```sql
+-- Records with abbreviations in middle (St., Dr.) but no trailing period
+-- These should be preserved
+SELECT work_id, author_sequence, raw_affiliation_strings
+FROM openalex.works.work_authors
+WHERE EXISTS(raw_affiliation_strings, s -> (s LIKE '%St.%' OR s LIKE '%Dr.%'))
+AND NOT EXISTS(raw_affiliation_strings, s -> s LIKE '%.' AND LENGTH(s) > 1 AND SUBSTRING(s, LENGTH(s), 1) = '.')
+LIMIT 5;
+
+-- Records ending with numbers (no trailing period to remove)
+SELECT work_id, author_sequence, raw_affiliation_strings
+FROM openalex.works.work_authors
+WHERE EXISTS(raw_affiliation_strings, s -> s RLIKE '[0-9]$')
+LIMIT 5;
+```
+
+### Post-Cleanup Verification
+
+```sql
+-- Should return 0
+SELECT 'work_authors with trailing period' as metric, COUNT(*) as count
+FROM openalex.works.work_authors
+WHERE EXISTS(raw_affiliation_strings, s -> s LIKE '%.' AND LENGTH(s) > 1);
+
+-- Verify abbreviations in middle are preserved
+SELECT work_id, author_sequence, raw_affiliation_strings
+FROM openalex.works.work_authors
+WHERE EXISTS(raw_affiliation_strings, s -> s LIKE '%St.%' OR s LIKE '%Dr.%')
+LIMIT 5;
+```
+
+## Expected Results Summary
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Records with trailing period | ~98M | 0 |
+| Records with period duplicates | >0 | 0 |
+| Work 4414994979 affiliations | Has duplicates | Deduplicated, no periods |
+| Abbreviations (St., Dr.) in middle | Preserved | Preserved |
+
+## Notes
+
+- **affiliation_strings_lookup**: Skipped cleanup (54M strings with periods, but 0 duplicates - no harm leaving as-is)
+- **openalex_works sync**: Using full sync instead of incremental updated_date approach
 
 ## Risks and Mitigations
 
