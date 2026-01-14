@@ -5,11 +5,10 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
-          - artem@ourresearch.org
       schedule:
         quartz_cron_expression: 18 30 22 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: Crossref_Ingest_DLT
           pipeline_task:
@@ -123,6 +122,11 @@ resources:
             - task_key: Prepare_Affiliation_Strings
           run_job_task:
             job_id: 462221738638096
+        - task_key: SDG_Inference_Frontfill
+          depends_on:
+            - task_key: Works_Base
+          run_job_task:
+            job_id: 27479127407344
         - task_key: Topics_Frontfill
           depends_on:
             - task_key: Works_Base
@@ -147,6 +151,7 @@ resources:
         - task_key: Works_Enriched
           depends_on:
             - task_key: Authorships
+            - task_key: SDG_Inference_Frontfill
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT
@@ -195,26 +200,6 @@ resources:
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
       job_clusters:
-        - job_cluster_key: Sync_to_Elasticsearch_cluster
-          new_cluster:
-            cluster_name: ""
-            spark_version: 16.4.x-scala2.12
-            aws_attributes:
-              first_on_demand: 1
-              availability: SPOT_WITH_FALLBACK
-              zone_id: us-east-1f
-              spot_bid_price_percent: 100
-              ebs_volume_type: GENERAL_PURPOSE_SSD
-              ebs_volume_count: 1
-              ebs_volume_size: 100
-            node_type_id: rgd-fleet.12xlarge
-            driver_node_type_id: rg-fleet.8xlarge
-            spark_env_vars:
-              PYSPARK_PYTHON: /databricks/python3/bin/python3
-            enable_elastic_disk: true
-            data_security_mode: USER_ISOLATION
-            runtime_engine: STANDARD
-            num_workers: 2
         - job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
           new_cluster:
             cluster_name: ""

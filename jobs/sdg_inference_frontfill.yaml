@@ -6,11 +6,6 @@ resources:
         on_failure:
           - casey@ourresearch.org
         no_alert_for_skipped_runs: true
-      trigger:
-        pause_status: UNPAUSED
-        periodic:
-          interval: 1
-          unit: DAYS
       tasks:
         - task_key: sdg_frontfill_input
           notebook_task:
@@ -43,7 +38,7 @@ resources:
             runtime_engine: STANDARD
             autoscale:
               min_workers: 4
-              max_workers: 16
+              max_workers: 8
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
