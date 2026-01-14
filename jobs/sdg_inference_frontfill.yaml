@@ -1,0 +1,56 @@
+resources:
+  jobs:
+    SDG_Inference_Frontfill:
+      name: SDG Inference Frontfill
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      trigger:
+        pause_status: UNPAUSED
+        periodic:
+          interval: 1
+          unit: DAYS
+      tasks:
+        - task_key: sdg_frontfill_input
+          notebook_task:
+            notebook_path: notebooks/sdg/sdg_create_frontfill_input
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: sdg_inference_frontfill
+          depends_on:
+            - task_key: sdg_frontfill_input
+          notebook_task:
+            notebook_path: notebooks/sdg/sdg_inference_frontfill
+            source: GIT
+          job_cluster_key: sdg-gpu-cluster
+      job_clusters:
+        - job_cluster_key: sdg-gpu-cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.task.resource.gpu.amount: "1.0"
+            aws_attributes:
+              first_on_demand: 0
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: g5.12xlarge
+            enable_elastic_disk: false
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            autoscale:
+              min_workers: 4
+              max_workers: 16
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
