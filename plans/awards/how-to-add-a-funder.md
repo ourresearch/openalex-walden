@@ -179,7 +179,7 @@ The output table MUST have exactly these columns (no additions or subtractions):
 
 ```sql
 -- String fields
-id                    -- Format: "{funder_id}:{lowercase_award_id}"
+id                    -- Format: abs(xxhash64(CONCAT({funder_id}, ':', {lowercase_award_id}))) % 9000000000
 display_name          -- Award/project title
 description           -- Abstract or description
 funder_award_id       -- The funder's native award ID
@@ -228,6 +228,9 @@ co_lead_investigator  -- Same struct as lead_investigator
 
 -- Array: investigators (usually NULL or empty)
 investigators ARRAY<lead_investigator struct>
+
+-- URL field
+works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
 ```
 
 ### 2.2 Notebook structure
@@ -271,10 +274,47 @@ investigators ARRAY<lead_investigator struct>
    - Map native fields to OpenAlex schema
    - Handle date parsing (try multiple formats)
    - Map funding types appropriately
-   - Generate unique ID as `{funder_id}:{lowercase_native_id}`
+   - Generate unique ID as `abs(xxhash64(CONCAT({funder_id}, ':', {lowercase_native_id}))) % 9000000000`
 
-5. **Verification queries**
-=======
+5. **Step 3: Insert into openalex_awards_raw with priority**
+   - Determine priority (lower = higher priority):
+     - 0: GTR Project Awards (authoritative UK grants)
+     - 1: Crossref Awards
+     - 2: Backfill Awards
+     - 3: NIH, NSF, GTR Awards (legacy)
+     - 4+: New funders (use next available number in notebooks/awards/CreateAwards.ipynb)
+   - Emit an SQL block inserting all rows to `openalex.awards.openalex_awards_raw`:
+   ```sql
+   INSERT INTO openalex.awards.openalex_awards_raw
+   SELECT
+       id,
+       display_name,
+       description,
+       funder_id,
+       funder_award_id,
+       amount,
+       currency,
+       funder,
+       funding_type,
+       funder_scheme,
+       provenance,
+       start_date,
+       end_date,
+       start_year,
+       end_year,
+       lead_investigator,
+       co_lead_investigator,
+       investigators,
+       landing_page_url,
+       doi,
+       works_api_url,
+       created_date,
+       updated_date,
+       N as priority  -- Replace N with next available priority
+   FROM openalex.awards.{funder}_awards;
+   ```
+
+6. **Verification queries**
    **⚠️ CRITICAL: Verify column names before writing SQL**
 
    Before writing any CTEs or intermediate queries that reference columns from the raw table, you MUST verify the actual column names present in the parquet file. Column names in the source data may differ from what you expect based on documentation or similar funders.
@@ -298,7 +338,7 @@ investigators ARRAY<lead_investigator struct>
 
    Only after confirming the actual column names should you write the transformation SQL. Reference the exact column names from the `DESCRIBE` output in all subsequent CTEs and queries.
 
-4. **Verification queries** (see Step 5 for details)
+7. **Verification queries** (see Step 6 for details)
 
 ### 2.3 Defensive SQL Practices
 
@@ -342,6 +382,7 @@ COALESCE(
 | funding_type | Map from activity codes or categories |
 | funder_scheme | program_name, funding_scheme, activity_code |
 
+
 **→ Update tracker:** Change status to "Step 3" with notes (e.g., "Notebook created").
 
 ---
@@ -350,54 +391,9 @@ COALESCE(
 
 **IMPORTANT:** This step integrates the new funder into the main awards table.
 
-Edit `notebooks/awards/CreateAwards.ipynb` to add the new funder source.
+Edit `notebooks/awards/CreateAwards.ipynb` to add the new funder source with the priority determined in section 2.2.5
 
-### 3.1 Determine priority
-
-Priority determines which source wins for duplicate awards (lower = higher priority):
-- 0: GTR Project Awards (authoritative UK grants)
-- 1: Crossref Awards
-- 2: Backfill Awards
-- 3: NIH, NSF, GTR Awards (legacy)
-- 4+: New funders (use next available number)
-
-### 3.2 Add UNION ALL block
-
-Add a new block in the `combined` CTE:
-
-```sql
-UNION ALL
-
--- Priority N: {Funder Name} Awards
-SELECT
-    abs(xxhash64(id)) % 9000000000 as id,
-    display_name,
-    description,
-    funder_id,
-    funder_award_id,
-    amount,
-    currency,
-    funder,
-    funding_type,
-    funder_scheme,
-    provenance,
-    start_date,
-    end_date,
-    start_year,
-    end_year,
-    lead_investigator,
-    co_lead_investigator,
-    investigators,
-    landing_page_url,
-    doi,
-    concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(id)) % 9000000000) as works_api_url,
-    created_date,
-    updated_date,
-    N as priority  -- Replace N with actual priority number
-FROM openalex.awards.{funder}_awards
-```
-
-### 3.3 Update markdown header
+### 3.1 Update markdown header
 
 Add the new funder to the priority list in the notebook header.
 
@@ -534,12 +530,12 @@ Tell the user:
 
 ## Reference: Existing Examples
 
-| Funder | Script | Notebook | API Type |
-|--------|--------|----------|----------|
-| NIH | nih_exporter_to_s3.py | CreateNIHAwards.ipynb | File download |
-| NWO | nwo_to_s3.py | CreateNWOAwards.ipynb | JSON API |
-| GTR | gtr_to_s3.py | CreateGTRProjectAwards.ipynb | XML API |
-| Gates | gates_to_s3.py | CreateGatesAwards.ipynb | CSV download |
+| Funder | Script                | Notebook                     | API Type      |
+|--------|-----------------------|------------------------------|---------------|
+| NIH    | nih_exporter_to_s3.py | CreateNIHAwards.ipynb        | File download |
+| NWO    | nwo_to_s3.py          | CreateNWOAwards.ipynb        | JSON API      |
+| GTR    | gtr_to_s3.py          | CreateGTRProjectAwards.ipynb | XML API       |
+| Gates  | gates_to_s3.py        | CreateGatesAwards.ipynb      | CSV download  |
 
 ## Reference: S3 Paths
 
