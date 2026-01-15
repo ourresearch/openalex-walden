@@ -33,14 +33,15 @@ resources:
               spark.sql.adaptive.enabled: "true"
               spark.sql.adaptive.coalescePartitions.enabled: "false"
               spark.sql.shuffle.partitions: "2000"
+              spark.local.dir: "/local_disk0"
             aws_attributes:
               first_on_demand: 1
               availability: SPOT_WITH_FALLBACK
               zone_id: auto
               spot_bid_price_percent: 100
-            node_type_id: r6i.8xlarge
+            node_type_id: i4i.8xlarge
             num_workers: 16
-            enable_elastic_disk: true
+            enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
         - job_cluster_key: snapshot_authors_cluster
@@ -51,14 +52,15 @@ resources:
               spark.sql.adaptive.enabled: "true"
               spark.sql.adaptive.coalescePartitions.enabled: "false"
               spark.sql.shuffle.partitions: "1000"
+              spark.local.dir: "/local_disk0"
             aws_attributes:
               first_on_demand: 1
               availability: SPOT_WITH_FALLBACK
               zone_id: auto
               spot_bid_price_percent: 100
-            node_type_id: r6i.8xlarge
+            node_type_id: i4i.8xlarge
             num_workers: 8
-            enable_elastic_disk: true
+            enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
       git_source:
