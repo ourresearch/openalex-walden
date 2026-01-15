@@ -18,107 +18,106 @@ This document tracks the progress of adding new funders to OpenAlex.
 
 ## Funders
 
-| Funder Name | Status   | Notes |
-|-------------|----------|-------|
-| Gateway to Research (GTR) Project Awards | Complete | Priority 0 - Authoritative for UK grants with full metadata. 163,638 grants |
-| Crossref Awards | Complete | Priority 1 - Rich metadata from Crossref. 185,447 grants |
-| Backfill Awards | Complete | Priority 2 - Extracted from publication funding acknowledgements. 6,832,722 grants |
-| NIH (National Institutes of Health) | Complete | Priority 3 - US NIH grants with full metadata. 2,281,454 grants |
-| NSF (National Science Foundation) | Complete | Priority 3 - US NSF grants with full metadata. 644,453 grants |
-| NSERC (Natural Sciences and Engineering Research Council) | Complete | Priority 3 - Canadian NSERC grants with full metadata. 200,886 grants |
-| Gateway to Research (GTR) Awards (legacy) | Complete | Priority 3 - Publication-based, for work linkage only. 1,320,206 grants |
-| Gates Foundation | Complete | Priority 4 - Bill & Melinda Gates Foundation committed grants. 40,221 grants |
-| SSHRC (Social Sciences and Humanities Research Council) | Complete | Priority 5 - Canadian SSHRC grants. 114,403 grants |
-| NWO (Netherlands Organisation for Scientific Research) | Complete | Priority 11 - 14,599 grants |
-| NHMRC (National Health and Medical Research Council) | Complete | Priority 12 - 11,902 grants |
-| KAKEN (Japan Grant-in-Aid for Scientific Research) | Complete | Priority 10 - 873,818 grants |
-| ANR (Agence Nationale de la Recherche) | Complete | Priority 6 - French research agency. 34,435 grants |
-| CIHR (Canadian Institutes of Health Research) | Complete | Priority 7 - Canadian health research. 82,369 grants |
-| Canadian Foundation for Innovation | Complete | Priority 8 - Canadian infrastructure. 13,900 grants |
-| Vinnova (Sweden's Innovation Agency) | Complete | Priority 9 - Swedish innovation. 24,247 grants |
+| Funder Name | Status   | Notes                                                                                                                                                                                           |
+|-------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Gateway to Research (GTR) Project Awards | Complete | Priority 0 - Authoritative for UK grants with full metadata. 163,638 grants                                                                                                                     |
+| Crossref Awards | Complete | Priority 1 - Rich metadata from Crossref. 185,447 grants                                                                                                                                        |
+| Backfill Awards | Complete | Priority 2 - Extracted from publication funding acknowledgements. 6,832,722 grants                                                                                                              |
+| NIH (National Institutes of Health) | Complete | Priority 3 - US NIH grants with full metadata. 2,281,454 grants                                                                                                                                 |
+| NSF (National Science Foundation) | Complete | Priority 3 - US NSF grants with full metadata. 644,453 grants                                                                                                                                   |
+| NSERC (Natural Sciences and Engineering Research Council) | Complete | Priority 3 - Canadian NSERC grants with full metadata. 200,886 grants                                                                                                                           |
+| Gateway to Research (GTR) Awards (legacy) | Complete | Priority 3 - Publication-based, for work linkage only. 1,320,206 grants                                                                                                                         |
+| Gates Foundation | Complete | Priority 4 - Bill & Melinda Gates Foundation committed grants. 40,221 grants                                                                                                                    |
+| SSHRC (Social Sciences and Humanities Research Council) | Complete | Priority 5 - Canadian SSHRC grants. 114,403 grants                                                                                                                                              |
+| NWO (Netherlands Organisation for Scientific Research) | Complete | Priority 11 - 14,599 grants                                                                                                                                                                     |
+| NHMRC (National Health and Medical Research Council) | Complete | Priority 12 - 11,902 grants                                                                                                                                                                     |
+| KAKEN (Japan Grant-in-Aid for Scientific Research) | Complete | Priority 10 - 873,818 grants                                                                                                                                                                    |
+| ANR (Agence Nationale de la Recherche) | Complete | Priority 6 - French research agency. 34,435 grants                                                                                                                                              |
+| CIHR (Canadian Institutes of Health Research) | Complete | Priority 7 - Canadian health research. 82,369 grants                                                                                                                                            |
+| Canadian Foundation for Innovation | Complete | Priority 8 - Canadian infrastructure. 13,900 grants                                                                                                                                             |
+| Vinnova (Sweden's Innovation Agency) | Complete | Priority 9 - Swedish innovation. 24,247 grants                                                                                                                                                  |
 | Armasuisse | Step 0   | BLOCKED: Funder not in OpenAlex. Swiss defense research funding. ~43k grants. Data source: https://docs.google.com/spreadsheets/d/1FH7sLNJGV8Jp988INbrQXCQO7JpYRPhgFE0yawWWjL4/edit?usp=sharing |
-| NIHR (National Institute for Health and Care Research) | Complete | Priority 13 - 9,999 grants |
-| DFG (Deutsche Forschungsgemeinschaft) | Step 0   | German Research Foundation. Data source: TBD |
-| FAPESP (São Paulo Research Foundation) | Step 0   | Brazilian research funder. Data source: https://bv.fapesp.br/en/ |
-| ARC (Australian Research Council) | Step 0   | Australian research funder. Data source: https://dataportal.arc.gov.au/RGS/Web/Grants |
-| Swedish Research Council | Step 0   | Swedish research funder. Data source: https://www.vr.se/english/swecris.html and here is a list of funded research outputs that researchers have reported for specific grants in their impact reports that includes references with and without citation data that should be able to be matched to openalex works directly: https://docs.google.com/spreadsheets/d/1CgDC4ZW6DnRKDEvFjxD9j8MU9CBFJIRa/edit?usp=sharing&ouid=107024906562107803557&rtpof=true&sd=true |
-| ERC (European Research Council) | Step 0   | European research funder. Data source: https://erc.europa.eu/projects-statistics/erc-dashboard |
-| SNSF (Swiss National Science Foundation) | Complete | Priority 14 - Swiss research funder. 89,768 grants |
-| NASA | Step 0   | US space agency. Data source: government portal |
-| Wellcome Trust | Step 0   | UK philanthropic funder. Data source: bulk CSV/XLSX download |
-| Academy of Finland | Step 0   | Finnish research funder. Data source: government portal |
-| American Cancer Society | Step 0   | US philanthropic funder. Data source: philanthropic portal |
-| U.S. Department of Energy | Step 0   | US government funder. Data source: government portal |
-| U.S. Department of Defense | Step 0   | US government funder. Data source: government portal |
-| European Commission | Step 0   | EU multilateral funder. Data source: multilateral API |
-| UK Research and Innovation (UKRI) | Step 0   | UK government funder. Data source: government API |
-| Institut National de la Santé et de la Recherche Médicale (INSERM) | Step 0   | French health research. Data source: government portal |
-| Bundesministerium für Bildung und Forschung | Step 0   | German government funder. Data source: government portal |
-| Centre National de la Recherche Scientifique (CNRS) | Step 0   | French research funder. Data source: government portal |
-| ZonMw | Step 0   | Netherlands health research. Data source: government portal |
-| Vetenskapsrådet | Step 0   | Swedish Research Council. Data source: government API |
-| Formas | Step 0   | Swedish research council. Data source: government API |
-| Research Council of Denmark | Step 0   | Danish research funder. Data source: government portal |
-| Independent Research Fund Denmark | Step 0   | Danish research funder. Data source: government portal |
-| Fundação para a Ciência e a Tecnologia (FCT) | Step 0   | Portuguese research funder. Data source: government portal |
-| Agencia Estatal de Investigación | Step 0   | Spanish government funder. Data source: government portal |
-| Instituto de Salud Carlos III | Step 0   | Spanish biomedical research. Data source: government portal |
-| Ministero dell'Istruzione, dell'Università e della Ricerca | Step 0   | Italian government funder. Data source: government portal |
-| Consiglio Nazionale delle Ricerche | Step 0   | Italian research council. Data source: government portal |
-| Narodowe Centrum Nauki | Step 0   | Polish research funder. Data source: government portal |
-| Austrian Science Fund (FWF) | Step 0   | Austrian research funder. Data source: government portal |
-| Grantová Agentura České Republiky | Step 0   | Czech research funder. Data source: government portal |
-| National Natural Science Foundation of China | Step 0   | Chinese government funder. Data source: government portal |
-| National Key R&D Program of China | Step 0   | Chinese government program. Data source: government portal |
-| Chinese Academy of Sciences | Step 0   | Chinese research institution. Data source: government portal |
-| China Postdoctoral Science Foundation | Step 0   | Chinese postdoc funder. Data source: government portal |
-| Natural Science Foundation of Jiangsu Province | Step 0   | Chinese provincial funder. Data source: government portal |
-| Natural Science Foundation of Guangdong Province | Step 0   | Chinese provincial funder. Data source: government portal |
-| Japan Science and Technology Agency | Step 0   | Japanese government funder. Data source: government portal |
-| Japan Agency for Medical Research and Development | Step 0   | Japanese health research. Data source: government portal |
-| National Research Foundation of Korea | Step 0   | South Korean research funder. Data source: government portal |
-| Ministry of Science and ICT (South Korea) | Step 0   | South Korean government. Data source: government portal |
-| National Science and Technology Council (Taiwan) | Step 0   | Taiwanese research funder. Data source: government portal |
-| Department of Science and Technology (India) | Step 0   | Indian government funder. Data source: government portal |
-| Science and Engineering Research Board (India) | Step 0   | Indian research board. Data source: government portal |
-| Department of Biotechnology (India) | Step 0   | Indian government department. Data source: government portal |
-| Council of Scientific & Industrial Research (India) | Step 0   | Indian research council. Data source: government portal |
-| Indian Council of Medical Research | Step 0   | Indian health research. Data source: government portal |
-| CNPq (Conselho Nacional de Desenvolvimento Científico e Tecnológico) | Step 0   | Brazilian research council. Data source: government portal |
-| CAPES (Coordenação de Aperfeiçoamento de Pessoal de Nível Superior) | Step 0   | Brazilian education funder. Data source: government portal |
-| CONICET (Consejo Nacional de Investigaciones Científicas y Técnicas) | Step 0   | Argentine research council. Data source: government portal |
-| ANID (Agencia Nacional de Investigación y Desarrollo) | Step 0   | Chilean research agency. Data source: government portal |
-| Israel Science Foundation | Step 0   | Israeli research funder. Data source: government portal |
-| TÜBİTAK (Scientific and Technological Research Council of Turkey) | Step 0   | Turkish research council. Data source: government portal |
-| Howard Hughes Medical Institute | Step 0   | US philanthropic funder. Data source: philanthropic portal |
-| Simons Foundation | Step 0   | US philanthropic funder. Data source: philanthropic portal |
-| Chan Zuckerberg Initiative | Step 0   | US philanthropic funder. Data source: philanthropic portal |
-| Alfred P. Sloan Foundation | Step 0   | US philanthropic funder. Data source: portal+bulk, public grants database (CSV/XLS) |
-| Arnold Ventures (Laura and John Arnold Foundation) | Step 0   | US philanthropic funder. Data source: portal+bulk, public grant listings |
-| American Heart Association | Step 0   | US philanthropic funder. Data source: portal, funded research listings |
-| Burroughs Wellcome Fund | Step 0   | US philanthropic funder. Data source: html, program awardee pages |
-| Rita Allen Foundation | Step 0   | US philanthropic funder. Data source: html, annual award lists |
-| Arcadia Fund | Step 0   | Philanthropic funder. Data source: html, grant announcements |
-| John Templeton Foundation | Step 0   | US philanthropic funder. Data source: portal, searchable awards (no API) |
-| Open Society Foundations | Step 0   | International philanthropic funder. Data source: portal/pdf, program-level disclosures |
-| Lumina Foundation | Step 0   | US philanthropic funder. Data source: html, incomplete grant coverage |
-| Paul G. Allen Frontiers Group | Step 0   | US philanthropic funder. Data source: html, program awardees only |
-| Rockefeller Foundation | Step 0   | US philanthropic funder. Data source: html, selective disclosure |
-| Ford Foundation | Step 0   | US philanthropic funder. Data source: html, grants public but non-standard |
-| Robert Wood Johnson Foundation | Step 0   | US philanthropic funder. Data source: portal, searchable awards database |
-| Nobel Prize | Step 0   | Research prize - Multidisciplinary, annual, $1M. Full historical awardees available |
-| Breakthrough Prize | Step 0   | Research prize - Science & Math, annual, $3M. High-value modern prize |
-| Kavli Prize | Step 0   | Research prize - Astro/Nano/Neuro, biennial, $1M |
-| Lasker Awards | Step 0   | Research prize - Biomedical, annual, $250K. Nobel-correlated |
-| Wolf Prize | Step 0   | Research prize - Science, annual, $100K. Strong international reach |
-| Fields Medal | Step 0   | Research prize - Mathematics, quadrennial, prestige non-monetary |
-| Turing Award | Step 0   | Research prize - Computer Science, annual, $1M. ACM administered |
-| Abel Prize | Step 0   | Research prize - Mathematics, annual, $750K. Mathematics Nobel equivalent |
-| Gairdner Awards | Step 0   | Research prize - Biomedical, annual, $100K. Canada-based |
-| Holberg Prize | Step 0   | Research prize - Humanities & social sciences, annual, $750K |
-| Shaw Prize | Step 0   | Research prize - Science, annual, $1.2M. Asia-based |
-| TWAS Prize | Step 0   | Research prize - Science, annual, $30K. Developing world focus |
-| Infosys Prize | Step 0   | Research prize - Science & Humanities, annual, $100K. India-based |
-| Blavatnik Awards | Step 0   | Research prize - Science, annual, $250K. Early-career signal |
-| Canada Council Prizes | Step 0   | Arts prizes - Canada-based. Data source: https://canadacouncil.ca/funding/prizes |
+| NIHR (National Institute for Health and Care Research) | Complete | Priority 13 - 9,999 grants                                                                                                                                                                      |
+| DFG (Deutsche Forschungsgemeinschaft) | Step 0   | German Research Foundation. Data source: TBD                                                                                                                                                    |
+| FAPESP (São Paulo Research Foundation) | Step 0   | Brazilian research funder. Data source: https://bv.fapesp.br/en/                                                                                                                                |
+| ARC (Australian Research Council) | Step 0   | Australian research funder. Data source: https://dataportal.arc.gov.au/RGS/Web/Grants                                                                                                           |
+| Swedish Research Council (Vetenskapsrådet) | Step 4   | Priority 15 - Swedish research funder. 23,080 grants. Data source: SweCRIS API. TODO: here is a list of funded research outputs that researchers have reported for specific grants in their impact reports that includes references with and without citation data that should be able to be matched to openalex works directly: https://docs.google.com/spreadsheets/d/1CgDC4ZW6DnRKDEvFjxD9j8MU9CBFJIRa/edit?usp=sharing&ouid=107024906562107803557&rtpof=true&sd=true                                                                                                                |
+| ERC (European Research Council) | Step 0   | European research funder. Data source: https://erc.europa.eu/projects-statistics/erc-dashboard                                                                                                  |
+| SNSF (Swiss National Science Foundation) | Complete | Priority 14 - Swiss research funder. 89,768 grants                                                                                                                                              |
+| NASA | Step 0   | US space agency. Data source: government portal                                                                                                                                                 |
+| Wellcome Trust | Step 0   | UK philanthropic funder. Data source: bulk CSV/XLSX download                                                                                                                                    |
+| Academy of Finland | Step 0   | Finnish research funder. Data source: government portal                                                                                                                                         |
+| American Cancer Society | Step 0   | US philanthropic funder. Data source: philanthropic portal                                                                                                                                      |
+| U.S. Department of Energy | Step 0   | US government funder. Data source: government portal                                                                                                                                            |
+| U.S. Department of Defense | Step 0   | US government funder. Data source: government portal                                                                                                                                            |
+| European Commission | Step 0   | EU multilateral funder. Data source: multilateral API                                                                                                                                           |
+| UK Research and Innovation (UKRI) | Step 0   | UK government funder. Data source: government API                                                                                                                                               |
+| Institut National de la Santé et de la Recherche Médicale (INSERM) | Step 0   | French health research. Data source: government portal                                                                                                                                          |
+| Bundesministerium für Bildung und Forschung | Step 0   | German government funder. Data source: government portal                                                                                                                                        |
+| Centre National de la Recherche Scientifique (CNRS) | Step 0   | French research funder. Data source: government portal                                                                                                                                          |
+| ZonMw | Step 0   | Netherlands health research. Data source: government portal                                                                                                                                     |
+| Formas | Step 0   | Swedish research council. Data source: government API                                                                                                                                           |
+| Research Council of Denmark | Step 0   | Danish research funder. Data source: government portal                                                                                                                                          |
+| Independent Research Fund Denmark | Step 0   | Danish research funder. Data source: government portal                                                                                                                                          |
+| Fundação para a Ciência e a Tecnologia (FCT) | Step 0   | Portuguese research funder. Data source: government portal                                                                                                                                      |
+| Agencia Estatal de Investigación | Step 0   | Spanish government funder. Data source: government portal                                                                                                                                       |
+| Instituto de Salud Carlos III | Step 0   | Spanish biomedical research. Data source: government portal                                                                                                                                     |
+| Ministero dell'Istruzione, dell'Università e della Ricerca | Step 0   | Italian government funder. Data source: government portal                                                                                                                                       |
+| Consiglio Nazionale delle Ricerche | Step 0   | Italian research council. Data source: government portal                                                                                                                                        |
+| Narodowe Centrum Nauki | Step 0   | Polish research funder. Data source: government portal                                                                                                                                          |
+| Austrian Science Fund (FWF) | Step 0   | Austrian research funder. Data source: government portal                                                                                                                                        |
+| Grantová Agentura České Republiky | Step 0   | Czech research funder. Data source: government portal                                                                                                                                           |
+| National Natural Science Foundation of China | Step 0   | Chinese government funder. Data source: government portal                                                                                                                                       |
+| National Key R&D Program of China | Step 0   | Chinese government program. Data source: government portal                                                                                                                                      |
+| Chinese Academy of Sciences | Step 0   | Chinese research institution. Data source: government portal                                                                                                                                    |
+| China Postdoctoral Science Foundation | Step 0   | Chinese postdoc funder. Data source: government portal                                                                                                                                          |
+| Natural Science Foundation of Jiangsu Province | Step 0   | Chinese provincial funder. Data source: government portal                                                                                                                                       |
+| Natural Science Foundation of Guangdong Province | Step 0   | Chinese provincial funder. Data source: government portal                                                                                                                                       |
+| Japan Science and Technology Agency | Step 0   | Japanese government funder. Data source: government portal                                                                                                                                      |
+| Japan Agency for Medical Research and Development | Step 0   | Japanese health research. Data source: government portal                                                                                                                                        |
+| National Research Foundation of Korea | Step 0   | South Korean research funder. Data source: government portal                                                                                                                                    |
+| Ministry of Science and ICT (South Korea) | Step 0   | South Korean government. Data source: government portal                                                                                                                                         |
+| National Science and Technology Council (Taiwan) | Step 0   | Taiwanese research funder. Data source: government portal                                                                                                                                       |
+| Department of Science and Technology (India) | Step 0   | Indian government funder. Data source: government portal                                                                                                                                        |
+| Science and Engineering Research Board (India) | Step 0   | Indian research board. Data source: government portal                                                                                                                                           |
+| Department of Biotechnology (India) | Step 0   | Indian government department. Data source: government portal                                                                                                                                    |
+| Council of Scientific & Industrial Research (India) | Step 0   | Indian research council. Data source: government portal                                                                                                                                         |
+| Indian Council of Medical Research | Step 0   | Indian health research. Data source: government portal                                                                                                                                          |
+| CNPq (Conselho Nacional de Desenvolvimento Científico e Tecnológico) | Step 0   | Brazilian research council. Data source: government portal                                                                                                                                      |
+| CAPES (Coordenação de Aperfeiçoamento de Pessoal de Nível Superior) | Step 0   | Brazilian education funder. Data source: government portal                                                                                                                                      |
+| CONICET (Consejo Nacional de Investigaciones Científicas y Técnicas) | Step 0   | Argentine research council. Data source: government portal                                                                                                                                      |
+| ANID (Agencia Nacional de Investigación y Desarrollo) | Step 0   | Chilean research agency. Data source: government portal                                                                                                                                         |
+| Israel Science Foundation | Step 0   | Israeli research funder. Data source: government portal                                                                                                                                         |
+| TÜBİTAK (Scientific and Technological Research Council of Turkey) | Step 0   | Turkish research council. Data source: government portal                                                                                                                                        |
+| Howard Hughes Medical Institute | Step 0   | US philanthropic funder. Data source: philanthropic portal                                                                                                                                      |
+| Simons Foundation | Step 0   | US philanthropic funder. Data source: philanthropic portal                                                                                                                                      |
+| Chan Zuckerberg Initiative | Step 0   | US philanthropic funder. Data source: philanthropic portal                                                                                                                                      |
+| Alfred P. Sloan Foundation | Step 0   | US philanthropic funder. Data source: portal+bulk, public grants database (CSV/XLS)                                                                                                             |
+| Arnold Ventures (Laura and John Arnold Foundation) | Step 0   | US philanthropic funder. Data source: portal+bulk, public grant listings                                                                                                                        |
+| American Heart Association | Step 0   | US philanthropic funder. Data source: portal, funded research listings                                                                                                                          |
+| Burroughs Wellcome Fund | Step 0   | US philanthropic funder. Data source: html, program awardee pages                                                                                                                               |
+| Rita Allen Foundation | Step 0   | US philanthropic funder. Data source: html, annual award lists                                                                                                                                  |
+| Arcadia Fund | Step 0   | Philanthropic funder. Data source: html, grant announcements                                                                                                                                    |
+| John Templeton Foundation | Step 0   | US philanthropic funder. Data source: portal, searchable awards (no API)                                                                                                                        |
+| Open Society Foundations | Step 0   | International philanthropic funder. Data source: portal/pdf, program-level disclosures                                                                                                          |
+| Lumina Foundation | Step 0   | US philanthropic funder. Data source: html, incomplete grant coverage                                                                                                                           |
+| Paul G. Allen Frontiers Group | Step 0   | US philanthropic funder. Data source: html, program awardees only                                                                                                                               |
+| Rockefeller Foundation | Step 0   | US philanthropic funder. Data source: html, selective disclosure                                                                                                                                |
+| Ford Foundation | Step 0   | US philanthropic funder. Data source: html, grants public but non-standard                                                                                                                      |
+| Robert Wood Johnson Foundation | Step 0   | US philanthropic funder. Data source: portal, searchable awards database                                                                                                                        |
+| Nobel Prize | Step 0   | Research prize - Multidisciplinary, annual, $1M. Full historical awardees available                                                                                                             |
+| Breakthrough Prize | Step 0   | Research prize - Science & Math, annual, $3M. High-value modern prize                                                                                                                           |
+| Kavli Prize | Step 0   | Research prize - Astro/Nano/Neuro, biennial, $1M                                                                                                                                                |
+| Lasker Awards | Step 0   | Research prize - Biomedical, annual, $250K. Nobel-correlated                                                                                                                                    |
+| Wolf Prize | Step 0   | Research prize - Science, annual, $100K. Strong international reach                                                                                                                             |
+| Fields Medal | Step 0   | Research prize - Mathematics, quadrennial, prestige non-monetary                                                                                                                                |
+| Turing Award | Step 0   | Research prize - Computer Science, annual, $1M. ACM administered                                                                                                                                |
+| Abel Prize | Step 0   | Research prize - Mathematics, annual, $750K. Mathematics Nobel equivalent                                                                                                                       |
+| Gairdner Awards | Step 0   | Research prize - Biomedical, annual, $100K. Canada-based                                                                                                                                        |
+| Holberg Prize | Step 0   | Research prize - Humanities & social sciences, annual, $750K                                                                                                                                    |
+| Shaw Prize | Step 0   | Research prize - Science, annual, $1.2M. Asia-based                                                                                                                                             |
+| TWAS Prize | Step 0   | Research prize - Science, annual, $30K. Developing world focus                                                                                                                                  |
+| Infosys Prize | Step 0   | Research prize - Science & Humanities, annual, $100K. India-based                                                                                                                               |
+| Blavatnik Awards | Step 0   | Research prize - Science, annual, $250K. Early-career signal                                                                                                                                    |
+| Canada Council Prizes | Step 0   | Arts prizes - Canada-based. Data source: https://canadacouncil.ca/funding/prizes                                                                                                                |
 
