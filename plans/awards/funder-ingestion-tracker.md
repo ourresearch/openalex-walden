@@ -36,8 +36,8 @@ This document tracks the progress of adding new funders to OpenAlex.
 | CIHR (Canadian Institutes of Health Research) | Complete | Priority 7 - Canadian health research. 82,369 grants |
 | Canadian Foundation for Innovation | Complete | Priority 8 - Canadian infrastructure. 13,900 grants |
 | Vinnova (Sweden's Innovation Agency) | Complete | Priority 9 - Swedish innovation. 24,247 grants |
-| Armasuisse | Step 1   | Swiss defense research funding. ~43k grants. Data source: https://docs.google.com/spreadsheets/d/1FH7sLNJGV8Jp988INbrQXCQO7JpYRPhgFE0yawWWjL4/edit?usp=sharing |
-| NIHR (National Institute for Health and Care Research) | Step 0   | UK health research funder. Data source: https://fundingawards.nihr.ac.uk/ |
+| Armasuisse | Step 0   | BLOCKED: Funder not in OpenAlex. Swiss defense research funding. ~43k grants. Data source: https://docs.google.com/spreadsheets/d/1FH7sLNJGV8Jp988INbrQXCQO7JpYRPhgFE0yawWWjL4/edit?usp=sharing |
+| NIHR (National Institute for Health and Care Research) | Step 1   | UK health research funder. Data source: https://fundingawards.nihr.ac.uk/ |
 | DFG (Deutsche Forschungsgemeinschaft) | Step 0   | German Research Foundation. Data source: TBD |
 | FAPESP (São Paulo Research Foundation) | Step 0   | Brazilian research funder. Data source: https://bv.fapesp.br/en/ |
 | ARC (Australian Research Council) | Step 0   | Australian research funder. Data source: https://dataportal.arc.gov.au/RGS/Web/Grants |
