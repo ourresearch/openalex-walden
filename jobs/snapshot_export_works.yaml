@@ -1,13 +1,13 @@
 resources:
   jobs:
-    Snapshot_Export_Works:
-      name: Snapshot Export Works
+    Snapshot:
+      name: Snapshot
       email_notifications:
         on_failure:
           - casey@ourresearch.org
       tasks:
         - task_key: export_works
-          job_cluster_key: snapshot_export_cluster
+          job_cluster_key: snapshot_works_cluster
           notebook_task:
             notebook_path: notebooks/snapshot/export_works
             source: GIT
@@ -25,7 +25,7 @@ resources:
           retry_on_timeout: true
           timeout_seconds: 7200
       job_clusters:
-        - job_cluster_key: snapshot_export_cluster
+        - job_cluster_key: snapshot_works_cluster
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13
