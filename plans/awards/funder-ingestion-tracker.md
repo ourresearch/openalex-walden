@@ -31,7 +31,7 @@ This document tracks the progress of adding new funders to OpenAlex.
 | SSHRC (Social Sciences and Humanities Research Council) | Complete | Priority 5 - Canadian SSHRC grants. 114,403 grants |
 | NWO (Netherlands Organisation for Scientific Research) | Step 6   | Has notebook (CreateNWOAwards.ipynb) and script (nwo_to_s3.py), not yet in CreateAwards.ipynb |
 | NHMRC (National Health and Medical Research Council) | Step 6   | Has notebook (CreateNHMRCAwards.ipynb) and script (nhmrc_to_s3.py), not yet in CreateAwards.ipynb |
-| KAKEN (Japan Grant-in-Aid for Scientific Research) | Step 7   | Verified: 873,818 grants. 100% titles, 64% dates, 75% PI. Ready for final approval. |
+| KAKEN (Japan Grant-in-Aid for Scientific Research) | Complete | Priority 10 - 873,818 grants |
 | ANR (Agence Nationale de la Recherche) | Complete | Priority 6 - French research agency. 34,435 grants |
 | CIHR (Canadian Institutes of Health Research) | Complete | Priority 7 - Canadian health research. 82,369 grants |
 | Canadian Foundation for Innovation | Complete | Priority 8 - Canadian infrastructure. 13,900 grants |
