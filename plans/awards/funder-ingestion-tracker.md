@@ -30,7 +30,7 @@ This document tracks the progress of adding new funders to OpenAlex.
 | Gates Foundation | Complete | Priority 4 - Bill & Melinda Gates Foundation committed grants. 40,221 grants |
 | SSHRC (Social Sciences and Humanities Research Council) | Complete | Priority 5 - Canadian SSHRC grants. 114,403 grants |
 | NWO (Netherlands Organisation for Scientific Research) | Complete | Priority 11 - 14,599 grants |
-| NHMRC (National Health and Medical Research Council) | Step 6   | Has notebook (CreateNHMRCAwards.ipynb) and script (nhmrc_to_s3.py), not yet in CreateAwards.ipynb |
+| NHMRC (National Health and Medical Research Council) | Complete | Priority 12 - 11,902 grants |
 | KAKEN (Japan Grant-in-Aid for Scientific Research) | Complete | Priority 10 - 873,818 grants |
 | ANR (Agence Nationale de la Recherche) | Complete | Priority 6 - French research agency. 34,435 grants |
 | CIHR (Canadian Institutes of Health Research) | Complete | Priority 7 - Canadian health research. 82,369 grants |
