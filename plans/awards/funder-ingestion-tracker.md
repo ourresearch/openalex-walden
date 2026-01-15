@@ -43,7 +43,7 @@ This document tracks the progress of adding new funders to OpenAlex.
 | ARC (Australian Research Council) | Step 0   | Australian research funder. Data source: https://dataportal.arc.gov.au/RGS/Web/Grants |
 | Swedish Research Council | Step 0   | Swedish research funder. Data source: https://www.vr.se/english/swecris.html and here is a list of funded research outputs that researchers have reported for specific grants in their impact reports that includes references with and without citation data that should be able to be matched to openalex works directly: https://docs.google.com/spreadsheets/d/1CgDC4ZW6DnRKDEvFjxD9j8MU9CBFJIRa/edit?usp=sharing&ouid=107024906562107803557&rtpof=true&sd=true |
 | ERC (European Research Council) | Step 0   | European research funder. Data source: https://erc.europa.eu/projects-statistics/erc-dashboard |
-| SNSF (Swiss National Science Foundation) | Step 0   | Swiss research funder. Data source: https://data.snf.ch/grants/documentation |
+| SNSF (Swiss National Science Foundation) | Step 1   | Swiss research funder. Data source: https://data.snf.ch/grants/documentation |
 | NASA | Step 0   | US space agency. Data source: government portal |
 | Wellcome Trust | Step 0   | UK philanthropic funder. Data source: bulk CSV/XLSX download |
 | Academy of Finland | Step 0   | Finnish research funder. Data source: government portal |
