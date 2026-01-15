@@ -39,7 +39,7 @@ resources:
               zone_id: auto
               spot_bid_price_percent: 100
             node_type_id: r6i.8xlarge
-            num_workers: 12
+            num_workers: 16
             enable_elastic_disk: true
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
@@ -57,7 +57,7 @@ resources:
               zone_id: auto
               spot_bid_price_percent: 100
             node_type_id: r6i.8xlarge
-            num_workers: 4
+            num_workers: 8
             enable_elastic_disk: true
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
