@@ -29,7 +29,7 @@ This document tracks the progress of adding new funders to OpenAlex.
 | Gateway to Research (GTR) Awards (legacy) | Complete | Priority 3 - Publication-based, for work linkage only. 1,320,206 grants |
 | Gates Foundation | Complete | Priority 4 - Bill & Melinda Gates Foundation committed grants. 40,221 grants |
 | SSHRC (Social Sciences and Humanities Research Council) | Complete | Priority 5 - Canadian SSHRC grants. 114,403 grants |
-| NWO (Netherlands Organisation for Scientific Research) | Step 6   | Has notebook (CreateNWOAwards.ipynb) and script (nwo_to_s3.py), not yet in CreateAwards.ipynb |
+| NWO (Netherlands Organisation for Scientific Research) | Complete | Priority 11 - 14,599 grants |
 | NHMRC (National Health and Medical Research Council) | Step 6   | Has notebook (CreateNHMRCAwards.ipynb) and script (nhmrc_to_s3.py), not yet in CreateAwards.ipynb |
 | KAKEN (Japan Grant-in-Aid for Scientific Research) | Complete | Priority 10 - 873,818 grants |
 | ANR (Agence Nationale de la Recherche) | Complete | Priority 6 - French research agency. 34,435 grants |
