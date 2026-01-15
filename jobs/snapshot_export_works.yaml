@@ -1,0 +1,43 @@
+resources:
+  jobs:
+    Snapshot_Export_Works:
+      name: Snapshot Export Works
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      tasks:
+        - task_key: create_snapshot_table
+          job_cluster_key: snapshot_export_cluster
+          notebook_task:
+            notebook_path: notebooks/snapshot/export_works
+            source: GIT
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 14400
+      job_clusters:
+        - job_cluster_key: snapshot_export_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.sql.adaptive.enabled: "true"
+              spark.sql.adaptive.coalescePartitions.enabled: "false"
+              spark.sql.shuffle.partitions: "2000"
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              spot_bid_price_percent: 100
+            node_type_id: r6i.8xlarge
+            num_workers: 8
+            enable_elastic_disk: true
+            data_security_mode: DATA_SECURITY_MODE_DEDICATED
+            runtime_engine: STANDARD
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
