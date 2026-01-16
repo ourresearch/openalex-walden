@@ -1,0 +1,84 @@
+resources:
+  jobs:
+    Topics_Frontfill:
+      name: Topics Frontfill
+      email_notifications:
+        on_failure:
+          - artem@ourresearch.org
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        quartz_cron_expression: 5 0 21 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED
+      tasks:
+        - task_key: topics_create_input
+          notebook_task:
+            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_create_frontfill_input
+            source: WORKSPACE
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: topic_frontfill
+          depends_on:
+            - task_key: topics_create_input
+          notebook_task:
+            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_frontfill
+            source: WORKSPACE
+          job_cluster_key: g6e-L40S-gpu-large
+        - task_key: topics_merge_output
+          depends_on:
+            - task_key: topic_frontfill
+          notebook_task:
+            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_merge_frontfill_output
+            source: WORKSPACE
+            warehouse_id: 3996dc0a9b183ce3
+      job_clusters:
+        - job_cluster_key: g6e-L40S-gpu-large
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.task.resource.gpu.amount: "0.125"
+            aws_attributes:
+              availability: ON_DEMAND
+              zone_id: auto
+            node_type_id: g6e.12xlarge
+            driver_node_type_id: md-fleet.12xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            data_security_mode: DATA_SECURITY_MODE_DEDICATED
+            runtime_engine: STANDARD
+            kind: CLASSIC_PREVIEW
+            use_ml_runtime: true
+            is_single_node: false
+            num_workers: 2
+        - job_cluster_key: gpu-large
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.task.resource.gpu.amount: "0.25"
+            aws_attributes:
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+            node_type_id: g6.12xlarge
+            driver_node_type_id: md-fleet.12xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            data_security_mode: DATA_SECURITY_MODE_DEDICATED
+            runtime_engine: STANDARD
+            kind: CLASSIC_PREVIEW
+            use_ml_runtime: true
+            is_single_node: false
+            autoscale:
+              min_workers: 6
+              max_workers: 12
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: topics_create_input_environment
+          spec:
+            environment_version: "4"

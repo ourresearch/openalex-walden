@@ -1,7 +1,7 @@
 resources:
   jobs:
-    SDG_Inference_Frontfill:
-      name: SDG Inference Frontfill
+    SDG_Frontfill:
+      name: SDG Frontfill
       email_notifications:
         on_failure:
           - casey@ourresearch.org
