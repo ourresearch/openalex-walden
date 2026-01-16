@@ -276,15 +276,22 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
    - Map funding types appropriately
    - Generate unique ID as `abs(xxhash64(CONCAT({funder_id}, ':', {lowercase_native_id}))) % 9000000000`
 
-5. **Step 3: Insert into openalex_awards_raw with priority**
+5. **Step 3: Delete old data and insert into openalex_awards_raw with priority**
    - Determine priority (lower = higher priority):
      - 0: GTR Project Awards (authoritative UK grants)
      - 1: Crossref Awards
      - 2: Backfill Awards
      - 3: NIH, NSF, GTR Awards (legacy)
      - 4+: New funders (use next available number in notebooks/awards/CreateAwards.ipynb)
-   - Emit an SQL block inserting all rows to `openalex.awards.openalex_awards_raw`:
+   - Emit an SQL block that:
+     1. Deletes previous data for this source (using provenance + priority as key)
+     2. Inserts fresh data to `openalex.awards.openalex_awards_raw`
    ```sql
+   -- Remove previous data for this source before inserting fresh data
+   DELETE FROM openalex.awards.openalex_awards_raw
+   WHERE provenance = '{provenance_value}' AND priority = N;
+
+   -- Insert into openalex_awards_raw with priority
    INSERT INTO openalex.awards.openalex_awards_raw
    SELECT
        id,
