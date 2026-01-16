@@ -531,7 +531,65 @@ Tell the user:
 >
 > When you're ready, run CreateAwards.ipynb to merge everything.
 
-**→ Update tracker:** When user approves and runs CreateAwards.ipynb, change status to "Complete" with final grant count (e.g., "Complete | Priority 5 - 450,000 grants").
+**→ Update tracker:** When user approves and runs CreateAwards.ipynb, change status to "Step 8".
+
+---
+
+## Step 8: Add to CreateWorkAwards Job
+
+After the notebook has been verified and CreateAwards.ipynb has been run successfully, add the new funder notebook as a task in the CreateWorkAwards Databricks job.
+
+### 8.1 Update the job YAML file
+
+Edit `jobs/create_work_awards.yaml` to add the new funder:
+
+1. **Add a new task** for the funder notebook in the tasks list (alphabetically ordered). Example for a new funder "XYZ":
+   ```yaml
+   - task_key: XYZ_Awards
+     environment_key: Default
+     notebook_task:
+       notebook_path: notebooks/awards/CreateXYZAwards
+       source: WORKSPACE
+     run_if: ALL_SUCCESS
+     timeout_seconds: 0
+   ```
+
+2. **Add the task_key to Create_Awards dependencies** in the `depends_on` list (insert in alphabetical order). Using XYZ example:
+   ```yaml
+   - task_key: Create_Awards
+     depends_on:
+       - task_key: Vinnova_Awards
+       - task_key: XYZ_Awards
+       - task_key: Backfill_Awards
+   ```
+
+### 8.2 Deploy the job update
+
+Use the Databricks CLI to update the job:
+
+```bash
+databricks jobs update --profile dbc-ce570f73-0362 864794621551148 --json-file jobs/create_work_awards.yaml
+```
+
+Verify the task was added:
+```bash
+databricks jobs get --profile dbc-ce570f73-0362 864794621551148 --output json | grep -i "{funder}"
+```
+
+### 8.3 Commit the job YAML
+
+```bash
+git add jobs/create_work_awards.yaml
+git commit -m "Add {FunderName} to CreateWorkAwards job
+
+- Added {FunderName}_Awards task
+- Added dependency in Create_Awards task
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+git pull --rebase && git push
+```
+
+**→ Update tracker:** Change status to "Complete" with final grant count (e.g., "Complete | Priority 18 - 450,000 grants | Added to job 864794621551148").
 
 ---
 
