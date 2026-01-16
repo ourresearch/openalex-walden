@@ -122,7 +122,7 @@ resources:
             - task_key: Prepare_Affiliation_Strings
           run_job_task:
             job_id: 462221738638096
-        - task_key: SDG_Inference_Frontfill
+        - task_key: SDG_Frontfill
           depends_on:
             - task_key: Works_Base
           run_job_task:
@@ -132,6 +132,11 @@ resources:
             - task_key: Works_Base
           run_job_task:
             job_id: 751459553624380
+        - task_key: Concepts_Frontfill
+          depends_on:
+            - task_key: Works_Base
+          run_job_task:
+            job_id: 752544565445520
         - task_key: Author_Matching
           depends_on:
             - task_key: Parsed_Author_Names
@@ -151,7 +156,8 @@ resources:
         - task_key: Works_Enriched
           depends_on:
             - task_key: Authorships
-            - task_key: SDG_Inference_Frontfill
+            - task_key: SDG_Frontfill
+            - task_key: Concepts_Frontfill
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT

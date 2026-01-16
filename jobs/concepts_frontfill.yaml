@@ -1,0 +1,55 @@
+resources:
+  jobs:
+    Concepts_Frontfill:
+      name: Concepts Frontfill
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      tasks:
+        - task_key: concepts_create_input
+          notebook_task:
+            notebook_path: notebooks/concepts/concepts_create_frontfill_input
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: concepts_inference
+          depends_on:
+            - task_key: concepts_create_input
+          notebook_task:
+            notebook_path: notebooks/concepts/concepts_model_inference
+            source: GIT
+          job_cluster_key: md-fleet-concepts
+        - task_key: concepts_enrich_merge
+          depends_on:
+            - task_key: concepts_inference
+          notebook_task:
+            notebook_path: notebooks/concepts/concepts_enrich_merge
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+      job_clusters:
+        - job_cluster_key: md-fleet-concepts
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 3
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              spot_bid_price_percent: 100
+            node_type_id: mgd-fleet.16xlarge
+            driver_node_type_id: mgd-fleet.8xlarge
+            enable_elastic_disk: false
+            data_security_mode: DATA_SECURITY_MODE_DEDICATED
+            runtime_engine: STANDARD
+            kind: CLASSIC_PREVIEW
+            use_ml_runtime: true
+            is_single_node: false
+            autoscale:
+              min_workers: 3
+              max_workers: 6
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
