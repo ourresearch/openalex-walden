@@ -87,31 +87,52 @@ def download_from_kaggle(output_dir: Path) -> Path:
         print(f"  [ERROR] Download failed: {e}")
         sys.exit(1)
 
-    # Find the projects CSV
+    # Find the projects file (JSON or CSV)
+    # Check Archive folder first (Kaggle dataset structure)
+    archive_dir = output_dir / "Archive"
+    if archive_dir.exists():
+        json_files = list(archive_dir.glob("*projects*.json"))
+        if json_files:
+            json_path = json_files[0]
+            print(f"  [INFO] Using: Archive/{json_path.name}")
+            return json_path
+
+    # Try JSON files in main dir
+    json_files = list(output_dir.glob("*projects*.json"))
+    if json_files:
+        json_path = json_files[0]
+        print(f"  [INFO] Using: {json_path.name}")
+        return json_path
+
+    # Fall back to CSV
     csv_files = list(output_dir.glob("*.csv"))
-    if not csv_files:
-        print("  [ERROR] No CSV files found in download")
-        sys.exit(1)
+    if csv_files:
+        csv_path = max(csv_files, key=lambda p: p.stat().st_size)
+        print(f"  [INFO] Using: {csv_path.name}")
+        return csv_path
 
-    # Use the largest CSV (likely the main projects file)
-    csv_path = max(csv_files, key=lambda p: p.stat().st_size)
-    print(f"  [INFO] Using: {csv_path.name}")
-
-    return csv_path
+    print("  [ERROR] No projects file found")
+    sys.exit(1)
 
 
 # =============================================================================
 # Process Data
 # =============================================================================
 
-def process_projects(csv_path: Path, output_dir: Path) -> Path:
-    """Process the projects CSV into parquet format."""
+def process_projects(data_path: Path, output_dir: Path) -> Path:
+    """Process the projects file (JSON or CSV) into parquet format."""
     print(f"\n{'='*60}")
     print("Step 2: Processing projects")
     print(f"{'='*60}")
 
-    print(f"  [INFO] Reading {csv_path.name}...")
-    df = pd.read_csv(csv_path, low_memory=False)
+    print(f"  [INFO] Reading {data_path.name}...")
+
+    # Load data based on file type
+    if data_path.suffix.lower() == '.json':
+        df = pd.read_json(data_path)
+    else:
+        df = pd.read_csv(data_path, low_memory=False)
+
     print(f"  [INFO] Loaded {len(df):,} rows")
     print(f"  [INFO] Columns: {list(df.columns)}")
 
@@ -254,19 +275,40 @@ def main():
     print(f"Output: {args.output_dir.absolute()}")
     print(f"S3: s3://{S3_BUCKET}/{S3_KEY}")
 
-    # Step 1: Download
+    # Step 1: Download or find existing
     if args.skip_download:
-        csv_files = list(args.output_dir.glob("*.csv"))
-        if not csv_files:
-            print("[ERROR] No CSV found. Run without --skip-download")
+        # Look for existing data file
+        archive_dir = args.output_dir / "Archive"
+        data_path = None
+
+        # Check Archive folder first
+        if archive_dir.exists():
+            json_files = list(archive_dir.glob("*projects*.json"))
+            if json_files:
+                data_path = json_files[0]
+
+        # Try main dir
+        if not data_path:
+            json_files = list(args.output_dir.glob("*projects*.json"))
+            if json_files:
+                data_path = json_files[0]
+
+        # Fall back to CSV
+        if not data_path:
+            csv_files = list(args.output_dir.glob("*.csv"))
+            if csv_files:
+                data_path = max(csv_files, key=lambda p: p.stat().st_size)
+
+        if not data_path:
+            print("[ERROR] No data file found. Run without --skip-download")
             sys.exit(1)
-        csv_path = max(csv_files, key=lambda p: p.stat().st_size)
-        print(f"\n  [SKIP] Using existing: {csv_path}")
+
+        print(f"\n  [SKIP] Using existing: {data_path}")
     else:
-        csv_path = download_from_kaggle(args.output_dir)
+        data_path = download_from_kaggle(args.output_dir)
 
     # Step 2: Process
-    parquet_path = process_projects(csv_path, args.output_dir)
+    parquet_path = process_projects(data_path, args.output_dir)
 
     # Step 3: Upload
     if not args.skip_upload:
