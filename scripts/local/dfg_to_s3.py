@@ -3,233 +3,207 @@
 DFG (Deutsche Forschungsgemeinschaft) to S3 Data Pipeline
 ==========================================================
 
-Downloads DFG GEPRIS funding data from Kaggle and uploads to S3.
+Downloads DFG GEPRIS funding data from Kaggle and uploads to S3 for Databricks.
 
 Data Source: https://www.kaggle.com/datasets/vicdoroshenko/dfg-gepris-funding-database-snapshot
 Output: s3://openalex-ingest/awards/dfg/dfg_projects.parquet
 
-Prerequisites:
-    1. Install dependencies:
-       pip install pandas pyarrow kaggle
+Output columns (mapped for CreateDFGAwards.ipynb):
+    project_id          -> funder_award_id
+    title               -> display_name
+    description         -> description
+    amount              -> amount (DOUBLE, in EUR; converted from source millions)
+    program_type        -> funder_scheme
+    area                -> subject_area
+    start_date          -> start_date (STRING, YYYY-MM-DD)
+    end_date            -> end_date (STRING, YYYY-MM-DD)
+    start_year          -> start_year (INT)
+    end_year            -> end_year (INT)
+    lead_inst           -> institution name
+    pis_json            -> PI IDs as JSON array
+    pi_countries_json   -> PI countries as JSON array
+    pi_cities_json      -> PI cities as JSON array
+    pi_gender_json      -> PI genders as JSON array
 
-    2. Set up Kaggle API credentials:
-       - Create account at kaggle.com
-       - Go to Settings > API > Create New Token
-       - Save kaggle.json to ~/.kaggle/kaggle.json
-       - chmod 600 ~/.kaggle/kaggle.json
+Prerequisites:
+    pip install pandas pyarrow kaggle
+
+    Kaggle credentials: ~/.kaggle/kaggle.json
+    (kaggle.com > Settings > API > Create New Token)
 
 Usage:
-    python dfg_to_s3.py                    # Full pipeline
-    python dfg_to_s3.py --skip-upload      # Download only (for testing)
-
-Author: OpenAlex Team
+    python dfg_to_s3.py                 # Full pipeline
+    python dfg_to_s3.py --skip-download # Use existing data
+    python dfg_to_s3.py --skip-upload   # Local only
 """
 
 import argparse
+import json
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
-
-# =============================================================================
 # Configuration
-# =============================================================================
-
 KAGGLE_DATASET = "vicdoroshenko/dfg-gepris-funding-database-snapshot"
 S3_BUCKET = "openalex-ingest"
 S3_KEY = "awards/dfg/dfg_projects.parquet"
 
 
-# =============================================================================
-# Download from Kaggle
-# =============================================================================
-
 def download_from_kaggle(output_dir: Path) -> Path:
-    """Download the DFG GEPRIS dataset from Kaggle."""
+    """Download GEPRIS dataset from Kaggle."""
     print(f"\n{'='*60}")
     print("Step 1: Downloading from Kaggle")
     print(f"{'='*60}")
 
-    # Check for kaggle package
     try:
         import kaggle
     except ImportError:
-        print("  [ERROR] kaggle package not installed. Run: pip install kaggle")
+        print("  [ERROR] Run: pip install kaggle")
         sys.exit(1)
 
-    # Check for credentials
-    kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
-    if not kaggle_json.exists():
-        print("  [ERROR] Kaggle credentials not found at ~/.kaggle/kaggle.json")
-        print("\n  Setup instructions:")
-        print("    1. Create account at kaggle.com")
-        print("    2. Go to Settings > API > Create New Token")
-        print("    3. Save kaggle.json to ~/.kaggle/kaggle.json")
-        print("    4. chmod 600 ~/.kaggle/kaggle.json")
+    if not (Path.home() / ".kaggle" / "kaggle.json").exists():
+        print("  [ERROR] Kaggle credentials not found")
+        print("  Setup: kaggle.com > Settings > API > Create New Token")
+        print("  Save to ~/.kaggle/kaggle.json")
         sys.exit(1)
 
-    print(f"  [INFO] Dataset: {KAGGLE_DATASET}")
-    print(f"  [INFO] Output: {output_dir}")
+    print(f"  Dataset: {KAGGLE_DATASET}")
+    print(f"  Downloading...")
 
-    # Download
-    try:
-        kaggle.api.dataset_download_files(
-            KAGGLE_DATASET,
-            path=str(output_dir),
-            unzip=True
-        )
-        print("  [SUCCESS] Download complete!")
-    except Exception as e:
-        print(f"  [ERROR] Download failed: {e}")
-        sys.exit(1)
+    kaggle.api.dataset_download_files(KAGGLE_DATASET, path=str(output_dir), unzip=True)
+    print("  [OK] Download complete")
 
-    # Find the projects file (JSON or CSV)
-    # Check Archive folder first (Kaggle dataset structure)
-    archive_dir = output_dir / "Archive"
-    if archive_dir.exists():
-        json_files = list(archive_dir.glob("*projects*.json"))
-        if json_files:
-            json_path = json_files[0]
-            print(f"  [INFO] Using: Archive/{json_path.name}")
-            return json_path
+    return find_data_file(output_dir)
 
-    # Try JSON files in main dir
-    json_files = list(output_dir.glob("*projects*.json"))
+
+def find_data_file(output_dir: Path) -> Path:
+    """Find the projects JSON file in downloaded data."""
+    # Check Archive folder (Kaggle structure)
+    archive = output_dir / "Archive"
+    if archive.exists():
+        for f in archive.glob("*projects*.json"):
+            print(f"  Found: Archive/{f.name}")
+            return f
+
+    # Check main dir
+    for f in output_dir.glob("**/*projects*.json"):
+        print(f"  Found: {f.name}")
+        return f
+
+    # Any JSON
+    json_files = list(output_dir.glob("**/*.json"))
     if json_files:
-        json_path = json_files[0]
-        print(f"  [INFO] Using: {json_path.name}")
-        return json_path
+        f = max(json_files, key=lambda p: p.stat().st_size)
+        print(f"  Found: {f.name}")
+        return f
 
-    # Fall back to CSV
-    csv_files = list(output_dir.glob("*.csv"))
-    if csv_files:
-        csv_path = max(csv_files, key=lambda p: p.stat().st_size)
-        print(f"  [INFO] Using: {csv_path.name}")
-        return csv_path
-
-    print("  [ERROR] No projects file found")
+    print("  [ERROR] No data file found")
     sys.exit(1)
 
 
-# =============================================================================
-# Process Data
-# =============================================================================
-
 def process_projects(data_path: Path, output_dir: Path) -> Path:
-    """Process the projects file (JSON or CSV) into parquet format."""
+    """Process JSON to parquet with Spark-compatible schema."""
     print(f"\n{'='*60}")
-    print("Step 2: Processing projects")
+    print("Step 2: Processing")
     print(f"{'='*60}")
 
-    print(f"  [INFO] Reading {data_path.name}...")
-
-    # Load data based on file type
-    if data_path.suffix.lower() == '.json':
-        df = pd.read_json(data_path)
-    else:
-        df = pd.read_csv(data_path, low_memory=False)
-
-    print(f"  [INFO] Loaded {len(df):,} rows")
-    print(f"  [INFO] Columns: {list(df.columns)}")
+    print(f"  Reading {data_path.name} ({data_path.stat().st_size / 1e6:.0f} MB)...")
+    df = pd.read_json(data_path)
+    print(f"  Loaded {len(df):,} projects")
 
     # Standardize column names
-    df.columns = [c.lower().strip().replace(' ', '_').replace('-', '_') for c in df.columns]
-    print(f"  [INFO] Standardized columns: {list(df.columns)}")
+    df.columns = [c.lower().strip().replace(' ', '_') for c in df.columns]
 
-    # Map to standard schema
-    column_mapping = {
-        'project_id': 'project_id',
-        'projectid': 'project_id',
-        'id': 'project_id',
-        'gepris_id': 'project_id',
-        'title': 'title',
-        'project_title': 'title',
-        'abstract': 'abstract',
-        'description': 'abstract',
-        'start_date': 'start_date',
-        'funding_start': 'start_date',
-        'end_date': 'end_date',
-        'funding_end': 'end_date',
-        'funding_amount': 'amount',
-        'amount': 'amount',
-        'programme': 'funding_programme',
-        'funding_programme': 'funding_programme',
-        'dfg_programme': 'funding_programme',
-        'subject_area': 'subject_area',
-        'institution': 'institution',
-        'research_institution': 'institution',
-        'applicant': 'pi_name',
-        'principal_investigator': 'pi_name',
-    }
+    # -------------------------------------------------------------------------
+    # Map source columns to output schema
+    # -------------------------------------------------------------------------
 
-    rename_dict = {}
-    for old, new in column_mapping.items():
-        if old in df.columns and new not in df.columns:
-            rename_dict[old] = new
-    if rename_dict:
-        df = df.rename(columns=rename_dict)
-        print(f"  [INFO] Renamed: {rename_dict}")
+    # project_id -> string
+    df['project_id'] = df['project_id'].astype(str)
 
-    # Ensure project_id exists
-    if 'project_id' not in df.columns:
-        id_cols = [c for c in df.columns if 'id' in c.lower()]
-        if id_cols:
-            df['project_id'] = df[id_cols[0]]
-        else:
-            df['project_id'] = df.index.astype(str)
+    # title stays as title
+    # description stays as description (source has 'description' not 'abstract')
 
-    # Process dates
-    for col in ['start_date', 'end_date']:
+    # estimated_budget -> amount (convert from millions of EUR to EUR)
+    # e.g., 0.22 million EUR -> 220,000 EUR
+    if 'estimated_budget' in df.columns:
+        df['amount'] = pd.to_numeric(df['estimated_budget'], errors='coerce') * 1_000_000
+        df = df.drop(columns=['estimated_budget'])
+        print("  estimated_budget * 1M -> amount (EUR)")
+
+    # start/stop (years as floats) -> dates
+    if 'start' in df.columns:
+        df['start_year'] = df['start'].apply(
+            lambda x: int(x) if pd.notna(x) and 1900 <= x <= 2100 else None
+        )
+        df['start_date'] = df['start_year'].apply(
+            lambda y: f"{y}-01-01" if y else None
+        )
+        print("  start -> start_year, start_date")
+
+    if 'stop' in df.columns:
+        df['end_year'] = df['stop'].apply(
+            lambda x: int(x) if pd.notna(x) and 1900 <= x <= 2100 else None
+        )
+        df['end_date'] = df['end_year'].apply(
+            lambda y: f"{y}-12-31" if y else None
+        )
+        print("  stop -> end_year, end_date")
+
+    # -------------------------------------------------------------------------
+    # Convert array columns to JSON strings (Spark compatibility)
+    # -------------------------------------------------------------------------
+    array_cols = ['pis', 'pi_countries', 'pi_bundeslaender', 'pi_cities',
+                  'pi_gender', 'pi_locations', 'embedding', 'sub_projects']
+
+    for col in array_cols:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
+            df[f'{col}_json'] = df[col].apply(
+                lambda x: json.dumps(x.tolist() if hasattr(x, 'tolist') else x)
+                if x is not None and not (isinstance(x, float) and pd.isna(x)) else None
+            )
+            df = df.drop(columns=[col])
+            print(f"  {col} -> {col}_json")
 
-    # Process amount
-    if 'amount' in df.columns:
-        df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
-
-    # Deduplicate
-    original = len(df)
-    df = df.drop_duplicates(subset=['project_id'], keep='first')
-    print(f"  [INFO] Deduplicated: {original:,} -> {len(df):,}")
-
+    # -------------------------------------------------------------------------
     # Add metadata
+    # -------------------------------------------------------------------------
     df['ingested_at'] = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     df['source'] = 'kaggle_gepris_snapshot'
 
+    # Deduplicate
+    before = len(df)
+    df = df.drop_duplicates(subset=['project_id'], keep='first')
+    if len(df) < before:
+        print(f"  Removed {before - len(df):,} duplicates")
+
+    # -------------------------------------------------------------------------
     # Save parquet
+    # -------------------------------------------------------------------------
     output_path = output_dir / "dfg_projects.parquet"
     df.to_parquet(output_path, index=False)
-    size_mb = output_path.stat().st_size / (1024 * 1024)
-    print(f"  [SAVE] {output_path.name} ({size_mb:.1f} MB)")
+    print(f"\n  Saved: {output_path.name} ({output_path.stat().st_size / 1e6:.0f} MB)")
 
     # Summary
-    print(f"\n  Summary:")
-    print(f"    Total projects: {len(df):,}")
-    for col in ['title', 'abstract', 'amount', 'pi_name', 'institution']:
+    print(f"\n  Summary ({len(df):,} projects):")
+    for col, label in [
+        ('title', 'title'),
+        ('description', 'description'),
+        ('amount', 'amount'),
+        ('start_date', 'start_date'),
+        ('program_type', 'program_type'),
+        ('lead_inst', 'lead_inst'),
+    ]:
         if col in df.columns:
-            print(f"    With {col}: {df[col].notna().sum():,}")
+            n = df[col].notna().sum()
+            print(f"    {label}: {n:,} ({100*n/len(df):.0f}%)")
+
+    print(f"\n  Columns: {sorted(df.columns)}")
 
     return output_path
-
-
-# =============================================================================
-# Upload to S3
-# =============================================================================
-
-def find_aws_cli() -> Optional[str]:
-    """Find AWS CLI executable."""
-    import shutil
-    aws = shutil.which("aws")
-    if aws:
-        return aws
-    for p in ["/usr/local/bin/aws", "/opt/homebrew/bin/aws"]:
-        if Path(p).exists():
-            return p
-    return None
 
 
 def upload_to_s3(local_path: Path) -> bool:
@@ -238,79 +212,52 @@ def upload_to_s3(local_path: Path) -> bool:
     print("Step 3: Uploading to S3")
     print(f"{'='*60}")
 
-    s3_uri = f"s3://{S3_BUCKET}/{S3_KEY}"
-    print(f"  [UPLOAD] {local_path.name} -> {s3_uri}")
-
-    aws = find_aws_cli()
+    import shutil
+    aws = shutil.which("aws")
     if not aws:
-        print("  [ERROR] AWS CLI not found. Install with: pip install awscli")
+        print("  [ERROR] AWS CLI not found")
+        print(f"  Manual: aws s3 cp {local_path} s3://{S3_BUCKET}/{S3_KEY}")
         return False
+
+    s3_uri = f"s3://{S3_BUCKET}/{S3_KEY}"
+    print(f"  {local_path.name} -> {s3_uri}")
 
     try:
         subprocess.run([aws, "s3", "cp", str(local_path), s3_uri],
-                       capture_output=True, text=True, check=True)
-        print("  [SUCCESS] Upload complete!")
+                       check=True, capture_output=True, text=True)
+        print("  [OK] Upload complete")
         return True
     except subprocess.CalledProcessError as e:
         print(f"  [ERROR] {e.stderr}")
+        print(f"  Try: export AWS_PROFILE=openalex && aws s3 cp {local_path} {s3_uri}")
         return False
 
 
-# =============================================================================
-# Main
-# =============================================================================
-
 def main():
-    parser = argparse.ArgumentParser(description="Download DFG GEPRIS from Kaggle and upload to S3")
+    parser = argparse.ArgumentParser(description="DFG GEPRIS to S3")
     parser.add_argument("--output-dir", type=Path, default=Path("./dfg_data"))
+    parser.add_argument("--skip-download", action="store_true")
     parser.add_argument("--skip-upload", action="store_true")
-    parser.add_argument("--skip-download", action="store_true", help="Use existing CSV")
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
-    print("DFG (Deutsche Forschungsgemeinschaft) to S3 Pipeline")
+    print("DFG (Deutsche Forschungsgemeinschaft) to S3")
     print("=" * 60)
     print(f"Output: {args.output_dir.absolute()}")
     print(f"S3: s3://{S3_BUCKET}/{S3_KEY}")
 
-    # Step 1: Download or find existing
+    # Download
     if args.skip_download:
-        # Look for existing data file
-        archive_dir = args.output_dir / "Archive"
-        data_path = None
-
-        # Check Archive folder first
-        if archive_dir.exists():
-            json_files = list(archive_dir.glob("*projects*.json"))
-            if json_files:
-                data_path = json_files[0]
-
-        # Try main dir
-        if not data_path:
-            json_files = list(args.output_dir.glob("*projects*.json"))
-            if json_files:
-                data_path = json_files[0]
-
-        # Fall back to CSV
-        if not data_path:
-            csv_files = list(args.output_dir.glob("*.csv"))
-            if csv_files:
-                data_path = max(csv_files, key=lambda p: p.stat().st_size)
-
-        if not data_path:
-            print("[ERROR] No data file found. Run without --skip-download")
-            sys.exit(1)
-
-        print(f"\n  [SKIP] Using existing: {data_path}")
+        data_path = find_data_file(args.output_dir)
     else:
         data_path = download_from_kaggle(args.output_dir)
 
-    # Step 2: Process
+    # Process
     parquet_path = process_projects(data_path, args.output_dir)
 
-    # Step 3: Upload
+    # Upload
     if not args.skip_upload:
         upload_to_s3(parquet_path)
 
