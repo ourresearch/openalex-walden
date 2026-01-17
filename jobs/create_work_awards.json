@@ -1,0 +1,386 @@
+{
+  "created_time":1767742861778,
+  "creator_user_name":"richard@openalex.org",
+  "job_id":864794621551148,
+  "run_as_user_name":"richard@openalex.org",
+  "settings": {
+    "email_notifications": {
+      "no_alert_for_skipped_runs":false
+    },
+    "environments": [
+      {
+        "environment_key":"Default",
+        "spec": {
+          "environment_version":"4"
+        }
+      }
+    ],
+    "format":"MULTI_TASK",
+    "max_concurrent_runs":1,
+    "name":"CreateWorkAwards",
+    "performance_target":"PERFORMANCE_OPTIMIZED",
+    "queue": {
+      "enabled":true
+    },
+    "tasks": [
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateANRAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"ANR_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateBackfillAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Backfill_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateCFIAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"CFI_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateCIHRAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"CIHR_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "pipeline_task": {
+          "full_refresh":false,
+          "pipeline_id":"1c01484c-5ad5-4ee8-851e-64f3de012da2"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Crossref_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateFormasAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Formas_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateForteAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Forte_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateGTRProjectAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"GTR_Project_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateGatesAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Gates_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateGatewayToResearchAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Gateway_to_Research_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateKAKENAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"KAKEN_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateNHMRCAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"NHMRC_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateNIHRAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"NIHR_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateNIHAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"NIH_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateNSERCAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"NSERC_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateNSFAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"NSF_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateNWOAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"NWO_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateSNSFAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"SNSF_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateSSHRCAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"SSHRC_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateSwedishResearchCouncilAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Swedish_Research_Council_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateVinnovaAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Vinnova_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "depends_on": [
+          {
+            "task_key":"SNSF_Awards"
+          },
+          {
+            "task_key":"NSERC_Awards"
+          },
+          {
+            "task_key":"KAKEN_Awards"
+          },
+          {
+            "task_key":"Swedish_Research_Council_Awards"
+          },
+          {
+            "task_key":"NIH_Awards"
+          },
+          {
+            "task_key":"Formas_Awards"
+          },
+          {
+            "task_key":"NIHR_Awards"
+          },
+          {
+            "task_key":"NHMRC_Awards"
+          },
+          {
+            "task_key":"Crossref_Awards"
+          },
+          {
+            "task_key":"NWO_Awards"
+          },
+          {
+            "task_key":"NSF_Awards"
+          },
+          {
+            "task_key":"Gates_Awards"
+          },
+          {
+            "task_key":"Forte_Awards"
+          },
+          {
+            "task_key":"CIHR_Awards"
+          },
+          {
+            "task_key":"GTR_Project_Awards"
+          },
+          {
+            "task_key":"Gateway_to_Research_Awards"
+          },
+          {
+            "task_key":"CFI_Awards"
+          },
+          {
+            "task_key":"DFG_Awards"
+          },
+          {
+            "task_key":"Vinnova_Awards"
+          },
+          {
+            "task_key":"SSHRC_Awards"
+          },
+          {
+            "task_key":"ANR_Awards"
+          },
+          {
+            "task_key":"Backfill_Awards"
+          }
+        ],
+        "email_notifications": {},
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Create_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "depends_on": [
+          {
+            "task_key":"Create_Awards"
+          }
+        ],
+        "email_notifications": {},
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/WorkAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"Work_Awards",
+        "timeout_seconds":0,
+        "webhook_notifications": {}
+      },
+      {
+        "email_notifications": {},
+        "environment_key":"Default",
+        "notebook_task": {
+          "notebook_path":"/Workspace/Shared/openalex-walden/notebooks/awards/CreateDFGAwards",
+          "source":"WORKSPACE"
+        },
+        "run_if":"ALL_SUCCESS",
+        "task_key":"DFG_Awards",
+        "timeout_seconds":0
+      }
+    ],
+    "timeout_seconds":0,
+    "webhook_notifications": {}
+  }
+}

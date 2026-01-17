@@ -539,28 +539,31 @@ Tell the user:
 
 After the notebook has been verified and CreateAwards.ipynb has been run successfully, add the new funder notebook as a task in the CreateWorkAwards Databricks job.
 
-### 8.1 Update the job YAML file
+### 8.1 Update the job JSON file
 
-Edit `jobs/create_work_awards.yaml` to add the new funder:
+Edit `jobs/create_work_awards.json` to add the new funder:
 
-1. **Add a new task** for the funder notebook in the tasks list (alphabetically ordered). Example for a new funder "XYZ":
-   ```yaml
-   - task_key: XYZ_Awards
-     environment_key: Default
-     notebook_task:
-       notebook_path: notebooks/awards/CreateXYZAwards
-       source: WORKSPACE
-     run_if: ALL_SUCCESS
-     timeout_seconds: 0
+1. **Add a new task** for the funder notebook in the `settings.tasks` array. Example for a new funder "XYZ":
+   ```json
+   {
+     "email_notifications": {},
+     "environment_key": "Default",
+     "notebook_task": {
+       "notebook_path": "/Workspace/Shared/openalex-walden/notebooks/awards/CreateXYZAwards",
+       "source": "WORKSPACE"
+     },
+     "run_if": "ALL_SUCCESS",
+     "task_key": "XYZ_Awards",
+     "timeout_seconds": 0,
+     "webhook_notifications": {}
+   }
    ```
 
-2. **Add the task_key to Create_Awards dependencies** in the `depends_on` list (insert in alphabetical order). Using XYZ example:
-   ```yaml
-   - task_key: Create_Awards
-     depends_on:
-       - task_key: Vinnova_Awards
-       - task_key: XYZ_Awards
-       - task_key: Backfill_Awards
+2. **Add the task_key to Create_Awards dependencies** in the `depends_on` array for the `Create_Awards` task:
+   ```json
+   {
+     "task_key": "XYZ_Awards"
+   }
    ```
 
 ### 8.2 Deploy the job update
@@ -568,18 +571,18 @@ Edit `jobs/create_work_awards.yaml` to add the new funder:
 Use the Databricks CLI to update the job:
 
 ```bash
-databricks jobs update --profile dbc-ce570f73-0362 864794621551148 --json-file jobs/create_work_awards.yaml
+databricks jobs reset 864794621551148 --profile dbc-ce570f73-0362 --json @jobs/create_work_awards.json
 ```
 
 Verify the task was added:
 ```bash
-databricks jobs get --profile dbc-ce570f73-0362 864794621551148 --output json | grep -i "{funder}"
+databricks jobs get 864794621551148 --profile dbc-ce570f73-0362 --output json | grep -i "{funder}"
 ```
 
-### 8.3 Commit the job YAML
+### 8.3 Commit the job JSON
 
 ```bash
-git add jobs/create_work_awards.yaml
+git add jobs/create_work_awards.json
 git commit -m "Add {FunderName} to CreateWorkAwards job
 
 - Added {FunderName}_Awards task
