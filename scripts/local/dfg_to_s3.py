@@ -135,21 +135,22 @@ def process_projects(data_path: Path, output_dir: Path) -> Path:
         print("  estimated_budget * 1M -> amount (EUR)")
 
     # start/stop (years as floats) -> dates
+    # Use Int64 (nullable integer) to avoid float conversion when nulls present
     if 'start' in df.columns:
         df['start_year'] = df['start'].apply(
-            lambda x: int(x) if pd.notna(x) and 1900 <= x <= 2100 else None
-        )
+            lambda x: int(x) if pd.notna(x) and 1900 <= x <= 2100 else pd.NA
+        ).astype('Int64')
         df['start_date'] = df['start_year'].apply(
-            lambda y: f"{y}-01-01" if y else None
+            lambda y: f"{int(y)}-01-01" if pd.notna(y) else None
         )
         print("  start -> start_year, start_date")
 
     if 'stop' in df.columns:
         df['end_year'] = df['stop'].apply(
-            lambda x: int(x) if pd.notna(x) and 1900 <= x <= 2100 else None
-        )
+            lambda x: int(x) if pd.notna(x) and 1900 <= x <= 2100 else pd.NA
+        ).astype('Int64')
         df['end_date'] = df['end_year'].apply(
-            lambda y: f"{y}-12-31" if y else None
+            lambda y: f"{int(y)}-12-31" if pd.notna(y) else None
         )
         print("  stop -> end_year, end_date")
 
