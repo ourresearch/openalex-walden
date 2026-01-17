@@ -46,6 +46,13 @@ resources:
             full_refresh: false
           run_if: ALL_SUCCESS
           timeout_seconds: 0
+        - task_key: DFG_Awards
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateDFGAwards
+            source: WORKSPACE
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
         - task_key: Formas_Awards
           environment_key: Default
           notebook_task:
@@ -168,6 +175,7 @@ resources:
             - task_key: Formas_Awards
             - task_key: NIHR_Awards
             - task_key: NHMRC_Awards
+            - task_key: DFG_Awards
             - task_key: Crossref_Awards
             - task_key: NWO_Awards
             - task_key: NSF_Awards
