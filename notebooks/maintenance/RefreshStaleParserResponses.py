@@ -81,7 +81,7 @@ SELECT
     native_id,
     url
 FROM openalex.landing_page.taxicab_enriched_new
-WHERE processed_date BETWEEN '{START_DATE}' AND '{END_DATE}'
+WHERE DATE(processed_date) BETWEEN '{START_DATE}' AND '{END_DATE}'
   AND size(parser_response.authors) = 0
   AND parser_response.had_error = false
   AND url NOT LIKE '%/pdf%'
@@ -345,7 +345,7 @@ if not DRY_RUN:
         SUM(CASE WHEN size(parser_response.authors) > 0 THEN 1 ELSE 0 END) as with_authors,
         SUM(CASE WHEN size(parser_response.authors) = 0 THEN 1 ELSE 0 END) as without_authors
     FROM openalex.landing_page.taxicab_enriched_new
-    WHERE processed_date BETWEEN '{START_DATE}' AND '{END_DATE}'
+    WHERE DATE(processed_date) BETWEEN '{START_DATE}' AND '{END_DATE}'
       AND url NOT LIKE '%/pdf%'
       AND native_id LIKE '{PUBLISHER_FILTER}'
     """
