@@ -1,6 +1,6 @@
 # Issue: Landing Page Parser Regression
 
-**Status**: fixing
+**Status**: blocked
 **Discovered**: 2026-01-09
 **Severity**: high
 **Component**: parseland | pipeline
@@ -56,6 +56,8 @@ Nees's hypothesis: *"Could it be that scraping landing pages has become harder l
 - [x] Complete root cause analysis
 - [x] Write fix plan
 - [x] Define acceptance criteria
+- [x] Run baseline "Before" queries (recorded 2026-01-17)
+- [ ] **Fix Databricks notebook syntax error** (**BLOCKED** - see PLAN.md for details)
 - [ ] Run fix notebook on Databricks
 - [ ] Run acceptance tests
 - [ ] Close issue
@@ -72,3 +74,8 @@ Nees's hypothesis: *"Could it be that scraping landing pages has become harder l
 | 2026-01-09 | Claude (AI agent) | Fix notebook created |
 | 2026-01-10 | Claude (AI agent) | Issue restructured into new QA format |
 | 2026-01-11 | Claude (AI agent) | Added email thread and linked to nees dataset |
+| 2026-01-17 | Claude (AI agent) | Ran baseline queries, recorded in ACCEPTANCE.md |
+| 2026-01-17 | Claude (AI agent) | Started Phase 1 fix job on Databricks (Job ID: 348519510931285) |
+| 2026-01-17 | Claude (AI agent) | Job failed - SyntaxError in update_schema due to malformed indentation |
+| 2026-01-17 | Claude (AI agent) | Attempted browser-based fix but Databricks notebook editing unreliable via automation |
+| 2026-01-17 | Claude (AI agent) | Updated PLAN.md with fix instructions - manual edit of Databricks notebook required |

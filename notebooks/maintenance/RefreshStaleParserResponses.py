@@ -1,32 +1,15 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-# MAGIC # !!!                    DEPRECATED                         !!!
-# MAGIC # !!!                                                       !!!
-# MAGIC # !!!  THIS FILE IS INACTIVE - DO NOT USE                   !!!
-# MAGIC # !!!                                                       !!!
-# MAGIC # !!!  Production version lives at:                         !!!
-# MAGIC # !!!  notebooks/maintenance/RefreshStaleParserResponses.py !!!
-# MAGIC # !!!                                                       !!!
-# MAGIC # !!!  Job definition:                                      !!!
-# MAGIC # !!!  jobs/refresh_stale_parser_responses.yaml             !!!
-# MAGIC # !!!                                                       !!!
-# MAGIC # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# MAGIC # Refresh Stale Parser Responses
 # MAGIC
-# MAGIC ---
+# MAGIC This notebook fixes records in `taxicab_enriched_new` where the cached `parser_response`
+# MAGIC is stale (empty authors when Parseland now has data).
 # MAGIC
-# MAGIC # Refresh Stale Parser Responses (ARCHIVED)
-# MAGIC
-# MAGIC This notebook fixes records in `taxicab_enriched_new` that were processed during the
-# MAGIC Dec 27, 2025 - Jan 3, 2026 regression period when Parseland returned empty author arrays.
-# MAGIC
-# MAGIC **Problem:** DLT streaming tables don't re-process existing records, so these records
-# MAGIC retained stale `parser_response` data even after the underlying fix was deployed.
+# MAGIC **Problem:** DLT streaming tables don't re-process existing records, so stale
+# MAGIC `parser_response` data persists even when the underlying HTML or parser has been fixed.
 # MAGIC
 # MAGIC **Solution:** Query affected UUIDs, call Parseland API directly, and UPDATE the
 # MAGIC `parser_response` column in place.
-# MAGIC
-# MAGIC **Documentation:** See `plans/landing-page-parser-regression-2026-01.md`
 # MAGIC
 # MAGIC ## Usage
 # MAGIC

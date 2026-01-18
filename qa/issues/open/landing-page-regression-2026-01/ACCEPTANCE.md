@@ -37,14 +37,14 @@ Same query as above.
 
 | Year | Before Fix | After Fix | Status |
 |------|------------|-----------|--------|
-| 2020 | | | |
-| 2021 | | | |
-| 2022 | | | |
-| 2023 | | | |
-| 2024 | | | PENDING |
-| 2025 | | | PENDING |
+| 2020 | 58.1% | | |
+| 2021 | 63.4% | | |
+| 2022 | 68.5% | | |
+| 2023 | 67.9% | | |
+| 2024 | 62.7% | | PENDING |
+| 2025 | 56.6% | | PENDING |
 
-**Status**: PENDING
+**Status**: BASELINE RECORDED (2026-01-17)
 
 ---
 
@@ -75,14 +75,14 @@ Same query as above.
 
 | Year | Before Fix | After Fix | Status |
 |------|------------|-----------|--------|
-| 2020 | | | |
-| 2021 | | | |
-| 2022 | | | |
-| 2023 | | | |
-| 2024 | | | PENDING |
-| 2025 | | | PENDING |
+| 2020 | 52.1% | | |
+| 2021 | 57.2% | | |
+| 2022 | 62.1% | | |
+| 2023 | 61.8% | | |
+| 2024 | 56.8% | | PENDING |
+| 2025 | 50.8% | | PENDING |
 
-**Status**: PENDING
+**Status**: BASELINE RECORDED (2026-01-17)
 
 ---
 
@@ -102,7 +102,7 @@ SELECT
 FROM openalex.works.openalex_works
 WHERE publication_year BETWEEN 2020 AND 2025
   AND type IN ('article', 'review')
-  AND doi LIKE '10.1016/%'
+  AND doi LIKE '%10.1016/%'
 GROUP BY publication_year
 ORDER BY publication_year;
 ```
@@ -116,14 +116,14 @@ Same query as above.
 
 | Year | Before pct_raw_aff | After pct_raw_aff | Before pct_inst | After pct_inst | Status |
 |------|-------------------|-------------------|-----------------|----------------|--------|
-| 2020 | | | | | |
-| 2021 | | | | | |
-| 2022 | | | | | |
-| 2023 | | | | | |
-| 2024 | | | | | PENDING |
-| 2025 | | | | | PENDING |
+| 2020 | 94.0% | | 92.3% | | |
+| 2021 | 93.7% | | 91.7% | | |
+| 2022 | 92.3% | | 89.7% | | |
+| 2023 | 91.6% | | 90.0% | | |
+| 2024 | 68.1% | | 62.7% | | PENDING |
+| 2025 | 34.3% | | 24.9% | | PENDING |
 
-**Status**: PENDING
+**Status**: BASELINE RECORDED (2026-01-17)
 
 ---
 
@@ -147,9 +147,11 @@ WHERE processed_date BETWEEN '2025-12-27' AND '2026-01-03'
 
 **Expected Result**: `pct >= 70` (at least 70% of records have authors)
 
-**Actual Result**: PENDING
+**Before Result** (2026-01-17): `total=391,112 | with_authors=53,931 | pct=13.8%`
 
-**Status**: PENDING
+**After Result**: PENDING
+
+**Status**: BASELINE RECORDED - confirms regression (only 13.8% have authors)
 
 ---
 
@@ -165,9 +167,11 @@ curl -s "https://api.openalex.org/works/https://doi.org/10.1016/j.enbuild.2024.1
 
 **Expected Result**: Non-empty array of affiliation strings
 
-**Actual Result**: PENDING
+**Before Result** (2026-01-17): `[]` (empty array - 4 authorships but NO affiliations)
 
-**Status**: PENDING
+**After Result**: PENDING
+
+**Status**: BASELINE RECORDED - confirms affected DOI has no affiliations
 
 ---
 
@@ -189,9 +193,9 @@ WHERE processed_date >= '2026-01-04'
 
 **Expected Result**: `pct >= 70` (success rate maintained or improved)
 
-**Actual Result**: PENDING
+**Baseline Result** (2026-01-17): `total=170,132 | with_authors=133,399 | pct=78.4%`
 
-**Status**: PENDING
+**Status**: ✅ PASSING - new records after Jan 4 have 78.4% author extraction rate
 
 ---
 
@@ -207,9 +211,9 @@ python qa/exploration/scripts/verify_nees_elsevier.py --sample 50
 
 **Expected Result**: At least 50% of sampled DOIs return affiliations from API
 
-**Actual Result**: PENDING
+**Actual Result**: SKIPPED - verification script missing required input file
 
-**Status**: PENDING
+**Status**: SKIPPED (will verify manually after fix)
 
 ---
 
@@ -217,7 +221,7 @@ python qa/exploration/scripts/verify_nees_elsevier.py --sample 50
 
 | Date | Tester | Tests Run | Results | Notes |
 |------|--------|-----------|---------|-------|
-| | | | | |
+| 2026-01-17 | Claude | Tests 1-6 | Baseline recorded | Test 7 skipped (missing input file). Regression confirmed: Elsevier 2024 at 68.1% (vs 91.6% in 2023), 2025 at 34.3%. Affected period has only 13.8% with authors. |
 
 ---
 

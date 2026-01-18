@@ -1,0 +1,67 @@
+# Refresh Stale Parser Responses
+#
+# Maintenance job to fix records in taxicab_enriched_new where cached parser_response
+# is stale. Calls Parseland API directly and updates the cached response.
+#
+# Usage:
+#   databricks bundle deploy -t prod
+#   databricks bundle run Refresh_Stale_Parser_Responses
+#
+# Or run via Databricks UI after deploying.
+
+resources:
+  jobs:
+    Refresh_Stale_Parser_Responses:
+      name: Refresh Stale Parser Responses
+      description: >
+        Maintenance job to refresh stale parser_response cache in taxicab_enriched_new.
+        Run manually when needed to fix records with missing affiliations.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+      tasks:
+        - task_key: refresh_parser_responses
+          notebook_task:
+            notebook_path: notebooks/maintenance/RefreshStaleParserResponses
+            source: GIT
+            base_parameters:
+              start_date: "2025-12-27"
+              end_date: "2026-01-03"
+              publisher_filter: "10.1016/%"
+              batch_size: "1000"
+              max_workers: "50"
+              dry_run: "false"
+          job_cluster_key: maintenance_cluster
+          timeout_seconds: 14400  # 4 hours
+      job_clusters:
+        - job_cluster_key: maintenance_cluster
+          new_cluster:
+            spark_version: 16.4.x-scala2.12
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+            node_type_id: m5.xlarge
+            driver_node_type_id: m5.xlarge
+            enable_elastic_disk: true
+            data_security_mode: USER_ISOLATION
+            runtime_engine: STANDARD
+            num_workers: 0  # Single node - work is I/O bound (Parseland API calls)
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      parameters:
+        - name: start_date
+          default: "2025-12-27"
+        - name: end_date
+          default: "2026-01-03"
+        - name: publisher_filter
+          default: "10.1016/%"
+        - name: batch_size
+          default: "1000"
+        - name: max_workers
+          default: "50"
+        - name: dry_run
+          default: "false"

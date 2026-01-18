@@ -60,17 +60,35 @@ A Databricks notebook that:
 
 ## Rollout Strategy
 
-1. **Phase 1: Elsevier (10.1016)**
+1. **Phase 1: Elsevier (10.1016)** - **BLOCKED - NOTEBOOK FIX REQUIRED**
    - Run with `publisher_filter = '10.1016/%'`
-   - ~337K records, ~4 hours
+   - ~330K records, ~4 hours
    - Verify success before continuing
+   - **Status**: Job failed multiple times due to schema inference error
+   - **Issue**: The `update_schema` definition in the Databricks notebook has malformed indentation (progressive indentation on each StructField line) causing `SyntaxError: unmatched ']'`
+   - **Root Cause**: When the schema was added to the notebook, the text was pasted incorrectly with progressively increasing indentation
+   - **Fix Required**: Edit cell 8 of the Databricks notebook at `Users/richard@openalex.org/openalex-walden/notebooks/scraping/RefreshStaleParserResponses` to fix the `update_schema` definition indentation
+   - **Correct Code** (from local file `fix/RefreshStaleParserResponses.py` lines 131-140):
+     ```python
+     # Schema for the update DataFrame (explicit to avoid type inference failures on empty arrays)
+     update_schema = StructType([
+         StructField("taxicab_id", StringType(), True),
+         StructField("new_authors", ArrayType(author_schema), True),
+         StructField("new_urls", ArrayType(url_schema), True),
+         StructField("new_license", StringType(), True),
+         StructField("new_version", StringType(), True),
+         StructField("new_abstract", StringType(), True),
+         StructField("new_had_error", BooleanType(), True)
+     ])
+     ```
+   - **Note**: Browser-based editing of Databricks notebooks via automation proved unreliable - recommend manual editing in Databricks UI
 
-2. **Phase 2: Other major publishers**
+2. **Phase 2: Other major publishers** - PENDING
    - Wiley (10.1002): ~24K records
    - Springer (10.1007): ~17K records
    - Run each separately to catch any publisher-specific issues
 
-3. **Phase 3: Remaining publishers**
+3. **Phase 3: Remaining publishers** - PENDING
    - Remove publisher filter
    - Process all remaining ~850K records
 
