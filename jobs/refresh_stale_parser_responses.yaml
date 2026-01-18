@@ -32,7 +32,7 @@ resources:
               max_workers: "50"
               dry_run: "false"
           job_cluster_key: maintenance_cluster
-          timeout_seconds: 14400  # 4 hours
+          timeout_seconds: 43200  # 12 hours
       job_clusters:
         - job_cluster_key: maintenance_cluster
           new_cluster:

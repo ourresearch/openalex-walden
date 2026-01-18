@@ -265,7 +265,9 @@ for batch_num in range(total_batches):
             })
 
         # Create temp view and UPDATE (use explicit schema to handle empty arrays)
+        # Deduplicate by taxicab_id to avoid MERGE conflicts
         update_df = spark.createDataFrame(update_data, schema=update_schema)
+        update_df = update_df.dropDuplicates(["taxicab_id"])
         update_df.createOrReplaceTempView("batch_updates")
 
         # UPDATE using MERGE
