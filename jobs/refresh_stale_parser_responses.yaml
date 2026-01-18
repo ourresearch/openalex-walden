@@ -47,7 +47,12 @@ resources:
             enable_elastic_disk: true
             data_security_mode: USER_ISOLATION
             runtime_engine: STANDARD
-            num_workers: 0  # Single node - work is I/O bound (Parseland API calls)
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: "local[*]"
+            custom_tags:
+              ResourceClass: SingleNode
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub

@@ -1,0 +1,8 @@
+bundle:
+  name: openalex-walden
+
+workspace:
+  host: https://dbc-ce570f73-0362.cloud.databricks.com
+
+include:
+  - jobs/refresh_stale_parser_responses.yaml
