@@ -543,7 +543,7 @@ After the notebook has been verified and CreateAwards.ipynb has been run success
 
 Edit `jobs/create_work_awards.json` to add the new funder:
 
-1. **Add a new task** for the funder notebook in the `settings.tasks` array. Example for a new funder "XYZ":
+1. **Add a new task** for the funder notebook in the `new_settings.tasks` array. Example for a new funder "XYZ":
    ```json
    {
      "email_notifications": {},
