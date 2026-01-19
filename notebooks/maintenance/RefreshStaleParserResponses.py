@@ -45,6 +45,8 @@ from pyspark.sql.types import StructType, StructField, StringType, ArrayType, Bo
 # Parameters (can be overridden via job parameters)
 dbutils.widgets.text("start_date", "2025-12-27", "Start Date")
 dbutils.widgets.text("end_date", "2026-01-03", "End Date")
+dbutils.widgets.text("cutoff_date", "", "Cutoff Date (for before_cutoff mode)")
+dbutils.widgets.dropdown("filter_mode", "date_range", ["date_range", "before_cutoff"], "Filter Mode")
 dbutils.widgets.text("publisher_filter", "10.1016/%", "Publisher Filter (DOI prefix)")
 dbutils.widgets.text("batch_size", "1000", "Batch Size")
 dbutils.widgets.text("max_workers", "50", "Max Parallel Workers")
@@ -52,6 +54,8 @@ dbutils.widgets.dropdown("dry_run", "false", ["true", "false"], "Dry Run")
 
 START_DATE = dbutils.widgets.get("start_date")
 END_DATE = dbutils.widgets.get("end_date")
+CUTOFF_DATE = dbutils.widgets.get("cutoff_date")
+FILTER_MODE = dbutils.widgets.get("filter_mode")
 PUBLISHER_FILTER = dbutils.widgets.get("publisher_filter")
 BATCH_SIZE = int(dbutils.widgets.get("batch_size"))
 MAX_WORKERS = int(dbutils.widgets.get("max_workers"))
@@ -60,8 +64,12 @@ DRY_RUN = dbutils.widgets.get("dry_run") == "true"
 PARSELAND_URL = "http://parseland-load-balancer-667160048.us-east-1.elb.amazonaws.com/parseland"
 
 print(f"Configuration:")
-print(f"  Start Date: {START_DATE}")
-print(f"  End Date: {END_DATE}")
+print(f"  Filter Mode: {FILTER_MODE}")
+if FILTER_MODE == "date_range":
+    print(f"  Start Date: {START_DATE}")
+    print(f"  End Date: {END_DATE}")
+else:
+    print(f"  Cutoff Date: {CUTOFF_DATE} (records processed BEFORE this date)")
 print(f"  Publisher Filter: {PUBLISHER_FILTER}")
 print(f"  Batch Size: {BATCH_SIZE}")
 print(f"  Max Workers: {MAX_WORKERS}")
@@ -74,6 +82,13 @@ print(f"  Dry Run: {DRY_RUN}")
 
 # COMMAND ----------
 
+# Build date filter clause based on filter_mode
+if FILTER_MODE == "date_range":
+    date_filter = f"DATE(processed_date) BETWEEN '{START_DATE}' AND '{END_DATE}'"
+else:
+    # before_cutoff mode - target records processed before the cutoff date
+    date_filter = f"DATE(processed_date) < '{CUTOFF_DATE}'"
+
 # Query affected UUIDs
 affected_query = f"""
 SELECT
@@ -81,7 +96,7 @@ SELECT
     native_id,
     url
 FROM openalex.landing_page.taxicab_enriched_new
-WHERE DATE(processed_date) BETWEEN '{START_DATE}' AND '{END_DATE}'
+WHERE {date_filter}
   AND size(parser_response.authors) = 0
   AND parser_response.had_error = false
   AND url NOT LIKE '%/pdf%'
@@ -89,6 +104,7 @@ WHERE DATE(processed_date) BETWEEN '{START_DATE}' AND '{END_DATE}'
   AND native_id LIKE '{PUBLISHER_FILTER}'
 """
 
+print(f"Query date filter: {date_filter}")
 print(f"Querying affected records...")
 affected_df = spark.sql(affected_query)
 total_affected = affected_df.count()
@@ -345,9 +361,10 @@ if not DRY_RUN:
     SELECT
         COUNT(*) as total,
         SUM(CASE WHEN size(parser_response.authors) > 0 THEN 1 ELSE 0 END) as with_authors,
-        SUM(CASE WHEN size(parser_response.authors) = 0 THEN 1 ELSE 0 END) as without_authors
+        SUM(CASE WHEN size(parser_response.authors) = 0 THEN 1 ELSE 0 END) as without_authors,
+        SUM(CASE WHEN size(filter(parser_response.authors, a -> size(a.affiliations) > 0)) > 0 THEN 1 ELSE 0 END) as with_affiliations
     FROM openalex.landing_page.taxicab_enriched_new
-    WHERE DATE(processed_date) BETWEEN '{START_DATE}' AND '{END_DATE}'
+    WHERE {date_filter}
       AND url NOT LIKE '%/pdf%'
       AND native_id LIKE '{PUBLISHER_FILTER}'
     """

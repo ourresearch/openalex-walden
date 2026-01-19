@@ -16,6 +16,7 @@ resources:
       description: >
         Maintenance job to refresh stale parser_response cache in taxicab_enriched_new.
         Run manually when needed to fix records with missing affiliations.
+        Supports two filter modes: date_range (BETWEEN) or before_cutoff (< cutoff_date).
       email_notifications:
         on_failure:
           - jason@ourresearch.org
@@ -25,6 +26,8 @@ resources:
             notebook_path: notebooks/maintenance/RefreshStaleParserResponses
             source: GIT
             base_parameters:
+              filter_mode: "before_cutoff"
+              cutoff_date: "2025-12-01"
               start_date: "2025-12-27"
               end_date: "2026-01-03"
               publisher_filter: "10.1016/%"
@@ -32,7 +35,7 @@ resources:
               max_workers: "50"
               dry_run: "false"
           job_cluster_key: maintenance_cluster
-          timeout_seconds: 43200  # 12 hours
+          timeout_seconds: 86400  # 24 hours (larger dataset)
       job_clusters:
         - job_cluster_key: maintenance_cluster
           new_cluster:
@@ -58,6 +61,10 @@ resources:
         git_provider: gitHub
         git_branch: main
       parameters:
+        - name: filter_mode
+          default: "before_cutoff"
+        - name: cutoff_date
+          default: "2025-12-01"
         - name: start_date
           default: "2025-12-27"
         - name: end_date
