@@ -1,0 +1,19 @@
+{
+    "id": "3af2aad5-467d-4b1e-883d-3ff415fc9c68",
+    "pipeline_type": "WORKSPACE",
+    "development": true,
+    "continuous": false,
+    "channel": "CURRENT",
+    "photon": true,
+    "libraries": [
+        {
+            "notebook": {
+                "path": "/Shared/openalex-walden/notebooks/institutions/ROR"
+            }
+        }
+    ],
+    "name": "ROR",
+    "serverless": true,
+    "catalog": "openalex",
+    "target": "institutions"
+}
