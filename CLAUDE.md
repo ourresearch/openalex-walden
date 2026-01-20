@@ -37,5 +37,19 @@ Setup: See `docs/DATABRICKS_SETUP.md`
 
 - `jobs/` - Databricks job configs (YAML)
 - `notebooks/` - DLT pipelines and transformations
+- `notebooks/maintenance/` - One-off fix/maintenance notebooks
 - `libraries/dlt_utils/` - Reusable DLT utilities
 - `utils/` - Local utilities (including databricks_sql.py)
+- `qa/issues/` - QA issue tracking and documentation
+
+## Editing Notebooks
+
+Databricks notebooks (`.ipynb`) store cell sources as JSON arrays of strings (one per line). Using the `NotebookEdit` tool replaces the entire cell, which can change the JSON format and create large diffs.
+
+**To minimize diffs when editing notebooks:**
+
+1. **For small changes**: Use the `Edit` tool directly on the `.ipynb` file to make surgical edits to specific lines within the JSON structure, preserving the original format.
+
+2. **For temporary changes** (e.g., one-time fixes run on Databricks): Make the change, run it on Databricks, then restore with `git checkout <file>` - no commit needed.
+
+3. **For permanent changes**: If using `NotebookEdit`, verify the diff with `git diff` before committing to ensure only the intended changes are present.

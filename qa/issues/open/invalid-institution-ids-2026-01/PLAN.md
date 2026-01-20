@@ -76,38 +76,62 @@ WHERE EXISTS(
 
 The pipeline is incremental (`WHERE updated_date > max_updated_date`), so existing affected records won't be automatically fixed.
 
-### Option A: Targeted backfill notebook (recommended)
+### Approach Used: Modify UpdateWorkAuthorships
 
-Create a maintenance notebook that:
-1. Identifies affected work_ids from `work_authorships` where institutions contain I-1
-2. Re-processes only those ~1.68M works by running the authorships enrichment logic for just those IDs
+Modified `UpdateWorkAuthorships.ipynb` to include affected records in the `base_works` CTE:
 
 ```sql
--- Get affected work_ids
-CREATE OR REPLACE TEMP VIEW affected_works AS
-SELECT work_id
-FROM openalex.works.work_authorships
-WHERE EXISTS(
-    authorships,
-    a -> EXISTS(a.institutions, inst -> inst.id = "https://openalex.org/I-1")
-);
-
--- Then run the same CTE logic from UpdateWorkAuthorships but filtered to affected_works
+WHERE (updated_date > max_updated_date
+       OR id IN (
+           SELECT work_id FROM identifier('openalex' || :env_suffix || '.works.work_authorships')
+           WHERE EXISTS(authorships, a -> EXISTS(a.institutions, inst -> inst.id = 'https://openalex.org/I-1'))
+       ))
 ```
 
-### Option B: Force full reprocess
-
-Set `max_updated_date` to a date before the affected records were created, triggering a full reprocess. This is slower but simpler.
+This processes both new/updated records AND existing records with I-1 institution IDs.
 
 ## Execution Steps
 
 1. [x] Create `qa/issues/open/invalid-institution-ids-2026-01/PLAN.md` with fix documentation
 2. [x] Update `CreateRawAffiliationStringsInstitutionsMV.ipynb` to filter -1 from overrides
-3. [ ] Refresh the MV on Databricks
-4. [x] Create fix notebook (`notebooks/maintenance/FixInvalidInstitutionIds.ipynb`)
-5. [ ] Run backfill
-6. [ ] Verify with acceptance query
-7. [ ] Close issue
+3. [x] Refresh `raw_affiliation_strings_institutions_mv` on Databricks
+4. [x] Refresh `work_author_affiliations_mv` on Databricks
+5. [x] Modify `UpdateWorkAuthorships.ipynb` to include affected records
+6. [x] Run UpdateWorkAuthorships pipeline (fixed ~1.68M records)
+7. [x] Delete stale records with I-1 institutions (3,324 deleted)
+8. [x] Verify with acceptance query (returns 0)
+9. [x] Revert `UpdateWorkAuthorships.ipynb` to normal incremental behavior
+10. [ ] Sync deleted work_ids to Elasticsearch
+11. [ ] Close issue
+
+## Delete Stale Records
+
+After the fix, 3,324 works still have I-1 institutions. Investigation showed:
+- 16 works: not in `openalex_works_base` at all
+- 3,308 works: have empty authorships (`SIZE(authorships) = 0`) in the base table
+
+These are stale records - the source no longer has authorships data, but `work_authorships` retained old data with I-1 institutions.
+
+### Delete query:
+
+```sql
+DELETE FROM openalex.works.work_authorships
+WHERE EXISTS(authorships, a -> EXISTS(a.institutions, inst -> inst.id = 'https://openalex.org/I-1'))
+```
+
+### Sync deleted work_ids to Elasticsearch:
+
+After deletion, sync these work_ids to remove/update them in Elasticsearch:
+
+```sql
+SELECT work_id
+FROM openalex.works.work_authorships VERSION AS OF 160
+WHERE EXISTS(authorships, a -> EXISTS(a.institutions, inst -> inst.id = 'https://openalex.org/I-1'))
+```
+
+### Table history reference:
+- Version 160 (2026-01-20 18:45:05): Fix applied via MERGE
+- Affected records span versions before this fix
 
 ---
 
