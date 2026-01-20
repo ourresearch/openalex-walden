@@ -101,8 +101,9 @@ This processes both new/updated records AND existing records with I-1 institutio
 7. [x] Delete stale records with I-1 institutions (3,324 deleted)
 8. [x] Verify with acceptance query (returns 0)
 9. [x] Revert `UpdateWorkAuthorships.ipynb` to normal incremental behavior
-10. [ ] Sync deleted work_ids to Elasticsearch
-11. [ ] Close issue
+10. [x] Sync affected work_ids to Elasticsearch (~1.68M works)
+11. [x] Verify fix in OpenAlex API (sampled 5 works, all clean)
+12. [x] Close issue
 
 ## Delete Stale Records
 
