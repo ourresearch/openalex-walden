@@ -48,7 +48,7 @@ Databricks notebooks (`.ipynb`) store cell sources as JSON arrays of strings (on
 
 **To minimize diffs when editing notebooks:**
 
-1. **For small changes**: Use the `Edit` tool directly on the `.ipynb` file to make surgical edits to specific lines within the JSON structure, preserving the original format.
+1. **For small changes**: Use `sed` via Bash to make surgical edits to specific lines within the JSON structure, preserving the original format. The `Edit` tool cannot edit `.ipynb` files directly.
 
 2. **For temporary changes** (e.g., one-time fixes run on Databricks): Make the change, run it on Databricks, then restore with `git checkout <file>` - no commit needed.
 
