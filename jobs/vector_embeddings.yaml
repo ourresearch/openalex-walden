@@ -27,6 +27,9 @@ resources:
               first_on_demand: 1
               availability: ON_DEMAND
               zone_id: auto
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 100
             node_type_id: m5.xlarge
             num_workers: 0
             spark_conf:
