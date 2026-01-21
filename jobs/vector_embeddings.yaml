@@ -14,8 +14,8 @@ resources:
       tasks:
         - task_key: generate_embeddings
           notebook_task:
-            notebook_path: /Workspace/Shared/openalex-walden/notebooks/vector_search/BatchEmbeddings
-            source: WORKSPACE
+            notebook_path: notebooks/vector_search/BatchEmbeddings
+            source: GIT
           job_cluster_key: embedding-cluster
           timeout_seconds: 864000  # 10 days
       job_clusters:
