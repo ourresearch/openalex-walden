@@ -53,3 +53,16 @@ Databricks notebooks (`.ipynb`) store cell sources as JSON arrays of strings (on
 2. **For temporary changes** (e.g., one-time fixes run on Databricks): Make the change, run it on Databricks, then restore with `git checkout <file>` - no commit needed.
 
 3. **For permanent changes**: If using `NotebookEdit`, verify the diff with `git diff` before committing to ensure only the intended changes are present.
+
+## Task Management
+
+Larger tasks and migration projects are tracked in a separate repo: https://github.com/ourresearch/oax-jobs
+
+Structure: `active/<job-name>/` with files:
+- `job.yaml` - Status (exploring, in-progress, complete) and created date
+- `README.md` - Problem statement, current state, log
+- `PLAN.md` - Approach, tasks, completed work
+- `EXPLORE.md` - Research and documentation
+- `ACCEPTANCE.md` - Pass/fail criteria
+
+Update these files when completing significant work on tracked tasks.
