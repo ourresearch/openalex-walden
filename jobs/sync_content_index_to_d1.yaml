@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    Sync_Content_Index_to_D1:
+      name: Sync Content Index to D1
+      description: |
+        Syncs work_id → pdf_uuid/grobid_uuid mappings from locations_mapped to the
+        Cloudflare D1 database that powers api.openalex.org/content/*
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        # Run daily at 03:00 UTC (after end2end typically completes ~02:30 UTC)
+        quartz_cron_expression: 0 0 3 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED  # Start paused until secret is configured
+      tasks:
+        - task_key: sync_content_index
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_content_index_to_d1
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
