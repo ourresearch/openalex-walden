@@ -6,7 +6,15 @@ resources:
         on_failure:
           - casey@ourresearch.org
       tasks:
+        - task_key: create_update_institutions
+          notebook_task:
+            notebook_path: notebooks/institutions/CreateUpdateInstitutionsFromRor
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+          timeout_seconds: 3600
         - task_key: ror_derived_tables
+          depends_on:
+            - task_key: create_update_institutions
           notebook_task:
             notebook_path: notebooks/institutions/CreateRorDerivedTables
             source: GIT
