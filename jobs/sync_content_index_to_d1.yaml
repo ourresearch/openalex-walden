@@ -18,7 +18,21 @@ resources:
           notebook_task:
             notebook_path: notebooks/elastic/sync_content_index_to_d1
             source: GIT
-            warehouse_id: 4d37bf76372a2901
+          job_cluster_key: d1-sync-cluster
+      job_clusters:
+        - job_cluster_key: d1-sync-cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: m5.large
+            num_workers: 0
+            spark_conf:
+              spark.master: "local[*, 4]"
+              spark.databricks.cluster.profile: singleNode
+            aws_attributes:
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+            custom_tags:
+              ResourceClass: SingleNode
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
