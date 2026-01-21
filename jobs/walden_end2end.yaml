@@ -162,14 +162,24 @@ resources:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT
             warehouse_id: 4d37bf76372a2901
-        - task_key: Sync_to_Elasticsearch
+        - task_key: Guardrails
           depends_on:
             - task_key: Works_Enriched
+          notebook_task:
+            notebook_path: notebooks/end2end/Guardrails
+            base_parameters:
+              guardrails_override: "{{job.parameters.guardrails_override}}"
+              env_suffix: "{{job.parameters.env_suffix}}"
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Sync_to_Elasticsearch
+          depends_on:
+            - task_key: Guardrails
           run_job_task:
             job_id: 989175517612703
         - task_key: Wunpaywall
           depends_on:
-            - task_key: Works_Enriched
+            - task_key: Guardrails
           notebook_task:
             notebook_path: notebooks/end2end/CreateWunpaywall
             source: GIT
@@ -234,5 +244,7 @@ resources:
         - name: openalex
           default: openalex
         - name: force_large_load
+          default: "false"
+        - name: guardrails_override
           default: "false"
       performance_target: PERFORMANCE_OPTIMIZED
