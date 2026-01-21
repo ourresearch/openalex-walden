@@ -10,7 +10,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/institutions/CreateRorDerivedTables
             source: GIT
-            warehouse_id: ${var.warehouse_id}
+            warehouse_id: 3996dc0a9b183ce3
           timeout_seconds: 1800
         - task_key: institution_ancestors
           depends_on:
@@ -18,7 +18,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/institutions/CreateInstitutionAncestors
             source: GIT
-            warehouse_id: ${var.warehouse_id}
+            warehouse_id: 3996dc0a9b183ce3
           timeout_seconds: 1800
         - task_key: institutions_api
           depends_on:
@@ -26,7 +26,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/elastic/create_institutions_api
             source: GIT
-            warehouse_id: ${var.warehouse_id}
+            warehouse_id: 3996dc0a9b183ce3
           timeout_seconds: 3600
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
