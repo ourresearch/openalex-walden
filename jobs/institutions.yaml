@@ -2,6 +2,11 @@ resources:
   jobs:
     Institutions:
       name: Institutions
+      trigger:
+        pause_status: UNPAUSED
+        periodic:
+          interval: 1
+          unit: DAYS
       email_notifications:
         on_failure:
           - casey@ourresearch.org
