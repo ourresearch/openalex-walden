@@ -6,4 +6,5 @@ workspace:
 
 include:
   - jobs/refresh_stale_parser_responses.yaml
+  - jobs/sync_content_index_to_d1.yaml
   - jobs/vector_embeddings.yaml
