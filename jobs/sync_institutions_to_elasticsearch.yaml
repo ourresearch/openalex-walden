@@ -1,0 +1,30 @@
+resources:
+  jobs:
+    Sync_Institutions_to_Elasticsearch:
+      name: Sync Institutions to Elasticsearch
+      trigger:
+        pause_status: UNPAUSED
+        periodic:
+          interval: 1
+          unit: DAYS
+      tasks:
+        - task_key: create_institutions_api_table
+          notebook_task:
+            notebook_path: notebooks/elastic/create_institutions_api
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+          timeout_seconds: 3600
+        - task_key: sync_institutions_to_elasticsearch
+          depends_on:
+            - task_key: create_institutions_api_table
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_institutions
+            source: GIT
+          timeout_seconds: 1800
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
