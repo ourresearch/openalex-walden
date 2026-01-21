@@ -1,0 +1,27 @@
+resources:
+  jobs:
+    Sync_Publishers_to_Elasticsearch:
+      name: Sync Publishers to Elasticsearch
+      schedule:
+        quartz_cron_expression: 0 0 0 ? * SUN
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: create_publishers_api
+          notebook_task:
+            notebook_path: notebooks/elastic/create_publishers_api
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: sync_publishers_to_elasticsearch
+          depends_on:
+            - task_key: create_publishers_api
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_publishers
+            source: GIT
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
