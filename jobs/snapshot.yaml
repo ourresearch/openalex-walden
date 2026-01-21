@@ -24,6 +24,15 @@ resources:
           min_retry_interval_millis: 300000
           retry_on_timeout: true
           timeout_seconds: 7200
+        - task_key: export_publishers
+          job_cluster_key: snapshot_publishers_cluster
+          notebook_task:
+            notebook_path: notebooks/snapshot/export_publishers
+            source: GIT
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 1800
       job_clusters:
         - job_cluster_key: snapshot_works_cluster
           new_cluster:
@@ -63,6 +72,23 @@ resources:
             enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
+        - job_cluster_key: snapshot_publishers_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.sql.adaptive.enabled: "true"
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              spot_bid_price_percent: 100
+            node_type_id: i3.xlarge
+            enable_elastic_disk: false
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            kind: CLASSIC_PREVIEW
+            is_single_node: true
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
