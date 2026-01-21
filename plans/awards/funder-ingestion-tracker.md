@@ -121,4 +121,35 @@ This document tracks the progress of adding new funders to OpenAlex.
 | Infosys Prize                                                        | Step 0   | Research prize - Science & Humanities, annual, $100K. India-based                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Blavatnik Awards                                                     | Step 0   | Research prize - Science, annual, $250K. Early-career signal                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Canada Council Prizes                                                | Step 0   | Arts prizes - Canada-based. Data source: https://canadacouncil.ca/funding/prizes                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ANID/FONDECYT (Chile) | Step 0 | Chilean research agency. Historical projects 1982-2025. Data sources: https://servicios.anid.cl/web/buscador-de-proyectos/ (searchable portal) and https://github.com/ANID-GITHUB/Historico-de-Proyectos-Adjudicados (CSV dataset) |
+| MinCiencias (Colombia) | Step 0 | Colombian science ministry. Data sources: https://minciencias.gov.co/ciudadano/datosabiertos and https://www.datos.gov.co (open data portal with research projects) |
+| CONAHCYT (Mexico) | Step 0 | Mexican science council. Data source: https://www.datos.gob.mx/organization/conahcyt (scholarship beneficiaries and project databases) |
+| CONCYTEC/PROCIENCIA (Peru) | Step 0 | Peruvian science council. Data sources: https://perucris.concytec.gob.pe/busca-y-descubre (PeruCRIS portal) and https://datosabiertos.gob.pe (open data) |
+| National Research Fund (Kenya) | Step 0 | Kenyan research funder. 1,816+ projects. Data sources: https://repository.nrf.go.ke/ and https://researchfund.go.ke/funded-projects/ |
+| TETFund (Nigeria) | Step 0 | Nigerian tertiary education funder. Data sources: https://tetfund.gov.ng/index.php/beneficiaries-portal/ and https://beneficiary.tetfund.gov.ng/ |
+| SERB (India) | Step 0 | Indian research board. SERB-PRISM searchable repository. Data source: https://prism.serbonline.in/ (all SERB-funded projects with outcomes) |
+| MyGRANTS/MOHE (Malaysia) | Step 0 | Malaysian grant management system (FRGS, PRGS, LRGS). Data sources: https://mygrants.gov.my/ and https://www.mohe.gov.my/en/services/research/mygrants |
+| NRCT/Thai National Research Repository (Thailand) | Step 0 | Thai national research repository. Data sources: https://tnrr.nriis.go.th/ (searchable repository with open data API) and https://opendata.nrct.go.th/en/ |
+| NAFOSTED (Vietnam) | Step 0 | Vietnamese science foundation. Data source: https://nafosted.gov.vn/en/ (funded project lists by program/year) |
+| IDRC (International Development Research Centre) | Step 0 | Canada-based, Global South focus. Projects since 1970. Data sources: https://idl-bnc-idrc.dspacedirect.org/ (digital library) and https://open.canada.ca/data/organization/idrc-crdi (IATI data) |
+| Inter-American Development Bank (IDB/IADB) | Step 0 | Regional development bank. Science/innovation programs. Data source: public project search portal |
+| Qatar National Research Fund (QNRF) | Step 0 | Qatari research funder. Data sources: https://www.qgrants.org/ and https://pub.qgrants.org/Awards (searchable awards database) |
+| ANII (Uruguay) | Step 0 | Uruguayan research agency. 15+ years of projects. Data sources: https://anii.org.uy/ and https://prisma.uy/ (PRISMA portal with indicators) |
+| Agencia I+D+i (Argentina) | Step 0 | Argentine research agency. Data source: https://www.argentina.gob.ar/ciencia/agencia/ueac-informes-y-publicaciones/adjudicaciones (annual PDF reports 2008-2022) |
+| National Research Foundation (South Africa) | Step 0 | South African research funder. Data source: public Register of Grants |
+| SENESCYT (Ecuador) | Step 0 | Ecuadorian higher education/science secretariat. Innovation programs with public data |
+| MICITT (Costa Rica) | Step 0 | Costa Rican science/technology ministry. Research programs |
+| FAPERJ (Brazil) | Step 0 | Rio de Janeiro state research foundation. Data source: government portal |
+| FAPEMIG (Brazil) | Step 0 | Minas Gerais state research foundation. Data source: government portal |
+| FINEP (Brazil) | Step 0 | Brazilian innovation agency. Program outputs available |
+| UNCST (Uganda) | Step 0 | Uganda National Council for Science and Technology. Sectoral research programs |
+| COSTECH (Tanzania) | Step 0 | Tanzania Commission for Science and Technology. Research programs |
+| African Academy of Sciences (AESA) | Step 0 | Pan-African science academy. Grantee lists by program |
+| LPDP (Indonesia) | Step 0 | Indonesian scholarship/research funder. Government portal |
+| BRIN (Indonesia) | Step 0 | Indonesian National Research and Innovation Agency. Research programs |
+| DOST (Philippines) | Step 0 | Philippine Department of Science and Technology. Council programs publish awardee lists |
+| HEC (Pakistan) | Step 0 | Pakistan Higher Education Commission. Research programs |
+| University Grants Commission (Bangladesh) | Step 0 | Bangladesh research funder. National science foundation publishes awardee lists |
+| National Science Foundation (Sri Lanka) | Step 0 | Sri Lankan research funder. Awardee lists available |
+| Nepal Academy of Science and Technology | Step 0 | Nepali research organization. Grant program listings |
 
