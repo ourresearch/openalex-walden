@@ -22,7 +22,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
     "table_name": "openalex.publishers.publishers_api",
-    "index_name": "publishers-v4"
+    "index_name": "publishers-v5"
 }
 
 def send_partition_to_elastic(partition, index_name):
