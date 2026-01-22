@@ -226,6 +226,18 @@
           "email_notifications": {},
           "environment_key": "Default",
           "notebook_task": {
+            "notebook_path": "/Workspace/Shared/openalex-walden/notebooks/awards/CreateAcademyOfFinlandAwards",
+            "source": "WORKSPACE"
+          },
+          "run_if": "ALL_SUCCESS",
+          "task_key": "Academy_of_Finland_Awards",
+          "timeout_seconds": 0,
+          "webhook_notifications": {}
+        },
+        {
+          "email_notifications": {},
+          "environment_key": "Default",
+          "notebook_task": {
             "notebook_path": "/Workspace/Shared/openalex-walden/notebooks/awards/CreateNWOAwards",
             "source": "WORKSPACE"
           },
@@ -364,6 +376,9 @@
             },
             {
               "task_key": "NASA_Awards"
+            },
+            {
+              "task_key": "Academy_of_Finland_Awards"
             }
           ],
           "email_notifications": {},
