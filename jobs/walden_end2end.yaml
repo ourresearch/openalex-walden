@@ -171,7 +171,6 @@ resources:
               guardrails_override: "{{job.parameters.guardrails_override}}"
               env_suffix: "{{job.parameters.env_suffix}}"
             source: GIT
-            warehouse_id: 4d37bf76372a2901
         - task_key: Sync_to_Elasticsearch
           depends_on:
             - task_key: Guardrails
