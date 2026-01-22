@@ -44,6 +44,8 @@ Setup: See `docs/DATABRICKS_SETUP.md`
 
 ## Editing Notebooks
 
+**SQL Warehouse Constraint**: Jobs configured with `warehouse_id` run on a SQL warehouse, which only supports SQL cells. Use `%sql` magic or SQL cell types. For Python/Spark code, use a compute cluster instead (no `warehouse_id`).
+
 Databricks notebooks (`.ipynb`) store cell sources as JSON arrays of strings (one per line). Using the `NotebookEdit` tool replaces the entire cell, which can change the JSON format and create large diffs.
 
 **To minimize diffs when editing notebooks:**
