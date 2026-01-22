@@ -174,8 +174,16 @@ resources:
         - task_key: Sync_to_Elasticsearch
           depends_on:
             - task_key: Guardrails
-          run_job_task:
-            job_id: 989175517612703
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            base_parameters:
+              is_full_sync: "false"
+              delete_index: "false"
+              op_type: index
+              oreo_only: "false"
+              repartition: "false"
+            source: GIT
+          job_cluster_key: es_sync_cluster
         - task_key: Wunpaywall
           depends_on:
             - task_key: Guardrails
@@ -215,6 +223,24 @@ resources:
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
       job_clusters:
+        - job_cluster_key: es_sync_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: rd-fleet.12xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 2
         - job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
           new_cluster:
             cluster_name: ""

@@ -1,0 +1,62 @@
+resources:
+  jobs:
+    Sync_Works_to_ElasticSearch:
+      name: Sync All Works to Elasticsearch
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      tasks:
+        - task_key: sync_to_elasticsearch
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+          job_cluster_key: 768_96_job_cluster
+      job_clusters:
+        - job_cluster_key: 768_96_job_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: rd-fleet.12xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 2
+        - job_cluster_key: es_sync_daily
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.12
+            aws_attributes:
+              zone_id: auto
+            node_type_id: rgd-fleet.16xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            data_security_mode: DATA_SECURITY_MODE_DEDICATED
+            runtime_engine: STANDARD
+            kind: CLASSIC_PREVIEW
+            is_single_node: true
+      queue:
+        enabled: true
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      parameters:
+        - name: delete_index
+          default: "false"
+        - name: is_full_sync
+          default: "true"
+        - name: op_type
+          default: index
+        - name: oreo_only
+          default: "false"
+        - name: repartition
+          default: "false"
