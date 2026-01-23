@@ -50,13 +50,5 @@ resources:
         git_provider: gitHub
         git_branch: main
       parameters:
-        - name: delete_index
-          default: "false"
         - name: is_full_sync
           default: "true"
-        - name: op_type
-          default: index
-        - name: oreo_only
-          default: "false"
-        - name: repartition
-          default: "false"

@@ -178,10 +178,6 @@ resources:
             notebook_path: notebooks/elastic/sync_works
             base_parameters:
               is_full_sync: "false"
-              delete_index: "false"
-              op_type: index
-              oreo_only: "false"
-              repartition: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
         - task_key: Wunpaywall
