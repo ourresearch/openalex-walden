@@ -1,7 +1,7 @@
 resources:
   jobs:
-    Vacuum_Tables:
-      name: Vacuum Tables
+    Vacuum_Optimize_Tables:
+      name: Vacuum Optimize Tables
       schedule:
         quartz_cron_expression: 0 0 6 ? * SUN
         timezone_id: UTC
@@ -10,9 +10,9 @@ resources:
         on_failure:
           - casey@ourresearch.org
       tasks:
-        - task_key: vacuum_works_tables
+        - task_key: vacuum_optimize_works_tables
           notebook_task:
-            notebook_path: notebooks/maintenance/VacuumTables
+            notebook_path: notebooks/maintenance/VacuumOptimizeTables
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
           timeout_seconds: 14400
