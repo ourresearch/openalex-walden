@@ -8,6 +8,6 @@ include:
   - jobs/refresh_stale_parser_responses.yaml
   - jobs/sync_all_works_to_elasticsearch.yaml
   - jobs/sync_content_index_to_d1.yaml
-  - jobs/vacuum_tables.yaml
+  - jobs/vacuum_optimize_tables.yaml
   - jobs/vector_embeddings.yaml
   - jobs/walden_end2end.yaml
