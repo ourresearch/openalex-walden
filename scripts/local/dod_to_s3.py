@@ -72,7 +72,7 @@ GRANT_TYPES = ["02", "03", "04", "05"]  # Block, Formula, Project, Cooperative
 
 # Fiscal year range
 START_YEAR = 2001
-END_YEAR = 2025
+END_YEAR = 2018  # FY2019+ has API issues, same as DOE/NASA
 
 # API settings
 REQUEST_DELAY = 2.0  # Seconds between status checks
