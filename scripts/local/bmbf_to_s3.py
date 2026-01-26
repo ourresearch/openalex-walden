@@ -80,6 +80,7 @@ MAX_RETRIES = 3  # Max retries per request
 RETRY_BACKOFF = 2.0  # Exponential backoff multiplier
 CHECKPOINT_INTERVAL = 100  # Save checkpoint every N projects
 PAGE_SIZE = 1000  # Results per page (maximum allowed)
+MAX_PAGES = 350  # Safety limit: 300k results / 1000 per page = 300, add buffer
 
 # S3 destination
 S3_BUCKET = "openalex-ingest"
@@ -506,6 +507,11 @@ def search_all_projects(session: requests.Session, max_fkz: Optional[int] = None
 
         # Check if we got a full page (more pages available)
         if len(page_fkz) < PAGE_SIZE:
+            break
+
+        # Safety: stop at max pages to prevent infinite loops
+        if page >= MAX_PAGES:
+            print(f"  [INFO] Reached MAX_PAGES limit ({MAX_PAGES}), stopping search")
             break
 
         page += 1
