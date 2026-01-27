@@ -117,9 +117,17 @@ resources:
             notebook_path: notebooks/end2end/PrepareAffiliationStrings
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        - task_key: Sync_RAS_Curations
+          depends_on:
+            - task_key: Works_Base
+          notebook_task:
+            notebook_path: notebooks/end2end/SyncRasCurations
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
         - task_key: Institutions_Frontfill
           depends_on:
             - task_key: Prepare_Affiliation_Strings
+            - task_key: Sync_RAS_Curations
           run_job_task:
             job_id: 462221738638096
         - task_key: SDG_Frontfill
