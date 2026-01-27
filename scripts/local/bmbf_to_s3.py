@@ -447,12 +447,15 @@ def search_all_projects(session: requests.Session, max_fkz: Optional[int] = None
     while True:
         # Build search form data
         # Using wildcard search to get all projects
+        # Pagination uses 1-indexed listrowfrom: page 1 = 1, page 2 = 1001, etc.
         form_data = {
             'actionMode': 'searchlist',
             'suche.detailSuche': 'false',
             'suche.schnellSuche': '%',  # Wildcard to match all
             'suche.listrowpersite': str(PAGE_SIZE),
-            'suche.listStart': str((page - 1) * PAGE_SIZE),
+            'suche.orderby': '1',
+            'suche.order': 'asc',
+            'suche.listrowfrom': str((page - 1) * PAGE_SIZE + 1),  # 1-indexed
         }
 
         for attempt in range(MAX_RETRIES):
