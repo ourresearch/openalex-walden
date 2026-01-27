@@ -400,6 +400,9 @@
             },
             {
               "task_key": "ISCIII_Awards"
+            },
+            {
+              "task_key": "GACR_Awards"
             }
           ],
           "email_notifications": {},
@@ -568,6 +571,18 @@
           },
           "run_if": "ALL_SUCCESS",
           "task_key": "ISCIII_Awards",
+          "timeout_seconds": 0,
+          "webhook_notifications": {}
+        },
+        {
+          "email_notifications": {},
+          "environment_key": "Default",
+          "notebook_task": {
+            "notebook_path": "/Workspace/Shared/openalex-walden/notebooks/awards/CreateGACRAwards",
+            "source": "WORKSPACE"
+          },
+          "run_if": "ALL_SUCCESS",
+          "task_key": "GACR_Awards",
           "timeout_seconds": 0,
           "webhook_notifications": {}
         }
