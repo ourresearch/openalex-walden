@@ -68,7 +68,7 @@ try:
     two_days_ago = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
 
     df = (spark.table(f"{CONFIG['table_name']}")
-        .filter(F.col("created_date") >= two_days_ago)
+        .filter(F.col("updated_date") >= two_days_ago)
         .withColumn("id", F.concat(F.lit("https://openalex.org/A"), F.col("id").cast("string")))
         .withColumn("topics", F.slice(F.col("topics"), 1, 5))
         .withColumn("topic_share", F.slice(F.col("topic_share"), 1, 5))
