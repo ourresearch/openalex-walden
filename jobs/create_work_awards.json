@@ -403,6 +403,9 @@
             },
             {
               "task_key": "GACR_Awards"
+            },
+            {
+              "task_key": "ANID_Awards"
             }
           ],
           "email_notifications": {},
@@ -583,6 +586,18 @@
           },
           "run_if": "ALL_SUCCESS",
           "task_key": "GACR_Awards",
+          "timeout_seconds": 0,
+          "webhook_notifications": {}
+        },
+        {
+          "email_notifications": {},
+          "environment_key": "Default",
+          "notebook_task": {
+            "notebook_path": "/Workspace/Shared/openalex-walden/notebooks/awards/CreateANIDAwards",
+            "source": "WORKSPACE"
+          },
+          "run_if": "ALL_SUCCESS",
+          "task_key": "ANID_Awards",
           "timeout_seconds": 0,
           "webhook_notifications": {}
         }
