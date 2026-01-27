@@ -1,0 +1,40 @@
+resources:
+  jobs:
+    Sync_Authors_to_Elasticsearch:
+      name: Sync Authors to Elasticsearch
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 35 0 5 * * ?
+        timezone_id: America/Chicago
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: sync_authors
+          job_cluster_key: sync_authors_cluster
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_authors
+            source: GIT
+      job_clusters:
+        - job_cluster_key: sync_authors_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              availability: ON_DEMAND
+            node_type_id: rd-fleet.12xlarge
+            driver_node_type_id: rd-fleet.4xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            data_security_mode: DATA_SECURITY_MODE_DEDICATED
+            runtime_engine: STANDARD
+            kind: CLASSIC_PREVIEW
+            is_single_node: false
+            num_workers: 2
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
