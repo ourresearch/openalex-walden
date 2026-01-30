@@ -5,6 +5,7 @@ workspace:
   host: https://dbc-ce570f73-0362.cloud.databricks.com
 
 include:
+  - jobs/authors.yaml
   - jobs/refresh_stale_parser_responses.yaml
   - jobs/sync_all_works_to_elasticsearch.yaml
   - jobs/sync_content_index_to_d1.yaml
