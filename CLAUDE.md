@@ -33,22 +33,24 @@ Key schemas: `openalex.works`, `openalex.works_legacy`
 
 Setup: See `docs/DATABRICKS_SETUP.md`
 
-## CRITICAL: Do NOT Run `databricks bundle deploy`
+## Databricks Asset Bundles (DAB)
 
-**Never run `databricks bundle deploy` in this repo.** It will create duplicate Databricks jobs.
+Some jobs are managed via DAB (`databricks bundle deploy`), others are GUI-created.
 
-Most jobs in `jobs/*.yaml` are **documentation only** — the actual jobs were created via Databricks GUI. DAB (Databricks Asset Bundles) can't adopt existing jobs; it creates new ones. Running `bundle deploy` will:
-- Create duplicate jobs with identical schedules
-- Cause job collisions (both try to run, one fails)
-- Break critical pipelines like E2E
+**DAB-managed jobs** (safe to deploy):
+- `refresh_stale_parser_responses.yaml`
+- `sync_content_index_to_d1.yaml`
+- `vector_embeddings.yaml`
 
-**Incident 2026-01-31:** An agent ran `bundle deploy`, creating 4 duplicate jobs. E2E failed for a day.
+**GUI-created jobs** (do NOT add to databricks.yml):
+- `walden_end2end.yaml` — E2E pipeline (job 616701029470182)
+- `authors.yaml` — Authors job (job 63282467302934)
+- `vacuum_optimize_tables.yaml` — Vacuum job (job 338726300270570)
+- `sync_all_works_to_elasticsearch.yaml` — ES sync (job 80188194259425)
 
-**If you need to update a Databricks job:**
-1. Edit it directly in the Databricks UI, OR
-2. Use `databricks jobs update` CLI with the existing job ID
+These YAMLs exist for documentation but must NOT be included in `databricks.yml`. DAB can't adopt existing GUI jobs — it creates duplicates with identical schedules, causing collisions.
 
-See `databricks.yml` for which YAMLs are actually DAB-managed (currently only 3 utility jobs).
+**Incident 2026-01-31:** Bundle deploy included GUI-job YAMLs, created 4 duplicates, E2E failed for a day.
 
 ## Project Structure
 
