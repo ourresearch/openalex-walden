@@ -31,8 +31,8 @@ resources:
               start_date: "2025-12-27"
               end_date: "2026-01-03"
               publisher_filter: "10.1016/%"
-              batch_size: "1000"
-              max_workers: "50"
+              batch_size: "5000"
+              max_workers: "150"
               dry_run: "false"
           job_cluster_key: maintenance_cluster
           timeout_seconds: 86400  # 24 hours (larger dataset)
@@ -72,8 +72,8 @@ resources:
         - name: publisher_filter
           default: "10.1016/%"
         - name: batch_size
-          default: "1000"
+          default: "5000"
         - name: max_workers
-          default: "50"
+          default: "150"
         - name: dry_run
           default: "false"
