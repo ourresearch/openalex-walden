@@ -33,9 +33,26 @@ Key schemas: `openalex.works`, `openalex.works_legacy`
 
 Setup: See `docs/DATABRICKS_SETUP.md`
 
+## CRITICAL: Do NOT Run `databricks bundle deploy`
+
+**Never run `databricks bundle deploy` in this repo.** It will create duplicate Databricks jobs.
+
+Most jobs in `jobs/*.yaml` are **documentation only** — the actual jobs were created via Databricks GUI. DAB (Databricks Asset Bundles) can't adopt existing jobs; it creates new ones. Running `bundle deploy` will:
+- Create duplicate jobs with identical schedules
+- Cause job collisions (both try to run, one fails)
+- Break critical pipelines like E2E
+
+**Incident 2026-01-31:** An agent ran `bundle deploy`, creating 4 duplicate jobs. E2E failed for a day.
+
+**If you need to update a Databricks job:**
+1. Edit it directly in the Databricks UI, OR
+2. Use `databricks jobs update` CLI with the existing job ID
+
+See `databricks.yml` for which YAMLs are actually DAB-managed (currently only 3 utility jobs).
+
 ## Project Structure
 
-- `jobs/` - Databricks job configs (YAML)
+- `jobs/` - Databricks job configs (YAML) — mostly documentation, NOT deployed via DAB
 - `notebooks/` - DLT pipelines and transformations
 - `notebooks/maintenance/` - One-off fix/maintenance notebooks
 - `libraries/dlt_utils/` - Reusable DLT utilities
