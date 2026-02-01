@@ -5,10 +5,21 @@ workspace:
   host: https://dbc-ce570f73-0362.cloud.databricks.com
 
 include:
-  - jobs/authors.yaml
+  # SAFE: These jobs were DAB-managed before Jan 31 and have no GUI duplicates
   - jobs/refresh_stale_parser_responses.yaml
-  - jobs/sync_all_works_to_elasticsearch.yaml
   - jobs/sync_content_index_to_d1.yaml
-  - jobs/vacuum_optimize_tables.yaml
   - jobs/vector_embeddings.yaml
-  - jobs/walden_end2end.yaml
+
+  # ============================================================================
+  # WARNING: The following job YAMLs exist but are NOT included here.
+  # They have GUI-created versions that are the "real" jobs.
+  # Running `databricks bundle deploy` with these included creates DUPLICATES.
+  #
+  # Incident 2026-01-31: Bundle deploy created 4 duplicate jobs, breaking E2E.
+  #
+  # DO NOT ADD THESE BACK without first importing existing jobs into terraform:
+  #   - jobs/authors.yaml           → GUI job 63282467302934 (Casey)
+  #   - jobs/sync_all_works_to_elasticsearch.yaml → GUI job 80188194259425 (Casey)
+  #   - jobs/vacuum_optimize_tables.yaml → GUI job 338726300270570 (Casey)
+  #   - jobs/walden_end2end.yaml    → GUI job 616701029470182 (Casey)
+  # ============================================================================
