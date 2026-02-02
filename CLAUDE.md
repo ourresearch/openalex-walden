@@ -37,6 +37,11 @@ Setup: See `docs/DATABRICKS_SETUP.md`
 
 Jobs are deployed via DAB (`databricks bundle deploy`). As of 2026-02-01, DAB uses a shared state location (`/Workspace/Shared/.bundle/openalex-walden`) so all team members deploy to the same jobs.
 
+**Before deploying:** Always pull the latest changes first to avoid overwriting others' work:
+```bash
+git pull origin main && databricks bundle deploy
+```
+
 **DAB-managed jobs** (safe to deploy):
 - `authors.yaml` — Authors job
 - `refresh_stale_parser_responses.yaml` — Parser maintenance
