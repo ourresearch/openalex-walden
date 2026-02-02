@@ -35,9 +35,7 @@ Setup: See `docs/DATABRICKS_SETUP.md`
 
 ## Databricks Asset Bundles (DAB)
 
-Some jobs are managed via DAB (`databricks bundle deploy`), others are GUI-created.
-
-DAB uses a shared state location (`/Workspace/Shared/.bundle/openalex-walden`) so all team members deploy to the same jobs.
+Jobs are deployed via DAB (`databricks bundle deploy`). As of 2026-02-01, DAB uses a shared state location (`/Workspace/Shared/.bundle/openalex-walden`) so all team members deploy to the same jobs.
 
 **DAB-managed jobs** (safe to deploy):
 - `authors.yaml` — Authors job
