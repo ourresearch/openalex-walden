@@ -89,34 +89,16 @@ else:
     # before_cutoff mode - target records processed before the cutoff date
     date_filter = f"DATE(processed_date) < '{CUTOFF_DATE}'"
 
-# Query affected UUIDs
-# Filter taxicab_enriched_new first (small set), then check if those DOIs
-# exist in openalex_works with the desired criteria:
-#   - publication_year >= 2023
-#   - type = 'article'
-#   - indexed_in_crossref = true
-# This is much faster than scanning all of openalex_works first.
+# Query affected UUIDs - simple query on taxicab_enriched_new only
 affected_query = f"""
-WITH candidates AS (
-  SELECT taxicab_id, native_id, url
-  FROM openalex.landing_page.taxicab_enriched_new
-  WHERE {date_filter}
-    AND size(parser_response.authors) = 0
-    AND parser_response.had_error = false
-    AND url NOT LIKE '%/pdf%'
-    AND url NOT LIKE '%.pdf%'
-    AND native_id LIKE '{PUBLISHER_FILTER}'
-)
-SELECT c.taxicab_id, c.native_id, c.url
-FROM candidates c
-WHERE EXISTS (
-  SELECT 1 FROM openalex.works.openalex_works w
-  LATERAL VIEW EXPLODE(w.locations) AS loc
-  WHERE loc.native_id = c.native_id
-    AND w.publication_year >= 2023
-    AND w.type = 'article'
-    AND w.indexed_in_crossref = true
-)
+SELECT taxicab_id, native_id, url
+FROM openalex.landing_page.taxicab_enriched_new
+WHERE {date_filter}
+  AND size(parser_response.authors) = 0
+  AND parser_response.had_error = false
+  AND url NOT LIKE '%/pdf%'
+  AND url NOT LIKE '%.pdf%'
+  AND native_id LIKE '{PUBLISHER_FILTER}'
 """
 
 print(f"Query date filter: {date_filter}")
@@ -252,14 +234,15 @@ print(f"Collected {len(taxicab_ids):,} UUIDs")
 
 # COMMAND ----------
 
-# Process in batches
+# Process in batches - accumulate all results, then do ONE MERGE at the end
+# This is much faster than doing a MERGE after each batch (40 table scans -> 1)
 total_batches = (len(taxicab_ids) + BATCH_SIZE - 1) // BATCH_SIZE
-successful_updates = 0
 failed_updates = 0
 records_with_authors = 0
+all_update_data = []  # Accumulate all successful results here
 
 print(f"\nProcessing {len(taxicab_ids):,} records in {total_batches} batches...")
-print(f"Estimated time: {len(taxicab_ids) / (MAX_WORKERS * 60):.1f} minutes\n")
+print(f"Will do ONE MERGE at the end instead of {total_batches} separate MERGEs\n")
 
 start_time = datetime.now()
 
@@ -277,54 +260,21 @@ for batch_num in range(total_batches):
 
     failed_updates += len(failed)
 
-    if successful and not DRY_RUN:
-        # Create DataFrame with new parser_response values
-        update_data = []
-        for r in successful:
-            has_authors = len(r.get("authors", [])) > 0
-            if has_authors:
-                records_with_authors += 1
+    # Accumulate successful results
+    for r in successful:
+        has_authors = len(r.get("authors", [])) > 0
+        if has_authors:
+            records_with_authors += 1
 
-            update_data.append({
-                "taxicab_id": r["taxicab_id"],
-                "new_authors": r.get("authors", []),
-                "new_urls": r.get("urls", []),
-                "new_license": r.get("license", ""),
-                "new_version": r.get("version", ""),
-                "new_abstract": r.get("abstract", ""),
-                "new_had_error": r.get("had_error", False)
-            })
-
-        # Create temp view and UPDATE (use explicit schema to handle empty arrays)
-        # Deduplicate by taxicab_id to avoid MERGE conflicts
-        update_df = spark.createDataFrame(update_data, schema=update_schema)
-        update_df = update_df.dropDuplicates(["taxicab_id"])
-        update_df.createOrReplaceTempView("batch_updates")
-
-        # UPDATE using MERGE
-        spark.sql("""
-            MERGE INTO openalex.landing_page.taxicab_enriched_new AS target
-            USING batch_updates AS source
-            ON target.taxicab_id = source.taxicab_id
-            WHEN MATCHED THEN UPDATE SET
-                target.parser_response = struct(
-                    source.new_authors AS authors,
-                    source.new_urls AS urls,
-                    source.new_license AS license,
-                    source.new_version AS version,
-                    source.new_abstract AS abstract,
-                    source.new_had_error AS had_error
-                )
-        """)
-
-        successful_updates += len(successful)
-
-    elif successful and DRY_RUN:
-        # Dry run - just count
-        for r in successful:
-            if len(r.get("authors", [])) > 0:
-                records_with_authors += 1
-        successful_updates += len(successful)
+        all_update_data.append({
+            "taxicab_id": r["taxicab_id"],
+            "new_authors": r.get("authors", []),
+            "new_urls": r.get("urls", []),
+            "new_license": r.get("license", ""),
+            "new_version": r.get("version", ""),
+            "new_abstract": r.get("abstract", ""),
+            "new_had_error": r.get("had_error", False)
+        })
 
     # Progress update every 10 batches
     if (batch_num + 1) % 10 == 0 or batch_num == total_batches - 1:
@@ -336,6 +286,38 @@ for batch_num in range(total_batches):
               f"Processed {batch_end:,}/{len(taxicab_ids):,} "
               f"({rate:.0f}/sec, ETA: {eta_seconds/60:.1f} min) "
               f"| With authors: {records_with_authors:,} | Failed: {failed_updates}")
+
+# Now do ONE MERGE with all accumulated results
+successful_updates = len(all_update_data)
+print(f"\nParseland calls complete. Now doing single MERGE for {successful_updates:,} records...")
+
+if all_update_data and not DRY_RUN:
+    merge_start = datetime.now()
+
+    # Create DataFrame with all results (use explicit schema to handle empty arrays)
+    # Deduplicate by taxicab_id to avoid MERGE conflicts
+    update_df = spark.createDataFrame(all_update_data, schema=update_schema)
+    update_df = update_df.dropDuplicates(["taxicab_id"])
+    update_df.createOrReplaceTempView("all_updates")
+
+    # ONE MERGE for everything
+    spark.sql("""
+        MERGE INTO openalex.landing_page.taxicab_enriched_new AS target
+        USING all_updates AS source
+        ON target.taxicab_id = source.taxicab_id
+        WHEN MATCHED THEN UPDATE SET
+            target.parser_response = struct(
+                source.new_authors AS authors,
+                source.new_urls AS urls,
+                source.new_license AS license,
+                source.new_version AS version,
+                source.new_abstract AS abstract,
+                source.new_had_error AS had_error
+            )
+    """)
+
+    merge_elapsed = (datetime.now() - merge_start).total_seconds()
+    print(f"MERGE completed in {merge_elapsed/60:.1f} minutes")
 
 # COMMAND ----------
 
