@@ -90,29 +90,33 @@ else:
     date_filter = f"DATE(processed_date) < '{CUTOFF_DATE}'"
 
 # Query affected UUIDs
-# Join with openalex_works to filter for:
+# Filter taxicab_enriched_new first (small set), then check if those DOIs
+# exist in openalex_works with the desired criteria:
 #   - publication_year >= 2023
 #   - type = 'article'
 #   - indexed_in_crossref = true
-# This focuses the Parseland fix on works where it's most likely to help.
+# This is much faster than scanning all of openalex_works first.
 affected_query = f"""
-WITH target_works AS (
-  SELECT DISTINCT loc.native_id
-  FROM openalex.works.openalex_works w
+WITH candidates AS (
+  SELECT taxicab_id, native_id, url
+  FROM openalex.landing_page.taxicab_enriched_new
+  WHERE {date_filter}
+    AND size(parser_response.authors) = 0
+    AND parser_response.had_error = false
+    AND url NOT LIKE '%/pdf%'
+    AND url NOT LIKE '%.pdf%'
+    AND native_id LIKE '{PUBLISHER_FILTER}'
+)
+SELECT c.taxicab_id, c.native_id, c.url
+FROM candidates c
+WHERE EXISTS (
+  SELECT 1 FROM openalex.works.openalex_works w
   LATERAL VIEW EXPLODE(w.locations) AS loc
-  WHERE w.publication_year >= 2023
+  WHERE loc.native_id = c.native_id
+    AND w.publication_year >= 2023
     AND w.type = 'article'
     AND w.indexed_in_crossref = true
-    AND loc.native_id LIKE '{PUBLISHER_FILTER}'
 )
-SELECT t.taxicab_id, t.native_id, t.url
-FROM openalex.landing_page.taxicab_enriched_new t
-INNER JOIN target_works tw ON t.native_id = tw.native_id
-WHERE {date_filter}
-  AND size(t.parser_response.authors) = 0
-  AND t.parser_response.had_error = false
-  AND t.url NOT LIKE '%/pdf%'
-  AND t.url NOT LIKE '%.pdf%'
 """
 
 print(f"Query date filter: {date_filter}")
