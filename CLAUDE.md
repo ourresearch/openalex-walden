@@ -37,24 +37,23 @@ Setup: See `docs/DATABRICKS_SETUP.md`
 
 Some jobs are managed via DAB (`databricks bundle deploy`), others are GUI-created.
 
+DAB uses a shared state location (`/Workspace/Shared/.bundle/openalex-walden`) so all team members deploy to the same jobs.
+
 **DAB-managed jobs** (safe to deploy):
-- `refresh_stale_parser_responses.yaml`
-- `sync_content_index_to_d1.yaml`
-- `vector_embeddings.yaml`
+- `authors.yaml` — Authors job
+- `refresh_stale_parser_responses.yaml` — Parser maintenance
+- `sync_all_works_to_elasticsearch.yaml` — ES sync
+- `sync_content_index_to_d1.yaml` — D1 sync
+- `vacuum_optimize_tables.yaml` — Table maintenance
+- `vector_embeddings.yaml` — Embeddings generator
+- `walden_end2end.yaml` — E2E pipeline
 
-**GUI-created jobs** (do NOT add to databricks.yml):
-- `walden_end2end.yaml` — E2E pipeline (job 616701029470182)
-- `authors.yaml` — Authors job (job 63282467302934)
-- `vacuum_optimize_tables.yaml` — Vacuum job (job 338726300270570)
-- `sync_all_works_to_elasticsearch.yaml` — ES sync (job 80188194259425)
-
-These YAMLs exist for documentation but must NOT be included in `databricks.yml`. DAB can't adopt existing GUI jobs — it creates duplicates with identical schedules, causing collisions.
-
-**Incident 2026-01-31:** Bundle deploy included GUI-job YAMLs, created 4 duplicates, E2E failed for a day.
+**Binding existing jobs:** If a job already exists and needs to be added to DAB, bind it first:
+`databricks bundle deployment bind <resource_name> <job_id> --auto-approve`
 
 ## Project Structure
 
-- `jobs/` - Databricks job configs (YAML) — mostly documentation, NOT deployed via DAB
+- `jobs/` - Databricks job configs (YAML) deployed via DAB
 - `notebooks/` - DLT pipelines and transformations
 - `notebooks/maintenance/` - One-off fix/maintenance notebooks
 - `libraries/dlt_utils/` - Reusable DLT utilities

@@ -44,7 +44,6 @@ resources:
           timeout_seconds: 3600
         - task_key: Union
           depends_on:
-            - task_key: Landing_Page_Ingest_DLT
             - task_key: Crossref_Ingest_DLT
             - task_key: PubMed_Ingest_DLT
             - task_key: Mag_Ingest_DLT
