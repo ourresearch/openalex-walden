@@ -3,7 +3,7 @@ resources:
     Authors:
       name: Authors
       schedule:
-        quartz_cron_expression: 36 0 4 * * ?
+        quartz_cron_expression: 36 0 12 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
