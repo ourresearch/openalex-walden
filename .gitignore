@@ -142,3 +142,6 @@ scripts/local/*_data/
 kaken_data/
 
 .claude
+
+# Exception for maintenance utilities
+!notebooks/maintenance/lib/
