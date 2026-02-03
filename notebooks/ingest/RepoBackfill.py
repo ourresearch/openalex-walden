@@ -719,13 +719,14 @@ parsed_df = clean_df \
     .withColumn(
     "is_oa",
         when(
-            lower(col("license")).startswith("cc") | 
+            lower(col("license")).startswith("cc") |
             lower(col("license")).contains("other-oa") |
             lower(col("license")).contains("public-domain") |
             has_oa_domain_udf(col("native_id")),
             lit(True)
         ).otherwise(lit(False))
-    )
+    ) \
+    .withColumn("repository_id", col("endpoint_id"))
 
 # Select final columns in the same order as DLT
 parsed_df = parsed_df.select(
@@ -755,7 +756,8 @@ parsed_df = parsed_df.select(
     "references",
     "urls",
     "mesh",
-    "is_oa"
+    "is_oa",
+    "repository_id"
 )
 
 # deduplicate based on native_id and most recent updated date
