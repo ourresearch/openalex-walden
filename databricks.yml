@@ -11,6 +11,7 @@ permissions:
 
 include:
   - jobs/authors.yaml
+  - jobs/concepts_frontfill.yaml
   - jobs/refresh_stale_parser_responses.yaml
   - jobs/sync_all_works_to_elasticsearch.yaml
   - jobs/sync_content_index_to_d1.yaml
