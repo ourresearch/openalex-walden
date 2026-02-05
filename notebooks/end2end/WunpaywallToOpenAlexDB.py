@@ -13,6 +13,8 @@
 # MAGIC
 # MAGIC # safety to require manual override of large record changes
 # MAGIC LARGE_RECORD_COUNT = 1500000
+# MAGIC # batch size for merge operations (smaller = less memory, more transactions)
+# MAGIC MERGE_BATCH_SIZE = 200000
 # MAGIC dbutils.widgets.dropdown("force_large_load", "false", ["false", "true"], "Force Large Load Override")
 # MAGIC force_large_load = dbutils.widgets.get("force_large_load").lower() == "true"
 # MAGIC
@@ -128,25 +130,60 @@
 # MAGIC             .mode("overwrite") \
 # MAGIC             .save()
 # MAGIC         
-# MAGIC         print(f"Created temporary table {temp_table}, merging")
-# MAGIC         
-# MAGIC         # merge data from temporary table to the main table
+# MAGIC         print(f"Created temporary table {temp_table}, merging in batches of {MERGE_BATCH_SIZE:,}")
+# MAGIC
+# MAGIC         # add index on temp table for efficient batched reads
 # MAGIC         with engine.connect() as conn:
 # MAGIC             with conn.begin():
-# MAGIC                 conn.execute(text(f"""
-# MAGIC                     INSERT INTO {table_name} (doi, json_response, updated_date)
-# MAGIC                     SELECT doi, json_response, updated_date
-# MAGIC                     FROM {temp_table}
-# MAGIC                     ON CONFLICT (doi) DO UPDATE SET
-# MAGIC                         json_response = EXCLUDED.json_response,
-# MAGIC                         updated_date = EXCLUDED.updated_date
-# MAGIC                     WHERE {table_name}.updated_date < EXCLUDED.updated_date
-# MAGIC                     OR {table_name}.updated_date IS NULL;
-# MAGIC                 """))
-# MAGIC                 
-# MAGIC                 # clean up the temporary table
+# MAGIC                 conn.execute(text(f"CREATE INDEX ON {temp_table} (doi);"))
+# MAGIC         print("Created index on temp table")
+# MAGIC
+# MAGIC         # get total count and calculate batches
+# MAGIC         with engine.connect() as conn:
+# MAGIC             result = conn.execute(text(f"SELECT COUNT(*) FROM {temp_table};"))
+# MAGIC             temp_count = result.scalar()
+# MAGIC
+# MAGIC         num_batches = (temp_count + MERGE_BATCH_SIZE - 1) // MERGE_BATCH_SIZE
+# MAGIC         print(f"Will process {temp_count:,} records in {num_batches} batches")
+# MAGIC
+# MAGIC         merge_start = time.time()
+# MAGIC         total_merged = 0
+# MAGIC
+# MAGIC         # merge in batches using OFFSET/LIMIT with ordered reads
+# MAGIC         for batch_num in range(num_batches):
+# MAGIC             batch_start = time.time()
+# MAGIC             offset = batch_num * MERGE_BATCH_SIZE
+# MAGIC
+# MAGIC             with engine.connect() as conn:
+# MAGIC                 with conn.begin():
+# MAGIC                     result = conn.execute(text(f"""
+# MAGIC                         INSERT INTO {table_name} (doi, json_response, updated_date)
+# MAGIC                         SELECT doi, json_response, updated_date
+# MAGIC                         FROM {temp_table}
+# MAGIC                         ORDER BY doi
+# MAGIC                         LIMIT {MERGE_BATCH_SIZE} OFFSET {offset}
+# MAGIC                         ON CONFLICT (doi) DO UPDATE SET
+# MAGIC                             json_response = EXCLUDED.json_response,
+# MAGIC                             updated_date = EXCLUDED.updated_date
+# MAGIC                         WHERE {table_name}.updated_date < EXCLUDED.updated_date
+# MAGIC                         OR {table_name}.updated_date IS NULL;
+# MAGIC                     """))
+# MAGIC                     rows_affected = result.rowcount
+# MAGIC
+# MAGIC             total_merged += rows_affected
+# MAGIC             batch_elapsed = time.time() - batch_start
+# MAGIC             overall_elapsed = time.time() - merge_start
+# MAGIC             rate = total_merged / overall_elapsed if overall_elapsed > 0 else 0
+# MAGIC
+# MAGIC             print(f"Batch {batch_num + 1}/{num_batches}: merged {rows_affected:,} rows in {batch_elapsed:.1f}s "
+# MAGIC                   f"(total: {total_merged:,}, rate: {rate:,.0f} rows/s)")
+# MAGIC
+# MAGIC         # clean up the temporary table
+# MAGIC         with engine.connect() as conn:
+# MAGIC             with conn.begin():
 # MAGIC                 conn.execute(text(f"DROP TABLE {temp_table};"))
-# MAGIC                 
-# MAGIC         print(f"Processed {record_count} records")
+# MAGIC
+# MAGIC         total_elapsed = time.time() - merge_start
+# MAGIC         print(f"Merge completed: {total_merged:,} records in {total_elapsed:.1f}s ({total_merged/total_elapsed:,.0f} rows/s)")
 # MAGIC     else:
 # MAGIC         print("No new or updated records to process")
