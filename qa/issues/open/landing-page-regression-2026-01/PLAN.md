@@ -105,7 +105,9 @@ A Databricks notebook that:
 
 ---
 
-## Phase 4: DLT Checkpoint Reset and Backfill (Added 2026-02-04)
+## Phase 4: DLT Checkpoint Reset and Backfill (Added 2026-02-04) - SUPERSEDED
+
+> **Note**: This approach was superseded by Phase 5 (full refresh). The backfill notebook is no longer needed.
 
 ### Problem
 
@@ -116,49 +118,17 @@ The RefreshStaleParserResponses job successfully MERGE'd corrected parser respon
 - The MERGE operation created a non-append commit (version 3334)
 - The DLT pipeline now fails every time it tries to process that commit
 
-### Solution: Two-Step Fix
+### Original Solution (Not Used)
 
-**Step 1: Reset DLT Checkpoint**
+The original plan was a two-step fix:
+1. Reset checkpoint to skip past the MERGE commit
+2. Run BackfillLandingPageWorks.py to manually propagate fixed records
 
-Reset the streaming checkpoint for `landing_page_works_staged_new` to skip past the MERGE commit:
-
-```bash
-databricks api post /api/2.0/pipelines/ff5e63c2-b1b8-49c2-a7c0-2ee246e89e69/updates \
-  --json '{"reset_checkpoint_selection": ["landing_page_works_staged_new"]}'
-```
-
-This unblocks the pipeline for NEW records going forward.
-
-**Step 2: Run Backfill Notebook**
-
-The checkpoint reset skips the MERGE'd records, so they won't flow through DLT automatically. Run the backfill notebook to propagate them directly:
-
-- **Notebook**: `notebooks/maintenance/BackfillLandingPageWorks.py`
-- **What it does**:
-  1. Queries fixed records from `taxicab_enriched_new` (those with authors > 0)
-  2. Applies the same transformations as the DLT pipeline
-  3. MERGEs directly into `landing_page_works`
-- **Safe because**: `landing_page_works` has Change Data Feed enabled, and downstream consumers use `readChangeFeed: true`
-
-### Why MERGE into landing_page_works is Safe
-
-| Table | Downstream Consumer | Read Method | MERGE Safe? |
-|-------|--------------------|--------------| ------------|
-| `taxicab_enriched_new` | `landing_page_works_staged_new` | `dlt.read_stream()` (direct) | ❌ No |
-| `landing_page_works` | `locations_parsed_union` | `.readStream.option("readChangeFeed", "true")` | ✅ Yes |
-
-The Change Data Feed tracks all changes including MERGE updates, so downstream propagation works correctly.
-
-### Execution Order
-
-1. Reset checkpoint (Step 1) - unblocks DLT pipeline
-2. Run backfill notebook (Step 2) - propagates fixed records
-3. Run end2end pipeline - propagates to `openalex_works`
-4. Run acceptance tests
+This approach was abandoned because checkpoint reset caused cascading issues with downstream tables.
 
 ---
 
-## Phase 5: Full Refresh of Intermediate Tables (Updated 2026-02-05)
+## Phase 5: Full Refresh of Intermediate Tables (Updated 2026-02-05) - CURRENT APPROACH
 
 ### What Happened
 
@@ -190,10 +160,20 @@ databricks api post /api/2.0/pipelines/ff5e63c2-b1b8-49c2-a7c0-2ee246e89e69/upda
 
 This will:
 1. Clear checkpoints for the intermediate tables
-2. Reprocess records through the pipeline
-3. UPSERT into `landing_page_works` (existing 55M records preserved)
+2. Re-read ALL records from `taxicab_enriched_new` (including the fixed records from RefreshStaleParserResponses)
+3. Reprocess 58.8M staged + 236M backfill records through the pipeline
+4. UPSERT into `landing_page_works` (existing records preserved)
+
+**Key point:** The fixed records are automatically included - no separate backfill step needed. The full refresh re-reads everything from the source tables, including the MERGE'd corrections.
 
 **Note:** This will reprocess the 236M backfill records, which will take time but is a one-time cost to get the pipeline healthy.
+
+### Execution Steps
+
+1. Run the full refresh command above
+2. Wait for pipeline to complete
+3. Run end2end pipeline to propagate to `openalex_works`
+4. Run acceptance tests
 
 ### Alternative: Skip Backfill Temporarily
 
@@ -201,3 +181,94 @@ If the full refresh takes too long, consider:
 1. Add `startingTimestamp` to the `landing_page_backfill` view to skip historical records
 2. Run the pipeline with only recent records
 3. Remove `startingTimestamp` once healthy (checkpoints will preserve position)
+
+---
+
+## Determinism Analysis (Added 2026-02-05)
+
+Before proceeding with the full refresh, we analyzed whether the refresh would produce deterministic results and preserve existing data.
+
+### Concern: `updated_date` Changes
+
+In `landing_page_works_staged_new`, the code sets:
+```python
+F.current_timestamp().alias("updated_date"),
+F.current_timestamp().alias("created_date"),
+```
+
+After a full refresh, all 58.8M staged records would get NEW timestamps (Feb 2026 instead of their current Feb 2, 2026 timestamp).
+
+### Data Overlap Analysis
+
+| Source | Records | Overlap |
+|--------|---------|---------|
+| Backfill (`landing_page_works_backfill`) | 236.3M | 14.9M shared with staged |
+| Staged (`taxicab_enriched_new`) | 58.8M | 14.9M shared with backfill |
+| Backfill-only | 222.6M | No overlap |
+| Staged-only | 43.9M | No overlap |
+
+For overlapping records, staged already wins 99.995% of the time (newer timestamps). After refresh, staged continues to win.
+
+### Downstream Dependencies on `updated_date`
+
+#### 1. `locations_parsed_union` → `locations_parsed`
+
+```python
+# UnionAllWorksIntoLocationsParsed.ipynb
+spark.readStream
+    .option("readChangeFeed", "true")  # Reads changes from landing_page_works
+    .table(table_name)
+
+dlt.apply_changes(
+    target="locations_parsed",
+    source="locations_parsed_union",
+    keys=["native_id"],
+    sequence_by="updated_date",  # Uses updated_date for conflict resolution
+)
+```
+
+**Impact**: Records with changed `updated_date` will be emitted as `update_postimage` events via Change Data Feed and flow through the pipeline.
+
+#### 2. `CreateSuperLocations.ipynb`
+
+Uses `updated_date` as a **tiebreaker** when selecting which landing page URL wins for a DOI:
+
+```sql
+row_number() over(
+  partition by doi
+  order by
+    url_priority ASC,
+    updated_date DESC NULLS LAST,  -- Tiebreaker
+    native_id ASC NULLS LAST       -- Final tiebreaker
+) as row_num
+```
+
+**Analysis**:
+- 13.6M DOIs have multiple landing page URLs
+- 6.75M DOIs have multiple URLs at the same priority level (rely on `updated_date` tiebreaker)
+- **However**: Staged records already have a uniform `updated_date` (Feb 2, 2026)
+- Changing to a new uniform date (Feb 5, 2026) won't affect tiebreaker outcomes
+
+#### Current `updated_date` Distribution in `locations_parsed`
+
+| Date | Records | Source |
+|------|---------|--------|
+| 2026-02-02 | 55.5M | Staged |
+| 2025-02-19 | 60.0M | Backfill |
+| 2025-02-16 | 64.8M | Backfill |
+| 2025-02-15 | 64.7M | Backfill |
+| 2025-02-14 | 18.5M | Backfill |
+
+### Conclusion: Refresh is Safe
+
+**Data Correctness**: ✅ Safe
+- Staged records already have uniform `updated_date` - changing to a new uniform date won't affect tiebreaker outcomes
+- Staged (Feb 2026) continues to win over backfill (Feb 2025) for overlapping records
+- Data content (authors, affiliations) comes from `taxicab_enriched_new` which is preserved
+- No records will be lost - `apply_changes` does UPSERT, not delete
+
+**Performance Concern**: ⚠️ Reprocessing overhead
+- 58.8M records will be marked as "updated" in the Change Data Feed
+- This triggers reprocessing through `locations_parsed` → `superlocations` → `works_base` → `openalex_works`
+- The end2end pipeline will effectively re-process all landing page data
+- This is a one-time cost to restore pipeline health

@@ -60,8 +60,7 @@ Nees's hypothesis: *"Could it be that scraping landing pages has become harder l
 - [x] Run baseline "Before" queries (recorded 2026-01-17)
 - [x] Fix Databricks notebook syntax error
 - [x] Run RefreshStaleParserResponses to fix `taxicab_enriched_new`
-- [ ] **Reset DLT checkpoint** (unblocks pipeline for new records)
-- [ ] **Run BackfillLandingPageWorks.py** (propagates fixed records to `landing_page_works`)
+- [ ] **Run full refresh of intermediate tables** (re-reads all records including fixes, no separate backfill needed)
 - [ ] Run end2end pipeline (propagates to `openalex_works`)
 - [ ] Run acceptance tests
 - [ ] Close issue
@@ -94,3 +93,4 @@ Nees's hypothesis: *"Could it be that scraping landing pages has become harder l
 | 2026-02-05 | Casey | Identified backfill has 236M records - workaround not feasible |
 | 2026-02-05 | Claude (AI agent) | Reverted `LandingPage.py` to original `dlt.read_stream()` structure |
 | 2026-02-05 | Claude (AI agent) | Updated PLAN.md with Phase 5: full refresh of intermediate tables |
+| 2026-02-05 | Claude (AI agent) | Analyzed determinism of full refresh - confirmed safe for data correctness, documented downstream `updated_date` dependencies |

@@ -50,6 +50,7 @@ resources:
             - task_key: Repos_Ingest_DLT
             - task_key: PDF_Ingest_DLT
             - task_key: DataCite_Ingest_DLT
+            - task_key: Landing_Page_Ingest_DLT
           pipeline_task:
             pipeline_id: bd9dfc4f-7b7f-42a2-b01b-8101c5ab19d5
             full_refresh: false
