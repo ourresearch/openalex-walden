@@ -192,7 +192,8 @@ def taxicab_enriched_new():
 @dlt.table(
     name="landing_page_works_staged_new",
     comment="Intermediate staging table for landing page works",
-    temporary=True
+    # Changed from temporary=True to allow spark.readStream access from downstream tables
+    temporary=False
 )
 def landing_page_works_staged_new():
     # TEMPORARY: startingTimestamp added 2026-02-05 to skip past MERGE commits (versions 3276-3350)
@@ -289,8 +290,27 @@ def landing_page_backfill():
     comment="Combined data from staged and backfill sources"
 )
 def landing_page_combined_new():
-    staged_data = dlt.read_stream("landing_page_works_staged_new")
-    backfill_data = dlt.read_stream("landing_page_backfill")
+    # TEMPORARY: Using spark.readStream with skipChangeCommits and startingTimestamp
+    # to skip past checkpoint issues from full refresh. Remove options after pipeline is healthy.
+    staged_data = (
+        spark.readStream
+            .format("delta")
+            .option("skipChangeCommits", "true")
+            .table("openalex.landing_page.landing_page_works_staged_new")
+    )
+    backfill_data = (
+        spark.readStream
+            .format("delta")
+            .option("skipChangeCommits", "true")
+            .option("startingTimestamp", "2026-02-03T01:00:00")
+            .table("openalex.landing_page.landing_page_works_backfill")
+            .withColumn("license",
+                F.when(
+                    F.col("license") == "other-oa",
+                    F.lit(None)
+                ).otherwise(normalize_license_udf(F.col("license")))
+            )
+    )
     return staged_data.unionByName(backfill_data, allowMissingColumns=True)
 
 # COMMAND ----------
