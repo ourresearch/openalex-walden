@@ -45,8 +45,8 @@ resources:
             use_ml_runtime: true
             is_single_node: false
             autoscale:
-              min_workers: 6
-              max_workers: 16
+              min_workers: 3
+              max_workers: 6
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
