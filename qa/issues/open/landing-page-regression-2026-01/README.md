@@ -87,3 +87,10 @@ Nees's hypothesis: *"Could it be that scraping landing pages has become harder l
 | 2026-02-04 | Coworker | Identified DLT streaming failure - MERGE on `taxicab_enriched_new` broke `landing_page_works_staged_new` checkpoint |
 | 2026-02-04 | Claude (AI agent) | Created `BackfillLandingPageWorks.py` to propagate fixed records bypassing DLT |
 | 2026-02-04 | Claude (AI agent) | Updated issue files with new plan: reset checkpoint + backfill |
+| 2026-02-05 | Casey | Reset DLT checkpoint - caused full reprocess attempt (59M records) |
+| 2026-02-05 | Claude (AI agent) | Added `startingTimestamp` to `landing_page_works_staged_new` - processed 376K records |
+| 2026-02-05 | Casey | `landing_page_combined_new` failed - detected deletes from full refresh |
+| 2026-02-05 | Claude (AI agent) | Attempted workaround with `skipChangeCommits` + `startingTimestamp` on combined table |
+| 2026-02-05 | Casey | Identified backfill has 236M records - workaround not feasible |
+| 2026-02-05 | Claude (AI agent) | Reverted `LandingPage.py` to original `dlt.read_stream()` structure |
+| 2026-02-05 | Claude (AI agent) | Updated PLAN.md with Phase 5: full refresh of intermediate tables |

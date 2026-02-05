@@ -155,3 +155,49 @@ The Change Data Feed tracks all changes including MERGE updates, so downstream p
 2. Run backfill notebook (Step 2) - propagates fixed records
 3. Run end2end pipeline - propagates to `openalex_works`
 4. Run acceptance tests
+
+---
+
+## Phase 5: Full Refresh of Intermediate Tables (Updated 2026-02-05)
+
+### What Happened
+
+The checkpoint reset and `startingTimestamp` workarounds caused cascading issues:
+
+1. Reset checkpoint on `landing_page_works_staged_new` → tried to reprocess all 59M records
+2. Added `startingTimestamp` to skip past MERGE → worked (376K records processed)
+3. But `landing_page_combined_new` failed because it detected deletes from the full refresh
+4. Tried adding `skipChangeCommits` and `startingTimestamp` to `landing_page_combined_new`
+5. This would have required making `landing_page_works_staged_new` non-temporary
+6. The backfill source has 236M records - would take too long to reprocess
+
+### Code Reverted
+
+All temporary workarounds were removed from `LandingPage.py`:
+- Reverted `landing_page_works_staged_new` back to `dlt.read_stream("taxicab_enriched_new")` with `temporary=True`
+- Reverted `landing_page_combined_new` back to `dlt.read_stream()` for both sources
+
+The code is now back to its original structure.
+
+### Current Plan: Full Refresh of Intermediate Tables
+
+Do a full refresh of the intermediate tables (NOT `landing_page_works` which has 55M records):
+
+```bash
+databricks api post /api/2.0/pipelines/ff5e63c2-b1b8-49c2-a7c0-2ee246e89e69/updates \
+  --json '{"full_refresh_selection": ["landing_page_works_staged_new", "landing_page_combined_new", "landing_page_enriched"]}'
+```
+
+This will:
+1. Clear checkpoints for the intermediate tables
+2. Reprocess records through the pipeline
+3. UPSERT into `landing_page_works` (existing 55M records preserved)
+
+**Note:** This will reprocess the 236M backfill records, which will take time but is a one-time cost to get the pipeline healthy.
+
+### Alternative: Skip Backfill Temporarily
+
+If the full refresh takes too long, consider:
+1. Add `startingTimestamp` to the `landing_page_backfill` view to skip historical records
+2. Run the pipeline with only recent records
+3. Remove `startingTimestamp` once healthy (checkpoints will preserve position)
