@@ -97,7 +97,7 @@ def send_partition_to_elastic(partition, index_name):
             client,
             generate_actions(),
             chunk_size=500,
-            thread_count=4
+            thread_count=2  # Reduced from 4 to limit ES load
         ):
             count += 1
             if not success:
@@ -159,7 +159,7 @@ try:
         .filter(F.col("id").isNotNull())
     )
 
-    df = df.repartition(32)  # More partitions for large dataset
+    df = df.repartition(8)  # Reduced from 32 to limit ES load
     record_count = df.count()
     print(f"Total records to process: {record_count}")
 
