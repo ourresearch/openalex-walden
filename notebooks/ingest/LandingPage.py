@@ -195,8 +195,15 @@ def taxicab_enriched_new():
     temporary=True
 )
 def landing_page_works_staged_new():
+    # TEMPORARY: startingTimestamp added 2026-02-05 to skip past MERGE commits (versions 3276-3350)
+    # that broke the streaming checkpoint. Remove after pipeline is healthy.
+    # Do NOT use skipChangeCommits - MERGEs on taxicab_enriched_new are not supported
+    # and should fail explicitly.
     return (
-        dlt.read_stream("taxicab_enriched_new")
+        spark.readStream
+            .format("delta")
+            .option("startingTimestamp", "2026-02-03T01:00:00")
+            .table("openalex.landing_page.taxicab_enriched_new")
         .select(
             F.col("url").alias("native_id"),
             F.lit("url").alias("native_id_namespace"),

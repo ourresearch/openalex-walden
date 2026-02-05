@@ -1,9 +1,9 @@
 # Issue: Landing Page Parser Regression
 
-**Status**: blocked
+**Status**: in-progress
 **Discovered**: 2026-01-09
 **Severity**: high
-**Component**: parseland | pipeline
+**Component**: parseland | pipeline | DLT
 **Reporter**: Nees Jan van Eck (CWTS Leiden)
 
 ## Summary
@@ -36,10 +36,11 @@ Nees's hypothesis: *"Could it be that scraping landing pages has become harder l
 | File | Status | Description |
 |------|--------|-------------|
 | `INVESTIGATION.md` | complete | Root cause analysis |
-| `PLAN.md` | complete | Fix approach |
+| `PLAN.md` | complete | Fix approach (updated with Phase 4) |
 | `ACCEPTANCE.md` | pending | Verification tests |
 | `evidence/` | | Supporting queries |
-| `fix/RefreshStaleParserResponses.py` | complete | Fix notebook |
+| `fix/RefreshStaleParserResponses.py` | complete | Phase 1-3: Fix parser responses in taxicab_enriched_new |
+| `notebooks/maintenance/BackfillLandingPageWorks.py` | complete | Phase 4: Propagate fixed records to landing_page_works |
 
 ## Quick Links
 
@@ -57,8 +58,11 @@ Nees's hypothesis: *"Could it be that scraping landing pages has become harder l
 - [x] Write fix plan
 - [x] Define acceptance criteria
 - [x] Run baseline "Before" queries (recorded 2026-01-17)
-- [ ] **Fix Databricks notebook syntax error** (**BLOCKED** - see PLAN.md for details)
-- [ ] Run fix notebook on Databricks
+- [x] Fix Databricks notebook syntax error
+- [x] Run RefreshStaleParserResponses to fix `taxicab_enriched_new`
+- [ ] **Reset DLT checkpoint** (unblocks pipeline for new records)
+- [ ] **Run BackfillLandingPageWorks.py** (propagates fixed records to `landing_page_works`)
+- [ ] Run end2end pipeline (propagates to `openalex_works`)
 - [ ] Run acceptance tests
 - [ ] Close issue
 
@@ -79,3 +83,7 @@ Nees's hypothesis: *"Could it be that scraping landing pages has become harder l
 | 2026-01-17 | Claude (AI agent) | Job failed - SyntaxError in update_schema due to malformed indentation |
 | 2026-01-17 | Claude (AI agent) | Attempted browser-based fix but Databricks notebook editing unreliable via automation |
 | 2026-01-17 | Claude (AI agent) | Updated PLAN.md with fix instructions - manual edit of Databricks notebook required |
+| 2026-02-04 | Casey/Coworker | RefreshStaleParserResponses ran successfully, fixed records in `taxicab_enriched_new` |
+| 2026-02-04 | Coworker | Identified DLT streaming failure - MERGE on `taxicab_enriched_new` broke `landing_page_works_staged_new` checkpoint |
+| 2026-02-04 | Claude (AI agent) | Created `BackfillLandingPageWorks.py` to propagate fixed records bypassing DLT |
+| 2026-02-04 | Claude (AI agent) | Updated issue files with new plan: reset checkpoint + backfill |

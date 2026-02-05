@@ -102,3 +102,56 @@ A Databricks notebook that:
 | Partial failures | Checkpointing allows resume |
 | Wrong records updated | Dry run mode available |
 | Stale HTML in Taxicab | Accept - Parseland returns what's available |
+
+---
+
+## Phase 4: DLT Checkpoint Reset and Backfill (Added 2026-02-04)
+
+### Problem
+
+The RefreshStaleParserResponses job successfully MERGE'd corrected parser responses into `taxicab_enriched_new`. However, this caused a downstream failure:
+
+- DLT streaming tables require **append-only** sources
+- `landing_page_works_staged_new` reads from `taxicab_enriched_new` via `dlt.read_stream()`
+- The MERGE operation created a non-append commit (version 3334)
+- The DLT pipeline now fails every time it tries to process that commit
+
+### Solution: Two-Step Fix
+
+**Step 1: Reset DLT Checkpoint**
+
+Reset the streaming checkpoint for `landing_page_works_staged_new` to skip past the MERGE commit:
+
+```bash
+databricks api post /api/2.0/pipelines/ff5e63c2-b1b8-49c2-a7c0-2ee246e89e69/updates \
+  --json '{"reset_checkpoint_selection": ["landing_page_works_staged_new"]}'
+```
+
+This unblocks the pipeline for NEW records going forward.
+
+**Step 2: Run Backfill Notebook**
+
+The checkpoint reset skips the MERGE'd records, so they won't flow through DLT automatically. Run the backfill notebook to propagate them directly:
+
+- **Notebook**: `notebooks/maintenance/BackfillLandingPageWorks.py`
+- **What it does**:
+  1. Queries fixed records from `taxicab_enriched_new` (those with authors > 0)
+  2. Applies the same transformations as the DLT pipeline
+  3. MERGEs directly into `landing_page_works`
+- **Safe because**: `landing_page_works` has Change Data Feed enabled, and downstream consumers use `readChangeFeed: true`
+
+### Why MERGE into landing_page_works is Safe
+
+| Table | Downstream Consumer | Read Method | MERGE Safe? |
+|-------|--------------------|--------------| ------------|
+| `taxicab_enriched_new` | `landing_page_works_staged_new` | `dlt.read_stream()` (direct) | ❌ No |
+| `landing_page_works` | `locations_parsed_union` | `.readStream.option("readChangeFeed", "true")` | ✅ Yes |
+
+The Change Data Feed tracks all changes including MERGE updates, so downstream propagation works correctly.
+
+### Execution Order
+
+1. Reset checkpoint (Step 1) - unblocks DLT pipeline
+2. Run backfill notebook (Step 2) - propagates fixed records
+3. Run end2end pipeline - propagates to `openalex_works`
+4. Run acceptance tests

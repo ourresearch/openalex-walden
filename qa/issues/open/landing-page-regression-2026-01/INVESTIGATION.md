@@ -102,3 +102,36 @@ WHERE taxicab_id = 'c1653ca3-5d5c-4e2c-9017-b5638e688c65';
 2. **Prevent recurrence?** - Consider adding monitoring for parser success rate anomalies.
 
 3. **PDF URLs?** - PDF URLs have low success rates (~9%) even during normal operation. This is expected since PDF pages don't have structured author data.
+
+---
+
+## Additional Finding: DLT Streaming Incompatibility (2026-02-04)
+
+### Issue Discovered
+
+After running `RefreshStaleParserResponses` to fix records in `taxicab_enriched_new`, the LandingPage DLT pipeline began failing.
+
+### Root Cause
+
+- `landing_page_works_staged_new` is a DLT streaming table that reads from `taxicab_enriched_new`
+- DLT streaming tables require **append-only** sources
+- The `RefreshStaleParserResponses` job used MERGE to update records (version 3334)
+- The pipeline now fails every time it encounters that MERGE commit
+
+### Key Insight
+
+```
+taxicab_enriched_new (MERGE'd)
+    → landing_page_works_staged_new (DLT streaming - FAILS on MERGE)
+    → landing_page_works (has CDF enabled)
+    → locations_parsed_union (uses readChangeFeed - handles MERGE fine)
+```
+
+The issue is specific to **direct streaming** (`dlt.read_stream()`), not **Change Data Feed** (`readChangeFeed: true`).
+
+### Solution
+
+1. Reset the DLT checkpoint for `landing_page_works_staged_new` to skip past the MERGE
+2. Run a backfill notebook to propagate the fixed records directly to `landing_page_works`
+
+See PLAN.md Phase 4 for details.
