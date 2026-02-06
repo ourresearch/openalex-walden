@@ -88,13 +88,11 @@ display(df)
 
 # COMMAND ----------
 
-# delete index if exists
 client = Elasticsearch(
     hosts=[ELASTIC_URL],
     max_retries=5,
     request_timeout=180
 )
-#if client.indices.exists(index=ELASTIC_INDEX):
 client.indices.refresh(index=CONFIG["index_name"])
 
 # COMMAND ----------
