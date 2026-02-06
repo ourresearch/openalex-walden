@@ -33,6 +33,14 @@ resources:
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
           timeout_seconds: 1800
+        - task_key: openalex_institutions
+          depends_on:
+            - task_key: institution_ancestors
+          notebook_task:
+            notebook_path: notebooks/institutions/CreateOpenalexInstitutions
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+          timeout_seconds: 3600
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
