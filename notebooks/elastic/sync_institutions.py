@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
-    "table_name": "openalex.institutions.institutions_api",
+    "table_name": "openalex.institutions.openalex_institutions",
     "index_name": "institutions-v8"
 }
 
