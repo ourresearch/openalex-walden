@@ -4,16 +4,13 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Refresh `openalex.sources.sources_api`
+# MAGIC ### Sync institutions to Elasticsearch
 
 # COMMAND ----------
 
-import uuid
-from datetime import datetime
 from pyspark.sql import functions as F
 from elasticsearch import Elasticsearch, helpers
 import logging
-import json
 
 logging.basicConfig(level=logging.WARNING, format='[%(asctime)s]: %(message)s')
 log = logging.getLogger(__name__)
@@ -66,24 +63,7 @@ print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 try:
     df = (spark.sql(f"SELECT * FROM {CONFIG['table_name']}")
-        # First cast to timestamp
-        .withColumn("created_date", F.to_timestamp("created_date"))
-        .withColumn("updated_date", F.to_timestamp("updated_date"))
-        # Apply range checks using BETWEEN
-        .withColumn(
-            "created_date",
-            F.when(
-                F.col("created_date").between(F.lit("1000-01-01"), F.lit("9999-12-31")),
-                F.col("created_date")
-            ).otherwise(F.lit(None).cast("timestamp"))
-        )
-        .withColumn(
-            "updated_date",
-            F.when(
-                F.col("updated_date").between(F.lit("1000-01-01"), F.lit("9999-12-31")),
-                F.col("updated_date")
-            ).otherwise(F.lit(None).cast("timestamp"))
-        )
+        .withColumn("id", F.concat(F.lit("https://openalex.org/I"), F.col("id")))
         .select("id", F.struct(F.col("*")).alias("_source"))
     )
     df = df.repartition(64)
