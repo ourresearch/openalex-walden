@@ -6,7 +6,7 @@ resources:
         on_failure:
           - casey@ourresearch.org
       schedule:
-        quartz_cron_expression: 18 30 22 * * ?
+        quartz_cron_expression: 0 0 5 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
