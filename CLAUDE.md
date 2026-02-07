@@ -10,6 +10,7 @@ The Walden End2End job runs these stages:
 3. **Transform** - Authorships, locations, parsed names, affiliations
 4. **Enrich** - Topics, institutions matching, author matching
 5. **Output** - Works enriched, Wunpaywall, Elasticsearch sync
+6. **RAS Dashboard** - Refresh affiliation string counts, sync to ES for affiliations dashboard
 
 Main output table: `openalex.works.openalex_works` - used to sync to Elasticsearch and populate Wunpaywall.
 
@@ -76,6 +77,25 @@ Databricks notebooks (`.ipynb`) store cell sources as JSON arrays of strings (on
 2. **For temporary changes** (e.g., one-time fixes run on Databricks): Make the change, run it on Databricks, then restore with `git checkout <file>` - no commit needed.
 
 3. **For permanent changes**: If using `NotebookEdit`, verify the diff with `git diff` before committing to ensure only the intended changes are present.
+
+## Affiliations Dashboard Pipeline
+
+The affiliations dashboard (`raw-affiliation-strings-v2` ES index) is kept in sync by two end2end tasks:
+
+1. **Refresh_RAS_Counts** — SQL notebook (`notebooks/end2end/RefreshRasWorksCounts.ipynb`)
+   - Rebuilds `affiliation_string_works_counts` by exploding `authorships.raw_affiliation_strings` from `OpenAlex_works`
+   - Rebuilds `affiliation_strings_lookup_with_counts` by joining the MV (which includes curations) with fresh counts
+   - Runs on SQL warehouse after `Guardrails`
+
+2. **Sync_RAS_to_Elasticsearch** — Python notebook (`notebooks/elastic/sync_affiliation_strings_to_elastic_v2.py`)
+   - Syncs `affiliation_strings_lookup_with_counts` to ES index `raw-affiliation-strings-v2`
+   - 8 partitions, 2 threads, chunk_size=500
+   - Runs on `es_sync_cluster` after both `Refresh_RAS_Counts` and `Sync_to_Elasticsearch` (avoids concurrent ES writes)
+
+**Key tables:**
+- `openalex.institutions.affiliation_string_works_counts` — per-RAS work counts
+- `openalex.institutions.affiliation_strings_lookup_with_counts` — RAS + institution IDs + counts (feeds ES)
+- `openalex.institutions.raw_affiliation_strings_institutions_mv` — the MV with 3-layer priority (model → override → curation)
 
 ## Task Management
 
