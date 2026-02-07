@@ -188,6 +188,21 @@ resources:
               is_full_sync: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
+        - task_key: Refresh_RAS_Counts
+          depends_on:
+            - task_key: Guardrails
+          notebook_task:
+            notebook_path: notebooks/end2end/RefreshRasWorksCounts
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Sync_RAS_to_Elasticsearch
+          depends_on:
+            - task_key: Refresh_RAS_Counts
+            - task_key: Sync_to_Elasticsearch
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_affiliation_strings_to_elastic_v2
+            source: GIT
+          job_cluster_key: es_sync_cluster
         - task_key: Wunpaywall
           depends_on:
             - task_key: Guardrails
