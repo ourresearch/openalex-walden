@@ -5,6 +5,9 @@ workspace:
   host: https://dbc-ce570f73-0362.cloud.databricks.com
   root_path: /Workspace/Shared/.bundle/${bundle.name}
 
+run_as:
+  service_principal_name: 736e2b72-37fd-4cbd-9313-0e68514ab813
+
 permissions:
   - group_name: users
     level: CAN_MANAGE
