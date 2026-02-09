@@ -44,7 +44,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": ":white_check_mark: *Databricks bundle deployed*\n- Commit: `${{ github.sha }}`\n- By: ${{ github.actor }}\n- <${{ github.event.compare }}|View changes>"
+                    "text": ":white_check_mark: *Databricks bundle deployed*\n- Commit: `${{ github.sha }}`\n- By: ${{ github.actor }}"
                   }
                 }
               ]

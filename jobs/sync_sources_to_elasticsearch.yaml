@@ -25,5 +25,4 @@ resources:
       queue:
         enabled: true
       performance_target: STANDARD
-  - this is broken yaml: [
 
