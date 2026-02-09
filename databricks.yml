@@ -21,6 +21,7 @@ include:
   - jobs/sync_content_index_to_d1.yaml
   - jobs/sync_institutions_to_elasticsearch.yaml
   - jobs/sync_sources_to_elasticsearch.yaml
+  - jobs/sync_topic_hierarchy_to_elasticsearch.yaml
   - jobs/vacuum_optimize_tables.yaml
   - jobs/vector_embeddings.yaml
   - jobs/walden_end2end.yaml
