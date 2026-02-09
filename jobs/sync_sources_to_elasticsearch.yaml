@@ -25,4 +25,5 @@ resources:
       queue:
         enabled: true
       performance_target: STANDARD
+      this_is_invalid: true
 
