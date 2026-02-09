@@ -3,7 +3,7 @@ resources:
     Sync_Sources_to_Elasticsearch:
       name: Sync Sources to Elasticsearch
       schedule:
-        quartz_cron_expression: 0 0 2 ? * SUN
+        quartz_cron_expression: 0 0 2 ? * *
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
