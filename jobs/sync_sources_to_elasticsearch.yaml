@@ -1,4 +1,3 @@
-# Daily sync of sources data to Elasticsearch
 resources:
   jobs:
     Sync_Sources_to_Elasticsearch:
