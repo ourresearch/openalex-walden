@@ -36,12 +36,20 @@ Setup: See `docs/DATABRICKS_SETUP.md`
 
 ## Databricks Asset Bundles (DAB)
 
-Jobs are deployed via DAB (`databricks bundle deploy`). As of 2026-02-01, DAB uses a shared state location (`/Workspace/Shared/.bundle/openalex-walden`) so all team members deploy to the same jobs.
+Jobs are deployed via DAB. The primary way to deploy is by pushing changes to `databricks.yml` or `jobs/**` to main. This triggers GitHub Actions to validate and deploy automatically, with Slack notifications to #dev.
 
-**Before deploying:** Always pull the latest changes first to avoid overwriting others' work:
 ```bash
-git pull origin main && databricks bundle deploy
+git add jobs/my_job.yaml
+git commit -m "Add my_job"
+git push origin main  # Triggers auto-deploy
 ```
+
+If needed, you can deploy locally using the wrapper script:
+```bash
+./scripts/deploy.sh  # Warns, pulls latest, validates, then deploys
+```
+
+**Never run `databricks bundle deploy` directly** — use the script or CI to avoid accidentally deleting jobs.
 
 **DAB-managed jobs** (safe to deploy):
 - `authors.yaml` — Authors job
