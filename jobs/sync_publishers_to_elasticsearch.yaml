@@ -3,7 +3,7 @@ resources:
     Sync_Publishers_to_Elasticsearch:
       name: Sync Publishers to Elasticsearch
       schedule:
-        quartz_cron_expression: 0 0 0 ? * SUN
+        quartz_cron_expression: 0 0 4 ? * *
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
