@@ -8,7 +8,15 @@ resources:
           interval: 1
           unit: DAYS
       tasks:
+        - task_key: create_institutions_api
+          notebook_task:
+            notebook_path: notebooks/institutions/CreateInstitutionsApi
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+          timeout_seconds: 3600
         - task_key: sync_institutions_to_elasticsearch
+          depends_on:
+            - task_key: create_institutions_api
           notebook_task:
             notebook_path: notebooks/elastic/sync_institutions
             source: GIT
