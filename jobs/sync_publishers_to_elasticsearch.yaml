@@ -9,7 +9,7 @@ resources:
       tasks:
         - task_key: create_publishers_api
           notebook_task:
-            notebook_path: notebooks/elastic/create_publishers_api
+            notebook_path: notebooks/publishers/CreatePublishersAPI
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
         - task_key: sync_publishers_to_elasticsearch
