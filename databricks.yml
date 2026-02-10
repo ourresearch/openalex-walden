@@ -22,6 +22,7 @@ include:
   - jobs/sync_content_index_to_d1.yaml
   - jobs/sync_funders_to_elasticsearch.yaml
   - jobs/sync_institutions_to_elasticsearch.yaml
+  - jobs/sync_keywords_to_elasticsearch.yaml
   - jobs/sync_publishers_to_elasticsearch.yaml
   - jobs/sync_sources_to_elasticsearch.yaml
   - jobs/sync_topic_hierarchy_to_elasticsearch.yaml

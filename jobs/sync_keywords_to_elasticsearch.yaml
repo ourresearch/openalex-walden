@@ -1,0 +1,27 @@
+resources:
+  jobs:
+    Sync_Keywords_to_Elasticsearch:
+      name: Sync Keywords to Elasticsearch
+      schedule:
+        quartz_cron_expression: 0 0 4 ? * *
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: create_keywords_api
+          notebook_task:
+            notebook_path: notebooks/keywords/CreateKeywordsAPI
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: sync_keywords_to_elasticsearch
+          depends_on:
+            - task_key: create_keywords_api
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_keywords
+            source: GIT
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
