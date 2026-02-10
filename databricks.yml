@@ -18,6 +18,7 @@ include:
   - jobs/institutions.yaml
   - jobs/refresh_stale_parser_responses.yaml
   - jobs/sync_all_works_to_elasticsearch.yaml
+  - jobs/sync_awards_to_elasticsearch.yaml
   - jobs/sync_content_index_to_d1.yaml
   - jobs/sync_funders_to_elasticsearch.yaml
   - jobs/sync_institutions_to_elasticsearch.yaml
