@@ -22,7 +22,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
     "table_name": "openalex.common.concepts_api",
-    "index_name": "concepts-v8"
+    "index_name": "concepts-v9"
 }
 
 def send_partition_to_elastic(partition, index_name):
@@ -37,7 +37,7 @@ def send_partition_to_elastic(partition, index_name):
             yield {
                 "_op_type": op_type,
                 "_index": CONFIG["index_name"],
-                "_id": row._id,
+                "_id": row.id,
                 "_source": row._source.asDict(True)
             }
 
@@ -66,9 +66,6 @@ print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 try:
     df = (spark.table(f"{CONFIG['table_name']}")
-        # Keep original BIGINT id as _id for ES document identity
-        .withColumn("_id", F.col("id").cast("string"))
-        # Transform id to full URL for _source
         .withColumn("id", F.concat(F.lit("https://openalex.org/C"), F.col("id")))
         # First cast to timestamp
         .withColumn("created_date", F.to_timestamp("created_date"))
@@ -88,14 +85,7 @@ try:
                 F.col("updated_date")
             ).otherwise(F.lit(None).cast("timestamp"))
         )
-        .select("_id", F.struct(
-            F.col("id"), F.col("display_name"), F.col("level"), F.col("description"),
-            F.col("wikidata"), F.col("image_url"), F.col("image_thumbnail_url"),
-            F.col("works_count"), F.col("cited_by_count"), F.col("ids"),
-            F.col("works_api_url"), F.col("summary_stats"), F.col("international"),
-            F.col("ancestors"), F.col("related_concepts"), F.col("counts_by_year"),
-            F.col("created_date"), F.col("updated_date")
-        ).alias("_source"))
+        .select("id", F.struct(F.col("*")).alias("_source"))
     )
     df = df.repartition(8)
     print(f"Total records to process: {df.count()}")
