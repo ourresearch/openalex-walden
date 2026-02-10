@@ -24,4 +24,7 @@ resources:
         git_branch: main
       queue:
         enabled: true
+      parameters:
+        - name: is_full_sync
+          default: "false"
       performance_target: STANDARD
