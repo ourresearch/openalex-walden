@@ -66,6 +66,7 @@ print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 try:
     df = (spark.table(f"{CONFIG['table_name']}")
+        .withColumn("id", F.concat(F.lit("https://openalex.org/F"), F.col("id")))
         # First cast to timestamp
         .withColumn("created_date", F.to_timestamp("created_date"))
         .withColumn("updated_date", F.to_timestamp("updated_date"))
