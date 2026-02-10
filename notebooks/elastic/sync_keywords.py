@@ -66,25 +66,6 @@ print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 try:
     df = (spark.table(f"{CONFIG['table_name']}")
-        # No ID transformation needed - already full URLs
-        # First cast to timestamp
-        .withColumn("created_date", F.to_timestamp("created_date"))
-        .withColumn("updated_date", F.to_timestamp("updated_date"))
-        # Apply range checks using BETWEEN
-        .withColumn(
-            "created_date",
-            F.when(
-                F.col("created_date").between(F.lit("1000-01-01"), F.lit("9999-12-31")),
-                F.col("created_date")
-            ).otherwise(F.lit(None).cast("timestamp"))
-        )
-        .withColumn(
-            "updated_date",
-            F.when(
-                F.col("updated_date").between(F.lit("1000-01-01"), F.lit("9999-12-31")),
-                F.col("updated_date")
-            ).otherwise(F.lit(None).cast("timestamp"))
-        )
         .select("id", F.struct(F.col("*")).alias("_source"))
     )
     df = df.repartition(8)
