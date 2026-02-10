@@ -230,7 +230,7 @@ resources:
             - task_key: IS_PROD
               outcome: "true"
           notebook_task:
-            notebook_path: notebooks/snapshot/export_wunpaywall
+            notebook_path: notebooks/unpaywall/export_wunpaywall
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
         - task_key: Wunpaywall_to_OpenAlex_DB
