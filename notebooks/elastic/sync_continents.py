@@ -20,7 +20,7 @@ if spark.catalog.tableExists("openalex.common.continents_api"):
                 COALESCE(wikidata_url, ''),
                 COALESCE(wikipedia_url, ''),
                 COALESCE(description, ''),
-                COALESCE(display_name_alternatives, ''),
+                COALESCE(CAST(display_name_alternatives AS STRING), ''),
                 COALESCE(CAST(countries AS STRING), '')
             )) AS content_hash
         FROM openalex.common.continents_api
@@ -45,7 +45,7 @@ print("Hash snapshot complete")
 # MAGIC     c.wikidata_id,
 # MAGIC     c.wikidata_url,
 # MAGIC     c.wikipedia_url,
-# MAGIC     c.display_name_alternatives,
+# MAGIC     COALESCE(FROM_JSON(c.display_name_alternatives, 'ARRAY<STRING>'), ARRAY()) AS display_name_alternatives,
 # MAGIC     c.description,
 # MAGIC     NAMED_STRUCT(
 # MAGIC         'openalex', CONCAT('https://openalex.org/continents/', c.wikidata_id),
@@ -82,7 +82,7 @@ print("Hash snapshot complete")
 # MAGIC             COALESCE(wikidata_url, ''),
 # MAGIC             COALESCE(wikipedia_url, ''),
 # MAGIC             COALESCE(description, ''),
-# MAGIC             COALESCE(display_name_alternatives, ''),
+# MAGIC             COALESCE(CAST(display_name_alternatives AS STRING), ''),
 # MAGIC             COALESCE(CAST(countries AS STRING), '')
 # MAGIC         )) AS content_hash
 # MAGIC     FROM openalex.common.continents_api
