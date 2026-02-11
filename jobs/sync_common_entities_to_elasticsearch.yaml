@@ -45,4 +45,4 @@ resources:
         git_branch: main
       queue:
         enabled: true
-      performance_target: STANDARD
+      performance_target: PERFORMANCE_OPTIMIZED
