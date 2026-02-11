@@ -89,7 +89,7 @@ def export_jsonl(spark, dbutils, df: DataFrame, date_str: str, entity: str,
 
 def export_parquet(spark, dbutils, df: DataFrame, date_str: str, entity: str,
                    records_per_file: int = 500_000):
-    """Write *df* as snappy-compressed Parquet to the daily Parquet path."""
+    """Write *df* as uncompressed Parquet to the daily Parquet path."""
     output_path = f"{S3_BASE}/{date_str}/parquet/{entity}"
     record_count = df.count()
     num_partitions = max(1, math.ceil(record_count / records_per_file))
@@ -99,10 +99,10 @@ def export_parquet(spark, dbutils, df: DataFrame, date_str: str, entity: str,
     (df.coalesce(num_partitions)
        .write
        .mode("overwrite")
-       .option("compression", "snappy")
+       .option("compression", "none")
        .parquet(output_path))
 
-    rename_files_and_cleanup(dbutils, output_path, "snappy.parquet")
+    rename_files_and_cleanup(dbutils, output_path, "parquet")
     return output_path, record_count
 
 # ---------------------------------------------------------------------------
