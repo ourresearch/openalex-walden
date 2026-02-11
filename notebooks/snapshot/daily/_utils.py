@@ -109,10 +109,19 @@ def export_parquet(spark, dbutils, df: DataFrame, date_str: str, entity: str,
 # Avro export
 # ---------------------------------------------------------------------------
 
+def _sanitize_avro_columns(df: DataFrame) -> DataFrame:
+    """Rename columns that start with a digit (invalid in Avro) by prefixing with underscore."""
+    for col_name in df.columns:
+        if col_name[0].isdigit():
+            df = df.withColumnRenamed(col_name, f"_{col_name}")
+    return df
+
+
 def export_avro(spark, dbutils, df: DataFrame, date_str: str, entity: str,
                 records_per_file: int = 500_000):
     """Write *df* as Avro to the daily Avro path."""
     output_path = f"{S3_BASE}/{date_str}/avro/{entity}"
+    df = _sanitize_avro_columns(df)
     record_count = df.count()
     num_partitions = max(1, math.ceil(record_count / records_per_file))
 
