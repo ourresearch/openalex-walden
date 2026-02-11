@@ -281,7 +281,7 @@ def create_manifest(dbutils, output_path: str, entity: str, fmt: str, date_str: 
         }
     }
 
-    manifest_path = f"{output_path}/manifest"
+    manifest_path = f"{output_path}/manifest.json"
     dbutils.fs.put(manifest_path, json.dumps(manifest, indent=2), overwrite=True)
     print(f"  Manifest ({fmt}): {len(entries)} files, {total_records:,} records, {total_size / (1024**2):.2f} MB")
 
@@ -296,6 +296,6 @@ def create_empty_manifest(dbutils, date_str: str, fmt: str, entity: str):
         }
     }
     output_path = f"{S3_BASE}/{date_str}/{fmt}/{entity}"
-    manifest_path = f"{output_path}/manifest"
+    manifest_path = f"{output_path}/manifest.json"
     dbutils.fs.put(manifest_path, json.dumps(manifest, indent=2), overwrite=True)
     print(f"  Empty manifest ({fmt}): {entity}")
