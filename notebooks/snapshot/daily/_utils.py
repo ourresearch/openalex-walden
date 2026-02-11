@@ -7,7 +7,7 @@ import math
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from pyspark.sql import DataFrame, functions as F
 from pyspark.sql.types import ArrayType, IntegerType, MapType, StringType
@@ -21,7 +21,7 @@ S3_BASE = f"s3://{S3_BUCKET}/daily"
 
 def get_snapshot_date():
     """Return yesterday's date as YYYY-MM-DD (the day whose updates we export)."""
-    return (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    return (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 def get_daily_df(spark, table: str, date_str: str) -> DataFrame:
