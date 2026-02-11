@@ -15,26 +15,50 @@ resources:
           pipeline_task:
             pipeline_id: 7def27a3-968c-4b1a-864b-0fc308756721
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: DataCite_Ingest_DLT
           pipeline_task:
             pipeline_id: e5d95673-98e3-47db-8630-48a7739304cc
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: Landing_Page_Ingest_DLT
           pipeline_task:
             pipeline_id: ff5e63c2-b1b8-49c2-a7c0-2ee246e89e69
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: Mag_Ingest_DLT
           pipeline_task:
             pipeline_id: 38cc5493-8d83-48f1-87f5-95c8c80938ac
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: PDF_Ingest_DLT
           pipeline_task:
             pipeline_id: 4b35274b-82f2-41f8-aa4a-87890d282134
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: PubMed_Ingest_DLT
           pipeline_task:
             pipeline_id: d327518b-e3e0-484c-a214-c7326f3e51fe
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: Repos_Ingest_DLT
           pipeline_task:
             pipeline_id: fcd1ea61-2e07-433b-90ad-b3b0a0960158
