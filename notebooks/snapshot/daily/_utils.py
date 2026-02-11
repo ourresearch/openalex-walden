@@ -109,19 +109,39 @@ def export_parquet(spark, dbutils, df: DataFrame, date_str: str, entity: str,
 # Avro export
 # ---------------------------------------------------------------------------
 
-def _sanitize_avro_columns(df: DataFrame) -> DataFrame:
-    """Rename columns that start with a digit (invalid in Avro) by prefixing with underscore."""
-    for col_name in df.columns:
-        if col_name[0].isdigit():
-            df = df.withColumnRenamed(col_name, f"_{col_name}")
-    return df
+def _sanitize_avro_schema(df: DataFrame) -> DataFrame:
+    """Rename fields that start with a digit (invalid in Avro) by prefixing with underscore.
+    Handles both top-level columns and nested struct fields recursively."""
+    from pyspark.sql.types import StructType, StructField, ArrayType as SparkArrayType
+
+    def fix_name(name):
+        return f"_{name}" if name[0].isdigit() else name
+
+    def fix_struct(schema):
+        new_fields = []
+        for field in schema.fields:
+            new_type = fix_type(field.dataType)
+            new_fields.append(StructField(fix_name(field.name), new_type, field.nullable, field.metadata))
+        return StructType(new_fields)
+
+    def fix_type(dtype):
+        if isinstance(dtype, StructType):
+            return fix_struct(dtype)
+        if isinstance(dtype, SparkArrayType):
+            return SparkArrayType(fix_type(dtype.elementType), dtype.containsNull)
+        return dtype
+
+    new_schema = fix_struct(df.schema)
+    if new_schema == df.schema:
+        return df
+    return df.sparkSession.createDataFrame(df.rdd, new_schema)
 
 
 def export_avro(spark, dbutils, df: DataFrame, date_str: str, entity: str,
                 records_per_file: int = 500_000):
     """Write *df* as Avro to the daily Avro path."""
     output_path = f"{S3_BASE}/{date_str}/avro/{entity}"
-    df = _sanitize_avro_columns(df)
+    df = _sanitize_avro_schema(df)
     record_count = df.count()
     num_partitions = max(1, math.ceil(record_count / records_per_file))
 
