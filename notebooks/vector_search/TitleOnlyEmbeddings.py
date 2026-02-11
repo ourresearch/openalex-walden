@@ -5,13 +5,13 @@
 # MAGIC Generates embeddings for ~197M works that have titles but no abstracts.
 # MAGIC Uses `ai_query()` with `databricks-gte-large-en` (free foundation model).
 # MAGIC
+# MAGIC Reads from `works_for_embedding` (materialized Delta table — fast scans).
 # MAGIC Run 5 instances in parallel — NOT EXISTS prevents duplicates.
 
 # COMMAND ----------
 
 BATCH_SIZE = 100000
-TARGET = 197000000  # title-only works to embed
-SOURCE_VIEW = "openalex.vector_search.title_only_works_for_embedding"
+SOURCE_TABLE = "openalex.vector_search.works_for_embedding"
 OUTPUT_TABLE = "openalex.vector_search.work_embeddings_v2"
 
 # COMMAND ----------
@@ -22,33 +22,28 @@ import time
 def log(msg):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
 
-def get_remaining():
-    return spark.sql(f"""
-        SELECT COUNT(*) FROM {SOURCE_VIEW} src
-        WHERE NOT EXISTS (
-            SELECT 1 FROM {OUTPUT_TABLE} dst
-            WHERE dst.work_id = src.work_id
-        )
-    """).first()[0]
+def get_embedded_count():
+    return spark.sql(f"SELECT COUNT(*) FROM {OUTPUT_TABLE}").first()[0]
 
 # COMMAND ----------
 
-# Initial status
-start_remaining = get_remaining()
+# Initial status — just count embeddings table (fast)
+start_count = get_embedded_count()
 start_time = time.time()
-log(f"Title-only works remaining: {start_remaining:,}")
+log(f"Current embeddings: {start_count:,}")
 log(f"Batch size: {BATCH_SIZE:,}")
+log(f"Source: {SOURCE_TABLE} (title-only works with has_abstract=false)")
 
 # COMMAND ----------
 
 batch_num = 0
-total_embedded = 0
 recent_rates = []
 
 while True:
     batch_num += 1
     batch_start = time.time()
 
+    # Only embed title-only works (has_abstract=false) that aren't already embedded
     result = spark.sql(f"""
         INSERT INTO {OUTPUT_TABLE}
         SELECT
@@ -60,11 +55,12 @@ while True:
           src.has_abstract,
           src.has_content_pdf,
           src.has_content_grobid_xml
-        FROM {SOURCE_VIEW} src
-        WHERE NOT EXISTS (
+        FROM {SOURCE_TABLE} src
+        WHERE src.has_abstract = false
+          AND NOT EXISTS (
             SELECT 1 FROM {OUTPUT_TABLE} dst
             WHERE dst.work_id = src.work_id
-        )
+          )
         LIMIT {BATCH_SIZE}
     """)
 
@@ -78,36 +74,31 @@ while True:
         recent_rates.pop(0)
     rolling_rate = sum(recent_rates) / len(recent_rates)
 
-    total_embedded += BATCH_SIZE
-    estimated_remaining = start_remaining - total_embedded
-    if estimated_remaining < 0:
-        estimated_remaining = 0
+    # Check count every batch
+    current_count = get_embedded_count()
+    added_this_session = current_count - start_count
+    batch_added = current_count - (start_count + (batch_num - 1) * BATCH_SIZE)
 
-    eta_seconds = estimated_remaining / rolling_rate if rolling_rate > 0 else 0
+    # If nothing was added, we're done
+    if batch_num > 1 and current_count == start_count + (batch_num - 2) * BATCH_SIZE:
+        log("No new rows added — all title-only works embedded!")
+        break
+
+    eta_seconds = (197000000 - added_this_session) / rolling_rate if rolling_rate > 0 else 0
     eta_time = datetime.now() + timedelta(seconds=eta_seconds)
 
-    log(f"Batch {batch_num}: +{BATCH_SIZE:,} | "
-        f"~{total_embedded:,} done | "
-        f"Rate: {rolling_rate:,.0f}/s ({batch_elapsed:.0f}s/batch) | "
-        f"Remaining: ~{estimated_remaining:,} | "
+    log(f"Batch {batch_num}: {batch_elapsed:.0f}s | "
+        f"Total: {current_count:,} (+{added_this_session:,}) | "
+        f"Rate: {rolling_rate:,.0f}/s | "
         f"ETA: {eta_time.strftime('%b %d %H:%M')} ({eta_seconds/3600:.1f}h)")
-
-    # Every 50 batches, get exact remaining count
-    if batch_num % 50 == 0:
-        exact_remaining = get_remaining()
-        log(f"  >> Exact remaining: {exact_remaining:,}")
-        if exact_remaining == 0:
-            log("=" * 60)
-            log("COMPLETE! All title-only works embedded.")
-            log("=" * 60)
-            break
-        estimated_remaining = exact_remaining
-        total_embedded = start_remaining - exact_remaining
 
     time.sleep(2)
 
 # COMMAND ----------
 
 # Final status
-log(f"Total time: {(time.time() - start_time)/3600:.1f} hours")
-log(f"Batches: {batch_num}")
+final_count = get_embedded_count()
+total_time = time.time() - start_time
+log(f"Final count: {final_count:,}")
+log(f"Added: {final_count - start_count:,}")
+log(f"Total time: {total_time/3600:.1f} hours")
