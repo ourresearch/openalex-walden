@@ -2,6 +2,7 @@ resources:
   jobs:
     Walden_End_2_End:
       name: Walden End 2 End
+      max_concurrent_runs: 1
       email_notifications:
         on_failure:
           - casey@ourresearch.org
