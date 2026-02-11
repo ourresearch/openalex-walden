@@ -102,7 +102,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
     "table_name": "openalex.common.source_types_api",
-    "index_name": "source-types-v1"
+    "index_name": "source-types-v2"
 }
 
 def send_partition_to_elastic(partition, index_name):
