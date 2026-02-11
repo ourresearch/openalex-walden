@@ -9,7 +9,7 @@ resources:
         - task_key: export_works
           job_cluster_key: snapshot_works_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_works
+            notebook_path: notebooks/snapshot/full/export_works
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -18,7 +18,7 @@ resources:
         - task_key: export_authors
           job_cluster_key: snapshot_authors_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_authors
+            notebook_path: notebooks/snapshot/full/export_authors
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -27,7 +27,7 @@ resources:
         - task_key: export_publishers
           job_cluster_key: snapshot_publishers_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_publishers
+            notebook_path: notebooks/snapshot/full/export_publishers
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -36,7 +36,7 @@ resources:
         - task_key: export_institutions
           job_cluster_key: snapshot_institutions_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_institutions
+            notebook_path: notebooks/snapshot/full/export_institutions
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -45,7 +45,7 @@ resources:
         - task_key: export_sources
           job_cluster_key: snapshot_sources_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_sources
+            notebook_path: notebooks/snapshot/full/export_sources
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -54,7 +54,7 @@ resources:
         - task_key: export_topic_hierarchy
           job_cluster_key: snapshot_topic_hierarchy_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_topic_hierarchy
+            notebook_path: notebooks/snapshot/full/export_topic_hierarchy
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -63,7 +63,7 @@ resources:
         - task_key: export_funders
           job_cluster_key: snapshot_funders_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_funders
+            notebook_path: notebooks/snapshot/full/export_funders
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -72,7 +72,7 @@ resources:
         - task_key: export_awards
           job_cluster_key: snapshot_awards_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_awards
+            notebook_path: notebooks/snapshot/full/export_awards
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -81,7 +81,7 @@ resources:
         - task_key: export_keywords
           job_cluster_key: snapshot_keywords_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_keywords
+            notebook_path: notebooks/snapshot/full/export_keywords
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -90,7 +90,7 @@ resources:
         - task_key: export_concepts
           job_cluster_key: snapshot_concepts_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_concepts
+            notebook_path: notebooks/snapshot/full/export_concepts
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
@@ -99,7 +99,7 @@ resources:
         - task_key: export_common_entities
           job_cluster_key: snapshot_common_entities_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/export_common_entities
+            notebook_path: notebooks/snapshot/full/export_common_entities
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000
