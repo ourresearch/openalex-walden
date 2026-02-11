@@ -162,7 +162,7 @@ def export_avro(spark, dbutils, df: DataFrame, date_str: str, entity: str,
 
 def export_all_formats(spark, dbutils, df: DataFrame, date_str: str, entity: str,
                        jsonl_records_per_file: int = 1_000_000,
-                       columnar_records_per_file: int = 2_000_000):
+                       columnar_records_per_file: int = 1_000_000):
     """Cache *df*, export to all 3 formats, create manifests, unpersist."""
     if "_rescued_data" in df.columns:
         df = df.drop("_rescued_data")
