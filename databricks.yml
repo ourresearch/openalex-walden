@@ -31,4 +31,5 @@ include:
   - jobs/vacuum_optimize_tables.yaml
   - jobs/vector_embeddings.yaml
   - jobs/walden_end2end.yaml
-  - jobs/snapshot.yaml
+  - jobs/full_snapshot.yaml
+  - jobs/daily_snapshot.yaml
