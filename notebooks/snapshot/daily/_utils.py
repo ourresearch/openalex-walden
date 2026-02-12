@@ -42,23 +42,14 @@ def get_daily_df(spark, table: str, date_str: str) -> DataFrame:
 # S3 helpers
 # ---------------------------------------------------------------------------
 
-def _get_s3_client(spark):
-    """Return a boto3 S3 client using credentials from Spark's Hadoop config."""
+def _get_s3_client(dbutils):
+    """Return a boto3 S3 client using credentials from Databricks secrets."""
     import boto3
-    hadoop_conf = spark._jsc.hadoopConfiguration()
-    access_key = hadoop_conf.get("fs.s3a.access.key")
-    secret_key = hadoop_conf.get("fs.s3a.secret.key")
-    if access_key and secret_key:
-        kwargs = {
-            "aws_access_key_id": access_key,
-            "aws_secret_access_key": secret_key,
-        }
-        session_token = hadoop_conf.get("fs.s3a.session.token")
-        if session_token:
-            kwargs["aws_session_token"] = session_token
-        return boto3.client("s3", **kwargs)
-    # Fall back to default credential chain
-    return boto3.client("s3")
+    return boto3.client(
+        "s3",
+        aws_access_key_id=dbutils.secrets.get("webscraper", "aws_access_key_id"),
+        aws_secret_access_key=dbutils.secrets.get("webscraper", "aws_secret_access_key"),
+    )
 
 
 def _s3_multipart_merge(s3_client, bucket, source_prefix, dest_key, extension):
@@ -211,7 +202,7 @@ def export_jsonl(spark, dbutils, df: DataFrame, date_str: str, entity: str,
     if num_partitions == 1:
         content_length = _rename_single_file(dbutils, temp_path, "gz", target_path)
     else:
-        s3_client = _get_s3_client(spark)
+        s3_client = _get_s3_client(dbutils)
         source_prefix = f"daily/{date_str}/_temp/jsonl/{entity}"
         dest_key = f"daily/{date_str}/jsonl/{target_name}"
         content_length = _s3_multipart_merge(s3_client, S3_BUCKET, source_prefix, dest_key, "gz")
