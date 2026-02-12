@@ -11,45 +11,30 @@ resources:
           notebook_task:
             notebook_path: notebooks/snapshot/daily/export_works
             source: GIT
-          max_retries: 1
-          min_retry_interval_millis: 300000
-          retry_on_timeout: true
           timeout_seconds: 14400
         - task_key: export_authors
           job_cluster_key: daily_snapshot_authors_cluster
           notebook_task:
             notebook_path: notebooks/snapshot/daily/export_authors
             source: GIT
-          max_retries: 1
-          min_retry_interval_millis: 300000
-          retry_on_timeout: true
           timeout_seconds: 7200
         - task_key: export_medium_entities
           job_cluster_key: daily_snapshot_small_cluster
           notebook_task:
             notebook_path: notebooks/snapshot/daily/export_medium_entities
             source: GIT
-          max_retries: 1
-          min_retry_interval_millis: 300000
-          retry_on_timeout: true
           timeout_seconds: 3600
         - task_key: export_small_entities
           job_cluster_key: daily_snapshot_small_cluster
           notebook_task:
             notebook_path: notebooks/snapshot/daily/export_small_entities
             source: GIT
-          max_retries: 1
-          min_retry_interval_millis: 300000
-          retry_on_timeout: true
           timeout_seconds: 1800
         - task_key: export_awards
           job_cluster_key: daily_snapshot_awards_cluster
           notebook_task:
             notebook_path: notebooks/snapshot/daily/export_awards
             source: GIT
-          max_retries: 1
-          min_retry_interval_millis: 300000
-          retry_on_timeout: true
           timeout_seconds: 7200
         - task_key: update_meta
           depends_on:
@@ -62,9 +47,6 @@ resources:
           notebook_task:
             notebook_path: notebooks/snapshot/daily/update_meta
             source: GIT
-          max_retries: 1
-          min_retry_interval_millis: 300000
-          retry_on_timeout: true
           timeout_seconds: 600
       job_clusters:
         - job_cluster_key: daily_snapshot_works_cluster
