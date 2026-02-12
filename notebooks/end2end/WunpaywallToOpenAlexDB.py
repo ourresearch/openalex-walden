@@ -30,6 +30,8 @@
 # MAGIC MAX_BATCH_RETRIES = 3
 # MAGIC dbutils.widgets.dropdown("force_large_load", "false", ["false", "true"], "Force Large Load Override")
 # MAGIC force_large_load = dbutils.widgets.get("force_large_load").lower() == "true"
+# MAGIC dbutils.widgets.text("since_date", "", "Override watermark (e.g. 2026-02-07)")
+# MAGIC since_date_override = dbutils.widgets.get("since_date").strip()
 # MAGIC
 # MAGIC # check if this is the first run by seeing if the table exists and has data
 # MAGIC with engine.connect() as conn:
@@ -49,6 +51,9 @@
 # MAGIC         result = conn.execute(text(f"SELECT MAX(updated_date) FROM {table_name};"))
 # MAGIC         do_full_load = False
 # MAGIC         last_updated = result.scalar()
+# MAGIC         if since_date_override:
+# MAGIC             print(f"WARNING: Overriding watermark from {last_updated} to {since_date_override}")
+# MAGIC             last_updated = since_date_override
 # MAGIC     else:
 # MAGIC         # Table doesn't exist or is empty, definitely do a full load
 # MAGIC         do_full_load = True

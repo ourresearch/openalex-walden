@@ -266,6 +266,7 @@ resources:
             notebook_path: notebooks/end2end/WunpaywallToOpenAlexDB
             base_parameters:
               force_large_load: "{{job.parameters.force_large_load}}"
+              since_date: "{{job.parameters.since_date}}"
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
           max_retries: 3
@@ -321,4 +322,6 @@ resources:
           default: "true"
         - name: guardrails_override
           default: "false"
+        - name: since_date
+          default: ""
       performance_target: PERFORMANCE_OPTIMIZED
