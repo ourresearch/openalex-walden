@@ -25,10 +25,17 @@ def get_snapshot_date():
 
 
 def get_daily_df(spark, table: str, date_str: str) -> DataFrame:
-    """Read *table* and filter to rows where updated_date falls on *date_str*."""
+    """Read *table* and filter to rows where updated_date falls on *date_str*.
+
+    Uses a range predicate on updated_date directly (instead of wrapping in
+    to_date()) so that Delta liquid-clustering statistics can skip files whose
+    updated_date range doesn't overlap the target day.
+    """
+    next_day = (datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
     return (
         spark.read.table(table)
-        .where(F.to_date("updated_date") == F.lit(date_str))
+        .where(F.col("updated_date") >= F.lit(date_str))
+        .where(F.col("updated_date") < F.lit(next_day))
     )
 
 # ---------------------------------------------------------------------------
@@ -194,14 +201,19 @@ def export_all_formats(spark, dbutils, df: DataFrame, date_str: str, entity: str
             )
         )
 
-    jsonl_path, _ = export_jsonl(spark, dbutils, df_jsonl, date_str, entity, jsonl_records_per_file, record_count)
-    create_manifest(dbutils, jsonl_path, entity, "jsonl", date_str, record_count, jsonl_records_per_file)
+    # Export all 3 formats in parallel (data is cached, so concurrent writes are safe)
+    def _export_and_manifest(export_fn, export_df, fmt, records_per_file):
+        path, _ = export_fn(spark, dbutils, export_df, date_str, entity, records_per_file, record_count)
+        create_manifest(dbutils, path, entity, fmt, date_str, record_count, records_per_file)
 
-    parquet_path, _ = export_parquet(spark, dbutils, df, date_str, entity, columnar_records_per_file, record_count)
-    create_manifest(dbutils, parquet_path, entity, "parquet", date_str, record_count, columnar_records_per_file)
-
-    avro_path, _ = export_avro(spark, dbutils, df, date_str, entity, columnar_records_per_file, record_count)
-    create_manifest(dbutils, avro_path, entity, "avro", date_str, record_count, columnar_records_per_file)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [
+            pool.submit(_export_and_manifest, export_jsonl, df_jsonl, "jsonl", jsonl_records_per_file),
+            pool.submit(_export_and_manifest, export_parquet, df, "parquet", columnar_records_per_file),
+            pool.submit(_export_and_manifest, export_avro, df, "avro", columnar_records_per_file),
+        ]
+        for future in as_completed(futures):
+            future.result()  # raise if any export failed
 
     df.unpersist()
     print(f"  {entity} export complete")
