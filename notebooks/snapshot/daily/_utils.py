@@ -66,10 +66,11 @@ def rename_files_and_cleanup(dbutils, output_path: str, extension: str = "gz"):
 # ---------------------------------------------------------------------------
 
 def export_jsonl(spark, dbutils, df: DataFrame, date_str: str, entity: str,
-                 records_per_file: int = 400_000):
+                 records_per_file: int = 500_000, record_count: int = None):
     """Write *df* as gzip-compressed JSON lines to the daily JSONL path."""
     output_path = f"{S3_BASE}/{date_str}/jsonl/{entity}"
-    record_count = df.count()
+    if record_count is None:
+        record_count = df.count()
     num_partitions = max(1, math.ceil(record_count / records_per_file))
 
     print(f"  JSONL: {record_count:,} records -> {num_partitions} file(s)")
@@ -88,10 +89,11 @@ def export_jsonl(spark, dbutils, df: DataFrame, date_str: str, entity: str,
 # ---------------------------------------------------------------------------
 
 def export_parquet(spark, dbutils, df: DataFrame, date_str: str, entity: str,
-                   records_per_file: int = 500_000):
+                   records_per_file: int = 500_000, record_count: int = None):
     """Write *df* as snappy-compressed Parquet to the daily Parquet path."""
     output_path = f"{S3_BASE}/{date_str}/parquet/{entity}"
-    record_count = df.count()
+    if record_count is None:
+        record_count = df.count()
     num_partitions = max(1, math.ceil(record_count / records_per_file))
 
     print(f"  Parquet: {record_count:,} records -> {num_partitions} file(s)")
@@ -138,11 +140,12 @@ def _sanitize_avro_schema(df: DataFrame) -> DataFrame:
 
 
 def export_avro(spark, dbutils, df: DataFrame, date_str: str, entity: str,
-                records_per_file: int = 500_000):
+                records_per_file: int = 500_000, record_count: int = None):
     """Write *df* as Avro to the daily Avro path."""
     output_path = f"{S3_BASE}/{date_str}/avro/{entity}"
     df = _sanitize_avro_schema(df)
-    record_count = df.count()
+    if record_count is None:
+        record_count = df.count()
     num_partitions = max(1, math.ceil(record_count / records_per_file))
 
     print(f"  Avro: {record_count:,} records -> {num_partitions} file(s)")
@@ -161,8 +164,8 @@ def export_avro(spark, dbutils, df: DataFrame, date_str: str, entity: str,
 # ---------------------------------------------------------------------------
 
 def export_all_formats(spark, dbutils, df: DataFrame, date_str: str, entity: str,
-                       jsonl_records_per_file: int = 1_000_000,
-                       columnar_records_per_file: int = 1_000_000):
+                       jsonl_records_per_file: int = 500_000,
+                       columnar_records_per_file: int = 500_000):
     """Cache *df*, export to all 3 formats, create manifests, unpersist."""
     if "_rescued_data" in df.columns:
         df = df.drop("_rescued_data")
@@ -191,14 +194,14 @@ def export_all_formats(spark, dbutils, df: DataFrame, date_str: str, entity: str
             )
         )
 
-    jsonl_path, _ = export_jsonl(spark, dbutils, df_jsonl, date_str, entity, jsonl_records_per_file)
-    create_manifest(dbutils, jsonl_path, entity, "jsonl", date_str)
+    jsonl_path, _ = export_jsonl(spark, dbutils, df_jsonl, date_str, entity, jsonl_records_per_file, record_count)
+    create_manifest(dbutils, jsonl_path, entity, "jsonl", date_str, record_count, jsonl_records_per_file)
 
-    parquet_path, _ = export_parquet(spark, dbutils, df, date_str, entity, columnar_records_per_file)
-    create_manifest(dbutils, parquet_path, entity, "parquet", date_str)
+    parquet_path, _ = export_parquet(spark, dbutils, df, date_str, entity, columnar_records_per_file, record_count)
+    create_manifest(dbutils, parquet_path, entity, "parquet", date_str, record_count, columnar_records_per_file)
 
-    avro_path, _ = export_avro(spark, dbutils, df, date_str, entity, columnar_records_per_file)
-    create_manifest(dbutils, avro_path, entity, "avro", date_str)
+    avro_path, _ = export_avro(spark, dbutils, df, date_str, entity, columnar_records_per_file, record_count)
+    create_manifest(dbutils, avro_path, entity, "avro", date_str, record_count, columnar_records_per_file)
 
     df.unpersist()
     print(f"  {entity} export complete")
@@ -214,8 +217,14 @@ def _s3_url(dbfs_path: str, fmt: str, entity: str, date_str: str) -> str:
     return f"s3://{S3_BUCKET}/daily/{date_str}/{fmt}/{entity}/{filename}"
 
 
-def create_manifest(dbutils, output_path: str, entity: str, fmt: str, date_str: str):
-    """Create a manifest file listing every data file with size and record count."""
+def create_manifest(dbutils, output_path: str, entity: str, fmt: str, date_str: str,
+                    record_count: int = None, records_per_file: int = None):
+    """Create a manifest file listing every data file with size and record count.
+
+    If *record_count* and *records_per_file* are provided, per-file record counts
+    are computed from math (each file gets records_per_file except the last which
+    gets the remainder). This avoids reading files back from storage.
+    """
     try:
         all_files = dbutils.fs.ls(output_path)
     except Exception:
@@ -234,32 +243,17 @@ def create_manifest(dbutils, output_path: str, entity: str, fmt: str, date_str: 
     entries = []
     total_size = 0
     total_records = 0
+    num_files = len(data_files)
 
-    for file_info in data_files:
+    for idx, file_info in enumerate(data_files):
         s3_url = _s3_url(file_info.path, fmt, entity, date_str)
 
-        # For JSONL we can count lines; for columnar formats, use Spark
-        if fmt == "jsonl":
-            try:
-                from pyspark.sql import SparkSession
-                spark = SparkSession.getActiveSession()
-                rc = spark.read.text(file_info.path).count()
-            except Exception:
-                rc = 0
-        elif fmt == "parquet":
-            try:
-                from pyspark.sql import SparkSession
-                spark = SparkSession.getActiveSession()
-                rc = spark.read.parquet(file_info.path).count()
-            except Exception:
-                rc = 0
-        elif fmt == "avro":
-            try:
-                from pyspark.sql import SparkSession
-                spark = SparkSession.getActiveSession()
-                rc = spark.read.format("avro").load(file_info.path).count()
-            except Exception:
-                rc = 0
+        # Compute per-file record count from math when possible
+        if record_count is not None and records_per_file is not None and num_files > 0:
+            if idx < num_files - 1:
+                rc = records_per_file
+            else:
+                rc = record_count - records_per_file * (num_files - 1)
         else:
             rc = 0
 
