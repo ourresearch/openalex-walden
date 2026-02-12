@@ -37,8 +37,8 @@ except Exception as _e:
 # ---------------------------------------------------------------------------
 
 def get_snapshot_date():
-    """Return yesterday's date as YYYY-MM-DD (the day whose updates we export)."""
-    return (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    """Return today's date as YYYY-MM-DD (the day whose updates we export)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def get_daily_df(spark, table: str, date_str: str) -> DataFrame:
