@@ -93,15 +93,15 @@ resources:
             spark_conf:
               spark.sql.adaptive.enabled: "true"
               spark.sql.adaptive.coalescePartitions.enabled: "false"
-              spark.sql.shuffle.partitions: "1000"
+              spark.sql.shuffle.partitions: "2000"
               spark.local.dir: "/local_disk0"
             aws_attributes:
               first_on_demand: 1
               availability: SPOT_WITH_FALLBACK
               zone_id: auto
               spot_bid_price_percent: 100
-            node_type_id: i4i.2xlarge
-            num_workers: 4
+            node_type_id: i4i.4xlarge
+            num_workers: 8
             enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
