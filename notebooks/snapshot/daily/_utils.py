@@ -120,30 +120,47 @@ def export_parquet(spark, dbutils, df: DataFrame, date_str: str, entity: str,
 
 def _sanitize_avro_schema(df: DataFrame) -> DataFrame:
     """Rename fields that start with a digit (invalid in Avro) by prefixing with underscore.
-    Handles both top-level columns and nested struct fields recursively."""
-    from pyspark.sql.types import StructType, StructField, ArrayType as SparkArrayType
+    Uses pure DataFrame operations to avoid the expensive .rdd round-trip."""
+    from pyspark.sql.types import StructType, ArrayType as SparkArrayType
 
     def fix_name(name):
         return f"_{name}" if name[0].isdigit() else name
 
-    def fix_struct(schema):
-        new_fields = []
-        for field in schema.fields:
-            new_type = fix_type(field.dataType)
-            new_fields.append(StructField(fix_name(field.name), new_type, field.nullable, field.metadata))
-        return StructType(new_fields)
-
-    def fix_type(dtype):
+    def needs_fix(dtype):
         if isinstance(dtype, StructType):
-            return fix_struct(dtype)
+            return any(f.name[0].isdigit() or needs_fix(f.dataType) for f in dtype.fields)
         if isinstance(dtype, SparkArrayType):
-            return SparkArrayType(fix_type(dtype.elementType), dtype.containsNull)
-        return dtype
+            return needs_fix(dtype.elementType)
+        return False
 
-    new_schema = fix_struct(df.schema)
-    if new_schema == df.schema:
+    def fix_expr(col_expr, dtype):
+        """Build a Column expression that renames digit-starting fields in-place."""
+        if isinstance(dtype, StructType):
+            fields = []
+            for field in dtype.fields:
+                child = col_expr.getField(field.name)
+                if needs_fix(field.dataType):
+                    child = fix_expr(child, field.dataType)
+                fields.append(child.alias(fix_name(field.name)))
+            return F.struct(*fields)
+        if isinstance(dtype, SparkArrayType) and needs_fix(dtype.elementType):
+            elem_type = dtype.elementType
+            return F.transform(col_expr, lambda x, et=elem_type: fix_expr(x, et))
+        return col_expr
+
+    # Quick check: does anything need fixing?
+    if not any(f.name[0].isdigit() or needs_fix(f.dataType) for f in df.schema.fields):
         return df
-    return df.sparkSession.createDataFrame(df.rdd, new_schema)
+
+    select_exprs = []
+    for field in df.schema.fields:
+        col = F.col(f"`{field.name}`")
+        if field.name[0].isdigit() or needs_fix(field.dataType):
+            select_exprs.append(fix_expr(col, field.dataType).alias(fix_name(field.name)))
+        else:
+            select_exprs.append(col)
+
+    return df.select(*select_exprs)
 
 
 def export_avro(spark, dbutils, df: DataFrame, date_str: str, entity: str,
