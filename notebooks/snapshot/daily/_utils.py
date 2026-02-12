@@ -16,6 +16,23 @@ S3_BUCKET = "openalex-snapshots"
 S3_BASE = f"s3://{S3_BUCKET}/daily"
 
 # ---------------------------------------------------------------------------
+# Preflight: verify boto3 can access the S3 bucket (fail fast, not after
+# 20 min of data processing)
+# ---------------------------------------------------------------------------
+try:
+    import boto3 as _boto3
+    _s3 = _boto3.client(
+        "s3",
+        aws_access_key_id=dbutils.secrets.get("webscraper", "aws_access_key_id"),
+        aws_secret_access_key=dbutils.secrets.get("webscraper", "aws_secret_access_key"),
+    )
+    _s3.head_bucket(Bucket=S3_BUCKET)
+    print(f"S3 preflight OK: s3://{S3_BUCKET} accessible")
+    del _s3, _boto3
+except Exception as _e:
+    raise RuntimeError(f"S3 preflight FAILED — cannot access s3://{S3_BUCKET}: {_e}")
+
+# ---------------------------------------------------------------------------
 # Date helpers
 # ---------------------------------------------------------------------------
 
