@@ -56,17 +56,22 @@ def rename_files_and_cleanup(dbutils, output_path: str, extension: str = "gz"):
     )
     metadata_files = [f for f in all_files if f.name.startswith("_")]
 
-    for idx, file_info in enumerate(data_files):
+    def _rename(idx_and_file):
+        idx, file_info = idx_and_file
         new_name = f"part_{str(idx).zfill(4)}.{extension}"
         new_path = f"{output_path}/{new_name}"
         if file_info.name != new_name:
             dbutils.fs.mv(file_info.path, new_path)
 
-    for f in metadata_files:
+    def _rm(f):
         try:
             dbutils.fs.rm(f.path, recurse=True)
         except Exception:
             pass
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        list(pool.map(_rename, enumerate(data_files)))
+        list(pool.map(_rm, metadata_files))
 
 # ---------------------------------------------------------------------------
 # JSONL export
