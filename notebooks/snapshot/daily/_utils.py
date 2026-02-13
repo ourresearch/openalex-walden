@@ -42,17 +42,17 @@ def get_snapshot_date():
 
 
 def get_daily_df(spark, table: str, date_str: str) -> DataFrame:
-    """Read *table* and filter to rows where updated_date falls on *date_str*.
+    """Read *table* and filter to rows updated in the last 24 hours.
 
-    Uses a range predicate on updated_date directly (instead of wrapping in
-    to_date()) so that Delta liquid-clustering statistics can skip files whose
-    updated_date range doesn't overlap the target day.
+    Uses a 24-hour lookback from the current time so that no records are missed
+    regardless of when other entity-update jobs run relative to this snapshot.
+    The *date_str* parameter is kept for API compatibility (used for file naming)
+    but is not used for filtering.
     """
-    next_day = (datetime.strptime(date_str, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
     return (
         spark.read.table(table)
-        .where(F.col("updated_date") >= F.lit(date_str))
-        .where(F.col("updated_date") < F.lit(next_day))
+        .where(F.col("updated_date") >= F.lit(cutoff))
     )
 
 # ---------------------------------------------------------------------------
