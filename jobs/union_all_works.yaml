@@ -1,0 +1,15 @@
+resources:
+  jobs:
+    Union_All_Works:
+      name: Union All Works
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 2 30 5/6 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: pipeline-task-bd9dfc4f-7b7f-42a2-b01b-8101c5ab19d5
+          pipeline_task:
+            pipeline_id: bd9dfc4f-7b7f-42a2-b01b-8101c5ab19d5
