@@ -14,6 +14,7 @@ from pyspark.sql.types import ArrayType, IntegerType, MapType, StringType
 
 S3_BUCKET = "openalex-snapshots"
 S3_BASE = f"s3://{S3_BUCKET}/daily"
+WATERMARK_TABLE = "openalex.snapshot.daily_watermark"
 
 # ---------------------------------------------------------------------------
 # Preflight: verify boto3 can access the S3 bucket (fail fast, not after
@@ -41,15 +42,60 @@ def get_snapshot_date():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def get_daily_df(spark, table: str, date_str: str) -> DataFrame:
-    """Read *table* and filter to rows updated in the last 24 hours.
+_watermark_cutoff = None
 
-    Uses a 24-hour lookback from the current time so that no records are missed
-    regardless of when other entity-update jobs run relative to this snapshot.
-    The *date_str* parameter is kept for API compatibility (used for file naming)
-    but is not used for filtering.
+def get_watermark_cutoff(spark):
+    """Read the cutoff timestamp from the watermark table.
+
+    If the snapshot already ran today, re-uses the same cutoff so that re-runs
+    produce the same complete output (not just the delta since the last run).
+    Otherwise, returns the completed_ts from the most recent run.
+    Falls back to 24 hours ago if the table is empty or doesn't exist.
+    Result is cached for the lifetime of this notebook execution.
     """
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    global _watermark_cutoff
+    if _watermark_cutoff is not None:
+        return _watermark_cutoff
+
+    today = get_snapshot_date()
+
+    try:
+        # If we already ran today, re-use the same cutoff (idempotent re-runs)
+        today_row = (spark.read.table(WATERMARK_TABLE)
+                     .where(F.col("snapshot_date") == F.lit(today))
+                     .orderBy(F.asc("completed_ts"))
+                     .limit(1)
+                     .first())
+        if today_row and today_row.cutoff_ts:
+            _watermark_cutoff = today_row.cutoff_ts.strftime("%Y-%m-%d %H:%M:%S")
+            print(f"Watermark cutoff: {_watermark_cutoff} (re-run — reusing today's cutoff)")
+            return _watermark_cutoff
+
+        # Normal case: use the latest completed_ts as the new cutoff
+        row = (spark.read.table(WATERMARK_TABLE)
+               .orderBy(F.desc("completed_ts"))
+               .limit(1)
+               .first())
+        if row and row.completed_ts:
+            _watermark_cutoff = row.completed_ts.strftime("%Y-%m-%d %H:%M:%S")
+            print(f"Watermark cutoff: {_watermark_cutoff} (from previous snapshot)")
+            return _watermark_cutoff
+    except Exception:
+        pass
+
+    _watermark_cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    print(f"Watermark cutoff: {_watermark_cutoff} (fallback — no previous watermark found)")
+    return _watermark_cutoff
+
+
+def get_daily_df(spark, table: str, date_str: str) -> DataFrame:
+    """Read *table* and filter to rows updated since the last snapshot.
+
+    Uses a high-water mark from the daily_watermark table to ensure no records
+    are missed between consecutive snapshot runs. The *date_str* parameter is
+    used for file naming only, not filtering.
+    """
+    cutoff = get_watermark_cutoff(spark)
     return (
         spark.read.table(table)
         .where(F.col("updated_date") >= F.lit(cutoff))
