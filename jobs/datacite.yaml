@@ -1,0 +1,16 @@
+resources:
+  jobs:
+    DataCite:
+      name: DataCite
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        quartz_cron_expression: 0 0 11/8 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: datacite
+          pipeline_task:
+            pipeline_id: e5d95673-98e3-47db-8630-48a7739304cc

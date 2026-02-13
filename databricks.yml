@@ -31,6 +31,11 @@ include:
   - jobs/vacuum_optimize_tables.yaml
   - jobs/vector_embeddings.yaml
   - jobs/union_all_works.yaml
+  - jobs/crossref.yaml
+  - jobs/datacite.yaml
+  - jobs/landing_page.yaml
+  - jobs/pubmed.yaml
+  - jobs/repo.yaml
   - jobs/walden_end2end.yaml
   - jobs/full_snapshot.yaml
   - jobs/daily_snapshot.yaml

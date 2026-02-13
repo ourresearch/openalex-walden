@@ -1,0 +1,16 @@
+resources:
+  jobs:
+    Crossref_ingest:
+      name: Crossref ingest
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 41 0 9/8 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: crossref
+          pipeline_task:
+            pipeline_id: 7def27a3-968c-4b1a-864b-0fc308756721
+            full_refresh: false
