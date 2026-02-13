@@ -79,6 +79,9 @@ resources:
           pipeline_task:
             pipeline_id: bd9dfc4f-7b7f-42a2-b01b-8101c5ab19d5
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
         - task_key: Crossref_Super_Authorships
           depends_on:
             - task_key: Union
