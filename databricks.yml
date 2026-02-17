@@ -38,5 +38,6 @@ include:
   - jobs/pubmed.yaml
   - jobs/repo.yaml
   - jobs/walden_end2end.yaml
+  - jobs/wunpaywall_weekly_data_feed.yaml
   - jobs/full_snapshot.yaml
   - jobs/daily_snapshot.yaml

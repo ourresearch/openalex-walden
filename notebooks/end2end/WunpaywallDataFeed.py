@@ -12,8 +12,10 @@ dbutils.widgets.dropdown("mode", "daily", ["daily", "weekly"], "Export Mode")
 mode = dbutils.widgets.get("mode")
 print(f"mode is {mode}")
 
-# safety
-LARGE_RECORD_COUNT = 1500000
+# safety — weekly accumulates ~7x daily volume
+DAILY_LARGE_RECORD_COUNT = 1500000
+WEEKLY_LARGE_RECORD_COUNT = DAILY_LARGE_RECORD_COUNT * 7
+LARGE_RECORD_COUNT = WEEKLY_LARGE_RECORD_COUNT if mode == "weekly" else DAILY_LARGE_RECORD_COUNT
 dbutils.widgets.dropdown("force_large_load", "false", ["false", "true"], "Force Large Load Override")
 force_large_load = dbutils.widgets.get("force_large_load").lower() == "true"
 

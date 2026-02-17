@@ -1,0 +1,21 @@
+resources:
+  jobs:
+    Wunpaywall_Data_Feed_Weekly:
+      name: Wunpaywall Data Feed Weekly
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 5 30 10 ? * Tue
+        timezone_id: America/Chicago
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: Wunpaywall_Weekly_Data_Feed
+          notebook_task:
+            notebook_path: notebooks/end2end/WunpaywallDataFeed
+            base_parameters:
+              mode: weekly
+            source: GIT
+          existing_cluster_id: 0520-143805-ri5288n
+      queue:
+        enabled: true
