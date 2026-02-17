@@ -22,7 +22,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
     "table_name": "openalex.publishers.publishers_api",
-    "index_name": "publishers-v5"
+    "index_name": "publishers-v6"
 }
 
 def send_partition_to_elastic(partition, index_name):
@@ -66,6 +66,7 @@ print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 try:
     df = (spark.table(f"{CONFIG['table_name']}")
+        .withColumn("id", F.concat(F.lit("https://openalex.org/P"), F.col("id")))
         .select("id", F.struct(F.col("*")).alias("_source"))
     )
     df = df.repartition(32)
