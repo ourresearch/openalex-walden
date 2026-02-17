@@ -29,6 +29,7 @@ include:
   - jobs/sync_sources_to_elasticsearch.yaml
   - jobs/sync_topic_hierarchy_to_elasticsearch.yaml
   - jobs/vacuum_optimize_tables.yaml
+  - jobs/sync_vector_index.yaml
   - jobs/vector_embeddings.yaml
   - jobs/union_all_works.yaml
   - jobs/crossref.yaml
