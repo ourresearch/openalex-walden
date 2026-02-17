@@ -17,5 +17,9 @@ resources:
               mode: weekly
             source: GIT
           existing_cluster_id: 0520-143805-ri5288n
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
       queue:
         enabled: true
