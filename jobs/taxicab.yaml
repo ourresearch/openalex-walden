@@ -15,6 +15,9 @@ resources:
           notebook_task:
             notebook_path: notebooks/scraping/taxicab
             source: GIT
+            base_parameters:
+              lookback_days: "3"
+              url_limit: "250000"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -41,3 +44,8 @@ resources:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
         git_branch: main
+      parameters:
+        - name: lookback_days
+          default: "3"
+        - name: url_limit
+          default: "250000"
