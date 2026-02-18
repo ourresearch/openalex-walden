@@ -37,6 +37,7 @@ include:
   - jobs/landing_page.yaml
   - jobs/pubmed.yaml
   - jobs/repo.yaml
+  - jobs/taxicab.yaml
   - jobs/walden_end2end.yaml
   - jobs/wunpaywall_weekly_data_feed.yaml
   - jobs/full_snapshot.yaml
