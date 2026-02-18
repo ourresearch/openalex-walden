@@ -9,10 +9,12 @@
 # MAGIC grabbed the first `<dc:date>` value (often a deposit timestamp) instead of
 # MAGIC the earliest date (the actual publication date).
 # MAGIC
-# MAGIC **Scope**: Only updates records where:
-# MAGIC 1. `published_date` is within 1 day of `updated_date` (deposit date signal)
-# MAGIC 2. The raw XML contains an older valid date that `array_min` would pick
-# MAGIC 3. The recomputed date is actually earlier than the current one
+# MAGIC **Two steps**:
+# MAGIC 1. Fix `published_date` in `repo_works_backfill` (recompute from raw XML)
+# MAGIC 2. Bump `updated_date` by 1 day ONLY for fixed records where backfill is
+# MAGIC    already the winner in `repo_works` — this forces `apply_changes` to
+# MAGIC    pick up the corrected dates on the next Repo pipeline run without
+# MAGIC    flipping provenance on records where repo already wins.
 
 # COMMAND ----------
 
@@ -22,6 +24,7 @@ from datetime import datetime
 
 TARGET_TABLE = "openalex.repo.repo_works_backfill"
 RAW_TABLE = "openalex.repo.repo_items_backfill"
+REPO_WORKS_TABLE = "openalex.repo.repo_works"
 
 print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print(f"Target: {TARGET_TABLE}")
@@ -102,7 +105,7 @@ else:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 3: MERGE updated dates into repo_works_backfill
+# MAGIC ## Step 3: MERGE fixed dates into repo_works_backfill
 
 # COMMAND ----------
 
@@ -120,6 +123,53 @@ if count > 0:
     ).execute()
 
     print(f"Updated {count:,} records in {TARGET_TABLE}")
+else:
+    print("Nothing to update.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 4: Bump updated_date to propagate fixes through Repo pipeline
+# MAGIC
+# MAGIC `apply_changes` in Repo.py uses `sequence_by="updated_date"` and only
+# MAGIC replaces records when the incoming value is strictly greater. Since Step 3
+# MAGIC didn't change `updated_date`, the fixes won't propagate to `repo_works`.
+# MAGIC
+# MAGIC We bump `updated_date` by 1 day, but ONLY for records where backfill is
+# MAGIC already the winning provenance in `repo_works`. This avoids flipping
+# MAGIC provenance on records where repo already wins with the correct date.
+
+# COMMAND ----------
+
+if count > 0:
+    # Find fixed records where backfill is currently winning in repo_works
+    backfill_winning = spark.sql(f"""
+        SELECT r.native_id
+        FROM recomputed_fixes r
+        JOIN {REPO_WORKS_TABLE} w ON r.native_id = w.native_id
+        WHERE w.provenance = 'repo_backfill'
+    """).dropDuplicates(["native_id"])
+
+    bump_count = backfill_winning.count()
+    print(f"Records to bump updated_date (backfill-winning only): {bump_count:,}")
+    print(f"Records skipped (repo already winning): {count - bump_count:,}")
+
+    if bump_count > 0:
+        delta_table = DeltaTable.forName(spark, TARGET_TABLE)
+
+        delta_table.alias("target").merge(
+            backfill_winning.alias("source"),
+            "target.native_id = source.native_id"
+        ).whenMatchedUpdate(
+            set={
+                "updated_date": F.date_add("target.updated_date", 1)
+            }
+        ).execute()
+
+        print(f"Bumped updated_date for {bump_count:,} records")
+    else:
+        print("No backfill-winning records to bump.")
+
     print(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 else:
     print("Nothing to update.")
@@ -127,7 +177,7 @@ else:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 4: Verify fix with known example
+# MAGIC ## Step 5: Verify fix with known example
 
 # COMMAND ----------
 
@@ -136,3 +186,12 @@ spark.sql(f"""
     FROM {TARGET_TABLE}
     WHERE native_id = 'oai:papyrus.bib.umontreal.ca:1866/36387'
 """).show(truncate=80)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Next steps
+# MAGIC
+# MAGIC Run the Repo DLT pipeline. The bumped `updated_date` on backfill-winning
+# MAGIC records will cause `apply_changes` to pick up the corrected `published_date`.
+# MAGIC Records where repo already wins are unaffected.
