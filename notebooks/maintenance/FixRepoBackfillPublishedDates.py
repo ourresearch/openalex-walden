@@ -56,7 +56,7 @@ recomputed_df = spark.sql(f"""
                             try_to_date(date_str, 'yyyy-MM-dd'),
                             try_to_date(date_str, 'yyyy-MM'),
                             try_to_date(regexp_replace(date_str, '\\\\.', '-'), 'yyyy-MM-dd'),
-                            to_date(
+                            try_to_date(
                                 if(length(trim(date_str)) = 4, concat(date_str, '-01-01'), null),
                                 'yyyy-MM-dd'
                             )
