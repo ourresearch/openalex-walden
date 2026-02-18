@@ -141,38 +141,39 @@ else:
 
 # COMMAND ----------
 
-if count > 0:
-    # Find fixed records where backfill is currently winning in repo_works
-    backfill_winning = spark.sql(f"""
-        SELECT r.native_id
-        FROM recomputed_fixes r
-        JOIN {REPO_WORKS_TABLE} w ON r.native_id = w.native_id
-        WHERE w.provenance = 'repo_backfill'
-    """).dropDuplicates(["native_id"])
+# Identify already-fixed records independently of Step 1.
+# Fixed records have published_date far from updated_date (corrected) but
+# repo_works still shows the old date because updated_date wasn't bumped.
+# We find backfill records where repo_works.published_date != repo_works_backfill.published_date
+# and backfill is currently winning.
+backfill_winning = spark.sql(f"""
+    SELECT b.native_id
+    FROM {TARGET_TABLE} b
+    JOIN {REPO_WORKS_TABLE} w ON b.native_id = w.native_id
+    WHERE w.provenance = 'repo_backfill'
+      AND b.published_date < w.published_date
+""").dropDuplicates(["native_id"])
 
-    bump_count = backfill_winning.count()
-    print(f"Records to bump updated_date (backfill-winning only): {bump_count:,}")
-    print(f"Records skipped (repo already winning): {count - bump_count:,}")
+bump_count = backfill_winning.count()
+print(f"Records to bump updated_date (backfill-winning with stale date in repo_works): {bump_count:,}")
 
-    if bump_count > 0:
-        delta_table = DeltaTable.forName(spark, TARGET_TABLE)
+if bump_count > 0:
+    delta_table = DeltaTable.forName(spark, TARGET_TABLE)
 
-        delta_table.alias("target").merge(
-            backfill_winning.alias("source"),
-            "target.native_id = source.native_id"
-        ).whenMatchedUpdate(
-            set={
-                "updated_date": F.date_add("target.updated_date", 1)
-            }
-        ).execute()
+    delta_table.alias("target").merge(
+        backfill_winning.alias("source"),
+        "target.native_id = source.native_id"
+    ).whenMatchedUpdate(
+        set={
+            "updated_date": F.date_add("target.updated_date", 1)
+        }
+    ).execute()
 
-        print(f"Bumped updated_date for {bump_count:,} records")
-    else:
-        print("No backfill-winning records to bump.")
-
-    print(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Bumped updated_date for {bump_count:,} records")
 else:
-    print("Nothing to update.")
+    print("No records to bump — repo_works is already up to date.")
+
+print(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # COMMAND ----------
 
