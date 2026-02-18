@@ -25,11 +25,14 @@ logging.basicConfig(level=logging.WARNING, format='[%(asctime)s]: %(message)s')
 log = logging.getLogger(__name__)
 
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
+IS_FULL_SYNC = dbutils.widgets.get("is_full_sync").lower() == "true"
 
 CONFIG = {
     "table_name": "openalex.institutions.affiliation_strings_lookup_with_counts",
     "index_name": "raw-affiliation-strings-v2"
 }
+
+print(f"IS_FULL_SYNC: {IS_FULL_SYNC}")
 
 def create_index_if_not_exists(client, index_name):
     """Create index with accent-folding analyzer if it doesn't exist."""
@@ -130,10 +133,17 @@ def format_institution_id(id_val):
 
 format_id_udf = F.udf(format_institution_id, StringType())
 
-print(f"\n=== Processing {CONFIG['table_name']} ===")
+print(f"\n=== Processing {CONFIG['table_name']} (full_sync={IS_FULL_SYNC}) ===")
 
 try:
-    df = (spark.table(CONFIG['table_name'])
+    source_df = spark.table(CONFIG['table_name'])
+
+    if not IS_FULL_SYNC:
+        source_df = source_df.filter(
+            F.col("refreshed_at") >= F.expr("current_date() - INTERVAL 3 DAYS")
+        )
+
+    df = (source_df
         # Create a hashed ID from raw_affiliation_string
         .withColumn("id", F.sha2(F.col("raw_affiliation_string"), 256))
         # Format institution IDs with I prefix
@@ -159,9 +169,21 @@ try:
         .filter(F.col("id").isNotNull())
     )
 
-    df = df.repartition(8)  # Reduced from 32 to limit ES load
     record_count = df.count()
-    print(f"Total records to process: {record_count}")
+    print(f"Total records to process: {record_count:,}")
+
+    # Dynamic partitioning based on record volume
+    if IS_FULL_SYNC:
+        num_partitions = 8
+    elif record_count < 100_000:
+        num_partitions = 2
+    elif record_count < 1_000_000:
+        num_partitions = 4
+    else:
+        num_partitions = 8
+
+    df = df.repartition(num_partitions)
+    print(f"Using {num_partitions} partitions")
 
     def send_partition_wrapper(partition):
         return send_partition_to_elastic(

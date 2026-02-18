@@ -234,6 +234,8 @@ resources:
             - task_key: Sync_to_Elasticsearch
           notebook_task:
             notebook_path: notebooks/elastic/sync_affiliation_strings_to_elastic_v2
+            base_parameters:
+              is_full_sync: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
         - task_key: Wunpaywall
