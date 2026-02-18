@@ -51,11 +51,11 @@ recomputed_df = spark.sql(f"""
                     transform(
                         regexp_extract_all(i.api_raw, '<dc:date.*?>(.*?)</dc:date>'),
                         date_str -> coalesce(
-                            to_date(to_timestamp(date_str, "yyyy-MM-dd'T'HH:mm:ss'Z'")),
-                            to_date(to_timestamp(date_str, "yyyy-MM-dd'T'HH:mm:ss")),
-                            to_date(date_str, 'yyyy-MM-dd'),
-                            to_date(date_str, 'yyyy-MM'),
-                            to_date(regexp_replace(date_str, '\\\\.', '-'), 'yyyy-MM-dd'),
+                            to_date(try_to_timestamp(date_str, "yyyy-MM-dd'T'HH:mm:ss'Z'")),
+                            to_date(try_to_timestamp(date_str, "yyyy-MM-dd'T'HH:mm:ss")),
+                            try_to_date(date_str, 'yyyy-MM-dd'),
+                            try_to_date(date_str, 'yyyy-MM'),
+                            try_to_date(regexp_replace(date_str, '\\\\.', '-'), 'yyyy-MM-dd'),
                             to_date(
                                 if(length(trim(date_str)) = 4, concat(date_str, '-01-01'), null),
                                 'yyyy-MM-dd'
