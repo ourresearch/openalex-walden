@@ -77,8 +77,6 @@ recomputed_df = spark.sql(f"""
 """)
 
 recomputed_df = recomputed_df.dropDuplicates(["native_id"])
-recomputed_df.cache()
-
 count = recomputed_df.count()
 print(f"Records to fix: {count:,}")
 
@@ -144,7 +142,7 @@ else:
 # Identify already-fixed records independently of Step 1.
 # Fixed records have published_date far from updated_date (corrected) but
 # repo_works still shows the old date because updated_date wasn't bumped.
-# We find backfill records where repo_works.published_date != repo_works_backfill.published_date
+# We find backfill records where repo_works_backfill.published_date < repo_works.published_date
 # and backfill is currently winning.
 backfill_winning = spark.sql(f"""
     SELECT b.native_id
@@ -153,9 +151,15 @@ backfill_winning = spark.sql(f"""
     WHERE w.provenance = 'repo_backfill'
       AND b.published_date < w.published_date
 """).dropDuplicates(["native_id"])
-
 bump_count = backfill_winning.count()
 print(f"Records to bump updated_date (backfill-winning with stale date in repo_works): {bump_count:,}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Step 5: Apply updated_date bump
+
+# COMMAND ----------
 
 if bump_count > 0:
     delta_table = DeltaTable.forName(spark, TARGET_TABLE)
@@ -178,7 +182,7 @@ print(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Step 5: Verify fix with known example
+# MAGIC ## Step 6: Verify fix with known example
 
 # COMMAND ----------
 
