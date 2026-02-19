@@ -57,6 +57,8 @@ Local (when needed): `./scripts/deploy.sh` — never run `databricks bundle depl
 
 **Migrating existing jobs to DAB**: Do NOT use `databricks bundle deployment bind` — it causes issues. Instead: add the job YAML to `jobs/` and `databricks.yml`, deploy (which creates a new job), then delete the old standalone job from the Databricks UI.
 
+**`source: GIT` requires `git_source`**: Any job YAML with `source: GIT` in the notebook_task MUST include a `git_source` block at the job level. Without it, `databricks bundle validate` resolves `notebook_path` relative to the YAML file and fails. Copy from an existing job like `taxicab.yaml`.
+
 ## DLT Pipelines
 
 **Streaming sources are append-only.** Tables feeding DLT streaming (`skipChangeCommits=true`) break on MERGE/UPDATE/DELETE. Checkpoint fails, blocks all downstream.
