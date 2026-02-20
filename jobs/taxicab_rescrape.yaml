@@ -1,7 +1,7 @@
 resources:
   jobs:
-    TaxiCab_Rescrape:
-      name: TaxiCab_Rescrape
+    TaxiCabRescrape:
+      name: TaxiCabRescrape
       email_notifications:
         on_failure:
           - casey@ourresearch.org
