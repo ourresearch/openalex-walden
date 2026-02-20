@@ -81,7 +81,7 @@ Other rules:
 ## Bulk HTTP Jobs (Taxicab/Parseland)
 
 - **Connection pooling**: Never use raw `requests.post()` in threads — limits to 10 connections. Use `BulkHttpClient` from `notebooks/maintenance/lib/`.
-- **ECS auto-scaling**: Taxicab is I/O-bound, CPU stays low, auto-scaler scales DOWN. Suspend auto-scaling before bulk jobs.
+- **ECS auto-scaling**: Taxicab and Parseland now scale up based on request count, not CPU. No need to suspend auto-scaling before bulk jobs.
 
 ## Editing Notebooks
 
