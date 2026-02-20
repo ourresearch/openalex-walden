@@ -53,7 +53,7 @@ Local (when needed): `./scripts/deploy.sh` — never run `databricks bundle depl
 
 **CRITICAL**: Always `git pull` before deploying. Shared state means deploys overwrite everyone's job definitions.
 
-**DAB-managed jobs**: authors, refresh_stale_parser_responses, sync_all_works_to_elasticsearch, sync_content_index_to_d1, taxicab, vacuum_optimize_tables, vector_embeddings, walden_end2end
+**DAB-managed jobs**: authors, sync_all_works_to_elasticsearch, sync_content_index_to_d1, taxicab, vacuum_optimize_tables, vector_embeddings, walden_end2end
 
 **Migrating existing jobs to DAB**: Do NOT use `databricks bundle deployment bind` — it causes issues. Instead: add the job YAML to `jobs/` and `databricks.yml`, deploy (which creates a new job), then delete the old standalone job from the Databricks UI.
 
