@@ -202,7 +202,7 @@ THEN UPDATE SET
     target.affiliations_exist = source.affiliations_exist,
     target.is_corresponding_exists = source.is_corresponding_exists,
     target.best_doi = source.best_doi,
-    target.source_id = source.source_id,
+    target.source_id = source.source_id;
     -- target.openalex_updated_dt = current_timestamp(); -- TEMPORARY: commented out for first E2E run to let abstracts flow without timestamp change
 -- USE ON FULL REFRESH
 -- WHEN NOT MATCHED THEN INSERT (
