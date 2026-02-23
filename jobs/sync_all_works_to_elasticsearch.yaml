@@ -52,3 +52,5 @@ resources:
       parameters:
         - name: is_full_sync
           default: "true"
+        - name: changed_fwci_sync
+          default: "false"
