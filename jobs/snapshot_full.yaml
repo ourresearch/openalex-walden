@@ -326,12 +326,11 @@ resources:
               availability: SPOT_WITH_FALLBACK
               zone_id: auto
               spot_bid_price_percent: 100
-            node_type_id: i3.4xlarge
+            node_type_id: i3.2xlarge
+            num_workers: 4
             enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-            kind: CLASSIC_PREVIEW
-            is_single_node: true
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
