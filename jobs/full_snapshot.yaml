@@ -105,6 +105,24 @@ resources:
           min_retry_interval_millis: 300000
           retry_on_timeout: true
           timeout_seconds: 1800
+        - task_key: smoke_tests
+          depends_on:
+            - task_key: export_works
+            - task_key: export_authors
+            - task_key: export_publishers
+            - task_key: export_institutions
+            - task_key: export_sources
+            - task_key: export_topic_hierarchy
+            - task_key: export_funders
+            - task_key: export_awards
+            - task_key: export_keywords
+            - task_key: export_concepts
+            - task_key: export_common_entities
+          job_cluster_key: snapshot_smoke_tests_cluster
+          notebook_task:
+            notebook_path: notebooks/snapshot/full/smoke_tests
+            source: GIT
+          timeout_seconds: 3600
       job_clusters:
         - job_cluster_key: snapshot_works_cluster
           new_cluster:
@@ -281,6 +299,23 @@ resources:
             kind: CLASSIC_PREVIEW
             is_single_node: true
         - job_cluster_key: snapshot_common_entities_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.sql.adaptive.enabled: "true"
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              spot_bid_price_percent: 100
+            node_type_id: i3.xlarge
+            enable_elastic_disk: false
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            kind: CLASSIC_PREVIEW
+            is_single_node: true
+        - job_cluster_key: snapshot_smoke_tests_cluster
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13
