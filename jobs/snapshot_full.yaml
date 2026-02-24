@@ -118,10 +118,10 @@ resources:
             - task_key: export_keywords
             - task_key: export_concepts
             - task_key: export_common_entities
-          job_cluster_key: snapshot_smoke_tests_cluster
           notebook_task:
             notebook_path: notebooks/snapshot/full/smoke_tests
             source: GIT
+          environment_key: serverless
           timeout_seconds: 3600
       job_clusters:
         - job_cluster_key: snapshot_works_cluster
@@ -315,22 +315,8 @@ resources:
             runtime_engine: STANDARD
             kind: CLASSIC_PREVIEW
             is_single_node: true
-        - job_cluster_key: snapshot_smoke_tests_cluster
-          new_cluster:
-            cluster_name: ""
-            spark_version: 16.4.x-scala2.13
-            spark_conf:
-              spark.sql.adaptive.enabled: "true"
-            aws_attributes:
-              first_on_demand: 1
-              availability: SPOT_WITH_FALLBACK
-              zone_id: auto
-              spot_bid_price_percent: 100
-            node_type_id: i3.2xlarge
-            num_workers: 4
-            enable_elastic_disk: false
-            data_security_mode: SINGLE_USER
-            runtime_engine: STANDARD
+      environments:
+        - environment_key: serverless
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
