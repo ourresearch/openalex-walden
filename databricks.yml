@@ -16,6 +16,7 @@ include:
   - jobs/authors.yaml
   - jobs/concepts_frontfill.yaml
   - jobs/institutions.yaml
+  - jobs/institutions_frontfill.yaml
   - jobs/sync_all_works_to_elasticsearch.yaml
   - jobs/sync_awards_to_elasticsearch.yaml
   - jobs/sync_concepts_to_elasticsearch.yaml
