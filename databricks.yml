@@ -41,5 +41,5 @@ include:
   - jobs/parse_pdfs.yaml
   - jobs/walden_end2end.yaml
   - jobs/wunpaywall_weekly_data_feed.yaml
-  - jobs/full_snapshot.yaml
+  - jobs/snapshot_full.yaml
   - jobs/daily_snapshot.yaml

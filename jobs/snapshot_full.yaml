@@ -1,7 +1,7 @@
 resources:
   jobs:
     Full_Snapshot:
-      name: Full Snapshot
+      name: Snapshot (Full)
       email_notifications:
         on_failure:
           - casey@ourresearch.org
