@@ -258,6 +258,7 @@ def export_jsonl(spark, dbutils, df: DataFrame, date_str: str, entity: str,
        .write
        .mode("overwrite")
        .option("compression", "gzip")
+       .option("ignoreNullFields", "false")
        .json(temp_path))
 
     _cleanup_spark_metadata(dbutils, temp_path)
