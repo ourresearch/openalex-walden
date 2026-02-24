@@ -35,4 +35,4 @@ resources:
             runtime_engine: STANDARD
             kind: CLASSIC_PREVIEW
             use_ml_runtime: true
-            num_workers: 10
+            is_single_node: true
