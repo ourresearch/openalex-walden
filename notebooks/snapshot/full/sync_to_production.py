@@ -377,3 +377,36 @@ for r in entity_results:
         print(f"  {r['entity']:20s}  SKIPPED")
 
 print(f"\nProduction snapshot ready at: s3://{PROD_BUCKET}/{PROD_PREFIX}/")
+
+# COMMAND ----------
+
+# ---------------------------------------------------------------------------
+# Upload RELEASE_NOTES.txt to production bucket root
+# ---------------------------------------------------------------------------
+
+import requests as _requests
+
+RELEASE_NOTES_URL = (
+    "https://raw.githubusercontent.com/ourresearch/openalex-walden"
+    "/main/notebooks/snapshot/full/RELEASE_NOTES.txt"
+)
+
+print("Uploading RELEASE_NOTES.txt to s3://openalex/ ...")
+
+resp = _requests.get(RELEASE_NOTES_URL, timeout=30)
+resp.raise_for_status()
+
+local_rn = os.path.join(local_scratch, "RELEASE_NOTES.txt")
+with open(local_rn, "w") as f:
+    f.write(resp.text)
+
+client = _get_prod_client()
+client.upload_file(local_rn, PROD_BUCKET, "RELEASE_NOTES.txt")
+
+head = client.head_object(Bucket=PROD_BUCKET, Key="RELEASE_NOTES.txt")
+print(f"  Uploaded RELEASE_NOTES.txt ({head['ContentLength']} bytes)")
+
+try:
+    os.remove(local_rn)
+except OSError:
+    pass
