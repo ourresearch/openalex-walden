@@ -52,7 +52,6 @@ print("Hash snapshot complete")
 # MAGIC     GROUP BY institution_type
 # MAGIC )
 # MAGIC SELECT
-# MAGIC     it.id as original_id,
 # MAGIC     CONCAT('https://openalex.org/institution-types/', it.id) as id,
 # MAGIC     it.display_name,
 # MAGIC     CONCAT('https://api.openalex.org/works?data-version=2&filter=authorships.institutions.type:', it.id) as works_api_url,

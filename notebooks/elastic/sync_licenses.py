@@ -53,7 +53,6 @@ print("Hash snapshot complete")
 # MAGIC     GROUP BY license
 # MAGIC )
 # MAGIC SELECT
-# MAGIC     l.id as original_id,
 # MAGIC     CONCAT('https://openalex.org/licenses/', l.id) as id,
 # MAGIC     l.display_name,
 # MAGIC     lc.works_count,

@@ -39,7 +39,6 @@ print("Hash snapshot complete")
 # MAGIC -- Rebuild continents_api table
 # MAGIC CREATE OR REPLACE TABLE openalex.common.continents_api AS
 # MAGIC SELECT
-# MAGIC     c.id as original_id,
 # MAGIC     CONCAT('https://openalex.org/continents/', c.wikidata_id) as id,
 # MAGIC     c.display_name,
 # MAGIC     c.wikidata_id,

@@ -51,7 +51,6 @@ print("Hash snapshot complete")
 # MAGIC     GROUP BY source_type
 # MAGIC )
 # MAGIC SELECT
-# MAGIC     st.id as original_id,
 # MAGIC     CONCAT('https://openalex.org/source-types/', st.id) as id,
 # MAGIC     st.display_name,
 # MAGIC     CONCAT('https://api.openalex.org/works?data-version=2&filter=locations.source.type:', st.id) as works_api_url,

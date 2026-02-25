@@ -46,7 +46,6 @@ print("Hash snapshot complete")
 # MAGIC     GROUP by type
 # MAGIC )
 # MAGIC SELECT
-# MAGIC     wt.id as original_id,
 # MAGIC     CONCAT('https://openalex.org/types/', wt.id) as id,
 # MAGIC     CONCAT('https://api.openalex.org/works?data-version=2&filter=type:', wt.id) as works_api_url,
 # MAGIC     wt.display_name,

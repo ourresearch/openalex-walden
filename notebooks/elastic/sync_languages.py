@@ -44,7 +44,6 @@ print("Hash snapshot complete")
 # MAGIC     GROUP by language
 # MAGIC )
 # MAGIC SELECT
-# MAGIC     l.id as original_id,
 # MAGIC     CONCAT('https://openalex.org/languages/', l.id) as id,
 # MAGIC     CONCAT('https://api.openalex.org/works?data-version=2&filter=language:', l.id) as works_api_url,
 # MAGIC     l.display_name,

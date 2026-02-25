@@ -62,7 +62,6 @@ print("Hash snapshot complete")
 # MAGIC     GROUP BY country_code
 # MAGIC )
 # MAGIC SELECT
-# MAGIC     co.id as original_id,
 # MAGIC     CONCAT('https://openalex.org/countries/', co.id) as id,
 # MAGIC     co.id as country_code,
 # MAGIC     co.display_name,
