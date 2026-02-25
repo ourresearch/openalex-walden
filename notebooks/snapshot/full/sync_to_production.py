@@ -106,27 +106,6 @@ def _get_prod_client():
     return _thread_local.s3_client
 
 
-def delete_prod_prefix(entity):
-    """Delete all objects under s3://{PROD_BUCKET}/{PROD_PREFIX}/{entity}/."""
-    client = _get_prod_client()
-    prefix = f"{PROD_PREFIX}/{entity}/"
-    paginator = client.get_paginator("list_objects_v2")
-    deleted = 0
-
-    for page in paginator.paginate(Bucket=PROD_BUCKET, Prefix=prefix):
-        objects = page.get("Contents", [])
-        if not objects:
-            continue
-        delete_keys = [{"Key": obj["Key"]} for obj in objects]
-        client.delete_objects(
-            Bucket=PROD_BUCKET,
-            Delete={"Objects": delete_keys, "Quiet": True},
-        )
-        deleted += len(delete_keys)
-
-    return deleted
-
-
 def list_staging_files(entity):
     """List all files for an entity in staging, returning (dbfs_path, relative_key) tuples.
 
@@ -269,8 +248,20 @@ for entity in ENTITIES:
         })
         continue
 
-    # 2. Delete old production files
-    deleted = delete_prod_prefix(entity)
+    # 2. Delete old production files for this entity
+    prefix = f"{PROD_PREFIX}/{entity}/"
+    del_client = _get_prod_client()
+    del_paginator = del_client.get_paginator("list_objects_v2")
+    deleted = 0
+    for page in del_paginator.paginate(Bucket=PROD_BUCKET, Prefix=prefix):
+        objects = page.get("Contents", [])
+        if not objects:
+            continue
+        del_client.delete_objects(
+            Bucket=PROD_BUCKET,
+            Delete={"Objects": [{"Key": obj["Key"]} for obj in objects], "Quiet": True},
+        )
+        deleted += len(objects)
     print(f"  Deleted {deleted} old production files")
 
     # 3. Upload data files in parallel
