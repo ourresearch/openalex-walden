@@ -25,7 +25,7 @@ date_str = datetime.now().strftime("%Y-%m-%d")
 staging_base = f"s3://{STAGING_BUCKET}/full/{date_str}"
 local_scratch = "/local_disk0/s3_transfer"
 
-MAX_WORKERS = 10
+MAX_WORKERS = 30
 MAX_RETRIES = 3
 
 ENTITIES = [
