@@ -255,6 +255,16 @@ def landing_page_works_staged_new():
             F.current_timestamp().alias("created_date"),
             F.col("parser_response.had_error").alias("had_error"),
         )
+        .filter(
+            # Drop records where parsing returned nothing useful.
+            # Prevents bad re-scrapes (bot blocks, Cloudflare) from overwriting
+            # existing good data via apply_changes(sequence_by="updated_date").
+            (F.col("had_error") == False) &
+            (
+                (F.size(F.col("authors")) > 0) |
+                (F.col("abstract").isNotNull() & (F.length(F.col("abstract")) > 0))
+            )
+        )
     )
 
 # COMMAND ----------
