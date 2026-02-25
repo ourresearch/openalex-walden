@@ -1,0 +1,276 @@
+OPENALEX STANDARD-FORMAT SNAPSHOT RELEASE NOTES
+
+RELEASE 2026-02-25
+- added more entities to snapshot
+- lots of data quality improvements
+
+RELEASE 2026-02-03
+- additional data quality improvements in multiple entities
+
+RELEASE 2026-01-15
+- multiple data quality improvements in works and authors
+- fix author bug where deprecated authors were assigned to works
+
+RELEASE 2025-11-12
+- switch to walden dataset which is now available at s3://openalex/data
+- works, authors, institutions, etc are from walden which is the default in the API
+- includes "xpack" records in works, so full works count is 463M
+
+RELEASE 2025-09-30
+- added new works
+
+RELEASE 2025-08-21
+- added new works
+
+RELEASE 2025-07-07
+- added new works
+
+RELEASE 2025-05-30
+- added new works
+
+RELEASE 2025-05-07
+- added new works
+
+RELEASE 2025-03-31
+- added new works
+
+RELEASE 2025-02-27
+- added new works
+
+RELEASE 2025-01-29
+- removed 350k abstracts with invalid or junk content
+- after this release, the snapshot will be updated quarterly
+
+RELEASE 2024-12-31
+- used new ROR matching algorithm to assign affiliations to institutions with zero works; 7.6k additional institutions now have work affiliations
+- added affiliations to 4.5M authorships
+
+RELEASE 2024-11-25
+- added 3.5 million new author IDs after fixing bug introduced by ORCID integration
+- added 103 new sources (journals) that started publishing in latter part of 2024
+- ingested 145 author change requests with new curation form
+- added/removed institution affiliations for 3.5k works based on works-magnet curation requests
+- processed 50 source curation requests
+- curated 5 institutions that were lacking affiliations
+
+RELEASE 2024-10-31
+- detect additional paratext
+- fixed author alternate names bug
+
+RELEASE 2024-09-27
+- added ~14M affiliations to works
+- adjusted year retrieved from Crossref, using the earliest from issued, published, approved, created, deposited. This affects ~20M works.
+
+RELEASE 2024-08-29
+- add new object citation_normalized_percentile to works, which is a percentile rank of citations normalized by the number of works in the same year and subfield
+- add more references to works using previous MAG snapshot
+- restored some missing affiliations
+
+RELEASE 2024-07-30
+- new work type: retraction
+- used data from Pubmed to reclassify 4M works from type "article" to one of: editorial, erratum, letter, preprint, review, retraction
+- improved type classification for works using string matching
+- change titles (display_name) for ~30k journals based on data from Crossref
+- delete 187,452 works: deleted Zenodo records. (merge into deleted id: W4285719527)
+- clean up author names: remove non-name strings prepended to certain author names; remove non-printing characters and whitespace, delete authors with bad names (only whitespace, only numbers)
+
+RELEASE 2024-06-30
+- add new affiliations field to Work.authorships, allowing more detailed mapping of raw affiliation strings to institutions
+- new is_core boolean added to sources and associated works based on dataset from CWTS: https://zenodo.org/records/10949671
+- fixed bug causing some works' OA status to be out of sync with Unpaywall
+- APC estimates (apc_paid) are no longer given for works with OA status of closed, bronze, or green
+
+RELEASE 2024-05-30
+- added 151M new references to works (7.61% increase) by matching references without DOIs using title/author/publication year
+- updated authorship information for 17.9M works by syncing Crossref changes
+- added 4 new work types, reclassifying existing works: “preprint” (5.7M), “libguides” (1.8M), “review” (820k), and “supplementary-materials” (50k)
+- "super system" institutions such as University of California System are removed from institution lineage
+- added datasets from DataCite: 1.07M from Cambridge Structural Database and 709k from Harvard Dataverse
+
+RELEASE 2024-04-25
+- added affiliations to ~2.5M works using open access PDFs parsed by grobid
+- ingested 3.4M works from DataCite, primarily from Zenodo, Arxiv, and Figshare
+- fixed language detection bug that occurred when title and abstract all uppercase
+- override language assignment for some major English-language journals
+- remove Author.last_known_institution in favor of Author.last_known_institution (in progress)
+- remove Work.authorships.raw_affiliation_string in favor of Work.authorships.raw_affiliation_strings (in progress)
+
+RELEASE 2024-03-27
+- set up automatic updates for Retraction Watch (see https://doi.org/10.13003/c23rw1d9 for info about Retraction Watch)
+- marked ~2k additional works as retracted, and corrected 1-2k works that were incorrectly labeled is_retracted
+- add siblings to domains, field, subfields
+
+RELEASE 2024-02-27
+- added topics to works
+- modified ID format for topic domain, field, and subfield within works, from integer to openalex string. About 60% of
+    works have the new format. The remaining 40% will be updated by the next release.
+- added new topics, domains, fields, and subfields entities to the snapshot
+- fixed host_organization bug within sources
+
+RELEASE 2024-01-24
+- added Author.last_known_institutions, a list of institutions for the affiliations of the author's most recent work (last_known_affiliation will be deprecated in the future)
+- added indexed_in to works
+- merged around 300 institutions based on ROR data
+- removed the license type "publisher-specific, author manuscript" from ~140k work locations, changing them to either "publisher-specific-oa" or closed
+
+RELEASE 2023-12-20
+- added Author.affiliations, an author's 10 most recent associated institutions and years of publications
+- merged 566k duplicated works associated with HAL repository
+- removed old author IDs (ID less than 5000000000) from merged_ids/authors
+- changed cited_by_percentile_year in works to an integer
+
+RELEASE 2023-11-21
+- improved affiliation matching for over 2 million works
+- added keywords to works
+- added cited_by_percentile_year to works
+- removed 3.9 million authors with 0 works (merged into deleted profile)
+- improved oa status classification, converting 2.1 million closed works to open access statuses
+ (ongoing - credit: https://subugoe.github.io/scholcomm_analytics/posts/oalex_oa_status/)
+
+RELEASE 2023-10-18
+- added new works
+- added more sources
+
+RELEASE 2023-09-20
+- added raw author name to authorships objects in works
+- institution lineage (parent institution IDs) available in works, authors, institutions
+- sustainable development goals assigned to 209 million works
+- improved institution matching for 1.1 million works
+- countries distinct count available in works
+- added ~700 new sources
+- matched primary source for 248,647 old works
+- abstract inverted index is correct object in snapshot (InvertedIndex key removed)
+- updated_dates are in full ISO format
+- documentation scripts updated for current snapshot
+
+RELEASE 2023-08-18
+- released new authors disambiguation feature
+- fixed missing source assignment for 5.7M works
+- improved affiliation matching resulting in additional ~1.1M works matched to institutions
+- works with more than 100 authors no longer have authors truncated
+- modified Work.type, added Work.type_crossref
+- added APC data for 3,508 journals
+- added authorships.countries attribute
+- resolved minor snapshot bugs affecting abstract_inverted_index and manifest, removed "@" fields
+
+RELEASE 2023-07-11
+- add references_count to works
+- add records across all entities
+- updated and improved records across all entities
+
+RELEASE 2023-06-02
+- add new works
+- add apc_payment to works
+- add locations_count to works
+- improved coverage of alternate titles, homepage, country code for funders, publishers, and sources
+
+RELEASE 2023-05-03
+- add funders entity
+- add grants to works
+- add APC payments to sources
+
+RELEASE 2023-03-28
+- truncate work display_names to 500 characters
+- truncate author display_names to 100 characters
+- added summary stats for every entity type except works
+- added new publishers and works
+
+RELEASE 2023-02-21
+- merged ~170 million authors into deleted author record as part of disambigation project
+- renamed venues to sources
+- add publishers entity
+- added new works
+
+RELEASE 2022-12-21
+- the values in host_venue have been added to alternate_host_venues in works, which paves way for the new locations
+list that will contain all possible venues for a work
+- added new works
+
+RELEASE 2022-11-14
+- new fields in venues: type, apc_usd, alternate_titles, abbreviated_title, fatcat_id, and wikidata_id
+- added new works
+
+RELEASE 2022-10-10
+- implemented automated concept tagger v3, which provides complete paths to concept level 0
+- restored 170M "lost" citations that were in MAG and we deleted
+- added new works
+
+RELEASE 2022-09-16
+- added 1.3 million new Works
+- removed 700 thousand duplicate Authors
+
+RELEASE 2022-08-09
+- removed duplicate institutions for each author in Work.authorships
+- made DOIs unique across Works. removed incorrect DOIs from 500K works and merged 1M sets of works with the same DOI.
+- added 900K new Works
+
+RELEASE 2022-07-09
+- added new papers and corresponding data
+- added missing related works
+- updated many concepts using improved algorithm
+- updated many affiliation mappings using improved algorithm
+- removed duplicate Authors and Works
+
+RELEASE 2022-06-09
+- added new papers and corresponding data
+- added about 28 million papers with Crossref DOIs
+- added 23 thousand new journal webpage links, thanks in large part to DOAJ data
+- fixed a bug with cited_by_year in venues
+- new works now use an improved algorithm for mapping affiliation data to ROR IDs
+- merged some duplicate institutions and venues (all references have been consolidated to one of the IDs)
+
+RELEASE 2022-05-12
+- added new papers and corresponding data
+
+RELEASE 2022-04-30
+- implemented automated concept tagger v2, which uses more fields to assign concepts to works
+- added new papers and corresponding data
+- updated 8715 venues that had issn_l listed but no issns in "issns" key
+
+RELEASE 2022-04-07
+- added new papers and corresponding data
+- add DOIs to 1,242,303 existing works
+- new related works to many works missing them
+
+RELEASE 2022-03-11
+- added new papers and corresponding data
+- added 1181 new journals to Venues
+- updated publisher, title, ISSNs on a few hundred journals
+
+RELEASE 2022-03-01
+- added new papers and corresponding data
+- added 45 new journals to Venues
+- added ancestors to 1500 Concepts without ancestors
+- fixed a bug with some tabs in the publisher field in Venues and Works
+
+RELEASE 2022-02-22
+- added new papers and corresponding data
+- added "created_date" to all entities
+
+Partial release on 2022-02-04 (updated Institutions and Venues)
+- ensured each institution has a distinct ROR (identified some institutions that will be merged in a future release, details TBD)
+- updated institution names and data to match what is in ROR
+- added all ROR institutions to Institutions (about 81,000 new institutions)
+- matched papers to new institutions (some errors, but will improve over time)
+- updated last known institution for millions of authors
+- don't show citation counts for future years in "counts_by_year"
+- ensured each journal has a distinct ISSN-L (identified some journals that will be merged in a future release, details TBD)
+- add many new journals to venues table, link to works when possible (about 73,000 new journals)
+- add more links from works to venues using Crossref data
+
+RELEASE 2022-01-31
+- added new papers and corresponding data
+- remove blank lines
+- citation counts for concepts use improved algorithm
+
+RELEASE 2022-01-24
+- added work.abstract_inverted_index
+- added work.affiliations.raw_affiliation_string
+- changed the type of work.cited_by_api_url: was a list by mistake, now a string
+- removed ids that have a NULL value from the "ids" dict for all five entity types
+- corrected the spelling of institution.associated_institutions
+- does not include new entities since last release: a new snapshot will be released soon with recently-published works
+
+RELEASE 2022-01-02
+Released on Jan 2, 2022 at s3://openalex/data/
+- First release
