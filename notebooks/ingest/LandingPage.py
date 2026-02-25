@@ -262,7 +262,8 @@ def landing_page_works_staged_new():
             (F.col("had_error") == False) &
             (
                 (F.size(F.col("authors")) > 0) |
-                (F.col("abstract").isNotNull() & (F.length(F.col("abstract")) > 0))
+                (F.col("abstract").isNotNull() & (F.length(F.col("abstract")) > 0)) |
+                (F.col("parser_response.license").isNotNull() & (F.length(F.col("parser_response.license")) > 0))
             )
         )
     )
