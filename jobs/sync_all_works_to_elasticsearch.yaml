@@ -29,7 +29,7 @@ resources:
             enable_elastic_disk: true
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-            num_workers: 2
+            num_workers: 1
         - job_cluster_key: es_sync_daily
           new_cluster:
             cluster_name: ""
@@ -54,3 +54,7 @@ resources:
           default: "true"
         - name: changed_fwci_sync
           default: "false"
+        - name: fwci_batch
+          default: "0"
+        - name: fwci_total_batches
+          default: "6"
