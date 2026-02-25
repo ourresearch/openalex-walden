@@ -337,7 +337,7 @@ resources:
               availability: SPOT_WITH_FALLBACK
               zone_id: auto
               spot_bid_price_percent: 100
-            node_type_id: i3.xlarge
+            node_type_id: i3.2xlarge
             enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
