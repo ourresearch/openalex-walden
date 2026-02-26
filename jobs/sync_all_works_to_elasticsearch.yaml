@@ -52,9 +52,3 @@ resources:
       parameters:
         - name: is_full_sync
           default: "true"
-        - name: changed_fwci_sync
-          default: "false"
-        - name: fwci_batch
-          default: "0"
-        - name: fwci_total_batches
-          default: "6"
