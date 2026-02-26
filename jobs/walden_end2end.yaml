@@ -300,7 +300,7 @@ resources:
             enable_elastic_disk: true
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-            num_workers: 2
+            num_workers: 1
         - job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
           new_cluster:
             cluster_name: ""
