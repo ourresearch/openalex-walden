@@ -65,10 +65,14 @@ def _validate_read_only(query: str) -> None:
             f"Got: {cleaned[:50]}..."
         )
 
-    # Check for forbidden keywords anywhere in query
+    # Remove string literals before checking for forbidden keywords
+    # so that values like DOIs containing 'vacuum' don't trigger false positives
+    cleaned_no_strings = re.sub(r"'[^']*'", "''", cleaned)
+
+    # Check for forbidden keywords anywhere in query (outside string literals)
     for pattern in forbidden_patterns:
-        if re.search(pattern, cleaned):
-            keyword = re.search(pattern, cleaned).group()
+        if re.search(pattern, cleaned_no_strings):
+            keyword = re.search(pattern, cleaned_no_strings).group()
             raise ReadOnlyViolationError(
                 f"Query contains forbidden keyword '{keyword}'. Only read-only queries are allowed."
             )
