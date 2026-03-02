@@ -56,8 +56,8 @@ resources:
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
             autoscale:
-              min_workers: 4
-              max_workers: 8
+              min_workers: 8
+              max_workers: 12
         - job_cluster_key: gpu-large
           new_cluster:
             cluster_name: ""
