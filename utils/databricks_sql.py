@@ -88,24 +88,43 @@ def _credential_provider():
     return oauth_service_principal(config)
 
 
-def get_connection():
+WAREHOUSE_SIZES = {
+    "small": "DATABRICKS_WAREHOUSE_SMALL",
+    "medium": "DATABRICKS_WAREHOUSE_MEDIUM",
+    "xlarge": "DATABRICKS_WAREHOUSE_XLARGE",
+    "4xlarge": "DATABRICKS_WAREHOUSE_4XLARGE",
+}
+
+DEFAULT_WAREHOUSE = "medium"
+
+
+def get_connection(size: str = None):
     """
     Create a connection to Databricks SQL warehouse using OAuth service principal.
-    Requires these environment variables:
-        - DATABRICKS_HOST: e.g., https://dbc-ce570f73-0362.cloud.databricks.com
-        - DATABRICKS_HTTP_PATH: e.g., /sql/1.0/warehouses/abc123
-        - DATABRICKS_CLIENT_ID: Service principal client ID
-        - DATABRICKS_CLIENT_SECRET: Service principal secret
+
+    Args:
+        size: Warehouse size - "small", "medium", "xlarge", or "4xlarge".
+              Defaults to DEFAULT_WAREHOUSE. Falls back to DATABRICKS_HTTP_PATH
+              if the sized env var is not set.
     """
+    size = size or DEFAULT_WAREHOUSE
+    env_var = WAREHOUSE_SIZES.get(size)
+    if not env_var:
+        raise ValueError(f"Unknown warehouse size '{size}'. Choose from: {list(WAREHOUSE_SIZES.keys())}")
+
+    http_path = os.getenv(env_var) or os.getenv("DATABRICKS_HTTP_PATH")
+    if not http_path:
+        raise ValueError(f"No warehouse configured. Set {env_var} or DATABRICKS_HTTP_PATH in .env")
+
     host = os.getenv("DATABRICKS_HOST", "").replace("https://", "").replace("http://", "")
     return sql.connect(
         server_hostname=host,
-        http_path=os.getenv("DATABRICKS_HTTP_PATH"),
+        http_path=http_path,
         credentials_provider=_credential_provider,
     )
 
 
-def run_query(query: str, params: dict = None, allow_writes: bool = False):
+def run_query(query: str, params: dict = None, allow_writes: bool = False, size: str = None):
     """
     Execute a SQL query and return results as a list of dicts.
 
@@ -113,6 +132,7 @@ def run_query(query: str, params: dict = None, allow_writes: bool = False):
         query: SQL query string
         params: Optional dict of parameters for parameterized queries
         allow_writes: If False (default), validates query is read-only before executing
+        size: Warehouse size - "small", "medium", "xlarge", or "4xlarge"
 
     Returns:
         List of dicts, one per row, with column names as keys
@@ -123,7 +143,7 @@ def run_query(query: str, params: dict = None, allow_writes: bool = False):
     if not allow_writes:
         _validate_read_only(query)
 
-    with get_connection() as conn:
+    with get_connection(size=size) as conn:
         with conn.cursor() as cursor:
             cursor.execute(query, params)
             if cursor.description is None:
@@ -132,17 +152,18 @@ def run_query(query: str, params: dict = None, allow_writes: bool = False):
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
-def run_query_df(query: str, params: dict = None):
+def run_query_df(query: str, params: dict = None, size: str = None):
     """
     Execute a SQL query and return results as a pandas DataFrame.
 
     Args:
         query: SQL query string
         params: Optional dict of parameters for parameterized queries
+        size: Warehouse size - "small", "medium", "xlarge", or "4xlarge"
 
     Returns:
         pandas DataFrame with query results
     """
     import pandas as pd
-    results = run_query(query, params)
+    results = run_query(query, params, size=size)
     return pd.DataFrame(results)
