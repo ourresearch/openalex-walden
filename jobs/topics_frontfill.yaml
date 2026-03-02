@@ -12,14 +12,7 @@ resources:
         timezone_id: UTC
         pause_status: PAUSED
       tasks:
-        - task_key: topics_merge_backfill
-          notebook_task:
-            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_merge_backfill
-            source: WORKSPACE
-            warehouse_id: 3996dc0a9b183ce3
         - task_key: topics_create_input
-          depends_on:
-            - task_key: topics_merge_backfill
           notebook_task:
             notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_create_frontfill_input
             source: WORKSPACE
