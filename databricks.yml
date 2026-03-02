@@ -44,3 +44,4 @@ include:
   - jobs/wunpaywall_weekly_data_feed.yaml
   - jobs/snapshot_full.yaml
   - jobs/daily_snapshot.yaml
+  - jobs/topics_frontfill.yaml

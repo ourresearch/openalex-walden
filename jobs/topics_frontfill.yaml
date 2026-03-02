@@ -31,6 +31,13 @@ resources:
             notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_merge_frontfill_output
             source: WORKSPACE
             warehouse_id: 3996dc0a9b183ce3
+        - task_key: topics_merge_backfill
+          depends_on:
+            - task_key: topics_merge_output
+          notebook_task:
+            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_merge_backfill
+            source: WORKSPACE
+            warehouse_id: 3996dc0a9b183ce3
       job_clusters:
         - job_cluster_key: topics-gpu-cluster
           new_cluster:
