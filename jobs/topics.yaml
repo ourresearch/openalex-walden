@@ -1,7 +1,7 @@
 resources:
   jobs:
     Topics_Frontfill:
-      name: Topics Frontfill
+      name: Topics
       email_notifications:
         on_failure:
           - artem@ourresearch.org
@@ -10,25 +10,25 @@ resources:
       schedule:
         quartz_cron_expression: 5 0 21 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: topics_create_input
           notebook_task:
-            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_create_frontfill_input
+            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_create_input
             source: WORKSPACE
             warehouse_id: 3996dc0a9b183ce3
-        - task_key: topic_frontfill
+        - task_key: topics_inference
           depends_on:
             - task_key: topics_create_input
           notebook_task:
-            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_frontfill
+            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_inference
             source: WORKSPACE
           job_cluster_key: topics-gpu-cluster
         - task_key: topics_merge_output
           depends_on:
-            - task_key: topic_frontfill
+            - task_key: topics_inference
           notebook_task:
-            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_merge_frontfill_output
+            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_merge_output
             source: WORKSPACE
             warehouse_id: 3996dc0a9b183ce3
       job_clusters:
