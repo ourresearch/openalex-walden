@@ -10,22 +10,22 @@ resources:
       tasks:
         - task_key: topics_create_input
           notebook_task:
-            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_create_input
-            source: WORKSPACE
+            notebook_path: notebooks/topics/topics_create_input
+            source: GIT
             warehouse_id: 3996dc0a9b183ce3
         - task_key: topics_inference
           depends_on:
             - task_key: topics_create_input
           notebook_task:
-            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_inference
-            source: WORKSPACE
+            notebook_path: notebooks/topics/topics_inference
+            source: GIT
           job_cluster_key: topics-gpu-cluster
         - task_key: topics_merge_output
           depends_on:
             - task_key: topics_inference
           notebook_task:
-            notebook_path: /Workspace/Shared/openalex-walden/notebooks/topics/topics_merge_output
-            source: WORKSPACE
+            notebook_path: notebooks/topics/topics_merge_output
+            source: GIT
             warehouse_id: 3996dc0a9b183ce3
       job_clusters:
         - job_cluster_key: topics-gpu-cluster
