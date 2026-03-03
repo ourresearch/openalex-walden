@@ -476,7 +476,7 @@ def normalize_license(text):
     return None
 
 def has_oa_domain(native_id):
-    oa_domains = ["arxiv", "osti", "pubmedcentral", "biorxiv", "medrxiv", "zenodo", "figshare"]
+    oa_domains = ["arxiv", "osti", "pubmedcentral", "biorxiv", "medrxiv", "zenodo", "figshare", "open-science.canada"]
     if native_id is None:
         return False
     
