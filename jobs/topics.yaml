@@ -1,16 +1,12 @@
 resources:
   jobs:
-    Topics_Frontfill:
+    Topics:
       name: Topics
       email_notifications:
         on_failure:
           - artem@ourresearch.org
           - casey@ourresearch.org
         no_alert_for_skipped_runs: true
-      schedule:
-        quartz_cron_expression: 5 0 21 * * ?
-        timezone_id: UTC
-        pause_status: UNPAUSED
       tasks:
         - task_key: topics_create_input
           notebook_task:
