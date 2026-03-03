@@ -17,7 +17,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/snapshot/daily/export_authors
             source: GIT
-          timeout_seconds: 7200
+          timeout_seconds: 10800
         - task_key: export_medium_entities
           job_cluster_key: daily_snapshot_small_cluster
           notebook_task:

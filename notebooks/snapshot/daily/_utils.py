@@ -4,7 +4,9 @@
 
 import json
 import math
+import os
 import time
+import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -196,6 +198,76 @@ def _s3_multipart_merge(s3_client, bucket, source_prefix, dest_key, extension):
         raise
 
 
+def _parquet_merge(s3_client, bucket, source_prefix, dest_key):
+    """Merge multiple Parquet part files into a single Parquet file via PyArrow.
+
+    Unlike JSONL/gzip, Parquet files have headers and footers that prevent
+    simple byte-level concatenation. This function downloads each part file,
+    reads it with PyArrow, and appends it as a row group in a single output
+    file using ParquetWriter.
+
+    Local temp files are written to /local_disk0 (Databricks instance storage)
+    and cleaned up after each part to bound disk usage.
+
+    Returns the content_length of the uploaded merged file.
+    """
+    import pyarrow.parquet as pq
+
+    paginator = s3_client.get_paginator("list_objects_v2")
+    pages = paginator.paginate(Bucket=bucket, Prefix=source_prefix)
+
+    parts = []
+    for page in pages:
+        for obj in page.get("Contents", []):
+            if obj["Key"].endswith(".snappy.parquet"):
+                parts.append(obj["Key"])
+
+    if not parts:
+        raise RuntimeError(f"No .snappy.parquet files found under s3://{bucket}/{source_prefix}")
+
+    parts.sort()
+
+    local_tmp_dir = tempfile.mkdtemp(dir="/local_disk0", prefix="parquet_merge_")
+    merged_path = os.path.join(local_tmp_dir, "merged.parquet")
+    writer = None
+
+    try:
+        for i, part_key in enumerate(parts):
+            part_path = os.path.join(local_tmp_dir, f"part_{i}.parquet")
+            s3_client.download_file(bucket, part_key, part_path)
+
+            table = pq.read_table(part_path)
+            if writer is None:
+                writer = pq.ParquetWriter(merged_path, table.schema, compression="snappy")
+            writer.write_table(table)
+
+            # Free memory and disk for this part
+            del table
+            os.remove(part_path)
+
+        writer.close()
+        writer = None
+
+        s3_client.upload_file(merged_path, bucket, dest_key)
+        content_length = os.path.getsize(merged_path)
+        print(f"    Merged {len(parts)} Parquet parts into {dest_key} ({content_length / (1024**2):.1f} MB)")
+        return content_length
+
+    finally:
+        if writer is not None:
+            writer.close()
+        # Clean up local temp directory
+        for f in os.listdir(local_tmp_dir):
+            try:
+                os.remove(os.path.join(local_tmp_dir, f))
+            except OSError:
+                pass
+        try:
+            os.rmdir(local_tmp_dir)
+        except OSError:
+            pass
+
+
 def _rename_single_file(dbutils, output_path, extension, target_path):
     """Rename the single Spark part file in *output_path* to *target_path*."""
     files = dbutils.fs.ls(output_path)
@@ -288,26 +360,37 @@ def export_parquet(spark, dbutils, df: DataFrame, date_str: str, entity: str,
                    records_per_file: int = 500_000, record_count: int = None):
     """Write *df* as snappy-compressed Parquet to a single file per entity.
 
-    Always coalesce(1) — Parquet files cannot be concatenated.
+    Small entities (single partition): coalesce(1) to temp dir, rename.
+    Large entities (multiple partitions): parallel write to temp dir, then
+    PyArrow merge into a single file (Parquet has headers/footers that
+    prevent byte-level concatenation).
     """
     target_name = f"{entity}_{date_str}.parquet"
     target_path = f"{S3_BASE}/{date_str}/parquet/{target_name}"
 
     if record_count is None:
         record_count = df.count()
+    num_partitions = max(1, math.ceil(record_count / records_per_file))
 
-    print(f"  Parquet: {record_count:,} records -> 1 file (coalesce)")
+    print(f"  Parquet: {record_count:,} records -> {num_partitions} partition(s)")
 
     temp_path = f"{S3_BASE}/{date_str}/_temp/parquet/{entity}"
 
-    (df.coalesce(1)
+    (df.coalesce(num_partitions)
        .write
        .mode("overwrite")
        .option("compression", "snappy")
        .parquet(temp_path))
 
     _cleanup_spark_metadata(dbutils, temp_path)
-    content_length = _rename_single_file(dbutils, temp_path, "snappy.parquet", target_path)
+
+    if num_partitions == 1:
+        content_length = _rename_single_file(dbutils, temp_path, "snappy.parquet", target_path)
+    else:
+        s3_client = _get_s3_client(dbutils)
+        source_prefix = f"daily/{date_str}/_temp/parquet/{entity}"
+        dest_key = f"daily/{date_str}/parquet/{target_name}"
+        content_length = _parquet_merge(s3_client, S3_BUCKET, source_prefix, dest_key)
 
     # Clean up temp directory
     try:
