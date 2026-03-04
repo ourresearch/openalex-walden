@@ -24,20 +24,7 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
 # COMMAND ----------
 
 @dlt.table(
-    comment="Filtered taxicab data for processing",
-    partition_cols=["native_id_namespace"]
-)
-def landing_page_filtered():
-    return (
-        spark.readStream
-            .format("delta")
-            .option("skipChangeCommits", "true")
-            .table("openalex.taxicab.taxicab_results")
-            .filter(F.col("taxicab_id").isNotNull() & F.col("content_type").contains("html"))
-    )
-
-@dlt.table(
-    comment="Landing page data joined with Parseland results",
+    comment="Landing page data streamed from Parseland results",
     table_properties={
         "delta.autoOptimize.optimizeWrite": "true",
         "delta.autoOptimize.autoCompact": "true"
@@ -45,12 +32,11 @@ def landing_page_filtered():
     partition_cols=["native_id_namespace"]
 )
 def landing_page_parsed():
-    source_stream = dlt.read_stream("landing_page_filtered")
-    parsed = (
-        spark.read.table("openalex.parseland.parsed_pages")
-        .select("taxicab_id", "authors", "urls", "license", "version", "abstract", "had_error")
+    return (
+        spark.readStream
+            .format("delta")
+            .table("openalex.parseland.parsed_pages")
     )
-    return source_stream.join(parsed, "taxicab_id", "inner")
 
 @dlt.table(
     name="landing_page_staged",
