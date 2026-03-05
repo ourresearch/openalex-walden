@@ -379,7 +379,7 @@ import requests as _requests
 
 RELEASE_NOTES_URL = (
     "https://raw.githubusercontent.com/ourresearch/openalex-walden"
-    "/main/notebooks/snapshot/full/RELEASE_NOTES.txt"
+    "/main/notebooks/snapshot/RELEASE_NOTES.txt"
 )
 
 print("Uploading RELEASE_NOTES.txt to s3://openalex/ ...")

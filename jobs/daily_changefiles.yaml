@@ -1,39 +1,39 @@
 resources:
   jobs:
-    Daily_Snapshot:
-      name: Daily Snapshot
+    Daily_Changefiles:
+      name: Daily Changefiles
       email_notifications:
         on_failure:
           - casey@ourresearch.org
       tasks:
         - task_key: export_works
-          job_cluster_key: daily_snapshot_works_cluster
+          job_cluster_key: daily_changefiles_works_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/daily/export_works
+            notebook_path: notebooks/changefiles/daily/export_works
             source: GIT
           timeout_seconds: 14400
         - task_key: export_authors
-          job_cluster_key: daily_snapshot_authors_cluster
+          job_cluster_key: daily_changefiles_authors_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/daily/export_authors
+            notebook_path: notebooks/changefiles/daily/export_authors
             source: GIT
           timeout_seconds: 10800
         - task_key: export_medium_entities
-          job_cluster_key: daily_snapshot_small_cluster
+          job_cluster_key: daily_changefiles_small_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/daily/export_medium_entities
+            notebook_path: notebooks/changefiles/daily/export_medium_entities
             source: GIT
           timeout_seconds: 3600
         - task_key: export_small_entities
-          job_cluster_key: daily_snapshot_small_cluster
+          job_cluster_key: daily_changefiles_small_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/daily/export_small_entities
+            notebook_path: notebooks/changefiles/daily/export_small_entities
             source: GIT
           timeout_seconds: 1800
         - task_key: export_awards
-          job_cluster_key: daily_snapshot_awards_cluster
+          job_cluster_key: daily_changefiles_awards_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/daily/export_awards
+            notebook_path: notebooks/changefiles/daily/export_awards
             source: GIT
           timeout_seconds: 7200
         - task_key: update_meta
@@ -43,13 +43,13 @@ resources:
             - task_key: export_medium_entities
             - task_key: export_small_entities
             - task_key: export_awards
-          job_cluster_key: daily_snapshot_small_cluster
+          job_cluster_key: daily_changefiles_small_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/daily/update_meta
+            notebook_path: notebooks/changefiles/daily/update_meta
             source: GIT
           timeout_seconds: 600
       job_clusters:
-        - job_cluster_key: daily_snapshot_works_cluster
+        - job_cluster_key: daily_changefiles_works_cluster
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13
@@ -68,7 +68,7 @@ resources:
             enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-        - job_cluster_key: daily_snapshot_authors_cluster
+        - job_cluster_key: daily_changefiles_authors_cluster
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13
@@ -87,7 +87,7 @@ resources:
             enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-        - job_cluster_key: daily_snapshot_awards_cluster
+        - job_cluster_key: daily_changefiles_awards_cluster
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13
@@ -106,7 +106,7 @@ resources:
             enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-        - job_cluster_key: daily_snapshot_small_cluster
+        - job_cluster_key: daily_changefiles_small_cluster
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13

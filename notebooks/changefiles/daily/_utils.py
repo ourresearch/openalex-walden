@@ -1,5 +1,5 @@
 # Databricks notebook source
-# Shared utilities for daily snapshot export.
+# Shared utilities for daily changefiles export.
 # %run'd by all daily export notebooks.
 
 import json
