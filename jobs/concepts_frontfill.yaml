@@ -19,11 +19,11 @@ resources:
             notebook_path: notebooks/concepts/concepts_model_inference
             source: GIT
           job_cluster_key: md-fleet-concepts
-        - task_key: concepts_enrich_merge
+        - task_key: concepts_merge_output
           depends_on:
             - task_key: concepts_inference
           notebook_task:
-            notebook_path: notebooks/concepts/concepts_enrich_merge
+            notebook_path: notebooks/concepts/concepts_merge_output
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
       job_clusters:
