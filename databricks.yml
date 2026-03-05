@@ -40,6 +40,7 @@ include:
   - jobs/repo.yaml
   - jobs/taxicab.yaml
   - jobs/taxicab_rescrape.yaml
+  - jobs/parseland_reparse.yaml
   - jobs/parse_pdfs.yaml
   - jobs/walden_end2end.yaml
   - jobs/wunpaywall_weekly_data_feed.yaml
