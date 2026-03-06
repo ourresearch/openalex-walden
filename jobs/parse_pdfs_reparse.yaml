@@ -5,11 +5,8 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
-      trigger:
+      continuous:
         pause_status: UNPAUSED
-        periodic:
-          interval: 1
-          unit: HOURS
       max_concurrent_runs: 1
       tasks:
         - task_key: run_parse_pdfs_reparse
