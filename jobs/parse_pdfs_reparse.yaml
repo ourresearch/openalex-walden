@@ -13,6 +13,7 @@ resources:
             source: GIT
             base_parameters:
               reparse_queue_only: "true"
+              batch_size: "500000"
           job_cluster_key: parse_pdfs_reparse_cluster
       job_clusters:
         - job_cluster_key: parse_pdfs_reparse_cluster
@@ -42,3 +43,5 @@ resources:
       parameters:
         - name: reparse_queue_only
           default: "true"
+        - name: batch_size
+          default: "500000"
