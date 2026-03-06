@@ -1,7 +1,7 @@
 resources:
   jobs:
-    Concepts_Frontfill:
-      name: Concepts Frontfill
+    Concepts:
+      name: Concepts
       email_notifications:
         on_failure:
           - casey@ourresearch.org
@@ -9,14 +9,14 @@ resources:
       tasks:
         - task_key: concepts_create_input
           notebook_task:
-            notebook_path: notebooks/concepts/concepts_create_frontfill_input
+            notebook_path: notebooks/concepts/concepts_create_input
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
         - task_key: concepts_inference
           depends_on:
             - task_key: concepts_create_input
           notebook_task:
-            notebook_path: notebooks/concepts/concepts_model_inference
+            notebook_path: notebooks/concepts/concepts_inference
             source: GIT
           job_cluster_key: md-fleet-concepts
         - task_key: concepts_merge_output

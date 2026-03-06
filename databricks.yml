@@ -14,7 +14,7 @@ permissions:
 
 include:
   - jobs/authors.yaml
-  - jobs/concepts_frontfill.yaml
+  - jobs/concepts.yaml
   - jobs/institutions.yaml
   - jobs/institutions_frontfill.yaml
   - jobs/sync_all_works_to_elasticsearch.yaml
