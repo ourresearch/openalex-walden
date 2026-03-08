@@ -28,8 +28,8 @@
 # MAGIC # batch size for merge operations (smaller = less memory, more reliable connections)
 # MAGIC MERGE_BATCH_SIZE = 50000
 # MAGIC MAX_BATCH_RETRIES = 3
-# MAGIC dbutils.widgets.dropdown("force_large_load", "false", ["false", "true"], "Force Large Load Override")
-# MAGIC force_large_load = dbutils.widgets.get("force_large_load").lower() == "true"
+# MAGIC dbutils.widgets.dropdown("wunpaywall_safety_override", "false", ["false", "true"], "Wunpaywall Safety Override")
+# MAGIC wunpaywall_safety_override = dbutils.widgets.get("wunpaywall_safety_override").lower() == "true"
 # MAGIC dbutils.widgets.text("since_date", "", "Override watermark (e.g. 2026-02-07)")
 # MAGIC since_date_override = dbutils.widgets.get("since_date").strip()
 # MAGIC
@@ -126,11 +126,11 @@
 # MAGIC     print(f"Found {record_count} records to update")
 # MAGIC
 # MAGIC     # safety
-# MAGIC     if record_count > LARGE_RECORD_COUNT and not force_large_load:
-# MAGIC         error_msg = f"Too many records found to export ({record_count:,}). Set 'Force Large Load Override' to 'true' to proceed anyway, or run manually"
+# MAGIC     if record_count > LARGE_RECORD_COUNT and not wunpaywall_safety_override:
+# MAGIC         error_msg = f"Too many records found to export ({record_count:,}). Set 'Wunpaywall Safety Override' to 'true' to proceed anyway, or run manually"
 # MAGIC         print(error_msg)
 # MAGIC         raise Exception(error_msg)
-# MAGIC     elif record_count > LARGE_RECORD_COUNT and force_large_load:
+# MAGIC     elif record_count > LARGE_RECORD_COUNT and wunpaywall_safety_override:
 # MAGIC         print(f"WARNING: Processing large dataset ({record_count:,} records) due to override being enabled")
 # MAGIC
 # MAGIC     if record_count > 0:

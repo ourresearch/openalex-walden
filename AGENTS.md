@@ -72,6 +72,10 @@ Other rules:
 - Table names in API = DLT function names, not full catalog paths
 - Checkpoint reset: `databricks api post /api/2.0/pipelines/<id>/updates --json '{"reset_checkpoint_selection": ["table_name"]}'`
 
+## Spark SQL Gotchas
+
+- **`explode()` aliases can't be used in WHERE**: `explode(col) AS alias` creates an alias only available in SELECT, not WHERE. To filter on exploded fields, wrap the explode in a subquery and filter in the outer query.
+
 ## Delta Gotchas
 
 - `dropDuplicates()` before MERGE to avoid `DELTA_MULTIPLE_SOURCE_ROW_MATCHING_TARGET_ROW_IN_MERGE`

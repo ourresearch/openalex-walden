@@ -272,6 +272,8 @@ resources:
               outcome: "true"
           notebook_task:
             notebook_path: notebooks/end2end/WunpaywallDataFeed
+            base_parameters:
+              wunpaywall_safety_override: "{{job.parameters.wunpaywall_safety_override}}"
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
         - task_key: Wunpaywall_Full_Snapshot
@@ -289,7 +291,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/end2end/WunpaywallToOpenAlexDB
             base_parameters:
-              force_large_load: "{{job.parameters.force_large_load}}"
+              wunpaywall_safety_override: "{{job.parameters.wunpaywall_safety_override}}"
               since_date: "{{job.parameters.since_date}}"
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
@@ -362,8 +364,8 @@ resources:
           default: ""
         - name: openalex
           default: openalex
-        - name: force_large_load
-          default: "true"
+        - name: wunpaywall_safety_override
+          default: "false"
         - name: guardrails_override
           default: "false"
         - name: since_date
