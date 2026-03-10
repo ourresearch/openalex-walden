@@ -675,7 +675,10 @@ parsed_df = clean_df \
     .withColumn("urls",
         expr("""
             transform(
-                regexp_extract_all(cleaned_xml, '<dc:identifier>(http.*?)</dc:identifier>'),
+                concat(
+                    regexp_extract_all(cleaned_xml, '<dc:identifier>(http.*?)</dc:identifier>'),
+                    regexp_extract_all(cleaned_xml, '<dc:relation>(http.*?)</dc:relation>')
+                ),
                 x -> struct(
                     x as url,
                     case when lower(x) like '%pdf%' then 'pdf' else 'html' end as `content_type`

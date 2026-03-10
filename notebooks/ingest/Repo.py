@@ -454,7 +454,8 @@ repository_schema = StructType([
             StructField("dc:language", StringType(), True),
             StructField("dc:format", ArrayType(StringType()), True),
             StructField("dc:publisher", StringType(), True),
-            StructField("dc:rights", ArrayType(StringType()), True)
+            StructField("dc:rights", ArrayType(StringType()), True),
+            StructField("dc:relation", ArrayType(StringType()), True)
         ]), True)
     ]), True)
 ])
@@ -643,6 +644,36 @@ def repo_parsed():
         F.expr("filter(ids, id -> id.namespace = 'pmcid')[0].id")
     )
     .withColumn(
+        "_identifier_urls",
+        F.filter(
+            F.transform(
+                F.coalesce(F.col("`ns0:metadata`.`ns1:dc`.`dc:identifier`"), F.array()),
+                lambda x: F.struct(
+                    F.regexp_extract(x, url_pattern, 0).alias("url"),
+                    F.when(x.rlike("(?i)pdf"), F.lit("pdf"))
+                    .otherwise(F.lit("html"))
+                    .alias("content_type"),
+                ),
+            ),
+            lambda x: x["url"] != "",
+        )
+    )
+    .withColumn(
+        "_relation_urls",
+        F.filter(
+            F.transform(
+                F.coalesce(F.col("`ns0:metadata`.`ns1:dc`.`dc:relation`"), F.array()),
+                lambda x: F.struct(
+                    F.regexp_extract(x, url_pattern, 0).alias("url"),
+                    F.when(x.rlike("(?i)pdf"), F.lit("pdf"))
+                    .otherwise(F.lit("html"))
+                    .alias("content_type"),
+                ),
+            ),
+            lambda x: x["url"] != "",
+        )
+    )
+    .withColumn(
         "urls",
         F.when(
             F.col("has_pmcid"),
@@ -656,22 +687,10 @@ def repo_parsed():
                 )
             )
         ).otherwise(
-            F.filter(
-                F.transform(
-                    F.col("`ns0:metadata`.`ns1:dc`.`dc:identifier`"),
-                    lambda x: F.struct(
-                        F.regexp_extract(x, url_pattern, 0).alias("url"),  # extract URL
-                        # set content_type based on whether 'pdf' appears in the URL
-                        F.when(x.rlike("(?i)pdf"), F.lit("pdf"))
-                        .otherwise(F.lit("html"))
-                        .alias("content_type"),
-                    ),
-                ),
-                lambda x: x["url"] != "",  # Filter out entries with no matched URL
-            )
+            F.concat(F.col("_identifier_urls"), F.col("_relation_urls"))
         )
     )
-    .drop("has_pmcid", "pmcid")
+    .drop("has_pmcid", "pmcid", "_identifier_urls", "_relation_urls")
     .withColumn("mesh", F.lit(None).cast("string"))
     .withColumn(
         "is_oa",
