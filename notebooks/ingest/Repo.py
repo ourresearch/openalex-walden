@@ -687,7 +687,10 @@ def repo_parsed():
                 )
             )
         ).otherwise(
-            F.concat(F.col("_identifier_urls"), F.col("_relation_urls"))
+            F.when(
+                F.size(F.col("_identifier_urls")) > 0,
+                F.col("_identifier_urls")
+            ).otherwise(F.col("_relation_urls"))
         )
     )
     .drop("has_pmcid", "pmcid", "_identifier_urls", "_relation_urls")
