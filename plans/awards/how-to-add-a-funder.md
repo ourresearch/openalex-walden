@@ -179,7 +179,7 @@ The output table MUST have exactly these columns (no additions or subtractions):
 
 ```sql
 -- String fields
-id                    -- Format: "{funder_id}:{lowercase_award_id}"
+id                    -- Format: abs(xxhash64(CONCAT({funder_id}, ':', {lowercase_award_id}))) % 9000000000
 display_name          -- Award/project title
 description           -- Abstract or description
 funder_award_id       -- The funder's native award ID
@@ -228,6 +228,9 @@ co_lead_investigator  -- Same struct as lead_investigator
 
 -- Array: investigators (usually NULL or empty)
 investigators ARRAY<lead_investigator struct>
+
+-- URL field
+works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
 ```
 
 ### 2.2 Notebook structure
@@ -271,10 +274,54 @@ investigators ARRAY<lead_investigator struct>
    - Map native fields to OpenAlex schema
    - Handle date parsing (try multiple formats)
    - Map funding types appropriately
-   - Generate unique ID as `{funder_id}:{lowercase_native_id}`
+   - Generate unique ID as `abs(xxhash64(CONCAT({funder_id}, ':', {lowercase_native_id}))) % 9000000000`
 
-5. **Verification queries**
-=======
+5. **Step 3: Delete old data and insert into openalex_awards_raw with priority**
+   - Determine priority (lower = higher priority):
+     - 0: GTR Project Awards (authoritative UK grants)
+     - 1: Crossref Awards
+     - 2: Backfill Awards
+     - 3: NIH, NSF, GTR Awards (legacy)
+     - 4+: New funders (use next available number in notebooks/awards/CreateAwards.ipynb)
+   - Emit an SQL block that:
+     1. Deletes previous data for this source (using provenance + priority as key)
+     2. Inserts fresh data to `openalex.awards.openalex_awards_raw`
+   ```sql
+   -- Remove previous data for this source before inserting fresh data
+   DELETE FROM openalex.awards.openalex_awards_raw
+   WHERE provenance = '{provenance_value}' AND priority = N;
+
+   -- Insert into openalex_awards_raw with priority
+   INSERT INTO openalex.awards.openalex_awards_raw
+   SELECT
+       id,
+       display_name,
+       description,
+       funder_id,
+       funder_award_id,
+       amount,
+       currency,
+       funder,
+       funding_type,
+       funder_scheme,
+       provenance,
+       start_date,
+       end_date,
+       start_year,
+       end_year,
+       lead_investigator,
+       co_lead_investigator,
+       investigators,
+       landing_page_url,
+       doi,
+       works_api_url,
+       created_date,
+       updated_date,
+       N as priority  -- Replace N with next available priority
+   FROM openalex.awards.{funder}_awards;
+   ```
+
+6. **Verification queries**
    **⚠️ CRITICAL: Verify column names before writing SQL**
 
    Before writing any CTEs or intermediate queries that reference columns from the raw table, you MUST verify the actual column names present in the parquet file. Column names in the source data may differ from what you expect based on documentation or similar funders.
@@ -298,7 +345,7 @@ investigators ARRAY<lead_investigator struct>
 
    Only after confirming the actual column names should you write the transformation SQL. Reference the exact column names from the `DESCRIBE` output in all subsequent CTEs and queries.
 
-4. **Verification queries** (see Step 5 for details)
+7. **Verification queries** (see Step 6 for details)
 
 ### 2.3 Defensive SQL Practices
 
@@ -342,6 +389,7 @@ COALESCE(
 | funding_type | Map from activity codes or categories |
 | funder_scheme | program_name, funding_scheme, activity_code |
 
+
 **→ Update tracker:** Change status to "Step 3" with notes (e.g., "Notebook created").
 
 ---
@@ -350,54 +398,9 @@ COALESCE(
 
 **IMPORTANT:** This step integrates the new funder into the main awards table.
 
-Edit `notebooks/awards/CreateAwards.ipynb` to add the new funder source.
+Edit `notebooks/awards/CreateAwards.ipynb` to add the new funder source with the priority determined in section 2.2.5
 
-### 3.1 Determine priority
-
-Priority determines which source wins for duplicate awards (lower = higher priority):
-- 0: GTR Project Awards (authoritative UK grants)
-- 1: Crossref Awards
-- 2: Backfill Awards
-- 3: NIH, NSF, GTR Awards (legacy)
-- 4+: New funders (use next available number)
-
-### 3.2 Add UNION ALL block
-
-Add a new block in the `combined` CTE:
-
-```sql
-UNION ALL
-
--- Priority N: {Funder Name} Awards
-SELECT
-    abs(xxhash64(id)) % 9000000000 as id,
-    display_name,
-    description,
-    funder_id,
-    funder_award_id,
-    amount,
-    currency,
-    funder,
-    funding_type,
-    funder_scheme,
-    provenance,
-    start_date,
-    end_date,
-    start_year,
-    end_year,
-    lead_investigator,
-    co_lead_investigator,
-    investigators,
-    landing_page_url,
-    doi,
-    concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(id)) % 9000000000) as works_api_url,
-    created_date,
-    updated_date,
-    N as priority  -- Replace N with actual priority number
-FROM openalex.awards.{funder}_awards
-```
-
-### 3.3 Update markdown header
+### 3.1 Update markdown header
 
 Add the new funder to the priority list in the notebook header.
 
@@ -528,18 +531,79 @@ Tell the user:
 >
 > When you're ready, run CreateAwards.ipynb to merge everything.
 
-**→ Update tracker:** When user approves and runs CreateAwards.ipynb, change status to "Complete" with final grant count (e.g., "Complete | Priority 5 - 450,000 grants").
+**→ Update tracker:** When user approves and runs CreateAwards.ipynb, change status to "Step 8".
+
+---
+
+## Step 8: Add to CreateWorkAwards Job
+
+After the notebook has been verified and CreateAwards.ipynb has been run successfully, add the new funder notebook as a task in the CreateWorkAwards Databricks job.
+
+### 8.1 Update the job JSON file
+
+Edit `jobs/create_work_awards.json` to add the new funder:
+
+1. **Add a new task** for the funder notebook in the `new_settings.tasks` array. Example for a new funder "XYZ":
+   ```json
+   {
+     "email_notifications": {},
+     "environment_key": "Default",
+     "notebook_task": {
+       "notebook_path": "/Workspace/Shared/openalex-walden/notebooks/awards/CreateXYZAwards",
+       "source": "WORKSPACE"
+     },
+     "run_if": "ALL_SUCCESS",
+     "task_key": "XYZ_Awards",
+     "timeout_seconds": 0,
+     "webhook_notifications": {}
+   }
+   ```
+
+2. **Add the task_key to Create_Awards dependencies** in the `depends_on` array for the `Create_Awards` task:
+   ```json
+   {
+     "task_key": "XYZ_Awards"
+   }
+   ```
+
+### 8.2 Deploy the job update
+
+Use the Databricks CLI to update the job:
+
+```bash
+databricks jobs reset 864794621551148 --profile dbc-ce570f73-0362 --json @jobs/create_work_awards.json
+```
+
+Verify the task was added:
+```bash
+databricks jobs get 864794621551148 --profile dbc-ce570f73-0362 --output json | grep -i "{funder}"
+```
+
+### 8.3 Commit the job JSON
+
+```bash
+git add jobs/create_work_awards.json
+git commit -m "Add {FunderName} to CreateWorkAwards job
+
+- Added {FunderName}_Awards task
+- Added dependency in Create_Awards task
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+git pull --rebase && git push
+```
+
+**→ Update tracker:** Change status to "Complete" with final grant count (e.g., "Complete | Priority 18 - 450,000 grants | Added to job 864794621551148").
 
 ---
 
 ## Reference: Existing Examples
 
-| Funder | Script | Notebook | API Type |
-|--------|--------|----------|----------|
-| NIH | nih_exporter_to_s3.py | CreateNIHAwards.ipynb | File download |
-| NWO | nwo_to_s3.py | CreateNWOAwards.ipynb | JSON API |
-| GTR | gtr_to_s3.py | CreateGTRProjectAwards.ipynb | XML API |
-| Gates | gates_to_s3.py | CreateGatesAwards.ipynb | CSV download |
+| Funder | Script                | Notebook                     | API Type      |
+|--------|-----------------------|------------------------------|---------------|
+| NIH    | nih_exporter_to_s3.py | CreateNIHAwards.ipynb        | File download |
+| NWO    | nwo_to_s3.py          | CreateNWOAwards.ipynb        | JSON API      |
+| GTR    | gtr_to_s3.py          | CreateGTRProjectAwards.ipynb | XML API       |
+| Gates  | gates_to_s3.py        | CreateGatesAwards.ipynb      | CSV download  |
 
 ## Reference: S3 Paths
 

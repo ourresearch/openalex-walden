@@ -1,0 +1,42 @@
+resources:
+  jobs:
+    Institutions:
+      name: Institutions
+      trigger:
+        pause_status: UNPAUSED
+        periodic:
+          interval: 1
+          unit: DAYS
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      tasks:
+        - task_key: create_update_institutions
+          notebook_task:
+            notebook_path: notebooks/institutions/CreateUpdateInstitutionsFromRor
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+          timeout_seconds: 3600
+        - task_key: ror_derived_tables
+          depends_on:
+            - task_key: create_update_institutions
+          notebook_task:
+            notebook_path: notebooks/institutions/CreateRorDerivedTables
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+          timeout_seconds: 1800
+        - task_key: institution_ancestors
+          depends_on:
+            - task_key: ror_derived_tables
+          notebook_task:
+            notebook_path: notebooks/institutions/CreateInstitutionAncestors
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+          timeout_seconds: 1800
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED

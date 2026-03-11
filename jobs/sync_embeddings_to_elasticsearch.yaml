@@ -1,0 +1,48 @@
+# NOTE: This YAML is for documentation only. Do NOT add to databricks.yml.
+# Run manually via Databricks UI or CLI when needed.
+#
+# Purpose: One-time bulk load of 217M vector embeddings from Databricks to ES.
+# After initial load, embeddings should flow through the regular sync_works job.
+
+resources:
+  jobs:
+    Sync_Embeddings_to_ElasticSearch:
+      name: Sync Embeddings to Elasticsearch
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      tasks:
+        - task_key: sync_embeddings
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_embeddings_to_es
+            source: GIT
+          job_cluster_key: embedding_sync_cluster
+      job_clusters:
+        - job_cluster_key: embedding_sync_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            # Large cluster for fast bulk updates
+            node_type_id: rd-fleet.12xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 4
+      queue:
+        enabled: true
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      parameters:
+        - name: is_full_sync
+          default: "true"

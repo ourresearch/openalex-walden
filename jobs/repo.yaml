@@ -1,0 +1,16 @@
+resources:
+  jobs:
+    Repo:
+      name: Repo
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 20 0 10/8 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: Repo
+          pipeline_task:
+            pipeline_id: fcd1ea61-2e07-433b-90ad-b3b0a0960158
+            full_refresh: false

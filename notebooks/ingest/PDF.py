@@ -77,50 +77,70 @@ def clean_xml(xml_content):
         return None
     return re.sub(r'[^\x09\x0A\x0D\x20-\x7E]', '', xml_content)
 
+def _safe_extract(fn, default=None):
+    """Run a field extraction function, returning default on failure. Re-raises MemoryError."""
+    try:
+        return fn()
+    except MemoryError:
+        raise
+    except Exception as e:
+        import logging
+        logging.warning(f"Field extraction failed: {type(e).__name__}: {e}")
+        return default
+
 def extract_fields(xml_content):
     """Extract multiple fields from the XML."""
-    try:
-        xml_content = clean_xml(xml_content)
-        if not xml_content:
-            return {
-                "title": None,
-                "language": None,
-                "abstract": None,
-                "authors": [],
-                "source_name": None,
-                "volume": None,
-                "issue": None,
-                "first_page": None,
-                "last_page": None,
-                "publisher": None,
-                "published_date": pd.NaT,
-                "references": [],
-                "funders": [],
-                "fulltext": None
-            }
+    empty_result = {
+        "title": None,
+        "language": None,
+        "abstract": None,
+        "authors": [],
+        "source_name": None,
+        "volume": None,
+        "issue": None,
+        "first_page": None,
+        "last_page": None,
+        "publisher": None,
+        "published_date": pd.NaT,
+        "references": [],
+        "funders": [],
+        "fulltext": None
+    }
 
-        root = ET.fromstring(xml_content)
-        ns = {"tei": "http://www.tei-c.org/ns/1.0"}
+    xml_content = clean_xml(xml_content)
+    if not xml_content:
+        return empty_result
 
-        # title
-        title = None
+    # Let XML parsing raise — if this fails, the record is truly unparseable
+    root = ET.fromstring(xml_content)
+    ns = {"tei": "http://www.tei-c.org/ns/1.0"}
+
+    # title
+    def _title():
         title_element = root.find(".//tei:titleStmt/tei:title", namespaces=ns)
         if title_element is not None and title_element.text:
-            title = title_element.text.strip()
+            return title_element.text.strip()
+        return None
+    title = _safe_extract(_title)
 
-        # language
-        language = None
+    # language
+    def _language():
         tei_header = root.find(".//tei:teiHeader", namespaces=ns)
         if tei_header is not None:
-            language = tei_header.attrib.get("{http://www.w3.org/XML/1998/namespace}lang", None)
+            return tei_header.attrib.get("{http://www.w3.org/XML/1998/namespace}lang", None)
+        return None
+    language = _safe_extract(_language)
 
-        # abstract
-        abstract = None
+    # abstract
+    def _abstract():
         abstract_element = root.find(".//tei:profileDesc/tei:abstract", namespaces=ns)
         if abstract_element is not None:
-            abstract = ''.join(abstract_element.itertext()).strip()
+            return ''.join(abstract_element.itertext()).strip()
+        return None
+    abstract = _safe_extract(_abstract)
 
-        # authors
+    # authors
+    def _authors():
         authors = []
         author_elements = root.findall(".//tei:author", namespaces=ns)
         for author in author_elements:
@@ -145,40 +165,51 @@ def extract_fields(xml_content):
                 "orcid": orcid.text.strip() if orcid is not None else None,
                 "affiliations": affiliations
             })
+        return authors
+    authors = _safe_extract(_authors, default=[])
 
-        # source_name
-        source_name = None
+    # source_name
+    def _source_name():
         source_element = root.find(".//tei:biblStruct/tei:monogr/tei:title", namespaces=ns)
         if source_element is not None:
-            source_name = source_element.text.strip()
+            return source_element.text.strip()
+        return None
+    source_name = _safe_extract(_source_name)
 
-        # publisher
-        publisher = None
+    # publisher
+    def _publisher():
         publisher_element = root.find(".//tei:imprint/tei:publisher", namespaces=ns)
         if publisher_element is not None and publisher_element.text:
-            publisher = publisher_element.text.strip()
+            return publisher_element.text.strip()
+        return None
+    publisher = _safe_extract(_publisher)
 
-        # issue
-        issue = None
+    # issue
+    def _issue():
         issue_element = root.find(".//tei:biblScope[@unit='issue']", namespaces=ns)
         if issue_element is not None:
-            issue = issue_element.text.strip()
+            return issue_element.text.strip()
+        return None
+    issue = _safe_extract(_issue)
 
-        # volume
-        volume = None
+    # volume
+    def _volume():
         volume_element = root.find(".//tei:biblScope[@unit='volume']", namespaces=ns)
         if volume_element is not None:
-            volume = volume_element.text.strip()
+            return volume_element.text.strip()
+        return None
+    volume = _safe_extract(_volume)
 
-        # first_page and last_page
-        first_page = None
-        last_page = None
+    # first_page and last_page
+    def _pages():
         extent_element = root.find(".//tei:sourceDesc/tei:biblStruct/tei:monogr/tei:imprint/tei:extent/tei:measure[@unit='page']", namespaces=ns)
         if extent_element is not None:
-            first_page = extent_element.attrib.get("from", None)
-            last_page = extent_element.attrib.get("to", None)
+            return extent_element.attrib.get("from", None), extent_element.attrib.get("to", None)
+        return None, None
+    first_page, last_page = _safe_extract(_pages, default=(None, None))
 
-        # references
+    # references
+    def _references():
         references = []
         reference_elements = root.findall(".//tei:listBibl/tei:biblStruct", namespaces=ns)
         for ref in reference_elements:
@@ -186,15 +217,16 @@ def extract_fields(xml_content):
             references.append({
                 "raw": raw.text.strip() if raw is not None else None
             })
+        return references
+    references = _safe_extract(_references, default=[])
 
-        # funders
+    # funders
+    def _funders():
         funders = []
         funder_elements = root.findall(".//tei:funder", namespaces=ns)
         for funder in funder_elements:
-            # Extract the funder name
             org_name = funder.find(".//tei:orgName", namespaces=ns)
 
-            # Extract awards associated with the funder
             awards = []
             award_elements = funder.findall(".//tei:idno[@type='award']", namespaces=ns)
             for award in award_elements:
@@ -207,58 +239,41 @@ def extract_fields(xml_content):
                 "name": org_name.text.strip() if org_name is not None else None,
                 "awards": awards if awards else None
             })
+        return funders
+    funders = _safe_extract(_funders, default=[])
 
-        # fulltext
-        fulltext = None
+    # fulltext
+    def _fulltext():
         text_element = root.find(".//tei:text", namespaces=ns)
         if text_element is not None:
             fulltext = ''.join(text_element.itertext()).strip()
-            
-            # clean and truncate
+
             if fulltext:
-                # remove XML/HTML tags
                 fulltext = re.sub(r'<[^>]+>', '', fulltext)
-                # normalize whitespace
                 fulltext = ' '.join(fulltext.split())
-                # remove empty lines and normalize line breaks
                 fulltext = '\n'.join([line.strip() for line in fulltext.splitlines() if line.strip()])
-                # truncate to 200k characters
                 if len(fulltext) > MAX_FULLTEXT_LENGTH:
                     fulltext = fulltext[:MAX_FULLTEXT_LENGTH]
-                
-        return {
-            "title": title,
-            "language": language,
-            "abstract": abstract,
-            "authors": authors,
-            "source_name": source_name,
-            "volume": volume,
-            "issue": issue,
-            "first_page": first_page,
-            "last_page": last_page,
-            "publisher": publisher,
-            "published_date": pd.NaT,
-            "references": references,
-            "funders": funders,
-            "fulltext": fulltext
-        }
-    except Exception:
-        return {
-            "title": None,
-            "language": None,
-            "abstract": None,
-            "authors": [],
-            "source_name": None,
-            "volume": None,
-            "issue": None,
-            "first_page": None,
-            "last_page": None,
-            "publisher": None,
-            "published_date": pd.NaT,
-            "references": [],
-            "funders": [],
-            "fulltext": None
-        }
+                return fulltext
+        return None
+    fulltext = _safe_extract(_fulltext)
+
+    return {
+        "title": title,
+        "language": language,
+        "abstract": abstract,
+        "authors": authors,
+        "source_name": source_name,
+        "volume": volume,
+        "issue": issue,
+        "first_page": first_page,
+        "last_page": last_page,
+        "publisher": publisher,
+        "published_date": pd.NaT,
+        "references": references,
+        "funders": funders,
+        "fulltext": fulltext
+    }
 
 def normalize_license(text):
     if not text:

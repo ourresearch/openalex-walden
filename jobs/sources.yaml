@@ -1,0 +1,16 @@
+resources:
+  pipelines:
+    pipeline_sources:
+      name: Sources
+      configuration:
+        environment: prod
+      libraries:
+        - notebook:
+            path: /Shared/openalex-walden/notebooks/sources/CreateSources
+      target: sources
+      development: true
+      photon: true
+      catalog: openalex
+      serverless: true
+      tags:
+        environment: prod

@@ -2,39 +2,70 @@ resources:
   jobs:
     Walden_End_2_End:
       name: Walden End 2 End
+      max_concurrent_runs: 1
       email_notifications:
         on_failure:
           - casey@ourresearch.org
-          - artem@ourresearch.org
       schedule:
-        quartz_cron_expression: 18 30 22 * * ?
+        quartz_cron_expression: 0 0 5 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: Crossref_Ingest_DLT
           pipeline_task:
             pipeline_id: 7def27a3-968c-4b1a-864b-0fc308756721
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: DataCite_Ingest_DLT
           pipeline_task:
             pipeline_id: e5d95673-98e3-47db-8630-48a7739304cc
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
+        - task_key: Parseland
+          notebook_task:
+            notebook_path: notebooks/scraping/parseland
+            source: GIT
+          job_cluster_key: parseland_cluster
         - task_key: Landing_Page_Ingest_DLT
+          depends_on:
+            - task_key: Parseland
           pipeline_task:
             pipeline_id: ff5e63c2-b1b8-49c2-a7c0-2ee246e89e69
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: Mag_Ingest_DLT
           pipeline_task:
             pipeline_id: 38cc5493-8d83-48f1-87f5-95c8c80938ac
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: PDF_Ingest_DLT
           pipeline_task:
             pipeline_id: 4b35274b-82f2-41f8-aa4a-87890d282134
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: PubMed_Ingest_DLT
           pipeline_task:
             pipeline_id: d327518b-e3e0-484c-a214-c7326f3e51fe
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
+          timeout_seconds: 3600
         - task_key: Repos_Ingest_DLT
           pipeline_task:
             pipeline_id: fcd1ea61-2e07-433b-90ad-b3b0a0960158
@@ -51,9 +82,13 @@ resources:
             - task_key: Repos_Ingest_DLT
             - task_key: PDF_Ingest_DLT
             - task_key: DataCite_Ingest_DLT
+            - task_key: Landing_Page_Ingest_DLT
           pipeline_task:
             pipeline_id: bd9dfc4f-7b7f-42a2-b01b-8101c5ab19d5
             full_refresh: false
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
         - task_key: Crossref_Super_Authorships
           depends_on:
             - task_key: Union
@@ -117,21 +152,39 @@ resources:
             notebook_path: notebooks/end2end/PrepareAffiliationStrings
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        - task_key: Sync_RAS_Curations
+          depends_on:
+            - task_key: Works_Base
+          notebook_task:
+            notebook_path: notebooks/end2end/SyncRasCurations
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
         - task_key: Institutions_Frontfill
           depends_on:
             - task_key: Prepare_Affiliation_Strings
+            - task_key: Sync_RAS_Curations
           run_job_task:
-            job_id: 462221738638096
-        - task_key: Topics_Frontfill
+            job_id: 637771147662119
+        - task_key: SDG_Frontfill
           depends_on:
             - task_key: Works_Base
           run_job_task:
-            job_id: 751459553624380
+            job_id: 27479127407344
+        - task_key: Topics
+          depends_on:
+            - task_key: Works_Base
+          run_job_task:
+            job_id: 107953357639482
+        - task_key: Concepts
+          depends_on:
+            - task_key: Works_Base
+          run_job_task:
+            job_id: 948457692151163
         - task_key: Author_Matching
           depends_on:
             - task_key: Parsed_Author_Names
             - task_key: Institutions_Frontfill
-            - task_key: Topics_Frontfill
+            - task_key: Topics
           notebook_task:
             notebook_path: notebooks/end2end/UpdateWorkAuthors
             source: GIT
@@ -146,20 +199,62 @@ resources:
         - task_key: Works_Enriched
           depends_on:
             - task_key: Authorships
+            - task_key: SDG_Frontfill
+            - task_key: Concepts
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT
             warehouse_id: 4d37bf76372a2901
-        - task_key: Sync_to_Elasticsearch
+        - task_key: Optimize_Works_Enriched
           depends_on:
             - task_key: Works_Enriched
           notebook_task:
-            notebook_path: notebooks/elastic/sync_works
+            notebook_path: notebooks/end2end/OptimizeWorksEnriched
             source: GIT
-          job_cluster_key: Sync_to_Elasticsearch_cluster
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Guardrails
+          depends_on:
+            - task_key: Optimize_Works_Enriched
+          notebook_task:
+            notebook_path: notebooks/end2end/Guardrails
+            base_parameters:
+              guardrails_override: "{{job.parameters.guardrails_override}}"
+              env_suffix: "{{job.parameters.env_suffix}}"
+            source: GIT
+        - task_key: Daily_Changefiles
+          depends_on:
+            - task_key: Guardrails
+          run_job_task:
+            job_id: ${resources.jobs.Daily_Changefiles.id}
+        - task_key: Sync_to_Elasticsearch
+          depends_on:
+            - task_key: Guardrails
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            base_parameters:
+              is_full_sync: "false"
+            source: GIT
+          job_cluster_key: es_sync_cluster
+        - task_key: Refresh_RAS_Counts
+          depends_on:
+            - task_key: Guardrails
+          notebook_task:
+            notebook_path: notebooks/end2end/RefreshRasWorksCounts
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Sync_RAS_to_Elasticsearch
+          depends_on:
+            - task_key: Refresh_RAS_Counts
+            - task_key: Sync_to_Elasticsearch
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_affiliation_strings_to_elastic_v2
+            base_parameters:
+              is_full_sync: "false"
+            source: GIT
+          job_cluster_key: es_sync_cluster
         - task_key: Wunpaywall
           depends_on:
-            - task_key: Works_Enriched
+            - task_key: Guardrails
           notebook_task:
             notebook_path: notebooks/end2end/CreateWunpaywall
             source: GIT
@@ -177,6 +272,8 @@ resources:
               outcome: "true"
           notebook_task:
             notebook_path: notebooks/end2end/WunpaywallDataFeed
+            base_parameters:
+              wunpaywall_safety_override: "{{job.parameters.wunpaywall_safety_override}}"
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
         - task_key: Wunpaywall_Full_Snapshot
@@ -184,7 +281,7 @@ resources:
             - task_key: IS_PROD
               outcome: "true"
           notebook_task:
-            notebook_path: notebooks/snapshot/export_wunpaywall
+            notebook_path: notebooks/unpaywall/export_wunpaywall
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
         - task_key: Wunpaywall_to_OpenAlex_DB
@@ -193,29 +290,53 @@ resources:
               outcome: "true"
           notebook_task:
             notebook_path: notebooks/end2end/WunpaywallToOpenAlexDB
+            base_parameters:
+              wunpaywall_safety_override: "{{job.parameters.wunpaywall_safety_override}}"
+              since_date: "{{job.parameters.since_date}}"
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
       job_clusters:
-        - job_cluster_key: Sync_to_Elasticsearch_cluster
+        - job_cluster_key: parseland_cluster
           new_cluster:
             cluster_name: ""
-            spark_version: 16.4.x-scala2.12
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.master: local[*, 4]
+              spark.databricks.cluster.profile: singleNode
             aws_attributes:
               first_on_demand: 1
               availability: SPOT_WITH_FALLBACK
               zone_id: us-east-1f
               spot_bid_price_percent: 100
-              ebs_volume_type: GENERAL_PURPOSE_SSD
-              ebs_volume_count: 1
-              ebs_volume_size: 100
-            node_type_id: rgd-fleet.12xlarge
-            driver_node_type_id: rg-fleet.8xlarge
+            node_type_id: m5d.4xlarge
+            driver_node_type_id: m5d.4xlarge
+            custom_tags:
+              ResourceClass: SingleNode
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
+        - job_cluster_key: es_sync_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: rd-fleet.12xlarge
+            driver_node_type_id: rd-fleet.8xlarge
             spark_env_vars:
               PYSPARK_PYTHON: /databricks/python3/bin/python3
             enable_elastic_disk: true
-            data_security_mode: USER_ISOLATION
+            data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-            num_workers: 2
+            num_workers: 1
         - job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
           new_cluster:
             cluster_name: ""
@@ -243,10 +364,10 @@ resources:
           default: ""
         - name: openalex
           default: openalex
-        - name: force_large_load
+        - name: wunpaywall_safety_override
           default: "false"
-      environments:
-        - environment_key: Default
-          spec:
-            environment_version: "4"
+        - name: guardrails_override
+          default: "false"
+        - name: since_date
+          default: ""
       performance_target: PERFORMANCE_OPTIMIZED

@@ -21,7 +21,8 @@ Features:
 - Checkpointing: Progress is saved every 1000 projects; resume with --resume
 - Rate limiting: Configurable delay to avoid overwhelming the server
 - Retry logic: Failed pages are retried up to 3 times
-- ETA reporting: Shows estimated time remaining
+- Ban detection: Detects 403/429/CAPTCHA patterns and backs off (30s to 5min max)
+- ETA reporting: Shows estimated time remaining, including ban status
 
 IMPORTANT: This script scrapes ~1M+ web pages. Expect 24-48 hours for full download.
 Consider running with --max-projects for testing first.
@@ -32,11 +33,16 @@ Requirements:
     AWS CLI must be configured with credentials that have write access to:
     s3://openalex-ingest/awards/kaken/
 
+    For Zyte proxy support, set ZYTE_API_KEY environment variable.
+
 Usage:
     python kaken_to_s3.py
 
     # Resume interrupted download:
     python kaken_to_s3.py --resume
+
+    # Use Zyte proxy (recommended if getting blocked):
+    python kaken_to_s3.py --resume --use-zyte
 
     # Test with limited projects:
     python kaken_to_s3.py --max-projects 1000 --skip-upload
@@ -47,11 +53,13 @@ Author: OpenAlex Team
 import argparse
 import gzip
 import json
+import os
 import re
 import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+from base64 import standard_b64decode
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -71,15 +79,29 @@ SITEMAP_INDEX_URL = "https://kaken.nii.ac.jp/sitemaps/kakenhi/sitemapindex.xml"
 PROJECT_URL_BASE = "https://kaken.nii.ac.jp/en/grant/"
 
 # Rate limiting - be respectful to the server
-REQUEST_DELAY = 0.2  # Seconds between requests PER WORKER
-MAX_WORKERS = 10  # Parallel page fetches
+REQUEST_DELAY = 0.5  # Seconds between requests PER WORKER (was 0.2)
+MAX_WORKERS = 5  # Parallel page fetches (was 10)
 MAX_RETRIES = 3  # Max retries per page
 RETRY_BACKOFF = 2.0  # Exponential backoff multiplier
 CHECKPOINT_INTERVAL = 1000  # Save checkpoint every N projects
 
+# Ban detection thresholds - tuned for slow/flaky sites (not aggressive rate limiters)
+BAN_ERROR_THRESHOLD = 25  # Consecutive errors before suspecting ban (was 10)
+BAN_ERROR_WINDOW = 100  # Check error rate in last N requests (was 50)
+BAN_ERROR_RATE_THRESHOLD = 0.6  # Error rate that triggers ban detection (was 0.5)
+BAN_BACKOFF_INITIAL = 30  # Initial backoff when ban detected (seconds) (was 60)
+BAN_BACKOFF_MAX = 300  # Max backoff (5 minutes) (was 3600/1 hour)
+
 # S3 destination
 S3_BUCKET = "openalex-ingest"
 S3_KEY = "awards/kaken/kaken_projects.parquet"
+
+# Zyte API configuration
+ZYTE_API_URL = "https://api.zyte.com/v1/extract"
+ZYTE_API_KEY = os.getenv("ZYTE_API_KEY", "")
+
+# Global flag for Zyte usage (set by command line)
+USE_ZYTE = False
 
 
 # =============================================================================
@@ -137,17 +159,116 @@ class ProgressTracker:
             return True
         return False
 
-    def get_progress_line(self) -> str:
+    def get_progress_line(self, ban_status: str = "") -> str:
         """Get formatted progress line."""
         pct = (self.completed_items / self.total_items) * 100 if self.total_items > 0 else 0
         rate = self.get_rate()
-        return (
+        line = (
             f"  [{self.completed_items:,}/{self.total_items:,} ({pct:.1f}%)] "
             f"[{rate:.2f}/s] "
             f"[Elapsed: {self.get_elapsed()}] "
             f"[ETA: {self.get_eta()}] "
             f"[Errors: {self.errors}]"
         )
+        if ban_status:
+            line += f" [{ban_status}]"
+        return line
+
+
+# =============================================================================
+# Ban Detection
+# =============================================================================
+
+class BanDetector:
+    """Detect if we're being banned/rate-limited and manage global backoff."""
+
+    def __init__(self):
+        self.recent_results: list[bool] = []  # True = success, False = error
+        self.consecutive_errors = 0
+        self.ban_detected = False
+        self.current_backoff = 0
+        self.total_bans_detected = 0
+        self.last_ban_time: Optional[float] = None
+        self._lock = __import__('threading').Lock()
+
+    def record_result(self, success: bool, error_type: Optional[str] = None):
+        """Record a request result."""
+        with self._lock:
+            self.recent_results.append(success)
+            if len(self.recent_results) > BAN_ERROR_WINDOW:
+                self.recent_results.pop(0)
+
+            if success:
+                self.consecutive_errors = 0
+            else:
+                self.consecutive_errors += 1
+
+            # Check for ban signals - only explicit HTTP ban codes and captcha
+            # (removed "connection_refused" - that's normal for slow/overloaded sites)
+            if error_type in ("403", "429", "captcha"):
+                self._check_ban_status(is_ban_signal=True)
+            elif not success:
+                self._check_ban_status(is_ban_signal=False)
+
+    def _check_ban_status(self, is_ban_signal: bool):
+        """Check if we should trigger ban detection."""
+        # Strong ban signal (403/429/captcha) - require more consecutive errors
+        # to avoid false positives from slow/flaky sites (was 3, now 10)
+        if is_ban_signal and self.consecutive_errors >= 10:
+            self._trigger_ban()
+            return
+
+        # Too many consecutive errors
+        if self.consecutive_errors >= BAN_ERROR_THRESHOLD:
+            self._trigger_ban()
+            return
+
+        # High error rate in recent window
+        if len(self.recent_results) >= BAN_ERROR_WINDOW:
+            error_rate = self.recent_results.count(False) / len(self.recent_results)
+            if error_rate >= BAN_ERROR_RATE_THRESHOLD:
+                self._trigger_ban()
+
+    def _trigger_ban(self):
+        """Trigger ban detection and set backoff."""
+        if not self.ban_detected:
+            self.ban_detected = True
+            self.total_bans_detected += 1
+            self.last_ban_time = time.time()
+            # Exponential backoff based on number of bans
+            self.current_backoff = min(
+                BAN_BACKOFF_INITIAL * (2 ** (self.total_bans_detected - 1)),
+                BAN_BACKOFF_MAX
+            )
+            print(f"\n  [BAN DETECTED] Consecutive errors: {self.consecutive_errors}, "
+                  f"backing off for {self.current_backoff}s...")
+
+    def wait_if_banned(self) -> bool:
+        """Wait if ban is detected. Returns True if we waited."""
+        if not self.ban_detected:
+            return False
+
+        print(f"  [BAN] Waiting {self.current_backoff}s before resuming...")
+        time.sleep(self.current_backoff)
+
+        # Reset state after waiting
+        with self._lock:
+            self.ban_detected = False
+            self.consecutive_errors = 0
+            self.recent_results.clear()
+
+        print(f"  [BAN] Resuming after backoff...")
+        return True
+
+    def get_status(self) -> str:
+        """Get current ban status for display."""
+        if self.ban_detected:
+            return f"BAN DETECTED - backoff {self.current_backoff}s"
+        elif self.total_bans_detected > 0:
+            return f"Bans: {self.total_bans_detected}"
+        elif self.consecutive_errors >= 3:
+            return f"Errors: {self.consecutive_errors} consecutive"
+        return ""
 
 
 # =============================================================================
@@ -304,10 +425,68 @@ def download_sitemaps(session: requests.Session) -> list[str]:
 # Page Scraping Functions
 # =============================================================================
 
+def fetch_via_zyte(url: str, timeout: int = 60) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Fetch a URL via the Zyte API.
+
+    Args:
+        url: URL to fetch
+        timeout: Request timeout in seconds
+
+    Returns:
+        Tuple of (html content or None, error message or None, error_type or None)
+    """
+    if not ZYTE_API_KEY:
+        return None, "ZYTE_API_KEY not set", "config_error"
+
+    zyte_params = {
+        "url": url,
+        "httpResponseBody": True,
+        "httpResponseHeaders": True,
+    }
+
+    try:
+        response = requests.post(
+            ZYTE_API_URL,
+            auth=(ZYTE_API_KEY, ""),
+            json=zyte_params,
+            timeout=timeout
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Decode the base64 response body
+        status_code = data.get("statusCode", 200)
+        if status_code == 404:
+            return None, None, None  # Page doesn't exist, not an error
+
+        if status_code >= 400:
+            return None, f"HTTP {status_code} via Zyte", str(status_code)
+
+        body_b64 = data.get("httpResponseBody", "")
+        if body_b64:
+            html = standard_b64decode(body_b64).decode("utf-8", errors="replace")
+            return html, None, None
+        else:
+            return None, "Empty response from Zyte", "empty_response"
+
+    except requests.exceptions.Timeout:
+        return None, "Zyte API timeout", "timeout"
+    except requests.exceptions.HTTPError as e:
+        if response.status_code == 429:
+            return None, "Zyte rate limited", "429"
+        elif response.status_code == 401:
+            return None, "Zyte API key invalid", "auth_error"
+        else:
+            return None, f"Zyte HTTP {response.status_code}", "zyte_error"
+    except Exception as e:
+        return None, f"Zyte error: {type(e).__name__}: {str(e)}", "zyte_error"
+
+
 def fetch_project_with_retry(
     url: str,
     max_retries: int = MAX_RETRIES
-) -> tuple[str, Optional[dict], Optional[str]]:
+) -> tuple[str, Optional[dict], Optional[str], Optional[str]]:
     """
     Fetch and parse a single project page with retry logic.
 
@@ -316,59 +495,108 @@ def fetch_project_with_retry(
         max_retries: Maximum retry attempts
 
     Returns:
-        Tuple of (original_url, project dict or None, error message or None)
+        Tuple of (original_url, project dict or None, error message or None, error_type or None)
+        error_type is one of: "403", "429", "connection_refused", "captcha", "timeout", "server_error", None
     """
     original_url = url  # Keep original for checkpoint tracking
     last_error = None
+    error_type = None
 
     # Rate limit at the start of each request (per-worker throttling)
     time.sleep(REQUEST_DELAY)
 
-    headers = {
-        "Accept": "text/html,application/xhtml+xml",
-        "User-Agent": "OpenAlex-KAKEN-Ingest/1.0 (research data aggregator; contact@openalex.org)",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
+    # Use English version of the page
+    fetch_url = url
+    if "/ja/" in fetch_url:
+        fetch_url = fetch_url.replace("/ja/", "/en/")
+    elif "/en/" not in fetch_url:
+        fetch_url = fetch_url.replace("/grant/", "/en/grant/")
 
     for attempt in range(max_retries):
         try:
-            # Use English version of the page
-            fetch_url = url
-            if "/ja/" in fetch_url:
-                fetch_url = fetch_url.replace("/ja/", "/en/")
-            elif "/en/" not in fetch_url:
-                fetch_url = fetch_url.replace("/grant/", "/en/grant/")
+            # Fetch via Zyte or direct
+            if USE_ZYTE:
+                html, error, err_type = fetch_via_zyte(fetch_url)
+                if error:
+                    last_error = error
+                    error_type = err_type
+                    if attempt < max_retries - 1:
+                        time.sleep(RETRY_BACKOFF ** attempt)
+                    continue
+                if html is None and error is None:
+                    # 404 - page doesn't exist
+                    return (original_url, None, None, None)
+            else:
+                headers = {
+                    "Accept": "text/html,application/xhtml+xml",
+                    "User-Agent": "OpenAlex-KAKEN-Ingest/1.0 (research data aggregator; contact@openalex.org)",
+                    "Accept-Language": "en-US,en;q=0.9",
+                }
+                response = requests.get(fetch_url, headers=headers, timeout=30)
+                response.raise_for_status()
+                html = response.text
 
-            response = requests.get(fetch_url, headers=headers, timeout=30)
-            response.raise_for_status()
+            # Check for CAPTCHA or block page - use specific phrases to avoid
+            # false positives (e.g. "robotic" in research content)
+            content_lower = html.lower()
+            captcha_signals = [
+                "captcha",
+                "verify you are not a robot",
+                "are you a robot",
+                "i'm not a robot",
+                "access denied",
+                "too many requests",
+                "rate limit exceeded",
+                "please complete the security check",
+                "blocked by",
+            ]
+            if any(signal in content_lower for signal in captcha_signals):
+                last_error = "CAPTCHA or block page detected"
+                error_type = "captcha"
+                if attempt < max_retries - 1:
+                    time.sleep(RETRY_BACKOFF ** (attempt + 2))
+                continue
 
-            project = parse_project_page(response.text, fetch_url)
-            return (original_url, project, None)
+            project = parse_project_page(html, fetch_url)
+            return (original_url, project, None, None)
 
         except requests.exceptions.Timeout:
             last_error = f"Timeout (attempt {attempt + 1}/{max_retries})"
-        except requests.exceptions.ConnectionError:
-            last_error = f"Connection error (attempt {attempt + 1}/{max_retries})"
+            error_type = "timeout"
+        except requests.exceptions.ConnectionError as e:
+            error_str = str(e).lower()
+            if "refused" in error_str or "reset" in error_str:
+                last_error = f"Connection refused (attempt {attempt + 1}/{max_retries})"
+                error_type = "connection_refused"
+            else:
+                last_error = f"Connection error (attempt {attempt + 1}/{max_retries})"
+                error_type = "connection_error"
         except requests.exceptions.HTTPError as e:
             if response.status_code == 429:  # Rate limited
                 wait_time = RETRY_BACKOFF ** (attempt + 2)
-                last_error = f"Rate limited, waiting {wait_time:.1f}s"
+                last_error = f"Rate limited (429), waiting {wait_time:.1f}s"
+                error_type = "429"
                 time.sleep(wait_time)
+            elif response.status_code == 403:  # Forbidden - likely banned
+                last_error = f"Forbidden (403) - possible ban"
+                error_type = "403"
             elif response.status_code == 404:
                 # Project doesn't exist, skip
-                return (original_url, None, None)
+                return (original_url, None, None, None)
             elif response.status_code >= 500:
                 last_error = f"Server error {response.status_code}"
+                error_type = "server_error"
             else:
-                return (original_url, None, f"HTTP {response.status_code}")
+                return (original_url, None, f"HTTP {response.status_code}", None)
         except Exception as e:
             last_error = f"{type(e).__name__}: {str(e)}"
+            error_type = "other"
 
         # Wait before retry
         if attempt < max_retries - 1:
             time.sleep(RETRY_BACKOFF ** attempt)
 
-    return (original_url, None, last_error)
+    return (original_url, None, last_error, error_type)
 
 
 def parse_project_page(html: str, url: str) -> Optional[dict]:
@@ -582,7 +810,7 @@ def download_all_projects(
 
     # Limit projects if requested
     if max_projects:
-        urls = urls[:max_projects]
+        checkpoint.urls = checkpoint.urls[:max_projects]
         print(f"  [INFO] Limited to {max_projects:,} projects")
 
     # Get remaining URLs to process
@@ -598,8 +826,9 @@ def download_all_projects(
         print("  [INFO] All URLs already downloaded!")
         return checkpoint.projects
 
-    # Initialize progress tracker
+    # Initialize progress tracker and ban detector
     progress = ProgressTracker(len(urls_to_fetch))
+    ban_detector = BanDetector()
 
     # Track progress for checkpointing
     items_since_checkpoint = 0
@@ -626,26 +855,34 @@ def download_all_projects(
             for future in as_completed(futures):
                 url = futures[future]
                 try:
-                    result_url, project, error = future.result()
+                    result_url, project, error, error_type = future.result()
 
                     if error:
                         progress.update(is_error=True)
                         failed_urls.append((result_url, error))
                         checkpoint.mark_failed(result_url)
+                        if not USE_ZYTE:
+                            ban_detector.record_result(success=False, error_type=error_type)
                     elif project:
                         progress.update()
                         checkpoint.mark_completed(result_url)
                         checkpoint.add_project(project)
+                        if not USE_ZYTE:
+                            ban_detector.record_result(success=True)
                     else:
                         # Project page was empty or 404
                         progress.update()
                         checkpoint.mark_completed(result_url)
+                        if not USE_ZYTE:
+                            ban_detector.record_result(success=True)
 
                     items_since_checkpoint += 1
 
                     # Print progress periodically
                     if progress.should_report(30):
-                        print(f"\r{progress.get_progress_line()}", flush=True)
+                        # Don't show ban status when using Zyte (they handle rate limiting)
+                        ban_status = "" if USE_ZYTE else ban_detector.get_status()
+                        print(f"\r{progress.get_progress_line(ban_status)}", flush=True)
 
                     # Save checkpoint periodically
                     if items_since_checkpoint >= CHECKPOINT_INTERVAL:
@@ -658,6 +895,14 @@ def download_all_projects(
                     progress.update(is_error=True)
                     failed_urls.append((url, str(e)))
                     checkpoint.mark_failed(url)
+                    if not USE_ZYTE:
+                        ban_detector.record_result(success=False, error_type="other")
+
+            # Check for ban and wait if needed before next batch
+            # Skip ban detection when using Zyte - they handle rate limiting
+            if not USE_ZYTE and ban_detector.wait_if_banned():
+                checkpoint.save()
+                print(f"  [INFO] Saved checkpoint before resuming")
 
             # Save checkpoint after each batch
             checkpoint.save()
@@ -669,6 +914,8 @@ def download_all_projects(
     print(f"  Total processed: {progress.completed_items:,}")
     print(f"  Projects extracted: {len(checkpoint.projects):,}")
     print(f"  Total time: {progress.get_elapsed()}")
+    if not USE_ZYTE and ban_detector.total_bans_detected > 0:
+        print(f"  Ban events detected: {ban_detector.total_bans_detected}")
 
     if failed_urls:
         print(f"\n  [WARN] {len(failed_urls)} URLs failed:")
@@ -875,7 +1122,34 @@ def main():
         default=None,
         help="Limit to N projects (for testing)"
     )
+    parser.add_argument(
+        "--use-zyte",
+        action="store_true",
+        help="Use Zyte API proxy for requests (requires ZYTE_API_KEY env var)"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel workers (default: 5, or 20 with --use-zyte)"
+    )
     args = parser.parse_args()
+
+    # Set global Zyte flag and adjust settings for Zyte
+    global USE_ZYTE, MAX_WORKERS, REQUEST_DELAY
+    USE_ZYTE = args.use_zyte
+
+    # Validate Zyte configuration
+    if USE_ZYTE and not ZYTE_API_KEY:
+        print("[ERROR] --use-zyte requires ZYTE_API_KEY environment variable")
+        sys.exit(1)
+
+    # When using Zyte, we can be more aggressive since they handle rate limiting
+    if USE_ZYTE:
+        MAX_WORKERS = args.workers if args.workers else 20
+        REQUEST_DELAY = 0.1  # Minimal delay since Zyte manages throttling
+    elif args.workers:
+        MAX_WORKERS = args.workers
 
     # Create output directory
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -885,6 +1159,9 @@ def main():
     print("=" * 60)
     print(f"Output directory: {args.output_dir.absolute()}")
     print(f"S3 destination: s3://{S3_BUCKET}/{S3_KEY}")
+    print(f"Workers: {MAX_WORKERS}, delay: {REQUEST_DELAY}s")
+    if USE_ZYTE:
+        print(f"Proxy: Zyte API (key: {ZYTE_API_KEY[:8]}...)")
     if args.resume:
         print(f"Mode: RESUME (will continue from checkpoint)")
     if args.max_projects:

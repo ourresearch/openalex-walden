@@ -203,7 +203,7 @@ THEN UPDATE SET
     target.is_corresponding_exists = source.is_corresponding_exists,
     target.best_doi = source.best_doi,
     target.source_id = source.source_id,
-    target.openalex_updated_dt = current_timestamp();
+    target.openalex_updated_dt = current_timestamp()
 -- USE ON FULL REFRESH
 -- WHEN NOT MATCHED THEN INSERT (
 -- work_id,

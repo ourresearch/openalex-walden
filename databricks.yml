@@ -1,0 +1,52 @@
+bundle:
+  name: openalex-walden
+
+workspace:
+  host: https://dbc-ce570f73-0362.cloud.databricks.com
+  root_path: /Workspace/Shared/.bundle/${bundle.name}
+
+run_as:
+  service_principal_name: 736e2b72-37fd-4cbd-9313-0e68514ab813
+
+permissions:
+  - group_name: users
+    level: CAN_MANAGE
+
+include:
+  - jobs/authors.yaml
+  - jobs/concepts.yaml
+  - jobs/institutions.yaml
+  - jobs/institutions_frontfill.yaml
+  - jobs/sync_all_works_to_elasticsearch.yaml
+  - jobs/sync_authors_to_elasticsearch.yaml
+  - jobs/sync_awards_to_elasticsearch.yaml
+  - jobs/sync_concepts_to_elasticsearch.yaml
+  - jobs/sync_common_entities_to_elasticsearch.yaml
+  - jobs/sync_content_index_to_d1.yaml
+  - jobs/sync_funders_to_elasticsearch.yaml
+  - jobs/sync_institutions_to_elasticsearch.yaml
+  - jobs/sync_keywords_to_elasticsearch.yaml
+  - jobs/sync_publishers_to_elasticsearch.yaml
+  - jobs/sync_sources_to_elasticsearch.yaml
+  - jobs/sync_topic_hierarchy_to_elasticsearch.yaml
+  - jobs/vacuum_optimize_tables.yaml
+  - jobs/sync_vector_index.yaml
+  - jobs/vector_embeddings.yaml
+  - jobs/union_all_works.yaml
+  - jobs/crossref.yaml
+  - jobs/datacite.yaml
+  - jobs/landing_page.yaml
+  - jobs/pubmed.yaml
+  - jobs/repo.yaml
+  - jobs/taxicab_crossref_html.yaml
+  - jobs/taxicab_repos_html.yaml
+  - jobs/taxicab_pdfs.yaml
+  - jobs/taxicab_rescrape.yaml
+  - jobs/parseland_reparse.yaml
+  - jobs/parse_pdfs.yaml
+  - jobs/parse_pdfs_reparse.yaml
+  - jobs/walden_end2end.yaml
+  - jobs/wunpaywall_weekly_data_feed.yaml
+  - jobs/snapshot_full.yaml
+  - jobs/daily_changefiles.yaml
+  - jobs/topics.yaml

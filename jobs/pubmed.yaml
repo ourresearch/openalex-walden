@@ -1,0 +1,17 @@
+resources:
+  jobs:
+    PubMed:
+      name: PubMed
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        quartz_cron_expression: 39 0 8/8 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: pubmed
+          pipeline_task:
+            pipeline_id: d327518b-e3e0-484c-a214-c7326f3e51fe
+            full_refresh: false

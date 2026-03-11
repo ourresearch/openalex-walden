@@ -1,0 +1,46 @@
+# NOTE: This YAML is for documentation only. Do NOT add to databricks.yml.
+# Run manually via Databricks UI or CLI when needed.
+#
+# Purpose: Export 217M vector embeddings to S3 as Parquet.
+# Safe prep step that doesn't touch Elasticsearch - can run overnight.
+# Output: s3://openalex-ingest/embeddings/work_embeddings_v2/
+
+resources:
+  jobs:
+    Export_Embeddings_to_Parquet:
+      name: Export Embeddings to Parquet
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+      tasks:
+        - task_key: export_embeddings
+          notebook_task:
+            notebook_path: notebooks/elastic/export_embeddings_to_parquet
+            source: GIT
+          job_cluster_key: export_cluster
+      job_clusters:
+        - job_cluster_key: export_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            # Medium cluster for Parquet export
+            node_type_id: rd-fleet.4xlarge
+            driver_node_type_id: rd-fleet.4xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 4
+      queue:
+        enabled: true
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main

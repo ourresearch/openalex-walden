@@ -1,6 +1,21 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Refresh Stale Parser Responses
+# MAGIC # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# MAGIC # !!!                    DEPRECATED                         !!!
+# MAGIC # !!!                                                       !!!
+# MAGIC # !!!  THIS FILE IS INACTIVE - DO NOT USE                   !!!
+# MAGIC # !!!                                                       !!!
+# MAGIC # !!!  Production version lives at:                         !!!
+# MAGIC # !!!  notebooks/maintenance/RefreshStaleParserResponses.py !!!
+# MAGIC # !!!                                                       !!!
+# MAGIC # !!!  Job definition:                                      !!!
+# MAGIC # !!!  jobs/refresh_stale_parser_responses.yaml             !!!
+# MAGIC # !!!                                                       !!!
+# MAGIC # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# MAGIC
+# MAGIC ---
+# MAGIC
+# MAGIC # Refresh Stale Parser Responses (ARCHIVED)
 # MAGIC
 # MAGIC This notebook fixes records in `taxicab_enriched_new` that were processed during the
 # MAGIC Dec 27, 2025 - Jan 3, 2026 regression period when Parseland returned empty author arrays.
@@ -126,6 +141,17 @@ response_schema = StructType([
     StructField("version", StringType(), True),
     StructField("abstract", StringType(), True),
     StructField("had_error", BooleanType(), True)
+])
+
+# Schema for the update DataFrame (explicit to avoid type inference failures on empty arrays)
+update_schema = StructType([
+    StructField("taxicab_id", StringType(), True),
+    StructField("new_authors", ArrayType(author_schema), True),
+    StructField("new_urls", ArrayType(url_schema), True),
+    StructField("new_license", StringType(), True),
+    StructField("new_version", StringType(), True),
+    StructField("new_abstract", StringType(), True),
+    StructField("new_had_error", BooleanType(), True)
 ])
 
 
@@ -255,8 +281,8 @@ for batch_num in range(total_batches):
                 "new_had_error": r.get("had_error", False)
             })
 
-        # Create temp view and UPDATE
-        update_df = spark.createDataFrame(update_data)
+        # Create temp view and UPDATE (use explicit schema to handle empty arrays)
+        update_df = spark.createDataFrame(update_data, schema=update_schema)
         update_df.createOrReplaceTempView("batch_updates")
 
         # UPDATE using MERGE
