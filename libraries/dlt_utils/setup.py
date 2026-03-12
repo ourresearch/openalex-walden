@@ -6,7 +6,7 @@ setup(
     name="openalex-dlt-utils",  # The name of your package (pip installable name)
     version="0.3.0",            # Your package version, always increment as you make changes due to caching
     author="Artem Kazmerchuk/OurResearch",
-    description="Utility functions for OpenAlex DLT pipelines",
+    description="Shared utilities for OpenAlex DLT pipelines",
     packages=find_packages(),   # This will find your 'utils' package and any sub-packages
                                 # It looks for directories with __init__.py
     install_requires=[
