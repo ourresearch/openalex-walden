@@ -33,8 +33,19 @@ jobs:
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
           WHEEL=$(ls libraries/dlt_utils/dist/*.whl)
-          databricks fs cp "$WHEEL" "/Volumes/openalex/default/libraries/$(basename $WHEEL)" --overwrite
-          echo "Uploaded $(basename $WHEEL)"
+          WHEEL_NAME=$(basename "$WHEEL")
+          TOKEN=$(databricks auth token | jq -r '.access_token')
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+            "${DATABRICKS_HOST}/api/2.0/fs/files/Volumes/openalex/default/libraries/${WHEEL_NAME}" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@${WHEEL}")
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "204" ]; then
+            echo "Uploaded ${WHEEL_NAME}"
+          else
+            echo "Upload failed with HTTP ${HTTP_CODE}"
+            exit 1
+          fi
 
       - name: Notify Slack (success)
         if: success()
