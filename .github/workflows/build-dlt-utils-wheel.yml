@@ -26,14 +26,14 @@ jobs:
       - name: Install Databricks CLI
         uses: databricks/setup-cli@main
 
-      - name: Upload wheel to Volumes
+      - name: Upload package to Volumes
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
           WHEEL=$(ls libraries/dlt_utils/dist/*.whl)
-          databricks fs cp "$WHEEL" "dbfs:/Volumes/openalex/default/libraries/$(basename $WHEEL)" --overwrite
+          databricks fs cp "$WHEEL" "/Volumes/openalex/default/libraries/$(basename $WHEEL)" --overwrite
           echo "Uploaded $(basename $WHEEL)"
 
       - name: Notify Slack (success)
