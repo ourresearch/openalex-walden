@@ -730,7 +730,9 @@ parsed_df = clean_df \
             lit(True)
         ).otherwise(lit(False))
     ) \
-    .withColumn("repository_id", col("endpoint_id"))
+    .withColumn("repository_id", col("endpoint_id")) \
+    .filter(size(col("urls")) > 0) \
+    .filter(size(filter(col("urls"), lambda x: ~x.url.contains("doi.org"))) > 0)
 
 # Select final columns in the same order as DLT
 parsed_df = parsed_df.select(
