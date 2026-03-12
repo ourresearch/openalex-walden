@@ -695,6 +695,7 @@ def repo_parsed():
     )
     .drop("has_pmcid", "pmcid", "_identifier_urls", "_relation_urls")
     .filter(F.size(F.col("urls")) > 0)
+    .filter(F.size(F.filter(F.col("urls"), lambda x: ~x.url.contains("doi.org"))) > 0)
     .withColumn("mesh", F.lit(None).cast("string"))
     .withColumn(
         "is_oa",
