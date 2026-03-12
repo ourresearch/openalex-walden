@@ -47,7 +47,8 @@ walden_works_schema = StructType([
     StructField("urls", ArrayType(StructType([
         StructField("url", StringType(), True), StructField("content_type", StringType(), True)
     ])), True),
-    StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True)
+    StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
+    StructField("ingested_at", TimestampType(), True)
 ])
 
 

@@ -98,7 +98,7 @@ def apply_initial_processing(df_input, source_key, target_walden_schema):
     Applies Walden schema alignment, source-specific fixes, and DOI normalization.
     Relies on apply_walden_schema and normalize_doi_spark_col from utils.
     """
-    df = df_input.withColumn("provenance", F.lit(source_key))
+    df = df_input.withColumn("provenance", F.lit(source_key)).withColumn("ingested_at", F.current_timestamp())
 
     if source_key == "repo_backfill":
         df = df.withColumn("ids", F.when(

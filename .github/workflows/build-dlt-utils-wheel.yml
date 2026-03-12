@@ -1,0 +1,77 @@
+name: Build and Upload DLT Utils Wheel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'libraries/dlt_utils/**'
+
+jobs:
+  build-wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install build tools
+        run: pip install wheel setuptools
+
+      - name: Build wheel
+        working-directory: libraries/dlt_utils
+        run: python setup.py bdist_wheel --dist-dir dist
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Upload wheel to Volumes
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          WHEEL=$(ls libraries/dlt_utils/dist/*.whl)
+          databricks fs cp "$WHEEL" "dbfs:/Volumes/openalex/default/libraries/$(basename $WHEEL)" --overwrite
+          echo "Uploaded $(basename $WHEEL)"
+
+      - name: Notify Slack (success)
+        if: success()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "DLT utils wheel uploaded",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":package: *DLT utils wheel uploaded*\n- Commit: `${{ github.sha }}`\n- By: ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack (failure)
+        if: failure()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "DLT utils wheel build failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":x: *DLT utils wheel build failed*\n- Commit: `${{ github.sha }}`\n- By: ${{ github.actor }}\n- <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+                  }
+                }
+              ]
+            }
