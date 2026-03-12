@@ -35,7 +35,9 @@ jobs:
         run: |
           WHEEL=$(ls libraries/dlt_utils/dist/*.whl)
           WHEEL_NAME=$(basename "$WHEEL")
-          TOKEN=$(databricks auth token | jq -r '.access_token')
+          TOKEN=$(curl -s -X POST "${DATABRICKS_HOST}/oidc/v1/token" \
+            -d "grant_type=client_credentials&client_id=${DATABRICKS_CLIENT_ID}&client_secret=${DATABRICKS_CLIENT_SECRET}&scope=all-apis" \
+            | jq -r '.access_token')
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
             "${DATABRICKS_HOST}/api/2.0/fs/files/Volumes/openalex/default/libraries/${WHEEL_NAME}" \
             -H "Authorization: Bearer ${TOKEN}" \
