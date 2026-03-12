@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'libraries/dlt_utils/**'
+      - '.github/workflows/build-dlt-utils-wheel.yml'
 
 jobs:
   build-wheel:
