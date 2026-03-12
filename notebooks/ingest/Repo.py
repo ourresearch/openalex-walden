@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.2.1-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.0-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -805,7 +805,8 @@ def repo_enriched():
             StructField("url", StringType(), True), StructField("content_type", StringType(), True)
         ])), True),
         StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
-        StructField("repository_id", StringType(), True)
+        StructField("repository_id", StringType(), True),
+        StructField("ingested_at", TimestampType(), True)
     ])
 
     # Apply consistent schema and transformations
