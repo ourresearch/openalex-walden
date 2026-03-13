@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.2.3-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.0-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -688,12 +688,13 @@ def crossref_processed():
         StructField("urls", ArrayType(StructType([
             StructField("url", StringType(), True), StructField("content_type", StringType(), True)
         ])), True),
-        StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True)
+        StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
+        StructField("ingested_at", TimestampType(), True)
     ])
-    
+
     df_parsed_input = (spark.readStream
         .option("readChangeFeed", "true").table("LIVE.crossref_parsed")
-        .filter(F.col("_change_type").isin("insert", "update_postimage", "delete"))        
+        .filter(F.col("_change_type").isin("insert", "update_postimage", "delete"))
     )
     return apply_initial_processing(df_parsed_input, "crossref", walden_works_with_raw_type_schema)
 

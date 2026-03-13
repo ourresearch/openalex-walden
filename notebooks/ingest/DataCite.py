@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.2.1-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.0-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -434,9 +434,10 @@ def datacite_enriched():
         StructField("urls", ArrayType(StructType([
             StructField("url", StringType(), True), StructField("content_type", StringType(), True)
         ])), True),
-        StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True)
+        StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
+        StructField("ingested_at", TimestampType(), True)
     ])
-    
+
     df_parsed_input = dlt.read_stream("datacite_parsed")
     df_walden_works_schema = apply_initial_processing(df_parsed_input, "datacite", walden_works_with_raw_type_schema)
 
