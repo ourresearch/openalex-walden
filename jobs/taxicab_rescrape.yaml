@@ -6,6 +6,8 @@ resources:
         on_failure:
           - casey@ourresearch.org
       max_concurrent_runs: 1
+      queue:
+        enabled: false
       tasks:
         - task_key: run_taxicab_rescrape
           notebook_task:

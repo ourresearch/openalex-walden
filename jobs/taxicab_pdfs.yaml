@@ -10,6 +10,8 @@ resources:
         timezone_id: UTC
         pause_status: UNPAUSED
       max_concurrent_runs: 1
+      queue:
+        enabled: false
       tasks:
         - task_key: run_taxicab
           notebook_task:
