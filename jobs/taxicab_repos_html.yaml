@@ -51,6 +51,6 @@ resources:
         - name: lookback_days
           default: "3"
         - name: url_limit
-          default: "250000"
+          default: "500000"
         - name: source_filter
           default: "repo_only"
