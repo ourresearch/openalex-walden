@@ -19,7 +19,7 @@ resources:
             source: GIT
             base_parameters:
               lookback_days: "3"
-              url_limit: "250000"
+              url_limit: "500000"
               source_filter: "crossref_only"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
