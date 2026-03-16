@@ -552,6 +552,7 @@ def repo_parsed():
     )
     .drop("_type_key")
     .filter(~F.lower(F.col("raw_native_type")).isin(TYPES_TO_DELETE))  # Filter out records marked for deletion (case-insensitive)
+    .filter(F.col("title").isNotNull() & (F.length(F.trim(F.col("title"))) >= 5))  # Filter out records with no title or very short titles
     .withColumn("metadata_string", F.col("`ns0:metadata`").cast("string"))
     .withColumn("version", detect_version_udf(
         F.col("metadata_string"), 
