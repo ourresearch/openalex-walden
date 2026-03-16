@@ -551,7 +551,13 @@ def repo_parsed():
         )
     )
     .drop("_type_key")
-    .filter(~F.lower(F.col("raw_native_type")).isin(TYPES_TO_DELETE))  # Filter out records marked for deletion (case-insensitive)
+    .filter(
+        # Records with a type: exclude only TYPES_TO_DELETE
+        (~F.col("raw_native_type").isNull() & ~F.lower(F.col("raw_native_type")).isin(TYPES_TO_DELETE))
+        |
+        # Records with null type: allow if not archive.org
+        (F.col("raw_native_type").isNull() & ~F.col("native_id").startswith("oai:archive.org"))
+    )
     .filter(F.col("title").isNotNull() & (F.length(F.trim(F.col("title"))) >= 5))  # Filter out records with no title or very short titles
     .withColumn("metadata_string", F.col("`ns0:metadata`").cast("string"))
     .withColumn("version", detect_version_udf(
