@@ -6,7 +6,7 @@ resources:
         on_failure:
           - casey@ourresearch.org
       schedule:
-        quartz_cron_expression: 41 0 0/2 * * ?
+        quartz_cron_expression: 41 0 4/4 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       max_concurrent_runs: 1
