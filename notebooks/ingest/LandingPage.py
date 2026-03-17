@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.0-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.1-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -36,6 +36,7 @@ def landing_page_parsed():
         spark.readStream
             .format("delta")
             .table("openalex.parseland.parsed_pages")
+            .withColumn("ingested_at", F.current_timestamp())
     )
 
 @dlt.table(
@@ -103,6 +104,7 @@ def landing_page_staged():
             F.current_timestamp().alias("updated_date"),
             F.current_timestamp().alias("created_date"),
             F.col("had_error"),
+            F.col("ingested_at"),
         )
         .filter(
             # Drop records where parsing returned nothing useful.
@@ -135,6 +137,7 @@ def landing_page_backfill():
                 F.lit(None)
             ).otherwise(normalize_license_udf(F.col("license")))
         )
+        .withColumn("ingested_at", F.current_timestamp())
     )
 
 @dlt.table(

@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.0-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.1-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -277,6 +277,7 @@ def crossref_items():
     .option("multiline", "true")
     .schema(current_schema)  # Explicitly use fixed schema to avoid errors and drift (it is 6k lines long)
     .load("s3a://openalex-ingest/crossref/")
+    .withColumn("ingested_at", F.current_timestamp())
   )
 
 # COMMAND ----------
@@ -295,8 +296,8 @@ def crossref_items():
 )
 def crossref_snapshots_exploded():
   return (dlt.read_stream("crossref_items")
-    .select(F.explode(F.col("items")).alias("record"))
-    .select("record.*")
+    .select(F.explode(F.col("items")).alias("record"), F.col("ingested_at"))
+    .select("record.*", "ingested_at")
     .withColumn("indexed_date", F.col("indexed.date-time"))
     .withColumnRenamed("DOI", "native_id")
     .withColumn("updated_date", F.make_date(
@@ -607,8 +608,9 @@ def crossref_parsed():
             "urls",
             "mesh",
             "is_oa",
-            "_change_type", 
-            "_commit_version", 
+            "ingested_at",
+            "_change_type",
+            "_commit_version",
             "_commit_timestamp"
         )
     )

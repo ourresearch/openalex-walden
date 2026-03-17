@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.0-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.1-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -337,13 +337,14 @@ def grobid_raw():
         .format("delta")
         .table("openalex.pdf.grobid_processing_results")
         .where("source_pdf_id IS NOT NULL")
-        .withColumn("native_id", 
+        .withColumn("native_id",
             when(
                 col("native_id").startswith("https://doi.org/"),
                 expr("substring(native_id, length('https://doi.org/') + 1)")
             )
             .otherwise(col("native_id"))
         )  # just in case, as some native_id came in as https://doi.org/ before and it affects matching
+        .withColumn("ingested_at", current_timestamp())
     )
 
 @dlt.table
@@ -434,7 +435,8 @@ def pdf_parse():
        lit(True).alias("is_oa"),
        version_column.alias("version"),
        col("license").alias("license"),
-       col("fields.fulltext").alias("fulltext")
+       col("fields.fulltext").alias("fulltext"),
+       col("ingested_at")
    )
 
 # COMMAND ----------
@@ -449,6 +451,7 @@ def pdf_backfill():
             .drop("urls")
             .drop("_change_type", "_commit_version", "_commit_timestamp")
             .withColumn("created_date", to_timestamp(col("created_date")))
+            .withColumn("ingested_at", current_timestamp())
     )
 
 @dlt.table

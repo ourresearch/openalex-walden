@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.0-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.1-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -112,6 +112,7 @@ def datacite_items():
       .option("compression", "gzip")
       .option("pathGlobFilter", "*.json*.gz")
       .load("s3a://openalex-ingest/datacite/")
+      .withColumn("ingested_at", F.current_timestamp())
   )
 
 # COMMAND ----------
@@ -388,7 +389,8 @@ def datacite_parsed():
         "references",
         "urls",
         "mesh",
-        "is_oa"
+        "is_oa",
+        "ingested_at"
     )
 )
 

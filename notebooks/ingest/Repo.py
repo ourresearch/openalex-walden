@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.0-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.1-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -487,6 +487,7 @@ def repo_items():
       .load("s3a://openalex-ingest/repositories/")
       .withColumn("repository_id",
           F.regexp_extract(F.col("_metadata.file_path"), r"repositories/([^/]+)/", 1))
+      .withColumn("ingested_at", F.current_timestamp())
   )
 
 # COMMAND ----------
@@ -766,6 +767,7 @@ def repo_parsed_backfill():
             .table("openalex.repo.repo_works_backfill")
             .filter(F.col("_change_type").isin("insert", "update_postimage"))
             .drop("_change_type", "_commit_version", "_commit_timestamp")
+            .withColumn("ingested_at", F.current_timestamp())
     )
 
 
