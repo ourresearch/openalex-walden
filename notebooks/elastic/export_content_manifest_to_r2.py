@@ -29,8 +29,8 @@ R2_ENDPOINT = f"https://{CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
 R2_BUCKET = "openalex-pdfs"
 R2_KEY = "_manifest/content_index.parquet"
 
-R2_ACCESS_KEY = dbutils.secrets.get(scope="cloudflare", key="r2_access_key_id")
-R2_SECRET_KEY = dbutils.secrets.get(scope="cloudflare", key="r2_secret_access_key")
+R2_ACCESS_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-access-key-id")
+R2_SECRET_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-secret-access-key")
 
 # COMMAND ----------
 
