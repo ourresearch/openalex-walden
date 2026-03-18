@@ -51,25 +51,19 @@ s3 = boto3.client(
 
 # COMMAND ----------
 
+# Use GROUP BY instead of ROW_NUMBER window function — much faster on single node.
+# No ORDER BY needed — Parquet handles random access fine.
+# Skip separate count() — get it from the write stats instead.
 df = spark.sql("""
-    WITH ranked AS (
-      SELECT
-        CONCAT('W', work_id) AS openalex_id,
-        REPLACE(pdf_s3_id, '.pdf', '') AS pdf_uuid,
-        REPLACE(grobid_s3_id, '.xml.gz', '') AS grobid_xml_id,
-        ROW_NUMBER() OVER (PARTITION BY work_id ORDER BY pdf_s3_id) AS rn
-      FROM openalex.works.locations_mapped
-      WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
-        AND work_id IS NOT NULL
-    )
-    SELECT openalex_id, pdf_uuid, grobid_xml_id
-    FROM ranked
-    WHERE rn = 1
-    ORDER BY openalex_id
+    SELECT
+      CONCAT('W', work_id) AS openalex_id,
+      REPLACE(MIN(pdf_s3_id), '.pdf', '') AS pdf_uuid,
+      REPLACE(MIN(grobid_s3_id), '.xml.gz', '') AS grobid_xml_id
+    FROM openalex.works.locations_mapped
+    WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
+      AND work_id IS NOT NULL
+    GROUP BY work_id
 """)
-
-total = df.count()
-print(f"Content index: {total:,} works")
 
 # COMMAND ----------
 
@@ -129,4 +123,4 @@ print("Upload complete")
 # Clean up temp files
 dbutils.fs.rm(dbfs_path, recurse=True)
 
-print(f"\nDone. {total:,} works → {len(parquet_files)} files ({total_size_mb:.1f} MB) → r2://{R2_BUCKET}/{R2_PREFIX}/")
+print(f"\nDone. {len(parquet_files)} files ({total_size_mb:.1f} MB) → r2://{R2_BUCKET}/{R2_PREFIX}/")
