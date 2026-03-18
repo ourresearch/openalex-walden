@@ -72,11 +72,13 @@ df = spark.sql("""
 
 # COMMAND ----------
 
-# Write Parquet files to DBFS (Spark default partitioning, no coalesce)
+# Write ~10 Parquet files (~200MB each). Default partitioning produces 2800+
+# files which is slow to write and upload. coalesce(1) is too slow (single
+# partition shuffle). repartition(10) is the sweet spot.
 dbfs_path = "/tmp/content_manifest"
 dbutils.fs.rm(dbfs_path, recurse=True)
 
-df.write.parquet(f"dbfs:{dbfs_path}")
+df.repartition(10).write.parquet(f"dbfs:{dbfs_path}")
 
 parquet_files = [f for f in dbutils.fs.ls(dbfs_path) if f.path.endswith(".parquet")]
 total_size_mb = sum(f.size for f in parquet_files) / (1024 * 1024)
