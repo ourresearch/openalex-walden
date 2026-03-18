@@ -39,6 +39,7 @@ include:
   - jobs/landing_page.yaml
   - jobs/pubmed.yaml
   - jobs/repo.yaml
+  - jobs/repo_backfill.yaml
   - jobs/taxicab_crossref.yaml
   - jobs/taxicab_repos.yaml
   - jobs/taxicab_landing_page_pdfs.yaml

@@ -1,0 +1,36 @@
+resources:
+  jobs:
+    RepoBackfill:
+      name: Repo Backfill
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      max_concurrent_runs: 1
+      queue:
+        enabled: false
+      tasks:
+        - task_key: run_backfill
+          notebook_task:
+            notebook_path: notebooks/ingest/RepoBackfill
+            source: GIT
+          job_cluster_key: repo_backfill_cluster
+      job_clusters:
+        - job_cluster_key: repo_backfill_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+            node_type_id: rd-fleet.16xlarge
+            driver_node_type_id: rd-fleet.12xlarge
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 4
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
