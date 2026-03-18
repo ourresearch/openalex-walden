@@ -485,6 +485,8 @@ def repo_items():
       .schema(repository_schema)
       .option("cloudFiles.schemaLocation", "dbfs:/pipelines/repo/schema")
       .load("s3a://openalex-ingest/repositories/")
+      # Named repository_id historically; renamed to endpoint_id in repo_parsed.
+      # Kept here to avoid re-ingesting the entire streaming table.
       .withColumn("repository_id",
           F.regexp_extract(F.col("_metadata.file_path"), r"repositories/([^/]+)/", 1))
       .withColumn("ingested_at", F.current_timestamp())
@@ -752,7 +754,7 @@ def repo_parsed():
         "urls",
         "mesh",
         "is_oa",
-        "repository_id"
+        F.col("repository_id").alias("endpoint_id")
     )
 )
 
@@ -820,7 +822,7 @@ def repo_enriched():
             StructField("url", StringType(), True), StructField("content_type", StringType(), True)
         ])), True),
         StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
-        StructField("repository_id", StringType(), True),
+        StructField("endpoint_id", StringType(), True),
         StructField("ingested_at", TimestampType(), True)
     ])
 
@@ -828,12 +830,21 @@ def repo_enriched():
     df_walden_works = apply_initial_processing(df_parsed_input, "repo", walden_works_schema_with_raw_type)
     df_backfill_walden_works = apply_initial_processing(df_parsed_backfill, "repo_backfill", walden_works_schema_with_raw_type)
     
-    # Combine both (unionByName handles schema differences like repository_id in backfill)
+    # Combine both (unionByName handles schema differences like endpoint_id in backfill)
     combined_df = df_walden_works.unionByName(df_backfill_walden_works, allowMissingColumns=True)
-    
+
+    # Priority tiebreaker: repo wins over repo_backfill when updated_date is equal
+    combined_df = combined_df.withColumn(
+        "_sequence",
+        F.struct(
+            F.col("updated_date"),
+            F.when(F.col("provenance") == "repo", F.lit(1)).otherwise(F.lit(0))
+        )
+    )
+
     # Apply enrichment (with fast Pandas UDFs)
     df_enriched = enrich_with_features_and_author_keys(combined_df)
-    
+
     return apply_final_merge_key_and_filter(df_enriched)
 
 dlt.create_streaming_table(
@@ -851,5 +862,5 @@ dlt.apply_changes(
     target="repo_works",
     source="repo_enriched",
     keys=["native_id"],
-    sequence_by="updated_date"
+    sequence_by="_sequence"
 )
