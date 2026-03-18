@@ -485,7 +485,7 @@ def repo_items():
       .schema(repository_schema)
       .option("cloudFiles.schemaLocation", "dbfs:/pipelines/repo/schema")
       .load("s3a://openalex-ingest/repositories/")
-      .withColumn("endpoint_id",
+      .withColumn("repository_id",
           F.regexp_extract(F.col("_metadata.file_path"), r"repositories/([^/]+)/", 1))
       .withColumn("ingested_at", F.current_timestamp())
   )
@@ -752,7 +752,7 @@ def repo_parsed():
         "urls",
         "mesh",
         "is_oa",
-        "endpoint_id"
+        "repository_id"
     )
 )
 
@@ -820,7 +820,7 @@ def repo_enriched():
             StructField("url", StringType(), True), StructField("content_type", StringType(), True)
         ])), True),
         StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
-        StructField("endpoint_id", StringType(), True),
+        StructField("repository_id", StringType(), True),
         StructField("ingested_at", TimestampType(), True)
     ])
 
@@ -828,7 +828,7 @@ def repo_enriched():
     df_walden_works = apply_initial_processing(df_parsed_input, "repo", walden_works_schema_with_raw_type)
     df_backfill_walden_works = apply_initial_processing(df_parsed_backfill, "repo_backfill", walden_works_schema_with_raw_type)
     
-    # Combine both (unionByName handles schema differences like endpoint_id in backfill)
+    # Combine both (unionByName handles schema differences like repository_id in backfill)
     combined_df = df_walden_works.unionByName(df_backfill_walden_works, allowMissingColumns=True)
     
     # Apply enrichment (with fast Pandas UDFs)

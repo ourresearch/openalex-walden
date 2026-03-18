@@ -4,7 +4,7 @@
 # MAGIC
 # MAGIC Tests the backfill logic on ONE endpoint (~3K rows) to validate:
 # MAGIC 1. Logic works correctly
-# MAGIC 2. `endpoint_id` column is populated
+# MAGIC 2. `repository_id` column is populated
 # MAGIC 3. Get real timing data for extrapolation
 
 # COMMAND ----------
@@ -245,7 +245,7 @@ parsed_df = clean_df \
     )) \
     .withColumn("mesh", lit(None).cast("string")) \
     .withColumn("is_oa", lit(False)) \
-    .withColumn("endpoint_id", col("endpoint_id"))  # THE KEY COLUMN!
+    .withColumn("repository_id", col("endpoint_id"))  # THE KEY COLUMN!
 
 # Select final columns
 parsed_df = parsed_df.select(
@@ -253,7 +253,7 @@ parsed_df = parsed_df.select(
     "ids", "raw_native_type", "type", "version", "license", "language",
     "published_date", "created_date", "updated_date", "issue", "volume",
     "first_page", "last_page", "is_retracted", "abstract", "source_name",
-    "publisher", "funders", "references", "urls", "mesh", "is_oa", "endpoint_id"
+    "publisher", "funders", "references", "urls", "mesh", "is_oa", "repository_id"
 )
 
 # Deduplicate
@@ -276,19 +276,19 @@ print("=" * 60)
 print("OUTPUT VALIDATION")
 print("=" * 60)
 
-# Check endpoint_id is populated
-repo_id_check = parsed_df.select("endpoint_id").filter(col("endpoint_id").isNotNull()).count()
-print(f"✓ endpoint_id populated: {repo_id_check:,}/{parsed_count:,} rows ({100*repo_id_check/parsed_count:.1f}%)")
+# Check repository_id is populated
+repo_id_check = parsed_df.select("repository_id").filter(col("repository_id").isNotNull()).count()
+print(f"✓ repository_id populated: {repo_id_check:,}/{parsed_count:,} rows ({100*repo_id_check/parsed_count:.1f}%)")
 
-# Check endpoint_id value
-sample_repo_id = parsed_df.select("endpoint_id").first()[0]
-print(f"  Sample endpoint_id: {sample_repo_id}")
+# Check repository_id value
+sample_repo_id = parsed_df.select("repository_id").first()[0]
+print(f"  Sample repository_id: {sample_repo_id}")
 print(f"  Expected: {TEST_ENDPOINT}")
 print(f"  Match: {'✓ YES' if sample_repo_id == TEST_ENDPOINT else '✗ NO'}")
 
 # Show sample rows
 print("\nSample output (5 rows):")
-parsed_df.select("native_id", "title", "type", "endpoint_id").show(5, truncate=50)
+parsed_df.select("native_id", "title", "type", "repository_id").show(5, truncate=50)
 
 # COMMAND ----------
 
