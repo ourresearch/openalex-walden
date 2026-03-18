@@ -29,7 +29,7 @@ resources:
               spark.master: "local[*, 4]"
               spark.databricks.cluster.profile: singleNode
             aws_attributes:
-              availability: SPOT_WITH_FALLBACK
+              availability: ON_DEMAND
               zone_id: auto
               ebs_volume_type: GENERAL_PURPOSE_SSD
               ebs_volume_count: 1
