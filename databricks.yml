@@ -23,6 +23,7 @@ include:
   - jobs/sync_concepts_to_elasticsearch.yaml
   - jobs/sync_common_entities_to_elasticsearch.yaml
   - jobs/sync_content_index_to_d1.yaml
+  - jobs/export_content_manifest.yaml
   - jobs/sync_funders_to_elasticsearch.yaml
   - jobs/sync_institutions_to_elasticsearch.yaml
   - jobs/sync_keywords_to_elasticsearch.yaml

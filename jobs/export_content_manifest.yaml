@@ -1,0 +1,46 @@
+resources:
+  jobs:
+    Export_Content_Manifest_to_R2:
+      name: Export Content Manifest to R2
+      description: |
+        Exports Parquet manifest mapping work IDs to PDF/Grobid UUIDs in the
+        openalex-pdfs R2 bucket. Used by partners doing bulk PDF sync.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        # Run daily at 03:30 UTC (after D1 sync at 03:00)
+        quartz_cron_expression: 0 30 3 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED
+      tasks:
+        - task_key: export_content_manifest
+          notebook_task:
+            notebook_path: notebooks/elastic/export_content_manifest_to_r2
+            source: GIT
+          job_cluster_key: manifest-cluster
+      job_clusters:
+        - job_cluster_key: manifest-cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: m5.xlarge
+            num_workers: 0
+            spark_conf:
+              spark.master: "local[*, 4]"
+              spark.databricks.cluster.profile: singleNode
+            aws_attributes:
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 64
+            custom_tags:
+              ResourceClass: SingleNode
+            data_security_mode: SINGLE_USER
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
