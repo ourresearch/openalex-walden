@@ -833,12 +833,13 @@ def repo_enriched():
     # Combine both (unionByName handles schema differences like endpoint_id in backfill)
     combined_df = df_walden_works.unionByName(df_backfill_walden_works, allowMissingColumns=True)
 
-    # Priority tiebreaker: repo wins over repo_backfill when updated_date is equal
+    # Tiebreaker: updated_date first, then repo over backfill, then latest ingested_at
     combined_df = combined_df.withColumn(
         "_sequence",
         F.struct(
             F.col("updated_date"),
-            F.when(F.col("provenance") == "repo", F.lit(1)).otherwise(F.lit(0))
+            F.when(F.col("provenance") == "repo", F.lit(1)).otherwise(F.lit(0)),
+            F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp"))
         )
     )
 
