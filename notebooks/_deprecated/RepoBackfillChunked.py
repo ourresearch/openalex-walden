@@ -129,8 +129,8 @@ print(f"✓ Found {total_endpoints:,} endpoints with {total_rows:,} total rows")
 
 # Get already-processed endpoints (checkpoint)
 try:
-    done_df = spark.sql(f"SELECT DISTINCT repository_id FROM {TARGET_TABLE}")
-    done_endpoints = set(row.repository_id for row in done_df.collect())
+    done_df = spark.sql(f"SELECT DISTINCT endpoint_id FROM {TARGET_TABLE}")
+    done_endpoints = set(row.endpoint_id for row in done_df.collect())
     print(f"✓ Checkpoint: {len(done_endpoints):,} endpoints already processed")
 except:
     done_endpoints = set()
@@ -204,7 +204,7 @@ def process_endpoint(endpoint_id):
             lit(None).cast("string").alias("authors"), lit(None).cast("string").alias("year"), lit(None).cast("string").alias("raw")))) \
         .withColumn("mesh", lit(None).cast("string")) \
         .withColumn("is_oa", lit(False)) \
-        .withColumn("repository_id", col("endpoint_id"))
+        .withColumn("endpoint_id", col("endpoint_id"))
 
     # Select and dedupe
     parsed_df = parsed_df.select(
@@ -212,7 +212,7 @@ def process_endpoint(endpoint_id):
         "ids", "raw_native_type", "type", "version", "license", "language",
         "published_date", "created_date", "updated_date", "issue", "volume",
         "first_page", "last_page", "is_retracted", "abstract", "source_name",
-        "publisher", "funders", "references", "urls", "mesh", "is_oa", "repository_id"
+        "publisher", "funders", "references", "urls", "mesh", "is_oa", "endpoint_id"
     ).sort(col("updated_date").desc()).dropDuplicates(["native_id"])
 
     row_count = parsed_df.count()
