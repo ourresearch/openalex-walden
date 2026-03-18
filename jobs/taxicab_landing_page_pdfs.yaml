@@ -1,12 +1,12 @@
 resources:
   jobs:
-    TaxiCab_Repos_HTML:
-      name: TaxiCab Repos HTML
+    TaxiCab_Landing_Page_PDFs:
+      name: TaxiCab Landing Page PDFs
       email_notifications:
         on_failure:
           - casey@ourresearch.org
       schedule:
-        quartz_cron_expression: 41 0 4/4 * * ?
+        quartz_cron_expression: 41 0 3/4 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       max_concurrent_runs: 1
@@ -20,7 +20,7 @@ resources:
             base_parameters:
               lookback_days: "3"
               url_limit: "500000"
-              source_filter: "repo_only"
+              source_filter: "pdf_only"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -53,4 +53,4 @@ resources:
         - name: url_limit
           default: "500000"
         - name: source_filter
-          default: "repo_only"
+          default: "pdf_only"
