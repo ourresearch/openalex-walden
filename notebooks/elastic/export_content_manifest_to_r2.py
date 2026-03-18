@@ -7,7 +7,13 @@
 # MAGIC
 # MAGIC **Runs**: Daily after end2end completes
 # MAGIC **Source**: `openalex.works.locations_mapped`
-# MAGIC **Target**: `s3://openalex-pdfs/_manifest/content_index.parquet` (R2 via S3 API)
+# MAGIC **Target**: `s3://openalex-pdfs/_manifest/content_index/` (R2 via S3 API)
+# MAGIC
+# MAGIC Output is a directory of Parquet files, queryable as one dataset:
+# MAGIC ```python
+# MAGIC import duckdb
+# MAGIC duckdb.sql("SELECT * FROM 'content_index/*.parquet' WHERE openalex_id = 'W2741809807'")
+# MAGIC ```
 # MAGIC
 # MAGIC The export is a full replacement each run (not incremental).
 
@@ -20,17 +26,23 @@
 
 import boto3
 import os
-import tempfile
 from datetime import datetime
 
 # R2 configuration (S3-compatible API)
 CF_ACCOUNT_ID = "a452eddbbe06eb7d02f4879cee70d29c"
 R2_ENDPOINT = f"https://{CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
 R2_BUCKET = "openalex-pdfs"
-R2_KEY = "_manifest/content_index.parquet"
+R2_PREFIX = "_manifest/content_index"
 
 R2_ACCESS_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-access-key-id")
 R2_SECRET_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-secret-access-key")
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=R2_ENDPOINT,
+    aws_access_key_id=R2_ACCESS_KEY,
+    aws_secret_access_key=R2_SECRET_KEY,
+)
 
 # COMMAND ----------
 
@@ -62,49 +74,59 @@ print(f"Content index: {total:,} works")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Write Parquet and Upload to R2
+# MAGIC ## Write Parquet Files and Upload to R2
 
 # COMMAND ----------
 
-# Write single Parquet file to temp location on DBFS
+# Write Parquet files to DBFS (Spark default partitioning, no coalesce)
 dbfs_path = "/tmp/content_manifest"
 dbutils.fs.rm(dbfs_path, recurse=True)
 
-df.coalesce(1).write.parquet(f"dbfs:{dbfs_path}")
+df.write.parquet(f"dbfs:{dbfs_path}")
 
-# Find the actual .parquet file (Spark names it part-00000-*.parquet)
-parquet_files = [f.path for f in dbutils.fs.ls(dbfs_path) if f.path.endswith(".parquet")]
-if not parquet_files:
-    raise RuntimeError("No parquet file written")
-
-spark_parquet = parquet_files[0]
-local_path = spark_parquet.replace("dbfs:", "/dbfs")
-file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
-print(f"Parquet file: {file_size_mb:.1f} MB")
+parquet_files = [f for f in dbutils.fs.ls(dbfs_path) if f.path.endswith(".parquet")]
+total_size_mb = sum(f.size for f in parquet_files) / (1024 * 1024)
+print(f"Wrote {len(parquet_files)} Parquet files, {total_size_mb:.1f} MB total")
 
 # COMMAND ----------
 
-# Upload to R2
-s3 = boto3.client(
-    "s3",
-    endpoint_url=R2_ENDPOINT,
-    aws_access_key_id=R2_ACCESS_KEY,
-    aws_secret_access_key=R2_SECRET_KEY,
-)
+# Delete old manifest files from R2
+print(f"Clearing old manifest at r2://{R2_BUCKET}/{R2_PREFIX}/ ...")
+paginator = s3.get_paginator("list_objects_v2")
+old_keys = []
+for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=f"{R2_PREFIX}/"):
+    for obj in page.get("Contents", []):
+        old_keys.append(obj["Key"])
 
-print(f"Uploading to r2://{R2_BUCKET}/{R2_KEY} ...")
-s3.upload_file(local_path, R2_BUCKET, R2_KEY)
+if old_keys:
+    # Delete in batches of 1000 (S3 API limit)
+    for i in range(0, len(old_keys), 1000):
+        batch = old_keys[i:i+1000]
+        s3.delete_objects(
+            Bucket=R2_BUCKET,
+            Delete={"Objects": [{"Key": k} for k in batch]}
+        )
+    print(f"Deleted {len(old_keys)} old files")
+else:
+    print("No old files to delete")
+
+# COMMAND ----------
+
+# Upload new Parquet files to R2
+print(f"Uploading {len(parquet_files)} files to r2://{R2_BUCKET}/{R2_PREFIX}/ ...")
+for i, f in enumerate(parquet_files):
+    filename = f.path.split("/")[-1]
+    local_path = f.path.replace("dbfs:", "/dbfs")
+    r2_key = f"{R2_PREFIX}/{filename}"
+    s3.upload_file(local_path, R2_BUCKET, r2_key)
+    if (i + 1) % 10 == 0 or (i + 1) == len(parquet_files):
+        print(f"  Uploaded {i + 1}/{len(parquet_files)}")
+
 print("Upload complete")
-
-# Verify
-head = s3.head_object(Bucket=R2_BUCKET, Key=R2_KEY)
-r2_size_mb = head["ContentLength"] / (1024 * 1024)
-print(f"R2 object size: {r2_size_mb:.1f} MB")
-print(f"Last modified: {head['LastModified']}")
 
 # COMMAND ----------
 
 # Clean up temp files
 dbutils.fs.rm(dbfs_path, recurse=True)
 
-print(f"\nDone. {total:,} works → {file_size_mb:.1f} MB Parquet → r2://{R2_BUCKET}/{R2_KEY}")
+print(f"\nDone. {total:,} works → {len(parquet_files)} files ({total_size_mb:.1f} MB) → r2://{R2_BUCKET}/{R2_PREFIX}/")
