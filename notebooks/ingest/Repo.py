@@ -657,7 +657,10 @@ def repo_parsed():
             F.transform(
                 F.coalesce(F.col("`ns0:metadata`.`ns1:dc`.`dc:identifier`"), F.array()),
                 lambda x: F.struct(
-                    F.regexp_extract(x, url_pattern, 0).alias("url"),
+                    F.when(
+                        F.regexp_extract(x, url_pattern, 0).startswith("www."),
+                        F.concat(F.lit("https://"), F.regexp_extract(x, url_pattern, 0))
+                    ).otherwise(F.regexp_extract(x, url_pattern, 0)).alias("url"),
                     F.when(x.rlike("(?i)pdf"), F.lit("pdf"))
                     .otherwise(F.lit("html"))
                     .alias("content_type"),
@@ -672,7 +675,10 @@ def repo_parsed():
             F.transform(
                 F.coalesce(F.col("`ns0:metadata`.`ns1:dc`.`dc:relation`"), F.array()),
                 lambda x: F.struct(
-                    F.regexp_extract(x, url_pattern, 0).alias("url"),
+                    F.when(
+                        F.regexp_extract(x, url_pattern, 0).startswith("www."),
+                        F.concat(F.lit("https://"), F.regexp_extract(x, url_pattern, 0))
+                    ).otherwise(F.regexp_extract(x, url_pattern, 0)).alias("url"),
                     F.when(x.rlike("(?i)pdf"), F.lit("pdf"))
                     .otherwise(F.lit("html"))
                     .alias("content_type"),
