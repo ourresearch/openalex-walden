@@ -875,5 +875,6 @@ dlt.apply_changes(
     target="repo_works",
     source="repo_enriched",
     keys=["native_id"],
-    sequence_by="_sequence"
+    sequence_by="_sequence",
+    except_column_list=["_sequence"]
 )
