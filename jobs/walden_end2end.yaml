@@ -9,7 +9,7 @@ resources:
       schedule:
         quartz_cron_expression: 0 0 5 * * ?
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       tasks:
         - task_key: Crossref_Ingest_DLT
           pipeline_task:
