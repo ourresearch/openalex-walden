@@ -833,6 +833,15 @@ def repo_enriched():
     # Combine both (unionByName handles schema differences like endpoint_id in backfill)
     combined_df = df_walden_works.unionByName(df_backfill_walden_works, allowMissingColumns=True)
 
+    # Fill in endpoint_id from lookup table for records missing it
+    endpoint_lookup = spark.table("openalex.repo.native_id_to_endpoint_id")
+    combined_df = (
+        combined_df.alias("c")
+        .join(endpoint_lookup.alias("e"), "native_id", "left")
+        .withColumn("endpoint_id", F.coalesce(F.col("c.endpoint_id"), F.col("e.endpoint_id")))
+        .drop(F.col("e.endpoint_id"))
+    )
+
     # Tiebreaker: updated_date first, then repo over backfill, then latest ingested_at
     combined_df = combined_df.withColumn(
         "_sequence",
