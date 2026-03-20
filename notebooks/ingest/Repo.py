@@ -754,7 +754,8 @@ def repo_parsed():
         "urls",
         "mesh",
         "is_oa",
-        F.col("repository_id").alias("endpoint_id")
+        F.col("repository_id").alias("endpoint_id"),
+        "ingested_at"
     )
 )
 
@@ -775,7 +776,6 @@ def repo_parsed_backfill():
             .table("openalex.repo.repo_works_backfill")
             .filter(F.col("_change_type").isin("insert", "update_postimage"))
             .drop("_change_type", "_commit_version", "_commit_timestamp")
-            .withColumn("ingested_at", F.current_timestamp())
     )
 
 
