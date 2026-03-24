@@ -1,7 +1,7 @@
 resources:
   jobs:
     DOAJ:
-      name: DOAJ
+      name: DOAJ CSV
       email_notifications:
         on_failure:
           - casey@ourresearch.org
