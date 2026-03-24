@@ -1,7 +1,7 @@
 resources:
   jobs:
     DOAJ:
-      name: DOAJ CSV
+      name: DOAJ Journals CSV
       email_notifications:
         on_failure:
           - casey@ourresearch.org
@@ -13,7 +13,7 @@ resources:
       tasks:
         - task_key: doaj_from_csv
           notebook_task:
-            notebook_path: notebooks/sources/DOAJ CSV
+            notebook_path: notebooks/sources/DOAJ Journals CSV
             source: GIT
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
