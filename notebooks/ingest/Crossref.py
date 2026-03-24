@@ -507,7 +507,7 @@ def crossref_parsed():
             F.exists(F.col("updated-by"), lambda x: F.lower(x["label"]) == "retraction")
         )
         .withColumn("abstract", F.substring(F.col("abstract"), 0, MAX_ABSTRACT_LENGTH))
-        .withColumn("source_name", F.col("`container-title`")[0])
+        .withColumn("source_name", F.coalesce(F.col("`container-title`")[0], F.col("institution")[0]["name"]))
         .withColumn("publisher", F.col("publisher"))
         .withColumn("funders",
             F.transform(
