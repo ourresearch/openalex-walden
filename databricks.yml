@@ -52,4 +52,3 @@ include:
   - jobs/daily_changefiles.yaml
   - jobs/topics.yaml
   - jobs/doaj_csv.yaml
-  - pipelines/doaj_journals.yaml
