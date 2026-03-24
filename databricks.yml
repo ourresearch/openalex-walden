@@ -51,3 +51,4 @@ include:
   - jobs/snapshot_full.yaml
   - jobs/daily_changefiles.yaml
   - jobs/topics.yaml
+  - jobs/doaj_csv.yaml
