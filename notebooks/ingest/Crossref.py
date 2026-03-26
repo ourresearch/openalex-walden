@@ -141,7 +141,7 @@ def create_author_struct(author):
         F.substring(author["family"], 0, MAX_AUTHOR_NAME_LENGTH).alias("family"),
         F.substring(author["name"], 0, MAX_AUTHOR_NAME_LENGTH).alias("name"),
         F.regexp_extract(
-            author["ORCID"], r"(\d{4}-\d{4}-\d{4}-\d{4})", 1
+            author["ORCID"], r"(\d{4}-\d{4}-\d{4}-\d{3}[\dX])", 1
         ).alias("orcid"),
         F.transform(
             author["affiliation"],

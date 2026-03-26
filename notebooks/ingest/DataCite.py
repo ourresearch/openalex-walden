@@ -161,7 +161,7 @@ def datacite_parsed():
                         F.get(author["nameIdentifiers"]["nameIdentifierScheme"], 0) == "ORCID",
                         F.regexp_extract(
                             F.get(author["nameIdentifiers"], 0)["nameIdentifier"],
-                            r"(\d{4}-\d{4}-\d{4}-\d{4})",
+                            r"(\d{4}-\d{4}-\d{4}-\d{3}[\dX])",
                             1,
                         ),
                     ).alias("orcid"),
