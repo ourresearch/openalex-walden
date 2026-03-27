@@ -145,6 +145,7 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
 def datacite_parsed():
     return (
         dlt.read_stream("datacite_items")
+        .repartition(2000)
         .withColumn("native_id", F.col("id"))
         .withColumn("native_id_namespace",
             F.when(F.col("type") == "dois", "doi").otherwise(F.col("type")))
