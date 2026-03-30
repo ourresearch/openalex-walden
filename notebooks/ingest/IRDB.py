@@ -435,11 +435,14 @@ def irdb_parsed():
         )
         # Dedup on native_id + updated_date
         .dropDuplicates(["native_id", "updated_date"])
-        # === title (prefer English, fallback to first) ===
+        # === title (prefer Japanese, then English, then first) ===
         .withColumn(
             "title",
             F.substring(
                 F.coalesce(
+                    F.filter(F.col(f"{md}.`dc:title`"), lambda x: x["_xml:lang"] == "ja")[0][
+                        "_VALUE"
+                    ],
                     F.filter(F.col(f"{md}.`dc:title`"), lambda x: x["_xml:lang"] == "en")[0][
                         "_VALUE"
                     ],
@@ -649,7 +652,28 @@ def irdb_parsed():
                 )
             ),
         )
-        # === urls (from ns1:file, prefer fulltext) ===
+        # === urls (landing page from identifier + PDF from file) ===
+        # Landing page URL from ns1:identifier[@identifierType="URI"]
+        .withColumn(
+            "_landing_page_url",
+            F.filter(
+                F.coalesce(F.col(f"{md}.`ns1:identifier`"), F.array()),
+                lambda i: i["_identifierType"] == "URI",
+            )[0]["_VALUE"],
+        )
+        .withColumn(
+            "_landing_page_arr",
+            F.when(
+                F.col("_landing_page_url").isNotNull(),
+                F.array(
+                    F.struct(
+                        F.col("_landing_page_url").alias("url"),
+                        F.lit("html").alias("content_type"),
+                    )
+                ),
+            ).otherwise(F.array()),
+        )
+        # PDF/file URLs from ns1:file (prefer fulltext)
         .withColumn(
             "_all_files",
             F.coalesce(F.col(f"{md}.`ns1:file`"), F.array()),
@@ -659,9 +683,8 @@ def irdb_parsed():
             F.filter(F.col("_all_files"), lambda f: f["ns1:URI"]["_objectType"] == "fulltext"),
         )
         .withColumn(
-            "urls",
+            "_file_urls",
             F.transform(
-                # Use fulltext files if available, otherwise all files
                 F.when(F.size(F.col("_fulltext_files")) > 0, F.col("_fulltext_files")).otherwise(
                     F.col("_all_files")
                 ),
@@ -677,7 +700,9 @@ def irdb_parsed():
                 ),
             ),
         )
-        .drop("_all_files", "_fulltext_files")
+        # Combine: file URLs first (PDFs), then landing page
+        .withColumn("urls", F.concat(F.col("_file_urls"), F.col("_landing_page_arr")))
+        .drop("_landing_page_url", "_landing_page_arr", "_all_files", "_fulltext_files", "_file_urls")
         .withColumn("mesh", F.lit(None).cast("string"))
         # === is_oa ===
         .withColumn(
