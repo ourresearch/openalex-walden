@@ -410,15 +410,16 @@ def irdb_items():
 
 # Helper: coalesce variable-namespace date arrays and filter by dateType
 def _coalesce_dates(md):
-    """Coalesce ns3/ns5/ns6 date arrays, filter for dateType='Issued'."""
-    return F.filter(
-        F.concat(
-            F.coalesce(F.col(f"{md}.`ns3:date`"), F.array()),
-            F.coalesce(F.col(f"{md}.`ns5:date`"), F.array()),
-            F.coalesce(F.col(f"{md}.`ns6:date`"), F.array()),
-        ),
-        lambda d: d["_dateType"] == "Issued",
-    )[0]["_VALUE"]
+    """Coalesce ns3/ns5/ns6 date arrays, prefer Issued, fallback to Created."""
+    all_dates = F.concat(
+        F.coalesce(F.col(f"{md}.`ns3:date`"), F.array()),
+        F.coalesce(F.col(f"{md}.`ns5:date`"), F.array()),
+        F.coalesce(F.col(f"{md}.`ns6:date`"), F.array()),
+    )
+    return F.coalesce(
+        F.filter(all_dates, lambda d: d["_dateType"] == "Issued")[0]["_VALUE"],
+        F.filter(all_dates, lambda d: d["_dateType"] == "Created")[0]["_VALUE"],
+    )
 
 # Helper: coalesce variable-namespace description arrays
 def _coalesce_descriptions(md):
