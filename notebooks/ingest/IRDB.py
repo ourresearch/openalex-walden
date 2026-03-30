@@ -616,19 +616,19 @@ def irdb_parsed():
             normalize_language_code_udf(F.col(f"{md}.`dc:language`")),
         )
         # === published_date (from variable-namespace DataCite date) ===
-        .withColumn("_date_str", _coalesce_dates(md))
+        # Route by format to avoid ANSI mode errors from mismatched patterns
+        .withColumn("_date_str", F.trim(_coalesce_dates(md)))
         .withColumn(
             "published_date",
-            F.coalesce(
+            F.when(
+                F.col("_date_str").rlike(r"^\d{4}-\d{2}-\d{2}$"),
                 F.to_date(F.col("_date_str"), "yyyy-MM-dd"),
-                F.to_date(F.col("_date_str"), "yyyy-MM"),
-                F.to_date(
-                    F.when(
-                        F.length(F.trim(F.col("_date_str"))) == 4,
-                        F.concat(F.col("_date_str"), F.lit("-01-01")),
-                    ),
-                    "yyyy-MM-dd",
-                ),
+            ).when(
+                F.col("_date_str").rlike(r"^\d{4}-\d{2}$"),
+                F.to_date(F.concat(F.col("_date_str"), F.lit("-01")), "yyyy-MM-dd"),
+            ).when(
+                F.col("_date_str").rlike(r"^\d{4}$"),
+                F.to_date(F.concat(F.col("_date_str"), F.lit("-01-01")), "yyyy-MM-dd"),
             ),
         )
         .drop("_date_str")
