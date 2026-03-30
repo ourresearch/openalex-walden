@@ -137,8 +137,14 @@ IRDB_TEXT_TYPE_MAP = F.create_map(
     F.lit("review"), F.lit("review"),
     F.lit("review article"), F.lit("review"),
     F.lit("software"), F.lit("software"),
+    F.lit("conference proceedings"), F.lit("article"),
+    F.lit("conference output"), F.lit("article"),
+    F.lit("conference presentation"), F.lit("article"),
+    F.lit("research paper"), F.lit("article"),
+    F.lit("manuscript"), F.lit("article"),
     F.lit("learning object"), F.lit("other"),
     F.lit("lecture"), F.lit("other"),
+    F.lit("presentation"), F.lit("other"),
     F.lit("other"), F.lit("other"),
 )
 
@@ -423,16 +429,27 @@ def _coalesce_dates(md):
 
 # Helper: coalesce variable-namespace description arrays
 def _coalesce_descriptions(md):
-    """Coalesce ns3/ns5/ns6 description arrays, filter for Abstract type."""
+    """Coalesce ns3/ns5/ns6 description arrays.
+    Prefer Abstract type, fallback to long Other descriptions (100+ chars)."""
     all_descs = F.concat(
         F.coalesce(F.col(f"{md}.`ns3:description`"), F.array()),
         F.coalesce(F.col(f"{md}.`ns5:description`"), F.array()),
         F.coalesce(F.col(f"{md}.`ns6:description`"), F.array()),
     )
-    abstracts = F.filter(all_descs, lambda d: d["_descriptionType"] == "Abstract")
+    abstracts = F.filter(
+        all_descs,
+        lambda d: F.lower(d["_descriptionType"]) == "abstract",
+    )
+    # Fallback: "Other" descriptions that are long enough to be abstracts
+    long_others = F.filter(
+        all_descs,
+        lambda d: (d["_descriptionType"] == "Other") & (F.length(d["_VALUE"]) >= 100),
+    )
     return F.coalesce(
         F.filter(abstracts, lambda d: d["_xml:lang"] == "en")[0]["_VALUE"],
         abstracts[0]["_VALUE"],
+        F.filter(long_others, lambda d: d["_xml:lang"] == "en")[0]["_VALUE"],
+        long_others[0]["_VALUE"],
     )
 
 # Helper: coalesce variable-namespace version fields
@@ -771,6 +788,20 @@ def irdb_parsed():
         .withColumn("endpoint_id", F.lit("irdb_nii_ac_jp"))
         # Filter: must have at least one URL
         .filter(F.size(F.col("urls")) > 0)
+        # Filter: exclude non-scholarly types (newspaper, still image, image)
+        .filter(~F.lower(F.col("raw_native_type")).isin(
+            "newspaper", "still image", "image", "photograph"
+        ))
+        # Filter: clamp out-of-range dates to null (year 0000, 9999, etc.)
+        .withColumn(
+            "published_date",
+            F.when(
+                (F.col("published_date") >= F.lit("1800-01-01").cast("date"))
+                & (F.col("published_date") <= F.date_add(F.current_date(), 365)),
+                F.col("published_date"),
+            ),
+        )
+        .withColumn("created_date", F.col("published_date"))
         # Final column selection (walden_works schema order)
         .select(
             "native_id",
