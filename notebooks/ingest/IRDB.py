@@ -720,13 +720,19 @@ def irdb_parsed():
             ),
         )
         # === urls (landing page from identifier + PDF from file) ===
-        # Landing page URL from ns1:identifier[@identifierType="URI"]
+        # Landing page URL: prefer URI identifier, fallback to HDL identifier
         .withColumn(
             "_landing_page_url",
-            F.filter(
-                F.coalesce(F.col(f"{md}.`ns1:identifier`"), F.array()),
-                lambda i: i["_identifierType"] == "URI",
-            )[0]["_VALUE"],
+            F.coalesce(
+                F.filter(
+                    F.coalesce(F.col(f"{md}.`ns1:identifier`"), F.array()),
+                    lambda i: i["_identifierType"] == "URI",
+                )[0]["_VALUE"],
+                F.filter(
+                    F.coalesce(F.col(f"{md}.`ns1:identifier`"), F.array()),
+                    lambda i: i["_identifierType"] == "HDL",
+                )[0]["_VALUE"],
+            ),
         )
         .withColumn(
             "_landing_page_arr",
