@@ -1,9 +1,10 @@
 OPENALEX STANDARD-FORMAT SNAPSHOT RELEASE NOTES
 
 RELEASE 2026-03-30
-- improved topics and concepts coverage 
-- fixed medRxiv/bioRxiv/ChemRxiv source matching                 
+- added 12.1M awards and 17M work-award links
 - increased repository coverage through addition of 283 endpoints and improved repository ingest pipeline
+- improved topics and concepts coverage
+- fixed medRxiv/bioRxiv/ChemRxiv source matching
 
 RELEASE 2026-02-25
 - added more entities to snapshot
