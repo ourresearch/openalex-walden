@@ -331,6 +331,39 @@ jpcoar_schema = StructType([
                 ]), True),
                 StructField("ns1:mimeType", StringType(), True),
             ])), True),
+            # --- Variable-namespace fields ---
+            # DataCite date/description and OpenAIRE version use different ns prefixes
+            # across files (ns5/ns6/ns8/ns9). Include all observed variants; coalesce later.
+            StructField("ns5:date", ArrayType(StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_dateType", StringType(), True),
+            ])), True),
+            StructField("ns6:date", ArrayType(StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_dateType", StringType(), True),
+            ])), True),
+            StructField("ns5:description", ArrayType(StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_descriptionType", StringType(), True),
+                StructField("_xml:lang", StringType(), True),
+            ])), True),
+            StructField("ns6:description", ArrayType(StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_descriptionType", StringType(), True),
+                StructField("_xml:lang", StringType(), True),
+            ])), True),
+            StructField("ns6:version", StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_rdf:resource", StringType(), True),
+            ]), True),
+            StructField("ns8:version", StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_rdf:resource", StringType(), True),
+            ]), True),
+            StructField("ns9:version", StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_rdf:resource", StringType(), True),
+            ]), True),
         ]), True),
     ]), True),
 ])
@@ -358,46 +391,38 @@ def irdb_items():
 
 # COMMAND ----------
 
-# Regex UDFs for variable-namespace fields (DataCite date, description; OpenAIRE version)
+# Helper: coalesce variable-namespace date arrays and filter by dateType
+def _coalesce_dates(md):
+    """Coalesce ns5:date and ns6:date arrays, filter for dateType='Issued'."""
+    return F.filter(
+        F.concat(
+            F.coalesce(F.col(f"{md}.`ns5:date`"), F.array()),
+            F.coalesce(F.col(f"{md}.`ns6:date`"), F.array()),
+        ),
+        lambda d: d["_dateType"] == "Issued",
+    )[0]["_VALUE"]
 
-def extract_issued_date(metadata_str):
-    """Extract date with dateType='Issued' from metadata XML string."""
-    if not metadata_str:
-        return None
-    match = re.search(r'dateType="Issued">([^<]+)', metadata_str)
-    return match.group(1).strip() if match else None
-
-def extract_abstract(metadata_str):
-    """Extract abstract (descriptionType='Abstract') from metadata XML string.
-    Prefer English, fallback to first abstract."""
-    if not metadata_str:
-        return None
-    # Try English abstract first
-    en_match = re.search(
-        r'descriptionType="Abstract"[^>]*xml:lang="en"[^>]*>([^<]+)', metadata_str
+# Helper: coalesce variable-namespace description arrays
+def _coalesce_descriptions(md):
+    """Coalesce ns5:description and ns6:description, filter for Abstract type."""
+    all_descs = F.concat(
+        F.coalesce(F.col(f"{md}.`ns5:description`"), F.array()),
+        F.coalesce(F.col(f"{md}.`ns6:description`"), F.array()),
     )
-    if en_match:
-        return en_match.group(1).strip()
-    # Also check lang before descriptionType
-    en_match2 = re.search(
-        r'xml:lang="en"[^>]*descriptionType="Abstract"[^>]*>([^<]+)', metadata_str
+    abstracts = F.filter(all_descs, lambda d: d["_descriptionType"] == "Abstract")
+    return F.coalesce(
+        F.filter(abstracts, lambda d: d["_xml:lang"] == "en")[0]["_VALUE"],
+        abstracts[0]["_VALUE"],
     )
-    if en_match2:
-        return en_match2.group(1).strip()
-    # Fallback to any abstract
-    any_match = re.search(r'descriptionType="Abstract"[^>]*>([^<]+)', metadata_str)
-    return any_match.group(1).strip() if any_match else None
 
-def extract_version_uri(metadata_str):
-    """Extract COAR version code from version element's rdf:resource attribute."""
-    if not metadata_str:
-        return None
-    match = re.search(r'rdf:resource="http://purl\.org/coar/version/([^"]+)"', metadata_str)
-    return match.group(1) if match else None
-
-extract_issued_date_udf = F.udf(extract_issued_date, StringType())
-extract_abstract_udf = F.udf(extract_abstract, StringType())
-extract_version_uri_udf = F.udf(extract_version_uri, StringType())
+# Helper: coalesce variable-namespace version fields
+def _coalesce_version(md):
+    """Coalesce ns6:version, ns8:version, ns9:version rdf:resource attributes."""
+    return F.coalesce(
+        F.col(f"{md}.`ns6:version`.`_rdf:resource`"),
+        F.col(f"{md}.`ns8:version`.`_rdf:resource`"),
+        F.col(f"{md}.`ns9:version`.`_rdf:resource`"),
+    )
 
 # COMMAND ----------
 
@@ -423,8 +448,6 @@ def irdb_parsed():
             | (F.col("`ns0:header`.`_status`") != "deleted")
         )
         .filter(F.col("`ns0:metadata`").isNotNull())
-        # Cast metadata to string for regex extraction of variable-namespace fields
-        .withColumn("_metadata_str", F.col("`ns0:metadata`").cast("string"))
         # === native_id ===
         .withColumn("native_id", F.col("`ns0:header`.`ns0:identifier`"))
         .withColumn("native_id_namespace", F.lit("pmh"))
@@ -522,13 +545,17 @@ def irdb_parsed():
             ),
         )
         .drop("_coar_code")
-        # === version (regex from metadata string — variable namespace prefix) ===
-        .withColumn("_version_code", extract_version_uri_udf(F.col("_metadata_str")))
+        # === version (from variable-namespace COAR version URI) ===
+        .withColumn("_version_uri", _coalesce_version(md))
+        .withColumn(
+            "_version_code",
+            F.element_at(F.split(F.col("_version_uri"), "/"), -1),
+        )
         .withColumn(
             "version",
             F.coalesce(COAR_VERSION_MAP[F.col("_version_code")], F.lit("submittedVersion")),
         )
-        .drop("_version_code")
+        .drop("_version_uri", "_version_code")
         # === license ===
         .withColumn(
             "raw_license",
@@ -550,8 +577,8 @@ def irdb_parsed():
             "language",
             normalize_language_code_udf(F.col(f"{md}.`dc:language`")),
         )
-        # === published_date (regex from metadata string — variable namespace prefix) ===
-        .withColumn("_date_str", extract_issued_date_udf(F.col("_metadata_str")))
+        # === published_date (from variable-namespace DataCite date) ===
+        .withColumn("_date_str", _coalesce_dates(md))
         .withColumn(
             "published_date",
             F.coalesce(
@@ -574,10 +601,10 @@ def irdb_parsed():
         .withColumn("first_page", F.col(f"{md}.`ns1:pageStart`"))
         .withColumn("last_page", F.col(f"{md}.`ns1:pageEnd`"))
         .withColumn("is_retracted", F.lit(None).cast("boolean"))
-        # === abstract (regex from metadata string — variable namespace prefix) ===
+        # === abstract (from variable-namespace DataCite description) ===
         .withColumn(
             "abstract",
-            F.substring(extract_abstract_udf(F.col("_metadata_str")), 0, MAX_ABSTRACT_LENGTH),
+            F.substring(_coalesce_descriptions(md), 0, MAX_ABSTRACT_LENGTH),
         )
         # === source_name (prefer English) ===
         .withColumn(
@@ -637,18 +664,20 @@ def irdb_parsed():
                 ),
             ),
         )
-        # === references (not available in JPCOAR) ===
+        # === references (not available in JPCOAR — empty array) ===
         .withColumn(
             "references",
-            F.array(
-                F.struct(
-                    F.lit(None).cast("string").alias("doi"),
-                    F.lit(None).cast("string").alias("pmid"),
-                    F.lit(None).cast("string").alias("arxiv"),
-                    F.lit(None).cast("string").alias("title"),
-                    F.lit(None).cast("string").alias("authors"),
-                    F.lit(None).cast("string").alias("year"),
-                    F.lit(None).cast("string").alias("raw"),
+            F.lit(None).cast(
+                ArrayType(
+                    StructType([
+                        StructField("doi", StringType(), True),
+                        StructField("pmid", StringType(), True),
+                        StructField("arxiv", StringType(), True),
+                        StructField("title", StringType(), True),
+                        StructField("authors", StringType(), True),
+                        StructField("year", StringType(), True),
+                        StructField("raw", StringType(), True),
+                    ])
                 )
             ),
         )
@@ -704,7 +733,7 @@ def irdb_parsed():
         .withColumn("urls", F.concat(F.col("_file_urls"), F.col("_landing_page_arr")))
         .drop("_landing_page_url", "_landing_page_arr", "_all_files", "_fulltext_files", "_file_urls")
         .withColumn("mesh", F.lit(None).cast("string"))
-        # === is_oa ===
+        # === is_oa (trust PDFs from IRDB repos as open access) ===
         .withColumn(
             "is_oa",
             F.when(
@@ -712,7 +741,8 @@ def irdb_parsed():
                 | F.lower(F.coalesce(F.col("license"), F.lit(""))).contains("public-domain")
                 | F.coalesce(
                     F.col(f"{md}.`ns3:accessRights`.`_rdf:resource`"), F.lit("")
-                ).contains("open_access"),
+                ).contains("open_access")
+                | F.exists(F.col("urls"), lambda u: u["content_type"] == "pdf"),
                 F.lit(True),
             ).otherwise(F.lit(False)),
         )
@@ -752,5 +782,5 @@ def irdb_parsed():
             "endpoint_id",
             "ingested_at",
         )
-        .drop("_metadata_str", "raw_license")
+        .drop("raw_license")
     )
