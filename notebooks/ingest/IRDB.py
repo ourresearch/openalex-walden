@@ -332,8 +332,14 @@ jpcoar_schema = StructType([
                 StructField("ns1:mimeType", StringType(), True),
             ])), True),
             # --- Variable-namespace fields ---
-            # DataCite date/description and OpenAIRE version use different ns prefixes
-            # across files (ns5/ns6/ns8/ns9). Include all observed variants; coalesce later.
+            # DataCite and OpenAIRE use different ns prefixes across files because
+            # Python ElementTree assigns ns3/ns5/ns6/ns8/ns9 based on encounter order.
+            # Include all observed variants; coalesce later.
+            # DataCite date (observed as ns3, ns5, ns6)
+            StructField("ns3:date", ArrayType(StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_dateType", StringType(), True),
+            ])), True),
             StructField("ns5:date", ArrayType(StructType([
                 StructField("_VALUE", StringType(), True),
                 StructField("_dateType", StringType(), True),
@@ -341,6 +347,12 @@ jpcoar_schema = StructType([
             StructField("ns6:date", ArrayType(StructType([
                 StructField("_VALUE", StringType(), True),
                 StructField("_dateType", StringType(), True),
+            ])), True),
+            # DataCite description (observed as ns3, ns5, ns6)
+            StructField("ns3:description", ArrayType(StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_descriptionType", StringType(), True),
+                StructField("_xml:lang", StringType(), True),
             ])), True),
             StructField("ns5:description", ArrayType(StructType([
                 StructField("_VALUE", StringType(), True),
@@ -352,6 +364,11 @@ jpcoar_schema = StructType([
                 StructField("_descriptionType", StringType(), True),
                 StructField("_xml:lang", StringType(), True),
             ])), True),
+            # OpenAIRE version (observed as ns3, ns6, ns8, ns9)
+            StructField("ns3:version", StructType([
+                StructField("_VALUE", StringType(), True),
+                StructField("_rdf:resource", StringType(), True),
+            ]), True),
             StructField("ns6:version", StructType([
                 StructField("_VALUE", StringType(), True),
                 StructField("_rdf:resource", StringType(), True),
@@ -393,9 +410,10 @@ def irdb_items():
 
 # Helper: coalesce variable-namespace date arrays and filter by dateType
 def _coalesce_dates(md):
-    """Coalesce ns5:date and ns6:date arrays, filter for dateType='Issued'."""
+    """Coalesce ns3/ns5/ns6 date arrays, filter for dateType='Issued'."""
     return F.filter(
         F.concat(
+            F.coalesce(F.col(f"{md}.`ns3:date`"), F.array()),
             F.coalesce(F.col(f"{md}.`ns5:date`"), F.array()),
             F.coalesce(F.col(f"{md}.`ns6:date`"), F.array()),
         ),
@@ -404,8 +422,9 @@ def _coalesce_dates(md):
 
 # Helper: coalesce variable-namespace description arrays
 def _coalesce_descriptions(md):
-    """Coalesce ns5:description and ns6:description, filter for Abstract type."""
+    """Coalesce ns3/ns5/ns6 description arrays, filter for Abstract type."""
     all_descs = F.concat(
+        F.coalesce(F.col(f"{md}.`ns3:description`"), F.array()),
         F.coalesce(F.col(f"{md}.`ns5:description`"), F.array()),
         F.coalesce(F.col(f"{md}.`ns6:description`"), F.array()),
     )
@@ -417,8 +436,9 @@ def _coalesce_descriptions(md):
 
 # Helper: coalesce variable-namespace version fields
 def _coalesce_version(md):
-    """Coalesce ns6:version, ns8:version, ns9:version rdf:resource attributes."""
+    """Coalesce ns3/ns6/ns8/ns9 version rdf:resource attributes."""
     return F.coalesce(
+        F.col(f"{md}.`ns3:version`.`_rdf:resource`"),
         F.col(f"{md}.`ns6:version`.`_rdf:resource`"),
         F.col(f"{md}.`ns8:version`.`_rdf:resource`"),
         F.col(f"{md}.`ns9:version`.`_rdf:resource`"),
