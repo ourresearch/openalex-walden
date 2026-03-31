@@ -553,7 +553,7 @@ def irdb_parsed():
                             F.lit(None).cast("string").alias("ror_id"),
                         ),
                     ).alias("affiliations"),
-                    F.lit(None).cast("boolean").alias("is_corresponding"),
+                    F.lit(None).cast("string").alias("is_corresponding"),
                 ),
             ),
         )
