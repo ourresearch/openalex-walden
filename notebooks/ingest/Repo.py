@@ -848,6 +848,16 @@ def repo_enriched():
     df_walden_works = apply_initial_processing(df_parsed_input, "repo", walden_works_schema_with_raw_type)
     df_backfill_walden_works = apply_initial_processing(df_parsed_backfill, "repo_backfill", walden_works_schema_with_raw_type)
     df_irdb_walden_works = apply_initial_processing(df_parsed_irdb, "repo", walden_works_schema_with_raw_type)
+    # Cast is_corresponding to string to match repo_parsed schema (Dublin Core has no is_corresponding, so it's inferred as string)
+    df_irdb_walden_works = df_irdb_walden_works.withColumn(
+        "authors",
+        F.transform(F.col("authors"), lambda a: F.struct(
+            a["given"].alias("given"), a["family"].alias("family"),
+            a["name"].alias("name"), a["orcid"].alias("orcid"),
+            a["affiliations"].alias("affiliations"),
+            a["is_corresponding"].cast("string").alias("is_corresponding")
+        ))
+    )
 
     # Combine all three streams
     combined_df = (
