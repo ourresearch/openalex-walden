@@ -387,6 +387,7 @@ print("Uploading RELEASE_NOTES.txt to s3://openalex/ ...")
 resp = _requests.get(RELEASE_NOTES_URL, timeout=30)
 resp.raise_for_status()
 
+os.makedirs(local_scratch, exist_ok=True)
 local_rn = os.path.join(local_scratch, "RELEASE_NOTES.txt")
 with open(local_rn, "w") as f:
     f.write(resp.text)
