@@ -779,11 +779,29 @@ def repo_parsed_backfill():
     )
 
 
+@dlt.table(
+    name="repo_parsed_irdb",
+    temporary=True,
+    comment="Streaming read of IRDB parsed records using CDF (automatically incremental in DLT)"
+)
+def repo_parsed_irdb():
+    irdb_schema = spark.table("openalex.repo.irdb_parsed").schema
+    return (
+        spark.readStream
+            .option("readChangeFeed", "true")
+            .schema(irdb_schema)
+            .table("openalex.repo.irdb_parsed")
+            .filter(F.col("_change_type").isin("insert", "update_postimage"))
+            .drop("_change_type", "_commit_version", "_commit_timestamp")
+    )
+
+
 @dlt.table(name="repo_enriched",
            comment="repo data after full parsing and author/feature enrichment.")
 def repo_enriched():
     df_parsed_backfill = dlt.read_stream("repo_parsed_backfill")
     df_parsed_input = dlt.read_stream("repo_parsed")
+    df_parsed_irdb = dlt.read_stream("repo_parsed_irdb")
     
     walden_works_schema_with_raw_type = StructType([
         StructField("provenance", StringType(), True), StructField("native_id", StringType(), True),
@@ -829,9 +847,14 @@ def repo_enriched():
     # Apply consistent schema and transformations
     df_walden_works = apply_initial_processing(df_parsed_input, "repo", walden_works_schema_with_raw_type)
     df_backfill_walden_works = apply_initial_processing(df_parsed_backfill, "repo_backfill", walden_works_schema_with_raw_type)
-    
-    # Combine both (unionByName handles schema differences like endpoint_id in backfill)
-    combined_df = df_walden_works.unionByName(df_backfill_walden_works, allowMissingColumns=True)
+    df_irdb_walden_works = apply_initial_processing(df_parsed_irdb, "repo", walden_works_schema_with_raw_type)
+
+    # Combine all three streams
+    combined_df = (
+        df_walden_works
+        .unionByName(df_backfill_walden_works, allowMissingColumns=True)
+        .unionByName(df_irdb_walden_works, allowMissingColumns=True)
+    )
 
     # Fill in endpoint_id from lookup table for records missing it
     endpoint_lookup = (
