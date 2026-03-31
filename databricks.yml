@@ -38,6 +38,7 @@ include:
   - jobs/datacite.yaml
   - jobs/landing_page.yaml
   - jobs/pubmed.yaml
+  - jobs/irdb.yaml
   - jobs/repo.yaml
   - jobs/repo_backfill.yaml
   - jobs/taxicab_crossref.yaml

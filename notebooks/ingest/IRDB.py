@@ -786,6 +786,7 @@ def irdb_parsed():
                 | F.coalesce(
                     F.col(f"{md}.`ns3:accessRights`.`_rdf:resource`"), F.lit("")
                 ).contains("open_access")
+                | (F.lower(F.coalesce(F.col(f"{md}.`ns3:accessRights`.`_VALUE`"), F.lit(""))) == "open access")
                 | F.exists(F.col("urls"), lambda u: u["content_type"] == "pdf"),
                 F.lit(True),
             ).otherwise(F.lit(False)),

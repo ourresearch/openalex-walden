@@ -1,0 +1,16 @@
+resources:
+  jobs:
+    IRDB:
+      name: IRDB
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 20 0 10/8 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: IRDB
+          pipeline_task:
+            pipeline_id: 89d9f7fd-087a-450d-bf62-f543f73dd2ac
+            full_refresh: false
