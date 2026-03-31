@@ -494,8 +494,8 @@ def irdb_parsed():
             "updated_date",
             F.to_date(F.col("`ns0:header`.`ns0:datestamp`").substr(1, 10), "yyyy-MM-dd"),
         )
-        # Dedup on native_id + updated_date
-        .dropDuplicates(["native_id", "updated_date"])
+        # Dedup on native_id (keep one row per record)
+        .dropDuplicates(["native_id"])
         # === title (prefer Japanese, then English, then first) ===
         .withColumn(
             "title",
