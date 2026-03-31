@@ -44,6 +44,7 @@ include:
   - jobs/taxicab_crossref.yaml
   - jobs/taxicab_repos.yaml
   - jobs/taxicab_landing_page_pdfs.yaml
+  - jobs/taxicab_irdb.yaml
   - jobs/taxicab_rescrape.yaml
   - jobs/parseland_reparse.yaml
   - jobs/parse_pdfs.yaml

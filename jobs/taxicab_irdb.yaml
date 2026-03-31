@@ -1,14 +1,14 @@
 resources:
   jobs:
-    TaxiCab_Repos:
-      name: TaxiCab Repos
+    TaxiCab_IRDB:
+      name: TaxiCab IRDB
       email_notifications:
         on_failure:
           - casey@ourresearch.org
       schedule:
         quartz_cron_expression: 41 0 4/4 * * ?
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       max_concurrent_runs: 1
       queue:
         enabled: false
@@ -18,10 +18,10 @@ resources:
             notebook_path: notebooks/scraping/taxicab
             source: GIT
             base_parameters:
-              lookback_days: "3"
+              lookback_days: "365"
               url_limit: "500000"
               source_filter: "repo_only"
-              exclude_endpoint_ids: "irdb_nii_ac_jp"
+              include_endpoint_ids: "irdb_nii_ac_jp"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -50,10 +50,10 @@ resources:
         git_branch: main
       parameters:
         - name: lookback_days
-          default: "3"
+          default: "365"
         - name: url_limit
           default: "500000"
         - name: source_filter
           default: "repo_only"
-        - name: exclude_endpoint_ids
+        - name: include_endpoint_ids
           default: "irdb_nii_ac_jp"
