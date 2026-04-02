@@ -120,11 +120,10 @@ WHERE fs.all_sections RLIKE fr.match_regex;
 
 -- Step 3: INSERT work-funder pairs
 INSERT INTO openalex.works.fulltext_work_funders
-SELECT work_id, funder_name, funder_display_name, funder_id, ror_id, doi
-FROM openalex.pdf.funder_matches_staging
-WHERE (work_id, funder_id) NOT IN (
-  SELECT work_id, funder_id FROM openalex.works.fulltext_work_funders
-);
+SELECT s.work_id, s.funder_name, s.funder_display_name, s.funder_id, s.ror_id, s.doi
+FROM openalex.pdf.funder_matches_staging s
+LEFT ANTI JOIN openalex.works.fulltext_work_funders f
+  ON s.work_id = f.work_id AND s.funder_id = f.funder_id;
 
 -- COMMAND ----------
 
@@ -173,9 +172,10 @@ FROM usable_awards ua
 JOIN paper_funder_sections pfs
   ON pfs.funder_id_numeric = ua.funder_id
   AND pfs.all_sections LIKE ua.award_match_pattern
-WHERE (pfs.work_id, ua.funder_id, ua.funder_award_id) NOT IN (
-  SELECT paper_id, funder_id, funder_award_id FROM openalex.pdf.grobid_award_matches
-);
+LEFT ANTI JOIN openalex.pdf.grobid_award_matches g
+  ON pfs.work_id = g.paper_id
+  AND ua.funder_id = g.funder_id
+  AND ua.funder_award_id = g.funder_award_id;
 
 -- COMMAND ----------
 
