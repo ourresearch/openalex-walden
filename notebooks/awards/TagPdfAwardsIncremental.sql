@@ -125,10 +125,6 @@ WHERE (work_id, funder_id) NOT IN (
 
 -- COMMAND ----------
 
-SET spark.sql.autoBroadcastJoinThreshold = 10485760;
-
--- COMMAND ----------
-
 -- Step 3: Match awards for matched funders -> INSERT work-award pairs
 INSERT INTO openalex.pdf.grobid_award_matches
 WITH matched_funders AS (
@@ -171,6 +167,7 @@ paper_funder_sections AS (
   JOIN funder_sections fs ON pwf.work_id = fs.work_id
 )
 SELECT
+  /*+ MERGE(ua, pfs) */
   pfs.work_id AS paper_id,
   ua.funder_id,
   ua.funder_award_id,
