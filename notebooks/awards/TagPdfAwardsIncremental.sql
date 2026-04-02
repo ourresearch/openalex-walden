@@ -171,7 +171,7 @@ SELECT
 FROM usable_awards ua
 JOIN paper_funder_sections pfs
   ON pfs.funder_id_numeric = ua.funder_id
-  AND pfs.all_sections LIKE ua.award_match_pattern
+  AND pfs.all_sections LIKE ua.award_match_pattern ESCAPE ''
 LEFT ANTI JOIN openalex.pdf.grobid_award_matches g
   ON pfs.work_id = g.paper_id
   AND ua.funder_id = g.funder_id
