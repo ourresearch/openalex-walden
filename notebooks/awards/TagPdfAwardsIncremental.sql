@@ -158,11 +158,12 @@ usable_awards AS (
     ON ca.funder_award_id = fan.alt_name
 ),
 paper_funder_sections AS (
-  SELECT DISTINCT fm.work_id, fm.funder_id_numeric, fm.all_sections
+  SELECT /*+ REPARTITION(128, work_id) */
+  DISTINCT fm.work_id, fm.funder_id_numeric, fm.all_sections
   FROM openalex.pdf.funder_matches_staging fm
 )
 SELECT
-  /*+ MERGE(ua, pfs) */
+  /*+ BROADCAST(ua) */
   pfs.work_id AS paper_id,
   ua.funder_id,
   ua.funder_award_id,
