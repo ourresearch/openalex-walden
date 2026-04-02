@@ -13,7 +13,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/awards/TagPdfAwardsIncremental
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3
+            warehouse_id: 68e75a54dd65f6e6
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
