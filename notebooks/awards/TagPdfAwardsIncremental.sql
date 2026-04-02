@@ -155,22 +155,28 @@ usable_awards AS (
   LEFT ANTI JOIN funder_alt_names fan
     ON ca.funder_award_id = fan.alt_name
 ),
-papers_with_sections AS (
-  SELECT DISTINCT fm.work_id, fm.funder_id_numeric, fs.all_sections
+papers_with_funders AS (
+  SELECT DISTINCT fm.work_id, fm.funder_id_numeric
   FROM funder_matches fm
-  JOIN funder_sections fs ON fm.work_id = fs.work_id
+),
+paper_funder_sections AS (
+  SELECT 
+  /*+ BROADCAST(pwf) */
+  pwf.work_id, pwf.funder_id_numeric, fs.all_sections
+  FROM papers_with_funders pwf
+  JOIN funder_sections fs ON pwf.work_id = fs.work_id
 )
 SELECT
-  ps.work_id AS paper_id,
+  pfs.work_id AS paper_id,
   ua.funder_id,
   ua.funder_award_id,
-  ps.all_sections AS funding_sections,
+  pfs.all_sections AS funding_sections,
   now() AS batch_time
 FROM usable_awards ua
-JOIN papers_with_sections ps
-  ON ps.funder_id_numeric = ua.funder_id
-  AND ps.all_sections LIKE ua.award_match_pattern
-WHERE (ps.work_id, ua.funder_id, ua.funder_award_id) NOT IN (
+JOIN paper_funder_sections pfs
+  ON pfs.funder_id_numeric = ua.funder_id
+  AND pfs.all_sections LIKE ua.award_match_pattern
+WHERE (pfs.work_id, ua.funder_id, ua.funder_award_id) NOT IN (
   SELECT paper_id, funder_id, funder_award_id FROM openalex.pdf.grobid_award_matches
 );
 
