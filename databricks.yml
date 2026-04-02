@@ -54,3 +54,4 @@ include:
   - jobs/daily_changefiles.yaml
   - jobs/topics.yaml
   - jobs/doaj_csv.yaml
+  - jobs/tag_pdf_awards_incremental.yaml
