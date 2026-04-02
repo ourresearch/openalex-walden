@@ -158,7 +158,7 @@ usable_awards AS (
     ON ca.funder_award_id = fan.alt_name
 ),
 paper_funder_sections AS (
-  SELECT /*+ REPARTITION(128, work_id) */
+  SELECT /*+ REPARTITION(512, work_id) */
   DISTINCT fm.work_id, fm.funder_id_numeric, fm.all_sections
   FROM openalex.pdf.funder_matches_staging fm
 )
