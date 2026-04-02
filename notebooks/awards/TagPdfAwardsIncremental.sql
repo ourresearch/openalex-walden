@@ -45,7 +45,7 @@ recent_pdfs AS (
 work_id_map AS (
   SELECT
     rp.native_id, rp.native_id_namespace,
-    any_value(lm.work_id) AS work_id
+    MAX(lm.work_id) AS work_id
   FROM recent_pdfs rp
   JOIN openalex.works.locations_mapped lm
     ON rp.native_id = lm.native_id AND rp.native_id_namespace = lm.native_id_namespace
@@ -83,8 +83,9 @@ WHERE funders != '' OR acknowledgement != '' OR funding != '';
 
 -- COMMAND ----------
 
--- Step 2: Match sections to screened funders -> INSERT work-funder pairs
-CREATE OR REPLACE TEMP VIEW funder_matches AS
+-- Step 2: Match sections to screened funders -> materialize as staging table
+-- Persisting avoids re-evaluating funder_sections (XML-heavy) in later cells
+CREATE OR REPLACE TABLE openalex.pdf.funder_matches_staging AS
 WITH funder_regexes AS (
   SELECT
     fnk.name AS funder_name,
@@ -104,6 +105,7 @@ WITH funder_regexes AS (
 )
 SELECT DISTINCT
   fs.work_id,
+  fs.all_sections,
   fr.funder_name,
   fr.funder_display_name,
   fr.funder_id,
@@ -116,19 +118,20 @@ WHERE fs.all_sections RLIKE fr.match_regex;
 
 -- COMMAND ----------
 
+-- Step 3: INSERT work-funder pairs
 INSERT INTO openalex.works.fulltext_work_funders
 SELECT work_id, funder_name, funder_display_name, funder_id, ror_id, doi
-FROM funder_matches
+FROM openalex.pdf.funder_matches_staging
 WHERE (work_id, funder_id) NOT IN (
   SELECT work_id, funder_id FROM openalex.works.fulltext_work_funders
 );
 
 -- COMMAND ----------
 
--- Step 3: Match awards for matched funders -> INSERT work-award pairs
+-- Step 4: Match awards for matched funders -> INSERT work-award pairs
 INSERT INTO openalex.pdf.grobid_award_matches
 WITH matched_funders AS (
-  SELECT DISTINCT funder_id_numeric FROM funder_matches
+  SELECT DISTINCT funder_id_numeric FROM openalex.pdf.funder_matches_staging
 ),
 funder_alt_names AS (
   SELECT fa.id AS funder_id, fa.display_name AS alt_name
@@ -155,16 +158,9 @@ usable_awards AS (
   LEFT ANTI JOIN funder_alt_names fan
     ON ca.funder_award_id = fan.alt_name
 ),
-papers_with_funders AS (
-  SELECT DISTINCT fm.work_id, fm.funder_id_numeric
-  FROM funder_matches fm
-),
 paper_funder_sections AS (
-  SELECT 
-  /*+ BROADCAST(pwf) */
-  pwf.work_id, pwf.funder_id_numeric, fs.all_sections
-  FROM papers_with_funders pwf
-  JOIN funder_sections fs ON pwf.work_id = fs.work_id
+  SELECT DISTINCT fm.work_id, fm.funder_id_numeric, fm.all_sections
+  FROM openalex.pdf.funder_matches_staging fm
 )
 SELECT
   /*+ MERGE(ua, pfs) */
@@ -183,7 +179,7 @@ WHERE (pfs.work_id, ua.funder_id, ua.funder_award_id) NOT IN (
 
 -- COMMAND ----------
 
--- Step 4: Advance checkpoint (only runs if steps 2-3 succeeded)
+-- Step 5: Advance checkpoint (only runs if steps 3-4 succeeded)
 UPDATE openalex.pdf.funder_award_parse_checkpoint
 SET window_start = window_end,
     window_end = window_end + INTERVAL 6 HOURS;
