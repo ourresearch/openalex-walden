@@ -180,7 +180,8 @@ LEFT ANTI JOIN openalex.pdf.grobid_award_matches g
 
 -- COMMAND ----------
 
--- Step 5: Advance checkpoint (only runs if steps 3-4 succeeded)
+-- Step 5: Advance checkpoint (only if next window hasn't caught up to now)
 UPDATE openalex.pdf.funder_award_parse_checkpoint
 SET window_start = window_end,
-    window_end = window_end + INTERVAL 6 HOURS;
+    window_end = window_end + INTERVAL 6 HOURS
+WHERE window_end + INTERVAL 6 HOURS <= now();
