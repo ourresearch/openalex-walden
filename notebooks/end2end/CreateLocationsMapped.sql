@@ -956,14 +956,14 @@ WITH ids AS (
     MAX(openalex_updated_dt) AS openalex_updated_dt
   FROM identifier('openalex' || :env_suffix || '.works.work_id_map')
   WHERE paper_id IS NOT NULL
+    AND (doi IS NULL AND pmid IS NULL AND arxiv IS NULL)
     AND title_author IS NOT NULL
   GROUP BY title_author
-  HAVING COUNT(DISTINCT paper_id) <= 3
 )
 MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source
   ON target.merge_key.title_author = source.title_author
-  AND target.work_id IS NULL
+  AND (target.work_id IS NULL OR target.work_id > source.paper_id)
   AND LENGTH(source.title_author) > 20
 WHEN MATCHED THEN UPDATE SET
   target.work_id = source.paper_id,
@@ -1078,15 +1078,14 @@ WITH ids AS (
     MAX(openalex_updated_dt) AS openalex_updated_dt
   FROM identifier('openalex' || :env_suffix || '.works.work_id_map')
   WHERE paper_id IS NULL
+    AND (doi IS NULL AND pmid IS NULL AND arxiv IS NULL)
     AND title_author IS NOT NULL
   GROUP BY title_author
-  HAVING COUNT(DISTINCT id) <= 3
 )
 MERGE INTO identifier('openalex' || :env_suffix || '.works.locations_mapped') AS target
 USING ids AS source
   ON target.merge_key.title_author = source.title_author
   AND target.work_id IS NULL
-  AND LENGTH(source.title_author) > 20
 WHEN MATCHED THEN UPDATE SET
   target.work_id = source.id,
   target.openalex_created_dt = LEAST(target.openalex_created_dt, source.openalex_created_dt),
