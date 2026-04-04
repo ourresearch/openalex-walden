@@ -4,7 +4,9 @@ resources:
       name: Tag Pdf Awards Incremental
       run_as:
         user_name: richard@openalex.org
-      continuous:
+      schedule:
+        quartz_cron_expression: 0 0 */3 * * ?
+        timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
         - task_key: Tag_Pdf_Awards_Incremental

@@ -1,20 +1,21 @@
 -- Databricks notebook source
 -- MAGIC %md
 -- MAGIC ### Tag PDF Awards (Incremental)
--- MAGIC Daily incremental pipeline: extract funder sections from recent PDFs,
+-- MAGIC Incremental pipeline: extract funder sections from recent PDFs,
 -- MAGIC match to screened funders, then match awards by funder.
 -- MAGIC
 -- MAGIC Writes to: `openalex.works.fulltext_work_funders`, `openalex.pdf.grobid_award_matches`
 -- MAGIC
--- MAGIC Uses a checkpoint table to track progress. Each run processes a 6-hour window
--- MAGIC and advances the checkpoint only after both INSERTs succeed.
+-- MAGIC Uses a checkpoint table with two columns:
+-- MAGIC - `window_start`: start of the range to process (set by previous run)
+-- MAGIC - `run_cutoff`: set to `now()` at the start of each run, used as the end of the range
 
 -- COMMAND ----------
 
 -- Step 0: Initialize checkpoint table (first run only)
 CREATE TABLE IF NOT EXISTS openalex.pdf.funder_award_parse_checkpoint (
   window_start TIMESTAMP,
-  window_end TIMESTAMP
+  run_cutoff TIMESTAMP
 );
 
 -- COMMAND ----------
@@ -22,24 +23,31 @@ CREATE TABLE IF NOT EXISTS openalex.pdf.funder_award_parse_checkpoint (
 -- Seed with initial values if empty
 INSERT INTO openalex.pdf.funder_award_parse_checkpoint
 SELECT
-  TIMESTAMP '2026-03-17T17:46:50.766+00:00' AS window_start,
-  TIMESTAMP '2026-03-17T23:46:50.766+00:00' AS window_end
+  now() - INTERVAL 6 HOURS AS window_start,
+  now() AS run_cutoff
 WHERE NOT EXISTS (SELECT 1 FROM openalex.pdf.funder_award_parse_checkpoint);
 
 -- COMMAND ----------
 
--- Step 1: Extract funder/acknowledgement/funding sections from PDFs in window,
+-- Step 1: Stamp run_cutoff to now() — captures the end of our processing window
+-- before any queries run, so no rows are lost between query start and commit
+UPDATE openalex.pdf.funder_award_parse_checkpoint
+SET run_cutoff = now();
+
+-- COMMAND ----------
+
+-- Step 2: Extract funder/acknowledgement/funding sections from PDFs in window,
 --         map (native_id, native_id_namespace) -> work_id
 CREATE OR REPLACE TEMP VIEW funder_sections AS
 WITH checkpoint AS (
-  SELECT window_start, window_end FROM openalex.pdf.funder_award_parse_checkpoint
+  SELECT window_start, run_cutoff FROM openalex.pdf.funder_award_parse_checkpoint
 ),
 recent_pdfs AS (
   SELECT g.native_id, g.native_id_namespace, g.xml_content
   FROM openalex.pdf.grobid_processing_results g
   CROSS JOIN checkpoint cp
   WHERE g.created_date >= cp.window_start
-    AND g.created_date < cp.window_end
+    AND g.created_date < cp.run_cutoff
     AND g.xml_content IS NOT NULL
 ),
 work_id_map AS (
@@ -83,7 +91,7 @@ WHERE funders != '' OR acknowledgement != '' OR funding != '';
 
 -- COMMAND ----------
 
--- Step 2: Match sections to screened funders -> materialize as staging table
+-- Step 3: Match sections to screened funders -> materialize as staging table
 -- Persisting avoids re-evaluating funder_sections (XML-heavy) in later cells
 CREATE OR REPLACE TABLE openalex.pdf.funder_matches_staging AS
 WITH funder_regexes AS (
@@ -118,7 +126,7 @@ WHERE fs.all_sections RLIKE fr.match_regex;
 
 -- COMMAND ----------
 
--- Step 3: INSERT work-funder pairs
+-- Step 4: INSERT work-funder pairs
 INSERT INTO openalex.works.fulltext_work_funders
 SELECT s.work_id, s.funder_name, s.funder_display_name, s.funder_id, s.ror_id, s.doi
 FROM openalex.pdf.funder_matches_staging s
@@ -127,7 +135,7 @@ LEFT ANTI JOIN openalex.works.fulltext_work_funders f
 
 -- COMMAND ----------
 
--- Step 4: Match awards for matched funders -> INSERT work-award pairs
+-- Step 5: Match awards for matched funders -> INSERT work-award pairs
 INSERT INTO openalex.pdf.grobid_award_matches
 WITH matched_funders AS (
   SELECT DISTINCT funder_id_numeric FROM openalex.pdf.funder_matches_staging
@@ -180,8 +188,6 @@ LEFT ANTI JOIN openalex.pdf.grobid_award_matches g
 
 -- COMMAND ----------
 
--- Step 5: Advance checkpoint (only if next window hasn't caught up to now)
+-- Step 6: Advance checkpoint — promote run_cutoff to window_start
 UPDATE openalex.pdf.funder_award_parse_checkpoint
-SET window_start = window_end,
-    window_end = window_end + INTERVAL 6 HOURS
-WHERE window_end + INTERVAL 6 HOURS <= now();
+SET window_start = run_cutoff;
