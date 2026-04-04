@@ -21,7 +21,6 @@ resources:
               lookback_days: "3"
               url_limit: "500000"
               source_filter: "repo_only"
-              exclude_endpoint_ids: "irdb_nii_ac_jp"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -55,5 +54,3 @@ resources:
           default: "500000"
         - name: source_filter
           default: "repo_only"
-        - name: exclude_endpoint_ids
-          default: "irdb_nii_ac_jp"
