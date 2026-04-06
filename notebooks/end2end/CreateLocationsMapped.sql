@@ -680,6 +680,7 @@ USING (
   ) = 1
 ) AS source
 ON target.title_author = source.title_author
+  AND target.doi IS NULL AND target.pmid IS NULL AND target.arxiv IS NULL
 WHEN MATCHED THEN UPDATE SET
   target.doi = COALESCE(source.doi, target.doi),
   target.pmid = COALESCE(source.pmid, target.pmid),
