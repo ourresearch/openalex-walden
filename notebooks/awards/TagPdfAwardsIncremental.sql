@@ -135,18 +135,7 @@ LEFT ANTI JOIN openalex.works.fulltext_work_funders f
 
 -- COMMAND ----------
 
--- Step 5: Check if there are funder matches to process
-DECLARE OR REPLACE funder_match_count INT =
-  (SELECT COUNT(*) FROM openalex.pdf.funder_matches_staging);
-
--- COMMAND ----------
-
--- Step 6: Match awards for matched funders -> INSERT work-award pairs
--- Skip entirely when no funder matches (avoids unnecessary 87M-row anti-join scan)
-EXECUTE IMMEDIATE
-  CASE WHEN funder_match_count = 0
-       THEN 'SELECT "no funder matches — skipping award matching" AS result'
-       ELSE '
+-- Step 5: Match awards for matched funders -> INSERT work-award pairs
 INSERT INTO openalex.pdf.grobid_award_matches
 WITH matched_funders AS (
   SELECT DISTINCT funder_id_numeric FROM openalex.pdf.funder_matches_staging
@@ -165,7 +154,7 @@ candidate_awards AS (
   SELECT
     oa.funder_id,
     oa.funder_award_id,
-    CONCAT(''%'', REPLACE(oa.funder_award_id, ''\\'', ''\\\\''), ''%'') AS award_match_pattern
+    CONCAT('%', REPLACE(oa.funder_award_id, '\\', '\\\\'), '%') AS award_match_pattern
   FROM openalex.awards.openalex_awards oa
   JOIN matched_funders mf ON oa.funder_id = mf.funder_id_numeric
   WHERE openalex.common.is_usable_award_id(oa.funder_award_id)
@@ -195,11 +184,10 @@ JOIN paper_funder_sections pfs
 LEFT ANTI JOIN openalex.pdf.grobid_award_matches g
   ON pfs.work_id = g.paper_id
   AND ua.funder_id = g.funder_id
-  AND ua.funder_award_id = g.funder_award_id'
-  END;
+  AND ua.funder_award_id = g.funder_award_id;
 
 -- COMMAND ----------
 
--- Step 7: Advance checkpoint — promote run_cutoff to window_start
+-- Step 6: Advance checkpoint — promote run_cutoff to window_start
 UPDATE openalex.pdf.funder_award_parse_checkpoint
 SET window_start = run_cutoff;
