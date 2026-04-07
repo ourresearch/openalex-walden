@@ -19,6 +19,8 @@ resources:
             notebook_path: notebooks/concepts/concepts_inference
             source: GIT
           job_cluster_key: md-fleet-concepts
+          max_retries: 3
+          min_retry_interval_millis: 300000
         - task_key: concepts_merge_output
           depends_on:
             - task_key: concepts_inference

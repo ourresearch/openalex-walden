@@ -20,6 +20,8 @@ resources:
             notebook_path: notebooks/topics/topics_inference
             source: GIT
           job_cluster_key: topics-gpu-cluster
+          max_retries: 3
+          min_retry_interval_millis: 300000
         - task_key: topics_merge_output
           depends_on:
             - task_key: topics_inference

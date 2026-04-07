@@ -19,6 +19,8 @@ resources:
             notebook_path: notebooks/sdg/sdg_inference_frontfill
             source: GIT
           job_cluster_key: sdg-gpu-cluster
+          max_retries: 3
+          min_retry_interval_millis: 300000
       job_clusters:
         - job_cluster_key: sdg-gpu-cluster
           new_cluster:
