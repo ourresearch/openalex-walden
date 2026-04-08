@@ -72,6 +72,7 @@ try:
         .withColumn("id", F.concat(F.lit("https://openalex.org/A"), F.col("id").cast("string")))
         .withColumn("topics", F.slice(F.col("topics"), 1, 5))
         .withColumn("topic_share", F.slice(F.col("topic_share"), 1, 5))
+        .withColumn("display_name_alternatives", F.col("raw_author_names"))
         .select("id", F.struct(F.col("*")).alias("_source"))
     )
     df = df.repartition(1024)
