@@ -1,7 +1,7 @@
 resources:
   jobs:
     Refresh_Work_Awards:
-      name: Refresh Work Awards
+      name: RefreshWorkAwards
       run_as:
         user_name: richard@openalex.org
       tasks:
