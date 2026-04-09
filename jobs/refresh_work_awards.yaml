@@ -1,0 +1,25 @@
+resources:
+  jobs:
+    Refresh_Work_Awards:
+      name: Refresh Work Awards
+      run_as:
+        user_name: richard@openalex.org
+      tasks:
+        - task_key: Create_Awards
+          notebook_task:
+            notebook_path: notebooks/awards/CreateAwards
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: Work_Awards
+          depends_on:
+            - task_key: Create_Awards
+          notebook_task:
+            notebook_path: notebooks/awards/WorkAwards
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
