@@ -4,6 +4,10 @@ resources:
       name: Crossref Work Funders
       run_as:
         user_name: richard@openalex.org
+      schedule:
+        quartz_cron_expression: 0 0 2 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
       tasks:
         - task_key: create_crossref_work_funders
           notebook_task:
