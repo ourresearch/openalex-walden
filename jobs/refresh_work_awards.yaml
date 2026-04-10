@@ -4,6 +4,10 @@ resources:
       name: RefreshWorkAwards
       run_as:
         user_name: richard@openalex.org
+      schedule:
+        quartz_cron_expression: 0 0 4,16 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
       tasks:
         - task_key: Create_Awards
           notebook_task:
