@@ -5,7 +5,7 @@ resources:
       run_as:
         user_name: richard@openalex.org
       schedule:
-        quartz_cron_expression: 0 0 4,16 * * ?
+        quartz_cron_expression: 0 0 3 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
