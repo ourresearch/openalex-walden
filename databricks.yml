@@ -52,7 +52,6 @@ include:
   - jobs/snapshot_full.yaml
   - jobs/daily_changefiles.yaml
   - jobs/topics.yaml
-  - jobs/topics_test_japanese.yaml
   - jobs/doaj_csv.yaml
   - jobs/tag_pdf_awards_incremental.yaml
   - jobs/crossref_work_funders.yaml
