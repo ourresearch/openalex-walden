@@ -143,7 +143,7 @@ resources:
           depends_on:
             - task_key: Works_Base
           notebook_task:
-            notebook_path: notebooks/end2end/CreateParsedNamesNormalized
+            notebook_path: notebooks/end2end/CreateAuthorNames
             source: GIT
         - task_key: Prepare_Affiliation_Strings
           depends_on:
