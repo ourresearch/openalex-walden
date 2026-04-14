@@ -106,6 +106,29 @@ def check_for_non_latin_characters(text):
         return 0
     
 
+def is_heavily_stripped(original_text, cleaned_text, threshold=0.5):
+    """
+    Check if cleaning removed more than `threshold` fraction of the text,
+    indicating the original was dominated by non-Latin characters (e.g. Japanese).
+    Classifying the leftover Latin fragments produces garbage predictions.
+
+    Input:
+    original_text: string before clean_title/clean_abstract
+    cleaned_text: string after clean_title/clean_abstract
+    threshold: fraction of characters stripped above which we reject (default 0.5)
+
+    Output:
+    True if too much text was stripped, False otherwise
+    """
+    if not isinstance(original_text, str) or not original_text:
+        return False
+    original_len = len(original_text.replace(" ", ""))
+    if original_len == 0:
+        return False
+    cleaned_len = len(cleaned_text.replace(" ", "")) if isinstance(cleaned_text, str) and cleaned_text else 0
+    stripped_ratio = 1 - (cleaned_len / original_len)
+    return stripped_ratio > threshold
+
 def get_journal_emb(journal_name):
     """
     Function to get journal embedding using SentenceTransformer.
@@ -883,8 +906,23 @@ def process_data_as_df(new_df: pd.DataFrame):
         lambda x: [int(i.split("https://openalex.org/W")[1]) for i in x])
 
      # Process title and abstract and tokenize
+    # Save original text before cleaning to detect heavily-stripped non-Latin works
+    input_df['original_title'] = input_df['title']
+    input_df['original_abstract'] = input_df['abstract_inverted_index']
     input_df['title'] = input_df['title'].apply(lambda x: clean_title(x))
     input_df['abstract_inverted_index'] = input_df.apply(lambda x: clean_abstract(x.abstract_inverted_index, x.inverted), axis=1)
+
+    # Reject works where >50% of text was stripped (non-Latin dominant)
+    # Better to assign no topic than a garbage prediction from leftover Latin fragments
+    input_df['title_stripped'] = input_df.apply(
+        lambda x: is_heavily_stripped(x.original_title, x.title), axis=1)
+    input_df['abstract_stripped'] = input_df.apply(
+        lambda x: is_heavily_stripped(str(x.original_abstract) if x.original_abstract else None,
+                                      x.abstract_inverted_index), axis=1)
+    heavily_stripped = input_df['title_stripped'] & (input_df['abstract_stripped'] | input_df['original_abstract'].isna())
+    input_df.loc[heavily_stripped, 'title'] = ''
+    input_df.loc[heavily_stripped, 'abstract_inverted_index'] = None
+
     title_abstract = input_df.apply(lambda x: merge_title_and_abstract(x.title, x.abstract_inverted_index), axis=1).tolist()
     tok_title_abstract = tokenize(title_abstract)
     input_df['ids'] = tok_title_abstract[0]
