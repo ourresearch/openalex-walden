@@ -212,9 +212,16 @@ resources:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT
             warehouse_id: 4d37bf76372a2901
-        - task_key: Guardrails
+        - task_key: Optimize_Works_Enriched
           depends_on:
             - task_key: Works_Enriched
+          notebook_task:
+            notebook_path: notebooks/end2end/OptimizeWorksEnriched
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Guardrails
+          depends_on:
+            - task_key: Optimize_Works_Enriched
           notebook_task:
             notebook_path: notebooks/end2end/Guardrails
             base_parameters:
