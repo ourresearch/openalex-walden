@@ -20,9 +20,9 @@ resources:
               delete_threshold_pct: "15"
               max_disk_pct: "80"
               bulk_wait_minutes: "60"
-              max_runtime_hours: "12"
+              max_runtime_hours: "3"
               poll_interval_seconds: "300"
-          timeout_seconds: 50400
+          timeout_seconds: 14400
       job_clusters:
         - job_cluster_key: maintenance_cluster
           new_cluster:
