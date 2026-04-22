@@ -58,3 +58,4 @@ include:
   - jobs/tag_pdf_awards_incremental.yaml
   - jobs/crossref_work_funders.yaml
   - jobs/refresh_work_awards.yaml
+  - jobs/create_backfill_awards.yaml
