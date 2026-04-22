@@ -154,7 +154,14 @@ candidate_awards AS (
   SELECT
     oa.funder_id,
     oa.funder_award_id,
-    CONCAT('%', REPLACE(oa.funder_award_id, '\\', '\\\\'), '%') AS award_match_pattern
+    -- Word-boundary regex match. \b prevents short/truncated award IDs
+    -- from matching inside longer alphanumeric runs in PDF text
+    -- (e.g. "DE-AC0" falsely matching "DE-AC02-05CH11231", or "NIH R01"
+    -- matching "NIH R01CA253329"). Escape regex metacharacters per
+    -- Cell 5's funder-regex pattern.
+    CONCAT('\\b',
+           regexp_replace(oa.funder_award_id, '([\\[\\](){}+*?^$.|\\\\])', '\\\\$1'),
+           '\\b') AS award_match_pattern
   FROM openalex.awards.openalex_awards oa
   JOIN matched_funders mf ON oa.funder_id = mf.funder_id_numeric
   WHERE openalex.common.is_usable_award_id(oa.funder_award_id)
@@ -180,7 +187,7 @@ SELECT
 FROM usable_awards ua
 JOIN paper_funder_sections pfs
   ON pfs.funder_id_numeric = ua.funder_id
-  AND pfs.all_sections LIKE ua.award_match_pattern
+  AND pfs.all_sections RLIKE ua.award_match_pattern
 LEFT ANTI JOIN openalex.pdf.grobid_award_matches g
   ON pfs.work_id = g.paper_id
   AND ua.funder_id = g.funder_id
