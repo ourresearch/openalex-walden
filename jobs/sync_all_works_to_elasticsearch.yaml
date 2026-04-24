@@ -54,3 +54,5 @@ resources:
           default: "true"
         - name: source_id
           default: ""
+        - name: raw_orcid_only
+          default: "false"
