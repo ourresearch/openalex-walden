@@ -87,8 +87,8 @@
           "email_notifications": {},
           "environment_key": "Default",
           "notebook_task": {
-            "notebook_path": "/Workspace/Shared/openalex-walden/notebooks/awards/InsertCrossrefAwardsToRaw",
-            "source": "WORKSPACE"
+            "notebook_path": "notebooks/awards/InsertCrossrefAwardsToRaw",
+            "source": "GIT"
           },
           "run_if": "ALL_SUCCESS",
           "task_key": "Crossref_Awards_Insert",
@@ -649,8 +649,13 @@
           "webhook_notifications": {}
         }
       ],
+      "git_source": {
+        "git_url": "https://github.com/ourresearch/openalex-walden.git",
+        "git_provider": "gitHub",
+        "git_branch": "main"
+      },
       "timeout_seconds": 0,
       "webhook_notifications": {}
     }
   }
-}
+
