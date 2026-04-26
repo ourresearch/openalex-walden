@@ -97,6 +97,34 @@
         },
         {
           "email_notifications": {},
+          "pipeline_task": {
+            "full_refresh": false,
+            "pipeline_id": "REPLACE_WITH_DATACITE_AWARDS_PIPELINE_ID"
+          },
+          "run_if": "ALL_SUCCESS",
+          "task_key": "DataCite_Awards",
+          "timeout_seconds": 0,
+          "webhook_notifications": {}
+        },
+        {
+          "depends_on": [
+            {
+              "task_key": "DataCite_Awards"
+            }
+          ],
+          "email_notifications": {},
+          "environment_key": "Default",
+          "notebook_task": {
+            "notebook_path": "notebooks/awards/InsertDataCiteAwardsToRaw",
+            "source": "GIT"
+          },
+          "run_if": "ALL_SUCCESS",
+          "task_key": "DataCite_Awards_Insert",
+          "timeout_seconds": 0,
+          "webhook_notifications": {}
+        },
+        {
+          "email_notifications": {},
           "environment_key": "Default",
           "notebook_task": {
             "notebook_path": "/Workspace/Shared/openalex-walden/notebooks/awards/CreateFormasAwards",
@@ -339,6 +367,9 @@
             },
             {
               "task_key": "Crossref_Awards_Insert"
+            },
+            {
+              "task_key": "DataCite_Awards_Insert"
             },
             {
               "task_key": "NWO_Awards"
