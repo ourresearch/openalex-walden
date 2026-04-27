@@ -137,6 +137,16 @@ MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
 MAX_AFFILIATION_STRING_LENGTH = 1000
 
+# CDL/EZID Kernel Metadata Reserved Codes used as sentinels for unavailable values
+# (e.g. "(:unav)", "(:Unkn) Unknown"). See notebooks/authors/CleanPlaceholderAuthorNames.ipynb.
+PLACEHOLDER_NAME_REGEX = r"^\s*\(:un[a-z]{2,3}\)(\s*(unknown( author)?|unassigned))?\s*$"
+
+def _null_if_placeholder(col):
+    return F.when(F.lower(col).rlike(PLACEHOLDER_NAME_REGEX), F.lit(None).cast("string")).otherwise(col)
+
+def _is_placeholder_or_empty(col):
+    return col.isNull() | (F.length(F.trim(col)) == 0) | F.lower(col).rlike(PLACEHOLDER_NAME_REGEX)
+
 @dlt.table(
     name="datacite_parsed",
     comment="Datacite works table in the Walden schema",
@@ -153,11 +163,18 @@ def datacite_parsed():
         .withColumn("normalized_title", normalize_title_udf(F.col("title")))
         .withColumn(
             "authors", F.transform(
-                "attributes.creators",
+                F.filter(
+                    "attributes.creators",
+                    lambda a: ~(
+                        _is_placeholder_or_empty(a["name"])
+                        & _is_placeholder_or_empty(a["givenName"])
+                        & _is_placeholder_or_empty(a["familyName"])
+                    ),
+                ),
                 lambda author: F.struct(
-                    F.substring(author["givenName"], 0, MAX_AUTHOR_NAME_LENGTH).alias("given"),
-                    F.substring(author["familyName"], 0, MAX_AUTHOR_NAME_LENGTH).alias("family"), 
-                    F.substring(author["name"], 0, MAX_AUTHOR_NAME_LENGTH).alias("name"),
+                    F.substring(_null_if_placeholder(author["givenName"]), 0, MAX_AUTHOR_NAME_LENGTH).alias("given"),
+                    F.substring(_null_if_placeholder(author["familyName"]), 0, MAX_AUTHOR_NAME_LENGTH).alias("family"),
+                    F.substring(_null_if_placeholder(author["name"]), 0, MAX_AUTHOR_NAME_LENGTH).alias("name"),
                     F.when(
                         F.get(author["nameIdentifiers"]["nameIdentifierScheme"], 0) == "ORCID",
                         F.regexp_extract(
