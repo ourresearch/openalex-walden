@@ -227,7 +227,7 @@ def pubmed_items():
       .option("cloudFiles.format", "xml")
       .option("cloudFiles.inferColumnTypes", "true")
       .option("cloudFiles.schemaLocation", "/pubmed/schemas/ingest")
-      .option("cloudFiles.schemaHints", "MedlineCitation.Article.Abstract.AbstractText ARRAY<STRUCT<_Label:STRING,_VALUE:STRING>>, MedlineCitation.Article.ArticleTitle STRING, MedlineCitation.OtherAbstract ARRAY<MAP<STRING,STRING>>, MedlineCitation.Article.VernacularTitle STRING, MedlineCitation.KeywordList ARRAY<STRING>")
+      .option("cloudFiles.schemaHints", "MedlineCitation.Article.Abstract.AbstractText ARRAY<STRUCT<_Label:STRING,_NlmCategory:STRING,_VALUE:STRING>>, MedlineCitation.Article.ArticleTitle STRING, MedlineCitation.OtherAbstract ARRAY<MAP<STRING,STRING>>, MedlineCitation.Article.VernacularTitle STRING, MedlineCitation.KeywordList ARRAY<STRING>")
       .option("maxFilesPerTrigger", "10")
       .option("rowTag", "PubmedArticle")
       .option("inferSchema", "true")
@@ -464,8 +464,12 @@ def pubmed_parsed():
             "abstract": F.substring(
                 F.expr(
                     "nullif(concat_ws(' ', transform(MedlineCitation.Article.Abstract.AbstractText, "
-                    "x -> CASE WHEN x._Label IS NOT NULL AND x._Label != '' "
-                    "THEN concat(x._Label, ': ', x._VALUE) ELSE x._VALUE END)), '')"
+                    "x -> CASE "
+                    "WHEN x._Label IS NOT NULL AND x._Label != '' "
+                    "  THEN concat(x._Label, ': ', x._VALUE) "
+                    "WHEN x._NlmCategory IS NOT NULL AND x._NlmCategory != '' AND x._NlmCategory != 'UNASSIGNED' "
+                    "  THEN concat(x._NlmCategory, ': ', x._VALUE) "
+                    "ELSE x._VALUE END)), '')"
                 ),
                 0, MAX_ABSTRACT_LENGTH,
             ),
