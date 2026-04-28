@@ -99,7 +99,7 @@
           "email_notifications": {},
           "pipeline_task": {
             "full_refresh": false,
-            "pipeline_id": "REPLACE_WITH_DATACITE_AWARDS_PIPELINE_ID"
+            "pipeline_id": "3328ee53-c930-40c1-bf73-9b66e2b34440"
           },
           "run_if": "ALL_SUCCESS",
           "task_key": "DataCite_Awards",
