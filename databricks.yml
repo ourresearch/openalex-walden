@@ -59,3 +59,4 @@ include:
   - jobs/crossref_work_funders.yaml
   - jobs/refresh_work_awards.yaml
   - jobs/create_backfill_awards.yaml
+  - jobs/create_funder_sourced_awards.yaml
