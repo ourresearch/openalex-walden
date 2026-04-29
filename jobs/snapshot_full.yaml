@@ -5,6 +5,9 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
+      parameters:
+        - name: is_quarterly_release
+          default: "false"
       tasks:
         - task_key: export_works
           job_cluster_key: snapshot_works_cluster
@@ -123,9 +126,17 @@ resources:
             source: GIT
           environment_key: serverless
           timeout_seconds: 3600
-        - task_key: sync_to_production
+        - task_key: update_meta
           depends_on:
             - task_key: smoke_tests
+          notebook_task:
+            notebook_path: notebooks/snapshot/update_meta
+            source: GIT
+          environment_key: serverless
+          timeout_seconds: 1800
+        - task_key: sync_to_production
+          depends_on:
+            - task_key: update_meta
           job_cluster_key: snapshot_sync_cluster
           notebook_task:
             notebook_path: notebooks/snapshot/sync_to_production

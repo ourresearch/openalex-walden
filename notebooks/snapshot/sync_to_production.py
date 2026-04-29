@@ -2,6 +2,15 @@
 # Sync full snapshot from staging (s3://openalex-snapshots/full/{date}/)
 # to production (s3://openalex/data/) using boto3 for the production bucket.
 #
+# Runs only on quarterly releases. Monthly snapshots stay in staging only and
+# are served to enterprise customers via the API-key gateway. Public free-tier
+# consumers continue to receive a quarterly drop here.
+#
+# Layout in staging (set by notebooks/snapshot/_utils.py):
+#   {staging_base}/jsonl/{entity}/updated_date=*/part_NNNN.gz
+#   {staging_base}/parquet/{entity}/updated_date=*/part_NNNN.snappy.parquet
+#   {staging_base}/{format}/manifest.json   # per-format combined manifest
+#
 # Staging bucket is accessible natively via Databricks (instance profile).
 # Production bucket requires separate AWS credentials from the
 # "openalex-open-data" secret scope.
@@ -14,12 +23,28 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 # ---------------------------------------------------------------------------
+# Quarterly-release gate
+# ---------------------------------------------------------------------------
+
+dbutils.widgets.text("is_quarterly_release", "false")
+_quarterly_param = dbutils.widgets.get("is_quarterly_release").strip().lower()
+IS_QUARTERLY = _quarterly_param in ("true", "1", "yes")
+
+if not IS_QUARTERLY:
+    print(f"is_quarterly_release={_quarterly_param!r} — skipping public sync.")
+    print("Snapshot remains in staging only (s3://openalex-snapshots/full/...).")
+    dbutils.notebook.exit("skipped: monthly run, no public sync")
+
+print(f"is_quarterly_release={_quarterly_param!r} — proceeding with public sync.")
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 STAGING_BUCKET = "openalex-snapshots"
 PROD_BUCKET = "openalex"
 PROD_PREFIX = "data"
+FORMATS = ("jsonl", "parquet")
 
 date_str = datetime.now().strftime("%Y-%m-%d")
 staging_base = f"s3://{STAGING_BUCKET}/full/{date_str}"
@@ -55,6 +80,7 @@ ENTITIES = [
 print(f"Snapshot date: {date_str}")
 print(f"Staging base:  {staging_base}")
 print(f"Production:    s3://{PROD_BUCKET}/{PROD_PREFIX}/")
+print(f"Formats:       {FORMATS}")
 print(f"Entities:      {len(ENTITIES)}")
 
 # COMMAND ----------
@@ -65,11 +91,14 @@ print(f"Entities:      {len(ENTITIES)}")
 
 import boto3
 
-# Verify staging is accessible via dbutils
+# Verify staging is accessible via dbutils — both format subtrees must exist
 try:
     staging_entries = dbutils.fs.ls(staging_base)
-    staging_dirs = [e.name.rstrip("/") for e in staging_entries if not e.name.startswith("_")]
-    print(f"Staging preflight OK: {len(staging_dirs)} entities found at {staging_base}")
+    top_dirs = {e.name.rstrip("/") for e in staging_entries if not e.name.startswith("_")}
+    missing = [fmt for fmt in FORMATS if fmt not in top_dirs]
+    if missing:
+        raise RuntimeError(f"missing format subdirectories in staging: {missing}")
+    print(f"Staging preflight OK: {sorted(top_dirs)} found at {staging_base}")
 except Exception as e:
     raise RuntimeError(f"Staging preflight FAILED — cannot access {staging_base}: {e}")
 
@@ -106,13 +135,15 @@ def _get_prod_client():
     return _thread_local.s3_client
 
 
-def list_staging_files(entity):
-    """List all files for an entity in staging, returning (dbfs_path, relative_key) tuples.
+def list_staging_files(fmt, entity):
+    """List all files for an entity+format in staging.
 
-    Skips the manifest file — it's copied last as a completion marker.
+    Returns a list of (dbfs_path, relative_key, size). The relative_key starts with
+    `{fmt}/{entity}/...` so it can be appended directly to PROD_PREFIX.
     """
-    entity_path = f"{staging_base}/{entity}"
+    entity_path = f"{staging_base}/{fmt}/{entity}"
     files = []
+    marker = f"/{fmt}/{entity}/"
 
     def _walk(path):
         try:
@@ -122,14 +153,11 @@ def list_staging_files(entity):
         for entry in entries:
             if entry.isDir():
                 _walk(entry.path)
-            elif entry.name == "manifest":
-                pass  # skip manifest — copied last
             else:
-                # Build the relative key: {entity}/updated_date=.../part_XXXX.gz
+                # Build the relative key: {fmt}/{entity}/updated_date=.../part_XXXX.{ext}
                 raw = entry.path.replace("dbfs:", "").replace("s3:", "")
-                marker = f"/{entity}/"
                 idx = raw.find(marker)
-                relative = raw[idx + 1:]  # e.g. "entity/updated_date=.../part_0000.gz"
+                relative = raw[idx + 1:]  # e.g. "jsonl/works/updated_date=.../part_0000.gz"
                 files.append((entry.path, relative, entry.size))
 
     _walk(entity_path)
@@ -188,11 +216,15 @@ def upload_file_to_prod(dbfs_path, relative_key, expected_size):
     raise RuntimeError(f"Failed after {MAX_RETRIES} attempts for {relative_key}: {last_err}")
 
 
-def upload_manifest(entity):
-    """Copy the manifest file for an entity to production (last, as completion marker)."""
-    manifest_dbfs = f"{staging_base}/{entity}/manifest"
-    local_path = os.path.join(local_scratch, entity, "manifest")
-    prod_key = f"{PROD_PREFIX}/{entity}/manifest"
+def upload_manifest(fmt):
+    """Copy the per-format combined manifest to production (last, as completion marker).
+
+    Source: {staging_base}/{fmt}/manifest.json
+    Target: s3://{PROD_BUCKET}/{PROD_PREFIX}/{fmt}/manifest.json
+    """
+    manifest_dbfs = f"{staging_base}/{fmt}/manifest.json"
+    local_path = os.path.join(local_scratch, fmt, "manifest.json")
+    prod_key = f"{PROD_PREFIX}/{fmt}/manifest.json"
 
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
@@ -205,7 +237,7 @@ def upload_manifest(entity):
     head = client.head_object(Bucket=PROD_BUCKET, Key=prod_key)
     if head["ContentLength"] != local_size:
         raise RuntimeError(
-            f"Manifest size mismatch for {entity}: "
+            f"Manifest size mismatch for {fmt}: "
             f"expected {local_size}, got {head['ContentLength']}"
         )
 
@@ -227,110 +259,112 @@ os.makedirs(local_scratch, exist_ok=True)
 overall_start = time.time()
 entity_results = []
 
-for entity in ENTITIES:
-    print(f"\n{'=' * 60}")
-    print(f"Syncing: {entity}")
-    print(f"{'=' * 60}")
-    entity_start = time.time()
+for fmt in FORMATS:
+    for entity in ENTITIES:
+        print(f"\n{'=' * 60}")
+        print(f"Syncing: {fmt}/{entity}")
+        print(f"{'=' * 60}")
+        entity_start = time.time()
 
-    # 1. List staging files
-    files = list_staging_files(entity)
-    staging_total_size = sum(f[2] for f in files)
-    print(f"  Staging: {len(files)} files, {staging_total_size / (1024**3):.2f} GB")
+        # 1. List staging files
+        files = list_staging_files(fmt, entity)
+        staging_total_size = sum(f[2] for f in files)
+        print(f"  Staging: {len(files)} files, {staging_total_size / (1024**3):.2f} GB")
 
-    if not files:
-        print(f"  WARNING: No files found for {entity} — skipping")
-        entity_results.append({
-            "entity": entity,
-            "status": "skipped",
-            "files": 0,
-            "size_gb": 0,
-        })
-        continue
-
-    # 2. Delete old production files for this entity
-    prefix = f"{PROD_PREFIX}/{entity}/"
-    del_client = _get_prod_client()
-    del_paginator = del_client.get_paginator("list_objects_v2")
-    deleted = 0
-    for page in del_paginator.paginate(Bucket=PROD_BUCKET, Prefix=prefix):
-        objects = page.get("Contents", [])
-        if not objects:
+        if not files:
+            print(f"  WARNING: No files found for {fmt}/{entity} — skipping")
+            entity_results.append({
+                "format": fmt,
+                "entity": entity,
+                "status": "skipped",
+                "files": 0,
+                "size_gb": 0,
+            })
             continue
-        del_client.delete_objects(
-            Bucket=PROD_BUCKET,
-            Delete={"Objects": [{"Key": obj["Key"]} for obj in objects], "Quiet": True},
-        )
-        deleted += len(objects)
-    print(f"  Deleted {deleted} old production files")
 
-    # 3. Upload data files in parallel
-    uploaded_size = 0
-    failed = []
+        # 2. Delete old production files for this format+entity
+        prefix = f"{PROD_PREFIX}/{fmt}/{entity}/"
+        del_client = _get_prod_client()
+        del_paginator = del_client.get_paginator("list_objects_v2")
+        deleted = 0
+        for page in del_paginator.paginate(Bucket=PROD_BUCKET, Prefix=prefix):
+            objects = page.get("Contents", [])
+            if not objects:
+                continue
+            del_client.delete_objects(
+                Bucket=PROD_BUCKET,
+                Delete={"Objects": [{"Key": obj["Key"]} for obj in objects], "Quiet": True},
+            )
+            deleted += len(objects)
+        print(f"  Deleted {deleted} old production files")
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
-        futures = {
-            pool.submit(upload_file_to_prod, dbfs_path, rel_key, size): rel_key
-            for dbfs_path, rel_key, size in files
-        }
+        # 3. Upload data files in parallel
+        uploaded_size = 0
+        failed = []
 
-        done_count = 0
-        for future in as_completed(futures):
-            rel_key = futures[future]
-            try:
-                _, size = future.result()
-                uploaded_size += size
-                done_count += 1
-                if done_count % 50 == 0 or done_count == len(files):
-                    print(f"  Progress: {done_count}/{len(files)} files ({uploaded_size / (1024**3):.2f} GB)")
-            except Exception as e:
-                failed.append((rel_key, str(e)))
-                print(f"  FAILED: {rel_key}: {e}")
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+            futures = {
+                pool.submit(upload_file_to_prod, dbfs_path, rel_key, size): rel_key
+                for dbfs_path, rel_key, size in files
+            }
 
-    if failed:
-        raise RuntimeError(
-            f"Failed to upload {len(failed)} files for {entity}: "
-            + "; ".join(f[0] for f in failed[:5])
-        )
+            done_count = 0
+            for future in as_completed(futures):
+                rel_key = futures[future]
+                try:
+                    _, size = future.result()
+                    uploaded_size += size
+                    done_count += 1
+                    if done_count % 50 == 0 or done_count == len(files):
+                        print(f"  Progress: {done_count}/{len(files)} files ({uploaded_size / (1024**3):.2f} GB)")
+                except Exception as e:
+                    failed.append((rel_key, str(e)))
+                    print(f"  FAILED: {rel_key}: {e}")
 
-    # 4. Verify file count in production
-    client = _get_prod_client()
-    prod_prefix = f"{PROD_PREFIX}/{entity}/"
-    paginator = client.get_paginator("list_objects_v2")
-    prod_count = 0
-    prod_total_size = 0
-    for page in paginator.paginate(Bucket=PROD_BUCKET, Prefix=prod_prefix):
-        for obj in page.get("Contents", []):
-            if not obj["Key"].endswith("/manifest"):
+        if failed:
+            raise RuntimeError(
+                f"Failed to upload {len(failed)} files for {fmt}/{entity}: "
+                + "; ".join(f[0] for f in failed[:5])
+            )
+
+        # 4. Verify file count in production for this entity prefix
+        client = _get_prod_client()
+        paginator = client.get_paginator("list_objects_v2")
+        prod_count = 0
+        prod_total_size = 0
+        for page in paginator.paginate(Bucket=PROD_BUCKET, Prefix=prefix):
+            for obj in page.get("Contents", []):
                 prod_count += 1
                 prod_total_size += obj["Size"]
 
-    if prod_count != len(files):
-        raise RuntimeError(
-            f"File count mismatch for {entity}: "
-            f"staged {len(files)}, production has {prod_count}"
-        )
+        if prod_count != len(files):
+            raise RuntimeError(
+                f"File count mismatch for {fmt}/{entity}: "
+                f"staged {len(files)}, production has {prod_count}"
+            )
 
-    if prod_total_size != staging_total_size:
-        raise RuntimeError(
-            f"Total size mismatch for {entity}: "
-            f"staged {staging_total_size}, production has {prod_total_size}"
-        )
+        if prod_total_size != staging_total_size:
+            raise RuntimeError(
+                f"Total size mismatch for {fmt}/{entity}: "
+                f"staged {staging_total_size}, production has {prod_total_size}"
+            )
 
-    # 5. Copy manifest last (completion marker)
-    manifest_size = upload_manifest(entity)
+        elapsed = time.time() - entity_start
+        print(f"  Done: {len(files)} files, {uploaded_size / (1024**3):.2f} GB, {elapsed:.0f}s")
 
-    elapsed = time.time() - entity_start
-    print(f"  Done: {len(files)} files, {uploaded_size / (1024**3):.2f} GB, "
-          f"manifest {manifest_size / 1024:.1f} KB, {elapsed:.0f}s")
+        entity_results.append({
+            "format": fmt,
+            "entity": entity,
+            "status": "ok",
+            "files": len(files),
+            "size_gb": round(uploaded_size / (1024**3), 2),
+            "elapsed_s": round(elapsed),
+        })
 
-    entity_results.append({
-        "entity": entity,
-        "status": "ok",
-        "files": len(files),
-        "size_gb": round(uploaded_size / (1024**3), 2),
-        "elapsed_s": round(elapsed),
-    })
+    # After all entities for this format are uploaded, copy the per-format manifest
+    # (acts as the completion marker for that format).
+    manifest_size = upload_manifest(fmt)
+    print(f"\n  {fmt} manifest uploaded ({manifest_size / 1024:.1f} KB)")
 
 # COMMAND ----------
 
@@ -352,20 +386,22 @@ skipped = [r for r in entity_results if r["status"] == "skipped"]
 
 total_files = sum(r["files"] for r in ok)
 total_gb = sum(r["size_gb"] for r in ok)
+total_units = len(FORMATS) * len(ENTITIES)
 
-print(f"Entities synced:  {len(ok)}/{len(ENTITIES)}")
-print(f"Total files:      {total_files:,}")
-print(f"Total size:       {total_gb:.2f} GB")
+print(f"Format/entity pairs synced: {len(ok)}/{total_units}")
+print(f"Total files:                {total_files:,}")
+print(f"Total size:                 {total_gb:.2f} GB")
 
 if skipped:
-    print(f"\nSkipped entities: {[r['entity'] for r in skipped]}")
+    print(f"\nSkipped: {[(r['format'], r['entity']) for r in skipped]}")
 
-print(f"\nPer-entity breakdown:")
+print(f"\nPer-(format,entity) breakdown:")
 for r in entity_results:
+    label = f"{r['format']}/{r['entity']}"
     if r["status"] == "ok":
-        print(f"  {r['entity']:20s}  {r['files']:6,} files  {r['size_gb']:8.2f} GB  {r['elapsed_s']:5d}s")
+        print(f"  {label:30s}  {r['files']:6,} files  {r['size_gb']:8.2f} GB  {r['elapsed_s']:5d}s")
     else:
-        print(f"  {r['entity']:20s}  SKIPPED")
+        print(f"  {label:30s}  SKIPPED")
 
 print(f"\nProduction snapshot ready at: s3://{PROD_BUCKET}/{PROD_PREFIX}/")
 
