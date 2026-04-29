@@ -4,7 +4,8 @@
 #
 # Output layout (mirrors notebooks/changefiles/daily/_utils.py shape):
 #   s3://openalex-snapshots/full/{date}/jsonl/{entity}/updated_date=*/part_NNNN.gz
-#   s3://openalex-snapshots/full/{date}/parquet/{entity}/updated_date=*/part_NNNN.snappy.parquet
+#   s3://openalex-snapshots/full/{date}/parquet/{entity}/updated_date=*/part_NNNN.parquet
+#     (snappy-compressed, but named `.parquet` to match daily-changefiles convention)
 #   s3://openalex-snapshots/full/{date}/_meta/{format}/{entity}.json   # consumed by update_meta
 #
 # Snapshot scale (works ~263M, authors ~110M) means we keep updated_date partitioning
@@ -56,24 +57,33 @@ def _apply_salting(df_with_count: DataFrame) -> DataFrame:
 # Filename rename + spark-metadata cleanup
 # ---------------------------------------------------------------------------
 
-def _rename_partitions(dbutils, output_path: str, file_extension: str, max_workers: int = 30):
+def _rename_partitions(dbutils, output_path: str, match_extension: str,
+                       target_extension: str = None, max_workers: int = 30):
     """Rename Spark's `_partition_date=` directories to `updated_date=` and rename
-    each part file to `part_NNNN.{file_extension}`.
+    each part file from Spark's auto-generated name to `part_NNNN.{target_extension}`.
 
-    file_extension is "gz" for jsonl.gz output or "snappy.parquet" for parquet.
+    `match_extension` is the suffix Spark writes (e.g. "gz", "snappy.parquet").
+    `target_extension` is the suffix we want on disk (defaults to match_extension).
+    For parquet we pass match="snappy.parquet" / target="parquet" so files end up
+    named `part_NNNN.parquet` even though they're snappy-compressed — matching the
+    daily-changefiles convention.
     """
+    if target_extension is None:
+        target_extension = match_extension
+
     partitions = dbutils.fs.ls(output_path)
     partitions_to_process = [p for p in partitions if p.name.startswith("_partition_date=")]
 
-    print(f"  Renaming {len(partitions_to_process)} partition(s) (extension=.{file_extension})")
+    print(f"  Renaming {len(partitions_to_process)} partition(s) "
+          f"(match=.{match_extension} → target=.{target_extension})")
 
     def _process(partition):
         date_value = partition.name.replace("_partition_date=", "").rstrip("/")
         new_partition_path = f"{output_path}/updated_date={date_value}/"
 
         files = dbutils.fs.ls(partition.path)
-        data_files = [f for f in files if f.name.endswith(f".{file_extension}")]
-        meta_files = [f for f in files if not f.name.endswith(f".{file_extension}")]
+        data_files = [f for f in files if f.name.endswith(f".{match_extension}")]
+        meta_files = [f for f in files if not f.name.endswith(f".{match_extension}")]
         data_files.sort(key=lambda x: x.name)
 
         if not data_files:
@@ -94,7 +104,7 @@ def _rename_partitions(dbutils, output_path: str, file_extension: str, max_worke
             counter = {"moved": 0}
 
             def _move(file_info, idx):
-                new_name = f"part_{str(idx).zfill(4)}.{file_extension}"
+                new_name = f"part_{str(idx).zfill(4)}.{target_extension}"
                 try:
                     dbutils.fs.mv(file_info.path, f"{new_partition_path}{new_name}")
                     with counter_lock:
@@ -111,7 +121,7 @@ def _rename_partitions(dbutils, output_path: str, file_extension: str, max_worke
         else:
             moved = 0
             for idx, f in enumerate(data_files):
-                new_name = f"part_{str(idx).zfill(4)}.{file_extension}"
+                new_name = f"part_{str(idx).zfill(4)}.{target_extension}"
                 try:
                     dbutils.fs.mv(f.path, f"{new_partition_path}{new_name}")
                     moved += 1
@@ -325,7 +335,8 @@ def export_partitioned_parquet(spark, dbutils, df: DataFrame, date_str: str, ent
     """Write `df` as snappy-compressed parquet partitioned by updated_date.
 
     Same salting logic as JSONL for large entities. Output:
-      {S3_BASE}/{date}/parquet/{entity}/updated_date=*/part_NNNN.snappy.parquet
+      {S3_BASE}/{date}/parquet/{entity}/updated_date=*/part_NNNN.parquet
+    (snappy-compressed; the `.snappy.` suffix is dropped to match daily changefiles)
     """
     output_path = f"{S3_BASE}/{date_str}/parquet/{entity}"
 
@@ -359,9 +370,10 @@ def export_partitioned_parquet(spark, dbutils, df: DataFrame, date_str: str, ent
             .partitionBy("_partition_date")
             .parquet(output_path))
 
-    _rename_partitions(dbutils, output_path, "snappy.parquet")
+    _rename_partitions(dbutils, output_path, match_extension="snappy.parquet",
+                       target_extension="parquet")
 
-    files = _enumerate_files(dbutils, output_path, "snappy.parquet")
+    files = _enumerate_files(dbutils, output_path, "parquet")
     if not files:
         _write_entity_meta(dbutils, date_str, "parquet", entity, 0, 0, [])
         return 0, 0
