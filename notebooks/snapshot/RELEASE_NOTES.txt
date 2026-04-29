@@ -1,5 +1,12 @@
 OPENALEX STANDARD-FORMAT SNAPSHOT RELEASE NOTES
 
+RELEASE 2026-04-29
+- cleaned up authors: multi-phase splits of overmerged profiles + ORCID-collision merges
+- integrated Datacite awards into the awards graph
+- fixed PubMed truncated abstract bug affecting 7M works
+- added authorships.raw_orcid field to works
+- ingested complete Japan IRDB repository
+
 RELEASE 2026-03-30
 - added 12.1M awards and 17M work-award links
 - increased repository coverage through addition of 283 endpoints and improved repository ingest pipeline
