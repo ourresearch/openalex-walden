@@ -270,6 +270,51 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
    - Unexpected data values (e.g., "TBC" instead of a year number)
    - Missing columns you assumed would exist
 
+   **⚠️ Special attention to `amount` and `currency` — past ingests have shipped with NULL amount/currency because field-name search was too narrow.** Confirmed incidents: **DataCite Awards** (amount is nested inside `fundingReferences[].fundingAmount` — not a top-level column) and **Gateway to Research** (amount field was not named `amount`). Both required a follow-up fix branch. Do not let this happen again.
+
+   Before writing any transformation SQL, scan EVERY column AND EVERY nested struct for money-shaped data:
+
+   ```sql
+   -- List every column with a money-flavored name (case-insensitive)
+   SELECT column_name FROM (DESCRIBE openalex.awards.{funder}_raw)
+   WHERE LOWER(column_name) RLIKE
+       'amount|amt|total|value|sum|funded|fund_|funding|cost|budget|grant_offer|awarded|valeur|monto|importe|montant|betrag|valor|importo|kwota|belopp';
+
+   -- List every column with a currency-flavored name
+   SELECT column_name FROM (DESCRIBE openalex.awards.{funder}_raw)
+   WHERE LOWER(column_name) RLIKE 'currenc|ccy|iso_4217';
+   ```
+
+   **Common amount field names — verify, don't assume:**
+   - English: `amount`, `total`, `total_cost`, `value`, `funded_value`, `grant_offer`, `grant_value`, `funding_amount`, `funded_amount`, `awarded_amount`, `award_amount`, `budget`, `cost`, `project_cost`, `sum_awarded`
+   - Currency-suffixed (currency is implicit in the column name): `valuePounds`, `valueGBP`, `valueEUR`, `valueUSD`, `amount_eur`, `funding_eur`
+   - Localized: `monto` / `importe` (es), `montant` (fr), `betrag` (de), `valor` (pt), `importo` (it), `kwota` (pl), `belopp` (sv)
+
+   **Common currency field names:** `currency`, `currencyCode`, `currency_code`, `ccy`, `fundingAmountCurrency`, `amountCurrency`. Currency may also be **implicit** — if the funder is single-country (GTR = GBP, FAPESP = BRL, ANID = CLP), hardcode it and document the choice in the notebook header.
+
+   **Inspect nested structures explicitly.** DataCite-style sources hide amounts inside arrays of objects, and a top-level `DESCRIBE` won't surface them. For every array/struct column found:
+   ```sql
+   -- Expand each struct/array column to see what's inside
+   SELECT fundingReferences.* FROM openalex.awards.{funder}_raw
+   WHERE size(fundingReferences) > 0 LIMIT 5;
+   -- Or for object structs:
+   SELECT amounts.* FROM openalex.awards.{funder}_raw WHERE amounts IS NOT NULL LIMIT 5;
+   ```
+
+   **Sanity-check candidate amount columns before mapping:**
+   ```sql
+   SELECT
+       MIN(TRY_CAST({col} AS DOUBLE)) AS min_val,
+       MAX(TRY_CAST({col} AS DOUBLE)) AS max_val,
+       AVG(TRY_CAST({col} AS DOUBLE)) AS avg_val,
+       COUNT({col}) AS non_null,
+       COUNT(*) AS total_rows
+   FROM openalex.awards.{funder}_raw;
+   ```
+   A real grant-amount distribution sits in the thousands to millions. If avg is 1–100 or 1900–2030, you've grabbed a count, ID, or year — try another column.
+
+   **Watch for unit encoding.** Some sources store amounts in minor units (GBP pence ×100, USD cents ×100). JPY/KRW use no minor unit. Convert to whole currency units before storing and document the conversion in the notebook header.
+
 4. **Step 2: Transform to award schema** (see Step 5 for details)
    - Map native fields to OpenAlex schema
    - Handle date parsing (try multiple formats)
@@ -385,7 +430,8 @@ COALESCE(
 | display_name | title, project_title, name |
 | description | abstract, summary, description |
 | funder_award_id | grant_id, project_id, award_number, grant_reference |
-| amount | total_cost, amount, funding_amount, grant_offer |
+| amount | `total_cost`, `amount`, `funding_amount`, `grant_offer`, `value`, `valuePounds`, `funded_value`, `awarded_amount`, `award_amount`, `total`, `budget`, `project_cost`, `monto`, `importe`, `montant`, `betrag`, `valor`, `kwota`, `belopp`. **May be nested** inside an array/struct (e.g., DataCite `fundingReferences[].fundingAmount`). Run the discovery scan in Step 1.6 before mapping. |
+| currency | `currency`, `currencyCode`, `currency_code`, `ccy`, `fundingAmountCurrency`, `amountCurrency`. May be **implicit** — hardcode from funder country/region (e.g., GTR = GBP) and document in the notebook header. |
 | funding_type | Map from activity codes or categories |
 | funder_scheme | program_name, funding_scheme, activity_code |
 
@@ -506,10 +552,35 @@ LIMIT 20;
 ```
 Verify reasonable year range.
 
+### 6.7 Amount and currency coverage (FAIL-FAST CHECK)
+
+```sql
+SELECT
+    COUNT(*) AS total,
+    COUNT(amount) AS has_amount,
+    ROUND(COUNT(amount) * 100.0 / COUNT(*), 1) AS pct_amount,
+    COUNT(DISTINCT currency) AS distinct_currencies,
+    collect_set(currency) AS currencies,
+    MIN(amount) AS min_amount,
+    MAX(amount) AS max_amount,
+    AVG(amount) AS avg_amount
+FROM openalex.awards.{funder}_awards;
+```
+
+**STOP and re-run Step 1.6 if any of these hold:**
+- `pct_amount < 50%` and the funder is known to publish amounts (i.e., not a research prize with implicit standard amounts)
+- `distinct_currencies = 0` — currency was never set
+- `avg_amount < 1000` or `> 1,000,000,000` — likely wrong unit (pence not pounds) or you mapped a year/count column
+- Currencies don't match the funder's country/region (e.g., German funder showing only USD)
+
+Reference baselines: NIH, GTR Project Awards, and ARC all have >95% amount coverage. **Both DataCite Awards and Gateway to Research initially shipped with broken amount/currency — do not skip this check.**
+
 ### Success criteria:
 - Row count matches expected
 - >90% have display_name
 - >50% have start_date (varies by funder)
+- >50% have amount (waive only if funder is a research prize or genuinely doesn't publish amounts)
+- currency is populated and matches the funder's country/region
 - Funder struct is populated correctly
 - No obviously malformed data in samples
 
