@@ -24,7 +24,7 @@ resources:
             spark_version: 16.4.x-scala2.13
             aws_attributes:
               availability: ON_DEMAND
-            node_type_id: rd-fleet.12xlarge
+            node_type_id: rd-fleet.8xlarge
             driver_node_type_id: rd-fleet.4xlarge
             spark_env_vars:
               PYSPARK_PYTHON: /databricks/python3/bin/python3
