@@ -17,7 +17,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
     "table_name": "openalex.authors.openalex_authors",
-    "index_name": "authors-v19"
+    "index_name": "authors-v18"
 }
 
 dbutils.widgets.text("is_full_sync", "false")

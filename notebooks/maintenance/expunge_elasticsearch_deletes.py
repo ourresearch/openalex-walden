@@ -22,7 +22,7 @@ import time
 from datetime import datetime, timezone
 from elasticsearch import Elasticsearch
 
-dbutils.widgets.text("index_name", "", "ES index name (e.g. authors-v19)")
+dbutils.widgets.text("index_name", "", "ES index name (e.g. authors-v18)")
 dbutils.widgets.text("delete_threshold_pct", "15", "Skip if deleted docs below this percent")
 dbutils.widgets.text("max_disk_pct", "80", "Abort if any node disk usage above this percent")
 dbutils.widgets.text("bulk_wait_minutes", "60", "Max minutes to wait for active bulk indexing")

@@ -16,7 +16,7 @@ resources:
             notebook_path: notebooks/maintenance/expunge_elasticsearch_deletes
             source: GIT
             base_parameters:
-              index_name: authors-v19
+              index_name: authors-v18
               delete_threshold_pct: "15"
               max_disk_pct: "80"
               bulk_wait_minutes: "60"
