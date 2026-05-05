@@ -34,7 +34,6 @@ include:
   - jobs/expunge_deletes_authors.yaml
   - jobs/expunge_deletes_works.yaml
   - jobs/sync_vector_index.yaml
-  - jobs/vector_embeddings.yaml
   - jobs/union_all_works.yaml
   - jobs/crossref.yaml
   - jobs/datacite.yaml
