@@ -18,6 +18,7 @@ Awarding body in OpenAlex: Wolf Foundation (F4320320951)
 """
 
 import argparse
+import html as html_mod
 import json
 import re
 import time
@@ -73,9 +74,32 @@ def fetch_page(page: int) -> tuple[list[dict], int]:
 
 
 def html_to_text(html: str) -> str:
+    """Strip tags, decode HTML entities, collapse whitespace."""
     if not html:
         return ""
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+    text = re.sub(r"<[^>]+>", " ", html)
+    text = html_mod.unescape(text)  # &nbsp; &quot; &#8217; etc.
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def split_name(name: str) -> tuple[str | None, str | None]:
+    """Split 'James P. Eisenstein' -> ('James P.', 'Eisenstein').
+
+    Strips trailing degree/suffix tokens (PhD, MD, Jr., Sr., II, III) before
+    splitting. Last whitespace-separated token = family name; rest = given.
+    """
+    if not name:
+        return None, None
+    # Drop trailing degree/suffix tokens
+    tokens = name.split()
+    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    while tokens and tokens[-1].lower().strip(",.") in suffixes:
+        tokens.pop()
+    if not tokens:
+        return None, None
+    if len(tokens) == 1:
+        return None, tokens[0]
+    return " ".join(tokens[:-1]), tokens[-1]
 
 
 # Affiliation typically follows "Affiliation at the time of the award:" in the content
@@ -90,21 +114,25 @@ CITATION_RE = re.compile(
 
 
 def parse_content(html: str) -> tuple[str | None, str | None]:
-    text = html_to_text(html)
+    text = html_to_text(html)  # already entity-decoded
     affil = None
     citation = None
     m = AFFIL_RE.search(text)
     if m:
-        affil = re.sub(r"\s+", " ", m.group(1)).strip().rstrip(":").strip() or None
+        affil = m.group(1).strip().rstrip(":").strip() or None
+        # Trim chrome that sometimes follows ("Award citation:" label without value)
+        affil = re.split(r"(?=Award citation|Prize share|Bibliography)", affil)[0].strip()
+        affil = affil or None
     m = CITATION_RE.search(text)
     if m:
-        citation = re.sub(r"\s+", " ", m.group(1)).strip() or None
+        citation = m.group(1).strip() or None
     return affil, citation
 
 
 def normalise(post: dict) -> dict:
     title_html = (post.get("title") or {}).get("rendered") or ""
-    name = re.sub(r"\s+", " ", html_to_text(title_html)).strip()
+    name = html_to_text(title_html)
+    given_name, family_name = split_name(name)
 
     # Field = first known English field category
     cats = post.get("categories") or []
@@ -117,6 +145,9 @@ def normalise(post: dict) -> dict:
         year = int(d[:4])
 
     affil, citation = parse_content((post.get("content") or {}).get("rendered", ""))
+    # Trim trailing punctuation that often hangs off the citation in the source
+    if citation:
+        citation = citation.strip().strip(".").strip("”").strip("\"").strip("'").strip(":").strip()
 
     return {
         "wp_post_id": post.get("id"),
@@ -124,6 +155,8 @@ def normalise(post: dict) -> dict:
         "url": post.get("link"),
         "wp_date": post.get("date"),
         "name": name,
+        "given_name": given_name,
+        "family_name": family_name,
         "year": year,
         "field": field,
         "affiliation": affil,

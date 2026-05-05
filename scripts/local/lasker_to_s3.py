@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+from bs4 import BeautifulSoup
 
 API = "https://laskerfoundation.org/wp-json/wp/v2/winners"
 S3_BUCKET = "openalex-ingest"
@@ -65,6 +66,36 @@ def html_to_text(html: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
 
 
+def parse_affiliations_from_content(content_html: str) -> dict[str, str]:
+    """Build a {family_name_lower: affiliation} map from the award post's content.
+
+    The post's content has structured laureate cards: each is a
+    `<p class="aw-name">Name</p>` followed by a `<p class="aw-work">Affiliation</p>`.
+    We key by the LAST whitespace-separated token of aw-name (family name)
+    so we can match against the WP taxonomy term whose name is "Family, Given".
+    Some aw-name values include parenthetical nicknames or middle initials —
+    those are dropped via the last-token rule.
+    """
+    if not content_html:
+        return {}
+    soup = BeautifulSoup(content_html, "html.parser")
+    out: dict[str, str] = {}
+    names = soup.select("p.aw-name")
+    works = soup.select("p.aw-work")
+    # Pair them by document order (they should be 1:1)
+    for n, w in zip(names, works):
+        full_name = re.sub(r"\s+", " ", n.get_text(" ", strip=True))
+        affiliation = re.sub(r"\s+", " ", w.get_text(" ", strip=True))
+        if not full_name or not affiliation:
+            continue
+        # Last token = family name (works for "Michael J. Welsh", "Jesús González",
+        # "Doris Ying Tsao", etc. — multi-word family names like "van der Berg"
+        # would surface as "Berg" only, which still keys uniquely within an award)
+        family = full_name.split()[-1]
+        out[family.lower()] = affiliation
+    return out
+
+
 def expand_award(post: dict) -> list[dict]:
     """One award post -> N rows (one per laureate)."""
     embedded = (post.get("_embedded") or {}).get("wp:term") or []
@@ -94,19 +125,28 @@ def expand_award(post: dict) -> list[dict]:
 
     title_html = (post.get("title") or {}).get("rendered") or ""
     title = html_to_text(title_html)
-    excerpt = html_to_text((post.get("content") or {}).get("rendered", ""))[:1500]
+    content_html = (post.get("content") or {}).get("rendered", "")
+    excerpt = html_to_text(content_html)[:1500]
     landing = post.get("link")
+
+    # Per-laureate affiliations are in the post body's <p.aw-name>+<p.aw-work> pairs
+    affil_by_family = parse_affiliations_from_content(content_html)
 
     out = []
     for t in laureate_terms:
-        # "Görlich, Dirk" → split on first comma → family_name, given_name
+        # Term name is "Family, Given" — split on first comma
         name_disp = (t.get("name") or "").strip()
-        given_name = None
-        family_name = None
+        given_name: str | None = None
+        family_name: str | None = None
         if "," in name_disp:
             family_name, given_name = [s.strip() for s in name_disp.split(",", 1)]
         else:
-            given_name = name_disp
+            # No comma: assume single name or already given-first; last token = family
+            tokens = name_disp.split()
+            family_name = tokens[-1] if tokens else None
+            given_name = " ".join(tokens[:-1]) if len(tokens) > 1 else None
+
+        affiliation = affil_by_family.get((family_name or "").lower())
 
         out.append({
             "wp_post_id": post.get("id"),
@@ -121,6 +161,7 @@ def expand_award(post: dict) -> list[dict]:
             "laureate_family_name": family_name,
             "laureate_term_id": t.get("id"),
             "laureate_slug": t.get("slug"),
+            "affiliation": affiliation,
             "description": excerpt,
             "downloaded_at": datetime.utcnow().isoformat(),
         })
@@ -163,7 +204,10 @@ def main() -> None:
     df = pd.DataFrame(rows)
     log(f"DataFrame shape: {df.shape}")
     if not df.empty:
-        log(f"Coverage: name={df.laureate_name.notna().sum()}, year={df.year.notna().sum()}, award={df.award_name.notna().sum()}")
+        log(f"Coverage: name={df.laureate_name.notna().sum()}, "
+            f"year={df.year.notna().sum()}, "
+            f"award={df.award_name.notna().sum()}, "
+            f"affiliation={df.affiliation.notna().sum()}")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     parquet_path = args.output_dir / "lasker_awards.parquet"
     df.to_parquet(parquet_path, index=False)
