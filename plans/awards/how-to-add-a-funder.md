@@ -30,6 +30,40 @@ Foundation itself isn't in OpenAlex; we map to Royal Swedish Academy
 of Sciences and Karolinska Institutet because those are the actual
 awarding bodies for the science Nobels and they ARE in OpenAlex.)
 
+### Ingest method ladder
+
+When choosing how to fetch a funder's data, prefer methods higher in this
+list — they're cheaper, faster, and more stable than what's below.
+
+1. **CKAN open-data API** (e.g. Argentina MINCYT, IDRC) — `package_show`
+   gives you all resource URLs and bumps automatically when the funder
+   publishes new years.
+2. **WordPress REST API** (e.g. Templeton, Rockefeller) — `/wp-json/wp/v2/{type}`
+   endpoints with `X-WP-Total` headers. Often returns ACF custom fields
+   directly. Auth-walled in some cases (Ford Foundation = 401).
+3. **Search/index APIs** (e.g. Arnold Ventures via Algolia) — ApplicationId
+   + public search-only key are usually exposed in the page bundle. Watch
+   for `paginationLimitedTo: 1000` on Algolia and slice by facets.
+4. **Bulk file downloads** (CSV/JSON/XML) — IATI XML for IDRC, NIH ExPORTER
+   bulk files. Fragile when URLs change yearly; prefer CKAN-style discovery
+   when the same files are published behind one.
+5. **Static HTML scrapes** (e.g. Carl-Zeiss-Stiftung) — sitemap → detail
+   pages → BeautifulSoup. Works when pages render server-side. Use
+   structured markup (`<table><th><td>`) before regexing rendered text.
+6. **agent-browser scrapes** (e.g. HHMI) — required when the site uses
+   Shadow DOM, JS-rendered content, or has Cloudflare/anti-bot challenges.
+   Slower (~5-10s per page) but works on anything the user can see in a
+   browser. See [hhmi_to_s3.py](../../scripts/local/hhmi_to_s3.py) for the
+   shadow-DOM-aware extraction pattern. Existing `sloan_scrape_click.py`
+   covers click-based pagination through a list view.
+7. **990-PF / regulatory filings** — fallback for US private foundations
+   that publish nothing else. Lags ~2 years, so only use when no other
+   path exists.
+
+When you escalate to method 6 (agent-browser), the smoke-test gate from
+Step 1 still applies — fetch 1-3 records first, confirm the extraction
+JS pulls real data, only then start the full ~hour-long crawl.
+
 ---
 
 ## Using the Funder Ingestion Tracker
