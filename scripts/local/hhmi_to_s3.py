@@ -114,13 +114,25 @@ def log(msg: str) -> None:
 
 # ---------- agent-browser drivers ------------------------------------------
 
+def _quote_arg(a: str) -> str:
+    """cmd.exe-compatible quoting.
+
+    shlex.quote uses single quotes which cmd.exe treats as literal characters
+    — corrupts URLs with `?...` query strings. Use double quotes for any arg
+    with shell-significant characters.
+    """
+    if not a or any(ch in a for ch in ' "\'&<>|^?*$()'):
+        return '"' + a.replace('"', '\\"') + '"'
+    return a
+
+
 def ab(args: list[str], stdin_text: str | None = None, timeout: int = 60) -> str:
     """Run `npx agent-browser <args>` and return stdout.
 
     Uses shell=True on Windows so the shim `.cmd` resolution works without
     hardcoding a path. On POSIX shell=True still works fine.
     """
-    cmd = "npx agent-browser " + " ".join(shlex.quote(a) for a in args)
+    cmd = "npx agent-browser " + " ".join(_quote_arg(a) for a in args)
     p = subprocess.run(
         cmd,
         input=stdin_text,

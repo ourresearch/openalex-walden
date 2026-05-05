@@ -56,6 +56,17 @@ list — they're cheaper, faster, and more stable than what's below.
    browser. See [hhmi_to_s3.py](../../scripts/local/hhmi_to_s3.py) for the
    shadow-DOM-aware extraction pattern. Existing `sloan_scrape_click.py`
    covers click-based pagination through a list view.
+
+   **Caveat for sites whose `load` event never fires** (RWJF, OSF, etc.):
+   agent-browser CLI's `open` command has a 25s default timeout but on
+   Windows the subprocess wrapper doesn't reliably terminate child Chrome
+   processes when the page keeps network busy. **Use Playwright Python
+   directly instead** when you hit this — see
+   [rwj_to_s3.py](../../scripts/local/rwj_to_s3.py) and
+   [osf_to_s3.py](../../scripts/local/osf_to_s3.py) for the Playwright
+   pattern (catch `PWTimeout` from `goto`, sleep 5-8s for late renders,
+   then query). Both reuse agent-browser's bundled Chrome via
+   `executable_path` so you don't need a second Chromium download.
 7. **990-PF / regulatory filings** — fallback for US private foundations
    that publish nothing else. Lags ~2 years, so only use when no other
    path exists.
