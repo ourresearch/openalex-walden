@@ -8,6 +8,30 @@
 
 ---
 
+## Two ingest patterns: GRANT vs PRIZE
+
+This document is written primarily around the **grant pattern** (most
+funders fit this). The **prize pattern** is a smaller variant — see
+[CreateNobelAwards.ipynb](../../notebooks/awards/CreateNobelAwards.ipynb)
+as the canonical example. The deltas:
+
+| concept                  | grant                                    | prize                                                           |
+| ------------------------ | ---------------------------------------- | --------------------------------------------------------------- |
+| `lead_investigator`      | the PI / project leader (often via affiliation) | **the laureate themselves** (given_name + family_name populated) |
+| `funder` mapping         | the org issuing the grant                | the **awarding body** — may differ by category (Nobel Physics → Royal Swedish Academy; Nobel Medicine → Karolinska) |
+| `amount` / `currency`    | required (>50% pct_amount per Step 6.7)  | **may be NULL** for non-monetary prizes (Fields Medal). Waive the Step 6.7 amount check explicitly with a note. |
+| Multiple winners?        | one row per grant                        | one row per **(prize × laureate)**. Apportion amount via the `portion` field. |
+| `funding_type`           | `grant`, `research`, `fellowship`        | `prize`                                                         |
+| `funder_award_id`        | grant ID from the source                 | a synthetic key like `{category}-{year}-{laureate_id}`          |
+
+**If the prize-awarding body is not a funder in OpenAlex**, stop and
+flag it — same rule as for grants. Don't fabricate a funder. (Nobel
+Foundation itself isn't in OpenAlex; we map to Royal Swedish Academy
+of Sciences and Karolinska Institutet because those are the actual
+awarding bodies for the science Nobels and they ARE in OpenAlex.)
+
+---
+
 ## Using the Funder Ingestion Tracker
 
 The tracker (`funder-ingestion-tracker.md`) maintains the status of all funder ingestion jobs. **Always keep it updated.**
