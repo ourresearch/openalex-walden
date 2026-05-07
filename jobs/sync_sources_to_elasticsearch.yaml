@@ -10,6 +10,8 @@ resources:
         - task_key: create_sources_api
           notebook_task:
             notebook_path: notebooks/sources/CreateSourcesApi
+            base_parameters:
+              guardrails_override: "{{job.parameters.guardrails_override}}"
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
         - task_key: sync_sources_to_elasticsearch
@@ -24,5 +26,8 @@ resources:
         git_branch: main
       queue:
         enabled: true
+      parameters:
+        - name: guardrails_override
+          default: "false"
       performance_target: STANDARD
 
