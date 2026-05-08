@@ -204,9 +204,16 @@ resources:
             notebook_path: notebooks/end2end/MatchAuthors
             source: GIT
             warehouse_id: 4d37bf76372a2901
-        - task_key: Authorships
+        - task_key: Apply_Author_Work_Curations
           depends_on:
             - task_key: Author_Matching
+          notebook_task:
+            notebook_path: notebooks/end2end/ApplyAuthorWorkCurations
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Authorships
+          depends_on:
+            - task_key: Apply_Author_Work_Curations
           notebook_task:
             notebook_path: notebooks/end2end/UpdateWorkAuthorships
             source: GIT
