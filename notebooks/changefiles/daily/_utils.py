@@ -18,6 +18,12 @@ S3_BUCKET = "openalex-snapshots"
 S3_BASE = f"s3://{S3_BUCKET}/daily"
 WATERMARK_TABLE = "openalex.snapshot.daily_watermark"
 
+# Force INT64 microsecond encoding for all timestamp columns. Spark's default
+# (INT96) is deprecated, and `F.to_timestamp(...)` on Spark 4 / DBR 16.x can
+# produce INT64 nanoseconds that downstream readers (polars, the Databricks
+# SQL warehouse, older pyarrow) cannot decode.
+spark.conf.set("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
+
 # ---------------------------------------------------------------------------
 # Preflight: verify boto3 can access the S3 bucket (fail fast, not after
 # 20 min of data processing)
