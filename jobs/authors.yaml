@@ -7,7 +7,21 @@ resources:
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
+        - task_key: Sync_Author_Name_Curations
+          notebook_task:
+            notebook_path: notebooks/authors/SyncAuthorNameCurations
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: Apply_Author_Name_Curations
+          depends_on:
+            - task_key: Sync_Author_Name_Curations
+          notebook_task:
+            notebook_path: notebooks/authors/ApplyAuthorNameCurations
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Create_Authors
+          depends_on:
+            - task_key: Apply_Author_Name_Curations
           notebook_task:
             notebook_path: notebooks/authors/CreateAuthors
             source: GIT
