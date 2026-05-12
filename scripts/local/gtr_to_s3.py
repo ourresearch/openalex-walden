@@ -81,6 +81,12 @@ NS = {
     "ns2": "http://gtr.rcuk.ac.uk/gtr/api/project",
 }
 
+# Separate namespace map for /funds endpoint (ns2 differs)
+NS_FUND = {
+    "ns1": "http://gtr.rcuk.ac.uk/gtr/api",
+    "ns2": "http://gtr.rcuk.ac.uk/gtr/api/fund",
+}
+
 
 # =============================================================================
 # Progress Tracker
@@ -384,33 +390,11 @@ def parse_single_project(proj: ET.Element) -> Optional[dict]:
                     href = link.get(f"{NS1}href", "")
                     pi_id = href.split("/")[-1] if href else None
 
-        # Get amount from participantValues (grantOffer)
-        participant_values = proj.find("ns2:participantValues", NS)
-        if participant_values is not None:
-            # Look for lead participant's grant offer
-            for participant in participant_values.findall("ns2:participant", NS):
-                role = get_text(participant.find("ns2:role", NS))
-                if role == "LEAD_PARTICIPANT":
-                    offer_elem = participant.find("ns2:grantOffer", NS)
-                    if offer_elem is not None and offer_elem.text:
-                        try:
-                            amount = float(offer_elem.text)
-                        except ValueError:
-                            pass
-                    break
-            # If no lead participant found, try first participant
-            if amount is None:
-                for participant in participant_values.findall("ns2:participant", NS):
-                    offer_elem = participant.find("ns2:grantOffer", NS)
-                    if offer_elem is not None and offer_elem.text:
-                        try:
-                            amount = float(offer_elem.text)
-                        except ValueError:
-                            pass
-                        break
-
+        # Amount is NOT inlined in the bulk /projects response — it lives on the
+        # separate <fund> resource (valuePounds). Filled in via the /funds pass.
         # Get lead org name from participantValues
         lead_org_name = None
+        participant_values = proj.find("ns2:participantValues", NS)
         if participant_values is not None:
             for participant in participant_values.findall("ns2:participant", NS):
                 role = get_text(participant.find("ns2:role", NS))
@@ -470,6 +454,119 @@ def get_total_pages(session: requests.Session) -> int:
             else:
                 raise RuntimeError(f"Failed to get total pages after {MAX_RETRIES} attempts: {e}")
 
+    return 0
+
+
+def parse_funds_xml(xml_content: bytes) -> list[dict]:
+    """
+    Parse a /funds page response into a list of fund records.
+
+    Each record carries the parent project_id (from rel="FUNDED" link),
+    the GBP amount (from valuePounds@amount), currency, and category.
+    Only category=INCOME_ACTUAL records carry the awarded amount we want.
+    """
+    NS1 = "{http://gtr.rcuk.ac.uk/gtr/api}"
+    funds = []
+
+    try:
+        root = ET.fromstring(xml_content)
+        for fund in root.findall(".//ns2:fund", NS_FUND):
+            project_id = None
+            links = fund.find("ns1:links", NS_FUND)
+            if links is not None:
+                for link in links.findall("ns1:link", NS_FUND):
+                    if link.get(f"{NS1}rel") == "FUNDED":
+                        href = link.get(f"{NS1}href", "")
+                        project_id = href.rsplit("/", 1)[-1] if href else None
+                        break
+
+            amount = None
+            currency = None
+            value_elem = fund.find("ns2:valuePounds", NS_FUND)
+            if value_elem is not None:
+                raw_amount = value_elem.get(f"{NS1}amount")
+                if raw_amount:
+                    try:
+                        amount = float(raw_amount)
+                    except ValueError:
+                        pass
+                currency = value_elem.get(f"{NS1}currencyCode") or "GBP"
+
+            category_elem = fund.find("ns2:category", NS_FUND)
+            category = category_elem.text.strip() if category_elem is not None and category_elem.text else None
+
+            if project_id and amount is not None:
+                funds.append({
+                    "project_id": project_id,
+                    "amount": amount,
+                    "currency": currency,
+                    "category": category,
+                })
+    except ET.ParseError as e:
+        print(f"  [WARN] Funds XML parse error: {e}")
+
+    return funds
+
+
+def fetch_funds_page_with_retry(
+    page: int,
+    session: requests.Session,
+    max_retries: int = 5,
+) -> tuple[int, list[dict], Optional[str]]:
+    """Fetch a single /funds page. 429-aware: minimum 30s wait per 429."""
+    url = f"{GTR_API_BASE}/funds"
+    params = {"p": page, "s": PAGE_SIZE}
+    last_error = None
+    response = None
+
+    for attempt in range(max_retries):
+        try:
+            response = session.get(url, params=params, timeout=60)
+            response.raise_for_status()
+            return (page, parse_funds_xml(response.content), None)
+
+        except requests.exceptions.Timeout:
+            last_error = f"Timeout (attempt {attempt + 1}/{max_retries})"
+        except requests.exceptions.ConnectionError:
+            last_error = f"Connection error (attempt {attempt + 1}/{max_retries})"
+        except requests.exceptions.HTTPError as e:
+            if response is not None and response.status_code == 429:
+                # The API's rate-limit window is generous; default 4s/16s
+                # backoff isn't enough. Minimum 30s gives the window time to reset.
+                wait_time = max(30.0, RETRY_BACKOFF ** (attempt + 2))
+                last_error = f"Rate limited, waiting {wait_time:.1f}s"
+                time.sleep(wait_time)
+                continue  # don't double-sleep at end-of-loop
+            elif response is not None and response.status_code >= 500:
+                last_error = f"Server error {response.status_code} (attempt {attempt + 1}/{max_retries})"
+            else:
+                return (page, [], f"HTTP error: {str(e)}")
+        except Exception as e:
+            last_error = f"{type(e).__name__}: {str(e)}"
+
+        if attempt < max_retries - 1:
+            time.sleep(RETRY_BACKOFF ** attempt)
+
+    return (page, [], last_error)
+
+
+def get_total_funds_pages(session: requests.Session) -> int:
+    """Get total number of /funds pages from API."""
+    url = f"{GTR_API_BASE}/funds"
+    params = {"p": 1, "s": PAGE_SIZE}
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = session.get(url, params=params, timeout=60)
+            response.raise_for_status()
+            root = ET.fromstring(response.content)
+            return int(root.get("{http://gtr.rcuk.ac.uk/gtr/api}totalPages", 0))
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                print(f"  [WARN] Failed to get total funds pages (attempt {attempt + 1}): {e}")
+                time.sleep(RETRY_BACKOFF ** attempt)
+            else:
+                raise RuntimeError(f"Failed to get total funds pages after {MAX_RETRIES} attempts: {e}")
     return 0
 
 
@@ -622,11 +719,114 @@ def download_all_projects(
     return checkpoint.projects
 
 
+def download_all_funds(
+    max_pages: Optional[int] = None,
+    output_dir: Optional[Path] = None,
+) -> dict[str, dict]:
+    """
+    Download all funds and return a {project_id: {amount, currency}} mapping.
+
+    Projects with multiple funds (e.g., extensions, supplements) have their
+    amounts summed. ~1.7K pages, runs in ~5 min at default concurrency.
+
+    If output_dir is given, failed page numbers are saved to
+    gtr_funds_failed_pages.json so a follow-up run can target them.
+    """
+    print(f"\n{'='*60}")
+    print("Step 1.5: Downloading funds from GtR API")
+    print(f"{'='*60}")
+
+    session = requests.Session()
+    session.headers.update({
+        "Accept": "application/xml",
+        "User-Agent": "OpenAlex-GtR-Ingest/1.0",
+    })
+
+    print("  [INFO] Fetching total funds page count...")
+    total_pages = get_total_funds_pages(session)
+    if max_pages:
+        total_pages = min(total_pages, max_pages)
+        print(f"  [INFO] Limited to {total_pages:,} pages (--max-pages)")
+
+    print(f"  [INFO] Total fund pages: {total_pages:,}")
+
+    project_to_fund: dict[str, dict] = {}
+    failed_pages: list[tuple[int, str]] = []
+    progress = ProgressTracker(total_pages)
+
+    pages_to_fetch = list(range(1, total_pages + 1))
+    print(f"\n  Starting funds download at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        batch_size = 500
+        for batch_start in range(0, len(pages_to_fetch), batch_size):
+            batch_pages = pages_to_fetch[batch_start:batch_start + batch_size]
+            futures = {
+                executor.submit(fetch_funds_page_with_retry, page, session): page
+                for page in batch_pages
+            }
+            for future in as_completed(futures):
+                page = futures[future]
+                try:
+                    page_num, funds, error = future.result()
+                    if error:
+                        progress.update(0, is_error=True)
+                        failed_pages.append((page_num, error))
+                    else:
+                        progress.update(len(funds))
+                        for fund in funds:
+                            # Each project has multiple fund records (income/expenditure
+                            # × actual/profile); only INCOME_ACTUAL carries the awarded
+                            # amount. Other categories would double-count.
+                            if fund.get("category") != "INCOME_ACTUAL":
+                                continue
+                            pid = fund["project_id"]
+                            existing = project_to_fund.get(pid)
+                            if existing is None:
+                                project_to_fund[pid] = {
+                                    "amount": fund["amount"],
+                                    "currency": fund["currency"],
+                                }
+                            else:
+                                # Project has multiple INCOME_ACTUAL records
+                                # (extensions/supplements) — sum.
+                                existing["amount"] += fund["amount"]
+
+                    if progress.should_report(10):
+                        print(f"\r{progress.get_progress_line()}", flush=True)
+                except Exception as e:
+                    progress.update(0, is_error=True)
+                    failed_pages.append((page, str(e)))
+
+                time.sleep(REQUEST_DELAY)
+
+    print(f"\n\n  Funds download complete!")
+    print(f"  Total fund pages: {progress.completed_pages:,}/{total_pages:,}")
+    print(f"  Total fund records: {progress.total_projects:,}")
+    print(f"  Unique projects with amount: {len(project_to_fund):,}")
+    print(f"  Total time: {progress.get_elapsed()}")
+    if failed_pages:
+        print(f"  [WARN] {len(failed_pages)} fund pages failed")
+        for page, error in failed_pages[:5]:
+            print(f"    - Page {page}: {error}")
+        if output_dir is not None:
+            failed_path = output_dir / "gtr_funds_failed_pages.json"
+            with open(failed_path, "w") as f:
+                json.dump(failed_pages, f, indent=2)
+            print(f"  [INFO] Failed pages saved to {failed_path}")
+
+    return project_to_fund
+
+
 # =============================================================================
 # Processing Functions
 # =============================================================================
 
-def process_projects(projects: list[dict], output_dir: Path) -> Path:
+def process_projects(
+    projects: list[dict],
+    output_dir: Path,
+    project_funds: Optional[dict[str, dict]] = None,
+) -> Path:
     """
     Process projects into a parquet file.
 
@@ -647,6 +847,21 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
     # Convert to DataFrame
     df = pd.DataFrame(projects)
     print(f"  Total rows: {len(df):,}")
+
+    # Merge in amounts from /funds endpoint. The bulk /projects response does
+    # not carry valuePounds, so amount must come from a separate /funds pass.
+    if project_funds:
+        print(f"  [INFO] Merging amounts from {len(project_funds):,} fund records...")
+        funds_df = (
+            pd.DataFrame.from_dict(project_funds, orient="index")
+            .reset_index()
+            .rename(columns={"index": "project_id", "amount": "fund_amount"})
+        )
+        df = df.merge(funds_df[["project_id", "fund_amount"]], on="project_id", how="left")
+        df["amount"] = df["fund_amount"].combine_first(df.get("amount"))
+        df = df.drop(columns=["fund_amount"])
+        matched = df["amount"].notna().sum()
+        print(f"  [INFO] Projects with amount after merge: {matched:,} / {len(df):,} ({matched / len(df) * 100:.1f}%)")
 
     # Ensure PI name columns are string type (they may be inferred as int/null if all NULL)
     # This is critical for Spark/Databricks compatibility
@@ -835,6 +1050,11 @@ def main():
         default=None,
         help="Limit to N pages (for testing)"
     )
+    parser.add_argument(
+        "--skip-funds",
+        action="store_true",
+        help="Skip the /funds pass (amounts will be NULL — for testing only)"
+    )
     args = parser.parse_args()
 
     # Create output directory
@@ -875,8 +1095,15 @@ def main():
         print("[ERROR] No projects downloaded!")
         sys.exit(1)
 
+    # Step 1.5: Download funds (amounts) — bulk endpoint, ~1.7K pages
+    project_funds: dict[str, dict] = {}
+    if not args.skip_funds:
+        project_funds = download_all_funds(max_pages=args.max_pages, output_dir=args.output_dir)
+    else:
+        print("\n  [SKIP] Funds pass skipped — amounts will be NULL")
+
     # Step 2: Process
-    parquet_path = process_projects(projects, args.output_dir)
+    parquet_path = process_projects(projects, args.output_dir, project_funds=project_funds)
 
     # Step 3: Upload to S3
     upload_success = True
