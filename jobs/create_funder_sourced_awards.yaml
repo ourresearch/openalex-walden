@@ -355,6 +355,15 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: Nobel_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateNobelAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: NSERC_Awards
           email_notifications: {}
           environment_key: Default
@@ -496,6 +505,7 @@ resources:
             - task_key: Lasker_Awards
             - task_key: Templeton_Awards
             - task_key: Wolf_Prize_Awards
+            - task_key: Nobel_Awards
           email_notifications: {}
           notebook_task:
             notebook_path: notebooks/awards/CreateAwards
