@@ -50,6 +50,24 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: Argentina_MINCYT_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateArgentinaMINCYTAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Arnold_Ventures_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateArnoldVenturesAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: BMBF_Awards
           email_notifications: {}
           environment_key: Default
@@ -81,6 +99,15 @@ resources:
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateCIHRAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Carl_Zeiss_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateCarlZeissAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -220,6 +247,15 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: IDRC_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateIDRCAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: ISCIII_Awards
           email_notifications: {}
           environment_key: Default
@@ -261,6 +297,15 @@ resources:
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateKavliPrizeAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Lasker_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateLaskerAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -364,6 +409,15 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: Templeton_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateTempletonAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Vinnova_Awards
           email_notifications: {}
           environment_key: Default
@@ -378,6 +432,15 @@ resources:
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateWellcomeAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Wolf_Prize_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateWolfPrizeAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -426,6 +489,13 @@ resources:
             - task_key: Wellcome_Awards
             - task_key: Backfill_Awards
             - task_key: Kavli_Prize_Awards
+            - task_key: Argentina_MINCYT_Awards
+            - task_key: Arnold_Ventures_Awards
+            - task_key: Carl_Zeiss_Awards
+            - task_key: IDRC_Awards
+            - task_key: Lasker_Awards
+            - task_key: Templeton_Awards
+            - task_key: Wolf_Prize_Awards
           email_notifications: {}
           notebook_task:
             notebook_path: notebooks/awards/CreateAwards
