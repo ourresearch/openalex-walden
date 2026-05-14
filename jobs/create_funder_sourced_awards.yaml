@@ -400,6 +400,15 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: OSF_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateOSFAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Rockefeller_Awards
           email_notifications: {}
           environment_key: Default
@@ -526,6 +535,7 @@ resources:
             - task_key: Nobel_Awards
             - task_key: Rockefeller_Awards
             - task_key: HHMI_Awards
+            - task_key: OSF_Awards
           email_notifications: {}
           notebook_task:
             notebook_path: notebooks/awards/CreateAwards
