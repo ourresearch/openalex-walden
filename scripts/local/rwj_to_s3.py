@@ -158,15 +158,21 @@ def main() -> None:
         page = ctx.new_page()
         try:
             page_num = args.resume_from_page
+            # Termination is `page_num <= total_pages`. total_pages is set from
+            # page 1's parsed "X of Y" header (defaults to args.max_pages if the
+            # parse fails). Empty pages in the middle are logged but not treated
+            # as end-of-corpus — observed in oxjobs #161: a prior run bailed at
+            # page 321 with 4,800 rows after Playwright returned empty content on
+            # one page; the site actually had 2,116 pages × ~15 grants each.
             while page_num <= total_pages:
                 grants, page_of = scrape_page(page, page_num)
                 if page_of and page_num == args.resume_from_page:
                     total_pages = min(total_pages, page_of[1])
                     log(f"RWJF reports page {page_of[0]} of {page_of[1]} (capping at {total_pages})")
                 if not grants:
-                    log(f"[page {page_num}] zero grants — stopping")
-                    break
-                rows.extend(grants)
+                    log(f"[page {page_num}/{total_pages}] zero grants — continuing")
+                else:
+                    rows.extend(grants)
                 if page_num == args.resume_from_page or page_num % 5 == 0:
                     log(f"[page {page_num}/{total_pages}] +{len(grants)} grants (running: {len(rows):,})")
                 if rows and len(rows) % (args.checkpoint_every * 15) == 0:
