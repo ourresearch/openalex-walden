@@ -233,6 +233,13 @@ def main() -> None:
         f"amount_usd: {df.amount_usd.notna().sum()}, "
         f"start_date: {df.start_date.notna().sum()}")
 
+    # Force string dtype on all columns before to_parquet. pyarrow otherwise
+    # infers all-null columns (e.g. description_raw / grantee_raw / partner_raw
+    # when no landing-page DOM block matches) as int, which breaks the notebook's
+    # NULLIF(...) string ops. amount_usd stays a parseable number string and is
+    # recovered via TRY_CAST(... AS DOUBLE) in CreateRockefellerAwards.
+    df = df.astype("string")
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
     parquet_path = args.output_dir / "rockefeller_projects.parquet"
     df.to_parquet(parquet_path, index=False)
