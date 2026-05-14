@@ -193,6 +193,17 @@ If the funder doesn't exist in OpenAlex, STOP and tell the user.
 
 5. **Report to user frequently:** Don't go silent. Every 2-3 minutes, update the user on progress so they know whether to wait or cancel.
 
+6. **Empty page ≠ end of corpus.** Anti-bot blips, transient timeouts, and
+   rate-limit responses all produce single empty pages mid-run. Do **not** use
+   "first empty response stops the loop" — log the empty page and continue. Use
+   the source's reported total (a `meta.count`, a parsed "page X of Y" header,
+   or an `args.max_pages` fallback) as the loop terminator. Confirmed incident
+   on RWJF ([be5db1e](https://github.com/ourresearch/openalex-walden/commit/be5db1e)):
+   a run bailed at page 321 with ~4,800 grants after one empty Playwright
+   response; the site actually had ~31,717 grants across 2,116 pages. Probing
+   page 321 immediately yielded 15 grants — the page wasn't past end-of-corpus,
+   it was a flake.
+
 **If you find yourself waiting >5 minutes with no output, STOP.** The script is likely hung. Check the source URL manually, test the API in a browser, and debug before continuing. Do not let downloads run silently—this wastes massive amounts of time.
 
 ---
@@ -222,6 +233,17 @@ The script must:
 3. **Include checkpointing** for resumable downloads (see templates)
 
 4. **Upload to S3** at: `s3://openalex-ingest/awards/{funder_name}/{funder_name}_projects.parquet`
+
+5. **Force string dtype before `to_parquet`.** All source columns in awards
+   scripts are strings (text fields + JSON-serialized substructures). End the
+   script with `df = df.astype("string")` before `df.to_parquet(...)`. Without
+   this, pyarrow infers null-heavy columns (e.g. `title_es`, `description_es`,
+   `planned_start`) as **int**, and downstream `COALESCE(title_en, title_fr,
+   title_es)` in the notebook resolves to int and blows up on the first
+   non-numeric value (e.g. a French/Spanish title). **Smoke tests do not catch
+   this** — 1–8 dense rows hide the inference. Confirmed incidents on IDRC
+   ([0f8b891](https://github.com/ourresearch/openalex-walden/commit/0f8b891))
+   and Rockefeller ([5f694b7](https://github.com/ourresearch/openalex-walden/commit/5f694b7)).
 
 ### 1.3 Run the script
 
@@ -391,12 +413,17 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
    - Generate unique ID as `abs(xxhash64(CONCAT({funder_id}, ':', {lowercase_native_id}))) % 9000000000`
 
 5. **Step 3: Delete old data and insert into openalex_awards_raw with priority**
-   - Determine priority (lower = higher priority):
-     - 0: GTR Project Awards (authoritative UK grants)
+   - Determine priority (lower = higher priority). Tier guide:
+     - 0: GTR Project Awards (authoritative UK grants, full metadata)
      - 1: Crossref Awards
-     - 2: Backfill Awards
-     - 3: NIH, NSF, GTR Awards (legacy)
-     - 4+: New funders (use next available number in notebooks/awards/CreateAwards.ipynb)
+     - 2: Backfill Awards (from publication acknowledgements)
+     - 3: NIH / NSF / NSERC / GTR (US/UK/CA flagship funders with full metadata)
+     - 4+: All other direct-from-funder ingests, assigned in roughly the order
+       they were added.
+   - **For a new funder, take the next free integer.** As of 2026-05 the
+     header of [CreateAwards.ipynb](../../notebooks/awards/CreateAwards.ipynb)
+     lists priorities through 49. Read that header — it's the authoritative
+     priority registry — and pick the next free number. Don't reuse a slot.
    - Emit an SQL block that:
      1. Deletes previous data for this source (using provenance + priority as key)
      2. Inserts fresh data to `openalex.awards.openalex_awards_raw`
@@ -485,12 +512,46 @@ COALESCE(
     TRY_TO_DATE(date_col, 'dd/MM/yyyy'),
     TRY_TO_DATE(date_col, 'MM/dd/yyyy')
 ) as parsed_date
+
+-- For first/nth element of an array (handles empty arrays)
+try_element_at(FILTER(arr, x -> x.field IS NOT NULL), 1).field
+try_element_at(COALESCE(arr, ARRAY()), 1)
 ```
 
 **NEVER use:**
 - `CAST()` on external data - use `TRY_CAST()` instead
 - `TO_DATE()` on external data - use `TRY_TO_DATE()` instead
+- `ELEMENT_AT()` on any array that could be empty (`FILTER(...)` output,
+  any nested array from the source) — it raises `SparkArrayIndexOutOfBoundsException`
+  at runtime. Use `try_element_at(...)` instead; it returns NULL on out-of-bounds.
+  This is the fix Spark's own error message recommends. Confirmed incident on
+  IDRC ([16ab79a](https://github.com/ourresearch/openalex-walden/commit/16ab79a)):
+  smoke test on 1 XML (205 activities) had no empty budgets/orgs/recipient_countries
+  arrays; full corpus did, and `ELEMENT_AT` blew up the sanity cell.
 - Assumed column names without verifying via `DESCRIBE`
+
+### 2.3.1 Composing display_name from scraped fields
+
+When `display_name` concatenates a scraped role/title onto a fixed prefix (e.g.
+`'Name — HHMI ' || role`), audit for two failure modes that are invisible until
+you grep the output table:
+
+1. **Placeholder values equal to the prefix.** If the scraper's `titleParts[1]`
+   split has no role token between name and the organization, the placeholder
+   captured can be the org name itself. Result: `"Name — HHMI HHMI"`. Defend
+   with `NULLIF(role, 'HHMI')` (or whatever the placeholder string is) so the
+   `COALESCE` falls back to a sensible default like `'Scientist'`.
+2. **Role already contains the prefix.** Sources sometimes name programs with
+   the org prefix baked in (`'HHMI Professor'`). Composing
+   `'Name — HHMI ' || role` then yields `"Name — HHMI HHMI Professor"`. Defend
+   with `REGEXP_REPLACE(role, '^HHMI ', '')` before composition. Keep
+   `funder_scheme` set to the raw role — downstream consumers will want
+   `'HHMI Professor'` as a queryable program name.
+
+Confirmed on HHMI ([5085aa8](https://github.com/ourresearch/openalex-walden/commit/5085aa8),
+[a624b73](https://github.com/ourresearch/openalex-walden/commit/a624b73)): 251
+of 1,739 rows hit case 1, and another 42 rows hit case 2 after case 1 was
+patched. Both showed up only when grepping the produced `display_name` column.
 
 ### 2.4 Common field mappings
 
@@ -504,6 +565,22 @@ COALESCE(
 | funding_type | Map from activity codes or categories |
 | funder_scheme | program_name, funding_scheme, activity_code |
 
+### 2.4.1 Parsing PI names into given_name / family_name
+
+Do **not** use `name.split(" ", 1)` to split "First Last" into given/family —
+it mishandles middle initials and degree suffixes:
+
+- `"Chad A. Mirkin"` → family=`"A. Mirkin"` (wanted `"Mirkin"`)
+- `"Doris Ying Tsao"` → family=`"Ying Tsao"` (wanted `"Tsao"`)
+- `"Robert S. Langer"` → family=`"S. Langer"` (wanted `"Langer"`)
+
+Use the `split_name` helper instead. Canonical implementation in
+[wolf_to_s3.py](../../scripts/local/wolf_to_s3.py); same pattern in
+[hhmi_to_s3.py](../../scripts/local/hhmi_to_s3.py) and
+[kavli_to_s3.py](../../scripts/local/kavli_to_s3.py). It strips trailing
+degree/suffix tokens (`PhD`, `MD`, `DPhil`, `Jr.`, `Sr.`, `II`, `III`, `IV`)
+and treats the last remaining token as family, everything before as given.
+Port it verbatim — don't roll your own.
 
 **→ Update tracker:** Change status to "Step 3" with notes (e.g., "Notebook created").
 
@@ -562,7 +639,20 @@ Tell the user:
 
 Wait for confirmation before proceeding.
 
-**→ Update tracker:** When user confirms notebook ran, change status to "Step 6".
+**⚠️ The notebook must run against the full S3 parquet, not a sample.** Three
+classes of bug from Step 1.2 and Step 2.3 only appear at scale:
+
+- **pyarrow int-inference on null-heavy columns** (Edit 1) — dense smoke-test
+  rows have no nulls; full corpus does. Caused failures on IDRC and Rockefeller.
+- **`ELEMENT_AT` on empty arrays** (Edit 3) — small samples often have no empty
+  arrays. Caused failure on IDRC's full corpus.
+- **Placeholder strings in scraped role/title** (Edit 4) — distribution-dependent.
+  Caused two consecutive HHMI fixes after the notebook had already shipped.
+
+If you ran the notebook on a `LIMIT 50` slice during dev, **rerun it without
+the limit** before marking the funder Complete.
+
+**→ Update tracker:** When user confirms notebook ran on the full corpus, change status to "Step 6".
 
 ---
 
@@ -675,64 +765,72 @@ Tell the user:
 
 ---
 
-## Step 8: Add to CreateWorkAwards Job
+## Step 8: Wire into the CreateFunderSourcedAwards bundle
 
-After the notebook has been verified and CreateAwards.ipynb has been run successfully, add the new funder notebook as a task in the CreateWorkAwards Databricks job.
+After the notebook has been verified and `CreateAwards.ipynb` has been
+re-run successfully, wire the new funder into the
+**CreateFunderSourcedAwards** orchestration job so it runs on every scheduled
+refresh.
 
-### 8.1 Update the job JSON file
+This job is defined as a Databricks Asset Bundle in
+[jobs/create_funder_sourced_awards.yaml](../../jobs/create_funder_sourced_awards.yaml).
+Each per-funder `Create{X}Awards` notebook is one task with `source: GIT`; the
+downstream `Create_Awards` task depends on all of them and runs
+`notebooks/awards/CreateAwards`; `Work_Awards` runs after that. **There is no
+manual `databricks jobs reset` step anymore** — committing the YAML to `main`
+triggers a GitHub Action that deploys via `databricks bundle deploy`.
 
-Edit `jobs/create_work_awards.json` to add the new funder:
+### 8.1 Edit the bundle YAML
 
-1. **Add a new task** for the funder notebook in the `new_settings.tasks` array. Example for a new funder "XYZ":
-   ```json
-   {
-     "email_notifications": {},
-     "environment_key": "Default",
-     "notebook_task": {
-       "notebook_path": "/Workspace/Shared/openalex-walden/notebooks/awards/CreateXYZAwards",
-       "source": "WORKSPACE"
-     },
-     "run_if": "ALL_SUCCESS",
-     "task_key": "XYZ_Awards",
-     "timeout_seconds": 0,
-     "webhook_notifications": {}
-   }
+Two edits in [jobs/create_funder_sourced_awards.yaml](../../jobs/create_funder_sourced_awards.yaml):
+
+1. **Add a per-funder task** (alphabetical within the task list):
+   ```yaml
+   - task_key: XYZ_Awards
+     email_notifications: {}
+     environment_key: Default
+     notebook_task:
+       notebook_path: notebooks/awards/CreateXYZAwards
+       source: GIT
+     run_if: ALL_SUCCESS
+     timeout_seconds: 0
+     webhook_notifications: {}
    ```
 
-2. **Add the task_key to Create_Awards dependencies** in the `depends_on` array for the `Create_Awards` task:
-   ```json
-   {
-     "task_key": "XYZ_Awards"
-   }
+   Use `source: GIT` (not `WORKSPACE`) and a **relative** `notebook_path`
+   (`notebooks/awards/CreateXYZAwards`, no leading `/Workspace/Shared/...`,
+   no `.ipynb` suffix).
+
+2. **Add the task_key under `Create_Awards.depends_on`** (anywhere in the list):
+   ```yaml
+   - task_key: XYZ_Awards
    ```
 
-### 8.2 Deploy the job update
-
-Use the Databricks CLI to update the job:
+### 8.2 Validate the bundle locally
 
 ```bash
-databricks jobs reset 864794621551148 --profile dbc-ce570f73-0362 --json @jobs/create_work_awards.json
+databricks bundle validate
 ```
 
-Verify the task was added:
-```bash
-databricks jobs get 864794621551148 --profile dbc-ce570f73-0362 --output json | grep -i "{funder}"
-```
+Must exit clean. If validation fails, fix it before committing — the deploy
+Action runs the same validator and will fail the push otherwise.
 
-### 8.3 Commit the job JSON
+### 8.3 Commit and push
 
 ```bash
-git add jobs/create_work_awards.json
-git commit -m "Add {FunderName} to CreateWorkAwards job
+git add jobs/create_funder_sourced_awards.yaml
+git commit -m "Wire {FunderName}_Awards into CreateFunderSourcedAwards (priority N) + tracker Complete
 
-- Added {FunderName}_Awards task
-- Added dependency in Create_Awards task
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>"
 git pull --rebase && git push
 ```
 
-**→ Update tracker:** Change status to "Complete" with final grant count (e.g., "Complete | Priority 18 - 450,000 grants | Added to job 864794621551148").
+On push, the GitHub Action deploys the bundle. Watch the Action's run for
+green; if it fails, the job won't pick up the new task on the next schedule.
+
+**→ Update tracker:** Change status to "Complete" with final grant count and
+priority (e.g., `Complete | Priority 44 - 1,739 HHMI investigator awards (no
+amount, by design). Wired into CreateFunderSourcedAwards 2026-05-14.`).
 
 ---
 
