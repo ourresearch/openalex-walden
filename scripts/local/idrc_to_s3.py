@@ -274,6 +274,10 @@ def main() -> None:
 
     log(f"Total activities: {len(all_rows):,}")
     df = pd.DataFrame(all_rows)
+    # All source columns are strings (IATI text fields + JSON-serialized substructures).
+    # Force string dtype to prevent pyarrow inferring null-heavy columns (e.g. title_es,
+    # description_es, planned_start) as int — which breaks COALESCE/CAST in the notebook.
+    df = df.astype("string")
     log(f"DataFrame shape: {df.shape}")
     log(f"Columns: {list(df.columns)}")
 
