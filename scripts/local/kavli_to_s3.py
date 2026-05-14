@@ -51,6 +51,25 @@ def block_to_text(blocks) -> str:
     return re.sub(r"\s+", " ", "".join(parts)).strip()
 
 
+def split_name(name: str) -> tuple[str | None, str | None]:
+    """Split 'Robert S. Langer' -> ('Robert S.', 'Langer').
+
+    Strips trailing degree/suffix tokens (PhD, MD, Jr., Sr., II, III) before
+    splitting. Last whitespace-separated token = family name; rest = given.
+    """
+    if not name:
+        return None, None
+    tokens = name.split()
+    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    while tokens and tokens[-1].lower().strip(",.") in suffixes:
+        tokens.pop()
+    if not tokens:
+        return None, None
+    if len(tokens) == 1:
+        return None, tokens[0]
+    return " ".join(tokens[:-1]), tokens[-1]
+
+
 def expand_prize(prize: dict) -> list[dict]:
     year = prize.get("year")
     field = prize.get("field") or ""
@@ -71,9 +90,7 @@ def expand_prize(prize: dict) -> list[dict]:
             if isinstance(loc, dict) and loc.get("location"):
                 countries.append(loc["location"])
         bio = block_to_text(la.get("bio"))
-        # Split "First Last" → first token = given, rest = family
-        given_name = name.split(" ", 1)[0] if name else None
-        family_name = name.split(" ", 1)[1] if name and " " in name else None
+        given_name, family_name = split_name(name)
         out.append({
             "kavli_laureate_id": la.get("_id"),
             "slug": slug,
