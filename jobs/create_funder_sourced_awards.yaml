@@ -247,6 +247,15 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: HHMI_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateHHMIAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: IDRC_Awards
           email_notifications: {}
           environment_key: Default
@@ -516,6 +525,7 @@ resources:
             - task_key: Wolf_Prize_Awards
             - task_key: Nobel_Awards
             - task_key: Rockefeller_Awards
+            - task_key: HHMI_Awards
           email_notifications: {}
           notebook_task:
             notebook_path: notebooks/awards/CreateAwards
