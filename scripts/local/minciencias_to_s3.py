@@ -138,21 +138,29 @@ def main() -> None:
 
     # Deduplicate (proyecto_id, convocatoria_id) stub-vs-real pairs. The
     # source CRM emits two rows for some projects: a "registered" stub with
-    # zero amounts and a "funded approved" row with the real amount. Keep
-    # the row with the highest monto_total_ap per (proyecto_id, convocatoria_id);
-    # ties resolved by row order (Socrata $order=proyecto_id is stable).
-    if "proyecto_id" in df and "convocatoria_id" in df and "monto_total_ap" in df:
+    # zero amounts and a "funded approved" row with the real amount.
+    #
+    # The notebook ships `amount = monto_financiado_ap` (the funder's share),
+    # so the dedup MUST sort primarily by that column. Sorting by monto_total_ap
+    # would prefer rows with high counterpart-funded values and zero funder
+    # share over the actual funder-funded row. monto_total_ap is the secondary
+    # tie-breaker so all-zero-financiado pairs still pick the more informative
+    # row deterministically.
+    if "proyecto_id" in df and "convocatoria_id" in df and "monto_financiado_ap" in df:
         pre = len(df)
-        # Coerce the amount to numeric for the comparison without mutating yet
-        amount_for_sort = pd.to_numeric(df["monto_total_ap"], errors="coerce").fillna(-1)
+        financiado_rank = pd.to_numeric(df["monto_financiado_ap"], errors="coerce").fillna(-1)
+        total_rank = (
+            pd.to_numeric(df["monto_total_ap"], errors="coerce").fillna(-1)
+            if "monto_total_ap" in df else pd.Series([-1] * len(df), index=df.index)
+        )
         df = (
-            df.assign(_amt_rank=amount_for_sort)
-              .sort_values("_amt_rank", ascending=False, kind="stable")
+            df.assign(_financiado_rank=financiado_rank, _total_rank=total_rank)
+              .sort_values(["_financiado_rank", "_total_rank"], ascending=False, kind="stable")
               .drop_duplicates(subset=["proyecto_id", "convocatoria_id"], keep="first")
-              .drop(columns="_amt_rank")
+              .drop(columns=["_financiado_rank", "_total_rank"])
               .reset_index(drop=True)
         )
-        log(f"Dedup by (proyecto_id, convocatoria_id) keep-max-amount: {pre} -> {len(df)} ({pre - len(df)} stub rows dropped)")
+        log(f"Dedup by (proyecto_id, convocatoria_id) keep-max-financiado: {pre} -> {len(df)} ({pre - len(df)} stub rows dropped)")
 
     # Defensive typing
     for col in STRING_COLS:
