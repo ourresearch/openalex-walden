@@ -260,6 +260,18 @@ The script must:
    ([0f8b891](https://github.com/ourresearch/openalex-walden/commit/0f8b891))
    and Rockefeller ([5f694b7](https://github.com/ourresearch/openalex-walden/commit/5f694b7)).
 
+6. **If deduping stub-vs-real rows, sort by the column you ship as `amount`.**
+   Some sources (e.g. MinCiencias' Socrata feed) emit two rows per project —
+   a "registered" stub with zero amounts and a "funded approved" row with the
+   real amount. Dedup by sorting on the *exact* column the notebook ships as
+   `amount` in Step 2, not a sibling column. If you sort by a sibling that
+   can diverge (e.g., `monto_total_ap` = funder + counterpart, while the
+   notebook ships `monto_financiado_ap` = funder share only), you can keep
+   the row with a high counterpart-funded value and zero funder share, then
+   ship `amount = 0` and lose the real funder amount. Use the sibling as a
+   tie-breaker if you want determinism on all-zero-funded pairs. Confirmed
+   near-miss on MinCiencias (PR #82, May 2026).
+
 ### 1.3 Run the script
 
 ```bash
@@ -292,7 +304,13 @@ funder_award_id       -- The funder's native award ID
 currency              -- "USD", "EUR", "GBP", etc.
 funding_type          -- "research", "fellowship", "training", "grant", etc.
 funder_scheme         -- The specific program/scheme name (nullable)
-provenance            -- Source identifier, e.g., "nih_exporter", "nwopen"
+provenance            -- Source identifier, e.g., "nih_exporter", "nwopen".
+                      -- For **shared aggregator sources** (USAspending, Crossref,
+                      -- DataCite, IATI), suffix the agency so audit queries can
+                      -- distinguish: "usaspending_epa", "usaspending_ahrq",
+                      -- not bare "usaspending". The DELETE-by-(provenance, priority)
+                      -- key in Step 3 still works either way, but a bare aggregator
+                      -- name forces every audit to JOIN on funder_id.
 landing_page_url      -- URL to award details page
 doi                   -- DOI if available (usually NULL)
 
@@ -457,6 +475,17 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
      header of [CreateAwards.ipynb](../../notebooks/awards/CreateAwards.ipynb)
      lists priorities through 49. Read that header — it's the authoritative
      priority registry — and pick the next free number. Don't reuse a slot.
+   - **⚠️ The priority integer lives in TWO places that MUST match:**
+     (a) the per-funder notebook's INSERT cell (`N as priority`), and
+     (b) the priority list in `CreateAwards.ipynb`.
+     When forking a template (e.g., NASA → EPA → AHRQ), update **both**
+     places, not just the trailing comment next to the integer. This bug
+     shipped twice in May 2026 (PR #83 EPA, PR #84 AHRQ) — both copied
+     `23 as priority` (NASA's slot) verbatim from the NASA template and
+     only refreshed the `-- EPA priority` / `-- AHRQ priority` comment.
+     The bug would have caused cross-source collisions with NASA in the
+     dedup. Always grep the notebook for the literal `as priority` and
+     verify the integer matches `CreateAwards.ipynb` before pushing.
    - Emit an SQL block that:
      1. Deletes previous data for this source (using provenance + priority as key)
      2. Inserts fresh data to `openalex.awards.openalex_awards_raw`
