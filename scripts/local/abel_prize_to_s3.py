@@ -304,6 +304,9 @@ def main() -> None:
             "institution": detail.get("institution"),
             "citation": detail.get("citation"),
             "detail_page_name": detail.get("page_name"),
+            "declined": False,  # No Abel laureate has declined the prize (2003-2026);
+                                # kept for schema parity with Fields Medal and to make
+                                # the description CASE in the notebook idempotent.
             "slug": slugify_family(card["year"], family_name),
             "source_url": card["detail_url"],
             "downloaded_at": datetime.now(timezone.utc).isoformat(),
