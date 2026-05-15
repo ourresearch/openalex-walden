@@ -22,13 +22,28 @@ as the canonical example. The deltas:
 | `amount` / `currency`    | required (>50% pct_amount per Step 6.7)  | **may be NULL** for non-monetary prizes (Fields Medal). Waive the Step 6.7 amount check explicitly with a note. |
 | Multiple winners?        | one row per grant                        | one row per **(prize × laureate)**. Apportion amount via the `portion` field. |
 | `funding_type`           | `grant`, `research`, `fellowship`        | `prize`                                                         |
-| `funder_award_id`        | grant ID from the source                 | a synthetic key like `{category}-{year}-{laureate_id}`          |
+| `funder_award_id`        | grant ID from the source                 | a synthetic key like `{category}-{year}-{laureate_id}`. **Collision detection in the upload script MUST `raise`, not warn** — duplicate `funder_award_id` silently merges rows in the awards table. |
 
 **If the prize-awarding body is not a funder in OpenAlex**, stop and
 flag it — same rule as for grants. Don't fabricate a funder. (Nobel
 Foundation itself isn't in OpenAlex; we map to Royal Swedish Academy
 of Sciences and Karolinska Institutet because those are the actual
 awarding bodies for the science Nobels and they ARE in OpenAlex.)
+
+**Prize-pattern source authority: prefer the awarding body's own site,
+even when it publishes less data than Wikipedia.** Wikipedia/Wikidata
+often has a cleaner-looking laureate table than the funder itself, and
+it can be tempting to scrape from there. Don't. Every existing prize
+source in this repo pulls from the awarding body directly (Nobel =
+nobelprize.org API, Wolf = wolffund.org.il, Lasker = laskerfoundation.org,
+Kavli = kavliprize.org, Fields = mathunion.org). Some funder sites
+publish less per-laureate detail than Wikipedia does — e.g. IMU does
+not publish affiliation-when-awarded for Fields medalists, and only
+publishes citation text for the 2014/2018/2022 cohorts. **NULL is the
+correct value for fields the funder doesn't publish.** Do not backfill
+those fields from Wikipedia/Wikidata unless you also split provenance
+across two sources (and even then, prefer to file the gap as a
+follow-up rather than mix sources in one row).
 
 ### Ingest method ladder
 
@@ -406,13 +421,31 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
 
    **Watch for unit encoding.** Some sources store amounts in minor units (GBP pence ×100, USD cents ×100). JPY/KRW use no minor unit. Convert to whole currency units before storing and document the conversion in the notebook header.
 
-4. **Step 2: Transform to award schema** (see Step 5 for details)
+4. **Step 1.6: Funder existence fail-fast** (CRITICAL)
+
+   The Step 2 transform joins your raw rows against `openalex.common.funder`
+   to populate the `funder` struct. If the funder row isn't there, the
+   `CROSS JOIN` silently emits zero rows and the Step 3 INSERT looks like
+   it succeeded — you'll discover the gap only when downstream queries
+   return empty results. Assert presence before transforming:
+
+   ```sql
+   -- Must return exactly 1 row. If 0 rows, STOP — the funder is missing
+   -- from openalex.common.funder. Flag back to the user; do not proceed.
+   SELECT funder_id, display_name, ror_id, doi
+   FROM openalex.common.funder
+   WHERE funder_id = {funder_id};
+   ```
+
+   This is mandatory for every ingest, not just the prize pattern.
+
+5. **Step 2: Transform to award schema** (see Step 5 for details)
    - Map native fields to OpenAlex schema
    - Handle date parsing (try multiple formats)
    - Map funding types appropriately
    - Generate unique ID as `abs(xxhash64(CONCAT({funder_id}, ':', {lowercase_native_id}))) % 9000000000`
 
-5. **Step 3: Delete old data and insert into openalex_awards_raw with priority**
+6. **Step 3: Delete old data and insert into openalex_awards_raw with priority**
    - Determine priority (lower = higher priority). Tier guide:
      - 0: GTR Project Awards (authoritative UK grants, full metadata)
      - 1: Crossref Awards
@@ -462,7 +495,7 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
    FROM openalex.awards.{funder}_awards;
    ```
 
-6. **Verification queries**
+7. **Verification queries**
    **⚠️ CRITICAL: Verify column names before writing SQL**
 
    Before writing any CTEs or intermediate queries that reference columns from the raw table, you MUST verify the actual column names present in the parquet file. Column names in the source data may differ from what you expect based on documentation or similar funders.
@@ -486,7 +519,7 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
 
    Only after confirming the actual column names should you write the transformation SQL. Reference the exact column names from the `DESCRIBE` output in all subsequent CTEs and queries.
 
-7. **Verification queries** (see Step 6 for details)
+8. **Verification queries** (see Step 6 for details)
 
 ### 2.3 Defensive SQL Practices
 
