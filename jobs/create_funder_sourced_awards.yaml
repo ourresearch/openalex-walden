@@ -139,6 +139,17 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: DataCite_Awards_Insert
+          depends_on:
+            - task_key: DataCite_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/InsertDataCiteAwardsToRaw
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: DFG_Awards
           email_notifications: {}
           environment_key: Default
@@ -511,7 +522,7 @@ resources:
             - task_key: DOD_Awards
             - task_key: Crossref_Awards
             - task_key: Crossref_Awards_Insert
-            - task_key: DataCite_Awards
+            - task_key: DataCite_Awards_Insert
             - task_key: European_Commission_Awards
             - task_key: NWO_Awards
             - task_key: NSF_Awards
