@@ -1,0 +1,16 @@
+resources:
+  pipelines:
+    datacite_awards:
+      name: DataCite Awards
+      configuration:
+        environment: prod
+      libraries:
+        - notebook:
+            path: ${workspace.file_path}/notebooks/awards/CreateDataCiteAwards
+      target: awards
+      development: true
+      photon: true
+      catalog: openalex
+      serverless: true
+      tags:
+        environment: prod

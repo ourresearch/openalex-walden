@@ -135,7 +135,7 @@ resources:
           email_notifications: {}
           pipeline_task:
             full_refresh: false
-            pipeline_id: 3328ee53-c930-40c1-bf73-9b66e2b34440
+            pipeline_id: ${resources.pipelines.datacite_awards.id}
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
