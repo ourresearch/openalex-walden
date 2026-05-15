@@ -4,6 +4,7 @@ resources:
       name: DataCite Awards
       configuration:
         environment: prod
+        "spark.sql.execution.arrow.maxRecordsPerBatch": "100"
       libraries:
         - notebook:
             path: ${workspace.file_path}/notebooks/awards/CreateDataCiteAwards
