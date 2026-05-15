@@ -8,7 +8,7 @@ resources:
       libraries:
         - notebook:
             path: ${workspace.file_path}/notebooks/awards/CreateDataCiteAwards
-      target: awards
+      schema: awards
       development: true
       photon: true
       catalog: openalex
