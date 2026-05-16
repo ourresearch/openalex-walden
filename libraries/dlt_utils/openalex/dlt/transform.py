@@ -1,43 +1,54 @@
 from .normalize import *
 
-def f_generate_inverted_index(abstract_string_input): 
-    import re 
-    import json 
-    from collections import OrderedDict 
-    
-    if not abstract_string_input or not isinstance(abstract_string_input, str): 
+def clean_abstract_text(abstract_string_input):
+    # Shared cleaner: the searched `abstract`/`fulltext` ES fields and the
+    # `abstract_inverted_index` MUST derive from identical text. If they don't,
+    # a JATS tag between two words pushes a token position into the searched
+    # field that is absent from the inverted index, so an exact-phrase query
+    # the inverted index says should match silently fails (oxjob 191.1, Case 1).
+    import re
+
+    if not abstract_string_input or not isinstance(abstract_string_input, str):
         return None
-    
-    abstract_s = abstract_string_input
-    
-    # MODIFIED: Combined regex pattern directly in the re.sub call (inline)
-    # Replaces newlines, tabs, JATS opening/closing tags, <p>, </p> tags with a single space.
-    # The \b replacement was removed as its intent was unclear and potentially problematic.
+
     abstract_s = re.sub(
-        r"\n|\t|<jats:[^>]*?>|</jats:[^>]*?>|<p>|</p>", # Inline regex string
-        " ", 
-        abstract_s
+        r"\n|\t|<jats:[^>]*?>|</jats:[^>]*?>|<p>|</p>",
+        " ",
+        abstract_string_input,
     )
-    
-    # Consolidate multiple spaces and strip
+
     abstract_s = " ".join(abstract_s.split()).strip()
 
-    if not abstract_s: 
+    return abstract_s if abstract_s else None
+
+def f_generate_inverted_index(abstract_string_input):
+    import json
+    from collections import OrderedDict
+
+    abstract_s = clean_abstract_text(abstract_string_input)
+
+    if not abstract_s:
         return None
 
     invertedIndex = OrderedDict()
     words = abstract_s.split()
     for i, word in enumerate(words):
-        if word not in invertedIndex: 
+        if word not in invertedIndex:
             invertedIndex[word] = []
         invertedIndex[word].append(i)
-    
+
     return json.dumps(invertedIndex, ensure_ascii=False) if invertedIndex else None
 
 @F.pandas_udf(StringType())
 def udf_f_generate_inverted_index(abstract_series: pd.Series) -> pd.Series: # Name matches your original UDF variable
     # This Pandas UDF calls your 'f_generate_inverted_index' Python function
     return abstract_series.apply(f_generate_inverted_index)
+
+@F.pandas_udf(StringType())
+def udf_clean_abstract_text(text_series: pd.Series) -> pd.Series:
+    # Same JATS/whitespace cleaning as the inverted index, for the searched
+    # `abstract`/`fulltext` fields so the two stay byte-for-byte consistent.
+    return text_series.apply(clean_abstract_text)
 
 def transform_struct(col_name, source_struct, target_struct):
     target_fields = {f.name: f for f in target_struct.fields}
