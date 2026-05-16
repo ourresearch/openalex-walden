@@ -1,714 +1,359 @@
 #!/usr/bin/env python3
 """
-HRSA Awards to S3 Data Pipeline (US Health Resources and Services Administration, HHS subtier)
-================================
+Download HRSA awarded-grants data to parquet for OpenAlex awards ingestion.
 
-This script downloads HRSA grant data from USAspending.gov API,
-processes it into a parquet file, and uploads it to S3 for Databricks ingestion.
+Why this source:
+    The awards runbook says to prefer official source-owned data over fallback
+    aggregators. Its method ladder places bulk file downloads (CSV/JSON/XML)
+    above static scraping, Playwright/browser scraping, and regulatory or
+    USAspending-style fallbacks. This script therefore uses HRSA's own Data
+    Warehouse CSV rather than the USAspending fallback used by the original
+    draft PR.
 
-Data Source: https://api.usaspending.gov/
-Output: s3://openalex-ingest/awards/hrsa/hrsa_awards.parquet
+Runbook fit:
+    - Method 4: official bulk CSV download from HRSA Data Warehouse.
+    - Raw/source columns are preserved closely and written as strings.
+    - The notebook should do all award-schema casting with TRY_CAST/TRY_TO_DATE.
+    - The final notebook output must contain only the OpenAlex awards schema.
+      Helper fields added here, such as source_url, downloaded_at, and
+      source_row_hash, are raw-stage aids only.
 
-What this script does:
-1. Requests bulk downloads from USAspending API for HRSA grants (FY2001-2025)
-2. Downloads generated ZIP files containing CSV data
-3. Extracts and combines all CSVs
-4. Deduplicates by award_id_fain (keeping most recent record)
-5. Converts to parquet format
-6. Uploads to S3
+Important modeling caveat:
+    Local validation showed 71,889 rows but only 27,872 unique grant_number
+    values. The source appears to contain annual financial-assistance rows, not
+    one row per unique grant number. A downstream notebook should inspect
+    whether the final OpenAlex award key should use grant_number alone or a
+    more specific native key, such as grant_number plus award_year or a
+    source-row component. Do not blindly deduplicate by grant_number.
 
-Award Types:
-- 02: Block Grant
-- 03: Formula Grant
-- 04: Project Grant
-- 05: Cooperative Agreement
+Validated locally on 2026-05-15:
+    - URL reachable with curl.
+    - Full CSV read passed required-column checks.
+    - 71,889 rows, 44 columns.
+    - award_year range: 2016-2026.
+    - financial_assistance present: 71,889/71,889.
+    - financial_assistance total: 118,354,684,716.99.
+    - Parquet writing was not fully tested in the Codex runtime because that
+      runtime lacked pyarrow/fastparquet. The repo requirements.txt includes
+      pyarrow>=14.0.0, which is sufficient for the normal project environment.
 
-Requirements:
-    pip install pandas pyarrow requests
+Source:
+    https://data.hrsa.gov/DataDownload/DD_Files/FS_EHB_AWARD_GRANT_FA_AGR_MVX.csv
 
-    AWS CLI must be configured with credentials that have write access to:
-    s3://openalex-ingest/awards/hrsa/
+Output:
+    s3://openalex-ingest/awards/hrsa/hrsa_projects.parquet
+
+Notebook implications:
+    Existing HRSA notebook drafts may still be USAspending-shaped, with columns
+    like award_id_fain and provenance usaspending_hrsa. If using this source,
+    update the notebook to read hrsa_projects.parquet, map HRSA Data Warehouse
+    columns, and use a direct-source provenance such as hrsa_data_warehouse.
 
 Usage:
-    python hrsa_to_s3.py
+    python scripts/local/hrsa_to_s3.py --validate-only
+    python scripts/local/hrsa_to_s3.py --sample-rows 1000 --validate-only
+    python scripts/local/hrsa_to_s3.py --skip-upload
 
-    # Resume interrupted download:
-    python hrsa_to_s3.py --resume
-
-    # Skip upload to S3:
-    python hrsa_to_s3.py --skip-upload
-
-Author: OpenAlex Team
+Safe local smoke test:
+    python scripts/local/hrsa_to_s3.py \
+        --output-dir /tmp/hrsa_smoke \
+        --sample-rows 1000 \
+        --skip-upload
 """
 
 import argparse
+import hashlib
 import json
-import os
+import re
+import shutil
 import subprocess
 import sys
 import time
-import zipfile
-from datetime import datetime, timedelta
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-import requests
 
-# =============================================================================
-# Configuration
-# =============================================================================
 
-# USAspending API settings
-API_BASE = "https://api.usaspending.gov/api/v2"
-BULK_DOWNLOAD_ENDPOINT = f"{API_BASE}/bulk_download/awards/"
-STATUS_ENDPOINT = f"{API_BASE}/download/status"
-
-# HRSA agency info
-HRSA_AGENCY_NAME = "Health Resources and Services Administration"
-
-# Grant award types
-GRANT_TYPES = ["02", "03", "04", "05"]  # Block, Formula, Project, Cooperative
-
-# Fiscal year range
-START_YEAR = 2001
-END_YEAR = 2025
-
-# API settings
-REQUEST_DELAY = 2.0  # Seconds between status checks
-MAX_WAIT_TIME = 600  # Max seconds to wait for a download to complete
-MAX_RETRIES = 3
-
-# S3 destination
+SOURCE_URL = "https://data.hrsa.gov/DataDownload/DD_Files/FS_EHB_AWARD_GRANT_FA_AGR_MVX.csv"
 S3_BUCKET = "openalex-ingest"
-S3_KEY = "awards/hrsa/hrsa_awards.parquet"
+S3_KEY = "awards/hrsa/hrsa_projects.parquet"
+OUTPUT_FILE = "hrsa_projects.parquet"
+RAW_CSV_FILE = "hrsa_awarded_grants.csv"
+CHECKPOINT_FILE = "hrsa_download_checkpoint.json"
+CHUNK_SIZE = 1024 * 1024
+
+EXPECTED_COLUMNS = {
+    "award_year",
+    "financial_assistance",
+    "grant_number",
+    "project_period_start_date",
+    "grant_project_period_end_date",
+    "hrsa_program_area_name",
+    "grant_program_name",
+    "abstract",
+    "grantee_name",
+}
+
+HASH_COLUMNS = [
+    "grant_number",
+    "award_year",
+    "financial_assistance",
+    "grantee_name",
+    "grant_program_name",
+    "project_period_start_date",
+    "grant_project_period_end_date",
+]
 
 
-# =============================================================================
-# API Functions
-# =============================================================================
-
-def request_bulk_download(year: int, session: requests.Session) -> dict:
-    """
-    Request a bulk download for HRSA grants in a specific fiscal year.
-
-    Args:
-        year: Fiscal year (e.g., 2024)
-        session: Requests session
-
-    Returns:
-        API response with download info
-    """
-    # USAspending uses fiscal years (Oct 1 - Sep 30)
-    # FY2024 = Oct 1, 2023 - Sep 30, 2024
-    start_date = f"{year - 1}-10-01"
-    end_date = f"{year}-09-30"
-
-    payload = {
-        "filters": {
-            "agencies": [
-                {
-                    "type": "awarding",
-                    "tier": "subtier",
-                    "name": HRSA_AGENCY_NAME
-                }
-            ],
-            "prime_award_types": GRANT_TYPES,
-            "date_type": "action_date",
-            "date_range": {
-                "start_date": start_date,
-                "end_date": end_date
-            }
-        },
-        "file_format": "csv"
-    }
-
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = session.post(
-                BULK_DOWNLOAD_ENDPOINT,
-                json=payload,
-                timeout=60
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            if attempt < MAX_RETRIES - 1:
-                print(f"    [RETRY] Attempt {attempt + 1} failed: {e}")
-                time.sleep(2 ** attempt)
-            else:
-                raise
-
-    return {}
+def utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def wait_for_download(file_name: str, session: requests.Session) -> dict:
-    """
-    Poll the status endpoint until download is ready.
-
-    Args:
-        file_name: Name of the file being generated
-        session: Requests session
-
-    Returns:
-        Final status response with file URL
-    """
-    start_time = time.time()
-
-    while True:
-        elapsed = time.time() - start_time
-        if elapsed > MAX_WAIT_TIME:
-            raise TimeoutError(f"Download timed out after {MAX_WAIT_TIME}s")
-
-        try:
-            response = session.get(
-                STATUS_ENDPOINT,
-                params={"file_name": file_name},
-                timeout=30
-            )
-            response.raise_for_status()
-            status = response.json()
-
-            if status.get("status") == "finished":
-                return status
-            elif status.get("status") == "failed":
-                raise RuntimeError(f"Download failed: {status.get('message')}")
-
-            # Still processing
-            print(f"    [WAIT] {status.get('status', 'processing')}... ({int(elapsed)}s)", end="\r")
-            time.sleep(REQUEST_DELAY)
-
-        except requests.exceptions.RequestException as e:
-            print(f"    [WARN] Status check failed: {e}")
-            time.sleep(REQUEST_DELAY)
+def log(message: str) -> None:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}", flush=True)
 
 
-def download_file(url: str, output_path: Path, session: requests.Session) -> bool:
-    """
-    Download a file from URL.
+def clean_column(name: str) -> str:
+    name = name.strip().lower()
+    name = re.sub(r"[^a-z0-9]+", "_", name)
+    return name.strip("_")
 
-    Args:
-        url: URL to download
-        output_path: Local path to save file
-        session: Requests session
 
-    Returns:
-        True if download succeeded
-    """
-    try:
-        response = session.get(url, stream=True, timeout=300)
-        response.raise_for_status()
+def write_checkpoint(path: Path, metadata: dict) -> None:
+    path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
 
-        total_size = int(response.headers.get('content-length', 0))
-        downloaded = 0
 
-        with open(output_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
+def download_csv(output_dir: Path, force: bool = False) -> Path:
+    """Download the HRSA CSV with an atomic local checkpoint."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = output_dir / RAW_CSV_FILE
+    checkpoint_path = output_dir / CHECKPOINT_FILE
+
+    if csv_path.exists() and not force:
+        log(f"[SKIP] Using cached CSV: {csv_path}")
+        return csv_path
+
+    part_path = csv_path.with_suffix(csv_path.suffix + ".part")
+    if part_path.exists():
+        part_path.unlink()
+
+    log(f"[DOWNLOAD] GET {SOURCE_URL}")
+    start = time.time()
+    first_chunk_at: Optional[float] = None
+    downloaded = 0
+    last_log = start
+
+    request = urllib.request.Request(
+        SOURCE_URL,
+        headers={"User-Agent": "OpenAlex-HRSA-Ingest/1.0"},
+    )
+
+    with urllib.request.urlopen(request, timeout=120) as response:
+        log(
+            "[DOWNLOAD] "
+            f"status={response.status} "
+            f"content_length={response.headers.get('content-length', 'unknown')} "
+            f"last_modified={response.headers.get('last-modified', 'unknown')}"
+        )
+
+        with part_path.open("wb") as handle:
+            while True:
+                chunk = response.read(CHUNK_SIZE)
+                if not chunk:
+                    if first_chunk_at is None and time.time() - start > 30:
+                        raise TimeoutError("No HRSA CSV bytes received within 30 seconds")
+                    break
+
+                if first_chunk_at is None:
+                    first_chunk_at = time.time()
+
+                handle.write(chunk)
                 downloaded += len(chunk)
-                if total_size > 0:
-                    pct = (downloaded / total_size) * 100
-                    print(f"    [DOWNLOAD] {pct:.1f}%", end="\r")
 
-        print(f"    [DOWNLOAD] Complete ({downloaded / 1024 / 1024:.1f} MB)")
-        return True
-
-    except Exception as e:
-        print(f"    [ERROR] Download failed: {e}")
-        return False
-
-
-# =============================================================================
-# Progress Tracking
-# =============================================================================
-
-class ProgressTracker:
-    """Track download progress with checkpointing."""
-
-    def __init__(self, output_dir: Path):
-        self.output_dir = output_dir
-        self.checkpoint_file = output_dir / "hrsa_checkpoint.json"
-        self.data = {
-            "completed_years": [],
-            "failed_years": [],
-            "total_rows": 0,
-            "last_updated": None
-        }
-
-    def load(self) -> bool:
-        """Load checkpoint from disk."""
-        if self.checkpoint_file.exists():
-            try:
-                with open(self.checkpoint_file, "r") as f:
-                    self.data = json.load(f)
-                print(f"  [CHECKPOINT] Loaded: {len(self.data['completed_years'])} years completed")
-                return True
-            except Exception as e:
-                print(f"  [WARN] Failed to load checkpoint: {e}")
-        return False
-
-    def save(self):
-        """Save checkpoint to disk."""
-        self.data["last_updated"] = datetime.utcnow().isoformat()
-        with open(self.checkpoint_file, "w") as f:
-            json.dump(self.data, f, indent=2)
-
-    def mark_completed(self, year: int, rows: int):
-        """Mark a year as completed."""
-        if year not in self.data["completed_years"]:
-            self.data["completed_years"].append(year)
-        self.data["total_rows"] += rows
-        self.save()
-
-    def mark_failed(self, year: int):
-        """Mark a year as failed."""
-        if year not in self.data["failed_years"]:
-            self.data["failed_years"].append(year)
-        self.save()
-
-    def get_remaining_years(self) -> list[int]:
-        """Get years that still need to be downloaded."""
-        completed = set(self.data["completed_years"])
-        return [y for y in range(START_YEAR, END_YEAR + 1) if y not in completed]
-
-    def cleanup(self):
-        """Remove checkpoint file after successful completion."""
-        if self.checkpoint_file.exists():
-            self.checkpoint_file.unlink()
-            print("  [CHECKPOINT] Cleaned up")
-
-
-# =============================================================================
-# Download Functions
-# =============================================================================
-
-def download_year(
-    year: int,
-    output_dir: Path,
-    session: requests.Session
-) -> tuple[int, int]:
-    """
-    Download HRSA grants for a single fiscal year.
-
-    Args:
-        year: Fiscal year
-        output_dir: Directory to save files
-        session: Requests session
-
-    Returns:
-        Tuple of (year, row_count)
-    """
-    zip_path = output_dir / f"hrsa_fy{year}.zip"
-
-    # Skip if already downloaded
-    if zip_path.exists():
-        print(f"  [FY{year}] Already downloaded, skipping")
-        return (year, 0)
-
-    print(f"  [FY{year}] Requesting bulk download...")
-
-    # Request download
-    result = request_bulk_download(year, session)
-    file_name = result.get("file_name")
-
-    if not file_name:
-        print(f"  [FY{year}] No file_name in response")
-        return (year, 0)
-
-    # Wait for download to be ready
-    print(f"  [FY{year}] Waiting for download to generate...")
-    status = wait_for_download(file_name, session)
-    print()  # Clear the wait line
-
-    rows = status.get("total_rows", 0)
-    file_url = status.get("file_url")
-
-    if rows == 0:
-        print(f"  [FY{year}] No grants found")
-        return (year, 0)
-
-    print(f"  [FY{year}] Found {rows:,} transactions, downloading...")
-
-    # Download the file
-    if file_url and download_file(file_url, zip_path, session):
-        return (year, rows)
-
-    return (year, 0)
-
-
-def download_all_years(
-    output_dir: Path,
-    resume: bool = False
-) -> list[Path]:
-    """
-    Download HRSA grants for all fiscal years.
-
-    Args:
-        output_dir: Directory to save files
-        resume: Whether to resume from checkpoint
-
-    Returns:
-        List of paths to downloaded zip files
-    """
-    print(f"\n{'='*60}")
-    print("Step 1: Downloading HRSA grants from USAspending")
-    print(f"{'='*60}")
-    print(f"  Agency: {HRSA_AGENCY_NAME}")
-    print(f"  Award types: {GRANT_TYPES}")
-    print(f"  Fiscal years: {START_YEAR}-{END_YEAR}")
-
-    # Initialize progress tracker
-    tracker = ProgressTracker(output_dir)
-
-    if resume:
-        tracker.load()
-
-    years_to_download = tracker.get_remaining_years()
-
-    if not years_to_download:
-        print("  [INFO] All years already downloaded!")
-    else:
-        print(f"  [INFO] Years to download: {len(years_to_download)}")
-
-    # Initialize session
-    session = requests.Session()
-    session.headers.update({
-        "Content-Type": "application/json",
-        "User-Agent": "OpenAlex-HRSA-Ingest/1.0"
-    })
-
-    total_rows = 0
-    start_time = time.time()
-
-    for i, year in enumerate(years_to_download):
-        print(f"\n  [{i+1}/{len(years_to_download)}] Processing FY{year}...")
-
-        try:
-            _, rows = download_year(year, output_dir, session)
-            total_rows += rows
-            tracker.mark_completed(year, rows)
-
-            # Brief delay between years
-            if i < len(years_to_download) - 1:
-                time.sleep(1)
-
-        except Exception as e:
-            print(f"  [FY{year}] ERROR: {e}")
-            tracker.mark_failed(year)
-
-    elapsed = time.time() - start_time
-    print(f"\n  {'='*50}")
-    print(f"  Download complete!")
-    print(f"  Total time: {timedelta(seconds=int(elapsed))}")
-    print(f"  Total transactions: {total_rows + tracker.data['total_rows']:,}")
-
-    if tracker.data["failed_years"]:
-        print(f"  Failed years: {tracker.data['failed_years']}")
-
-    # Return list of zip files
-    return sorted(output_dir.glob("hrsa_fy*.zip"))
-
-
-# =============================================================================
-# Processing Functions
-# =============================================================================
-
-def extract_and_combine(zip_files: list[Path], output_dir: Path) -> pd.DataFrame:
-    """
-    Extract zip files and combine CSVs into a single DataFrame.
-
-    Args:
-        zip_files: List of zip file paths
-        output_dir: Directory for extraction
-
-    Returns:
-        Combined DataFrame
-    """
-    print(f"\n{'='*60}")
-    print("Step 2: Extracting and combining data")
-    print(f"{'='*60}")
-
-    all_dfs = []
-
-    for zip_path in zip_files:
-        print(f"  [EXTRACT] {zip_path.name}...")
-
-        try:
-            with zipfile.ZipFile(zip_path, 'r') as zf:
-                # Find CSV files in the zip
-                csv_files = [f for f in zf.namelist() if f.endswith('.csv')]
-
-                for csv_name in csv_files:
-                    with zf.open(csv_name) as csv_file:
-                        # Read CSV with low_memory=False to avoid dtype warnings
-                        df = pd.read_csv(csv_file, low_memory=False, dtype=str)
-                        all_dfs.append(df)
-                        print(f"    Loaded {len(df):,} rows from {csv_name}")
-
-        except Exception as e:
-            print(f"    [ERROR] Failed to extract {zip_path.name}: {e}")
-
-    if not all_dfs:
-        raise ValueError("No data extracted from zip files!")
-
-    # Combine all DataFrames
-    print(f"\n  [COMBINE] Merging {len(all_dfs)} files...")
-    combined = pd.concat(all_dfs, ignore_index=True)
-    print(f"  Total rows: {len(combined):,}")
-
-    return combined
-
-
-def process_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Process and clean the DataFrame.
-
-    Args:
-        df: Raw combined DataFrame
-
-    Returns:
-        Processed DataFrame
-    """
-    print(f"\n{'='*60}")
-    print("Step 3: Processing data")
-    print(f"{'='*60}")
-
-    # Clean column names (lowercase, replace spaces)
-    df.columns = (df.columns
-                  .str.lower()
-                  .str.replace(' ', '_')
-                  .str.replace('-', '_'))
-
-    print(f"  Columns: {len(df.columns)}")
-
-    # Key columns we need:
-    # - award_id_fain: Federal Award Identification Number (unique grant ID)
-    # - award_description: Title/description
-    # - total_obligated_amount: Funding amount
-    # - period_of_performance_start_date: Start date
-    # - period_of_performance_current_end_date: End date
-    # - recipient_name: Awardee organization
-    # - primary_place_of_performance_*: Location info
-    # - awarding_agency_name, funding_agency_name: Agency info
-
-    # Deduplicate by award_id_fain (keeping most recent action)
-    if 'award_id_fain' in df.columns:
-        print(f"\n  [DEDUPE] Deduplicating by award_id_fain...")
-        original_count = len(df)
-
-        # Sort by action_date descending, then dedupe
-        if 'action_date' in df.columns:
-            df['action_date'] = pd.to_datetime(df['action_date'], errors='coerce')
-            df = df.sort_values('action_date', ascending=False)
-
-        df = df.drop_duplicates(subset=['award_id_fain'], keep='first')
-        print(f"  Removed {original_count - len(df):,} duplicates")
-        print(f"  Unique awards: {len(df):,}")
-
-    # Convert dates to string format for Spark compatibility
-    date_columns = [
-        'action_date',
-        'period_of_performance_start_date',
-        'period_of_performance_current_end_date'
-    ]
-
-    for col in date_columns:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
-            df[col] = df[col].replace('NaT', None)
-
-    # Add ingestion timestamp
-    df['ingested_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
-
-    # Print summary
-    print(f"\n  Summary:")
-    print(f"    - Total unique awards: {len(df):,}")
-
-    if 'award_id_fain' in df.columns:
-        print(f"    - With FAIN: {df['award_id_fain'].notna().sum():,}")
-
-    if 'award_description' in df.columns:
-        print(f"    - With description: {df['award_description'].notna().sum():,}")
-
-    if 'total_obligated_amount' in df.columns:
-        df['total_obligated_amount'] = pd.to_numeric(df['total_obligated_amount'], errors='coerce')
-        total_funding = df['total_obligated_amount'].sum()
-        print(f"    - Total funding: ${total_funding:,.0f}")
-
-    if 'period_of_performance_start_date' in df.columns:
-        print(f"    - With start date: {df['period_of_performance_start_date'].notna().sum():,}")
+                now = time.time()
+                if now - last_log >= 5 or downloaded == len(chunk):
+                    log(f"[DOWNLOAD] {downloaded / 1024 / 1024:.1f} MB received")
+                    last_log = now
+
+    if downloaded == 0:
+        raise RuntimeError("Downloaded zero bytes from HRSA source")
+
+    part_path.replace(csv_path)
+    elapsed = max(time.time() - start, 0.001)
+    log(f"[DOWNLOAD] Complete: {downloaded / 1024 / 1024:.1f} MB in {elapsed:.1f}s")
+
+    write_checkpoint(
+        checkpoint_path,
+        {
+            "source_url": SOURCE_URL,
+            "downloaded_at": utc_now(),
+            "bytes": downloaded,
+            "raw_csv": str(csv_path),
+        },
+    )
+    return csv_path
+
+
+def read_source_csv(csv_path: Path, sample_rows: Optional[int]) -> pd.DataFrame:
+    log(f"[READ] {csv_path}")
+    df = pd.read_csv(
+        csv_path,
+        dtype=str,
+        low_memory=False,
+        encoding="utf-8-sig",
+        nrows=sample_rows,
+    )
+    df.columns = [clean_column(column) for column in df.columns]
+    log(f"[READ] rows={len(df):,} columns={len(df.columns):,}")
+
+    missing = sorted(EXPECTED_COLUMNS - set(df.columns))
+    if missing:
+        raise RuntimeError(f"HRSA source schema changed; missing columns: {missing}")
 
     return df
 
 
-def save_to_parquet(df: pd.DataFrame, output_dir: Path) -> Path:
-    """
-    Save DataFrame to parquet file.
+def add_source_metadata(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
 
-    Args:
-        df: Processed DataFrame
-        output_dir: Output directory
+    for column in df.columns:
+        df[column] = df[column].astype("string").str.strip()
 
-    Returns:
-        Path to output file
-    """
-    output_path = output_dir / "hrsa_awards.parquet"
+    available_hash_columns = [column for column in HASH_COLUMNS if column in df.columns]
+    hash_values = (
+        df[available_hash_columns]
+        .fillna("")
+        .astype("string")
+        .agg("|".join, axis=1)
+    )
 
-    print(f"\n  [SAVE] Writing to {output_path.name}...")
-    df.to_parquet(output_path, index=False)
+    df["source_url"] = SOURCE_URL
+    df["downloaded_at"] = utc_now()
+    df["source_row_hash"] = hash_values.map(
+        lambda value: hashlib.sha1(value.encode("utf-8")).hexdigest()[:16]
+    )
 
-    size_mb = output_path.stat().st_size / (1024 * 1024)
-    print(f"  Output file size: {size_mb:.1f} MB")
+    duplicate_hashes = int(df["source_row_hash"].duplicated().sum())
+    if duplicate_hashes:
+        duplicate_examples = df.loc[
+            df["source_row_hash"].duplicated(keep=False),
+            [column for column in HASH_COLUMNS if column in df.columns] + ["source_row_hash"],
+        ].head(20)
+        raise RuntimeError(
+            f"{duplicate_hashes:,} duplicate source_row_hash values found. "
+            "The HRSA notebook uses source_row_hash in the row-level award key; "
+            "update HASH_COLUMNS or inspect source duplicates before proceeding.\n"
+            + duplicate_examples.to_string(index=False)
+        )
 
+    return df
+
+
+def log_summary(df: pd.DataFrame) -> None:
+    amount = pd.to_numeric(
+        df["financial_assistance"].astype("string").str.replace(r"[$,]", "", regex=True),
+        errors="coerce",
+    )
+    years = pd.to_numeric(df["award_year"], errors="coerce")
+
+    log("[SUMMARY] HRSA source rows")
+    log(f"[SUMMARY] rows={len(df):,}")
+    log(f"[SUMMARY] unique grant_number={df['grant_number'].nunique(dropna=True):,}")
+    log(f"[SUMMARY] award_year range={int(years.min()) if years.notna().any() else 'NA'}-{int(years.max()) if years.notna().any() else 'NA'}")
+    log(f"[SUMMARY] financial_assistance present={amount.notna().sum():,}/{len(df):,}")
+    if amount.notna().any():
+        log(f"[SUMMARY] financial_assistance total={amount.sum():,.2f}")
+
+
+def write_parquet(df: pd.DataFrame, output_dir: Path) -> Path:
+    output_path = output_dir / OUTPUT_FILE
+
+    # Required by plans/awards/how-to-add-a-funder.md: all source columns string.
+    df = df.astype("string")
+    try:
+        df.to_parquet(output_path, index=False)
+    except ImportError as exc:
+        raise RuntimeError(
+            "Parquet support is missing. Install repo requirements first: "
+            "python -m pip install -r requirements.txt"
+        ) from exc
+
+    size_mb = output_path.stat().st_size / 1024 / 1024
+    log(f"[SAVE] {output_path} ({size_mb:.1f} MB)")
     return output_path
 
 
-# =============================================================================
-# S3 Upload
-# =============================================================================
-
 def find_aws_cli() -> Optional[str]:
-    """Find AWS CLI executable path."""
-    import shutil
-
-    aws_path = shutil.which("aws")
-    if aws_path:
-        return aws_path
-
-    common_paths = [
-        Path.home() / "Library/Python/3.9/bin/aws",
-        Path.home() / "Library/Python/3.10/bin/aws",
-        Path.home() / "Library/Python/3.11/bin/aws",
-        Path.home() / "Library/Python/3.12/bin/aws",
-        Path("/usr/local/bin/aws"),
-        Path("/opt/homebrew/bin/aws"),
-    ]
-
-    for path in common_paths:
-        if path.exists():
-            return str(path)
-
-    return None
+    return shutil.which("aws")
 
 
 def upload_to_s3(local_path: Path) -> bool:
-    """
-    Upload the parquet file to S3.
-
-    Args:
-        local_path: Path to local parquet file
-
-    Returns:
-        True if upload succeeded
-    """
-    print(f"\n{'='*60}")
-    print("Step 4: Uploading to S3")
-    print(f"{'='*60}")
-
     s3_uri = f"s3://{S3_BUCKET}/{S3_KEY}"
-    print(f"  [UPLOAD] {local_path.name} -> {s3_uri}")
+    log(f"[UPLOAD] {local_path} -> {s3_uri}")
 
     aws_cmd = find_aws_cli()
     if not aws_cmd:
-        print("  [ERROR] AWS CLI not found. Install with: pip install awscli")
+        log("[UPLOAD] AWS CLI not found; skipping upload.")
         return False
 
     try:
-        result = subprocess.run(
-            [aws_cmd, "s3", "cp", str(local_path), s3_uri],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        print("  [SUCCESS] Upload complete!")
+        subprocess.run([aws_cmd, "s3", "cp", str(local_path), s3_uri], check=True)
+        log("[UPLOAD] Complete")
         return True
-
-    except subprocess.CalledProcessError as e:
-        print(f"  [ERROR] Upload failed: {e.stderr}")
+    except subprocess.CalledProcessError as exc:
+        log(f"[UPLOAD] Failed: {exc}")
         return False
 
 
-# =============================================================================
-# Main
-# =============================================================================
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Download official HRSA awards CSV to parquet")
+    parser.add_argument("--output-dir", type=Path, default=Path("./hrsa_data"))
+    parser.add_argument("--sample-rows", type=int, default=None, help="Read only the first N rows for a smoke test")
+    parser.add_argument("--force-download", action="store_true", help="Download even if the raw CSV exists locally")
+    parser.add_argument("--skip-download", action="store_true", help="Use existing raw CSV in output-dir")
+    parser.add_argument("--skip-upload", action="store_true", help="Do not upload parquet to S3")
+    parser.add_argument("--validate-only", action="store_true", help="Read and validate the source, then stop before parquet/S3")
+    return parser.parse_args()
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Download HRSA grants from USAspending and upload to S3"
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=Path("./hrsa_data"),
-        help="Directory for downloaded/processed files (default: ./hrsa_data)"
-    )
-    parser.add_argument(
-        "--resume",
-        action="store_true",
-        help="Resume from checkpoint if available"
-    )
-    parser.add_argument(
-        "--skip-download",
-        action="store_true",
-        help="Skip download step (use existing files)"
-    )
-    parser.add_argument(
-        "--skip-upload",
-        action="store_true",
-        help="Skip S3 upload step"
-    )
-    args = parser.parse_args()
 
-    # Create output directory
+def main() -> None:
+    args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("=" * 60)
-    print("HRSA Awards to S3 Data Pipeline (US Health Resources and Services Administration, HHS subtier)")
-    print("=" * 60)
-    print(f"Output directory: {args.output_dir.absolute()}")
-    print(f"S3 destination: s3://{S3_BUCKET}/{S3_KEY}")
+    log("=" * 72)
+    log("HRSA awarded-grants CSV pipeline")
+    log(f"Source: {SOURCE_URL}")
+    log(f"S3 target: s3://{S3_BUCKET}/{S3_KEY}")
 
-    # Step 1: Download
-    if not args.skip_download:
-        zip_files = download_all_years(args.output_dir, resume=args.resume)
+    csv_path = args.output_dir / RAW_CSV_FILE
+    if args.skip_download:
+        if not csv_path.exists():
+            log(f"[ERROR] Missing cached CSV: {csv_path}")
+            sys.exit(1)
+        log(f"[SKIP] Using existing CSV: {csv_path}")
     else:
-        zip_files = sorted(args.output_dir.glob("hrsa_fy*.zip"))
-        print(f"\n  [SKIP] Using existing files: {len(zip_files)} zip files found")
+        csv_path = download_csv(args.output_dir, force=args.force_download)
 
-    if not zip_files:
-        print("[ERROR] No zip files found!")
-        sys.exit(1)
+    df = read_source_csv(csv_path, sample_rows=args.sample_rows)
+    df = add_source_metadata(df)
+    log_summary(df)
 
-    # Step 2: Extract and combine
-    df = extract_and_combine(zip_files, args.output_dir)
+    if args.validate_only:
+        log("[DONE] --validate-only set; source read and required-column checks passed.")
+        return
 
-    # Step 3: Process
-    df = process_dataframe(df)
+    parquet_path = write_parquet(df, args.output_dir)
 
-    # Save to parquet
-    parquet_path = save_to_parquet(df, args.output_dir)
+    if args.skip_upload:
+        log("[DONE] --skip-upload set; local parquet only.")
+        return
 
-    # Step 4: Upload to S3
-    upload_success = True
-    if not args.skip_upload:
-        upload_success = upload_to_s3(parquet_path)
-        if not upload_success:
-            print("\n[WARNING] S3 upload failed. You can upload manually:")
-            print(f"  aws s3 cp {parquet_path} s3://{S3_BUCKET}/{S3_KEY}")
-
-    # Cleanup checkpoint on success
-    if upload_success:
-        tracker = ProgressTracker(args.output_dir)
-        tracker.cleanup()
-
-    print(f"\n{'='*60}")
-    if upload_success or args.skip_upload:
-        print("Pipeline complete!")
-    else:
-        print("Pipeline FAILED - S3 upload unsuccessful")
-    print(f"{'='*60}")
-    print(f"\nNext step:")
-    print(f"  In Databricks, run: notebooks/awards/CreateHRSAAwards.ipynb")
+    if not upload_to_s3(parquet_path):
+        log("[WARN] Upload did not complete. Manual command:")
+        log(f"aws s3 cp {parquet_path} s3://{S3_BUCKET}/{S3_KEY}")
 
 
 if __name__ == "__main__":
