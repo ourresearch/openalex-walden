@@ -154,23 +154,29 @@ print(f"Chunk size: {CHUNK_DAYS} days; dry_run={DRY_RUN}")
 
 def sync_chunk(chunk_from: datetime, chunk_to: datetime):
     """Query locations_mapped for one [chunk_from, chunk_to) window, stream rows to D1
-    in BATCH_SIZE-row upserts. Returns (count, synced, failed_batches)."""
+    in BATCH_SIZE-row upserts. Returns (count, synced, failed_batches).
+
+    Filter uses `openalex_created_dt` (row-level row-creation date) rather than
+    `openalex_updated_dt`. `updated_dt` ticks whenever any field on the row
+    changes, which over a multi-month catch-up covers ~the entire table (~5M
+    rows/day churn); `created_dt` is sparse and catches exactly:
+      - new works since the last sync (their first locations_mapped row), and
+      - old works that just got a new pdf/grobid location row.
+
+    Edge case it misses: an in-place pdf_uuid replacement on an existing row.
+    Those are picked up by a separate antijoin pass against the D1 snapshot.
+    """
     query = f"""
-    WITH ranked AS (
-      SELECT
-        work_id,
-        REPLACE(pdf_s3_id, '.pdf', '') as pdf_uuid,
-        REPLACE(grobid_s3_id, '.xml.gz', '') as grobid_uuid,
-        ROW_NUMBER() OVER (PARTITION BY work_id ORDER BY pdf_s3_id) as rn
-      FROM openalex.works.locations_mapped
-      WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
-        AND work_id IS NOT NULL
-        AND openalex_updated_dt >= '{chunk_from.strftime("%Y-%m-%d %H:%M:%S")}'
-        AND openalex_updated_dt <  '{chunk_to.strftime("%Y-%m-%d %H:%M:%S")}'
-    )
-    SELECT work_id, pdf_uuid, grobid_uuid
-    FROM ranked
-    WHERE rn = 1
+    SELECT
+      work_id,
+      MIN(REPLACE(pdf_s3_id, '.pdf', ''))      AS pdf_uuid,
+      MIN(REPLACE(grobid_s3_id, '.xml.gz', '')) AS grobid_uuid
+    FROM openalex.works.locations_mapped
+    WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
+      AND work_id IS NOT NULL
+      AND openalex_created_dt >= '{chunk_from.strftime("%Y-%m-%d")}'
+      AND openalex_created_dt <  '{chunk_to.strftime("%Y-%m-%d")}'
+    GROUP BY work_id
     """
     df = spark.sql(query)
     count = df.count()
