@@ -520,7 +520,6 @@ resources:
             - task_key: FAPESP_Awards
             - task_key: NHMRC_Awards
             - task_key: DOD_Awards
-            - task_key: Crossref_Awards
             - task_key: Crossref_Awards_Insert
             - task_key: DataCite_Awards_Insert
             - task_key: European_Commission_Awards
