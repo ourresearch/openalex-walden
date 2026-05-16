@@ -3,18 +3,33 @@
 USDA Awards to S3 Data Pipeline (US Department of Agriculture, toptier)
 ================================
 
-This script downloads USDA grant data from USAspending.gov API,
+This script downloads USDA grant data from the USAspending.gov API,
 processes it into a parquet file, and uploads it to S3 for Databricks ingestion.
+
+Scope note:
+    This script is for the USDA toptier agency scope, matching the existing
+    EPA/AHRQ federal-USAspending pattern in this branch. A direct USDA NIFA CSV
+    exists and is cleaner for NIFA-specific awards, but it is narrower than all
+    USDA toptier grants. Do not silently replace this script with NIFA data
+    unless the PR/reviewer explicitly agrees to retarget the scope to NIFA.
+
+CHECK FIRST outcome:
+    The NIFA direct CSV was validated separately on 2026-05-15 (51,635 rows,
+    2001-10-08 through 2026-05-14, 100% award_dollars coverage), so the earlier
+    "NIFA unavailable" assumption is stale. It is still not a drop-in
+    replacement for this USDA toptier ingest because it covers one USDA agency
+    program family rather than the full Department of Agriculture award scope.
 
 Data Source: https://api.usaspending.gov/
 Output: s3://openalex-ingest/awards/usda/usda_awards.parquet
 
 What this script does:
-1. Requests bulk downloads from USAspending API for USDA grants (toptier; NIFA REEport/CRIS direct source attempted 2026-05-15 and unavailable) (FY2001-2025)
+1. Requests bulk downloads from USAspending API for USDA grants (toptier scope) (FY2001-2025)
 2. Downloads generated ZIP files containing CSV data
 3. Extracts and combines all CSVs
 4. Deduplicates by award_id_fain (keeping most recent record)
-5. Converts to parquet format
+5. Converts to parquet format with all raw columns stringified per
+   plans/awards/how-to-add-a-funder.md
 6. Uploads to S3
 
 Award Types:
@@ -90,7 +105,7 @@ S3_KEY = "awards/usda/usda_awards.parquet"
 
 def request_bulk_download(year: int, session: requests.Session) -> dict:
     """
-    Request a bulk download for USDA grants (toptier; NIFA REEport/CRIS direct source attempted 2026-05-15 and unavailable) in a specific fiscal year.
+    Request a bulk download for USDA toptier grants in a specific fiscal year.
 
     Args:
         year: Fiscal year (e.g., 2024)
@@ -531,8 +546,8 @@ def process_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         print(f"    - With description: {df['award_description'].notna().sum():,}")
 
     if 'total_obligated_amount' in df.columns:
-        df['total_obligated_amount'] = pd.to_numeric(df['total_obligated_amount'], errors='coerce')
-        total_funding = df['total_obligated_amount'].sum()
+        amount_for_summary = pd.to_numeric(df['total_obligated_amount'], errors='coerce')
+        total_funding = amount_for_summary.sum()
         print(f"    - Total funding: ${total_funding:,.0f}")
 
     if 'period_of_performance_start_date' in df.columns:
@@ -555,6 +570,9 @@ def save_to_parquet(df: pd.DataFrame, output_dir: Path) -> Path:
     output_path = output_dir / "usda_awards.parquet"
 
     print(f"\n  [SAVE] Writing to {output_path.name}...")
+    # Required by plans/awards/how-to-add-a-funder.md: all source columns string.
+    # The Databricks notebook performs award-schema casts with TRY_CAST/TRY_TO_DATE.
+    df = df.astype("string")
     df.to_parquet(output_path, index=False)
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
