@@ -19,27 +19,29 @@ resources:
               # notebook subtracts a 2h buffer internally.
               sync_from_override: "2026-01-21T21:21:24Z"
               sync_to_override: ""
-              chunk_days: "30"
               dry_run: "false"
           job_cluster_key: d1-backfill-cluster
       job_clusters:
         - job_cluster_key: d1-backfill-cluster
           new_cluster:
+            # Notebook is orchestration only — the scan runs on the SQL
+            # warehouse, and rows are streamed via the SQL connector. A small
+            # single-node cluster is plenty. Driver on-demand so a spot reclaim
+            # doesn't kill the multi-hour run.
             spark_version: 15.4.x-scala2.12
-            node_type_id: m5.xlarge
-            autoscale:
-              min_workers: 2
-              max_workers: 8
+            node_type_id: m5.large
+            num_workers: 0
+            spark_conf:
+              spark.master: "local[*, 4]"
+              spark.databricks.cluster.profile: singleNode
             aws_attributes:
-              # Pin the driver on-demand so a spot reclaim doesn't kill the
-              # whole run (previous attempt died exactly this way). Workers
-              # can stay spot for cost; losing a worker is recoverable.
-              availability: SPOT_WITH_FALLBACK
-              first_on_demand: 1
+              availability: ON_DEMAND
               zone_id: auto
               ebs_volume_type: GENERAL_PURPOSE_SSD
               ebs_volume_count: 1
               ebs_volume_size: 32
+            custom_tags:
+              ResourceClass: SingleNode
             data_security_mode: SINGLE_USER
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
