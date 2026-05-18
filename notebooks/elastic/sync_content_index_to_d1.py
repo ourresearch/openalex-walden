@@ -178,9 +178,10 @@ def _flush(batch: list) -> None:
         })
 
 
-print(f"\nStreaming rows from Spark…")
+rows = df.collect()
+print(f"\nCollected {len(rows):,} rows; upserting to D1…")
 batch: list = []
-for row in df.toLocalIterator():
+for row in rows:
     batch.append({"work_id": row.work_id, "pdf_uuid": row.pdf_uuid, "grobid_uuid": row.grobid_uuid})
     if len(batch) >= BATCH_SIZE:
         total_count += len(batch)
