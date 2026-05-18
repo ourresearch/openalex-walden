@@ -24,18 +24,13 @@ resources:
           new_cluster:
             spark_version: 15.4.x-scala2.12
             node_type_id: m5.2xlarge
-            num_workers: 0
-            spark_conf:
-              spark.master: "local[*, 4]"
-              spark.databricks.cluster.profile: singleNode
+            num_workers: 4
             aws_attributes:
               availability: ON_DEMAND
               zone_id: auto
               ebs_volume_type: GENERAL_PURPOSE_SSD
               ebs_volume_count: 1
               ebs_volume_size: 32
-            custom_tags:
-              ResourceClass: SingleNode
             data_security_mode: SINGLE_USER
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
