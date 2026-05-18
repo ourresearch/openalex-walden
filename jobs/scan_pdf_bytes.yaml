@@ -6,7 +6,14 @@ resources:
         Classifies the first 1024 bytes of every pdf_s3_id in locations_mapped
         to identify invalid PDFs (HTML / gzipped landing pages / error text)
         stored in the openalex-pdfs R2 bucket. Output: openalex.works.pdf_byte_classification[_suffix].
-        One-shot (PAUSED). Trigger manually for pilot (100K) then full (sample_limit=0).
+
+        One-shot (PAUSED). Trigger manually.
+
+        Pilot defaults (this YAML): sample_limit=100000, target_suffix=_pilot, num_partitions=128.
+        For the full 64.9M scan, override at trigger time:
+          sample_limit=0  target_suffix=""  num_partitions=2048
+        Smaller partitions (~32K rows each) reduce straggler impact and keep
+        executors busy across the long-running probe stage.
       email_notifications:
         on_failure:
           - casey@ourresearch.org

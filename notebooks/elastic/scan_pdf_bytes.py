@@ -42,7 +42,8 @@ R2_BUCKET = "openalex-pdfs"
 
 # 1024 bytes matches make_validation_set.py / the 10K validation set
 PROBE_BYTES = 1024
-THREADS_PER_TASK = 32
+# Network-bound probe; bump from 32 → 64 to drive R2 harder per task.
+THREADS_PER_TASK = 64
 
 R2_ACCESS_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-access-key-id")
 R2_SECRET_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-secret-access-key")
@@ -116,7 +117,7 @@ def scan_partition(rows):
     Classifier mirrors evidence/make_validation_set.py exactly so labels are
     directly comparable to the 10K validation set.
     """
-    import gzip
+    import zlib
     from concurrent.futures import ThreadPoolExecutor
 
     import boto3
@@ -134,9 +135,14 @@ def scan_partition(rows):
         if buf[:5] == b"%PDF-":
             return "VALID_PDF"
         if buf[:2] == b"\x1f\x8b":
+            # Streaming decompressor handles truncated gzip — gzip.decompress
+            # would error on partial streams, leaving us with the ambiguous
+            # GZIPPED_TRUNCATED bucket. zlib.decompressobj returns whatever
+            # decompressed so far, which is enough to inspect the inner head.
             try:
-                inner = gzip.decompress(buf)[: _PROBE_BYTES]
-            except (OSError, EOFError):
+                d = zlib.decompressobj(wbits=zlib.MAX_WBITS | 16)
+                inner = d.decompress(buf, _PROBE_BYTES)
+            except zlib.error:
                 inner = b""
             if not inner:
                 return "GZIPPED_TRUNCATED"
