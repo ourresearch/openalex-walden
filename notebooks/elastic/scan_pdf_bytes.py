@@ -65,18 +65,17 @@ print(f"sample_limit={SAMPLE_LIMIT:,}  target={TARGET_TABLE}  partitions={NUM_PA
 
 # COMMAND ----------
 
-# For a pilot, pull a random subset via WHERE rand() — much cheaper than
-# ORDER BY rand() over the full table.
+# For a pilot, TABLESAMPLE pushes the sample into the file scan so we don't
+# pay for the GROUP BY shuffle over the full ~71M-row matching set. A
+# given pdf_s3_id may map to multiple work_ids; for byte-validation that
+# doesn't matter — probing the same UUID twice is harmless and rare at low
+# sample rates. The full run does GROUP BY since we want one row per work.
 if SAMPLE_LIMIT > 0:
-    sample_frac = min(1.0, max(SAMPLE_LIMIT / 60_000_000 * 3, 0.001))
+    sample_pct = min(100.0, max(SAMPLE_LIMIT / 70_000_000 * 100 * 3, 0.01))
     df = spark.sql(f"""
-        SELECT
-          work_id,
-          MIN(pdf_s3_id) AS pdf_s3_id
-        FROM openalex.works.locations_mapped
+        SELECT work_id, pdf_s3_id
+        FROM openalex.works.locations_mapped TABLESAMPLE ({sample_pct} PERCENT)
         WHERE pdf_s3_id IS NOT NULL
-          AND rand() < {sample_frac}
-        GROUP BY work_id
         LIMIT {SAMPLE_LIMIT}
     """)
 else:
@@ -90,7 +89,6 @@ else:
     """)
 
 df = df.repartition(NUM_PARTITIONS)
-df.cache()
 total = df.count()
 print(f"Scanning {total:,} PDFs across {NUM_PARTITIONS} partitions")
 
