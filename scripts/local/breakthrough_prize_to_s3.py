@@ -290,6 +290,10 @@ def parse_detail_page(html: str, meta: dict[str, str]) -> dict[str, str | None]:
         "prize_title": prize_title,
         "citation": citation,
         "award_group_key": award_group_key,
+        # No Breakthrough Prize laureate has declined the award per the official
+        # site; kept for schema parity with Fields Medal / Abel Prize and to make
+        # the description CASE in the notebook idempotent.
+        "declined": False,
         "downloaded_at": datetime.utcnow().isoformat(timespec="seconds"),
     }
 
