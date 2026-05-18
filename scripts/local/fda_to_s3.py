@@ -555,6 +555,10 @@ def save_to_parquet(df: pd.DataFrame, output_dir: Path) -> Path:
     output_path = output_dir / "fda_awards.parquet"
 
     print(f"\n  [SAVE] Writing to {output_path.name}...")
+    # Required by plans/awards/how-to-add-a-funder.md: keep all raw/source
+    # columns string-typed so Spark/PyArrow cannot infer null-heavy columns
+    # as numeric and break downstream COALESCE/TRY_CAST logic.
+    df = df.astype("string")
     df.to_parquet(output_path, index=False)
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
