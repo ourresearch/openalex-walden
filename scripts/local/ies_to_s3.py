@@ -45,6 +45,9 @@ Requirements:
 Usage:
     python ies_to_s3.py
 
+    # Resume interrupted download:
+    python ies_to_s3.py --resume
+
     # Skip upload to S3:
     python ies_to_s3.py --skip-upload
 
@@ -79,6 +82,7 @@ MAX_RETRIES = 3
 
 S3_BUCKET = "openalex-ingest"
 S3_KEY = "awards/ies/ies_awards.parquet"
+CHECKPOINT_FILE = "ies_download_checkpoint.json"
 
 
 # =============================================================================
@@ -176,7 +180,32 @@ def flatten_hit(hit: dict[str, Any], fetched_at: str) -> dict[str, Any]:
     return {key: json_string(value) for key, value in row.items()}
 
 
-def fetch_all_awards() -> pd.DataFrame:
+def save_checkpoint(
+    checkpoint_path: Path,
+    rows: list[dict[str, Any]],
+    next_page: int,
+    total: int,
+    last_page: int,
+    fetched_at: str,
+) -> None:
+    """Persist progress so an interrupted IES API crawl can resume."""
+    payload = {
+        "rows": rows,
+        "next_page": next_page,
+        "total": total,
+        "last_page": last_page,
+        "fetched_at": fetched_at,
+        "last_updated": datetime.utcnow().isoformat(),
+    }
+    checkpoint_path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def load_checkpoint(checkpoint_path: Path) -> dict[str, Any]:
+    """Load a previously saved IES API checkpoint."""
+    return json.loads(checkpoint_path.read_text(encoding="utf-8"))
+
+
+def fetch_all_awards(output_dir: Path, resume: bool = False) -> pd.DataFrame:
     """Download all IES award rows from the official search API."""
     print(f"\n{'=' * 60}")
     print("Step 1: Downloading IES awards from official IES API")
@@ -194,18 +223,34 @@ def fetch_all_awards() -> pd.DataFrame:
         }
     )
 
-    first_page = fetch_page(0, session)
-    total = int(first_page["hits"]["total"]["value"])
-    last_page = int(first_page["hits"].get("last_page_num", 0))
-    print(f"  [INFO] API reports {total:,} records across {last_page + 1:,} pages")
+    checkpoint_path = output_dir / CHECKPOINT_FILE
+    if resume and checkpoint_path.exists():
+        checkpoint = load_checkpoint(checkpoint_path)
+        rows = checkpoint["rows"]
+        next_page = int(checkpoint["next_page"])
+        total = int(checkpoint["total"])
+        last_page = int(checkpoint["last_page"])
+        fetched_at = checkpoint["fetched_at"]
+        print(
+            f"  [CHECKPOINT] Resuming at page {next_page + 1:,}/{last_page + 1:,} "
+            f"with {len(rows):,}/{total:,} rows"
+        )
+    else:
+        first_page = fetch_page(0, session)
+        total = int(first_page["hits"]["total"]["value"])
+        last_page = int(first_page["hits"].get("last_page_num", 0))
+        print(f"  [INFO] API reports {total:,} records across {last_page + 1:,} pages")
 
-    fetched_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    rows = [flatten_hit(hit, fetched_at) for hit in first_page["hits"]["hits"]]
+        fetched_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        rows = [flatten_hit(hit, fetched_at) for hit in first_page["hits"]["hits"]]
+        next_page = 1
+        save_checkpoint(checkpoint_path, rows, next_page, total, last_page, fetched_at)
 
-    for page_num in range(1, last_page + 1):
+    for page_num in range(next_page, last_page + 1):
         print(f"  [PAGE] {page_num + 1}/{last_page + 1}", end="\r")
         data = fetch_page(page_num, session)
         rows.extend(flatten_hit(hit, fetched_at) for hit in data["hits"]["hits"])
+        save_checkpoint(checkpoint_path, rows, page_num + 1, total, last_page, fetched_at)
         time.sleep(REQUEST_DELAY)
 
     print()
@@ -214,6 +259,9 @@ def fetch_all_awards() -> pd.DataFrame:
 
     if len(df) != total:
         print(f"  [WARN] Downloaded row count ({len(df):,}) differs from API total ({total:,})")
+    elif checkpoint_path.exists():
+        checkpoint_path.unlink()
+        print("  [CHECKPOINT] Completed; checkpoint removed")
 
     return df
 
@@ -355,6 +403,11 @@ def main() -> None:
         action="store_true",
         help="Skip S3 upload step",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from checkpoint if an earlier API crawl was interrupted",
+    )
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -365,7 +418,7 @@ def main() -> None:
     print(f"Output directory: {args.output_dir.absolute()}")
     print(f"S3 destination: s3://{S3_BUCKET}/{S3_KEY}")
 
-    df = fetch_all_awards()
+    df = fetch_all_awards(args.output_dir, resume=args.resume)
     df = process_dataframe(df)
     parquet_path = save_to_parquet(df, args.output_dir)
 
