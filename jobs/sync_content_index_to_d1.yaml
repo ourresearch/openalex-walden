@@ -12,7 +12,7 @@ resources:
         # Run daily at 03:00 UTC (after end2end typically completes ~02:30 UTC)
         quartz_cron_expression: 0 0 3 * * ?
         timezone_id: UTC
-        pause_status: PAUSED  # Start paused until secret is configured
+        pause_status: UNPAUSED
       tasks:
         - task_key: sync_content_index
           notebook_task:
