@@ -76,6 +76,7 @@ if SAMPLE_LIMIT > 0:
         SELECT work_id, pdf_s3_id
         FROM openalex.works.locations_mapped TABLESAMPLE ({sample_pct} PERCENT)
         WHERE pdf_s3_id IS NOT NULL
+          AND work_id  IS NOT NULL
         LIMIT {SAMPLE_LIMIT}
     """)
 else:
@@ -85,6 +86,7 @@ else:
           MIN(pdf_s3_id) AS pdf_s3_id
         FROM openalex.works.locations_mapped
         WHERE pdf_s3_id IS NOT NULL
+          AND work_id  IS NOT NULL
         GROUP BY work_id
     """)
 
