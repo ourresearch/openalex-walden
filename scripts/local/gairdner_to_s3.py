@@ -222,6 +222,10 @@ def normalize_record(record: dict[str, Any]) -> dict[str, Any]:
         "citation": citation,
         "description": citation or award_summary or winner_bio,
         "winner_bio_text": winner_bio,
+        # No Gairdner laureate has declined the award per the official Sitefinity feed;
+        # kept for schema parity with Fields Medal / Abel Prize and to make the
+        # description CASE in the notebook idempotent.
+        "declined": False,
         "raw_awardwinner_json": json.dumps(record, ensure_ascii=False, sort_keys=True),
         "raw_award_json": json.dumps(award, ensure_ascii=False, sort_keys=True),
         "raw_winner_json": json.dumps(winner, ensure_ascii=False, sort_keys=True),
