@@ -31,7 +31,7 @@ resources:
       tasks:
         - task_key: scan_pdf_bytes
           notebook_task:
-            notebook_path: notebooks/elastic/scan_pdf_bytes
+            notebook_path: notebooks/scraping/scan_pdf_bytes
             source: GIT
             base_parameters:
               sample_limit: "{{job.parameters.sample_limit}}"
