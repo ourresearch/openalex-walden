@@ -281,6 +281,30 @@ python {funder_name}_to_s3.py
 
 Verify upload succeeded and note the row count.
 
+### 1.4 Re-ingestion safety: never shrink the corpus
+
+**When refreshing or re-ingesting an existing funder, do not overwrite the S3
+parquet if the new file has fewer rows than the previous one.** A shrinking
+corpus almost always means the source had a partial outage, an API/schema
+change dropped records, a scrape bailed early on a flake (see Step 1's
+"empty page ≠ end of corpus" note), or pagination broke — not that the funder
+genuinely retracted grants. If you overwrite, the Step 3 DELETE-by-(provenance,
+priority) wipes the old rows and you lose data that has no other source.
+
+Required pattern for any re-ingest script:
+
+1. Before uploading, read the existing parquet's row count from S3
+   (`s3://openalex-ingest/awards/{funder}/{funder}_projects.parquet`).
+2. Compare to the new dataframe's row count.
+3. If `new_count < previous_count`, **abort the upload** and surface the diff
+   to the user. Do not overwrite. Do not proceed to Step 2.
+4. Only continue if `new_count >= previous_count` (equal is fine — sources
+   often republish the same corpus between refreshes).
+
+Allow an explicit override flag (e.g. `--allow-shrink`) for the rare
+legitimate case where a funder genuinely removed records, but the default
+must be fail-closed.
+
 **→ Update tracker:** Change status to "Step 2" with row count in notes (e.g., "Downloaded 450,000 grants to S3").
 
 ---
