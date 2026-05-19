@@ -12,7 +12,12 @@ resources:
         # Run daily at 03:00 UTC (after end2end typically completes ~02:30 UTC)
         quartz_cron_expression: 0 0 3 * * ?
         timezone_id: UTC
-        pause_status: UNPAUSED
+        # PAUSED 2026-05-19 during #185 cohort delete — sync's incremental
+        # filter would re-INSERT cohort rows whose openalex_updated_dt happens
+        # to fall in the sync window before end2end NULLs locations_mapped
+        # pdf_s3_id / grobid_s3_id. Resume after end2end + sync_works land
+        # the cohort changes and a verification pass confirms the residual is 0.
+        pause_status: PAUSED
       tasks:
         - task_key: sync_content_index
           notebook_task:
