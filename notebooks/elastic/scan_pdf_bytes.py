@@ -42,8 +42,9 @@ R2_BUCKET = "openalex-pdfs"
 
 # 1024 bytes matches make_validation_set.py / the 10K validation set
 PROBE_BYTES = 1024
-# Network-bound probe; bump from 32 → 64 to drive R2 harder per task.
-THREADS_PER_TASK = 64
+# 32 threads/task is the sweet spot: 64 hit R2 connection-pool contention
+# and ran 33% slower on the second pilot. Scale via cluster width instead.
+THREADS_PER_TASK = 32
 
 R2_ACCESS_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-access-key-id")
 R2_SECRET_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-secret-access-key")
