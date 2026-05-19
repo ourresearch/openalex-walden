@@ -9,11 +9,26 @@ cohort drove the in-place `pdf_works.ids` strip MERGE (oxjob #185).
 
 D1 keys:
   - content_index PK: work_id (one row per work)
-  - pdf_uuid: bare source_pdf_id (no `.pdf` suffix) — matches openalex.pdf.invalid_pdfs
+  - pdf_uuid: bare source_pdf_id (no `.pdf` suffix). NOT indexed in D1.
 
 Approach:
-  1. Pull cohort source_pdf_ids from Databricks (~2.97M).
-  2. Batch DELETE by pdf_uuid IN (...) with 8 concurrent workers.
+  1. Pull (work_id, source_pdf_id) pairs from openalex.works.pdf_byte_classification
+     (~2.97M) — same WHERE filter that seeded invalid_pdfs, plus work_id.
+  2. Batch DELETE WHERE work_id IN (...) AND pdf_uuid IN (...) with 8 workers.
+     work_id is the PK so the planner uses the index for row lookup, then
+     filters pdf_uuid in-memory against the per-batch set.
+
+History note: the first version of this script used
+`DELETE WHERE pdf_uuid IN (...)` which D1's planner ran as a full table
+scan per batch (~196M rows examined per statement per the slow-query log)
+because pdf_uuid is not indexed. Throughput was ~22 rows/s. Switching to
+work_id-keyed delete uses the PK and should hit antijoin-class throughput
+(~9K rows/s).
+
+Safety: the AND pdf_uuid IN (...) clause guards against accidentally
+deleting a rescraped row. If a cohort work was rescraped between the scan
+and now, the D1 row has a new (good) pdf_uuid that is NOT in the cohort
+set, so the per-row predicate fails and the row is preserved.
 
 This DELETEs entire rows (work_id removed from D1) rather than NULL-ing
 pdf_uuid + grobid_uuid. Justification:
@@ -88,14 +103,19 @@ def d1_execute(token: str, sql_text: str, max_retries: int = 4) -> dict:
     raise RuntimeError(f"D1 retries exhausted: {last_err}")
 
 
-def d1_batch_delete(token: str, pdf_uuids: list[str]) -> int:
-    if not pdf_uuids:
+def d1_batch_delete(token: str, pairs: list[tuple[int, str]]) -> int:
+    """DELETE by (work_id, pdf_uuid) pair. work_id is PK in D1 → index used."""
+    if not pairs:
         return 0
-    # Single-quoted IN list. source_pdf_id is a UUID — no quote-escaping needed.
-    in_list = ",".join(f"'{u}'" for u in pdf_uuids)
-    sql = f"DELETE FROM content_index WHERE pdf_uuid IN ({in_list})"
+    work_ids = ",".join(str(w) for w, _ in pairs)
+    pdf_uuids = ",".join(f"'{u}'" for _, u in pairs)
+    sql = (
+        f"DELETE FROM content_index "
+        f"WHERE work_id IN ({work_ids}) "
+        f"AND pdf_uuid IN ({pdf_uuids})"
+    )
     d1_execute(token, sql)
-    return len(pdf_uuids)
+    return len(pairs)
 
 
 def fetch_d1_stats(token: str) -> dict:
@@ -136,18 +156,30 @@ def update_d1_stats(token: str) -> None:
     )
 
 
-def fetch_cohort(limit: int | None) -> list[str]:
-    """Pull source_pdf_ids from openalex.pdf.invalid_pdfs via the warehouse."""
-    print("\nFetching cohort from openalex.pdf.invalid_pdfs…")
+def fetch_cohort(limit: int | None) -> list[tuple[int, str]]:
+    """Pull (work_id, source_pdf_id) pairs from pdf_byte_classification.
+
+    Same WHERE filter that seeded openalex.pdf.invalid_pdfs, but we go
+    direct to pdf_byte_classification because we also need work_id (the
+    D1 PK) — invalid_pdfs only carries source_pdf_id.
+    """
+    print("\nFetching (work_id, source_pdf_id) pairs from pdf_byte_classification…")
     t0 = time.time()
     limit_clause = f"LIMIT {limit}" if limit else ""
-    query = f"SELECT source_pdf_id FROM openalex.pdf.invalid_pdfs {limit_clause}"
+    query = (
+        "SELECT work_id, REPLACE(pdf_s3_id, '.pdf', '') AS source_pdf_id "
+        "FROM openalex.works.pdf_byte_classification "
+        "WHERE label NOT IN ('VALID_PDF', 'R2_ERROR') "
+        "  AND pdf_s3_id IS NOT NULL "
+        "  AND work_id IS NOT NULL "
+        f"{limit_clause}"
+    )
     with get_connection(size="medium") as conn:
         with conn.cursor() as cursor:
             cursor.execute(query)
             rows = cursor.fetchall()
-    cohort = [r[0] for r in rows]
-    print(f"  → fetched {len(cohort):,} source_pdf_ids in {time.time() - t0:.0f}s")
+    cohort = [(r[0], r[1]) for r in rows]
+    print(f"  → fetched {len(cohort):,} pairs in {time.time() - t0:.0f}s")
     return cohort
 
 
@@ -181,8 +213,8 @@ def main() -> None:
         return
 
     if args.dry_run:
-        print(f"\nDRY RUN — would issue DELETEs for {len(cohort):,} pdf_uuids "
-              f"in {-(-len(cohort) // args.batch_size):,} batches of {args.batch_size}.")
+        print(f"\nDRY RUN — would issue DELETEs for {len(cohort):,} (work_id, pdf_uuid) "
+              f"pairs in {-(-len(cohort) // args.batch_size):,} batches of {args.batch_size}.")
         return
 
     batches = [cohort[i : i + args.batch_size] for i in range(0, len(cohort), args.batch_size)]
@@ -197,8 +229,8 @@ def main() -> None:
             return d1_batch_delete(token, batch), None
         except Exception as e:
             return 0, {
-                "first_uuid": batch[0],
-                "last_uuid": batch[-1],
+                "first_work_id": batch[0][0],
+                "last_work_id": batch[-1][0],
                 "size": len(batch),
                 "error": str(e)[:500],
             }
