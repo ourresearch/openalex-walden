@@ -330,6 +330,18 @@ def normalize_license_udf(license_series: pd.Series) -> pd.Series:
 
 # COMMAND ----------
 
+def _invalid_pdf_filter():
+    # Filter source for grobid_raw + pdf_backfill — source_pdf_ids classified as
+    # invalid by scan_pdf_bytes (HTML stored as PDF, error text, R2-missing, etc.).
+    # See notebooks/scraping/create_invalid_pdfs.py and oxjob #185.
+    # Defensive read: if the table doesn't exist yet (first deploy / fresh env),
+    # fall back to an empty filter so the pipeline still runs.
+    try:
+        return spark.read.table("openalex.pdf.invalid_pdfs").select("source_pdf_id")
+    except Exception:
+        return spark.createDataFrame([], "source_pdf_id STRING")
+
+
 @dlt.view
 def grobid_raw():
     return (
@@ -337,6 +349,7 @@ def grobid_raw():
         .format("delta")
         .table("openalex.pdf.grobid_processing_results")
         .where("source_pdf_id IS NOT NULL")
+        .join(_invalid_pdf_filter(), on="source_pdf_id", how="left_anti")
         .withColumn("native_id",
             when(
                 col("native_id").startswith("https://doi.org/"),
@@ -443,7 +456,11 @@ def pdf_parse():
 
 @dlt.view
 def pdf_backfill():
-    return (
+    # Extract source_pdf_id from the docs.pdf entry in `ids` for anti-join
+    # against openalex.pdf.invalid_pdfs. The backfill table doesn't expose
+    # source_pdf_id as a top-level column, so we recover it from the ids
+    # struct array. The stored id is `<source_pdf_id>.pdf` — strip the suffix.
+    base = (
         spark.readStream
             .format("delta")
             .option("readChangeFeed", "true")
@@ -452,6 +469,15 @@ def pdf_backfill():
             .drop("_change_type", "_commit_version", "_commit_timestamp")
             .withColumn("created_date", to_timestamp(col("created_date")))
             .withColumn("ingested_at", current_timestamp())
+            .withColumn(
+                "_source_pdf_id_for_filter",
+                expr("regexp_replace(element_at(filter(ids, x -> x.namespace = 'docs.pdf'), 1).id, '\\\\.pdf$', '')")
+            )
+    )
+    invalid = _invalid_pdf_filter().withColumnRenamed("source_pdf_id", "_invalid_source_pdf_id")
+    return (
+        base.join(invalid, base._source_pdf_id_for_filter == invalid._invalid_source_pdf_id, "left_anti")
+            .drop("_source_pdf_id_for_filter")
     )
 
 @dlt.table
