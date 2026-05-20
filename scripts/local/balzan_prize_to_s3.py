@@ -412,6 +412,59 @@ def find_aws_cli() -> str | None:
     return None
 
 
+def check_no_shrink(new_count: int, allow_shrink: bool, output_dir: Path) -> bool:
+    """
+    Runbook §1.4 — never shrink the corpus on re-ingest. Read the existing
+    S3 parquet's row count; if the new dataframe has fewer rows, abort.
+    Returns True if it's safe to proceed; False if upload must be aborted.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+    except ImportError as exc:
+        raise RuntimeError(
+            "boto3 is required for the §1.4 shrink-check; rerun with --skip-upload to bypass"
+        ) from exc
+    client = boto3.client("s3")
+    log(f"§1.4 re-ingest safety check vs s3://{S3_BUCKET}/{S3_KEY}")
+    try:
+        client.head_object(Bucket=S3_BUCKET, Key=S3_KEY)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            log("  no existing parquet at S3 path — first ingest, no shrink check.")
+            return True
+        log(f"  [WARN] head_object failed ({code}); treating as first ingest")
+        return True
+    prev_path = output_dir / "_prev_balzan_prize_laureates.parquet"
+    try:
+        client.download_file(S3_BUCKET, S3_KEY, str(prev_path))
+        import pandas as pd
+        prev_count = len(pd.read_parquet(prev_path))
+    except Exception as e:
+        log(f"  [ERROR] couldn't read existing parquet ({e}); aborting upload "
+            f"to avoid clobbering unknown data. Re-run with --allow-shrink if "
+            f"you've verified the previous file is corrupt or empty.")
+        return False
+    finally:
+        prev_path.unlink(missing_ok=True)
+    log(f"  previous count: {prev_count}   new count: {new_count}")
+    if new_count < prev_count:
+        if allow_shrink:
+            log(f"  [OVERRIDE] new < previous but --allow-shrink set; proceeding.")
+            return True
+        log(
+            f"  [ERROR] §1.4 violation: refusing to shrink corpus "
+            f"({prev_count} -> {new_count}). Cause is almost always a "
+            f"source-side partial outage, schema change, or pagination bug — "
+            f"not a genuine retraction. Investigate first; re-run with "
+            f"--allow-shrink if confirmed intentional."
+        )
+        return False
+    log("  [OK] new corpus is not smaller; safe to overwrite.")
+    return True
+
+
 def upload_to_s3(local_path: Path) -> bool:
     s3_uri = f"s3://{S3_BUCKET}/{S3_KEY}"
     log(f"uploading {local_path} -> {s3_uri}")
@@ -452,6 +505,11 @@ def main() -> None:
         action="store_true",
         help="Skip S3 upload after writing parquet",
     )
+    parser.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        help="Override the runbook §1.4 shrink-check. Only use after confirming a smaller corpus is intentional.",
+    )
     args = parser.parse_args()
 
     rows = fetch_rows(args.output_dir, use_cache=args.use_cache)
@@ -459,6 +517,10 @@ def main() -> None:
 
     upload_success = True
     if not args.skip_upload:
+        import pandas as pd
+        new_count = len(pd.read_parquet(parquet_path))
+        if not check_no_shrink(new_count, args.allow_shrink, args.output_dir):
+            raise SystemExit("§1.4 shrink-check failed. See above; re-run with --allow-shrink if intentional.")
         upload_success = upload_to_s3(parquet_path)
         if not upload_success:
             log(f"manual upload command: aws s3 cp {parquet_path} s3://{S3_BUCKET}/{S3_KEY}")
