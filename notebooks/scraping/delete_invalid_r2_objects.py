@@ -199,17 +199,29 @@ else:
             per_bucket[r.bucket].append(r.key)
 
         def delete_chunk(bucket, keys):
+            # Returns (bucket, deleted, errored, exception, error_sample, sample_key)
+            # - errored: per-key errors returned by delete_objects (response body)
+            # - exception: whole-batch failures (ClientError OR any other Exception)
+            # - error_sample: first error message seen, for surfacing to caller
+            # - sample_key: one of the keys in the failed batch, for repro
             try:
                 resp = s3.delete_objects(
                     Bucket=bucket,
                     Delete={"Objects": [{"Key": k} for k in keys], "Quiet": True},
                 )
                 errors = resp.get("Errors", []) or []
-                return bucket, len(keys) - len(errors), len(errors), 0
+                err_sample = None
+                if errors:
+                    first = errors[0]
+                    err_sample = f"{first.get('Code', '?')}: {first.get('Message', '?')[:200]}"
+                sample_key = (errors[0].get("Key") if errors else None) or (keys[0] if keys else None)
+                return bucket, len(keys) - len(errors), len(errors), 0, err_sample, sample_key
             except ClientError as e:
-                return bucket, 0, 0, len(keys)  # treat whole batch as failed
-            except Exception:
-                return bucket, 0, 0, len(keys)
+                code = e.response.get("Error", {}).get("Code", "?")
+                msg = e.response.get("Error", {}).get("Message", "?")[:200]
+                return bucket, 0, 0, len(keys), f"ClientError {code}: {msg}", keys[0] if keys else None
+            except Exception as e:
+                return bucket, 0, 0, len(keys), f"{type(e).__name__}: {str(e)[:200]}", keys[0] if keys else None
 
         tasks = []
         for bucket, keys in per_bucket.items():
@@ -222,19 +234,28 @@ else:
         with ThreadPoolExecutor(max_workers=_THREADS_PER_TASK) as ex:
             results = list(ex.map(lambda t: delete_chunk(*t), tasks))
 
-        # Roll up: (bucket, deleted, errored, exception)
-        agg = defaultdict(lambda: [0, 0, 0])
-        for bucket, d, e, x in results:
-            agg[bucket][0] += d
-            agg[bucket][1] += e
-            agg[bucket][2] += x
-        return iter([(bucket, d, e, x) for bucket, (d, e, x) in agg.items()])
+        # Roll up per bucket: counts + first error_sample + first sample_key
+        agg: dict = {}
+        for bucket, d, e, x, err_sample, sample_key in results:
+            row = agg.setdefault(bucket, {"d": 0, "e": 0, "x": 0, "err": None, "key": None})
+            row["d"] += d
+            row["e"] += e
+            row["x"] += x
+            if row["err"] is None and err_sample:
+                row["err"] = err_sample
+                row["key"] = sample_key
+        return iter([
+            (bucket, v["d"], v["e"], v["x"], v["err"], v["key"])
+            for bucket, v in agg.items()
+        ])
 
     result_schema = StructType([
         StructField("bucket", StringType(), False),
         StructField("deleted", IntegerType(), False),
         StructField("errored", IntegerType(), False),
         StructField("exception", IntegerType(), False),
+        StructField("error_sample", StringType(), True),
+        StructField("sample_key", StringType(), True),
     ])
 
     print("Starting mapPartitions delete…")
@@ -247,6 +268,9 @@ else:
             F.sum("deleted").alias("deleted"),
             F.sum("errored").alias("errored"),
             F.sum("exception").alias("exception"),
+            # First non-null error across partitions for that bucket
+            F.first("error_sample", ignorenulls=True).alias("error_sample"),
+            F.first("sample_key", ignorenulls=True).alias("sample_key"),
         )
     )
     result_df.show(truncate=False)
