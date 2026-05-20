@@ -3,7 +3,7 @@
 # MAGIC # Delete invalid R2 objects
 # MAGIC
 # MAGIC Purges bad-cohort objects from R2 — both the PDF bytes in `openalex-pdfs`
-# MAGIC and (optionally) the cascaded GROBID XMLs in `openalex-content-xml`. Pairs
+# MAGIC and (optionally) the cascaded GROBID XMLs in `openalex-grobid-xml`. Pairs
 # MAGIC with the in-place pdf_works strip (notebooks/scraping/strip_invalid_pdfs_from_pdf_works.py)
 # MAGIC and the D1 deletion (scripts/run_d1_delete_invalid_pdfs.py). Oxjob #185.
 # MAGIC
@@ -12,7 +12,7 @@
 # MAGIC - **PDF keys**: `openalex.pdf.invalid_pdfs.source_pdf_id` → key `<uuid>.pdf` in `openalex-pdfs`.
 # MAGIC - **XML keys**: pdf_works @ time-travel version (pre-strip), extract docs.parsed-pdf
 # MAGIC   entries from rows whose docs.pdf was in cohort → key `<uuid>.xml.gz` in
-# MAGIC   `openalex-content-xml`. We need time travel because the strip MERGE removed
+# MAGIC   `openalex-grobid-xml`. We need time travel because the strip MERGE removed
 # MAGIC   those entries; current pdf_works no longer has the mapping. The Delta default
 # MAGIC   file retention is 7 days — verify your version is still available.
 # MAGIC
@@ -55,7 +55,7 @@ from pyspark.sql.types import (
 CF_ACCOUNT_ID = "a452eddbbe06eb7d02f4879cee70d29c"
 R2_ENDPOINT = f"https://{CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
 R2_PDF_BUCKET = "openalex-pdfs"
-R2_XML_BUCKET = "openalex-content-xml"
+R2_XML_BUCKET = "openalex-grobid-xml"
 
 # R2's DeleteObjects supports up to 1000 keys per request. Use the max.
 DELETE_BATCH_KEYS = 1000

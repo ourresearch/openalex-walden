@@ -4,7 +4,7 @@ resources:
       name: Delete Invalid R2 Objects (#185)
       description: |
         Deletes bad-cohort objects from R2 — the PDF bytes in openalex-pdfs
-        and (optionally) the cascaded GROBID XMLs in openalex-content-xml.
+        and (optionally) the cascaded GROBID XMLs in openalex-grobid-xml.
         Pairs with the in-place pdf_works strip and the D1 cohort delete.
 
         Sources:
