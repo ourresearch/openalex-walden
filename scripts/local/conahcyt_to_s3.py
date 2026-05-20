@@ -136,7 +136,22 @@ def smoke_test() -> None:
 
 
 def discover_snii_csv_urls() -> list[tuple[str, str]]:
-    """Return list of (year, csv_url) for all S191 CSVs."""
+    """
+    Return list of (year, csv_url) for the modern-schema S191 CSVs.
+
+    Schema-drift map (verified 2026-05-20 by downloading 2012/2018/2024):
+
+      2012-2018: OLD schema (10 cols). Lacks cvu, monto_anual,
+                 fecha_inicio_vig, fecha_termino_vig, tipo_apoyo. Cannot
+                 build per-appointment-cycle dedup or ship amount.
+                 EXCLUDED from this ingest — covered as Step 0 follow-up
+                 in the tracker for a separate historical-data PR.
+      2019-2023: MODERN schema (17 cols, includes nom_conv).
+      2024:      MODERN schema (16 cols, nom_conv dropped).
+
+    We filter to >= 2019 so every row has the keys we ship (cvu, amount,
+    appointment start_date).
+    """
     r = requests.get(CKAN_PACKAGE_URL, headers={"User-Agent": USER_AGENT}, timeout=30)
     r.raise_for_status()
     j = r.json()
@@ -147,6 +162,12 @@ def discover_snii_csv_urls() -> list[tuple[str, str]]:
         url = res["url"]
         m = re.search(r"_(\d{4})\.csv$", url)
         year = m.group(1) if m else "unknown"
+        # Hard filter: pre-2019 CSVs lack cvu and amount — skip.
+        try:
+            if int(year) < 2019:
+                continue
+        except ValueError:
+            continue
         out.append((year, url))
     return sorted(out)
 
@@ -198,21 +219,47 @@ def parse_date(raw: Optional[str]) -> Optional[str]:
 
 
 # SNII level → human-readable funder_scheme string.
-# `nivel_distincion` field values: 1, 2, 3, C (Candidato), E (Emérito).
+# `nivel_distincion` field values observed in the 2019-2024 corpus
+# (2026-05-20 verification across 6 years = 220,720 rows):
+#   '1'       118,439  Investigador Nacional Nivel 1
+#   'C'       54,113   Candidato a Investigador Nacional
+#   '2'       31,310   Investigador Nacional Nivel 2
+#   '3'       14,466   Investigador Nacional Nivel 3
+#   'Emérito'    933   ┐
+#   'E'          897   ├─ all three are the SAME level (case + spelling drift)
+#   'EMÉRITO'    562   ┘  → normalized to a single SNII Emérito scheme below
+#
+# Pre-2019 CSVs (OLD 10-col schema, filtered out at discovery time) had
+# 36 rows with nivel_distincion='4' — undocumented historical level, not
+# present in any 2019+ data.
 _LEVEL_LABEL = {
     "1": "SNII Investigador Nivel 1",
     "2": "SNII Investigador Nivel 2",
     "3": "SNII Investigador Nivel 3",
     "C": "SNII Candidato a Investigador",
     "E": "SNII Investigador Emérito",
+    # All three Emérito variants normalize to the same scheme
+    "EMERITO":  "SNII Investigador Emérito",
+    "EMÉRITO":  "SNII Investigador Emérito",
 }
+
+
+def normalize_level(raw: Optional[str]) -> Optional[str]:
+    """Canonicalize the level code so dedup + scheme assignment are consistent."""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    # Three Emérito spellings → 'E'
+    if s.upper().replace("É", "E") == "EMERITO":
+        return "E"
+    return s.upper() if len(s) == 1 else s
 
 
 def label_level(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
-    key = str(raw).strip().upper()
-    return _LEVEL_LABEL.get(key, f"SNII Nivel {key}")
+    canon = normalize_level(raw)
+    return _LEVEL_LABEL.get(canon, f"SNII Nivel {canon} (uncoded)")
 
 
 def build_dataframe(csv_paths: list[Path]) -> pd.DataFrame:
@@ -227,40 +274,45 @@ def build_dataframe(csv_paths: list[Path]) -> pd.DataFrame:
     raw = pd.concat(frames, ignore_index=True)
     print(f"\n  combined raw rows: {len(raw):,}")
 
-    # Normalize columns
-    rename_map = {
-        "anio": "anio",
-        "cvu": "cvu",
-        "nombre": "nombre",
-        "primer_apellido": "primer_apellido",
-        "segundo_apellido": "segundo_apellido",
-        "grado_estudios": "grado_estudios",
-        "nivel_distincion": "nivel_distincion",
-        "inst_adscrip": "inst_adscrip",
-        "entidad_federativa_inst_adscrip": "entidad_federativa",
-        "area_conocimiento": "area_conocimiento",
-        "fecha_inicio_vig": "fecha_inicio_vig",
-        "fecha_termino_vig": "fecha_termino_vig",
-        "tipo_apoyo": "tipo_apoyo",
-        "monto_anual": "monto_anual",
-        "monto_anual_adicional": "monto_anual_adicional",
-        "otros_apoyos": "otros_apoyos",
+    # Schema normalization. Required cols are present in all 2019+ files
+    # (verified 2026-05-20). The optional `nom_conv` column is present in
+    # 2019-2023 files but dropped in 2024.
+    REQUIRED_COLS = {
+        "anio", "cvu", "nombre", "primer_apellido", "segundo_apellido",
+        "grado_estudios", "nivel_distincion", "inst_adscrip",
+        "entidad_federativa_inst_adscrip", "area_conocimiento",
+        "fecha_inicio_vig", "fecha_termino_vig", "tipo_apoyo",
+        "monto_anual", "monto_anual_adicional", "otros_apoyos",
     }
-    missing = [c for c in rename_map if c not in raw.columns]
+    OPTIONAL_COLS = {"nom_conv"}
+    missing = REQUIRED_COLS - set(raw.columns)
     if missing:
-        print(f"[ERROR] expected columns missing: {missing}\n"
-              f"  actual columns: {list(raw.columns)}")
+        print(f"[ERROR] expected columns missing: {sorted(missing)}\n"
+              f"  actual columns: {list(raw.columns)}\n"
+              f"  This usually means a pre-2019 CSV slipped through the\n"
+              f"  filter — those use the OLD 10-column schema with no cvu/amount/dates.")
         sys.exit(4)
-    raw = raw.rename(columns=rename_map)
+    # Backfill optional column if absent (e.g. 2024 doesn't have nom_conv).
+    for opt in OPTIONAL_COLS:
+        if opt not in raw.columns:
+            raw[opt] = ""
+    raw = raw.rename(columns={"entidad_federativa_inst_adscrip": "entidad_federativa"})
 
-    # Parse dates
+    # Parse dates (2019-2024 verified: 99.8% parse rate; remainder includes
+    # ~80 'SUSPENSIÓN DE VIGENCIA' values + 505 EMPTY rows we tolerate).
     raw["start_date"] = raw["fecha_inicio_vig"].apply(parse_date)
     raw["end_date"]   = raw["fecha_termino_vig"].apply(parse_date)
 
-    # Per-appointment dedup key (cvu × level × start_date)
+    # Normalize the level field BEFORE building dedup key — without this,
+    # the three Emérito spellings ('E', 'Emérito', 'EMÉRITO') split into
+    # three different dedup buckets and we'd ship triplicate rows for the
+    # same researcher's Emérito appointment.
+    raw["level_canon"] = raw["nivel_distincion"].apply(normalize_level)
+
+    # Per-appointment dedup key (cvu × canonical level × start_date)
     raw["dedup_key"] = (
         raw["cvu"].fillna("") + "|"
-        + raw["nivel_distincion"].fillna("") + "|"
+        + raw["level_canon"].fillna("") + "|"
         + raw["start_date"].fillna("")
     )
 
@@ -277,7 +329,9 @@ def build_dataframe(csv_paths: list[Path]) -> pd.DataFrame:
     for r in raw.to_dict(orient="records"):
         cvu = (r.get("cvu") or "").strip()
         start = r.get("start_date") or ""
-        level = (r.get("nivel_distincion") or "").strip()
+        # Use the CANONICAL level (E for all three Emérito spellings) so
+        # the funder_award_id is stable across the source-data spelling drift.
+        level = (r.get("level_canon") or "").strip()
         if not cvu:
             continue
         funder_award_id = f"conahcyt-snii-{cvu}-{level}-{start}"
@@ -296,7 +350,11 @@ def build_dataframe(csv_paths: list[Path]) -> pd.DataFrame:
         full_name = " ".join(x for x in (given, family,
                                           (r.get("segundo_apellido") or "").strip()) if x)
 
-        # Amount parsing — strip commas, handle blank
+        # Amount parsing — strip commas, handle blank.
+        # 2019-2024 verification: 8.2% of rows have NULL/empty monto_anual
+        # (mostly Candidatos with distinction but no stipend) and a small
+        # number have NEGATIVE values (refund/correction rows, min -57699).
+        # Treat both NULL and <=0 as missing.
         def num(s):
             try:
                 v = float(str(s).replace(",", "").strip()) if s and str(s).strip() else None
