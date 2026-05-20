@@ -132,6 +132,10 @@ def build_xml_keys():
       FROM _pre_exploded e
       JOIN _victim_native_ids v ON e.native_id = v.native_id
       WHERE e.i.namespace = 'docs.parsed-pdf'
+        -- docs.parsed-pdf id = CONCAT(grobid_processing_results.id, '.xml.gz')
+        -- which is NULL when GROBID never ran for that PDF (PDF exists, XML
+        -- doesn't). Skip — there's no R2 object to delete.
+        AND e.i.id IS NOT NULL
       {limit}
     """)
 
