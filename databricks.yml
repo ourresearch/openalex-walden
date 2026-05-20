@@ -23,6 +23,7 @@ include:
   - jobs/sync_concepts_to_elasticsearch.yaml
   - jobs/sync_common_entities_to_elasticsearch.yaml
   - jobs/sync_content_index_to_d1.yaml
+  - jobs/d1_antijoin_grobid.yaml
   - jobs/scan_pdf_bytes.yaml
   - jobs/delete_invalid_r2_objects.yaml
   - jobs/delete_invalid_dynamodb_entries.yaml

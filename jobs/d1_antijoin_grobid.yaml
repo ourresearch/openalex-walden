@@ -1,0 +1,65 @@
+resources:
+  jobs:
+    D1_Antijoin_Grobid:
+      name: D1 Antijoin — grobid_uuid (#202 Track 1)
+      description: |
+        Closes the column-level gap between locations_mapped.grobid_s3_id and
+        D1 content_index.grobid_uuid. Finds work_ids that ARE in D1 (with
+        pdf_uuid) but have grobid_uuid = NULL despite LM having a grobid_s3_id
+        for them, and upserts the missing grobid_uuid while preserving pdf_uuid.
+
+        2026-05-20 dry-run measured 5,158,475 rows to upsert after bad-cohort
+        exclusion (~216K bad UUIDs anti-joined out to avoid 404 → BAD_BYTE
+        regression). Expected runtime ~3 hours.
+
+        Customer impact: closes ~9.35% BAD_404 rate per the 10K customer-view
+        validation (evidence/xml_validation_set_2026-05-20.jsonl, oxjob #202).
+
+        One-shot (PAUSED). Trigger manually. Idempotent (INSERT OR REPLACE).
+
+        Widgets:
+          dry_run=true       # size the gap, no D1 writes
+          dry_run=false      # do the upserts
+          pilot_limit=1000   # upsert only first N (sanity check before full run)
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 0 0 6 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED
+      parameters:
+        - name: dry_run
+          default: "true"
+        - name: pilot_limit
+          default: "0"
+      tasks:
+        - task_key: d1_antijoin_grobid
+          notebook_task:
+            notebook_path: notebooks/elastic/d1_antijoin_grobid
+            source: GIT
+            base_parameters:
+              dry_run: "{{job.parameters.dry_run}}"
+              pilot_limit: "{{job.parameters.pilot_limit}}"
+          job_cluster_key: d1-antijoin-cluster
+      job_clusters:
+        - job_cluster_key: d1-antijoin-cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: m5d.2xlarge
+            num_workers: 4
+            runtime_engine: PHOTON
+            aws_attributes:
+              availability: ON_DEMAND
+              zone_id: auto
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 32
+            data_security_mode: SINGLE_USER
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
