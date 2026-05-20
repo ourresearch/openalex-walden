@@ -60,6 +60,7 @@ import re
 import subprocess
 import sys
 from datetime import datetime, timezone
+from html import unescape
 from pathlib import Path
 from typing import Optional
 
@@ -244,13 +245,15 @@ def build_dataframe(csv_paths: list[Path]) -> pd.DataFrame:
             amount_value = amount
 
         # Combine ProjectDesc + ToSupport for the awards.description field.
+        # ProjectDesc carries rich HTML — strip tags AND decode HTML entities
+        # (precedent: Wolf had &nbsp;/&quot; leak into the parquet, fixed in
+        # walden f1281fa with html.unescape; we apply the same hygiene here).
         desc_parts = []
         if r.get("ToSupport"):
-            desc_parts.append(r["ToSupport"].strip())
+            desc_parts.append(unescape(r["ToSupport"]).strip())
         if r.get("ProjectDesc") and r["ProjectDesc"].strip() not in {"", "Description not available"}:
-            # Strip HTML tags from ProjectDesc (NEH stores rich HTML in this field).
             clean = re.sub(r"<[^>]+>", " ", r["ProjectDesc"])
-            clean = re.sub(r"\s+", " ", clean).strip()
+            clean = unescape(re.sub(r"\s+", " ", clean)).strip()
             if clean and clean.lower() != "description not available":
                 desc_parts.append(clean)
         description = " — ".join(desc_parts) if desc_parts else None
@@ -258,23 +261,27 @@ def build_dataframe(csv_paths: list[Path]) -> pd.DataFrame:
         lead_name, lead_role, all_parts = parse_participants(r.get("Participants"))
         lead_given, lead_family = split_name(lead_name) if lead_name else ("", "")
 
+        # Defensive html.unescape on every user-visible text field — NEH's
+        # CSVs are mostly clean but `&amp;`/`&nbsp;` show up sporadically in
+        # ProjectTitle and Institution (e.g. "Art &amp; Architecture Museum").
+        def u(v): return unescape(v) if isinstance(v, str) and v else (v or None)
         rows.append({
             "funder_award_id":     r.get("AppNumber") or None,
             "applicant_type":      r.get("ApplicantType") or None,
-            "institution":         r.get("Institution") or None,
+            "institution":         u(r.get("Institution")),
             "organization_type":   r.get("OrganizationType") or None,
-            "inst_city":           r.get("InstCity") or None,
+            "inst_city":           u(r.get("InstCity")),
             "inst_state":          r.get("InstState") or None,
             "inst_country":        r.get("InstCountry") or None,
             "inst_postal_code":    r.get("InstPostalCode") or None,
             "latitude":            r.get("Latitude") or None,
             "longitude":           r.get("Longitude") or None,
             "year_awarded":        r.get("YearAwarded") or None,
-            "project_title":       r.get("ProjectTitle") or None,
-            "program":             r.get("Program") or None,
-            "division":            r.get("Division") or None,
-            "primary_discipline":  r.get("PrimaryDiscipline") or None,
-            "disciplines":         r.get("Disciplines") or None,
+            "project_title":       u(r.get("ProjectTitle")),
+            "program":             u(r.get("Program")),
+            "division":            u(r.get("Division")),
+            "primary_discipline":  u(r.get("PrimaryDiscipline")),
+            "disciplines":         u(r.get("Disciplines")),
             "description":         description,
             "begin_grant":         parse_neh_date(r.get("BeginGrant")),
             "end_grant":           parse_neh_date(r.get("EndGrant")),
