@@ -408,6 +408,59 @@ def write_parquet(rows: list[dict[str, str | None]], output_path: Path) -> pd.Da
     return df
 
 
+def check_no_shrink(new_count: int, allow_shrink: bool, output_dir: Path) -> bool:
+    """
+    Runbook §1.4 — never shrink the corpus on re-ingest. Read the existing
+    S3 parquet's row count; if the new dataframe has fewer rows, abort.
+    Returns True if it's safe to proceed; False if upload must be aborted.
+    """
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+    except ImportError as exc:
+        raise RuntimeError(
+            "boto3 is required for the §1.4 shrink-check; rerun with --skip-upload to bypass"
+        ) from exc
+    client = boto3.client("s3")
+    log(f"§1.4 re-ingest safety check vs s3://{S3_BUCKET}/{S3_KEY}")
+    try:
+        client.head_object(Bucket=S3_BUCKET, Key=S3_KEY)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            log("  no existing parquet at S3 path — first ingest, no shrink check.")
+            return True
+        log(f"  [WARN] head_object failed ({code}); treating as first ingest")
+        return True
+    prev_path = output_dir / "_prev_bbva_frontiers_laureates.parquet"
+    try:
+        client.download_file(S3_BUCKET, S3_KEY, str(prev_path))
+        import pandas as pd
+        prev_count = len(pd.read_parquet(prev_path))
+    except Exception as e:
+        log(f"  [ERROR] couldn't read existing parquet ({e}); aborting upload "
+            f"to avoid clobbering unknown data. Re-run with --allow-shrink if "
+            f"you've verified the previous file is corrupt or empty.")
+        return False
+    finally:
+        prev_path.unlink(missing_ok=True)
+    log(f"  previous count: {prev_count}   new count: {new_count}")
+    if new_count < prev_count:
+        if allow_shrink:
+            log(f"  [OVERRIDE] new < previous but --allow-shrink set; proceeding.")
+            return True
+        log(
+            f"  [ERROR] §1.4 violation: refusing to shrink corpus "
+            f"({prev_count} -> {new_count}). Cause is almost always a "
+            f"source-side partial outage, schema change, or pagination bug — "
+            f"not a genuine retraction. Investigate first; re-run with "
+            f"--allow-shrink if confirmed intentional."
+        )
+        return False
+    log("  [OK] new corpus is not smaller; safe to overwrite.")
+    return True
+
+
 def upload_to_s3(output_path: Path) -> None:
     try:
         import boto3
@@ -424,6 +477,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint", default="/tmp/openalex-awards/bbva_frontiers/checkpoint.json", help="HTML checkpoint path")
     parser.add_argument("--no-cache", action="store_true", help="Ignore checkpointed HTML and refetch all pages")
     parser.add_argument("--skip-upload", action="store_true", help="Write local parquet but do not upload to S3")
+    parser.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        help="Override the runbook §1.4 shrink-check. Only use after confirming a smaller corpus is intentional.",
+    )
     parser.add_argument("--max-profiles", type=int, default=None, help="Optional smoke-test limit on detail pages")
     return parser.parse_args()
 
@@ -452,6 +510,8 @@ def main() -> None:
     if args.skip_upload:
         log("Skipping S3 upload by request")
     else:
+        if not check_no_shrink(len(df), args.allow_shrink, Path(args.output_dir)):
+            raise SystemExit("§1.4 shrink-check failed. See above; re-run with --allow-shrink if intentional.")
         upload_to_s3(output_path)
 
 
