@@ -24,6 +24,7 @@ include:
   - jobs/sync_common_entities_to_elasticsearch.yaml
   - jobs/sync_content_index_to_d1.yaml
   - jobs/scan_pdf_bytes.yaml
+  - jobs/delete_invalid_r2_objects.yaml
   - jobs/export_content_manifest.yaml
   - jobs/sync_funders_to_elasticsearch.yaml
   - jobs/sync_institutions_to_elasticsearch.yaml
