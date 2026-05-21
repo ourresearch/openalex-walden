@@ -91,44 +91,64 @@ TBLPROPERTIES (
   'delta.autoOptimize.autoCompact' = 'true'
 )
 AS
-WITH pr_latest AS (
+-- Classify BEFORE the ROW_NUMBER shuffle so xml_content (multi-MB) is not
+-- carried through. The shuffle then moves only the small label + xml_len
+-- columns. Without this, the shuffle spills the full xml_content corpus
+-- (~76M rows × ~50KB avg ≈ 3.8 TB) and overflows local_disk0 on the
+-- workers. With it, shuffle data is ~15 GB.
+WITH pr_classified AS (
   SELECT
     id          AS grobid_uuid,
     source_pdf_id,
-    xml_content,
     LENGTH(xml_content) AS xml_len,
+    {CLASSIFY_CASE} AS label,
     created_date,
-    'grobid_processing_results' AS src_table,
-    ROW_NUMBER() OVER (PARTITION BY source_pdf_id, id ORDER BY created_date DESC) AS rn
+    'grobid_processing_results' AS src_table
   FROM openalex.pdf.grobid_processing_results
   WHERE status IN ('success', 'success - cached response')
 ),
-bf_latest AS (
+pr_latest AS (
+  SELECT grobid_uuid, source_pdf_id, xml_len, label, created_date, src_table
+  FROM (
+    SELECT *,
+      ROW_NUMBER() OVER (PARTITION BY source_pdf_id, grobid_uuid ORDER BY created_date DESC) AS rn
+    FROM pr_classified
+  )
+  WHERE rn = 1
+),
+bf_classified AS (
   SELECT
     id          AS grobid_uuid,
     -- backfill table has pdf_s3_key like '<uuid>.pdf'; align to source_pdf_id (bare uuid)
     REGEXP_REPLACE(pdf_s3_key, '\\\\.pdf$', '') AS source_pdf_id,
-    xml_content,
     LENGTH(xml_content) AS xml_len,
+    {CLASSIFY_CASE} AS label,
     CAST(created_date AS TIMESTAMP) AS created_date,
-    'grobid_xml_backfill' AS src_table,
-    ROW_NUMBER() OVER (PARTITION BY id ORDER BY created_date DESC) AS rn
+    'grobid_xml_backfill' AS src_table
   FROM openalex.pdf.grobid_xml_backfill
 ),
-unioned AS (
-  SELECT grobid_uuid, source_pdf_id, xml_content, xml_len, created_date, src_table FROM pr_latest WHERE rn = 1
-  UNION ALL
-  SELECT grobid_uuid, source_pdf_id, xml_content, xml_len, created_date, src_table FROM bf_latest WHERE rn = 1
+bf_latest AS (
+  SELECT grobid_uuid, source_pdf_id, xml_len, label, created_date, src_table
+  FROM (
+    SELECT *,
+      ROW_NUMBER() OVER (PARTITION BY grobid_uuid ORDER BY created_date DESC) AS rn
+    FROM bf_classified
+  )
+  WHERE rn = 1
 )
 SELECT
   grobid_uuid,
   source_pdf_id,
   src_table,
   xml_len,
-  {CLASSIFY_CASE} AS label,
+  label,
   created_date AS classified_at,
   '{SCAN_RUN_ID}' AS scan_run_id
-FROM unioned
+FROM (
+  SELECT * FROM pr_latest
+  UNION ALL
+  SELECT * FROM bf_latest
+)
 """)
 
 # COMMAND ----------
