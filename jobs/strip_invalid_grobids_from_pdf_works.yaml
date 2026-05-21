@@ -1,0 +1,65 @@
+resources:
+  jobs:
+    Strip_Invalid_Grobids_From_Pdf_Works:
+      name: Strip Invalid GROBIDs from pdf_works (#202 Track 2)
+      description: |
+        One-shot Delta MERGE: strips docs.parsed-pdf entries from
+        openalex.pdf.pdf_works where the entry id (= <grobid_uuid>.xml.gz)
+        is in openalex.pdf.invalid_grobids. Leaves docs.pdf intact (the PDF
+        is still valid; only the GROBID parse is bad).
+
+        Triggers CDF → UnionAllWorksIntoLocationsParsed → locations_mapped
+        MERGE → has_content.grobid_xml=false in CreateWorksBase → sync_works
+        to ES. Customer API stops advertising the bad XMLs.
+
+        Multi-XML works (1.7M with siblings) are safe: we strip per-native_id
+        only, so good sibling rows survive untouched.
+
+        One-shot (PAUSED). Widgets: pilot_limit (0 = full), dry_run.
+
+        Recommended sequence:
+          dry_run=true                # preview counts + sample
+          dry_run=false pilot_limit=100  # pilot on 100 rows
+          dry_run=false pilot_limit=0   # full ~8M
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 0 0 9 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED
+      parameters:
+        - name: pilot_limit
+          default: "0"
+        - name: dry_run
+          default: "true"
+      tasks:
+        - task_key: strip_invalid_grobids
+          notebook_task:
+            notebook_path: notebooks/scraping/strip_invalid_grobids_from_pdf_works
+            source: GIT
+            base_parameters:
+              pilot_limit: "{{job.parameters.pilot_limit}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          job_cluster_key: strip-cluster
+      job_clusters:
+        - job_cluster_key: strip-cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: m5d.2xlarge
+            num_workers: 8
+            runtime_engine: PHOTON
+            aws_attributes:
+              availability: ON_DEMAND
+              zone_id: auto
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 32
+            data_security_mode: SINGLE_USER
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD

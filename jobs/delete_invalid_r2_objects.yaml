@@ -21,7 +21,8 @@ resources:
           target=pdfs, dry_run=true,  sample_limit=0      # confirm ~2.97M
           target=pdfs, dry_run=false, sample_limit=10000  # 10K pilot
           target=pdfs, dry_run=false, sample_limit=0      # full PDFs
-          target=xmls, dry_run=false, sample_limit=0      # full XMLs
+          target=xmls, dry_run=false, sample_limit=0      # full XMLs (cascaded from #185 invalid_pdfs)
+          target=invalid_grobids, dry_run=false, sample_limit=0  # #202 Track 2 — direct from invalid_grobids
 
         Cluster mirrors scan_pdf_bytes (4× m5d.2xlarge + Photon). DELETE is
         lighter than scan; can be reduced for small pilots from the UI.

@@ -1,0 +1,63 @@
+resources:
+  jobs:
+    Classify_Grobid_Xmls:
+      name: Classify GROBID XMLs (#202 Track 2)
+      description: |
+        SQL-only classifier over BOTH grobid_processing_results.xml_content
+        AND grobid_xml_backfill.xml_content (~76M rows combined, disjoint by id).
+        Materializes openalex.works.grobid_xml_classification with labels for
+        the bad cohort: structural empty-TEI (`<body/>` self-closing) and
+        error wrappers ([BAD_INPUT_DATA], [NO_BLOCKS], [TIMEOUT],
+        [NO_GROBID_RESPONSES]).
+
+        Expected bad-cohort total: ~8M rows (10.5% of corpus). Combined with
+        the 10K customer-view validation showing BAD_BYTE = 7.65% on
+        has_content.grobid_xml:true requests.
+
+        One-shot (PAUSED). Trigger manually. Idempotent (CREATE OR REPLACE).
+
+        Widgets:
+          target_suffix: '' (full) or '_pilot' (override + add LIMIT in notebook)
+          scan_run_id: stamped onto every row for traceability
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 0 0 7 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED
+      parameters:
+        - name: target_suffix
+          default: ""
+        - name: scan_run_id
+          default: "2026-05-21_union_classifier_v1"
+      tasks:
+        - task_key: classify_grobid_xmls
+          notebook_task:
+            notebook_path: notebooks/scraping/classify_grobid_xmls
+            source: GIT
+            base_parameters:
+              target_suffix: "{{job.parameters.target_suffix}}"
+              scan_run_id: "{{job.parameters.scan_run_id}}"
+          job_cluster_key: classify-cluster
+      job_clusters:
+        - job_cluster_key: classify-cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: m5d.2xlarge
+            num_workers: 16
+            runtime_engine: PHOTON
+            aws_attributes:
+              availability: ON_DEMAND
+              zone_id: auto
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 32
+            data_security_mode: SINGLE_USER
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD

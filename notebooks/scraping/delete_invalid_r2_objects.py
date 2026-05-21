@@ -63,7 +63,7 @@ DELETE_BATCH_KEYS = 1000
 R2_ACCESS_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-access-key-id")
 R2_SECRET_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-secret-access-key")
 
-dbutils.widgets.dropdown("target", "pdfs", ["pdfs", "xmls", "both"], "Target (pdfs / xmls / both)")
+dbutils.widgets.dropdown("target", "pdfs", ["pdfs", "xmls", "both", "invalid_grobids"], "Target (pdfs / xmls / both / invalid_grobids)")
 dbutils.widgets.dropdown("dry_run", "true", ["true", "false"], "Dry run (no deletes)")
 dbutils.widgets.text("sample_limit", "0", "Sample limit (0 = full)")
 dbutils.widgets.text("pdf_works_version", "4224", "pdf_works Delta version for XML key lookup (pre-strip)")
@@ -140,10 +140,30 @@ def build_xml_keys():
     """)
 
 
+def build_invalid_grobids_keys():
+    """One row per (bucket, key) where key = '<grobid_uuid>.xml.gz'.
+
+    Source: openalex.pdf.invalid_grobids (#202 Track 2). Direct uuid-keyed
+    lookup — no time-travel needed because each row in invalid_grobids
+    already carries the bare grobid_uuid.
+    """
+    limit = f"LIMIT {SAMPLE_LIMIT}" if SAMPLE_LIMIT > 0 else ""
+    return spark.sql(f"""
+      SELECT
+        '{R2_XML_BUCKET}' AS bucket,
+        CONCAT(grobid_uuid, '.xml.gz') AS key
+      FROM openalex.pdf.invalid_grobids
+      WHERE grobid_uuid IS NOT NULL
+      {limit}
+    """)
+
+
 if TARGET == "pdfs":
     df = build_pdf_keys()
 elif TARGET == "xmls":
     df = build_xml_keys()
+elif TARGET == "invalid_grobids":
+    df = build_invalid_grobids_keys()
 else:  # both
     df = build_pdf_keys().unionByName(build_xml_keys())
 

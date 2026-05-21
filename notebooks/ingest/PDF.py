@@ -342,14 +342,28 @@ def _invalid_pdf_filter():
         return spark.createDataFrame([], "source_pdf_id STRING")
 
 
+def _invalid_grobids_filter():
+    # Filter source for grobid_raw + pdf_backfill — grobid_uuids classified as
+    # invalid by classify_grobid_xmls (empty TEI envelopes + [BAD_INPUT_DATA] /
+    # [NO_BLOCKS] / [TIMEOUT] / [NO_GROBID_RESPONSES] error wrappers).
+    # See notebooks/scraping/create_invalid_grobids.py and oxjob #202.
+    # Defensive read: empty filter if table doesn't exist yet.
+    try:
+        return spark.read.table("openalex.pdf.invalid_grobids").select("grobid_uuid")
+    except Exception:
+        return spark.createDataFrame([], "grobid_uuid STRING")
+
+
 @dlt.view
 def grobid_raw():
+    invalid_grobids = _invalid_grobids_filter().withColumnRenamed("grobid_uuid", "_invalid_grobid_uuid")
     return (
         spark.readStream
         .format("delta")
         .table("openalex.pdf.grobid_processing_results")
         .where("source_pdf_id IS NOT NULL")
         .join(_invalid_pdf_filter(), on="source_pdf_id", how="left_anti")
+        .join(invalid_grobids, col("id") == col("_invalid_grobid_uuid"), how="left_anti")
         .withColumn("native_id",
             when(
                 col("native_id").startswith("https://doi.org/"),
@@ -456,10 +470,11 @@ def pdf_parse():
 
 @dlt.view
 def pdf_backfill():
-    # Extract source_pdf_id from the docs.pdf entry in `ids` for anti-join
-    # against openalex.pdf.invalid_pdfs. The backfill table doesn't expose
-    # source_pdf_id as a top-level column, so we recover it from the ids
-    # struct array. The stored id is `<source_pdf_id>.pdf` — strip the suffix.
+    # Extract source_pdf_id and grobid_uuid from the ids array for anti-joins
+    # against openalex.pdf.invalid_pdfs (#185) and openalex.pdf.invalid_grobids (#202).
+    # The backfill table doesn't expose these as top-level columns, so we recover
+    # them from the ids struct: docs.pdf.id = '<source_pdf_id>.pdf';
+    # docs.parsed-pdf.id = '<grobid_uuid>.xml.gz'. Strip suffixes.
     base = (
         spark.readStream
             .format("delta")
@@ -473,11 +488,17 @@ def pdf_backfill():
                 "_source_pdf_id_for_filter",
                 expr("regexp_replace(element_at(filter(ids, x -> x.namespace = 'docs.pdf'), 1).id, '\\\\.pdf$', '')")
             )
+            .withColumn(
+                "_grobid_uuid_for_filter",
+                expr("regexp_replace(element_at(filter(ids, x -> x.namespace = 'docs.parsed-pdf'), 1).id, '\\\\.xml\\\\.gz$', '')")
+            )
     )
-    invalid = _invalid_pdf_filter().withColumnRenamed("source_pdf_id", "_invalid_source_pdf_id")
+    invalid_pdfs = _invalid_pdf_filter().withColumnRenamed("source_pdf_id", "_invalid_source_pdf_id")
+    invalid_grobids = _invalid_grobids_filter().withColumnRenamed("grobid_uuid", "_invalid_grobid_uuid")
     return (
-        base.join(invalid, base._source_pdf_id_for_filter == invalid._invalid_source_pdf_id, "left_anti")
-            .drop("_source_pdf_id_for_filter")
+        base.join(invalid_pdfs, base._source_pdf_id_for_filter == invalid_pdfs._invalid_source_pdf_id, "left_anti")
+            .join(invalid_grobids, base._grobid_uuid_for_filter == invalid_grobids._invalid_grobid_uuid, "left_anti")
+            .drop("_source_pdf_id_for_filter", "_grobid_uuid_for_filter")
     )
 
 @dlt.table
