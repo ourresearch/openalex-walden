@@ -351,7 +351,7 @@ resources:
               zone_id: auto
               spot_bid_price_percent: 100
               ebs_volume_count: 0
-            node_type_id: rd-fleet.12xlarge
+            node_type_id: rd-fleet.8xlarge
             driver_node_type_id: rd-fleet.8xlarge
             spark_env_vars:
               PYSPARK_PYTHON: /databricks/python3/bin/python3
