@@ -444,6 +444,49 @@ def write_parquet(df: pd.DataFrame, output_dir: Path) -> Path:
     return parquet_path
 
 
+def check_no_shrink(new_count: int, allow_shrink: bool, output_dir: Path) -> bool:
+    """Runbook §1.4 — refuse to overwrite if the new corpus is smaller."""
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+    except ImportError as exc:
+        raise RuntimeError(
+            "boto3 is required for the §1.4 shrink-check; rerun with --skip-upload to bypass"
+        ) from exc
+    client = boto3.client("s3")
+    log(f"§1.4 re-ingest safety check vs s3://{S3_BUCKET}/{S3_KEY}")
+    try:
+        client.head_object(Bucket=S3_BUCKET, Key=S3_KEY)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            log("  no existing parquet — first ingest, no shrink check.")
+            return True
+        log(f"  [WARN] head_object failed ({code}); treating as first ingest")
+        return True
+    prev_path = output_dir / "_prev_anii_projects.parquet"
+    try:
+        client.download_file(S3_BUCKET, S3_KEY, str(prev_path))
+        prev_count = len(pd.read_parquet(prev_path))
+    except Exception as e:
+        log(f"  [ERROR] couldn't read existing parquet ({e}); aborting upload.")
+        return False
+    finally:
+        prev_path.unlink(missing_ok=True)
+    log(f"  previous count: {prev_count}   new count: {new_count}")
+    if new_count < prev_count:
+        if allow_shrink:
+            log(f"  [OVERRIDE] new < previous but --allow-shrink set; proceeding.")
+            return True
+        log(
+            f"\n[ERROR] §1.4 violation: refusing to shrink corpus "
+            f"({prev_count} -> {new_count}). Investigate first."
+        )
+        return False
+    log(f"  [OK] new corpus not smaller; safe to overwrite.")
+    return True
+
+
 def upload_to_s3(parquet_path: Path) -> None:
     s3_uri = f"s3://{S3_BUCKET}/{S3_KEY}"
     log("=" * 60)
@@ -464,6 +507,8 @@ def main() -> None:
                         help="Write parquet locally only")
     parser.add_argument("--limit", type=int, default=None,
                         help="Fetch only first N research rows for smoke testing")
+    parser.add_argument("--allow-shrink", action="store_true",
+                        help="Override runbook §1.4 shrink-check")
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -492,6 +537,9 @@ def main() -> None:
         log("--skip-upload set; manual upload command:")
         log(f"  aws s3 cp {parquet_path} s3://{S3_BUCKET}/{S3_KEY}")
     else:
+        if not check_no_shrink(len(df), args.allow_shrink, args.output_dir):
+            log("[ERROR] §1.4 violation; aborting upload.")
+            sys.exit(7)
         upload_to_s3(parquet_path)
 
     log("=" * 60)
