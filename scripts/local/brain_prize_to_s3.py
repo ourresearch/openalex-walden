@@ -359,6 +359,49 @@ def log_summary(df: pd.DataFrame) -> None:
     log(f"Currency distribution: {df['currency'].fillna('NULL').value_counts().to_dict()}")
 
 
+def check_no_shrink(new_count: int, allow_shrink: bool, output_dir: Path) -> bool:
+    """Runbook §1.4 — refuse to overwrite if the new corpus is smaller."""
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+    except ImportError as exc:
+        raise RuntimeError(
+            "boto3 is required for the §1.4 shrink-check; rerun with --skip-upload to bypass"
+        ) from exc
+    client = boto3.client("s3")
+    log(f"§1.4 re-ingest safety check vs s3://{S3_BUCKET}/{S3_KEY}")
+    try:
+        client.head_object(Bucket=S3_BUCKET, Key=S3_KEY)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            log("  no existing parquet — first ingest, no shrink check.")
+            return True
+        log(f"  [WARN] head_object failed ({code}); treating as first ingest")
+        return True
+    prev_path = output_dir / "_prev_brain_prize_laureates.parquet"
+    try:
+        client.download_file(S3_BUCKET, S3_KEY, str(prev_path))
+        prev_count = len(pd.read_parquet(prev_path))
+    except Exception as e:
+        log(f"  [ERROR] couldn't read existing parquet ({e}); aborting upload.")
+        return False
+    finally:
+        prev_path.unlink(missing_ok=True)
+    log(f"  previous count: {prev_count}   new count: {new_count}")
+    if new_count < prev_count:
+        if allow_shrink:
+            log(f"  [OVERRIDE] new < previous but --allow-shrink set; proceeding.")
+            return True
+        log(
+            f"\n[ERROR] §1.4 violation: refusing to shrink corpus "
+            f"({prev_count} -> {new_count}). Investigate first."
+        )
+        return False
+    log(f"  [OK] new corpus not smaller; safe to overwrite.")
+    return True
+
+
 def upload_to_s3(local_path: Path) -> None:
     log(f"Uploading to s3://{S3_BUCKET}/{S3_KEY}")
     import boto3
@@ -378,6 +421,11 @@ def main() -> None:
         "--no-cache",
         action="store_true",
         help="Refetch official pages even if they exist in the checkpoint file",
+    )
+    parser.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        help="Override §1.4 shrink-check (refuse to overwrite if new < previous)",
     )
     args = parser.parse_args()
 
@@ -406,6 +454,9 @@ def main() -> None:
     if args.skip_upload:
         log("--skip-upload set; done.")
         return
+
+    if not check_no_shrink(len(df), args.allow_shrink, args.output_dir):
+        raise SystemExit(7)
 
     upload_to_s3(parquet_path)
 
