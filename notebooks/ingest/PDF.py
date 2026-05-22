@@ -357,11 +357,26 @@ def _invalid_grobids_filter():
 @dlt.view
 def grobid_raw():
     invalid_grobids = _invalid_grobids_filter().withColumnRenamed("grobid_uuid", "_invalid_grobid_uuid")
+    # Structural xml_content filter: rejects the bad-cohort patterns the
+    # classifier flags (empty `<body/>` TEI + `[BAD_INPUT_DATA]`/`[NO_BLOCKS]`/
+    # `[TIMEOUT]`/`[NO_GROBID_RESPONSES]` markers + non-TEI bodies). Catches
+    # new bad XMLs in real time, before they're picked up by the next
+    # classify_grobid_xmls run that seeds openalex.pdf.invalid_grobids.
+    # Predicates mirror notebooks/scraping/classify_grobid_xmls.py (#202).
     return (
         spark.readStream
         .format("delta")
         .table("openalex.pdf.grobid_processing_results")
         .where("source_pdf_id IS NOT NULL")
+        .where("""
+            xml_content IS NOT NULL
+            AND xml_content NOT LIKE '%[BAD_INPUT_DATA]%'
+            AND xml_content NOT LIKE '%[NO_BLOCKS]%'
+            AND xml_content NOT LIKE '%[TIMEOUT]%'
+            AND xml_content NOT LIKE '%[NO_GROBID_RESPONSES]%'
+            AND xml_content NOT LIKE '%<body/>%'
+            AND LOWER(SUBSTRING(xml_content, 1, 200)) LIKE '%<tei%'
+        """)
         .join(_invalid_pdf_filter(), on="source_pdf_id", how="left_anti")
         .join(invalid_grobids, col("id") == col("_invalid_grobid_uuid"), how="left_anti")
         .withColumn("native_id",
