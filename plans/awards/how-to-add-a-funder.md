@@ -774,6 +774,52 @@ git pull --rebase && git push
 
 If there are merge conflicts (especially in `CreateAwards.ipynb`), resolve them by keeping BOTH the remote changes AND your new funder addition.
 
+### 4.3 Tracker sanity check (mandatory before push, and again after merge)
+
+**The tracker is the file most likely to silently lose your edit during a
+rebase.** `CreateAwards.ipynb` and `scripts/local/*.py` are separate files
+per funder, so conflicts there look like "+++ ours" merges that a human
+can review. `plans/awards/funder-ingestion-tracker.md` is a single shared
+file every PR touches — a rebase-conflict resolution that takes "their
+side" silently drops your tracker row, and your PR still compiles, ships,
+and merges with the script + notebook + registry intact and the tracker
+row gone. Confirmed incidents: PR #138 (lost the 7 codex-chain tracker
+rows for #97-#103) and PR #139 (lost 22 more tracker rows across PRs
+#85-#135 over ~3 weeks of activity).
+
+Run this check **before `git push`** and again **after your PR merges**.
+It cross-references the priority list in `CreateAwards.ipynb` against
+`Priority N` entries in the tracker, and exits non-zero if any priority
+in the registry has no matching tracker row.
+
+```bash
+python3 - <<'PY'
+import json, re, sys
+nb = json.load(open('notebooks/awards/CreateAwards.ipynb'))
+hdr = ''.join(nb['cells'][0]['source']) if isinstance(nb['cells'][0]['source'], list) else nb['cells'][0]['source']
+registry = {int(m.group(1)): m.group(2).strip()
+            for m in re.finditer(r'-\s+(\d+):\s+(.+?)\s+\(', hdr)}
+tracker = open('plans/awards/funder-ingestion-tracker.md').read()
+have = set(int(m.group(1)) for m in re.finditer(r'Priority\s+(\d+)[\s\.\-]', tracker))
+missing = sorted(p for p in registry if p >= 50 and p not in have)
+if missing:
+    print('TRACKER GAPS — these priorities have a CreateAwards.ipynb entry but no tracker row:')
+    for p in missing:
+        print(f'  prio {p}: {registry[p]}')
+    sys.exit(1)
+print(f'OK — tracker in sync with registry for {len([p for p in registry if p >= 50])} priorities (>=50).')
+PY
+```
+
+If the check reports gaps **including your new funder**: your tracker
+edit didn't survive the rebase. Re-add the tracker row and amend the
+commit before pushing.
+
+If the check reports gaps **for OTHER funders**, the drift is pre-existing
+— don't try to fix it inside your funder PR. Open a separate restore PR
+following the PR #138 / #139 pattern (verbatim row text pulled from the
+originating PR's `/pulls/N/files` patch via the GitHub API).
+
 **→ Update tracker:** Change status to "Step 5" with notes (e.g., "Code committed, waiting for human to run notebook").
 
 ---
