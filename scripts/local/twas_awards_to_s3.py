@@ -49,6 +49,43 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+# --- Windows UTF-8 compatibility shim (fleet-fix 2026-05-22) ---
+# Windows Python defaults to cp1252 for BOTH stdout-when-piped AND default
+# file I/O (Path.write_text / open() without explicit encoding=). This
+# crashes scrapers writing laureate names with non-ASCII chars (Polish ł,
+# Turkish ğ, Greek μ, combining accents, zero-width spaces). Production
+# runs on Linux/Databricks where UTF-8 is the default, but this fixes
+# local validation on Windows without requiring contractors to set
+# PYTHONUTF8=1 in their environment. See runbook §1.2.
+import sys as _sys_utf8
+try:
+    _sys_utf8.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+    _sys_utf8.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+except (AttributeError, ValueError):
+    pass
+
+if _sys_utf8.platform == "win32":
+    import builtins as _builtins_utf8
+    import pathlib as _pathlib_utf8
+
+    _orig_wt = _pathlib_utf8.Path.write_text
+    def _wt(self, data, encoding=None, errors=None, newline=None):
+        return _orig_wt(self, data, encoding=encoding or "utf-8", errors=errors, newline=newline)
+    _pathlib_utf8.Path.write_text = _wt
+
+    _orig_rt = _pathlib_utf8.Path.read_text
+    def _rt(self, encoding=None, errors=None, newline=None):
+        return _orig_rt(self, encoding=encoding or "utf-8", errors=errors, newline=newline)
+    _pathlib_utf8.Path.read_text = _rt
+
+    _orig_open = _builtins_utf8.open
+    def _open_utf8(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
+        if "b" not in mode and encoding is None:
+            encoding = "utf-8"
+        return _orig_open(file, mode, buffering, encoding, errors, newline, closefd, opener)
+    _builtins_utf8.open = _open_utf8
+# --- end shim ---
+
 BASE_URL = "https://twas.org"
 ARCHIVE_URL = f"{BASE_URL}/recipients-twas-awards-and-prizes"
 S3_BUCKET = "openalex-ingest"
@@ -1008,6 +1045,12 @@ def upload_to_s3(local_file: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch official TWAS Awards recipient data")
     parser.add_argument("--output", default=OUTPUT_FILE, help="Local parquet path")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Alias for --output\'s parent dir; if set, write to {output-dir}/twas_awards.parquet. Matches the fleet convention used by other scrapers in scripts/local/.",
+    )
     parser.add_argument("--checkpoint", default=".cache/twas_awards_pages.json", help="HTML cache/checkpoint path")
     parser.add_argument("--skip-upload", action="store_true", help="Write parquet locally but do not upload to S3")
     parser.add_argument(
@@ -1018,6 +1061,9 @@ def main() -> None:
     parser.add_argument("--no-cache", action="store_true", help="Ignore cached HTML and refetch every page")
     args = parser.parse_args()
 
+    # Resolve --output-dir to --output (fleet-fix 2026-05-22)
+    if getattr(args, 'output_dir', None) is not None:
+        args.output = args.output_dir / 'twas_awards.parquet'
     rows = fetch_all(use_cache=not args.no_cache, checkpoint_file=Path(args.checkpoint))
     validate_rows(rows)
     df = build_dataframe(rows)

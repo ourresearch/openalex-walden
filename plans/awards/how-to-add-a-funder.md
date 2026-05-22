@@ -272,6 +272,69 @@ The script must:
    tie-breaker if you want determinism on all-zero-funded pairs. Confirmed
    near-miss on MinCiencias (PR #82, May 2026).
 
+7. **Install the Windows UTF-8 compatibility shim at the top of the script.**
+   See `scripts/local/templeton_prize_to_s3.py` (or any other scraper
+   added since 2026-05-22) for the canonical block. It does three things:
+
+   ```python
+   import sys
+   try:
+       sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+       sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+   except (AttributeError, ValueError):
+       pass
+   if sys.platform == "win32":
+       # Monkey-patch Path.write_text / read_text / builtins.open to
+       # default to utf-8 (Windows defaults to cp1252 without it)
+       ...  # see fleet shim
+   ```
+
+   What each piece fixes:
+   - **stdout / stderr reconfigure**: Windows pipes stdout as `cp1252`
+     when captured by a subprocess (smoke runner, CI log redirection).
+     `PYTHONIOENCODING=utf-8` in the parent env is silently **ignored**
+     in this case. `print()` of a laureate name containing a non-ASCII
+     char then crashes with `UnicodeEncodeError`.
+   - **`line_buffering=True`**: Python uses full buffering (not line
+     buffering) on pipe stdout. Without this, smoke runs that capture
+     stdout to a file show **empty logs** even while the scraper is
+     actively progressing, making timeouts indistinguishable from
+     hangs. Confirmed empty-log symptom on nuffield and hewlett.
+   - **Monkey-patch on `Path.write_text` / `Path.read_text` / `open`**:
+     this is the actual cp1252 bug — `Path.write_text(json.dumps(...,
+     ensure_ascii=False))` defaults to cp1252 on Windows and crashes on
+     any non-ASCII content (laureate names like Mihály, Béla, Lech,
+     Hubert Saint-Onge, μM, combining accents, zero-width spaces). The
+     stdout reconfigure alone does **not** fix this — Python file I/O
+     uses a different default. The monkey-patch makes `open()` /
+     `write_text()` default to `encoding="utf-8"` on Windows; it is a
+     no-op on Linux/Databricks. Confirmed crashes on 8 scrapers during
+     the 2026-05-22 fleet smoke (blue_planet_prize, holberg,
+     lemelson_mit, macarthur_fellows, packard_fellows, templeton_prize,
+     vilcek_prizes, world_food_prize); fleet-fixed via the v2 shim.
+
+   Alternative if you prefer cleaner code over a shim: pass
+   `encoding="utf-8"` to **every** `Path.write_text()`, `Path.read_text()`,
+   and `open()` call. The shim was chosen because it's localized to one
+   block per script and impossible to forget on the next call site.
+
+8. **Support `--limit N` for smoke testing.** A scraper with hundreds of
+   detail-page fetches behind politeness throttling (`princess_asturias`
+   = 353 × 6s = 35 min, `kyoto_prize` = 127 × 2s, `pew_biomedical_scholars`
+   ≈ 200 detail pages) is unsmokable end-to-end on a contractor laptop.
+   Provide a `--limit N` flag that truncates the laureate/grant list before
+   the detail-page loop. Existing examples: `fields_medal_to_s3.py`,
+   `abel_prize_to_s3.py`, `minciencias_to_s3.py`. Without `--limit`, smoke
+   verification falls back to "did it crash in the first N seconds" — far
+   weaker signal than "did it produce a parquet with expected coverage".
+
+9. **Use `--output-dir DIR`, not `--output FILE`.** The fleet convention is
+   `--output-dir` taking a directory (the parquet filename is derived from
+   the funder name). One scraper drifted to `--output FILE` during template
+   fork (`twas_awards_to_s3.py`); fleet-fixed 2026-05-22 by adding
+   `--output-dir` as an alias. New scrapers must use `--output-dir` so the
+   smoke runner can target all scrapers uniformly.
+
 ### 1.3 Run the script
 
 ```bash
