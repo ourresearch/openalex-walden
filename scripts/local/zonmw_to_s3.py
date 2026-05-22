@@ -38,6 +38,7 @@ Source / mapping notes:
 Run examples:
     python scripts/local/zonmw_to_s3.py --skip-upload --max-pages 2 --reset-checkpoint
     python scripts/local/zonmw_to_s3.py --skip-upload
+    python scripts/local/zonmw_to_s3.py --allow-shrink  # admin-only override after manual verification
 
 The script checkpoints JSONL rows plus pagination state, logs every API page,
 and uses the API's `links.next` relation as the corpus terminator. It does not
@@ -397,15 +398,45 @@ def build_dataframe(rows: dict[str, dict]) -> pd.DataFrame:
     return df.sort_values(["project_number", "drupal_internal_nid", "uuid"]).astype("string")
 
 
-def shrink_guard(output_path: Path, new_count: int, allow_shrink: bool) -> None:
-    if not output_path.exists():
+def check_no_shrink(new_count: int, allow_shrink: bool, output_dir: Path) -> None:
+    """Runbook §1.4: refuse to overwrite S3 with a smaller corpus by default."""
+    import boto3
+    from botocore.exceptions import ClientError
+
+    client = boto3.client("s3")
+    log(f"§1.4 re-ingest safety check vs s3://{S3_BUCKET}/{S3_KEY}")
+
+    try:
+        client.head_object(Bucket=S3_BUCKET, Key=S3_KEY)
+    except ClientError as exc:
+        code = str(exc.response.get("Error", {}).get("Code", ""))
+        if code in {"404", "NoSuchKey", "NotFound"}:
+            log("No existing S3 parquet found; treating this as first ingest.")
+            return
+        log(f"WARNING: S3 head_object failed with {code}; treating as first ingest.")
         return
-    old_count = len(pd.read_parquet(output_path))
-    if old_count and new_count < old_count * 0.9 and not allow_shrink:
+
+    prev_path = output_dir / "_prev_zonmw_projects.parquet"
+    try:
+        client.download_file(S3_BUCKET, S3_KEY, str(prev_path))
+        previous_count = len(pd.read_parquet(prev_path))
+    except Exception as exc:
         raise RuntimeError(
-            f"Shrink guard: new output has {new_count:,} rows, existing local parquet "
-            f"has {old_count:,}. Re-run with --allow-shrink if this drop is intentional."
+            f"Could not read existing S3 parquet for shrink check: {exc}. "
+            "Refusing upload to avoid clobbering unknown data."
+        ) from exc
+    finally:
+        prev_path.unlink(missing_ok=True)
+
+    log(f"Existing S3 rows: {previous_count:,}; new rows: {new_count:,}")
+    if new_count < previous_count and not allow_shrink:
+        raise RuntimeError(
+            f"Runbook §1.4 violation: refusing to shrink ZonMw corpus from "
+            f"{previous_count:,} to {new_count:,} rows. Re-run with --allow-shrink "
+            "only after confirming the source genuinely removed records."
         )
+    if new_count < previous_count:
+        log("WARNING: --allow-shrink set; proceeding despite smaller corpus.")
 
 
 def crawl(args: argparse.Namespace) -> pd.DataFrame:
@@ -541,6 +572,7 @@ def main() -> None:
         log("--skip-upload set; done.")
         return
 
+    check_no_shrink(len(df), args.allow_shrink, args.output_dir)
     log(f"Uploading to s3://{S3_BUCKET}/{S3_KEY}")
     import boto3
 
