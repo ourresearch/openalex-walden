@@ -23,19 +23,20 @@ resources:
         - job_cluster_key: manifest-cluster
           new_cluster:
             spark_version: 15.4.x-scala2.12
-            node_type_id: m5.2xlarge
-            num_workers: 0
-            spark_conf:
-              spark.master: "local[*, 4]"
-              spark.databricks.cluster.profile: singleNode
+            # m5d.2xlarge has 300 GB NVMe at /local_disk0 → cheaper shuffle
+            # than EBS-only. 4 workers × ~8 cores = 32 cores for the GROUP BY
+            # over locations_mapped (~62M rows). Photon doubles aggregation
+            # throughput. Prior SingleNode config (local[*, 4]) ran on 4
+            # driver cores and took ~2h; this should land near 20-30 min.
+            node_type_id: m5d.2xlarge
+            num_workers: 4
+            runtime_engine: PHOTON
             aws_attributes:
               availability: ON_DEMAND
               zone_id: auto
               ebs_volume_type: GENERAL_PURPOSE_SSD
               ebs_volume_count: 1
               ebs_volume_size: 64
-            custom_tags:
-              ResourceClass: SingleNode
             data_security_mode: SINGLE_USER
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git

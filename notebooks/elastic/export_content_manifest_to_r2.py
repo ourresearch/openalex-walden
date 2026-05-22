@@ -26,6 +26,7 @@
 
 import boto3
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 # R2 configuration (S3-compatible API)
@@ -108,15 +109,27 @@ else:
 
 # COMMAND ----------
 
-# Upload new Parquet files to R2
+# Upload new Parquet files to R2 in parallel.
+# s3.upload_file() does multipart internally; the per-file work is bandwidth-
+# bound, so 10 concurrent files saturate R2 ingest without contention.
 print(f"Uploading {len(parquet_files)} files to r2://{R2_BUCKET}/{R2_PREFIX}/ ...")
-for i, f in enumerate(parquet_files):
+
+
+def _upload_file(f):
     filename = f.path.split("/")[-1]
     local_path = f.path.replace("dbfs:", "/dbfs")
     r2_key = f"{R2_PREFIX}/{filename}"
     s3.upload_file(local_path, R2_BUCKET, r2_key)
-    if (i + 1) % 10 == 0 or (i + 1) == len(parquet_files):
-        print(f"  Uploaded {i + 1}/{len(parquet_files)}")
+    return filename
+
+
+done = 0
+with ThreadPoolExecutor(max_workers=10) as ex:
+    for fut in as_completed([ex.submit(_upload_file, f) for f in parquet_files]):
+        fut.result()  # propagate any exception
+        done += 1
+        if done % 5 == 0 or done == len(parquet_files):
+            print(f"  Uploaded {done}/{len(parquet_files)}")
 
 print("Upload complete")
 
