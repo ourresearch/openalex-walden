@@ -24,12 +24,6 @@ from pyspark.sql.types import ArrayType, IntegerType, MapType, StringType
 S3_BUCKET = "openalex-snapshots"
 S3_BASE = f"s3://{S3_BUCKET}/full"
 
-# Force INT64 microsecond encoding for all timestamp columns. Spark's default
-# (INT96) is deprecated, and `F.to_timestamp(...)` on Spark 4 / DBR 16.x can
-# produce INT64 nanoseconds that downstream readers (polars, the Databricks
-# SQL warehouse, older pyarrow) cannot decode.
-spark.conf.set("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
-
 # ---------------------------------------------------------------------------
 # Date helpers
 # ---------------------------------------------------------------------------
@@ -344,6 +338,13 @@ def export_partitioned_parquet(spark, dbutils, df: DataFrame, date_str: str, ent
       {S3_BASE}/{date}/parquet/{entity}/updated_date=*/part_NNNN.parquet
     (snappy-compressed; the `.snappy.` suffix is dropped to match daily changefiles)
     """
+    # Force INT64 microsecond encoding. Spark's default (INT96) is deprecated,
+    # and `F.to_timestamp(...)` on Spark 4 / DBR 16.x can produce INT64 nanoseconds
+    # that downstream readers (polars, the Databricks SQL warehouse, older
+    # pyarrow) cannot decode. Set here (not at module scope) so update_meta /
+    # smoke_tests can %run _utils on serverless without hitting CONFIG_NOT_AVAILABLE.
+    spark.conf.set("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
+
     output_path = f"{S3_BASE}/{date_str}/parquet/{entity}"
 
     try:
