@@ -146,6 +146,15 @@ spark.sql("""
 if DRY_RUN:
     print("DRY RUN — skipping MERGE. Set dry_run=false to apply.")
 else:
+    # We must bump `updated_date` here. UnionAllWorksIntoLocationsParsed
+    # consumes pdf_works via Delta CDF and feeds the events into
+    # `apply_changes(target=locations_parsed, sequence_by='updated_date',
+    # stored_as_scd_type=1)`. apply_changes uses strictly-greater sequencing,
+    # so a postimage with the original updated_date is silently dropped and
+    # the strip never propagates downstream (super_locations →
+    # locations_mapped → CreateWorksBase → ES). Setting CURRENT_DATE
+    # advances the watermark for every stripped row and lets the change
+    # flow through.
     spark.sql("""
       MERGE INTO openalex.pdf.pdf_works AS t
       USING _strip_plan                  AS s
@@ -154,9 +163,11 @@ else:
         t.ids = FILTER(
           t.ids,
           x -> NOT (x.namespace = 'docs.parsed-pdf' AND ARRAY_CONTAINS(s.bad_xml_ids_to_drop, x.id))
-        )
+        ),
+        t.updated_date = CURRENT_DATE
     """)
-    print(f"MERGE complete — stripped bad docs.parsed-pdf entries from {victim_count:,} rows")
+    print(f"MERGE complete — stripped bad docs.parsed-pdf entries from {victim_count:,} rows "
+          f"and bumped updated_date so the CDF event clears apply_changes' sequence_by gate.")
 
 # COMMAND ----------
 
