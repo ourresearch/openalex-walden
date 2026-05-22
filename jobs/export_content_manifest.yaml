@@ -12,7 +12,7 @@ resources:
         # Run daily at 03:30 UTC (after D1 sync at 03:00)
         quartz_cron_expression: 0 30 3 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: export_content_manifest
           notebook_task:
