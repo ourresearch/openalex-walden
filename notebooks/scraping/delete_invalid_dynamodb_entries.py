@@ -72,7 +72,7 @@ DDB_XML_TABLE = "grobid-xml"
 AWS_ACCESS_KEY = dbutils.secrets.get(scope="webscraper", key="aws_access_key_id")
 AWS_SECRET_KEY = dbutils.secrets.get(scope="webscraper", key="aws_secret_access_key")
 
-dbutils.widgets.dropdown("target", "pdfs", ["pdfs", "xmls", "both"], "Target (pdfs / xmls / both)")
+dbutils.widgets.dropdown("target", "pdfs", ["pdfs", "xmls", "both", "invalid_grobids"], "Target (pdfs / xmls / both / invalid_grobids)")
 dbutils.widgets.dropdown("dry_run", "true", ["true", "false"], "Dry run (no deletes)")
 dbutils.widgets.text("sample_limit", "0", "Sample limit (0 = full)")
 dbutils.widgets.text("pdf_works_version", "4224", "pdf_works Delta version for XML key lookup (pre-strip)")
@@ -146,10 +146,30 @@ def build_xml_ids():
     """)
 
 
+def build_invalid_grobids_ids():
+    """One row per (table, id) where id = grobid_uuid (bare UUID).
+
+    Source: openalex.pdf.invalid_grobids (#202 Track 2). Direct UUID-keyed
+    lookup — no pdf_works time-travel needed because each row already
+    carries the bare grobid_uuid.
+    """
+    limit = f"LIMIT {SAMPLE_LIMIT}" if SAMPLE_LIMIT > 0 else ""
+    return spark.sql(f"""
+      SELECT
+        '{DDB_XML_TABLE}' AS ddb_table,
+        grobid_uuid AS id
+      FROM openalex.pdf.invalid_grobids
+      WHERE grobid_uuid IS NOT NULL
+      {limit}
+    """)
+
+
 if TARGET == "pdfs":
     df = build_pdf_ids()
 elif TARGET == "xmls":
     df = build_xml_ids()
+elif TARGET == "invalid_grobids":
+    df = build_invalid_grobids_ids()
 else:  # both
     df = build_pdf_ids().unionByName(build_xml_ids())
 

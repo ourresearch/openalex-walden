@@ -26,7 +26,10 @@ resources:
           target=pdfs, dry_run=false, sample_limit=1000   # 1K pilot
           target=pdfs, dry_run=false, sample_limit=0      # full PDFs
           target=xmls, dry_run=false, sample_limit=1000   # 1K pilot
-          target=xmls, dry_run=false, sample_limit=0      # full XMLs
+          target=xmls, dry_run=false, sample_limit=0      # full XMLs (cascaded from #185 invalid_pdfs)
+          target=invalid_grobids, dry_run=true,  sample_limit=0  # #202 Track 2 — confirm 8.18M
+          target=invalid_grobids, dry_run=false, sample_limit=1000  # 1K pilot
+          target=invalid_grobids, dry_run=false, sample_limit=0  # #202 Track 2 — full (direct from invalid_grobids)
 
         Cluster mirrors delete_invalid_r2_objects (4× m5d.2xlarge + Photon).
       email_notifications:
