@@ -4,7 +4,7 @@ RELEASE 2026-05-22
 - continued cleanup of overmerged authors: 2.6M splinter profiles merged across 7 phases, affecting ~5M works
 - added 16 new award funders (Japan Prize, Blavatnik, Breakthrough, Gairdner, Abel, Fields Medal, IES, NIST, USGS, USDA, HRSA, FDA, CDC, AHRQ, EPA, MinCiencias)
 - added primary_topic and topics fields to awards (partial coverage in this release)
-- removed invalid PDFs and empty GROBID parses, improving authorship and locations coverage
+- removed invalid PDFs and empty GROBID parses (affects has_content fields)
 
 RELEASE 2026-04-29
 - cleaned up authors: multi-phase splits of overmerged profiles + ORCID-collision merges
