@@ -59,7 +59,8 @@ df = spark.sql("""
     SELECT
       CONCAT('W', work_id) AS openalex_id,
       REPLACE(MIN(pdf_s3_id), '.pdf', '') AS pdf_uuid,
-      REPLACE(MIN(grobid_s3_id), '.xml.gz', '') AS grobid_xml_id
+      REPLACE(MIN(grobid_s3_id), '.xml.gz', '') AS grobid_xml_id,
+      MAX(updated_date) AS content_updated_date
     FROM openalex.works.locations_mapped
     WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
       AND work_id IS NOT NULL
