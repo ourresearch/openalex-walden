@@ -1078,7 +1078,11 @@ def main() -> None:
     if args.skip_upload:
         log("Skipping S3 upload because --skip-upload was set")
     else:
-        if not check_no_shrink(len(df), args.allow_shrink, Path(args.output_dir)):
+        # When invoked with only --output (no --output-dir), args.output_dir is
+        # None and Path(None) raises TypeError. Derive the output directory
+        # from args.output so the shrink-check works either way.
+        output_dir = args.output_dir if args.output_dir is not None else Path(args.output).parent
+        if not check_no_shrink(len(df), args.allow_shrink, Path(output_dir)):
             raise SystemExit("§1.4 shrink-check failed. See above; re-run with --allow-shrink if intentional.")
         upload_to_s3(args.output)
 

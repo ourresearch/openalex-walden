@@ -591,6 +591,14 @@ def save_to_parquet(df: pd.DataFrame, output_dir: Path) -> Path:
     """
     output_path = output_dir / "epa_awards.parquet"
 
+    # Runbook §1.2.5: force string dtype before to_parquet so pyarrow doesn't
+    # int-infer null-heavy columns. The upstream `pd.read_csv(..., dtype=str)`
+    # at line 481 already prevents this on the CSV read path, but the
+    # canonical pattern is the trailing astype("string") right before write —
+    # which makes the safety property obvious to readers of the write site
+    # and survives refactors of the read path.
+    df = df.astype("string")
+
     print(f"\n  [SAVE] Writing to {output_path.name}...")
     df.to_parquet(output_path, index=False)
 
