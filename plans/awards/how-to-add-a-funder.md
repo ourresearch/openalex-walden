@@ -820,6 +820,71 @@ If the check reports gaps **for OTHER funders**, the drift is pre-existing
 following the PR #138 / #139 pattern (verbatim row text pulled from the
 originating PR's `/pulls/N/files` patch via the GitHub API).
 
+### 4.4 Maintainer-side merge: never "take theirs" on the tracker
+
+This section is for the maintainer (Kyle) running the batch merge — not for
+the contractor preparing a PR. The auto-resolve helper in
+`scripts/local/_merge_resolve.py` is the canonical implementation.
+
+When merging a batch of N funder PRs locally, every PR after the first
+conflicts on both `notebooks/awards/CreateAwards.ipynb` (priority list cell)
+and `plans/awards/funder-ingestion-tracker.md`. The instinct to write a
+helper that takes `--theirs` on the tracker — because Rohan's branch's row
+is the new authoritative one for that funder — is **wrong** and clobbers
+every prior merge in the batch. Confirmed incident: 2026-05-26 batch lost
+all tracker rows for #143-#155 between merges before being caught and
+re-resolved with a 3-way patch-apply.
+
+The mistake: "the tracker conflict is between ours-has-newer-rows-from-PR-N-1
+vs. theirs-has-the-NEW-funder-row." Taking theirs replaces the entire
+file with theirs, dropping every row added by PR N-1, N-2, etc. in the
+same batch. The 3-way merge base (what theirs branched from) does NOT
+have those intermediate rows either, so git's conflict markers cover the
+whole region.
+
+Correct algorithm for the tracker (implemented in `_merge_resolve.py`):
+
+1. Compute `base = git merge-base HEAD MERGE_HEAD`.
+2. Index rows by funder name (the first `|`-delimited cell, which is
+   unique per row).
+3. Find rows in theirs that are **NEW vs. base** (funder name not in base
+   index) or **MODIFIED vs. base** (line text differs from base's row for
+   the same funder).
+4. For each NEW row in theirs: insert it into ours, anchored after the
+   row that precedes it in theirs (if that row exists in ours).
+5. For each MODIFIED row in theirs: overwrite ours' line for that funder
+   with theirs' line.
+6. Write the result. Do NOT replace ours' entire file with theirs'.
+
+This preserves all intermediate batch state while still landing the new
+funder's row. Anchor placement is approximate (the tracker isn't strictly
+sorted) — non-issue, but be aware that rows added during a batch may end
+up near "AHRQ" or wherever the branch's tracker had its insertion point.
+
+For `CreateAwards.ipynb` the splice is simpler: the priority list cell is
+canonically sorted by priority integer, and each PR adds exactly one new
+priority. The helper splits the cell-zero source by `\n` (the literal
+JSON escape, not a real newline), finds priorities in theirs not in ours,
+and splices them in before the trailing `When the same award appears in
+multiple sources` marker. Do NOT round-trip the notebook through
+`json.dumps(..., ensure_ascii=False)` — Databricks emits the source field
+with trailing padding (~36 literal newlines between the closing `"` and
+the next JSON token) that any naive re-serialize strips, producing a
+massive noisy diff. Use text-level surgery on the raw bytes.
+
+Watch out for these regex traps when parsing priority lines from the
+source field:
+
+- Descriptions contain `—` (em-dash JSON-escape) and `\"` (escaped
+  quote), so a regex like `[^\\]*?` for the description body bails at the
+  first backslash. Split on the line separator `\n` (literal 2-char
+  sequence backslash + n) and treat each chunk as a markdown line; then
+  match `^- (\d+):` against the chunk.
+- Git Bash heredocs on Windows mangle backslashes — `r"[\\]"` written in
+  a `<<'PYEND'` heredoc arrives as `[\]` (3 chars), not `[\\]` (4 chars).
+  Write the helper to a file and `py scripts/local/_merge_resolve.py`, not
+  via inline `py - <<EOF`.
+
 **→ Update tracker:** Change status to "Step 5" with notes (e.g., "Code committed, waiting for human to run notebook").
 
 ---
