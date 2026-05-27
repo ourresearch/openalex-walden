@@ -176,7 +176,13 @@ Record these values - you'll need them for the notebook:
 - `ror_id`: (e.g., "https://ror.org/01cwqze88")
 - `doi`: (e.g., "10.13039/100000002")
 
-If the funder doesn't exist in OpenAlex, STOP and tell the user.
+If the lookup returns 0 rows, **do not stop yet** — `openalex.common.funder` is a Databricks mirror of F4320\* Crossref-registered funders only. Non-F4320\* OpenAlex funders (e.g., Abel Prize `F8651541334`, MinCiencias `F3277441329`, Schmidt Futures `F4026159580`) exist in OpenAlex but are not in this dim. For those, look up canonical values from the OpenAlex public API:
+
+```
+https://api.openalex.org/funders/F{funder_id}
+```
+
+Record `id` (strip the `F` prefix to get the numeric `funder_id`), `display_name`, `ror` (may be null), `doi`, and `country_code`. You'll use these as inline constants in §1.6 + Step 2 (see the non-F4320\* path below). If the funder doesn't exist in OpenAlex at all (no API record either), STOP and tell the user.
 
 **→ Update tracker:** Change status to "Step 1" with funder_id in notes.
 
@@ -526,23 +532,61 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
 
    **Watch for unit encoding.** Some sources store amounts in minor units (GBP pence ×100, USD cents ×100). JPY/KRW use no minor unit. Convert to whole currency units before storing and document the conversion in the notebook header.
 
-4. **Step 1.6: Funder existence fail-fast** (CRITICAL)
+4. **Step 1.6: Funder existence check** (CRITICAL — but interpretation depends on funder_id prefix)
 
-   The Step 2 transform joins your raw rows against `openalex.common.funder`
-   to populate the `funder` struct. If the funder row isn't there, the
-   `CROSS JOIN` silently emits zero rows and the Step 3 INSERT looks like
-   it succeeded — you'll discover the gap only when downstream queries
-   return empty results. Assert presence before transforming:
+   The Step 2 transform joins your raw rows against a `funder` source CTE
+   to populate the `funder` struct. If that CTE emits zero rows, the
+   `CROSS JOIN` silently produces an empty table and the Step 3 INSERT
+   looks like it succeeded — you'll discover the gap only when downstream
+   queries return empty results. Always run the lookup, but **how you
+   interpret a 0-row result depends on the funder_id prefix**:
 
    ```sql
-   -- Must return exactly 1 row. If 0 rows, STOP — the funder is missing
-   -- from openalex.common.funder. Flag back to the user; do not proceed.
-   SELECT funder_id, display_name, ror_id, doi
+   SELECT funder_id, display_name, ror_id, doi, country_code
    FROM openalex.common.funder
    WHERE funder_id = {funder_id};
    ```
 
-   This is mandatory for every ingest, not just the prize pattern.
+   **Path A — `F4320*` Crossref-registered funders (the common case):**
+   The Databricks `openalex.common.funder` dim mirrors F4320\* funders, so
+   the lookup **must return exactly 1 row**. If 0 rows, STOP — the funder
+   is unexpectedly missing from the dim. Flag back to the user; do not
+   proceed. Step 2 selects from the dim as usual.
+
+   **Path B — non-F4320\* funders (e.g., `F8651541334`, `F3277441329`, `F4026159580`):**
+   The dim does **not** cover non-F4320\* funders, so 0 rows is **expected**
+   and **not** an error. Treat the lookup as informational only. In Step 2,
+   replace the dim-selecting CTE with an **inline `SELECT`-of-constants**
+   carrying the canonical values you recorded from the OpenAlex API in
+   Step 0:
+
+   ```sql
+   WITH funder_resolved AS (
+       -- INLINED canonical funder row (non-F4320*, not in openalex.common.funder).
+       -- Values from https://api.openalex.org/funders/F{funder_id} per Step 0.
+       SELECT
+           {funder_id} AS funder_id,
+           '{display_name}' AS display_name,
+           {ror_id_or_NULL} AS ror_id,    -- 'https://ror.org/...' or CAST(NULL AS STRING)
+           '{doi}' AS doi,                 -- '10.13039/...'
+           '{country_code}' AS country_code
+   ),
+   ...
+   ```
+
+   Precedents (all FIXED + CONFIRMED in the 2026-05-26/27 sweep): Abel Prize
+   (`F8651541334`, `CreateAbelPrizeAwards.ipynb`), MinCiencias
+   (`F3277441329`, `CreateMinCienciasAwards.ipynb`), Schmidt Sciences
+   (`F4026159580`, `CreateSchmidtSciencesAwards.ipynb`). All three originally
+   shipped with the dim-select pattern, silently emitted 0 rows, and were
+   patched with this inline-constants shape.
+
+   **Failure signature to watch for:** scraper uploads the expected row
+   count to S3, raw table loads cleanly with the right `COUNT(*)`, but
+   `openalex.awards.{funder}_awards` has 0 rows after Step 2. That's almost
+   always a Path B funder using a Path A CTE.
+
+   This check is mandatory for every ingest, not just the prize pattern.
 
 5. **Step 2: Transform to award schema** (see Step 5 for details)
    - Map native fields to OpenAlex schema
