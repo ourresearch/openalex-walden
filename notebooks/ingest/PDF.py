@@ -72,10 +72,11 @@ fields_schema = StructType([
 # COMMAND ----------
 
 def clean_xml(xml_content):
-    """Clean invalid characters in the XML content."""
+    """Remove characters that are invalid in XML 1.0."""
     if not xml_content:
         return None
-    return re.sub(r'[^\x09\x0A\x0D\x20-\x7E]', '', xml_content)
+    # XML 1.0 valid: #x9 | #xA | #xD | #x20-#xD7FF | #xE000-#xFFFD | #x10000-#x10FFFF
+    return re.sub('[^\\x09\\x0A\\x0D\\u0020-\\uD7FF\\uE000-\\uFFFD\\U00010000-\\U0010FFFF]', '', xml_content)
 
 def _safe_extract(fn, default=None):
     """Run a field extraction function, returning default on failure. Re-raises MemoryError."""
