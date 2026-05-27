@@ -184,7 +184,13 @@ Record these values - you'll need them for the notebook:
 - `ror_id`: (e.g., "https://ror.org/01cwqze88")
 - `doi`: (e.g., "10.13039/100000002")
 
-If the funder doesn't exist in OpenAlex, STOP and tell the user.
+If the lookup returns 0 rows, **do not stop yet** — `openalex.common.funder` is a Databricks mirror of F4320\* Crossref-registered funders only. Non-F4320\* OpenAlex funders (e.g., Abel Prize `F8651541334`, MinCiencias `F3277441329`, Schmidt Futures `F4026159580`) exist in OpenAlex but are not in this dim. For those, look up canonical values from the OpenAlex public API:
+
+```
+https://api.openalex.org/funders/F{funder_id}
+```
+
+Record `id` (strip the `F` prefix to get the numeric `funder_id`), `display_name`, `ror` (may be null), `doi`, and `country_code`. You'll use these as inline constants in §1.6 + Step 2 (see the non-F4320\* path below). If the funder doesn't exist in OpenAlex at all (no API record either), STOP and tell the user.
 
 **→ Update tracker:** Change status to "Step 1" with funder_id in notes.
 
@@ -534,23 +540,61 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
 
    **Watch for unit encoding.** Some sources store amounts in minor units (GBP pence ×100, USD cents ×100). JPY/KRW use no minor unit. Convert to whole currency units before storing and document the conversion in the notebook header.
 
-4. **Step 1.6: Funder existence fail-fast** (CRITICAL)
+4. **Step 1.6: Funder existence check** (CRITICAL — but interpretation depends on funder_id prefix)
 
-   The Step 2 transform joins your raw rows against `openalex.common.funder`
-   to populate the `funder` struct. If the funder row isn't there, the
-   `CROSS JOIN` silently emits zero rows and the Step 3 INSERT looks like
-   it succeeded — you'll discover the gap only when downstream queries
-   return empty results. Assert presence before transforming:
+   The Step 2 transform joins your raw rows against a `funder` source CTE
+   to populate the `funder` struct. If that CTE emits zero rows, the
+   `CROSS JOIN` silently produces an empty table and the Step 3 INSERT
+   looks like it succeeded — you'll discover the gap only when downstream
+   queries return empty results. Always run the lookup, but **how you
+   interpret a 0-row result depends on the funder_id prefix**:
 
    ```sql
-   -- Must return exactly 1 row. If 0 rows, STOP — the funder is missing
-   -- from openalex.common.funder. Flag back to the user; do not proceed.
-   SELECT funder_id, display_name, ror_id, doi
+   SELECT funder_id, display_name, ror_id, doi, country_code
    FROM openalex.common.funder
    WHERE funder_id = {funder_id};
    ```
 
-   This is mandatory for every ingest, not just the prize pattern.
+   **Path A — `F4320*` Crossref-registered funders (the common case):**
+   The Databricks `openalex.common.funder` dim mirrors F4320\* funders, so
+   the lookup **must return exactly 1 row**. If 0 rows, STOP — the funder
+   is unexpectedly missing from the dim. Flag back to the user; do not
+   proceed. Step 2 selects from the dim as usual.
+
+   **Path B — non-F4320\* funders (e.g., `F8651541334`, `F3277441329`, `F4026159580`):**
+   The dim does **not** cover non-F4320\* funders, so 0 rows is **expected**
+   and **not** an error. Treat the lookup as informational only. In Step 2,
+   replace the dim-selecting CTE with an **inline `SELECT`-of-constants**
+   carrying the canonical values you recorded from the OpenAlex API in
+   Step 0:
+
+   ```sql
+   WITH funder_resolved AS (
+       -- INLINED canonical funder row (non-F4320*, not in openalex.common.funder).
+       -- Values from https://api.openalex.org/funders/F{funder_id} per Step 0.
+       SELECT
+           {funder_id} AS funder_id,
+           '{display_name}' AS display_name,
+           {ror_id_or_NULL} AS ror_id,    -- 'https://ror.org/...' or CAST(NULL AS STRING)
+           '{doi}' AS doi,                 -- '10.13039/...'
+           '{country_code}' AS country_code
+   ),
+   ...
+   ```
+
+   Precedents (all FIXED + CONFIRMED in the 2026-05-26/27 sweep): Abel Prize
+   (`F8651541334`, `CreateAbelPrizeAwards.ipynb`), MinCiencias
+   (`F3277441329`, `CreateMinCienciasAwards.ipynb`), Schmidt Sciences
+   (`F4026159580`, `CreateSchmidtSciencesAwards.ipynb`). All three originally
+   shipped with the dim-select pattern, silently emitted 0 rows, and were
+   patched with this inline-constants shape.
+
+   **Failure signature to watch for:** scraper uploads the expected row
+   count to S3, raw table loads cleanly with the right `COUNT(*)`, but
+   `openalex.awards.{funder}_awards` has 0 rows after Step 2. That's almost
+   always a Path B funder using a Path A CTE.
+
+   This check is mandatory for every ingest, not just the prize pattern.
 
 5. **Step 2: Transform to award schema** (see Step 5 for details)
    - Map native fields to OpenAlex schema
@@ -781,6 +825,117 @@ git pull --rebase && git push
 ```
 
 If there are merge conflicts (especially in `CreateAwards.ipynb`), resolve them by keeping BOTH the remote changes AND your new funder addition.
+
+### 4.3 Tracker sanity check (mandatory before push, and again after merge)
+
+**The tracker is the file most likely to silently lose your edit during a
+rebase.** `CreateAwards.ipynb` and `scripts/local/*.py` are separate files
+per funder, so conflicts there look like "+++ ours" merges that a human
+can review. `plans/awards/funder-ingestion-tracker.md` is a single shared
+file every PR touches — a rebase-conflict resolution that takes "their
+side" silently drops your tracker row, and your PR still compiles, ships,
+and merges with the script + notebook + registry intact and the tracker
+row gone. Confirmed incidents: PR #138 (lost the 7 codex-chain tracker
+rows for #97-#103) and PR #139 (lost 22 more tracker rows across PRs
+#85-#135 over ~3 weeks of activity).
+
+Run this check **before `git push`** and again **after your PR merges**.
+It cross-references the priority list in `CreateAwards.ipynb` against
+`Priority N` entries in the tracker, and exits non-zero if any priority
+in the registry has no matching tracker row.
+
+```bash
+python3 - <<'PY'
+import json, re, sys
+nb = json.load(open('notebooks/awards/CreateAwards.ipynb'))
+hdr = ''.join(nb['cells'][0]['source']) if isinstance(nb['cells'][0]['source'], list) else nb['cells'][0]['source']
+registry = {int(m.group(1)): m.group(2).strip()
+            for m in re.finditer(r'-\s+(\d+):\s+(.+?)\s+\(', hdr)}
+tracker = open('plans/awards/funder-ingestion-tracker.md').read()
+have = set(int(m.group(1)) for m in re.finditer(r'Priority\s+(\d+)[\s\.\-]', tracker))
+missing = sorted(p for p in registry if p >= 50 and p not in have)
+if missing:
+    print('TRACKER GAPS — these priorities have a CreateAwards.ipynb entry but no tracker row:')
+    for p in missing:
+        print(f'  prio {p}: {registry[p]}')
+    sys.exit(1)
+print(f'OK — tracker in sync with registry for {len([p for p in registry if p >= 50])} priorities (>=50).')
+PY
+```
+
+If the check reports gaps **including your new funder**: your tracker
+edit didn't survive the rebase. Re-add the tracker row and amend the
+commit before pushing.
+
+If the check reports gaps **for OTHER funders**, the drift is pre-existing
+— don't try to fix it inside your funder PR. Open a separate restore PR
+following the PR #138 / #139 pattern (verbatim row text pulled from the
+originating PR's `/pulls/N/files` patch via the GitHub API).
+
+### 4.4 Maintainer-side merge: never "take theirs" on the tracker
+
+This section is for the maintainer (Kyle) running the batch merge — not for
+the contractor preparing a PR. The auto-resolve helper in
+`scripts/local/_merge_resolve.py` is the canonical implementation.
+
+When merging a batch of N funder PRs locally, every PR after the first
+conflicts on both `notebooks/awards/CreateAwards.ipynb` (priority list cell)
+and `plans/awards/funder-ingestion-tracker.md`. The instinct to write a
+helper that takes `--theirs` on the tracker — because Rohan's branch's row
+is the new authoritative one for that funder — is **wrong** and clobbers
+every prior merge in the batch. Confirmed incident: 2026-05-26 batch lost
+all tracker rows for #143-#155 between merges before being caught and
+re-resolved with a 3-way patch-apply.
+
+The mistake: "the tracker conflict is between ours-has-newer-rows-from-PR-N-1
+vs. theirs-has-the-NEW-funder-row." Taking theirs replaces the entire
+file with theirs, dropping every row added by PR N-1, N-2, etc. in the
+same batch. The 3-way merge base (what theirs branched from) does NOT
+have those intermediate rows either, so git's conflict markers cover the
+whole region.
+
+Correct algorithm for the tracker (implemented in `_merge_resolve.py`):
+
+1. Compute `base = git merge-base HEAD MERGE_HEAD`.
+2. Index rows by funder name (the first `|`-delimited cell, which is
+   unique per row).
+3. Find rows in theirs that are **NEW vs. base** (funder name not in base
+   index) or **MODIFIED vs. base** (line text differs from base's row for
+   the same funder).
+4. For each NEW row in theirs: insert it into ours, anchored after the
+   row that precedes it in theirs (if that row exists in ours).
+5. For each MODIFIED row in theirs: overwrite ours' line for that funder
+   with theirs' line.
+6. Write the result. Do NOT replace ours' entire file with theirs'.
+
+This preserves all intermediate batch state while still landing the new
+funder's row. Anchor placement is approximate (the tracker isn't strictly
+sorted) — non-issue, but be aware that rows added during a batch may end
+up near "AHRQ" or wherever the branch's tracker had its insertion point.
+
+For `CreateAwards.ipynb` the splice is simpler: the priority list cell is
+canonically sorted by priority integer, and each PR adds exactly one new
+priority. The helper splits the cell-zero source by `\n` (the literal
+JSON escape, not a real newline), finds priorities in theirs not in ours,
+and splices them in before the trailing `When the same award appears in
+multiple sources` marker. Do NOT round-trip the notebook through
+`json.dumps(..., ensure_ascii=False)` — Databricks emits the source field
+with trailing padding (~36 literal newlines between the closing `"` and
+the next JSON token) that any naive re-serialize strips, producing a
+massive noisy diff. Use text-level surgery on the raw bytes.
+
+Watch out for these regex traps when parsing priority lines from the
+source field:
+
+- Descriptions contain `—` (em-dash JSON-escape) and `\"` (escaped
+  quote), so a regex like `[^\\]*?` for the description body bails at the
+  first backslash. Split on the line separator `\n` (literal 2-char
+  sequence backslash + n) and treat each chunk as a markdown line; then
+  match `^- (\d+):` against the chunk.
+- Git Bash heredocs on Windows mangle backslashes — `r"[\\]"` written in
+  a `<<'PYEND'` heredoc arrives as `[\]` (3 chars), not `[\\]` (4 chars).
+  Write the helper to a file and `py scripts/local/_merge_resolve.py`, not
+  via inline `py - <<EOF`.
 
 **→ Update tracker:** Change status to "Step 5" with notes (e.g., "Code committed, waiting for human to run notebook").
 
