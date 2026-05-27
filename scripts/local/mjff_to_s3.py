@@ -137,6 +137,27 @@ def clean_text(value: Any) -> Optional[str]:
     return text or None
 
 
+def split_name(name: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Split 'James P. Eisenstein' -> ('James P.', 'Eisenstein').
+
+    Strips trailing degree/suffix tokens (PhD, MD, Jr., Sr., II, III) before
+    splitting. Last whitespace-separated token = family name; rest = given.
+    Ported from scripts/local/wolf_to_s3.py per how-to-add-a-funder-v2.md §2.4.1
+    ("Port it verbatim - don't roll your own").
+    """
+    if not name:
+        return None, None
+    tokens = name.split()
+    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    while tokens and tokens[-1].lower().strip(",.") in suffixes:
+        tokens.pop()
+    if not tokens:
+        return None, None
+    if len(tokens) == 1:
+        return None, tokens[0]
+    return " ".join(tokens[:-1]), tokens[-1]
+
+
 def slug_from_url(url: str) -> str:
     path = urlparse(url).path.rstrip("/")
     return path.rsplit("/", 1)[-1]
@@ -481,7 +502,15 @@ def enrich_records(records: list[dict[str, Any]], cache_dir: Path, skip_research
         listing_researchers = json.loads(row.get("listing_researchers_json") or "[]")
         researchers = detail_researchers or listing_researchers
         lead = researchers[0] if researchers else {}
-        row["lead_investigator_raw"] = lead.get("name")
+        lead_name_raw = lead.get("name")
+        # MJFF lead names sometimes carry trailing affiliation after a comma
+        # (e.g. "Jane Doe, MIT"); strip that before split_name so suffixes
+        # like PhD/MD aren't merged with the family token.
+        lead_name_for_split = lead_name_raw.split(",", 1)[0].strip() if lead_name_raw else None
+        lead_given, lead_family = split_name(lead_name_for_split)
+        row["lead_investigator_raw"] = lead_name_raw
+        row["lead_given_name"] = lead_given
+        row["lead_family_name"] = lead_family
         row["lead_researcher_url"] = lead.get("url")
         row["all_researchers_json"] = json.dumps(researchers, ensure_ascii=False)
 
