@@ -295,17 +295,48 @@ def parse_announcement_post(html: str, year: int, source_url: str) -> list[dict]
 
 def discover_announcement_posts(known_years: set[int]) -> list[tuple[int, str]]:
     """List (year, post_url) for class-announcement blog posts whose year
-    is NOT already covered by /current-scholars/."""
+    is NOT already covered by /current-scholars/.
+
+    Pagination terminator is `X-WP-TotalPages` from the FIRST page response,
+    per how-to-add-a-funder-v2.md §1 ("empty page != end of corpus"). A
+    mid-walk empty page or transient 4xx no longer truncates the corpus.
+    """
     out: list[tuple[int, str]] = []
-    # WP REST `/posts` paginates; iterate until empty or 4xx.
     page = 1
+    total_pages: Optional[int] = None
+    consecutive_failures = 0
+    MAX_PAGES_FALLBACK = 100  # safety net if X-WP-TotalPages is missing
     while True:
         r = _http_get(f"{WP_POSTS_URL}?per_page=100&page={page}")
-        if r.status_code != 200:
+        if total_pages is None:
+            try:
+                total_pages = int(r.headers.get("X-WP-TotalPages") or 0) or None
+            except (TypeError, ValueError):
+                total_pages = None
+        if r.status_code == 400 and total_pages is not None and page > total_pages:
+            # WP returns 400 for page > X-WP-TotalPages; we already hit the end.
             break
+        if r.status_code != 200:
+            consecutive_failures += 1
+            print(f"  [searle WP] non-200 (status {r.status_code}) on page {page}; "
+                  f"consecutive_failures={consecutive_failures}")
+            if consecutive_failures >= 3:
+                raise RuntimeError(
+                    f"discover_announcement_posts: {consecutive_failures} consecutive "
+                    f"non-200 responses ending at page {page}; refusing to short-circuit "
+                    f"corpus walk (total_pages={total_pages})."
+                )
+            page += 1
+            if total_pages is not None and page > total_pages:
+                break
+            if page > MAX_PAGES_FALLBACK:
+                break
+            continue
+        consecutive_failures = 0
         posts = r.json() if r.text.strip() else []
         if not posts:
-            break
+            # Empty page mid-walk is logged but does NOT terminate (v2 §1).
+            print(f"  [searle WP] empty page {page} (total_pages={total_pages}); continuing")
         for p in posts:
             link = p.get("link", "")
             m = _ANNOUNCEMENT_URL_RE.match(link)
@@ -315,8 +346,10 @@ def discover_announcement_posts(known_years: set[int]) -> list[tuple[int, str]]:
             if year in known_years:
                 continue
             out.append((year, link))
-        # WP returns total pages in the X-WP-TotalPages header; use Link header check
-        if len(posts) < 100:
+        if total_pages is not None and page >= total_pages:
+            break
+        if total_pages is None and page >= MAX_PAGES_FALLBACK:
+            print(f"  [searle WP] no X-WP-TotalPages; stopping at MAX_PAGES_FALLBACK={MAX_PAGES_FALLBACK}")
             break
         page += 1
     # Dedup by year (keep first)
