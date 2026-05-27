@@ -141,11 +141,26 @@ def extract_href(value: Any) -> Optional[str]:
     return html.unescape(match.group(1)).strip() or None
 
 
+_PI_SUFFIX_TOKENS = {
+    "phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr",
+}
+
+
 def split_pi_name(name: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Split a Pakistani HEC PI name into (given, family).
+
+    Strips leading honorifics (Dr/Prof/Mr/Ms/Mrs via PI_TITLE_RE) AND
+    trailing degree/suffix tokens (PhD, MD, Jr., II, etc.) before splitting,
+    so "Dr. Ahmed Ali PhD" -> ("Ahmed", "Ali") not ("Ahmed Ali", "PhD").
+    Matches the canonical split_name helper from scripts/local/wolf_to_s3.py
+    per how-to-add-a-funder-v2.md §2.4.1.
+    """
     if not name:
         return None, None
     stripped = PI_TITLE_RE.sub("", name).strip()
     parts = stripped.split()
+    while parts and parts[-1].lower().strip(",.") in _PI_SUFFIX_TOKENS:
+        parts.pop()
     if not parts:
         return None, None
     if len(parts) == 1:
