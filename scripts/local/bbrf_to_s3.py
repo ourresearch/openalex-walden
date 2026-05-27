@@ -274,6 +274,12 @@ def download_grantees(output_dir: Path, limit: Optional[int]) -> Path:
     all_grantees: list[dict] = []
     page_n = 0
     consecutive_empty = 0
+    consecutive_non200 = 0
+    # Empty pages and transient non-200s are NOT terminators (v2 §1: a single
+    # blip silently truncated RWJF). MAX_PAGES is the authoritative ceiling;
+    # we raise rather than short-circuit on persistent failure.
+    MAX_CONSECUTIVE_EMPTY = 3
+    MAX_CONSECUTIVE_NON200 = 5
     while page_n < MAX_PAGES:
         if limit is not None and page_n >= limit:
             print(f"  [LIMIT] stopping after {limit} pages")
@@ -281,17 +287,36 @@ def download_grantees(output_dir: Path, limit: Optional[int]) -> Path:
         try:
             resp = _http_get(f"{GRANTEES_URL}?page={page_n}")
             if resp.status_code != 200:
-                print(f"  page {page_n}: HTTP {resp.status_code}; stopping")
-                break
+                consecutive_non200 += 1
+                print(f"  page {page_n}: HTTP {resp.status_code} "
+                      f"(consecutive_non200={consecutive_non200}/{MAX_CONSECUTIVE_NON200}); continuing")
+                if consecutive_non200 >= MAX_CONSECUTIVE_NON200:
+                    raise RuntimeError(
+                        f"download_grantees: {consecutive_non200} consecutive non-200s "
+                        f"ending at page {page_n}; refusing to short-circuit corpus walk."
+                    )
+                page_n += 1
+                continue
+            consecutive_non200 = 0
             page_grantees = parse_page(resp.text)
+        except RuntimeError:
+            raise
         except Exception as e:
-            print(f"  page {page_n}: error {e}; stopping")
-            break
+            print(f"  page {page_n}: error {e}; treating as non-200 flake; continuing")
+            consecutive_non200 += 1
+            if consecutive_non200 >= MAX_CONSECUTIVE_NON200:
+                raise RuntimeError(
+                    f"download_grantees: {consecutive_non200} consecutive errors "
+                    f"ending at page {page_n}."
+                ) from e
+            page_n += 1
+            continue
         if not page_grantees:
             consecutive_empty += 1
-            print(f"  page {page_n}: 0 grantees (consecutive_empty={consecutive_empty})")
-            if consecutive_empty >= 2:
-                print("  stopping after 2 consecutive empty pages")
+            print(f"  page {page_n}: 0 grantees "
+                  f"(consecutive_empty={consecutive_empty}/{MAX_CONSECUTIVE_EMPTY})")
+            if consecutive_empty >= MAX_CONSECUTIVE_EMPTY:
+                print(f"  stopping after {MAX_CONSECUTIVE_EMPTY} consecutive empty pages (likely end of corpus)")
                 break
         else:
             consecutive_empty = 0
