@@ -535,7 +535,7 @@ def main() -> None:
     if args.skip_upload:
         log("Skipping S3 upload by request")
     else:
-        if not check_no_shrink(len(df), args.allow_shrink, Path(args.output_dir)):
+        if not check_no_shrink(len(rows), args.allow_shrink, Path(args.output_dir)):
             raise SystemExit("§1.4 shrink-check failed. See above; re-run with --allow-shrink if intentional.")
         upload_to_s3(output_path)
 
