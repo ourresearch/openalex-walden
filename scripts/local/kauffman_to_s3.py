@@ -218,15 +218,24 @@ def download_grants(output_dir: Path, limit: Optional[int]) -> Path:
 
     all_grants: list[dict] = []
     page = 1
+    advertised_total_pages: Optional[int] = None
+    MAX_PAGES_FALLBACK = 200  # safety net if X-WP-TotalPages header is missing
     while True:
         r = _http_get(f"{GRANT_ENDPOINT}?per_page={WP_PAGE_SIZE}&page={page}")
         if r.status_code == 400:
             # WP REST returns 400 with code "rest_post_invalid_page_number" once we walk past the last page.
             break
         r.raise_for_status()
+        if advertised_total_pages is None:
+            try:
+                advertised_total_pages = int(r.headers.get("X-WP-TotalPages") or 0) or None
+            except (TypeError, ValueError):
+                advertised_total_pages = None
         chunk = r.json()
         if not chunk:
-            break
+            # Empty page mid-walk is logged but does NOT terminate (how-to-add-a-funder-v2.md §1).
+            # X-WP-TotalPages (read above) or the 400 branch above are the authoritative terminators.
+            print(f"  page {page}: empty response; continuing (advertised_total_pages={advertised_total_pages})")
         for g in chunk:
             meta = g.get("meta", {}) or {}
             states_ids      = g.get("states", []) or []
@@ -257,6 +266,9 @@ def download_grants(output_dir: Path, limit: Optional[int]) -> Path:
             print(f"  [LIMIT] stopping after {limit} grants")
             break
         if total_pages and page >= int(total_pages):
+            break
+        if not total_pages and page >= MAX_PAGES_FALLBACK:
+            print(f"  no X-WP-TotalPages header; stopping at MAX_PAGES_FALLBACK={MAX_PAGES_FALLBACK}")
             break
         page += 1
 
