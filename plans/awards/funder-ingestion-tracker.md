@@ -167,7 +167,7 @@ This document tracks the progress of adding new funders to OpenAlex.
 | FINEP (Brazil) | Step 0 | URL DISCOVERED 2026-05-04: finep.gov.br/transparencia/projetos returns 404 (path likely changed). Brazilian innovation agency funds large-scale R&D; data exists but path needs re-discovery via finep.gov.br main nav. |
 | UNCST (Uganda) | Step 0 | Uganda National Council for Science and Technology. Sectoral research programs |
 | COSTECH (Tanzania) | Step 0 | Tanzania Commission for Science and Technology. Research programs |
-| African Academy of Sciences (AESA) | Step 0 | Pan-African science academy. Grantee lists by program |
+| African Academy of Sciences (AESA) | Step 1 | LOCKED 2026-05-27 (codex): OpenAlex funder confirmed as African Academy of Sciences F4320327323. Official AAS ARISE portal exposes 47 grantee/project records via public JSON API at https://arise-api.aasciences.app/api/grantees; provenance preflight passed for `aas_arise_grantees` (0 production rows). Building priority 134 contractor handoff. |
 | LPDP (Indonesia) | Step 0 | Indonesian scholarship/research funder. Government portal |
 | BRIN (Indonesia) | Step 0 | Indonesian National Research and Innovation Agency. Research programs |
 | DOST (Philippines) | Step 0 | Philippine Department of Science and Technology. Council programs publish awardee lists |
