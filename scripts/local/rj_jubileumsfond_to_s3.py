@@ -247,25 +247,22 @@ def parse_grant_page(html: str, url: str) -> Optional[dict]:
     except ValueError:
         year_from_url = None
 
-    # PI name: it's the first paragraph or h2/h3 right after the h1.
-    # Pattern: "Project Title" then "PI Name" then description body.
+    # PI name: structural anchor — the PI's name lives in the
+    # <span class="contentBoxHeader"> that is the immediately preceding
+    # sibling of the <div class="content"> wrapping the h1, within the
+    # same <div class="contentBox">. The previous forward-walk landed on
+    # "Final report" (the nested finalReport contentBox header) because
+    # the PI span appears BEFORE the h1 in the DOM, not after it.
     pi_raw = None
     if h1:
-        nxt = h1.find_next_sibling()
-        # The next sibling is sometimes a wrapper div; walk into it for the name
-        # Look for the first short text element (< 80 chars, no commas at the start) after h1
-        for el in h1.find_all_next(["p", "h2", "h3", "span", "div"], limit=10):
-            txt = el.get_text(strip=True)
-            if txt and 2 < len(txt) < 80 and "," not in txt[:20]:
-                # Skip if it looks like a navigation/grant info label
-                if any(s in txt.lower() for s in ["grant administrator", "reference number", "amount",
-                                                   "funding", "subject", "year", "grants", "main menu",
-                                                   "english", "svenska"]):
-                    continue
-                # Assume this is the PI name if it has at least one space (first + last)
-                if " " in txt and not any(c in txt for c in (":", "|", "/")):
-                    pi_raw = txt
-                    break
+        content_div = h1.find_parent("div", class_="content")
+        pi_span = content_div.find_previous_sibling("span", class_="contentBoxHeader") if content_div else None
+        if pi_span:
+            candidate = pi_span.get_text(strip=True)
+            if candidate and len(candidate) <= 80 and not re.match(
+                r"^(Final report|Slutredovisning|Bidragsförvaltare)$", candidate
+            ):
+                pi_raw = candidate
 
     # grantInfoBox: <span class="contentBoxHeader">LABEL</span><div class="content">VALUE</div>
     fields: dict[str, str] = {}
