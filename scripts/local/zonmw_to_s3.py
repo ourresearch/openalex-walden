@@ -592,7 +592,6 @@ def main() -> None:
     df = crawl(args)
 
     output_path = args.output_dir / "zonmw_projects.parquet"
-    shrink_guard(output_path, len(df), args.allow_shrink)
     df.to_parquet(output_path, index=False)
 
     amount_nonnull = df["project_budget_api"].notna().sum() if "project_budget_api" in df else 0
