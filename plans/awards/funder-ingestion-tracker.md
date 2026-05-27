@@ -168,7 +168,7 @@ This document tracks the progress of adding new funders to OpenAlex.
 | UNCST (Uganda) | Step 0 | Uganda National Council for Science and Technology. Sectoral research programs |
 | COSTECH (Tanzania) | Step 0 | Tanzania Commission for Science and Technology. Research programs |
 | African Academy of Sciences (AESA) | Step 0 | Pan-African science academy. Grantee lists by program |
-| LPDP (Indonesia) | Step 0 | Indonesian scholarship/research funder. Government portal |
+| LPDP (Indonesia) | Step 1 | LOCKED 2026-05-27 (codex): OpenAlex funder confirmed as Lembaga Pengelola Dana Pendidikan F4320328515. Official LPDP Gatsby page-data at https://lpdp.kemenkeu.go.id/page-data/grantees/daftar-grantees/page-data.json exposes 713 RISPRO research grantee/project rows from https://lpdp.kemenkeu.go.id/grantees/daftar-grantees/ with 100% title/PI/institution/focus/category/year coverage; provenance preflight passed for `lpdp_rispro_grantees` (0 production rows). Building priority 136 contractor handoff. |
 | BRIN (Indonesia) | Step 0 | Indonesian National Research and Innovation Agency. Research programs |
 | DOST (Philippines) | Step 0 | Philippine Department of Science and Technology. Council programs publish awardee lists |
 | HEC (Pakistan) | Step 0 | Pakistan Higher Education Commission. Research programs |
