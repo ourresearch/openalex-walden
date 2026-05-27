@@ -1165,6 +1165,64 @@ and `currency` look sane together (not pence-as-pounds, not amount in a date col
 **On failure** — a systematically wrong field is a Step 2 mapping bug; fix the notebook
 mapping, push, and re-run Step 5.
 
+#### 6.4a PI / display_name frequency check (catches systematic scraper bugs)
+
+100% PI coverage from §6.3 is **not** by itself a pass signal. A scraper that
+captures the wrong DOM node on every page still scores 100% — the field is
+populated, just wrong on every row. The 10-row sample inspection above will
+catch the on-the-nose cases (literal `"Final report"` strings, etc.) but a
+subtler bug (e.g. the scraper grabbing a department name instead of a person)
+slips through.
+
+Run a frequency check for both the PI and the display name:
+
+```sql
+-- PI names
+SELECT lead_investigator.given_name AS given,
+       lead_investigator.family_name AS family,
+       COUNT(*) AS n
+FROM openalex.awards.{funder}_awards
+GROUP BY 1, 2
+ORDER BY n DESC
+LIMIT 20;
+
+-- Award/grant titles
+SELECT display_name, COUNT(*) AS n
+FROM openalex.awards.{funder}_awards
+GROUP BY 1
+ORDER BY n DESC
+LIMIT 20;
+```
+
+Top-20 must look like a real long-tail:
+
+- No PI `given`+`family` combo should exceed ~5 rows. PI re-grants exist but
+  are rare; a top combo with hundreds of rows is the canonical signature of
+  the scraper landing on the same wrong DOM node every time.
+- `given` and `family` must never equal a recognized institution name. An
+  institution belongs in `lead_investigator.affiliation.name`. If it shows
+  up as a person name, the scraper has confused two adjacent fields.
+- `display_name` should likewise show distinct titles. Repeated identical
+  titles usually mean the scraper is reading a page-template element (a
+  section header, a button label) instead of the grant-specific title.
+
+**On failure** — this is almost always a scraper bug, not a notebook
+mapping bug. Open an oxjob, NULL the affected field in the notebook (with
+the offending field's `affiliation` / structural anchors kept where they're
+reliable — HHMI / Helmsley / Mott precedent), ship the funder with the
+field NULL, and carry the scraper fix in the oxjob. Restore the field once
+the scraper is patched and the rows re-ingest.
+
+**Worked example.** RJ (Riksbankens Jubileumsfond) shipped via the v2 pilot
+on 2026-05-27 with 1,211 rows whose `lead_investigator.given_name` was
+`"Final"` and `family_name` was `"report"` — the scraper's forward-DOM-walk
+landed on a nested `<div class="contentBox finalReport">` header on every
+page (see [oxjobs #267](https://oxjobs.org/267)). §6.3 reported 100% PI
+coverage. §6.4 sample inspection caught it before the funder went to Step
+7. Without §6.4a's frequency check, a subtler version — say, the
+grant_administrator string showing up as the family name on 70% of rows —
+would have slipped through.
+
 ### 6.5 Funder consistency
 ```sql
 SELECT funder.display_name, COUNT(*)
