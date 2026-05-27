@@ -283,18 +283,47 @@ def download_grants(output_dir: Path, limit: Optional[int]) -> Path:
     seen_ids: set[str] = set()
     last_page_signature: Optional[tuple] = None
     page_n = 1
+    # Terminators (in priority order):
+    # 1. MAX_PAGES ceiling.
+    # 2. Duplicate-content (server caches last page for out-of-range N).
+    # Empty pages and transient non-200s are NOT terminators (v2 §1: Carnegie
+    # has Cloudflare/WAF history; a 503 or empty card grid is a flake, not EOF).
+    # We log and continue, but cap consecutive failures so we don't spin forever.
+    consecutive_empty = 0
+    consecutive_non200 = 0
+    MAX_CONSECUTIVE_EMPTY = 3
+    MAX_CONSECUTIVE_NON200 = 5
     while page_n <= MAX_PAGES:
         if limit is not None and page_n > limit:
             print(f"  [LIMIT] stopping after {limit} pages")
             break
         r = _http_get(f"{LISTING_URL}?page={page_n}")
         if r.status_code != 200:
-            print(f"  page {page_n}: HTTP {r.status_code}; stopping")
-            break
+            consecutive_non200 += 1
+            print(f"  page {page_n}: HTTP {r.status_code} "
+                  f"(consecutive_non200={consecutive_non200}/{MAX_CONSECUTIVE_NON200}); continuing")
+            if consecutive_non200 >= MAX_CONSECUTIVE_NON200:
+                raise RuntimeError(
+                    f"download_grants: {consecutive_non200} consecutive non-200 responses "
+                    f"ending at page {page_n}; refusing to short-circuit corpus walk "
+                    f"(Carnegie WAF is the usual culprit; retry later or escalate to "
+                    f"agent-browser per v2 §1)."
+                )
+            page_n += 1
+            continue
+        consecutive_non200 = 0
         cards = parse_listing_page(r.text)
         if not cards:
-            print(f"  page {page_n}: 0 cards; stopping")
-            break
+            consecutive_empty += 1
+            print(f"  page {page_n}: 0 cards "
+                  f"(consecutive_empty={consecutive_empty}/{MAX_CONSECUTIVE_EMPTY}); continuing")
+            if consecutive_empty >= MAX_CONSECUTIVE_EMPTY:
+                # 3 empty pages in a row is probably real EOF, not a flake.
+                print(f"  page {page_n}: {MAX_CONSECUTIVE_EMPTY} consecutive empty pages → end of corpus")
+                break
+            page_n += 1
+            continue
+        consecutive_empty = 0
         # Detect end-of-pagination via duplicate-content (server caches the last page for any out-of-range N).
         sig = tuple(c["grant_id"] for c in cards)
         if sig == last_page_signature:
