@@ -254,6 +254,33 @@ _DEGREE_SUFFIXES = {
 }
 _PREFIX_TITLES = {"Dr", "Dr.", "Prof", "Prof.", "Professor", "Associate", "Assistant"}
 
+# Tokens that indicate the applicant_name is an institution rather than a
+# person. Used to prevent the §6.4 PI bug seen on 2026-05-27 where
+# "Carlsbergfondet", "Det Danske Institut i Rom", and "Videnskabernes Selskab /
+# Royal Academy" all got split into given/family columns (oxjobs #267 sibling).
+# Detection is token-level (case-insensitive, punctuation/slash stripped).
+_INSTITUTIONAL_NAME_MARKERS = {
+    "carlsbergfondet", "fondet", "institut", "institute", "instituttet",
+    "universitet", "university", "universiteit", "selskab", "selskabs",
+    "selskabet", "society", "akademi", "academy", "royal", "kgl",
+    "kongelige", "foundation", "fond", "fonden", "fonds", "center", "centre",
+    "centeret", "centret", "museum", "museet", "school", "skole", "skolen",
+    "forskning", "forskningsråd", "forskningsraad", "forum", "hospital",
+    "sygehus", "biblioteket", "bibliotek", "library", "council", "ràd",
+    "raad", "association", "forening", "foreningen", "danske", "danish",
+    "polytechnic", "company", "institution",
+}
+
+
+def is_institutional_name(name: Optional[str]) -> bool:
+    """Return True if `name` looks like an institution, not a person."""
+    if not name:
+        return False
+    # Split on whitespace AND `/` (joins like "Royal / Academy").
+    raw_tokens = re.split(r"[\s/]+", name)
+    tokens = {t.lower().strip(".,;:()[]") for t in raw_tokens if t}
+    return bool(tokens & _INSTITUTIONAL_NAME_MARKERS)
+
 
 def split_name(full_name: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     """Conservative applicant-name split for OpenAlex investigator structs."""
@@ -288,7 +315,15 @@ def parse_grant_page(html: str, url: str, http_status: int) -> dict[str, Optiona
     facts = extract_labeled_facts(soup)
     amount, currency = parse_amount(facts.get("amount_raw"))
     year = parse_year(facts.get("year_raw"))
-    given_name, family_name = split_name(facts.get("applicant_name"))
+    applicant_name = facts.get("applicant_name")
+    # Org-level grants (e.g. Postdoctoral Networking Day to "Carlsbergfondet"
+    # itself, or grants to "Det Danske Institut i Rom") should leave given/
+    # family NULL so we don't pollute the PI columns with institution names.
+    # The institution slot still gets populated below via facts["institution"].
+    if is_institutional_name(applicant_name):
+        given_name, family_name = None, None
+    else:
+        given_name, family_name = split_name(applicant_name)
 
     return {
         "source_url": url,
@@ -451,14 +486,23 @@ def build_dataframe(raw_path: Path, full_run: bool) -> pd.DataFrame:
         year = rec.get("year")
         start_date = f"{year}-01-01" if year else None
         end_date = f"{year}-12-31" if year else None
+        # Re-apply the institutional-name guard at build time so cached raw
+        # JSONs from before the fix (2026-05-27 oxjobs #267 sibling) are also
+        # cleaned: if applicant_name is an institution, null given/family.
+        applicant_name = rec.get("applicant_name")
+        if is_institutional_name(applicant_name):
+            given_name, family_name = None, None
+        else:
+            given_name = rec.get("given_name")
+            family_name = rec.get("family_name")
         rows.append({
             "funder_award_id": f"carlsberg-fondet-{slug}",
             "slug": slug,
             "display_name": title,
             "description": None,
-            "applicant_name": rec.get("applicant_name"),
-            "given_name": rec.get("given_name"),
-            "family_name": rec.get("family_name"),
+            "applicant_name": applicant_name,
+            "given_name": given_name,
+            "family_name": family_name,
             "institution": rec.get("institution"),
             "amount": amount,
             "currency": rec.get("currency"),
