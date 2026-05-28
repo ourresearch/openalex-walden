@@ -723,6 +723,56 @@ try_element_at(COALESCE(arr, ARRAY()), 1)
   arrays; full corpus did, and `ELEMENT_AT` blew up the sanity cell.
 - Assumed column names without verifying via `DESCRIBE`
 
+### 2.3.0.1 Future-dated start/end years
+
+Several funders publish records with `start_year` far in the future:
+placeholder dates for not-yet-active projects (BMBF nuclear decommissioning
+runs out to 2032), draft Gateway-to-Research entries pre-dated to 2028+, and
+planning-stage Horizon Europe call IDs ingested as if they were grants. When
+sorted by `start_year:desc` on the awards browse page, these dominate the top
+and make OpenAlex look broken even though the underlying data is technically
+what the funder publishes.
+
+**Rule:** if `start_year > YEAR(current_date()) + 1`, set both `start_year`
+and `end_year` to NULL. One year ahead is legitimate (grants announced for
+next year). More than that is a placeholder.
+
+**Where the rule is enforced:** centrally in
+[CreateAwards.ipynb](../../notebooks/awards/CreateAwards.ipynb) in the
+`cleaned_awards` CTE, so every priority-merged record gets the cap on every
+refresh — including funders that pre-date this doc. Per-funder notebooks
+should also apply the cap inline so the `openalex.awards.{funder}_awards`
+raw table is clean and not just the final merged table. Pattern:
+
+```sql
+-- If you derive start_year via YEAR(...), wrap it:
+CASE WHEN YEAR(b.start_date) > YEAR(current_date()) + 1
+     THEN NULL
+     ELSE YEAR(b.start_date)
+END as start_year,
+CASE WHEN YEAR(b.start_date) > YEAR(current_date()) + 1
+     THEN NULL
+     ELSE YEAR(b.end_date)
+END as end_year
+
+-- Or as a final cleanup CTE wrapping a prior `awards_transformed`:
+SELECT
+  * EXCEPT(start_year, end_year),
+  CASE WHEN start_year > YEAR(current_date()) + 1 THEN NULL ELSE start_year END as start_year,
+  CASE WHEN start_year > YEAR(current_date()) + 1 THEN NULL ELSE end_year END as end_year
+FROM awards_transformed
+```
+
+`end_year` is nulled only when paired with a future `start_year`. A
+legitimate multi-year grant (e.g. Wellcome 2024–2029) keeps its planned
+end_year; only placeholder records where BOTH years are stamped to an
+out-year (BMBF 2030–2030 nuclear, GTR 2028–2028 drafts) are cleaned.
+
+Confirmed incidents (2026-05): BMBF (24 awards `start_year > 2027`), and
+the UK research councils via Gateway to Research — BBSRC (9), AHRC (6),
+EPSRC (6), ESRC (3), NERC (1), STFC (1) — all surfacing on
+`https://openalex.org/awards?sort=start_year:desc`.
+
 ### 2.3.1 Composing display_name from scraped fields
 
 When `display_name` concatenates a scraped role/title onto a fixed prefix (e.g.
@@ -1013,7 +1063,14 @@ GROUP BY start_year
 ORDER BY start_year DESC
 LIMIT 20;
 ```
-Verify reasonable year range.
+Verify reasonable year range. **Top values must be ≤ `YEAR(current_date()) + 1`.** Anything beyond means the future-year cap (§2.3.0.1) wasn't applied — go back and wrap the `start_year` / `end_year` derivations.
+
+```sql
+-- Confirm no records slipped past the cap:
+SELECT COUNT(*) FROM openalex.awards.{funder}_awards
+WHERE start_year > YEAR(current_date()) + 1;
+-- Must be 0.
+```
 
 ### 6.7 Amount and currency coverage (FAIL-FAST CHECK)
 
