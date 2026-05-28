@@ -233,6 +233,53 @@ Record `id` (strip the `F` prefix to get the numeric `funder_id`), `display_name
    page 321 immediately yielded 15 grants — the page wasn't past end-of-corpus,
    it was a flake.
 
+   **Grep-able forbidden patterns** (the v2 2026-05-27 batch review caught
+   three of these across PRs #171 Searle, #175 Kauffman, #177 Carnegie):
+
+   ```python
+   # ❌ FORBIDDEN — bails on first empty page
+   if not chunk: break
+   if not posts: break
+   if not cards: break
+
+   # ❌ FORBIDDEN — bails on first non-200 (CDN/WAF blip)
+   if r.status_code != 200: break
+   ```
+
+   **Correct pattern** (used by Carnegie/BBRF after fix):
+
+   ```python
+   consecutive_empty = 0
+   consecutive_non200 = 0
+   MAX_CONSECUTIVE_EMPTY = 3      # 2 is too low — see PR #173 BBRF baseline bump
+   MAX_CONSECUTIVE_NON200 = 5
+   while page <= MAX_PAGES:
+       r = http_get(url, page=page)
+       if r.status_code != 200:
+           consecutive_non200 += 1
+           print(f"page {page}: HTTP {r.status_code} ({consecutive_non200}/{MAX_CONSECUTIVE_NON200}); continuing")
+           if consecutive_non200 >= MAX_CONSECUTIVE_NON200:
+               raise RuntimeError(...)  # don't silently truncate
+           page += 1
+           continue
+       consecutive_non200 = 0
+       items = parse(r)
+       if not items:
+           consecutive_empty += 1
+           if consecutive_empty >= MAX_CONSECUTIVE_EMPTY:
+               break  # 3 in a row is probably real EOF
+           page += 1
+           continue
+       consecutive_empty = 0
+       ...
+   ```
+
+   For WP REST specifically, the cleaner approach is to read `X-WP-TotalPages`
+   from the first response and use it as the authoritative terminator. See
+   `searle_scholars_to_s3.py` after fix for the canonical pattern. Sources
+   with WAF/Cloudflare history (Carnegie, RWJF) **must** treat non-200s as
+   flakes rather than EOF.
+
 **If you find yourself waiting >5 minutes with no output, STOP.** The script is likely hung. Check the source URL manually, test the API in a browser, and debug before continuing. Do not let downloads run silently—this wastes massive amounts of time.
 
 ---
@@ -585,9 +632,11 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
    Precedents (all FIXED + CONFIRMED in the 2026-05-26/27 sweep): Abel Prize
    (`F8651541334`, `CreateAbelPrizeAwards.ipynb`), MinCiencias
    (`F3277441329`, `CreateMinCienciasAwards.ipynb`), Schmidt Sciences
-   (`F4026159580`, `CreateSchmidtSciencesAwards.ipynb`). All three originally
-   shipped with the dim-select pattern, silently emitted 0 rows, and were
-   patched with this inline-constants shape.
+   (`F4026159580`, `CreateSchmidtSciencesAwards.ipynb`), Smithsonian SARF
+   (`F7230414656`, `CreateSmithsonianSARFAwards.ipynb` — PR #167, caught
+   pre-merge in the 2026-05-27 batch review). All four originally shipped
+   with the dim-select pattern, would have silently emitted 0 rows, and
+   were patched with this inline-constants shape.
 
    **Failure signature to watch for:** scraper uploads the expected row
    count to S3, raw table loads cleanly with the right `COUNT(*)`, but
@@ -595,6 +644,22 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
    always a Path B funder using a Path A CTE.
 
    This check is mandatory for every ingest, not just the prize pattern.
+
+   **Forking guard rule.** When forking an existing notebook as a template,
+   the most common mistake is keeping the Path A `assert_true(COUNT(*) = 1)`
+   cell and the dim-selecting CTE while only changing the literal
+   `funder_id`. That fails closed for Path B funders (the assert raises),
+   but if the assert is silently removed during cleanup, the CTE then
+   silently emits 0 rows. Before forking, **grep your new notebook**:
+
+   ```bash
+   # Both should return 0 hits for Path B funders.
+   grep -E "FROM openalex.common.funder.*WHERE funder_id = {non_F4320_id}" notebooks/awards/Create{X}Awards.ipynb
+   grep "assert_true.*funder_id = {non_F4320_id}" notebooks/awards/Create{X}Awards.ipynb
+   ```
+
+   If either hits, your funder is Path B but your notebook is Path A —
+   replace with the inline-constants pattern above.
 
 5. **Step 2: Transform to award schema** (see Step 5 for details)
    - Map native fields to OpenAlex schema
@@ -783,6 +848,37 @@ degree/suffix tokens (`PhD`, `MD`, `DPhil`, `Jr.`, `Sr.`, `II`, `III`, `IV`)
 and treats the last remaining token as family, everything before as given.
 Port it verbatim — don't roll your own.
 
+**Do the split in Python, not in SQL.** A SQL-side
+`element_at(SPLIT(name, ' '), -1)` is equivalent to `name.split(" ", 1)`
+in terms of bugs (no suffix strip), **and** has the additional flaw that
+bare `element_at` on an empty array raises `SparkArrayIndexOutOfBoundsException`
+at runtime per §2.3. The Python script already has the raw name string in
+memory — it's the right place to do the parse. The script writes
+`lead_given_name` and `lead_family_name` parquet columns; the notebook
+just `TRIM`/`NULLIF`s them. Confirmed incident on MJFF (PR #165,
+2026-05-27): the original notebook used
+`ARRAY_JOIN(SLICE(SPLIT(lead_name_clean, ' '), 1, SIZE(...) - 1), ' ')` +
+`element_at(SPLIT(lead_name_clean, ' '), -1)` — hit both bugs at once.
+
+**Don't roll your own — even when it looks "close enough".** A custom
+helper that strips only leading honorifics (Dr/Prof/Mr/Ms) but not
+trailing degree suffixes (PhD/MD/Jr/Sr) will produce `family = "PhD"` on
+names like `"Dr. Ahmed Ali PhD"`. Confirmed incident on HEC Pakistan
+(PR #176, 2026-05-27): custom `split_pi_name` stripped only leading
+titles. Either import `split_name` from `wolf_to_s3.py` directly, or
+copy the function body **including the `suffixes` set**. The
+2026-05-27 review found two contractors building variants that omitted
+the suffix logic; the canonical helper is short enough (~18 lines) that
+duplicating it is fine, but the suffix list is the load-bearing part —
+not the leading-title regex.
+
+**Grep check before push:**
+```bash
+# Both should return 0 for a new funder script:
+grep "name\.split(" scripts/local/{funder}_to_s3.py        # forbidden naïve split
+grep "element_at(SPLIT" notebooks/awards/Create*Awards.ipynb  # forbidden SQL split
+```
+
 **→ Update tracker:** Change status to "Step 3" with notes (e.g., "Notebook created").
 
 ---
@@ -804,6 +900,52 @@ Add the new funder to the priority list in the notebook header.
 ## Step 4: Commit and Push
 
 **IMPORTANT:** The Databricks GUI syncs from the git repo. You must commit and push before the user can see/run the notebooks.
+
+### 4.0 Pre-PR self-check (run BEFORE `git commit`)
+
+The 2026-05-27 fleet review (28 contractor PRs, #160–#187) found 7 bugs
+that a single grep round would have caught. Run all of these on your new
+files before opening the PR; each must return **0 hits** unless noted:
+
+```bash
+F={funder_name}             # e.g. mjff, smithsonian_sarf, kauffman
+NB=notebooks/awards/Create*Awards.ipynb   # narrow to your file before grepping
+SCRIPT=scripts/local/${F}_to_s3.py
+
+# §1 — first-empty-page bail (caught 3 PRs in the 2026-05-27 batch)
+grep -E "if not (chunk|posts|cards|items|results|grantees):\s*break" $SCRIPT
+grep -E "if r\.status_code != 200:\s*break" $SCRIPT
+grep -E "if resp\.status_code != 200:\s*break" $SCRIPT
+
+# §1.6 — Path A applied to a Path B funder (caught 1 PR; same class as Abel/MinCiencias/Schmidt)
+# Run if your funder_id does NOT start with 4320:
+grep -E "assert_true.*COUNT\(\*\) = 1.*openalex\.common\.funder" $NB
+grep -E "FROM openalex\.common\.funder.*WHERE funder_id" $NB
+
+# §2.3 — bare element_at / ELEMENT_AT (raises on empty arrays)
+grep -E "(^|[^_])element_at\(" $NB | grep -v "try_element_at"
+grep -E "ELEMENT_AT\(" $NB | grep -v "TRY_ELEMENT_AT"
+
+# §2.4.1 — naïve PI splitting (caught 2 PRs)
+grep -E "name\.split\(" $SCRIPT             # naïve Python
+grep -E "element_at\(SPLIT\(.*,\s*-1\)" $NB # SQL equivalent of name.split(' ',1)
+
+# §1.2 — missing UTF-8 shim / astype / --limit / --output-dir
+grep -q "sys.stdout.reconfigure" $SCRIPT || echo "MISSING: UTF-8 shim"
+grep -q "astype(\"string\")\|astype(str)" $SCRIPT || echo "MISSING: df.astype before to_parquet"
+grep -q '"--limit"' $SCRIPT || echo "MISSING: --limit flag"
+grep -q '"--output-dir"' $SCRIPT || echo "MISSING: --output-dir flag"
+
+# §2.4.1 — custom name splitter missing the canonical suffix set
+# (look for any "def split_*name" function and verify it strips PhD/MD/Jr/Sr)
+grep -E "def split_(pi_|investigator_|person_|lead_)?name" $SCRIPT
+# If a match is found, manually verify the function includes:
+#   suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+# Easier: just `from <canonical> import split_name` if your script imports work that way,
+# or copy the wolf_to_s3.py implementation verbatim.
+```
+
+If anything trips, fix the script/notebook before continuing to §4.1.
 
 ### 4.1 Commit all new files
 
