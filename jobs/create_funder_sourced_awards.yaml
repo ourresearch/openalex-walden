@@ -807,6 +807,96 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: MMW_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateMMWAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: TrygFonden_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateTrygFondenAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Carlsberg_Fondet_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateCarlsbergFondetAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Fritz_Thyssen_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateFritzThyssenAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Mercator_Fellows_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateMercatorFellowsAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Velux_Stiftung_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateVeluxStiftungAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Gulbenkian_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateGulbenkianAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Mott_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateMottAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Helmsley_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateHelmsleyAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: CONAHCYT_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateCONAHCYTAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
             - task_key: ARC_Awards
@@ -896,6 +986,16 @@ resources:
             - task_key: Wenner_Gren_Awards
             - task_key: World_Food_Prize_Awards
             - task_key: ZonMw_Awards
+            - task_key: MMW_Awards
+            - task_key: TrygFonden_Awards
+            - task_key: Carlsberg_Fondet_Awards
+            - task_key: Fritz_Thyssen_Awards
+            - task_key: Mercator_Fellows_Awards
+            - task_key: Velux_Stiftung_Awards
+            - task_key: Gulbenkian_Awards
+            - task_key: Mott_Awards
+            - task_key: Helmsley_Awards
+            - task_key: CONAHCYT_Awards
           email_notifications: {}
           notebook_task:
             notebook_path: notebooks/awards/CreateAwards
