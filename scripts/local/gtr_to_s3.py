@@ -286,7 +286,7 @@ class CheckpointManager:
 def fetch_page_with_retry(
     page: int,
     session: requests.Session,
-    max_retries: int = MAX_RETRIES
+    max_retries: int = 5,  # was MAX_RETRIES (3); GtR 429 window needs more attempts (oxjobs #195)
 ) -> tuple[int, list[dict], Optional[str]]:
     """
     Fetch a single page with retry logic.
@@ -302,6 +302,7 @@ def fetch_page_with_retry(
     url = f"{GTR_API_BASE}/projects"
     params = {"p": page, "s": PAGE_SIZE}
     last_error = None
+    response = None
 
     for attempt in range(max_retries):
         try:
@@ -316,11 +317,14 @@ def fetch_page_with_retry(
         except requests.exceptions.ConnectionError as e:
             last_error = f"Connection error (attempt {attempt + 1}/{max_retries})"
         except requests.exceptions.HTTPError as e:
-            if response.status_code == 429:  # Rate limited
-                wait_time = RETRY_BACKOFF ** (attempt + 2)
+            if response is not None and response.status_code == 429:  # Rate limited
+                # The API's rate-limit window is generous; default 4s/16s backoff
+                # isn't enough. Minimum 30s gives the window time to reset (oxjobs #195).
+                wait_time = max(30.0, RETRY_BACKOFF ** (attempt + 2))
                 last_error = f"Rate limited, waiting {wait_time:.1f}s"
                 time.sleep(wait_time)
-            elif response.status_code >= 500:  # Server error
+                continue  # don't double-sleep at end-of-loop
+            elif response is not None and response.status_code >= 500:  # Server error
                 last_error = f"Server error {response.status_code} (attempt {attempt + 1}/{max_retries})"
             else:
                 # Client error, don't retry
