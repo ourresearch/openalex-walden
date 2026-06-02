@@ -137,18 +137,33 @@ _session: Optional[requests.Session] = None
 _last_t = 0.0
 
 
-def _get(url: str, timeout: int = 30) -> str:
+def _get(url: str, timeout: int = 30, max_attempts: int = 4) -> str:
     global _session, _last_t
     if _session is None:
         _session = requests.Session()
         _session.headers.update({"User-Agent": USER_AGENT})
-    elapsed = time.monotonic() - _last_t
-    if elapsed < REQUEST_DELAY_S:
-        time.sleep(REQUEST_DELAY_S - elapsed)
-    r = _session.get(url, timeout=timeout)
-    _last_t = time.monotonic()
-    r.raise_for_status()
-    return r.text
+    last_err = None
+    for attempt in range(1, max_attempts + 1):
+        elapsed = time.monotonic() - _last_t
+        if elapsed < REQUEST_DELAY_S:
+            time.sleep(REQUEST_DELAY_S - elapsed)
+        try:
+            r = _session.get(url, timeout=timeout)
+            _last_t = time.monotonic()
+            if r.status_code < 500:
+                r.raise_for_status()  # 2xx returns; 4xx is permanent -> raise
+                return r.text
+            last_err = requests.HTTPError(f"HTTP {r.status_code} (server)")
+        except (requests.Timeout, requests.ConnectionError) as e:
+            _last_t = time.monotonic()
+            last_err = e
+        # transient (5xx / timeout / connection reset) -> back off and retry,
+        # so a single CDN/WAF blip never silently truncates the corpus.
+        if attempt < max_attempts:
+            back = min(20, 2 ** attempt)
+            log(f"  transient fetch issue ({type(last_err).__name__}) on …{url[-32:]}; retry {attempt}/{max_attempts} in {back}s")
+            time.sleep(back)
+    raise RuntimeError(f"Moore: fetch failed after {max_attempts} attempts: {url} ({last_err})")
 
 
 def load_cache(p: Path) -> dict:
@@ -271,15 +286,24 @@ def discover(use_cache: bool, cache: dict, limit: Optional[int]) -> list:
     """
     raw = []
     seen = set()
+    consecutive_empty = 0
+    MAX_CONSECUTIVE_EMPTY = 3  # an empty list page is usually a flake, not end-of-results
     for page in range(1, MAX_PAGES + 1):
         rows = parse_list_page(cached_get(LIST_URL.format(page=page), cache, use_cache))
+        if not rows:
+            consecutive_empty += 1
+            log(f"  list page {page}: 0 rows ({consecutive_empty}/{MAX_CONSECUTIVE_EMPTY} consecutive empty)")
+            if consecutive_empty >= MAX_CONSECUTIVE_EMPTY:
+                break  # several empties in a row ≈ genuine end-of-results
+            continue
+        consecutive_empty = 0
         page_ids = {r["grantId"] for r in rows}
         new_ids = page_ids - seen
         raw.extend(rows)
         seen |= page_ids
         log(f"  list page {page}: {len(rows)} rows, +{len(new_ids)} new ids (unique {len(seen)})")
-        if not rows or not new_ids:
-            break
+        if not new_ids:
+            break  # a full page with zero NEW grantIds = past end (search repeats last page)
         if limit and len(seen) >= limit:
             break
 
