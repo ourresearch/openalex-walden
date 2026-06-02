@@ -60,6 +60,12 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+except (AttributeError, ValueError):
+    pass
+
 
 LAUREATES_URL = (
     "https://www.fondationdestreilles.com/la-recherche/le-prix-jeune-chercheur/"
@@ -90,6 +96,57 @@ PARQUET_FILENAME = "treilles_young_researcher.parquet"
 
 _last_request_t = 0.0
 
+NAME_SUFFIXES = {
+    "phd",
+    "ph.d",
+    "ph.d.",
+    "md",
+    "m.d",
+    "m.d.",
+    "dphil",
+    "dsc",
+    "d.sc",
+    "d.sc.",
+    "scd",
+    "sc.d",
+    "sc.d.",
+    "jr",
+    "jr.",
+    "sr",
+    "sr.",
+    "ii",
+    "iii",
+    "iv",
+}
+
+FAMILY_PARTICLES = {
+    "al",
+    "d",
+    "de",
+    "del",
+    "della",
+    "des",
+    "di",
+    "do",
+    "dos",
+    "du",
+    "el",
+    "la",
+    "le",
+    "les",
+    "van",
+    "von",
+}
+
+ORG_MARKERS = {
+    "association",
+    "federation",
+    "fondation",
+    "institut",
+    "laboratoire",
+    "societe",
+}
+
 
 def log(message: str) -> None:
     print(message, flush=True)
@@ -111,15 +168,58 @@ def slugify(value: str) -> str:
     return slug or "unknown"
 
 
+def normalize_name_token(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    return ascii_text.lower().strip(" .,-'’")
+
+
+def is_family_particle(value: str) -> bool:
+    raw = value.lower().strip(" .,-")
+    token = normalize_name_token(value)
+    return token in FAMILY_PARTICLES or raw.startswith(("d'", "d’"))
+
+
+def looks_non_person_name(name: str, tokens: list[str]) -> bool:
+    normalized = " ".join(normalize_name_token(token) for token in tokens)
+    if "(" in name or ")" in name:
+        return True
+    if any(marker in normalized.split() for marker in ORG_MARKERS):
+        return True
+    if normalized == "la main a la pate":
+        return True
+    return False
+
+
 def split_nom_prenom(value: str) -> tuple[Optional[str], Optional[str]]:
-    """The source column is labelled 'Nom et prenom' (family name then given name)."""
+    """Parse the source's family-name-then-given-name value.
+
+    The Fondation table labels this column "Nom et prénom". Most rows are
+    "Family Given", but French particles can make the family name span multiple
+    tokens, e.g. "de Brito José Marquès" or "Le Bohec Céline".
+    """
     name = clean_text(value)
     if not name:
         return None, None
-    if "(" in name or len(name.split()) == 1:
+    tokens = [token for token in re.split(r"\s+", name) if token]
+    while tokens and normalize_name_token(tokens[-1]) in NAME_SUFFIXES:
+        tokens.pop()
+    if not tokens:
+        return None, None
+    if len(tokens) == 1 or looks_non_person_name(name, tokens):
         return None, name
-    first, rest = name.split(" ", 1)
-    return clean_text(rest), clean_text(first)
+
+    family_end = 2 if is_family_particle(tokens[0]) and len(tokens) > 2 else 1
+    while family_end < len(tokens) - 1 and is_family_particle(tokens[family_end]):
+        family_end += 1
+        while family_end < len(tokens) - 1 and is_family_particle(tokens[family_end]):
+            family_end += 1
+        if family_end < len(tokens) - 1:
+            family_end += 1
+
+    family = clean_text(" ".join(tokens[:family_end]))
+    given = clean_text(" ".join(tokens[family_end:]))
+    return given, family
 
 
 def polite_get_text(url: str, *, timeout: int = 90, max_attempts: int = 4) -> str:
@@ -285,6 +385,15 @@ def validate_dataframe(df: pd.DataFrame, *, full_run: bool) -> None:
     family_covered = int(df["family_name"].notna().sum())
     log(f"  {'given_name':18s}: {given_covered:,}/{total:,} ({given_covered / total * 100 if total else 0:.1f}%)")
     log(f"  {'family_name':18s}: {family_covered:,}/{total:,} ({family_covered / total * 100 if total else 0:.1f}%)")
+    family_norm = df["family_name"].dropna().map(normalize_name_token)
+    particle_only = sorted(set(family_norm[family_norm.isin(FAMILY_PARTICLES)]))
+    if particle_only:
+        raise RuntimeError(f"Particle-only parsed family names found: {particle_only}")
+    multi_token_families = df["family_name"].dropna()[df["family_name"].dropna().str.contains(r"\s")]
+    log(f"  {'multi-token family':18s}: {len(multi_token_families):,}/{family_covered:,}")
+    if not multi_token_families.empty:
+        log(f"  Multi-token family examples: {multi_token_families.head(12).tolist()}")
+    log(f"  Top family names: {df['family_name'].dropna().value_counts().head(12).to_dict()}")
 
     if full_run and total < 600:
         raise RuntimeError(f"Full Fondation des Treilles run returned {total:,} rows; expected at least 600")
