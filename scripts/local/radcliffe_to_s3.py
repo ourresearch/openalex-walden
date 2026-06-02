@@ -142,18 +142,33 @@ _session: Optional[requests.Session] = None
 _last_t = 0.0
 
 
-def _http_get(url: str, timeout: int = 30) -> str:
+def _http_get(url: str, timeout: int = 30, max_attempts: int = 4) -> str:
     global _session, _last_t
     if _session is None:
         _session = requests.Session()
         _session.headers.update({"User-Agent": USER_AGENT})
-    dt = time.monotonic() - _last_t
-    if dt < REQUEST_DELAY_S:
-        time.sleep(REQUEST_DELAY_S - dt)
-    r = _session.get(url, timeout=timeout)
-    _last_t = time.monotonic()
-    r.raise_for_status()
-    return r.text
+    last_err = None
+    for attempt in range(1, max_attempts + 1):
+        dt = time.monotonic() - _last_t
+        if dt < REQUEST_DELAY_S:
+            time.sleep(REQUEST_DELAY_S - dt)
+        try:
+            r = _session.get(url, timeout=timeout)
+            _last_t = time.monotonic()
+            if r.status_code < 500:
+                r.raise_for_status()  # 2xx returns; 4xx is permanent -> raise
+                return r.text
+            last_err = requests.HTTPError(f"HTTP {r.status_code} (server)")
+        except (requests.Timeout, requests.ConnectionError) as e:
+            _last_t = time.monotonic()
+            last_err = e
+        # transient (5xx / timeout / connection reset) -> back off and retry,
+        # so a single blip never drops a whole cohort.
+        if attempt < max_attempts:
+            back = min(20, 2 ** attempt)
+            log(f"  transient fetch issue ({type(last_err).__name__}) on …{url[-40:]}; retry {attempt}/{max_attempts} in {back}s")
+            time.sleep(back)
+    raise RuntimeError(f"Radcliffe: fetch failed after {max_attempts} attempts: {url} ({last_err})")
 
 
 # =============================================================================
@@ -199,13 +214,15 @@ def scrape_all(use_cache: bool, cache_path: Path, limit_cohorts: Optional[int]) 
         for page in range(1, MAX_PAGES_PER_COHORT + 1):
             url = LIST_URL.format(y0=y0, y1=y1, page=page)
             try:
-                htmltext = _http_get(url)
-            except Exception as e:
-                log(f"  {y0}-{y1} p{page} error: {type(e).__name__}: {str(e)[:50]}")
-                break
+                htmltext = _http_get(url)  # retries transient flakes internally
+            except requests.HTTPError as e:
+                # a 404 just means we paged past this cohort's last page
+                if getattr(e, "response", None) is not None and e.response.status_code == 404:
+                    break
+                raise  # other client errors are real -> abort, never silently drop a cohort
             cards = parse_cards(htmltext)
             if not cards:
-                break
+                break  # 200 with no cards = end of this cohort's pagination
             new_this_page = 0
             for slug, name in cards:
                 key = (slug, y0)
