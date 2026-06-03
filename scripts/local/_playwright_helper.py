@@ -77,6 +77,11 @@ class PlaywrightSession:
 
     fetch_with_response(url, **kwargs) -> tuple[Optional[Response], str]
         Same but also returns the goto response object (status, etc.).
+
+    recreate_context() -> Page
+        Close the live context and open a fresh stealth context+page. Used by
+        callers fighting Cloudflare challenge escalation that hard-sticks on a
+        reused context (call it before each page / retry).
     """
 
     def __init__(
@@ -105,27 +110,55 @@ class PlaywrightSession:
         self._pw_cm = sync_playwright()
         self._pw = self._pw_cm.__enter__()
         self._browser = self._pw.chromium.launch(headless=self._headless)
-        self._context = self._browser.new_context(
-            user_agent=self._user_agent,
-            viewport=self._viewport,
-        )
-        # Apply stealth on the context (covers all pages created from it).
-        # Try the modern playwright-stealth >=2.x API first; fall back to
-        # the legacy `stealth_sync(page)` form if only 1.x is installed.
+        # Resolve the stealth API once. The modern playwright-stealth >=2.x
+        # `Stealth().apply_stealth_sync(context)` form is preferred; the older
+        # `stealth_sync(page)` form is the 1.x fallback. We hold the resolved
+        # callable so `_make_context_and_page` can re-apply it on every fresh
+        # context (see `recreate_context`).
+        self._stealth = None
+        self._legacy_stealth = None
         try:
             from playwright_stealth import Stealth  # type: ignore
-            Stealth().apply_stealth_sync(self._context)
-            self._legacy_stealth = None
+            self._stealth = Stealth()
         except ImportError:
             try:
                 from playwright_stealth import stealth_sync  # type: ignore
                 self._legacy_stealth = stealth_sync
             except ImportError:
-                self._legacy_stealth = None
+                pass
+        self._make_context_and_page()
+        return self
+
+    def _make_context_and_page(self) -> None:
+        """Create a fresh stealth context + page on the live browser."""
+        self._context = self._browser.new_context(
+            user_agent=self._user_agent,
+            viewport=self._viewport,
+        )
+        if self._stealth is not None:
+            self._stealth.apply_stealth_sync(self._context)
         self._page = self._context.new_page()
         if self._legacy_stealth:
             self._legacy_stealth(self._page)
-        return self
+
+    def recreate_context(self) -> "Page":
+        """Close the current context and spin up a brand-new stealth context+page.
+
+        Some Cloudflare deployments (sloan.org) let the *first* navigation on a
+        fresh context clear the JS challenge, then hard-stick the challenge on
+        every subsequent navigation that reuses the same context. Recreating the
+        context per page defeats that escalation: each page (and each retry) gets
+        a clean context whose first navigation clears. Returns the new page so
+        callers can `evaluate(...)` against it directly.
+        """
+        if self._context is not None:
+            try:
+                self._context.close()
+            except Exception:
+                pass
+        self._make_context_and_page()
+        self._last_request_t = 0.0
+        return self._page
 
     def __exit__(self, exc_type, exc, tb) -> None:
         try:
