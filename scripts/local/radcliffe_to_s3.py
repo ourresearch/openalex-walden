@@ -249,6 +249,9 @@ def split_name(full: Optional[str]):
     if not full:
         return None, None
     parts = str(full).strip().split()
+    _SUFFIXES = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    while parts and parts[-1].lower().strip(",.") in _SUFFIXES:
+        parts.pop()
     if not parts:
         return None, None
     if len(parts) == 1:

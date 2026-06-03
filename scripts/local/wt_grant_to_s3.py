@@ -248,6 +248,11 @@ def split_name(display: str):
     if not display:
         return None, None
     parts = display.strip().split()
+    _SUFFIXES = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    while parts and parts[-1].lower().strip(",.") in _SUFFIXES:
+        parts.pop()
+    if not parts:
+        return None, None
     if len(parts) == 1:
         return None, parts[0]
     return " ".join(parts[:-1]), parts[-1]

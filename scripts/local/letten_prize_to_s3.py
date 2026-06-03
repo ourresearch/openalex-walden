@@ -45,6 +45,36 @@ Requirements
 
 from __future__ import annotations
 
+# --- Windows UTF-8 compatibility shim (runbook §1.2 #7; no-op on Linux/Databricks) ---
+import sys as _sys_utf8
+try:
+    _sys_utf8.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+    _sys_utf8.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+except (AttributeError, ValueError):
+    pass
+
+if _sys_utf8.platform == "win32":
+    import builtins as _builtins_utf8
+    import pathlib as _pathlib_utf8
+
+    _orig_wt = _pathlib_utf8.Path.write_text
+    def _wt(self, data, encoding=None, errors=None, newline=None):
+        return _orig_wt(self, data, encoding=encoding or "utf-8", errors=errors, newline=newline)
+    _pathlib_utf8.Path.write_text = _wt
+
+    _orig_rt = _pathlib_utf8.Path.read_text
+    def _rt(self, encoding=None, errors=None, newline=None):
+        return _orig_rt(self, encoding=encoding or "utf-8", errors=errors, newline=newline)
+    _pathlib_utf8.Path.read_text = _rt
+
+    _orig_open = _builtins_utf8.open
+    def _open_utf8(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
+        if "b" not in mode and encoding is None:
+            encoding = "utf-8"
+        return _orig_open(file, mode, buffering, encoding, errors, newline, closefd, opener)
+    _builtins_utf8.open = _open_utf8
+# --- end shim ---
+
 import argparse
 import hashlib
 import html
@@ -125,6 +155,9 @@ def slugify(value: str) -> str:
 
 def split_name(name: str) -> tuple[Optional[str], Optional[str]]:
     parts = [p for p in clean_text(name).split(" ") if p] if clean_text(name) else []
+    _SUFFIXES = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    while parts and parts[-1].lower().strip(",.") in _SUFFIXES:
+        parts.pop()
     if not parts:
         return None, None
     if len(parts) == 1:
