@@ -411,6 +411,24 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: Research_Council_Norway_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateResearchCouncilNorwayAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: HRC_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateHRCAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: OSF_Awards
           email_notifications: {}
           environment_key: Default
@@ -1238,6 +1256,8 @@ resources:
             - task_key: ISCIII_Awards
             - task_key: DOE_Awards
             - task_key: Wellcome_Awards
+            - task_key: Research_Council_Norway_Awards
+            - task_key: HRC_Awards
             - task_key: Backfill_Awards
             - task_key: Kavli_Prize_Awards
             - task_key: Argentina_MINCYT_Awards
