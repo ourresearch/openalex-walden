@@ -1622,6 +1622,94 @@ curl -s 'https://api.openalex.org/awards?filter=funder.id:F{funder_id}&per_page=
 
 ---
 
+## Step 10: (Optional) Funder-reported work↔award linkages
+
+**When to do this — the trigger:** while ingesting a funder's awards (Steps 1–2) you notice
+the source *also* lists, per grant, the **outputs the funded researchers reported** (DOIs,
+URLs, or formatted citations). Funders increasingly publish these because grantees are
+required to report outputs. That's a gift: an **authoritative, funder-reported** set of
+work↔award edges you can materialize — additive to (and higher-trust than) OpenAlex's
+text-mined funding acknowledgements. NWO is the canonical example (oxjobs #244): the NWOpen
+API returns a `products` array per project. Do this **after** the award entities exist (the
+linkage reuses them — it does **not** create awards).
+
+**The shape:** a standalone job whose notebook resolves each reported product → an OpenAlex
+work, writes a junction `openalex.awards.{funder}_work_funders (work_id, funder_id,
+award_ids[])`, and a leg in `WorkAwards.ipynb` joins that junction to the **existing** award
+entities. Mirror `crossref_work_funders` / `nwo_work_funders`. **This is a linkage job, not an
+award-entity job — keep it out of `CreateFunderSourcedAwards`** (that's award entities); it
+lives in its own job like `Crossref Work Funders` does.
+
+### 10.1 Confirm the products are captured
+The per-grant outputs should already be in the raw parquet from Step 1 (e.g. NWO keeps the
+whole array as a `products_json` string on `{funder}_projects_raw`). If your Step-1 script
+dropped them, add them — don't re-fetch from the funder API in this job.
+
+### 10.2 Build `Create{Funder}WorkAwards` (canonical: `CreateNWOWorkAwards.ipynb`)
+Writes the junction. Two precision-ordered work-resolution paths (a third optional):
+- **Path 1 — DOI.** Reported identifiers are usually dirty (whitespace inside the DOI, leading
+  junk). Salvage with `regexp_extract`/`regexp_replace`, rebuild the canonical
+  `https://doi.org/…` form, join `openalex.works.openalex_works.doi`. High yield, ~96% match.
+- **Path 2 — URL → unique work location.** For non-DOI URLs, match against
+  `openalex.works.locations.urls[].url` and accept **only when the URL maps to exactly one
+  work** (`best_doi`). High precision, low recall.
+- **Path 3 (optional) — citation match.** Title + year, disambiguated by a funder-country
+  author (`exists(authorships, a -> array_contains(a.countries, '<CC>'))`, e.g. `'NL'` for
+  NWO). Precision-risky; build + measure in the notebook (title joins time out interactively).
+
+Resolve the **award** by the funder's project/grant id → `(funder_id, funder_award_id)` on the
+already-ingested entity. Output one row per `(work_id, funder_id)` with `ARRAY_DISTINCT` of
+award ids. ⚠️ **Two SQL gotchas that bit #244:**
+- **Double-escape regex backslashes** (`'\\s'`, `'\\.'`). The job cluster runs legacy
+  `escapedStringLiterals` mode — single-escape (`'\s'`) silently collapses (`'\s'`→`'s'`) and
+  *shrinks the result with no error* (warehouse runs the opposite mode, so it masks the bug).
+- **No `JOIN` directly after `LATERAL VIEW`** — Spark `PARSE_SYNTAX_ERROR`. Explode in a
+  subquery, then join.
+
+### 10.3 Add a leg to `WorkAwards.ipynb`
+Mirror the `nwo_work_funder_awards` CTE: explode the junction's `award_ids`, join
+`openalex.awards.openalex_awards` on `(funder_id, funder_award_id)`, emit `(work_id, award)`,
+and UNION it into `combined_awards` at **priority 3** (funder-reported — same tier as GTR/NWO,
+beats crossref text-mined p4). Confirm the funder's awards are present in `openalex_awards`
+with matching keys before trusting the join.
+
+### 10.4 Standalone DAB job
+Create `jobs/{funder}_work_funders.yaml` mirroring [jobs/nwo_work_funders.yaml](../../jobs/nwo_work_funders.yaml)
+(`source: GIT`, `notebook_task`, `warehouse_id`) and add it to the `include:` list in
+`databricks.yml`. If the funder's source is infrequently re-ingested, set
+`schedule.pause_status: PAUSED` and run it **on-demand** (don't burn a daily rebuild on static
+data). **Deploy ordering:** the junction table must exist before the `WorkAwards` leg
+references it — push `Create{Funder}WorkAwards` + run it first, *then* push the `WorkAwards`
+change, or the next `RefreshWorkAwards` run fails table-not-found.
+
+### 10.5 Run, verify, make live
+```bash
+databricks bundle run {Funder}_Work_Funders --profile dbc-ce570f73-0362   # builds the junction
+databricks bundle run RefreshWorkAwards    --profile dbc-ce570f73-0362   # folds it into work_awards
+```
+**Pass signal:** junction rows > 0 with unique `(work_id, funder_id)` keys; and
+```sql
+SELECT COUNT(*) FROM openalex.awards.work_awards
+WHERE award.funder_id = 'https://openalex.org/F{funder_id}';
+```
+is non-zero and ≥ the pre-existing text-mined count for that funder.
+
+⚠️ **Surfacing on the `/works` API needs the e2e run, not the awards sync.** `work_awards` and
+the `/awards` index (Step 9) do **not** update the work records — `/works` serves from
+`openalex_works.awards`, which is rebuilt from `work_awards` only by **`CreateWorksEnriched`**
+(in `walden_end2end`), then works→ES. Until that runs, the works are *stale* and the new grants
+won't appear on `/works` (they're correct in `work_awards`). Recheck a known net-new work after
+the next e2e.
+
+**Coverage is never 100% — don't gate on a round number.** Not every reported product carries a
+resolvable DOI/URL (NWO landed ~76% of projects on a stale capture). Report the coverage you
+got and move on; a re-ingest of fresher funder data is usually a better lever than fuzzy matching.
+
+**→ Tracker:** note the funder has funder-reported linkages (junction + WorkAwards leg + job),
+distinct from its award-entity "Complete" status.
+
+---
+
 ## Reference: Existing Examples
 
 | Funder | Script                | Notebook                     | API Type      |
