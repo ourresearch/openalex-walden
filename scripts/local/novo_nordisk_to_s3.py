@@ -200,6 +200,39 @@ def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+# Organizational-recipient detector. Some grants are awarded to an organization
+# (NGO, university, institute, foundation, museum) rather than a person; the
+# owner-name is then the org and must NOT be split into given/family (runbook
+# §6.4a — institution must not appear as a PI name). Observed org recipients all
+# have an empty owner-title, so we only apply this when the title is empty to
+# avoid demoting titled people. Tokens are org-specific enough that a person
+# name won't match (Danish + English).
+# Danish glues compound words (Rigshospitalet, Carlsbergfondet, Hjerteforeningen),
+# so most tokens are matched as plain substrings, not word-bounded. The few
+# tokens that could collide with real surnames are deliberately excluded:
+#   - generic "kors" would hit Korsgren/Korsholm/Korsgaard (real people) — only
+#     the standalone "røde kors" is kept;
+#   - generic "center" would hit "Name, Steno Diabetes Center ..." person+
+#     affiliation strings — NNF's own centres are caught via "foundation".
+# institutional classification additionally requires an empty owner-title, which
+# every observed org recipient has, so a titled person can't be demoted.
+_ORG_TOKEN_RE = re.compile(
+    r"(?i)("
+    r"fond|foundation|stiftung|forening|forbund|selskab|komit|"
+    r"universit|institut|hospital|klinik|museum|akademi|academy|"
+    r"kommune|region|college|skole|gymnasium|akvarium|"
+    r"unicef|røde kors|red cross|caritas|adra|dalberg|astra|madkultur|"
+    r"experimentarium|kræftens|sclerose|indsamling|aid services|"
+    r"government of|agency for|society|\btrust\b|videnskab|"
+    r"danmark|denmark|grønland|greenland|\baps\b|\ba/s\b"
+    r")"
+)
+
+
+def looks_like_org(name: Optional[str]) -> bool:
+    return bool(name) and bool(_ORG_TOKEN_RE.search(name))
+
+
 # =============================================================================
 # HTTP
 # =============================================================================
@@ -314,13 +347,20 @@ def enrich_row(row: dict) -> dict:
     owner_title = row.get("owner_title_raw")
     location = row.get("location")
 
-    institutional = (not owner_title) and bool(owner_name) and (
-        (owner_name or "").casefold() == (location or "").casefold()
+    title_empty = not (owner_title and owner_title.strip())
+    name_eq_loc = (owner_name or "").casefold() == (location or "").casefold()
+    institutional = bool(owner_name) and title_empty and (
+        name_eq_loc or looks_like_org(owner_name)
     )
     if institutional:
+        # The org IS the recipient/affiliation; the location field is unreliable
+        # for these rows (sometimes carries a project description), so use the
+        # org name as the affiliation.
         given, family = None, None
+        affiliation = owner_name
     else:
         given, family = split_name(owner_name)
+        affiliation = location
 
     amount = parse_amount(row.get("amount_raw"))
     yr = row.get("award_year")
@@ -334,7 +374,7 @@ def enrich_row(row: dict) -> dict:
         "lead_given_name": given,
         "lead_family_name": family,
         "is_institutional": "true" if institutional else "false",
-        "institution": location,
+        "institution": affiliation,
         "amount": str(amount) if amount is not None else None,
         "amount_raw": row.get("amount_raw"),
         "currency": CURRENCY if amount is not None else None,
