@@ -171,6 +171,28 @@ def log(message: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}", flush=True)
 
 
+_STRAY_BYTE_RE = re.compile(r"[\udc80-\udcff]")
+
+
+def smart_decode(raw: bytes) -> str:
+    """The portal's JSON is a UTF-8 document that contains stray single cp1252
+    bytes for accented Latin names (e.g. 'Agustín' as 0xED, 'Fundação' as
+    0xE7/0xE3). A plain utf-8 decode turns those into U+FFFD and corrupts the
+    names. We decode the bulk as utf-8 with surrogateescape (stray bytes survive
+    as lone surrogates) and re-decode each stray byte as cp1252, recovering the
+    intended character. Valid multi-byte utf-8 sequences are untouched."""
+    s = raw.decode("utf-8", errors="surrogateescape")
+
+    def _fix(m: "re.Match[str]") -> str:
+        b = m.group(0).encode("utf-8", "surrogateescape")
+        try:
+            return b.decode("cp1252")
+        except Exception:
+            return "�"
+
+    return _STRAY_BYTE_RE.sub(_fix, s)
+
+
 def clean_text(value: Any) -> str | None:
     if value is None:
         return None
@@ -302,7 +324,7 @@ def fetch_page(session: requests.Session, page_index: int, page_size: int) -> di
                 log(f"  page {page_index}: HTTP {r.status_code}; retry {attempt}/{MAX_RETRIES} in {sleep_s}s")
                 time.sleep(sleep_s)
                 continue
-            text = r.text
+            text = smart_decode(r.content)
             if text.startswith(NGJSON_PREFIX):
                 text = text[len(NGJSON_PREFIX):]
             return json.loads(text)
