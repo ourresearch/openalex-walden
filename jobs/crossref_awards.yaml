@@ -1,0 +1,17 @@
+resources:
+  pipelines:
+    crossref_awards:
+      name: Crossref Awards
+      configuration:
+        "spark.sql.execution.arrow.maxRecordsPerBatch": "100"
+      libraries:
+        - notebook:
+            path: ${workspace.file_path}/notebooks/awards/CreateCrossrefAwards
+      schema: awards
+      development: true
+      photon: true
+      catalog: openalex
+      serverless: true
+      permissions:
+        - user_name: casey@ourresearch.org
+          level: IS_OWNER

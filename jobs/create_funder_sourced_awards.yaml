@@ -116,7 +116,7 @@ resources:
           email_notifications: {}
           pipeline_task:
             full_refresh: false
-            pipeline_id: 1c01484c-5ad5-4ee8-851e-64f3de012da2
+            pipeline_id: ${resources.pipelines.crossref_awards.id}
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
