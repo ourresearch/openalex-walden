@@ -1,0 +1,24 @@
+resources:
+  jobs:
+    NWO_Work_Funders:
+      name: NWO Work Funders
+      run_as:
+        user_name: richard@openalex.org
+      schedule:
+        quartz_cron_expression: 0 30 1 * * ?
+        timezone_id: UTC
+        # PAUSED until the WorkAwards `nwo_work_funder_awards` leg lands and Path 2 is
+        # cluster-validated (oxjobs #244). Unpause once the junction is actually consumed.
+        pause_status: PAUSED
+      tasks:
+        - task_key: create_nwo_work_funders
+          notebook_task:
+            notebook_path: notebooks/awards/CreateNWOWorkAwards
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
