@@ -699,6 +699,15 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: Novo_Nordisk_Grants_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateNovoNordiskGrantsAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Nuffield_Awards
           email_notifications: {}
           environment_key: Default
@@ -1292,6 +1301,7 @@ resources:
             - task_key: NOAA_Awards
             - task_key: Nomis_Awards
             - task_key: Novo_Nordisk_Fonden_Awards
+            - task_key: Novo_Nordisk_Grants_Awards
             - task_key: Nuffield_Awards
             - task_key: Packard_Fellows_Awards
             - task_key: Pew_Biomedical_Scholars_Awards
