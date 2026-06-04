@@ -7,8 +7,11 @@ resources:
       schedule:
         quartz_cron_expression: 0 30 1 * * ?
         timezone_id: UTC
-        # PAUSED until the WorkAwards `nwo_work_funder_awards` leg lands and Path 2 is
-        # cluster-validated (oxjobs #244). Unpause once the junction is actually consumed.
+        # PAUSED by design (oxjobs #244): run ON-DEMAND, not on a schedule. The upstream NWO
+        # ingest (nwo_to_s3.py + nwo_projects_raw) is infrequent, so a daily rebuild is wasted
+        # work. Trigger this manually after a NWO re-ingest (the big coverage lever: 14.6K→32.7K
+        # projects), or occasionally to sweep up lagged works as OpenAlex ingests them. The cron
+        # is retained only as a documented cadence if periodic runs are ever wanted.
         pause_status: PAUSED
       tasks:
         - task_key: create_nwo_work_funders
