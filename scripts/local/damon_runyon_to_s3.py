@@ -164,9 +164,10 @@ def smoke_test() -> None:
     print(f"  {len(urls)} scientist profile URLs")
     r2 = _http_get(urls[0])
     fields = parse_scientist_page(r2.text)
-    print(f"  sample {urls[0]}: extracted {len(fields)} fields")
-    if "name" not in fields:
-        print(f"  [WARN] sample page didn't yield a 'name' field — check parser")
+    print(f"  sample {urls[0]}: extracted {len(fields)} fields; name={fields.get('name')!r}")
+    if not _looks_like_real_name(fields.get("name")):
+        print(f"  [ERROR] sample page name {fields.get('name')!r} is missing or garbage — parser broken")
+        sys.exit(4)
 
 
 # =============================================================================
@@ -215,33 +216,44 @@ def _field_value(html: str, field_name: str) -> Optional[str]:
     return text or None
 
 
-# Name lives in separate first-name / last-name input-like spans on the page header.
-_NAME_FIRST_RE = re.compile(r'class="field text first-name[^"]*"[^>]*>([^<]+)<', re.IGNORECASE)
-_NAME_LAST_RE = re.compile(r'class="field text last-name[^"]*"[^>]*>([^<]+)<', re.IGNORECASE)
-# Also try Drupal node title (h1 inside content area).
-_TITLE_H1_RE = re.compile(r'<h1[^>]*>\s*([^<]+?)\s*</h1>', re.IGNORECASE)
+# The scientist name comes from the page <title>:
+#   "First [Middle] Last, Creds | Damon Runyon Cancer Research Foundation"
+# IMPORTANT: do NOT scrape the page's first-name/last-name fields — those are an
+# unrelated newsletter/contact <input> form whose static markup is a JS template
+# literal. The pre-2026-06 parser matched them and shipped every scientist name as
+# the literal "' + " (859 corrupted rows reached production). _looks_like_real_name
+# rejects that class of artifact so it can never ship silently again.
+_TITLE_RE = re.compile(r'<title>\s*(.+?)\s*</title>', re.IGNORECASE | re.DOTALL)
+_NAME_GARBAGE_RE = re.compile(r"""[+{}<>()\[\];=\"]|\bvar\b|\bfunction\b|=>""")
+
+
+def _looks_like_real_name(s: Optional[str]) -> bool:
+    """Reject scraper/JS artifacts masquerading as a person name."""
+    if not s or len(s) > 80:
+        return False
+    if _NAME_GARBAGE_RE.search(s):
+        return False
+    return sum(ch.isalpha() for ch in s) >= 2
+
+
+def _name_from_title(html: str) -> Optional[str]:
+    m = _TITLE_RE.search(html)
+    if not m:
+        return None
+    raw = unescape(m.group(1)).strip()
+    name = raw.split("|", 1)[0].strip()      # drop the " | Damon Runyon..." site suffix
+    name = name.split(",", 1)[0].strip()     # drop trailing credentials ("Klumpe, PhD" -> "Klumpe")
+    return name if _looks_like_real_name(name) else None
 
 
 def parse_scientist_page(html: str) -> dict:
     """Pull Damon Runyon field values from one rendered Drupal page."""
     rec: dict = {}
-    # Name
-    first = _NAME_FIRST_RE.search(html)
-    last = _NAME_LAST_RE.search(html)
-    if first and last:
-        rec["given_name"] = unescape(first.group(1).strip())
-        rec["family_name"] = unescape(last.group(1).strip())
-        rec["name"] = f"{rec['given_name']} {rec['family_name']}".strip()
-    else:
-        # Fallback: first <h1> (typically the scientist name on Drupal node pages)
-        h1 = _TITLE_H1_RE.search(html)
-        if h1:
-            full = unescape(h1.group(1).strip())
-            rec["name"] = full
-            parts = full.split()
-            if parts:
-                rec["family_name"] = parts[-1]
-                rec["given_name"] = " ".join(parts[:-1]) if len(parts) > 1 else ""
+    # Name (from <title>; split_name strips any residual degree suffix / prefix title)
+    name = _name_from_title(html)
+    if name:
+        rec["name"] = name
+        rec["given_name"], rec["family_name"] = split_name(name)
     # Drupal fields
     rec["institution"]    = _field_value(html, "institution")
     rec["sponsor_mentor"] = _field_value(html, "sponsor_mentor")
@@ -338,17 +350,26 @@ def build_dataframe(raw_path: Path) -> pd.DataFrame:
                 f"should be unique per scientist — investigate raw payload."
             )
         seen_ids.add(funder_award_id)
-        # Prefer scraped given/family; fall back to split_name on `name`.
+        # Prefer the <title>-derived given/family; fall back to split_name on `name`;
+        # last resort, derive the name from the URL slug ("heidi-e-klumpe-phd" ->
+        # "Heidi E Klumpe") so a single odd page title never yields a null name.
         given = r.get("given_name") or ""
         family = r.get("family_name") or ""
-        if (not given or not family) and r.get("name"):
-            g, fam = split_name(r["name"])
+        full_name = r.get("name")
+        if (not given or not family) and full_name:
+            g, fam = split_name(full_name)
             given = given or g
             family = family or fam
+        if not family and slug:
+            slug_tokens = [t for t in slug.split("-")
+                           if t.lower() not in {"phd", "md", "dphil", "msc", "mph", "dsc", "scd"}]
+            if slug_tokens:
+                full_name = " ".join(t.capitalize() for t in slug_tokens)
+                given, family = split_name(full_name)
         rows.append({
             "funder_award_id":     funder_award_id,
             "slug":                slug,
-            "scientist_full_name": r.get("name"),
+            "scientist_full_name": full_name,
             "given_name":          given or None,
             "family_name":         family or None,
             "institution":         r.get("institution"),
