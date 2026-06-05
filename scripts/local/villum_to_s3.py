@@ -142,7 +142,7 @@ def transform(d: dict) -> pd.DataFrame:
     df["ingested_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     return df
 
-_INST_TOKENS = re.compile(r"(?i)\b(universitet|university|aarhus|copenhagen|technical|college|institute|institut|hospital|ph\.d|skole|gymnasium)\b")
+_INST_TOKENS = re.compile(r"(?i)\b(universitet|university|institute|institut|college|hospital|skole|gymnasium|ph\.d|fond(en)?|fonden|stiftelse|stiftung|forening|forlag|publishers|kommune|kirke|menighed|museum|selskab|society|association|center|centret|centrum|library|bibliotek|biblioteket|kors|fri|union|citizens|seniors?|trust|charity|theatre|teater|opera|fonden|gymnasie|skoler|partnerskab|fellowship)\b|^(Active|Hedwig|Skriveforlaget) ")
 def _looks_like_org_name(s: str) -> bool:
     """Defensive guard against institution-as-PI (§6.4a). If pa_name contains org-y tokens, treat as org and NULL out the person split."""
     return bool(_INST_TOKENS.search(s or ""))
