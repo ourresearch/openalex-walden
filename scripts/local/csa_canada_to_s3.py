@@ -96,7 +96,7 @@ def transform(rows):
     # Aggregate by ref_number — same grant can have multiple amendments
     df["agreement_value_num"] = df["agreement_value"].map(_parse_amount)
     # Pick the latest amendment per ref_number using amendment_number as the order key
-    df["_amend"] = pd.to_numeric(df["amendment_number"], errors="coerce").fillna(0).astype(int)
+    df["_amend"] = pd.to_numeric(df["amendment_number"], errors="coerce")
     df = df.sort_values(["ref_number", "_amend"])
     agg = df.groupby("ref_number", dropna=True).agg(
         title_en=("agreement_title_en", "first"),
