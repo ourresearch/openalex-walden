@@ -15,8 +15,9 @@ Data Source:
 Output: s3://openalex-ingest/awards/business_finland/business_finland_projects.parquet
 
 Schema notes:
-  - funder_award_id = funderProjectNumber (the Business Finland diary number,
-    e.g. "6867/31/2019") -- THIS is the form cited in BF-funded papers (100% present).
+  - funder_award_id = funderProjectNumber = the Business Finland diary number /
+    grant_ref / award_number (e.g. "6867/31/2019") -- THIS is the real grant
+    reference cited in BF-funded papers (100% present); a REAL-ID source.
   - amount = amount_in_EUR (EUR; ~99% present).
   - lead_investigator = fundingContactPerson (given=FirstNames, family=LastName).
   - institution_name = fundingGroupPerson[].consortiumOrganizationNameEn
