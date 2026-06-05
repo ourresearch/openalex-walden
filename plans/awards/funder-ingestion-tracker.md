@@ -301,7 +301,7 @@ Aligned with the 9-step ladder in `how-to-add-a-funder-v2.md`:
 
 ## Queued from funder gap-scan (2026-06-04)
 
-Bulk-queued Step-0 candidates from the funder addability scan: the **529 net-new funders with a confirmed DIRECT (own-site) source** (has_source=yes, source_origin=direct/mixed). Excludes aggregator-only finds (re-check for a direct source first) and sub-units/predecessors of already-Complete parents (see note below). Detail for every candidate (incl. maybe/no) is in `data/funder_gap_scan/funder_candidates_investigated.csv`; ranked addability writeup in `addability_shortlist.md`. source_type = ingest method ladder rung (1 CKAN/open-data API, 2 WordPress REST, 3 search/index API, 4 bulk file, 5 static HTML, 6 JS/browser, 7 regulatory). These rows are unverified for funder_id lookup — confirm at Step 0 before work, and prefer the listed direct source over any aggregator.
+Bulk-queued Step-0 candidates from the 2026-06-04 funder addability gap-scan: **670 net-new funders with a confirmed DIRECT (own-site) source** (has_source=yes, source_origin=direct/mixed), including those confirmed in the deep second-pass verification of the 'maybe' bucket. Excludes aggregator-only finds (re-check for a direct source first) and sub-units/predecessors of already-Complete parents (which would double-count). source_type = ingest method ladder rung (1 CKAN/open-data API, 2 WordPress REST, 3 search/index API, 4 bulk file, 5 static HTML, 6 JS/browser, 7 regulatory). Rows are unverified for funder_id lookup — confirm at Step 0 before work, and prefer the listed direct source over any aggregator.
 
 | Funder Name | Status | Notes |
 |---|---|---|
@@ -822,39 +822,6 @@ Bulk-queued Step-0 candidates from the funder addability scan: the **529 net-new
 | Ian Potter Foundation | Step 0 | gap-scan 2026-06-04 (direct): 1,002 works; F-id F4320320458; AU; type 5 (static HTML); origin direct; src: https://www.ianpotter.org.au/knowledge-centre/grants-database -- Ian Potter Foundation Australia; public grants database at ianpotter.org.au/knowledge-centre/grants-database; all grants since 1964 listed by financial year; browsable HTML |
 | Kurita Water and Environment Foundation | Step 0 | gap-scan 2026-06-04 (direct): 1,002 works; F-id F4320320910; JP; type 5 (static HTML); origin direct; src: https://www.kwef.org/daimoku/dai_kai01.html -- Kurita Water and Environment Foundation Japan; HTML list of adopted (funded) research organized by fiscal year and country; shows grant numbers; researcher names; institutions; project titles; back to 2019+ |
 | European Climate, Infrastructure and Environment Executive Agency | Step 0 | gap-scan 2026-06-04 (direct): 1,001 works; F-id F4320331186; BE; type 3 (search/index API); origin direct; src: https://cinea.ec.europa.eu/beneficiaries-corner/projects_en -- CINEA European Climate Infrastructure and Environment Executive Agency; public dashboard covering all CINEA-managed projects (CEF/LIFE/EMFAF/Horizon); filterable by country/theme; data export available |
-
-### Not queued — sub-unit/predecessor of an already-Complete parent ingest (reconcile, don't double-count)
-
-| Funder | works | F-id | already covered by |
-|---|--:|---|---|
-| National Science Council | 153,995 | F4320321040 | Taiwan NSTC (predecessor; reconcile) |
-| U.S. National Library of Medicine | 13,148 | F4320337372 | NIH (RePORTER/ExPORTER) |
-| NIH Office of the Director | 10,345 | F4320337349 | NIH (RePORTER) |
-| Research Councils UK | 10,223 | F4320320240 | UKRI/GTR (umbrella; in GTR) |
-| Science Mission Directorate | 5,457 | F4320333962 | NASA (USAspending) |
-| Solar Energy Technologies Office | 4,348 | F4320337712 | DOE (USAspending) |
-| National Science Foundation Graduate Research Fellowship Program | 3,722 | F4562087700 | NSF (USAspending/NSF ingest) |
-| Chemical Sciences, Geosciences, and Biosciences Division | 3,542 | F4320337744 | DOE (USAspending) |
-| Idaho Operations Office, U.S. Department of Energy | 3,502 | F4320333921 | DOE (USAspending) |
-| NASA Headquarters | 3,452 | F4320334116 | NASA (USAspending) |
-| Office of Advanced Cyberinfrastructure | 3,396 | F4320337377 | NASA/NSF parent (USAspending) |
-| Vehicle Technologies Office | 1,825 | F4320337713 | DOE (USAspending) |
-| Bioenergy Technologies Office | 1,780 | F4320337708 | DOE (USAspending) |
-| Planetary Science Division | 1,692 | F4320338039 | NASA (USAspending) |
-| Workforce Development for Teachers and Scientists | 1,585 | F4320337513 | DOE (USAspending) |
-| Hydrogen and Fuel Cell Technologies Office | 1,442 | F4320337646 | DOE (USAspending) |
-| Wind Energy Technologies Office | 1,327 | F4320337674 | DOE (USAspending) |
-| Aeronautics Research Mission Directorate | 1,092 | F4320316895 | NASA (USAspending) |
-
-
----
-
-## Added from deep-pass of 'maybe' bucket (2026-06-04)
-
-Second-pass verification of the 421 'maybe' funders confirmed **152 additional net-new funders with a DIRECT source** (not already queued above; excludes aggregator-only, sub-units of Complete parents, and tracker dups). Same Step-0 conventions as the section above. The big block here is the Chinese provincial 'Natural Science Foundation' cluster — each provincial S&T dept (kjt.<prov>.gov.cn) posts annual 拟立项公示 notices with downloadable PDF/XLSX project rosters (one templated ingest generalizes across them).
-
-| Funder Name | Status | Notes |
-|---|---|---|
 | Russian Foundation for Basic Research | Step 0 | gap-scan deep-pass 2026-06-04 (direct): 143,164 works; F-id F4320321079; RU; type 3 (search/index API); origin direct; src: https://rscf.ru/en/project/ -- Russian Science Foundation (RSF/RSCF) replaced RFBR; rscf.ru/en/project/ is a public searchable project finder with title/PI/institution per card; no bulk export confirmed but structured search index; RFBR historic KIAS portal defunct/login-gated; use RSF direct portal for post-2022 coverage |
 | Natural Science Foundation of Shandong Province | Step 0 | gap-scan deep-pass 2026-06-04 (direct): 124,408 works; F-id F4320324174; CN; type 5 (static HTML); origin direct; src: http://kjt.shandong.gov.cn/col/col13360/index.html -- Shandong S&T dept confirms 拟立项公示 notices on kjt.shandong.gov.cn with downloadable PDF/Excel attachments; 2025 announcement found (art_13360_10321079); TLS cert error on direct fetch but pattern well-confirmed via search results; also cloud.kjt.shandong.gov.cn mirror |
 | Natural Science Foundation of Zhejiang Province | Step 0 | gap-scan deep-pass 2026-06-04 (direct): 96,265 works; F-id F4320338464; CN; type 4 (bulk file); origin direct; src: https://kjt.zj.gov.cn/art/2025/1/14/art_1229225203_5443552.html -- Zhejiang S&T dept confirmed: 2025 project award notice includes downloadable .docx attachment 2025年度浙江省自然科学基金资助项目清单 with full project list; zjnsf.kjt.zj.gov.cn is the dedicated NSF subsystem; annual per-call DOCX/Excel roster |
@@ -1007,5 +974,4 @@ Second-pass verification of the 421 'maybe' funders confirmed **152 additional n
 | Daiichi Sankyo Foundation of Life Science | Step 0 | gap-scan deep-pass 2026-06-04 (direct): 1,043 works; F-id F4320323514; JP; type 5 (static HTML); origin direct; src: https://www.ds-fdn.or.jp/ -- Daiichi Sankyo Foundation confirmed: publishes annual recipient PDFs for research grants and prizes (2025 grant recipients PDF linked from homepage); separate PI-setup grant recipient PDFs also published; annual PDF-per-year model confirmed with individual names and project titles |
 | Ministry of Science and Technology, Croatia | Step 0 | gap-scan deep-pass 2026-06-04 (direct): 1,032 works; F-id F4320323978; HR; type 4 (bulk file); origin direct; src: https://hrzz.hr/en/funding/project-database/ -- Croatian Science Foundation (HRZZ) confirmed: full project database downloadable in CSV; XLS; and XML formats at hrzz.hr/en/funding/project-database/; Croatia MZOS merged into HRZZ which is now the primary Croatian science funder with bulk download; direct and confirmed |
 | Research Institute of Science and Technology for Society | Step 0 | gap-scan deep-pass 2026-06-04 (direct): 1,024 works; F-id F4320338116; JP; type 5 (static HTML); origin direct; src: https://www.jst.go.jp/ristex/en/ -- RISTEX JST confirmed: individual program project pages accessible with PI names and project descriptions (e.g. SOLVE for SDGs; STI policy program lists projects at stipolicy/en/project/); no single bulk download but per-program project lists scrapeable; HTML structure confirmed across multiple programs |
-
 | Natural Science Foundation of Jiangxi Province | Step 0 | gap-scan deep-pass 2026-06-04 (direct): 26,436 works; F-id F4320322665; CN; type 5 (static HTML); origin direct; src: https://kjt.jiangxi.gov.cn/jxskxjst/col/col27045/index.html -- Jiangxi S&T dept posts 拟立项公示 with DOCX attachment listing project title/PI/institution by category; 2024 batch confirmed (major/key/youth projects); provincial pattern confirmed |
