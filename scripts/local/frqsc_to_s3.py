@@ -72,11 +72,25 @@ def parse_amount(s):
 
 def split_pi(name):
     """`Lastname, Firstname` → (Firstname, Lastname). S.O. (no PI) → (None, None)."""
-    if name is None or pd.isna(name) or (str(name).strip() in ("S.O.", "S/O", "N.D.", "")):
+    # Placeholder/sentinel tokens that appear in the Titulaire field for un-assigned
+    # bursaries ("Candidat, Institution" = "candidate for an institutional fellowship",
+    # not a real person). Checked both before and after the comma-split because the
+    # placeholder can appear in either half (FRQSC "Candidat, Institution" splits as
+    # given="Institution", family="Candidat" without an after-split check).
+    placeholders = {"s.o.", "s/o", "n.d.", "candidat", "candidate", "institution", "institutionnel",
+                    "candidat à la maîtrise", "candidat au doctorat", "candidat postdoctoral", ""}
+    def _is_placeholder(tok):
+        return (tok is None) or (str(tok).strip().lower() in placeholders)
+    if name is None or pd.isna(name) or _is_placeholder(name):
         return (None, None)
     parts = name.split(",", 1)
     if len(parts) == 2:
-        return (parts[1].strip() or None, parts[0].strip() or None)
+        given = parts[1].strip() or None
+        family = parts[0].strip() or None
+        # If either side is a placeholder, NULL both — the row is not a real PI
+        if _is_placeholder(given) or _is_placeholder(family):
+            return (None, None)
+        return (given, family)
     return (None, name.strip() or None)
 
 def parse_start_year(s):
