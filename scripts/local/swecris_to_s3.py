@@ -15,7 +15,8 @@ Data Source:
 Output: s3://openalex-ingest/awards/<slug>/<slug>_projects.parquet  (one per funder)
 
 Schema notes (rich):
-  - funder_award_id = projectId (e.g. "2018-001234_Energi") — cited in papers.
+  - funder_award_id = projectId (e.g. "2018-001234_Energi") = the grant_ref /
+    award_number cited in papers (a REAL-ID source).
   - amount = fundingsSek (SEK). 0/neg -> NULL.
   - lead_investigator = peopleList[0] (fullName split given/family) + orcId +
     coordinatingOrganisation (recipient institution).
@@ -85,9 +86,20 @@ def _nb(*v):
         if x is not None and str(x).strip() not in ("","-1","None"): return str(x).strip()
     return None
 
+# §6.4a name garbage-guard: reject an institution/org string that slipped into a
+# person-name field (is_institution sanity check — keeps DOM/data junk out of PI).
+_INST_RE = re.compile(r"(?i)\b(universit|institut|högskola|college|hospital|sjukhus|"
+                      r"stiftels|foundation|funden|aktiebolag|\bAB\b|\bASA\b|landsting|"
+                      r"region|kommun|myndighet|agency|council|råd|department|centre|center|company)\b")
+
+def _is_institution(name):
+    return bool(name) and bool(_INST_RE.search(name))
+
 def _split_name(full):
     full = _nb(full)
     if not full: return None, None
+    if _is_institution(full):           # institution-as-person -> NULL the PI, not garbage
+        return None, None
     if "," in full:
         fam, _, giv = full.partition(","); return _nb(giv), _nb(fam)
     parts = full.split()
