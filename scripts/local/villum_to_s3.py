@@ -103,16 +103,21 @@ def transform(d: dict) -> pd.DataFrame:
             if yr is not None and yr > yr_now + 1: yr = None  # future-year cap
         except (TypeError, ValueError):
             yr = None
-        # PI name is a single field; we don't split (Danish names like "Søren Brunak" — last token = family, rest = given)
+        # PI name is a single field. Canonical split_name (runbook §2.4.1): strip trailing
+        # degree/suffix tokens (PhD/MD/Jr./Sr./II/III/IV) before taking last token as family.
         pa_name = (p.get("pa_name") or "").strip() or None
         given_name, family_name = None, None
         if pa_name and not _looks_like_org_name(pa_name):
             tokens = pa_name.split()
+            _SFX = {"phd", "ph.d", "md", "m.d", "dphil", "dsc", "scd", "msc", "m.sc",
+                    "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+            while tokens and tokens[-1].lower().strip(",.") in _SFX:
+                tokens.pop()
             if len(tokens) >= 2:
                 family_name = tokens[-1]
                 given_name = " ".join(tokens[:-1])
-            else:
-                family_name = pa_name
+            elif len(tokens) == 1:
+                family_name = tokens[0]
         recs.append({
             "funder_award_id":  f"villum-{p.get('id')}",
             "project_id":       int(p.get("id")),
