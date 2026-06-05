@@ -63,6 +63,9 @@ import requests
 # =============================================================================
 WS_URL = "https://frisr4.researchportal.be/ws/ProjectServiceFRIS"
 FUNDER_ID = 4320327336            # Vlaamse Regering / Flemish Government, in openalex.common.funder
+# Vlaamse Regering grants in FRIS use VO Contract Id primarily; some routed via universities surface BOF contract id.
+# Authority preference (case-insensitive substring match). First match wins; falls back to any non-empty id.
+PREFERRED_AUTHORITIES = ["VO", "BOF", "FWO"]
 PROVENANCE = "vlaamse_regering_fris"
 FWO_FUNDER_NAME = "flemish government"   # the FRIS Funding-Party org name (lower-cased)
 COUNTRY = "BE"
@@ -222,26 +225,26 @@ def funding_scheme(project: ET.Element) -> Optional[str]:
 
 
 def fwo_grant_id(project: ET.Element) -> Optional[str]:
-    """Pull the best fundingIdentifier. Vlaamse Regering uses 'VO Contract Id' for Flemish-Government grants
-    and 'BOF contract id' for university-routed Flemish-Government grants; falls back to any identifier."""
+    """Pull the best fundingIdentifier per PREFERRED_AUTHORITIES order; falls back to any non-empty value."""
     fis = project.find("fundingIdentifiers")
     if fis is None:
         return None
-    by_auth = {}
+    by_pref = {}
     fallback = None
     for fi in fis.findall("fundingIdentifier"):
         val = (fi.text or "").strip()
         if not val:
             continue
         auth = (fi.get("authority") or "").upper()
-        if "VO" in auth:
-            by_auth.setdefault("VO", val)
-        elif "BOF" in auth:
-            by_auth.setdefault("BOF", val)
-        elif "FWO" in auth:
-            by_auth.setdefault("FWO", val)
+        for pref in PREFERRED_AUTHORITIES:
+            if pref.upper() in auth:
+                by_pref.setdefault(pref, val)
+                break
         fallback = fallback or val
-    return by_auth.get("VO") or by_auth.get("BOF") or by_auth.get("FWO") or fallback
+    for pref in PREFERRED_AUTHORITIES:
+        if pref in by_pref:
+            return by_pref[pref]
+    return fallback
 
 
 def participants(project: ET.Element) -> list[tuple[str, Optional[str], Optional[str]]]:
