@@ -136,6 +136,16 @@ def transform(d: dict) -> pd.DataFrame:
         })
     df = pd.DataFrame(recs)
     print(f"      kept {len(df):,} Villum projects (filtered from {len(d['project']):,} total)")
+    # §6.4a + content fix: keep only Villum's named RESEARCH-grant schemes. The raw
+    # feed mixes research grants with outreach/internal rows (e.g. "Villum Family and
+    # Onboarding") whose listed person is a Villum coordinator, not a PI — those
+    # produced §6.4a flags (Topelmann-Weder n=20, Hemmingsen n=15). Restricting to the
+    # flagship research programmes drops that noise (max PI freq -> 3) and keeps the
+    # citable grants at KU/DTU/Aarhus/SDU.
+    RESEARCH_SCHEMES = re.compile(r"(?i)villum (experiment|young investigator|investigator|synergy|international postdoc)|technology and hands-on")
+    _before = len(df)
+    df = df[df["funder_scheme"].astype("string").str.contains(RESEARCH_SCHEMES, na=False)].reset_index(drop=True)
+    print(f"      research-scheme filter: {_before:,} -> {len(df):,} rows (dropped outreach/internal/welfare)")
     # Slug-collision guard
     dup = df["funder_award_id"].duplicated().sum()
     if dup:
