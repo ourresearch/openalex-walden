@@ -135,7 +135,19 @@ def transform(d: dict) -> pd.DataFrame:
             "landing_url":      f"https://veluxfonden.dk{p.get('url')}" if p.get("url") else None,
         })
     df = pd.DataFrame(recs)
-    print(f"      kept {len(df):,} Villum projects (filtered from {len(d['project']):,} total)")
+    print(f"      kept {len(df):,} Velux projects (filtered from {len(d['project']):,} total)")
+    # §6.4a + content fix: VELUX FONDEN is predominantly a welfare/cultural foundation
+    # (elderly "Active Senior Citizens", book publishers, nature-community grants under
+    # "Transitions and changes during the adult life"). Those are NOT research and
+    # produced §6.4a flags (a nature-society contact "Jörn Eskildsen" n=69). Restrict to
+    # Velux's RESEARCH areas and drop the residual welfare-recipient leakage. Keeps the
+    # humanities/social-science + ocean research grants with real university PIs.
+    RESEARCH_AREAS = {"Human and social science research and culture", "An ocean in balance", "Democratic sustainability"}
+    NON_RESEARCH_INST = re.compile(r"(?i)active senior|senior citizen|publishers?|forlag|naturfredning|nature conservation")
+    _before = len(df)
+    df = df[df["funder_area"].isin(RESEARCH_AREAS)
+            & ~df["institution_name"].astype("string").str.contains(NON_RESEARCH_INST, na=False)].reset_index(drop=True)
+    print(f"      research-area filter: {_before:,} -> {len(df):,} rows (dropped welfare/cultural/community)")
     # Slug-collision guard
     dup = df["funder_award_id"].duplicated().sum()
     if dup:
