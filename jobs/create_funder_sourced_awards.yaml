@@ -2,8 +2,6 @@ resources:
   jobs:
     Create_Funder_Sourced_Awards:
       name: CreateFunderSourcedAwards
-      run_as:
-        user_name: richard@openalex.org
       tasks:
         - task_key: AEI_Awards
           email_notifications: {}

@@ -2,8 +2,6 @@ resources:
   jobs:
     Create_Backfill_Awards:
       name: Create Backfill Awards
-      run_as:
-        user_name: richard@openalex.org
       # No schedule — mid.work_funder is a frozen legacy snapshot. This job
       # exists for on-demand re-materialization of `openalex.awards.backfill_awards`
       # and the `provenance='crossref_work.grants'` slice of openalex_awards_raw,

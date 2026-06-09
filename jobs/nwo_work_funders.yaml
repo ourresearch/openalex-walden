@@ -2,8 +2,6 @@ resources:
   jobs:
     NWO_Work_Funders:
       name: NWO Work Funders
-      run_as:
-        user_name: richard@openalex.org
       schedule:
         quartz_cron_expression: 0 30 1 * * ?
         timezone_id: UTC
