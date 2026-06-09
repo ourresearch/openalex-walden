@@ -14,7 +14,7 @@ resources:
       catalog: openalex
       serverless: true
       permissions:
-        - user_name: richard@openalex.org
+        - user_name: casey@ourresearch.org
           level: IS_OWNER
         - group_name: users
           level: CAN_MANAGE
