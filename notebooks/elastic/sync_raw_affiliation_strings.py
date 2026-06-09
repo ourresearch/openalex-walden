@@ -11,7 +11,7 @@
 # MAGIC institution IDs and fresh counts from OpenAlex_works.
 # MAGIC
 # MAGIC **Source table**: `openalex.institutions.affiliation_strings_lookup_with_counts`
-# MAGIC **Target index**: `raw-affiliation-strings-v2`
+# MAGIC **Target index**: `raw-affiliation-strings-v3`
 
 # COMMAND ----------
 
@@ -29,7 +29,7 @@ IS_FULL_SYNC = dbutils.widgets.get("is_full_sync").lower() == "true"
 
 CONFIG = {
     "table_name": "openalex.institutions.affiliation_strings_lookup_with_counts",
-    "index_name": "raw-affiliation-strings-v2"
+    "index_name": "raw-affiliation-strings-v3"
 }
 
 print(f"IS_FULL_SYNC: {IS_FULL_SYNC}")

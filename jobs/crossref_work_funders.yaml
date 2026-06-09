@@ -2,8 +2,6 @@ resources:
   jobs:
     Crossref_Work_Funders:
       name: Crossref Work Funders
-      run_as:
-        user_name: richard@openalex.org
       schedule:
         quartz_cron_expression: 0 0 2 * * ?
         timezone_id: UTC

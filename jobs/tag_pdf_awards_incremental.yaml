@@ -2,8 +2,6 @@ resources:
   jobs:
     Tag_Pdf_Awards_Incremental:
       name: Tag Pdf Awards Incremental
-      run_as:
-        user_name: richard@openalex.org
       schedule:
         quartz_cron_expression: 0 0 */3 * * ?
         timezone_id: UTC
