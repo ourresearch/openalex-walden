@@ -159,6 +159,8 @@ def _paginate(session, query_facets, rows, seen, limit):
                 raise RuntimeError(f"too many request errors: {e}")
             time.sleep(2 ** min(non200, 6))
             continue
+        if r.status_code == 204 or not (r.content or b"").strip():
+            return  # empty slice (e.g. a year with no CDMRP grants) — not an error
         if r.status_code != 200:
             non200 += 1
             if non200 >= MAX_CONSECUTIVE_NON200:
