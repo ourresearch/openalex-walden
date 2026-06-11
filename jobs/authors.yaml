@@ -19,9 +19,17 @@ resources:
             notebook_path: notebooks/authors/ApplyAuthorNameCurations
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        - task_key: Update_Author_Full_Names
+          depends_on:
+            - task_key: Sync_Author_Name_Curations
+          notebook_task:
+            notebook_path: notebooks/authors/UpdateAuthorFullNames
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Create_Authors
           depends_on:
             - task_key: Apply_Author_Name_Curations
+            - task_key: Update_Author_Full_Names
           notebook_task:
             notebook_path: notebooks/authors/CreateAuthors
             source: GIT
