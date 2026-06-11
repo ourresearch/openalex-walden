@@ -11,6 +11,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
+from pyspark import StorageLevel
 from pyspark.sql import DataFrame, functions as F
 from pyspark.sql.types import ArrayType, IntegerType, MapType, StringType
 
@@ -411,21 +412,34 @@ def export_parquet(spark, dbutils, df: DataFrame, date_str: str, entity: str,
 # Multi-format export
 # ---------------------------------------------------------------------------
 
+# Above this row count, persist exports to disk instead of memory — caching a
+# fully-transformed nested DataFrame this large floods executor memory and OOMs
+# the write tasks (seen 2026-06-11 when a 197M-work backfill hit the works export).
+LARGE_EXPORT_THRESHOLD = 10_000_000
+
+
 def export_all_formats(spark, dbutils, df: DataFrame, date_str: str, entity: str,
                        jsonl_records_per_file: int = 500_000,
                        columnar_records_per_file: int = 500_000):
     """Cache *df*, export to JSONL and Parquet, write per-entity metadata, unpersist."""
     if "_rescued_data" in df.columns:
         df = df.drop("_rescued_data")
-    df.cache()
     record_count = df.count()
 
     if record_count == 0:
         print(f"  {entity}: 0 records — writing empty metadata")
-        df.unpersist()
         for fmt in ("jsonl", "parquet"):
             _write_entity_meta(dbutils, date_str, fmt, entity, None, 0, 0)
         return
+
+    if record_count > LARGE_EXPORT_THRESHOLD:
+        print(f"  {entity}: {record_count:,} records > {LARGE_EXPORT_THRESHOLD:,} — persisting DISK_ONLY")
+        df.persist(StorageLevel.DISK_ONLY)
+    else:
+        df.cache()
+    # Materialize the persisted data once, so the two parallel writers below
+    # read it instead of racing to compute every partition twice.
+    df.count()
 
     print(f"\n{'='*60}")
     print(f"Exporting {entity}: {record_count:,} records")
