@@ -8,7 +8,7 @@ resources:
       schedule:
         quartz_cron_expression: 0 0 1 ? * THU
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       tasks:
         - task_key: expunge_deletes
           job_cluster_key: maintenance_cluster
