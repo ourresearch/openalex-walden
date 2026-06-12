@@ -119,8 +119,12 @@ def parse_detail(html, rest_title):
     elif when:
         start_date, start_year = mon_year(when)
     given, family = parse_pi(f.get("pi_raw"))
+    # guard against a stray 1-2 char "Title" label (the Tessa Jowell BRAIN
+    # MATRIX row parsed a lone "A"); fall back to the WP-REST title when the
+    # detail-page Title label is implausibly short.
+    dt = (f.get("detail_title") or "").strip()
     return {
-        "title": f.get("detail_title") or rest_title,
+        "title": dt if len(dt) >= 4 else rest_title,
         "pi_given": given, "pi_family": family,
         "institution": f.get("institution"),
         "amount": parse_cost(f.get("cost_raw")),
