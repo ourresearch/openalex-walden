@@ -134,12 +134,12 @@ resources:
             source: GIT
           environment_key: serverless
           timeout_seconds: 3600
-        - task_key: sync_to_production
+        - task_key: sync_to_public
           depends_on:
             - task_key: smoke_tests
           job_cluster_key: snapshot_sync_cluster
           notebook_task:
-            notebook_path: notebooks/snapshot/sync_to_production
+            notebook_path: notebooks/snapshot/sync_to_public
             source: GIT
           max_retries: 1
           min_retry_interval_millis: 300000

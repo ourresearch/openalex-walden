@@ -248,6 +248,13 @@ resources:
             - task_key: Guardrails
           run_job_task:
             job_id: ${resources.jobs.Daily_Changefiles.id}
+        - task_key: Full_Snapshot
+          depends_on:
+            - task_key: Guardrails
+          run_job_task:
+            job_id: ${resources.jobs.Full_Snapshot.id}
+            job_parameters:
+              is_quarterly_release: "false"
         - task_key: Sync_to_Elasticsearch
           depends_on:
             - task_key: Guardrails

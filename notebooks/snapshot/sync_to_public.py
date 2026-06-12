@@ -1,6 +1,6 @@
 # Databricks notebook source
 # Sync full snapshot from staging (s3://openalex-snapshots/full/{date}/)
-# to production (s3://openalex/data/) using boto3 for the production bucket.
+# to the public bucket (s3://openalex/data/) using boto3 for the public bucket.
 #
 # Runs only on quarterly releases. Monthly snapshots stay in staging only and
 # are served to enterprise customers via the API-key gateway. Public free-tier
@@ -12,7 +12,7 @@
 #   {staging_base}/{format}/manifest.json   # per-format combined manifest
 #
 # Staging bucket is accessible natively via Databricks (instance profile).
-# Production bucket requires separate AWS credentials from the
+# The public bucket requires separate AWS credentials from the
 # "openalex-open-data" secret scope.
 
 import json
@@ -42,8 +42,8 @@ print(f"is_quarterly_release={_quarterly_param!r} — proceeding with public syn
 # ---------------------------------------------------------------------------
 
 STAGING_BUCKET = "openalex-snapshots"
-PROD_BUCKET = "openalex"
-PROD_PREFIX = "data"
+PUBLIC_BUCKET = "openalex"
+PUBLIC_PREFIX = "data"
 FORMATS = ("jsonl", "parquet")
 
 date_str = datetime.now().strftime("%Y-%m-%d")
@@ -79,14 +79,14 @@ ENTITIES = [
 
 print(f"Snapshot date: {date_str}")
 print(f"Staging base:  {staging_base}")
-print(f"Production:    s3://{PROD_BUCKET}/{PROD_PREFIX}/")
+print(f"Public:        s3://{PUBLIC_BUCKET}/{PUBLIC_PREFIX}/")
 print(f"Formats:       {FORMATS}")
 print(f"Entities:      {len(ENTITIES)}")
 
 # COMMAND ----------
 
 # ---------------------------------------------------------------------------
-# Preflight: verify staging snapshot exists and prod credentials work
+# Preflight: verify staging snapshot exists and public-bucket credentials work
 # ---------------------------------------------------------------------------
 
 import boto3
@@ -102,18 +102,18 @@ try:
 except Exception as e:
     raise RuntimeError(f"Staging preflight FAILED — cannot access {staging_base}: {e}")
 
-# Verify production credentials
-prod_access_key = dbutils.secrets.get("openalex-open-data", "aws_access_key_id")
-prod_secret_key = dbutils.secrets.get("openalex-open-data", "aws_secret_access_key")
+# Verify public-bucket credentials
+public_access_key = dbutils.secrets.get("openalex-open-data", "aws_access_key_id")
+public_secret_key = dbutils.secrets.get("openalex-open-data", "aws_secret_access_key")
 
-prod_client = boto3.client(
+public_client = boto3.client(
     "s3",
-    aws_access_key_id=prod_access_key,
-    aws_secret_access_key=prod_secret_key,
+    aws_access_key_id=public_access_key,
+    aws_secret_access_key=public_secret_key,
 )
-prod_client.head_bucket(Bucket=PROD_BUCKET)
-print(f"Production preflight OK: s3://{PROD_BUCKET} accessible")
-del prod_client
+public_client.head_bucket(Bucket=PUBLIC_BUCKET)
+print(f"Public-bucket preflight OK: s3://{PUBLIC_BUCKET} accessible")
+del public_client
 
 # COMMAND ----------
 
@@ -124,13 +124,13 @@ del prod_client
 _thread_local = threading.local()
 
 
-def _get_prod_client():
-    """Return a thread-local boto3 S3 client for the production bucket."""
+def _get_public_client():
+    """Return a thread-local boto3 S3 client for the public bucket."""
     if not hasattr(_thread_local, "s3_client"):
         _thread_local.s3_client = boto3.client(
             "s3",
-            aws_access_key_id=prod_access_key,
-            aws_secret_access_key=prod_secret_key,
+            aws_access_key_id=public_access_key,
+            aws_secret_access_key=public_secret_key,
         )
     return _thread_local.s3_client
 
@@ -139,7 +139,7 @@ def list_staging_files(fmt, entity):
     """List all files for an entity+format in staging.
 
     Returns a list of (dbfs_path, relative_key, size). The relative_key starts with
-    `{fmt}/{entity}/...` so it can be appended directly to PROD_PREFIX.
+    `{fmt}/{entity}/...` so it can be appended directly to PUBLIC_PREFIX.
     """
     entity_path = f"{staging_base}/{fmt}/{entity}"
     files = []
@@ -164,12 +164,12 @@ def list_staging_files(fmt, entity):
     return files
 
 
-def upload_file_to_prod(dbfs_path, relative_key, expected_size):
-    """Download a file from staging to local disk, then upload to production.
+def upload_file_to_public(dbfs_path, relative_key, expected_size):
+    """Download a file from staging to local disk, then upload to the public bucket.
 
-    Returns (relative_key, prod_size) on success.
+    Returns (relative_key, public_size) on success.
     """
-    prod_key = f"{PROD_PREFIX}/{relative_key}"
+    public_key = f"{PUBLIC_PREFIX}/{relative_key}"
     local_dir = os.path.join(local_scratch, os.path.dirname(relative_key))
     local_path = os.path.join(local_scratch, relative_key)
 
@@ -188,19 +188,19 @@ def upload_file_to_prod(dbfs_path, relative_key, expected_size):
                     f"Local size mismatch: expected {expected_size}, got {local_size}"
                 )
 
-            # Upload to production
-            client = _get_prod_client()
-            client.upload_file(local_path, PROD_BUCKET, prod_key)
+            # Upload to public bucket
+            client = _get_public_client()
+            client.upload_file(local_path, PUBLIC_BUCKET, public_key)
 
-            # Verify production size
-            head = client.head_object(Bucket=PROD_BUCKET, Key=prod_key)
-            prod_size = head["ContentLength"]
-            if prod_size != expected_size:
+            # Verify public-bucket size
+            head = client.head_object(Bucket=PUBLIC_BUCKET, Key=public_key)
+            public_size = head["ContentLength"]
+            if public_size != expected_size:
                 raise RuntimeError(
-                    f"Prod size mismatch: expected {expected_size}, got {prod_size}"
+                    f"Public size mismatch: expected {expected_size}, got {public_size}"
                 )
 
-            return relative_key, prod_size
+            return relative_key, public_size
 
         except Exception as e:
             last_err = e
@@ -217,24 +217,24 @@ def upload_file_to_prod(dbfs_path, relative_key, expected_size):
 
 
 def upload_manifest(fmt):
-    """Copy the per-format combined manifest to production (last, as completion marker).
+    """Copy the per-format combined manifest to the public bucket (last, as completion marker).
 
     Source: {staging_base}/{fmt}/manifest.json
-    Target: s3://{PROD_BUCKET}/{PROD_PREFIX}/{fmt}/manifest.json
+    Target: s3://{PUBLIC_BUCKET}/{PUBLIC_PREFIX}/{fmt}/manifest.json
     """
     manifest_dbfs = f"{staging_base}/{fmt}/manifest.json"
     local_path = os.path.join(local_scratch, fmt, "manifest.json")
-    prod_key = f"{PROD_PREFIX}/{fmt}/manifest.json"
+    public_key = f"{PUBLIC_PREFIX}/{fmt}/manifest.json"
 
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
     dbutils.fs.cp(manifest_dbfs, f"file:{local_path}")
     local_size = os.path.getsize(local_path)
 
-    client = _get_prod_client()
-    client.upload_file(local_path, PROD_BUCKET, prod_key)
+    client = _get_public_client()
+    client.upload_file(local_path, PUBLIC_BUCKET, public_key)
 
-    head = client.head_object(Bucket=PROD_BUCKET, Key=prod_key)
+    head = client.head_object(Bucket=PUBLIC_BUCKET, Key=public_key)
     if head["ContentLength"] != local_size:
         raise RuntimeError(
             f"Manifest size mismatch for {fmt}: "
@@ -282,21 +282,21 @@ for fmt in FORMATS:
             })
             continue
 
-        # 2. Delete old production files for this format+entity
-        prefix = f"{PROD_PREFIX}/{fmt}/{entity}/"
-        del_client = _get_prod_client()
+        # 2. Delete old public-bucket files for this format+entity
+        prefix = f"{PUBLIC_PREFIX}/{fmt}/{entity}/"
+        del_client = _get_public_client()
         del_paginator = del_client.get_paginator("list_objects_v2")
         deleted = 0
-        for page in del_paginator.paginate(Bucket=PROD_BUCKET, Prefix=prefix):
+        for page in del_paginator.paginate(Bucket=PUBLIC_BUCKET, Prefix=prefix):
             objects = page.get("Contents", [])
             if not objects:
                 continue
             del_client.delete_objects(
-                Bucket=PROD_BUCKET,
+                Bucket=PUBLIC_BUCKET,
                 Delete={"Objects": [{"Key": obj["Key"]} for obj in objects], "Quiet": True},
             )
             deleted += len(objects)
-        print(f"  Deleted {deleted} old production files")
+        print(f"  Deleted {deleted} old public-bucket files")
 
         # 3. Upload data files in parallel
         uploaded_size = 0
@@ -304,7 +304,7 @@ for fmt in FORMATS:
 
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
             futures = {
-                pool.submit(upload_file_to_prod, dbfs_path, rel_key, size): rel_key
+                pool.submit(upload_file_to_public, dbfs_path, rel_key, size): rel_key
                 for dbfs_path, rel_key, size in files
             }
 
@@ -327,26 +327,26 @@ for fmt in FORMATS:
                 + "; ".join(f[0] for f in failed[:5])
             )
 
-        # 4. Verify file count in production for this entity prefix
-        client = _get_prod_client()
+        # 4. Verify file count in public bucket for this entity prefix
+        client = _get_public_client()
         paginator = client.get_paginator("list_objects_v2")
-        prod_count = 0
-        prod_total_size = 0
-        for page in paginator.paginate(Bucket=PROD_BUCKET, Prefix=prefix):
+        public_count = 0
+        public_total_size = 0
+        for page in paginator.paginate(Bucket=PUBLIC_BUCKET, Prefix=prefix):
             for obj in page.get("Contents", []):
-                prod_count += 1
-                prod_total_size += obj["Size"]
+                public_count += 1
+                public_total_size += obj["Size"]
 
-        if prod_count != len(files):
+        if public_count != len(files):
             raise RuntimeError(
                 f"File count mismatch for {fmt}/{entity}: "
-                f"staged {len(files)}, production has {prod_count}"
+                f"staged {len(files)}, public bucket has {public_count}"
             )
 
-        if prod_total_size != staging_total_size:
+        if public_total_size != staging_total_size:
             raise RuntimeError(
                 f"Total size mismatch for {fmt}/{entity}: "
-                f"staged {staging_total_size}, production has {prod_total_size}"
+                f"staged {staging_total_size}, public bucket has {public_total_size}"
             )
 
         elapsed = time.time() - entity_start
@@ -403,12 +403,12 @@ for r in entity_results:
     else:
         print(f"  {label:30s}  SKIPPED")
 
-print(f"\nProduction snapshot ready at: s3://{PROD_BUCKET}/{PROD_PREFIX}/")
+print(f"\nPublic snapshot ready at: s3://{PUBLIC_BUCKET}/{PUBLIC_PREFIX}/")
 
 # COMMAND ----------
 
 # ---------------------------------------------------------------------------
-# Upload RELEASE_NOTES.txt to production bucket root
+# Upload RELEASE_NOTES.txt to public bucket root
 # ---------------------------------------------------------------------------
 
 import requests as _requests
@@ -428,10 +428,10 @@ local_rn = os.path.join(local_scratch, "RELEASE_NOTES.txt")
 with open(local_rn, "w") as f:
     f.write(resp.text)
 
-client = _get_prod_client()
-client.upload_file(local_rn, PROD_BUCKET, "RELEASE_NOTES.txt")
+client = _get_public_client()
+client.upload_file(local_rn, PUBLIC_BUCKET, "RELEASE_NOTES.txt")
 
-head = client.head_object(Bucket=PROD_BUCKET, Key="RELEASE_NOTES.txt")
+head = client.head_object(Bucket=PUBLIC_BUCKET, Key="RELEASE_NOTES.txt")
 print(f"  Uploaded RELEASE_NOTES.txt ({head['ContentLength']} bytes)")
 
 try:
