@@ -544,6 +544,33 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: MHRC_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateMHRCAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: CureParkinsons_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateCureParkinsonsAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: FNRLuxembourg_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateFNRLuxembourgAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: NIST_Awards
           email_notifications: {}
           environment_key: Default
@@ -1894,6 +1921,9 @@ resources:
             - task_key: CHSS_Awards
             - task_key: BreastCancerNow_Awards
             - task_key: VaincreAlzheimer_Awards
+            - task_key: MHRC_Awards
+            - task_key: CureParkinsons_Awards
+            - task_key: FNRLuxembourg_Awards
             - task_key: NIST_Awards
             - task_key: Independent_Research_Fund_Denmark_Awards
             - task_key: KAKEN_Awards

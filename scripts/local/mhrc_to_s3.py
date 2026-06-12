@@ -131,9 +131,11 @@ def extract_institution(page_text, family):
     m = _LABEL_RE.search(page_text)
     if m:  # impact-profile pages carry a labelled field
         return m.group(1).strip(), "label"
-    # keep line breaks as sentence boundaries so captures can't run into the
-    # next section heading ("...University of Saskatchewan\nWaitlists in...")
-    flat = re.sub(r"\s*\n\s*", ". ", page_text)
+    # comma-terminated lines are soft wraps ("...Dr. Jill Bally,\nUniversity of
+    # Saskatchewan"); other line breaks are sentence boundaries so captures
+    # can't run into the next heading ("...Saskatchewan\nWaitlists in...")
+    flat = re.sub(r",\s*\n\s*", ", ", page_text)
+    flat = re.sub(r"\s*\n\s*", ". ", flat)
     flat = re.sub(r"\s+", " ", flat)
     cands = []
     for sent in re.split(r"(?<=[.!?])\s+", flat):
