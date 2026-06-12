@@ -1,5 +1,6 @@
 # Databricks notebook source
-# Shared utilities for the monthly full-snapshot export.
+# Shared utilities for the full-snapshot export (runs daily from end2end;
+# quarterly releases additionally sync to the public bucket).
 # %run'd by all notebooks/snapshot/export_*.ipynb.
 #
 # Output layout (mirrors notebooks/changefiles/daily/_utils.py shape):
@@ -8,7 +9,7 @@
 #     (snappy-compressed, but named `.parquet` to match daily-changefiles convention)
 #   s3://openalex-snapshots/full/{date}/_meta/{format}/{entity}.json   # consumed by update_meta
 #
-# Snapshot scale (works ~263M, authors ~110M) means we keep updated_date partitioning
+# Snapshot scale (works ~500M, authors ~110M) means we keep updated_date partitioning
 # and produce many per-partition part files per entity per format — unlike the daily
 # changefile which collapses to one merged file per entity.
 
@@ -17,6 +18,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from urllib.parse import unquote
 
 from pyspark.sql import DataFrame, functions as F
 from pyspark.sql.types import ArrayType, IntegerType, MapType, StringType
@@ -53,12 +55,60 @@ def _apply_salting(df_with_count: DataFrame) -> DataFrame:
     ).drop("date_count")
 
 
+def _partition_date_col():
+    # Built lazily (not at module scope) so %run on serverless never constructs
+    # Spark expressions at import time.
+    return F.coalesce(
+        F.to_date("updated_date"), F.to_date("created_date"), F.current_date()
+    )
+
+
+def _collect_date_counts(df: DataFrame):
+    """Return [(partition_date, count), ...] for the salting broadcast join.
+
+    Computed once per entity in export_partitioned_all_formats and shared by both
+    format writers, so the 500M-row aggregation runs once instead of twice.
+    """
+    rows = (df.groupBy(_partition_date_col().alias("_partition_date"))
+              .count().collect())
+    return [(r["_partition_date"], r["count"]) for r in rows]
+
+
+def _date_counts_df(spark, date_counts):
+    return spark.createDataFrame(date_counts, "_partition_date date, date_count long")
+
+
 # ---------------------------------------------------------------------------
 # Filename rename + spark-metadata cleanup
 # ---------------------------------------------------------------------------
 
+def _s3_split(path: str):
+    """'s3://bucket/key...' -> (bucket, key)."""
+    p = path.replace("s3a://", "").replace("s3://", "").replace("dbfs:", "")
+    bucket, key = p.split("/", 1)
+    return bucket, key
+
+
+def _get_s3_client(path: str):
+    """Return a boto3 S3 client if ambient credentials can reach the bucket, else None.
+
+    The rename fast path uses server-side CopyObject directly; dbutils.fs.mv pays
+    ~1-15s of per-call overhead through the driver command channel.
+    """
+    try:
+        import boto3
+        bucket, _ = _s3_split(path + "/x")
+        client = boto3.client("s3")
+        client.list_objects_v2(Bucket=bucket, MaxKeys=1)
+        return client
+    except Exception as e:
+        print(f"  boto3 fast path unavailable ({type(e).__name__}: {e}); "
+              f"falling back to dbutils.fs.mv")
+        return None
+
+
 def _rename_partitions(dbutils, output_path: str, match_extension: str,
-                       target_extension: str = None, max_workers: int = 30):
+                       target_extension: str = None, max_workers: int = 64):
     """Rename Spark's `_partition_date=` directories to `updated_date=` and rename
     each part file from Spark's auto-generated name to `part_NNNN.{target_extension}`.
 
@@ -67,6 +117,10 @@ def _rename_partitions(dbutils, output_path: str, match_extension: str,
     For parquet we pass match="snappy.parquet" / target="parquet" so files end up
     named `part_NNNN.parquet` even though they're snappy-compressed — matching the
     daily-changefiles convention.
+
+    All moves run on one flat thread pool (no per-partition serialization), using
+    boto3 server-side copies when credentials allow. Any failed move raises so a
+    half-renamed export can't be silently published.
     """
     if target_extension is None:
         target_extension = match_extension
@@ -77,86 +131,83 @@ def _rename_partitions(dbutils, output_path: str, match_extension: str,
     print(f"  Renaming {len(partitions_to_process)} partition(s) "
           f"(match=.{match_extension} → target=.{target_extension})")
 
-    def _process(partition):
+    # Phase 1: list all partition dirs in parallel, build one flat move list.
+    moves = []  # (src_path, dst_path, size)
+    lock = threading.Lock()
+
+    def _collect(partition):
         date_value = partition.name.replace("_partition_date=", "").rstrip("/")
         new_partition_path = f"{output_path}/updated_date={date_value}/"
-
         files = dbutils.fs.ls(partition.path)
-        data_files = [f for f in files if f.name.endswith(f".{match_extension}")]
-        meta_files = [f for f in files if not f.name.endswith(f".{match_extension}")]
-        data_files.sort(key=lambda x: x.name)
+        data_files = sorted(
+            [f for f in files if f.name.endswith(f".{match_extension}")],
+            key=lambda x: x.name,
+        )
+        local = [
+            (f.path, f"{new_partition_path}part_{str(idx).zfill(4)}.{target_extension}", f.size)
+            for idx, f in enumerate(data_files)
+        ]
+        with lock:
+            moves.extend(local)
 
-        if not data_files:
-            for f in meta_files:
-                try:
-                    dbutils.fs.rm(f.path)
-                except Exception:
-                    pass
-            try:
-                dbutils.fs.rm(partition.path, recurse=True)
-            except Exception:
-                pass
-            return partition.name, 0, "empty partition cleaned"
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        for fut in as_completed([pool.submit(_collect, p) for p in partitions_to_process]):
+            fut.result()
 
-        # Parallel inner rename for partitions with many files (works case)
-        if len(data_files) > 100:
-            counter_lock = threading.Lock()
-            counter = {"moved": 0}
+    print(f"  {len(moves)} file move(s) queued")
 
-            def _move(file_info, idx):
-                new_name = f"part_{str(idx).zfill(4)}.{target_extension}"
-                try:
-                    dbutils.fs.mv(file_info.path, f"{new_partition_path}{new_name}")
-                    with counter_lock:
-                        counter["moved"] += 1
-                    return True
-                except Exception:
-                    return False
-
-            with ThreadPoolExecutor(max_workers=50) as inner:
-                inner_futs = [inner.submit(_move, f, i) for i, f in enumerate(data_files)]
-                for fut in as_completed(inner_futs):
-                    fut.result()
-            moved = counter["moved"]
-        else:
-            moved = 0
-            for idx, f in enumerate(data_files):
-                new_name = f"part_{str(idx).zfill(4)}.{target_extension}"
-                try:
-                    dbutils.fs.mv(f.path, f"{new_partition_path}{new_name}")
-                    moved += 1
-                except Exception as e:
-                    print(f"    rename failed for {f.path}: {e}")
-
-        for f in meta_files:
-            try:
-                dbutils.fs.rm(f.path)
-            except Exception:
-                pass
-        try:
-            dbutils.fs.rm(partition.path, recurse=True)
-        except Exception:
-            pass
-
-        return partition.name, moved, f"{moved} file(s) moved"
-
+    # Phase 2: copy every file to its new name.
     start = time.time()
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = [pool.submit(_process, p) for p in partitions_to_process]
-        completed = 0
-        for fut in as_completed(futures):
-            name, moved, msg = fut.result()
-            completed += 1
-            elapsed = time.time() - start
-            print(f"  [{completed}/{len(partitions_to_process)}] {name}: {msg} ({elapsed:.1f}s)")
+    done = {"n": 0}
 
-    # Clean up root-level Spark metadata files (_SUCCESS, etc.)
+    def _progress():
+        with lock:
+            done["n"] += 1
+            n = done["n"]
+        if n % 250 == 0 or n == len(moves):
+            print(f"  [{n}/{len(moves)}] moved ({time.time() - start:.1f}s)")
+
+    s3 = _get_s3_client(output_path) if moves else None
+
+    if s3 is not None:
+        from boto3.s3.transfer import TransferConfig
+        big_cfg = TransferConfig(multipart_threshold=4 * 1024**3, max_concurrency=4)
+
+        def _move(src, dst, size):
+            src_b, src_k = _s3_split(src)
+            dst_b, dst_k = _s3_split(dst)
+            if size < 4 * 1024**3:
+                s3.copy_object(CopySource={"Bucket": src_b, "Key": src_k},
+                               Bucket=dst_b, Key=dst_k)
+            else:  # CopyObject caps at 5GB; managed copy does multipart
+                s3.copy({"Bucket": src_b, "Key": src_k}, dst_b, dst_k, Config=big_cfg)
+            _progress()
+    else:
+        def _move(src, dst, size):
+            dbutils.fs.mv(src, dst)
+            _progress()
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        for fut in as_completed([pool.submit(_move, *m) for m in moves]):
+            fut.result()  # propagate any failure — don't publish a partial rename
+
+    # Phase 3: remove old `_partition_date=` dirs (covers the boto3-path originals
+    # plus Spark's per-partition metadata files) and root-level _SUCCESS etc.
+    def _cleanup(partition):
+        dbutils.fs.rm(partition.path, recurse=True)
+
+    with ThreadPoolExecutor(max_workers=32) as pool:
+        for fut in as_completed([pool.submit(_cleanup, p) for p in partitions_to_process]):
+            fut.result()
+
     try:
         for f in dbutils.fs.ls(output_path):
             if f.name.startswith("_"):
                 dbutils.fs.rm(f.path, recurse=True)
     except Exception as e:
         print(f"  warning: root cleanup failed: {e}")
+
+    print(f"  rename complete: {len(moves)} file(s) in {time.time() - start:.1f}s")
 
 
 # ---------------------------------------------------------------------------
@@ -183,22 +234,22 @@ def _enumerate_files(dbutils, output_path: str, file_extension: str):
     return out
 
 
-def _count_records_jsonl(spark, files):
-    """Return list of record counts (one per file) for gzipped JSONL files."""
-    counts = []
-    lock = threading.Lock()
+def _count_records_jsonl(spark, files, output_path: str):
+    """Return list of record counts (one per file) for gzipped JSONL files.
 
-    def _count_one(idx, full_path):
-        n = spark.read.text(full_path).count()
-        with lock:
-            counts.append((idx, n))
-
-    with ThreadPoolExecutor(max_workers=50) as pool:
-        futs = [pool.submit(_count_one, i, t[3]) for i, t in enumerate(files)]
-        for fut in as_completed(futs):
-            fut.result()
-    counts.sort(key=lambda x: x[0])
-    return [c for _, c in counts]
+    One distributed job over the whole export (grouped by input_file_name) instead
+    of one driver-scheduled job per file — the data still has to be gunzipped once,
+    but with full cluster parallelism.
+    """
+    rows = (spark.read.text(f"{output_path}/updated_date=*")
+                 .groupBy(F.input_file_name().alias("path"))
+                 .count().collect())
+    by_rel = {}
+    for r in rows:
+        path = unquote(r["path"])
+        rel = "/".join(path.split("/")[-2:])  # updated_date=YYYY-MM-DD/part_NNNN.gz
+        by_rel[rel] = r["count"]
+    return [by_rel.get(rel, 0) for rel, _size, _part, _full in files]
 
 
 def _count_records_parquet(spark, files):
@@ -247,12 +298,16 @@ def _write_entity_meta(dbutils, date_str: str, fmt: str, entity: str,
 
 def export_partitioned_jsonl(spark, dbutils, df: DataFrame, date_str: str, entity: str,
                               salt: bool = False,
-                              records_per_file: int = 400_000):
+                              records_per_file: int = 400_000,
+                              date_counts: list = None):
     """Write `df` as gzip-compressed JSON lines partitioned by updated_date.
 
     salt=True turns on hash-based salting for entities whose largest single
     updated_date partition exceeds ~1M records (works, authors). Otherwise the
     output is `coalesce(1)` per partition (small entities).
+
+    `date_counts` (optional, [(date, count), ...]) lets the caller share one
+    precomputed per-date aggregation across both format writers.
 
     Returns the per-entity total (record_count, content_length) and writes
     `_meta/jsonl/{entity}.json`.
@@ -264,23 +319,13 @@ def export_partitioned_jsonl(spark, dbutils, df: DataFrame, date_str: str, entit
     except Exception:
         pass
 
-    df_p = df.withColumn(
-        "_partition_date",
-        F.coalesce(F.to_date("updated_date"), F.to_date("created_date"), F.current_date()),
-    )
+    df_p = df.withColumn("_partition_date", _partition_date_col())
 
     if salt:
-        date_counts = (df_p.groupBy("_partition_date").count()
-                          .withColumnRenamed("count", "date_count"))
-        df_with_count = df_p.join(F.broadcast(date_counts), on="_partition_date")
-
-        date_stats = (df_with_count.select("_partition_date", "date_count")
-                                    .distinct().orderBy(F.desc("date_count")).collect())
-        print(f"  jsonl: top date partitions for {entity}:")
-        for row in date_stats[:5]:
-            expected = (row["date_count"] + records_per_file - 1) // records_per_file
-            print(f"    {row['_partition_date']}: {row['date_count']:,} recs → ~{expected} file(s)")
-
+        if date_counts is None:
+            date_counts = _collect_date_counts(df)
+        df_with_count = df_p.join(F.broadcast(_date_counts_df(spark, date_counts)),
+                                  on="_partition_date")
         df_salted = _apply_salting(df_with_count)
         df_out = df_salted.repartition(F.col("_partition_date"), F.col("salt")).drop("salt")
 
@@ -307,7 +352,7 @@ def export_partitioned_jsonl(spark, dbutils, df: DataFrame, date_str: str, entit
         _write_entity_meta(dbutils, date_str, "jsonl", entity, 0, 0, [])
         return 0, 0
 
-    counts = _count_records_jsonl(spark, files)
+    counts = _count_records_jsonl(spark, files, output_path)
     file_entries = []
     total_size = 0
     total_count = 0
@@ -331,7 +376,8 @@ def export_partitioned_jsonl(spark, dbutils, df: DataFrame, date_str: str, entit
 
 def export_partitioned_parquet(spark, dbutils, df: DataFrame, date_str: str, entity: str,
                                 salt: bool = False,
-                                records_per_file: int = 400_000):
+                                records_per_file: int = 400_000,
+                                date_counts: list = None):
     """Write `df` as snappy-compressed parquet partitioned by updated_date.
 
     Same salting logic as JSONL for large entities. Output:
@@ -352,15 +398,13 @@ def export_partitioned_parquet(spark, dbutils, df: DataFrame, date_str: str, ent
     except Exception:
         pass
 
-    df_p = df.withColumn(
-        "_partition_date",
-        F.coalesce(F.to_date("updated_date"), F.to_date("created_date"), F.current_date()),
-    )
+    df_p = df.withColumn("_partition_date", _partition_date_col())
 
     if salt:
-        date_counts = (df_p.groupBy("_partition_date").count()
-                          .withColumnRenamed("count", "date_count"))
-        df_with_count = df_p.join(F.broadcast(date_counts), on="_partition_date")
+        if date_counts is None:
+            date_counts = _collect_date_counts(df)
+        df_with_count = df_p.join(F.broadcast(_date_counts_df(spark, date_counts)),
+                                  on="_partition_date")
         df_salted = _apply_salting(df_with_count)
         df_out = df_salted.repartition(F.col("_partition_date"), F.col("salt")).drop("salt")
 
@@ -410,10 +454,14 @@ def export_partitioned_parquet(spark, dbutils, df: DataFrame, date_str: str, ent
 def export_partitioned_all_formats(spark, dbutils, df: DataFrame, date_str: str, entity: str,
                                     salt: bool = False,
                                     records_per_file: int = 400_000):
-    """Cache `df`, export to JSONL and parquet in parallel, write per-entity meta.
+    """Export `df` to JSONL and parquet in parallel, write per-entity meta.
 
     Use salt=True only for large entities (works, authors). For other entities the
     coalesce(1) path produces a single part file per updated_date partition.
+
+    No caching: every caller passes either a materialized snapshot table or a cheap
+    transform of one, so re-reading Delta in each format writer is faster than
+    forcing a full memory/disk materialization up front.
 
     `abstract_inverted_index`, when present and stored as a JSON string, is parsed
     to a MapType for the JSONL writer (matching the daily-changefile behavior).
@@ -422,18 +470,23 @@ def export_partitioned_all_formats(spark, dbutils, df: DataFrame, date_str: str,
     if "_rescued_data" in df.columns:
         df = df.drop("_rescued_data")
 
-    df.cache()
-    record_count = df.count()
-
     print(f"\n{'=' * 60}")
-    print(f"Snapshot export — entity={entity} records={record_count:,} salt={salt}")
+    print(f"Snapshot export — entity={entity} salt={salt}")
     print(f"{'=' * 60}")
 
-    if record_count == 0:
-        df.unpersist()
+    if df.isEmpty():
         for fmt in ("jsonl", "parquet"):
             _write_entity_meta(dbutils, date_str, fmt, entity, 0, 0, [])
         return
+
+    # One per-date aggregation shared by both format writers (salting input).
+    date_counts = None
+    if salt:
+        date_counts = _collect_date_counts(df)
+        print(f"  top date partitions for {entity}:")
+        for date_value, n in sorted(date_counts, key=lambda t: -t[1])[:5]:
+            expected = (n + records_per_file - 1) // records_per_file
+            print(f"    {date_value}: {n:,} recs → ~{expected} file(s)")
 
     # JSONL view: parse abstract_inverted_index to map for proper JSON output
     df_jsonl = df
@@ -449,12 +502,11 @@ def export_partitioned_all_formats(spark, dbutils, df: DataFrame, date_str: str,
     with ThreadPoolExecutor(max_workers=2) as pool:
         futs = [
             pool.submit(export_partitioned_jsonl, spark, dbutils, df_jsonl,
-                        date_str, entity, salt, records_per_file),
+                        date_str, entity, salt, records_per_file, date_counts),
             pool.submit(export_partitioned_parquet, spark, dbutils, df,
-                        date_str, entity, salt, records_per_file),
+                        date_str, entity, salt, records_per_file, date_counts),
         ]
         for fut in as_completed(futs):
             fut.result()
 
-    df.unpersist()
     print(f"  {entity}: export complete")
