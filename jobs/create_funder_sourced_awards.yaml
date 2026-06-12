@@ -490,6 +490,33 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: MQ_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateMQMentalHealthAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Sparks_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateSparksAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: NPF_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateNPFAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: NIST_Awards
           email_notifications: {}
           environment_key: Default
@@ -1834,6 +1861,9 @@ resources:
             - task_key: CrohnsColitisUK_Awards
             - task_key: Shriners_Awards
             - task_key: Gerber_Awards
+            - task_key: MQ_Awards
+            - task_key: Sparks_Awards
+            - task_key: NPF_Awards
             - task_key: NIST_Awards
             - task_key: Independent_Research_Fund_Denmark_Awards
             - task_key: KAKEN_Awards
