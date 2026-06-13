@@ -598,6 +598,51 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: VersusArthritis_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateVersusArthritisAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: RNID_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateRNIDAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: AlcoholChangeUK_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateAlcoholChangeUKAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: IrishCancerSociety_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateIrishCancerSocietyAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: TSCAlliance_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateTSCAllianceAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: NIST_Awards
           email_notifications: {}
           environment_key: Default
@@ -1954,6 +1999,11 @@ resources:
             - task_key: BrainAneurysm_Awards
             - task_key: BD2_Awards
             - task_key: BTFC_Awards
+            - task_key: VersusArthritis_Awards
+            - task_key: RNID_Awards
+            - task_key: AlcoholChangeUK_Awards
+            - task_key: IrishCancerSociety_Awards
+            - task_key: TSCAlliance_Awards
             - task_key: NIST_Awards
             - task_key: Independent_Research_Fund_Denmark_Awards
             - task_key: KAKEN_Awards
