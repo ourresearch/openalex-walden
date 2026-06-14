@@ -2101,6 +2101,15 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: PCORI_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreatePCORIAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: POGO_Awards
           email_notifications: {}
           environment_key: Default
@@ -2177,6 +2186,7 @@ resources:
             - task_key: ONSFoundation_Awards
             - task_key: Ostersjostiftelsen_Awards
             - task_key: PBTF_Awards
+            - task_key: PCORI_Awards
             - task_key: POGO_Awards
             - task_key: PewBiomed_Awards
             - task_key: RagnarSoderberg_Awards
