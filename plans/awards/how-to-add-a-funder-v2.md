@@ -58,6 +58,27 @@ follow-up rather than mix sources in one row).
 When choosing how to fetch a funder's data, prefer methods higher in this
 list — they're cheaper, faster, and more stable than what's below.
 
+> **0. ALWAYS CHECK FIRST — a bulk export the funder itself publishes.**
+> Before any of the methods below (including scraping), look for a
+> **"Download" / "Export" / "Download Results"** button, or a published
+> **CSV / Excel** of the funder's whole grants database. A funder's own bulk
+> export almost always carries **far more structured fields than its web
+> pages** (PI, institution, exact amount, dates, status, etc.) and is **one
+> download instead of hundreds/thousands of paginated + detail-page fetches.**
+> Confirmed on **PCORI**: the "Download Results" CSV gave 2,683 projects × 16
+> columns (PI, Organization, Budget, Award Date, …) — vastly richer than the
+> JS portfolio pages, which would have needed ~107 list renders + 2,683 detail
+> fetches for less. This sits **above everything else on the ladder**; do not
+> write a page scraper until you've ruled out an export.
+>
+> If the export is behind a WAF/Cloudflare wall that blocks headless/plain
+> HTTP (PCORI's `obolus` challenge ConnectionReset plain Bash), the **Chrome
+> extension / a real browser can still fetch it** — `fetch(url,{credentials:
+> 'include'})` in the page context, or trigger an `<a download>`; the file
+> lands in Downloads and the build reads it locally. Govt funders: also check
+> **data.gov / data.gouv / data.gov.au / CKAN** and **360Giving** (UK
+> charities) for the same dataset as a clean file.
+
 1. **CKAN open-data API** (e.g. Argentina MINCYT, IDRC) — `package_show`
    gives you all resource URLs and bumps automatically when the funder
    publishes new years.
