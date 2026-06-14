@@ -16,12 +16,15 @@
 
 ---
 
-## Two ingest patterns: GRANT vs PRIZE
+## Three ingest patterns: GRANT, PRIZE, OUTPUT-LIST
 
 This document is written primarily around the **grant pattern** (most
 funders fit this). The **prize pattern** is a smaller variant — see
 [CreateNobelAwards.ipynb](../../notebooks/awards/CreateNobelAwards.ipynb)
-as the canonical example. The deltas:
+as the canonical example. A third pattern, **OUTPUT-LIST**, applies when a
+funder publishes **no grants at all** (no grant IDs, amounts, or PIs) but
+*does* publish a curated list of the publications it funded — see **§11** and
+the decision rule below. The GRANT/PRIZE deltas:
 
 | concept                  | grant                                    | prize                                                           |
 | ------------------------ | ---------------------------------------- | --------------------------------------------------------------- |
@@ -52,6 +55,31 @@ correct value for fields the funder doesn't publish.** Do not backfill
 those fields from Wikipedia/Wikidata unless you also split provenance
 across two sources (and even then, prefer to file the gap as a
 follow-up rather than mix sources in one row).
+
+### When to use OUTPUT-LIST instead of Steps 1–9
+
+**Decision rule:** if the funder publishes a list of funded *publications*
+(DOIs / URLs / citations) but **no grant records** — no grant IDs, no amounts,
+no per-grant PIs — do **not** force it through the grant pattern. There are no
+award entities to build. Use the **OUTPUT-LIST pattern (§11)**, which resolves
+the funder's published outputs to OpenAlex works and asserts the funder→work
+edge **directly in `work.funders`**, with no synthetic award entities and no
+`/awards` rows.
+
+Hakai Institute / Tula Foundation (https://hakai.org/publications) is the
+canonical example. This pattern is also the right home for the three common
+gaps where a work is genuinely funded but the funder link is missing: (1) no
+PDF was available to mine for the acknowledgement, (2) the PDF was mined but
+the acknowledgement parse missed the funder, and (3) there is no textual
+evidence at all because the grantee reported the output directly to the funder.
+In all three, the funder's own list is the authority.
+
+**Trust / provenance:** a funder asserting "we funded this work" is treated as
+**higher trust than a Crossref-metadata or text-mined funder edge** — it is a
+first-party assertion. We therefore write the edge directly and do **not**
+attach per-edge provenance to it (consistent with how `work.funders` already
+exposes only `(id, display_name, ror)`). Keep `provenance` in the ingest's own
+junction table for auditing only.
 
 ### Ingest method ladder
 
@@ -1728,6 +1756,131 @@ got and move on; a re-ingest of fresher funder data is usually a better lever th
 
 **→ Tracker:** note the funder has funder-reported linkages (junction + WorkAwards leg + job),
 distinct from its award-entity "Complete" status.
+
+---
+
+## Step 11: OUTPUT-LIST pattern — funder-reported works with no grant entities
+
+**When to use this — the trigger:** the funder publishes **no grants** (no grant IDs,
+amounts, or per-grant PIs) but **does** publish a curated list of the **publications it
+funded** (DOIs, URLs, or formatted citations). Hakai Institute / Tula Foundation
+(https://hakai.org/publications) is canonical. Unlike §10 (NWO), there are **no award
+entities** to build or link to — so this pattern does **not** touch `openalex_awards`,
+`work_awards`, or the `/awards` index at all. It asserts the funder→work edge **directly
+in `work.funders`**.
+
+**Precondition — the funder must already exist in OpenAlex.** You need a `funder_id` to
+attach the edge to (Step 0 lookup). If the funder isn't in OpenAlex, STOP and flag it —
+same rule as grants. An output list cannot create a funder.
+
+**Eligibility gate — only ingest a list you are *confident* is the funder's own
+assertion of works it funded.** This pipeline writes first-party funder→work edges with
+no provenance and no downstream human review, so the bar is high. **Marginal or
+ambiguous sources are always excluded — when in doubt, leave it out** and fall back to
+the normal acknowledgement-mining pipeline.
+- The page must be the **funder's own published list of publications it says it funded or
+  supported** (e.g. "publications from our grantees", "research we funded"). The funder's
+  name on that page is the assertion.
+- **Exclude ambiguous lists.** If it's unclear whether the list means "we funded these"
+  vs. "these merely mention us" vs. "our staff wrote these", do **not** ingest it.
+- **Exclude research-performer affiliation corpora.** An institutional repository or "our
+  publications" page from a body that *performs* research (publishing its own staff's
+  papers) is an affiliation signal, not a funding assertion — not eligible. (A*STAR's
+  repository, Flatiron/Biohub staff-paper pages, and IARC's report catalog are all
+  examples of what to exclude.)
+- The source must be the funder's **own published list**, never a search-expanded
+  candidate set. (The Tula example's *analysis* corpus is search-discovered and
+  LLM-verified — that's for impact studies, not this ingest. For OUTPUT-LIST, ingest only
+  what the funder itself publishes, e.g. hakai.org/publications.)
+
+**Why `work.funders` and not an award:** in `CreateWorksEnriched.ipynb` the "Merge
+funders" cell builds `work.funders` by UNION-ing several legs (`from_backfill_enriched`,
+`from_fulltext_enriched`, `from_gtr`, `from_crossref`, `from_work_awards`) and deduping
+by `(work_id, funder_id)`. The `from_crossref` leg already attaches a funder to a work
+with **no surviving award** (`crossref_work_funders` rows whose `award_ids` are empty).
+This pattern adds one more leg of exactly that shape, fed by the funder's own list.
+Because a funder's first-party assertion is **higher trust than a Crossref or text-mined
+edge**, we write it directly with **no per-edge provenance**; provenance stays in the
+junction table for auditing only.
+
+### 11.1 Scrape the output list to S3
+One row per asserted output. Capture the rawest identifier available (prefer DOI; else
+landing-page URL; else a citation string) plus the funder it belongs to. Reuse the
+ingest-method ladder above. Land at
+`s3://openalex-ingest/awards/{funder}/{funder}_outputs.parquet`. Force string dtype
+before `to_parquet` and install the Windows UTF-8 shim, same as §1.2.
+
+### 11.2 Resolve each output → OpenAlex work_id
+Reuse §10.2's precision-ordered paths (same work-resolution problem):
+- **Path 1 — DOI.** Clean (`regexp_extract`/`regexp_replace`), rebuild canonical
+  `https://doi.org/…`, join `openalex.works.openalex_works.doi`. Highest yield.
+- **Path 2 — URL → unique work location.** Match `openalex.works.locations.urls[].url`,
+  accept only when it maps to exactly one work.
+- **Path 3 (optional) — citation match.** Title + year, disambiguated by a
+  funder-country author. Precision-risky; measure before trusting.
+
+Same two SQL gotchas as §10.2: **double-escape regex backslashes** (`'\\s'`, `'\\.'`) for
+the job cluster's `escapedStringLiterals` mode, and **no `JOIN` directly after `LATERAL
+VIEW`** (explode in a subquery first).
+
+**QA — measure precision/recall against the funder's own list.** The Tula/Hakai analysis
+example ([plans/awards/examples/tula-hakai-funder-impact](examples/tula-hakai-funder-impact/README.md))
+already implements candidate-pull (`01_pull_candidates.py`), LLM verification
+(`03_verify_llm.py`), and precision/recall vs Hakai's public DOI list
+(`13_precision_recall.py`). Use it as the verification harness for this step. **Coverage
+is never 100% — don't gate on a round number;** report what you landed and move on.
+
+### 11.3 Build the junction `openalex.awards.{funder}_work_funders`
+Schema `(work_id BIGINT, funder_id BIGINT, provenance STRING)` — one row per
+`(work_id, funder_id)`. `funder_id` is the bare numeric id (no `F` prefix), to match
+`openalex.mid.funder.funder_id`. Mirror `crossref_work_funders` but with no `award_ids`
+column. Keep `provenance` (e.g. `'hakai_publications'`) for auditing.
+
+### 11.4 One-time infra: add a `from_funder_reported` leg to "Merge funders"
+This is the only shared-file change, and it's needed **once** — after it lands, every
+future OUTPUT-LIST funder is just "add rows to a junction." In
+`notebooks/end2end/CreateWorksEnriched.ipynb`, "Merge funders" cell, add a leg mirroring
+`from_crossref` and UNION it into `unioned`:
+```sql
+from_funder_reported AS (
+  SELECT
+    fr.work_id,
+    CONCAT("https://openalex.org/F", fr.funder_id) AS funder_id,
+    f.ror_id       AS ror,
+    f.display_name AS display_name
+  FROM openalex.awards.funder_reported_work_funders fr   -- UNION ALL of per-funder junctions
+  JOIN openalex.mid.funder f ON f.funder_id = fr.funder_id
+)
+```
+Prefer a single shared `funder_reported_work_funders` table (a thin view that
+`UNION ALL`s the per-funder `{funder}_work_funders` junctions) so the leg never needs
+editing again. The existing dedup by `(work_id, funder_id)` collapses any overlap with
+crossref/text-mined edges — this is purely additive and **cannot remove** a wrong funder.
+
+### 11.5 Standalone PAUSED DAB job
+Create `jobs/{funder}_work_funders.yaml` mirroring
+[jobs/nwo_work_funders.yaml](../../jobs/nwo_work_funders.yaml) (`source: GIT`,
+`notebook_task`, `warehouse_id`), add it to `include:` in `databricks.yml`, and set
+`schedule.pause_status: PAUSED` — the source is static, so run it on-demand, not on a
+daily rebuild.
+
+### 11.6 Run, verify, make live
+```bash
+databricks bundle run {Funder}_Work_Funders --profile dbc-ce570f73-0362   # builds the junction
+```
+Verify junction rows > 0 with unique `(work_id, funder_id)`. The edges reach
+`work.funders` only on the next **`CreateWorksEnriched`** run (in `walden_end2end`), which
+then syncs works→ES. ⚠️ Same caveat as §10.5: the `/awards` sync does **not** update
+works — `work.funders` is rebuilt by `CreateWorksEnriched`, then works→ES. Confirm a
+known work afterward:
+```bash
+curl -s 'https://api.openalex.org/works?filter=funder.id:F{funder_id}&per_page=1' | jq '.meta.count'
+```
+**Pass if** non-zero and in the same ballpark as the junction's distinct work count.
+
+**→ Tracker:** track OUTPUT-LIST funders with an `OUTPUT-LIST` tag and the landed work
+count (e.g. `OUTPUT-LIST | 312 works → work.funders, provenance hakai_publications`).
+They do **not** pass through the 9-step grant ladder.
 
 ---
 
