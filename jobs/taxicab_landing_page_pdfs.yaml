@@ -18,8 +18,8 @@ resources:
             notebook_path: notebooks/scraping/taxicab
             source: GIT
             base_parameters:
-              lookback_days: "3"
-              url_limit: "500000"
+              lookback_days: "30"
+              url_limit: "2000000"
               source_filter: "pdf_only"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
@@ -49,8 +49,8 @@ resources:
         git_branch: main
       parameters:
         - name: lookback_days
-          default: "3"
+          default: "30"
         - name: url_limit
-          default: "500000"
+          default: "2000000"
         - name: source_filter
           default: "pdf_only"
