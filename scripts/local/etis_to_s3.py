@@ -51,11 +51,18 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 BASE = "https://www.etis.ee:7443/api/project"
 S3_BUCKET = "openalex-ingest"
 
-# financier NameEng -> (provenance, s3 sub-path). A project is attributed to the
-# first matching financier; projects with neither are skipped (other funders).
-ETF_NAMES = {"estonian science foundation"}
+# financier NameEng -> funder. ETF (Estonian Science Foundation, dissolved 2012)
+# and ETAg (Estonian Research Council, successor) are SEPARATE OpenAlex entities.
+ETF_NAMES = {"estonian science foundation", "eesti teadusfond",
+             "sihtasutus eesti teadusfond"}
 ETAG_NAMES = {"estonian research council", "eesti teadusagentuur",
-              "estonian research council (etag)"}
+              "estonian research council (etag)", "eesti teadusagentuur (etag)",
+              "sihtasutus eesti teadusagentuur"}
+# ~590 projects list BOTH ETF and ETAg as financiers (transition-era). Attribute
+# those by the project's PROGRAMME (the authoritative scheme), not financier order.
+ETF_PROG = re.compile(r"\b(ETF|Mobilitas|ERMOS)\b|Estonian Science Foundation", re.I)
+ETAG_PROG = re.compile(r"\b(PRG|PUT|PSG|PUTJD|IUT)\b|Personal [Rr]esearch|"
+                       r"Institutional [Rr]esearch|Estonian Research Council", re.I)
 
 _DATE_RE = re.compile(r"(\d{1,2})\.(\d{1,2})\.(\d{4})")
 _NULLISH = {"", "nan", "none", "n/a", "na", "-"}
@@ -113,12 +120,22 @@ def parse_amount(v):
 
 
 def target_funder(doc):
-    for fi in (doc.get("FinancingInstitutions") or []):
-        n = (fi.get("NameEng") or fi.get("Name") or "").strip().lower()
-        if n in ETF_NAMES:
-            return "etf"
-        if n in ETAG_NAMES:
+    fins = {(fi.get("NameEng") or fi.get("Name") or "").strip().lower()
+            for fi in (doc.get("FinancingInstitutions") or [])}
+    has_etf = bool(fins & ETF_NAMES)
+    has_etag = bool(fins & ETAG_NAMES)
+    if has_etf and has_etag:
+        # dual-financier: disambiguate by programme; default to ETAg (successor)
+        prog = f"{doc.get('ProgrammeNameEng') or ''} {doc.get('ProgrammeCode') or ''}"
+        if ETAG_PROG.search(prog):
             return "etag"
+        if ETF_PROG.search(prog):
+            return "etf"
+        return "etag"
+    if has_etf:
+        return "etf"
+    if has_etag:
+        return "etag"
     return None
 
 
@@ -204,6 +221,13 @@ def main():
         nl = n.lower()
         mark = " <== ETF" if nl in ETF_NAMES else (" <== ETAg" if nl in ETAG_NAMES else "")
         print(f"  {c:>6}  {n}{mark}")
+
+    dual = sum(1 for d in docs
+               if {(fi.get("NameEng") or "").strip().lower()
+                   for fi in (d.get("FinancingInstitutions") or [])} & ETF_NAMES
+               and {(fi.get("NameEng") or "").strip().lower()
+                    for fi in (d.get("FinancingInstitutions") or [])} & ETAG_NAMES)
+    print(f"  dual-financier (ETF+ETAg) projects: {dual} — attributed by programme")
 
     buckets = {"etf": [], "etag": []}
     seen = {"etf": set(), "etag": set()}
