@@ -4,6 +4,8 @@ A reproducible pipeline that assembles, verifies, and analyzes the research foot
 **Tula Foundation** and its **Hakai Institute** entirely from OpenAlex, and the analysis behind
 the blog post *"The Hakai Institute, as seen by OpenAlex."* Built June 2026.
 
+📝 **Published post:** <https://blog.openalex.org/the-hakai-institute-as-seen-by-openalex/>
+
 This is the first entry in a growing collection of **funder-intelligence examples** built on
 open OpenAlex metadata.
 
@@ -54,6 +56,22 @@ Analyses cache OpenAlex API responses to `.cache/` (regenerated; gitignored).
 - `figures/` — the 10 figures used in the post (PNG 300 dpi + SVG).
 - `tables/` — CSV/JSON summaries behind every figure and number.
 - `blog/` — `tula-case-study.md` and the `.docx` export (for Google Docs editing).
+
+## Methods
+
+Corpus built from OpenAlex (June 13, 2026) via multiple search strategies (funder, affiliation,
+raw affiliation, full-text, datasets); 1,684 candidates de-duplicated and verified with an LLM
+plus manual review of all exclusions (170 removed), with a second pass to bring Tula's marine
+microbial/protist research into the marine frame. Analysis corpus: 1,496 works — all genuine
+Tula/Hakai research output except clinical/behavioural papers (Medicine, Psychology, Neuroscience,
+Health Professions) and a couple of off-topic items, which were set aside. Trend charts run
+through 2025, the most recently completed year. Citation metrics use OpenAlex FWCI and
+citation-normalized percentiles. Precision is the share of candidates that were genuine; recall is
+measured against Hakai's public publication list (356 valid DOIs). Collaboration analysis compares
+two equal 15-year windows (1994–2008 vs 2010–2024) for five BC universities within Hakai's coastal
+topics; co-funding groups the corpus by acknowledged funders; downstream reach aggregates citing
+works by country and field. The field-influence analysis is associational, not causal. All code,
+data, and figures are in the project repository.
 
 ## Notes & caveats
 - Trend charts run through **2025** (last reliably-indexed year); OpenAlex 2026 publication-year

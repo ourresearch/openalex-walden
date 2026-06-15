@@ -352,22 +352,7 @@ funder data makes possible, and we're just getting started.
 
 ---
 
-### Methods & reproducibility
-
-Corpus built from OpenAlex (June 2026) via nine search strategies (funder, affiliation, raw
-affiliation, full-text, datasets); 1,684 candidates de-duplicated and verified with an LLM plus
-manual review of all exclusions (170 removed), with a second pass to bring Tula's marine
-microbial/protist research into the marine frame. Analysis corpus: 1,496 works — all genuine
-Tula/Hakai research output except clinical/behavioural papers (Medicine, Psychology, Neuroscience,
-Health Professions) and a couple of off-topic items, which were set aside. Trend charts run through
-2025, the last reliably-indexed year; OpenAlex's 2026 publication-year counts are still inflated by
-indexing lag, though the corpus totals span 2026. Citation metrics use OpenAlex FWCI and
-citation-normalized percentiles. Precision is the share of candidates that were genuine; recall is
-measured against Hakai's public publication list (356 valid DOIs). Collaboration analysis compares
-two equal 15-year windows (1994–2008 vs 2010–2024) for five BC universities within Hakai's coastal
-topics; co-funding groups the corpus by acknowledged funders; downstream reach aggregates citing
-works by country and field. The field-influence analysis is associational, not causal. All code,
-data, and figures are in the project repository.
-
-*Funder background drawn from the Tula Foundation and Hakai Institute, with reporting by The Globe
+*Full methods, code, data, and figures are in the
+[project repository](https://github.com/ourresearch/openalex-walden/tree/main/plans/awards/examples/tula-hakai-funder-impact).
+Funder background drawn from the Tula Foundation and Hakai Institute, with reporting by The Globe
 and Mail and The Narwhal.*
