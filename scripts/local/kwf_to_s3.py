@@ -63,6 +63,9 @@ _TITLE_TOKENS = {
     "em.", "de", "ing", "ing.", "bsc", "msc", "phd",
 }
 _NULLISH = {"", "nan", "none", "n/a", "na", "-", "onbekend"}
+# Dutch surname particles (tussenvoegsel) — belong to the FAMILY name
+_DUTCH_PARTICLES = {"van", "de", "der", "den", "ten", "ter", "te", "het",
+                    "'t", "op", "von", "du", "vande", "vander"}
 
 
 def first(v):
@@ -79,7 +82,9 @@ def clean(v):
 
 
 def strip_html(v):
-    s = first(v)
+    # Solr text fields are multi-value lists (headings + paragraphs); JOIN them
+    # — taking only the first item truncates the abstract to its first heading.
+    s = " ".join(str(x) for x in v if x) if isinstance(v, list) else v
     if not s:
         return None
     s = re.sub(r"<[^>]+>", " ", str(s))
@@ -93,13 +98,16 @@ def parse_pi(raw):
     toks = name.split()
     while toks and toks[0].lower().strip(".,") in {t.strip(".") for t in _TITLE_TOKENS}:
         toks.pop(0)
-    name = " ".join(toks)
-    if not name or not re.search(r"[A-Za-zÀ-ÿ]{2}", name):
+    if not toks or not re.search(r"[A-Za-zÀ-ÿ]{2}", " ".join(toks)):
         return None, None
-    parts = name.split()
-    if len(parts) < 2:
-        return None, name
-    return " ".join(parts[:-1]), parts[-1]
+    if len(toks) < 2:
+        return None, toks[0]
+    # family name starts at the first tussenvoegsel: "Maaike van der Aa" ->
+    # given "Maaike", family "van der Aa"
+    for i in range(1, len(toks)):
+        if toks[i].lower().strip(".") in _DUTCH_PARTICLES:
+            return " ".join(toks[:i]), " ".join(toks[i:])
+    return " ".join(toks[:-1]), toks[-1]
 
 
 def parse_date(v):
@@ -174,8 +182,8 @@ def main():
             "status": clean(d.get("ss_project_status")),
             "funding_partner": clean(d.get("ss_name_funding_partner")),
             "start_date_raw": parse_date(d.get("ds_field_project_start_date")),
-            "description": (strip_html(d.get("tm_X3b_nl_project_summary"))
-                            or strip_html(d.get("ss_project_summary_raw")) or None),
+            "description": ((strip_html(d.get("tm_X3b_nl_project_summary"))
+                             or strip_html(d.get("ss_project_summary_raw")) or "")[:2000] or None),
             "landing_page_url": (LANDING_BASE + url) if url and url.startswith("/") else LANDING,
         })
 
