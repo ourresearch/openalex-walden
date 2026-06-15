@@ -1,0 +1,16 @@
+{
+  "n_works": 1496,
+  "n_with_fwci": 1207,
+  "total_citations": 58579,
+  "mean_citations": 39.2,
+  "median_citations": 6,
+  "mean_fwci": 6.94,
+  "median_fwci": 1.69,
+  "pct_fwci_above_1": 62.5,
+  "n_top_1pct": 92,
+  "n_top_10pct": 526,
+  "share_top_1pct": 6.1,
+  "share_top_10pct": 35.2,
+  "top_1pct_vs_world": 6.1,
+  "top_10pct_vs_world": 3.5
+}

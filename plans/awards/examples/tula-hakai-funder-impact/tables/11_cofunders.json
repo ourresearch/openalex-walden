@@ -1,0 +1,130 @@
+{
+  "distinct_cofunders": 537,
+  "top_cofunders": [
+    {
+      "funder_id": "F4320334593",
+      "funder": "Natural Sciences and Engineering Research Council of Canada",
+      "works": 443
+    },
+    {
+      "funder_id": "F4320306076",
+      "funder": "National Science Foundation",
+      "works": 135
+    },
+    {
+      "funder_id": "F4320309949",
+      "funder": "Canadian Institute for Advanced Research",
+      "works": 105
+    },
+    {
+      "funder_id": "F4320334596",
+      "funder": "Fisheries and Oceans Canada",
+      "works": 77
+    },
+    {
+      "funder_id": "F4320322675",
+      "funder": "Mitacs",
+      "works": 70
+    },
+    {
+      "funder_id": "F4320306202",
+      "funder": "Gordon and Betty Moore Foundation",
+      "works": 66
+    },
+    {
+      "funder_id": "F4320332181",
+      "funder": "National Oceanic and Atmospheric Administration",
+      "works": 60
+    },
+    {
+      "funder_id": "F4320320994",
+      "funder": "Canada Research Chairs",
+      "works": 53
+    },
+    {
+      "funder_id": "F4320306101",
+      "funder": "National Aeronautics and Space Administration",
+      "works": 40
+    },
+    {
+      "funder_id": "F4320334631",
+      "funder": "Natural Environment Research Council",
+      "works": 39
+    },
+    {
+      "funder_id": "F4320334506",
+      "funder": "Canadian Institutes of Health Research",
+      "works": 38
+    },
+    {
+      "funder_id": "F4320334617",
+      "funder": "Social Sciences and Humanities Research Council of Canada",
+      "works": 33
+    },
+    {
+      "funder_id": "F4320306084",
+      "funder": "U.S. Department of Energy",
+      "works": 33
+    },
+    {
+      "funder_id": "F4320329270",
+      "funder": "Pacific Salmon Foundation",
+      "works": 32
+    },
+    {
+      "funder_id": "F4320320022",
+      "funder": "Sight Research UK",
+      "works": 32
+    },
+    {
+      "funder_id": "F4320335271",
+      "funder": "British Columbia Knowledge Development Fund",
+      "works": 31
+    },
+    {
+      "funder_id": "F4320319973",
+      "funder": "Genome British Columbia",
+      "works": 27
+    },
+    {
+      "funder_id": "F4320313514",
+      "funder": "Marine Environmental Observation Prediction and Response Network",
+      "works": 27
+    },
+    {
+      "funder_id": "F4320319952",
+      "funder": "Canada Foundation for Innovation",
+      "works": 26
+    },
+    {
+      "funder_id": "F4320332359",
+      "funder": "Office of Science",
+      "works": 25
+    },
+    {
+      "funder_id": "F4320320300",
+      "funder": "European Commission",
+      "works": 25
+    },
+    {
+      "funder_id": "F4320320924",
+      "funder": "Schweizerischer Nationalfonds zur F\u00f6rderung der Wissenschaftlichen Forschung",
+      "works": 23
+    },
+    {
+      "funder_id": "F4320316170",
+      "funder": "Joint Genome Institute",
+      "works": 23
+    },
+    {
+      "funder_id": "F4320321730",
+      "funder": "Fonds Wetenschappelijk Onderzoek",
+      "works": 22
+    },
+    {
+      "funder_id": "F4320310787",
+      "funder": "Genome Canada",
+      "works": 22
+    }
+  ]
+}

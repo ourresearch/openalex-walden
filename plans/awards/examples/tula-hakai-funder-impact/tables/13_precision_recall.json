@@ -1,0 +1,75 @@
+{
+  "precision": {
+    "full_search": {
+      "genuine": 1514,
+      "candidates": 1684,
+      "precision_pct": 89.9
+    },
+    "funder_only": {
+      "genuine": 687,
+      "candidates": 726,
+      "precision_pct": 94.6
+    },
+    "by_strategy": {
+      "prov_funder_hakai": {
+        "genuine": 296,
+        "found": 327,
+        "precision_pct": 90.5
+      },
+      "prov_funder_tula": {
+        "genuine": 542,
+        "found": 550,
+        "precision_pct": 98.5
+      },
+      "prov_inst_hakai": {
+        "genuine": 731,
+        "found": 731,
+        "precision_pct": 100.0
+      },
+      "prov_inst_tula": {
+        "genuine": 621,
+        "found": 645,
+        "precision_pct": 96.3
+      },
+      "prov_rawaff_hakai": {
+        "genuine": 967,
+        "found": 982,
+        "precision_pct": 98.5
+      },
+      "prov_ft_hakai_inst": {
+        "genuine": 324,
+        "found": 353,
+        "precision_pct": 91.8
+      },
+      "prov_ft_hakai_net": {
+        "genuine": 18,
+        "found": 20,
+        "precision_pct": 90.0
+      },
+      "prov_ft_tula": {
+        "genuine": 275,
+        "found": 297,
+        "precision_pct": 92.6
+      },
+      "prov_ft_calvert": {
+        "genuine": 128,
+        "found": 182,
+        "precision_pct": 70.3
+      }
+    }
+  },
+  "recall": {
+    "gold_list_size_clean": 356,
+    "garbled_dois_dropped": 5,
+    "openalex_coverage_pct": 100.0,
+    "full_search": {
+      "found": 316,
+      "recall_pct": 88.8
+    },
+    "funder_only": {
+      "found": 174,
+      "recall_pct": 48.9
+    },
+    "real_misses_in_oa": 40
+  }
+}

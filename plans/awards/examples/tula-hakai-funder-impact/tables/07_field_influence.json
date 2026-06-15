@@ -1,0 +1,28 @@
+{
+  "specialization_2018_2022": 4.1,
+  "bc_share_topics_recent": 1.24,
+  "bc_share_all_recent": 0.31,
+  "bc_topics_output_2000": 61,
+  "bc_topics_output_2018_2022_avg": 272,
+  "did_sensitivity": [
+    {
+      "treatment_year": 2002,
+      "delta_topics_pp": 0.3,
+      "delta_baseline_pp": 0.036,
+      "did_pp": 0.264
+    },
+    {
+      "treatment_year": 2005,
+      "delta_topics_pp": 0.274,
+      "delta_baseline_pp": 0.039,
+      "did_pp": 0.234
+    },
+    {
+      "treatment_year": 2009,
+      "delta_topics_pp": 0.13,
+      "delta_baseline_pp": 0.019,
+      "did_pp": 0.111
+    }
+  ],
+  "note": "BC was already a marine-science leader and Tula's grants began in the early 2000s, so a clean causal DiD around the 2009 field station is weak; the robust finding is specialization, not a 2009 discontinuity."
+}

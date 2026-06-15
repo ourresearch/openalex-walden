@@ -1,0 +1,538 @@
+funder_id,funder,works
+F4320334593,Natural Sciences and Engineering Research Council of Canada,443
+F4320306076,National Science Foundation,135
+F4320309949,Canadian Institute for Advanced Research,105
+F4320334596,Fisheries and Oceans Canada,77
+F4320322675,Mitacs,70
+F4320306202,Gordon and Betty Moore Foundation,66
+F4320332181,National Oceanic and Atmospheric Administration,60
+F4320320994,Canada Research Chairs,53
+F4320306101,National Aeronautics and Space Administration,40
+F4320334631,Natural Environment Research Council,39
+F4320334506,Canadian Institutes of Health Research,38
+F4320334617,Social Sciences and Humanities Research Council of Canada,33
+F4320306084,U.S. Department of Energy,33
+F4320329270,Pacific Salmon Foundation,32
+F4320320022,Sight Research UK,32
+F4320335271,British Columbia Knowledge Development Fund,31
+F4320319973,Genome British Columbia,27
+F4320313514,Marine Environmental Observation Prediction and Response Network,27
+F4320319952,Canada Foundation for Innovation,26
+F4320332359,Office of Science,25
+F4320320300,European Commission,25
+F4320320924,Schweizerischer Nationalfonds zur Förderung der Wissenschaftlichen Forschung,23
+F4320316170,Joint Genome Institute,23
+F4320321730,Fonds Wetenschappelijk Onderzoek,22
+F4320310787,Genome Canada,22
+F4320331273,Liber Ero Foundation,21
+F4320321487,"Canadian Network for Research and Innovation in Machining Technology, Natural Sciences and Engineering Research Council of Canada",20
+F4320323299,Norges Forskningsråd,20
+F4320321001,National Natural Science Foundation of China,19
+F4320321114,Bundesministerium für Bildung und Forschung,19
+F4320320883,Agence Nationale de la Recherche,18
+F4320306083,Smithsonian Institution,17
+F4320309024,National Geographic Society,16
+F4320315156,Parks Canada,16
+F4320320879,Deutsche Forschungsgemeinschaft,15
+F4320338426,NOAA Pacific Marine Environmental Laboratory,15
+F4320318240,European Space Agency,15
+F4320322337,Killam Trusts,14
+F4320328870,Raincoast Conservation Foundation,13
+F4320334764,Japan Society for the Promotion of Science,13
+F4320327336,Vlaamse regering,13
+F4320314000,Compute Canada,13
+F4320320006,Royal Society,12
+F4320337957,Ocean Acidification Program,12
+F4320334436,Canadian Space Agency,12
+F4320319965,Michael Smith Health Research BC,12
+F4320338368,FP7 People: Marie-Curie Actions,11
+F4320337386,Division of Ocean Sciences,10
+F4320306554,Wilburforce Foundation,10
+F4320319880,Government of Canada,10
+F4320332478,U.S. Forest Service,10
+F4320334704,Australian Research Council,10
+F4320313932,Institut de Recherche pour le Développement,10
+F4320323648,"Ministry of the Environment, Government of Japan",10
+F4320325698,Helmholtz Association,10
+F4320338337,H2020 Marie Skłodowska-Curie Actions,10
+F4320335777,National Key Research and Development Program of China,10
+F4320322007,Ministry of Environment,9
+F4320306079,David and Lucile Packard Foundation,9
+F4320320386,Commonwealth Scientific and Industrial Research Organisation,9
+F4320332182,U.S. Fish and Wildlife Service,9
+F4320332999,Horizon 2020 Framework Programme,9
+F4320322375,Leading Edge Endowment Fund,8
+F4320306111,U.S. Department of Commerce,8
+F4320321079,Russian Foundation for Basic Research,8
+F4320325263,Environment and Climate Change Canada,8
+F4320335310,Fondation BNP Paribas,8
+F4320306148,Pew Charitable Trusts,8
+F4320314731,UK Research and Innovation,8
+F4320322482,Akademie Věd České Republiky,8
+F4320332183,U.S. Geological Survey,8
+F4320321519,Centre National d’Etudes Spatiales,8
+F4320321481,"Canada Excellence Research Chairs, Government of Canada",8
+F4320332161,National Institutes of Health,8
+F4320321006,Grantová Agentura České Republiky,8
+F4320315606,Tides Canada,7
+F4320332167,Directorate for Biological Sciences,7
+F4320319864,ArcticNet,7
+F4320337784,NOAA Research,7
+F4320306107,U.S. Environmental Protection Agency,7
+F4320319035,Flotte Océanographique Française,7
+F4320322894,Institut Polaire Français Paul Emile Victor,7
+F4320312724,Pacific Institute for Climate Solutions,7
+F4320306108,U.S. Department of Transportation,7
+F4320333345,North Pacific Research Board,7
+F4320306114,U.S. Department of Agriculture,6
+F4320322725,China Scholarship Council,6
+F4320320854,Marine Institute,6
+F4320327142,Prince Albert II of Monaco Foundation,6
+F4320308377,National Center for Atmospheric Research,6
+F4320320222,National Centre for Atmospheric Science,6
+F4320321133,Chinese Academy of Sciences,6
+F4320325651,Alberta Innovates,6
+F4320331771,European Centre for Medium-Range Weather Forecasts,6
+F4320332375,Jet Propulsion Laboratory,6
+F4320334928,Institut national des sciences de l'Univers,6
+F4320337960,Global Ocean Monitoring and Observing Program,6
+F4320338287,Oak Ridge National Laboratory,6
+F4320315885,Australian Government,6
+F4320336032,Global Water Futures,6
+F4320337351,National Cancer Institute,6
+F4320312169,National Computational Infrastructure,6
+F4320322037,Nuclear Safety and Security Commission,6
+F4320335322,European Regional Development Fund,6
+F4320334322,HORIZON EUROPE Framework Programme,6
+F4320334678,European Research Council,6
+F4320308861,Woods Hole Oceanographic Institution,6
+F4320306151,Alfred P. Sloan Foundation,6
+F4320323260,Universitetet i Oslo,6
+F4320314005,Western Canada Research Grid,6
+F4320307011,McLean Foundation,5
+F4320306250,Battelle,5
+F4320307401,PADI Foundation,5
+F4320311029,Institut Français de Recherche pour l'Exploitation de la Mer,5
+F4320316892,UT-Battelle,5
+F4320320671,National Research Foundation,5
+F4320321033,Svenska Forskningsrådet Formas,5
+F4320322930,Ministerio de Ciencia e Innovación,5
+F4320324099,Russian Science Foundation,5
+F4320335254,Horizon 2020,5
+F4320338155,National Centre for Earth Observation,5
+F4320315092,David Suzuki Foundation,5
+F4320321451,BC Hydro,5
+F4320319960,Vancouver Foundation,5
+F4320320997,Fundação de Amparo à Pesquisa do Estado de São Paulo,5
+F4320322892,Centre National de la Recherche Scientifique,5
+F4320326644,Canada First Research Excellence Fund,5
+F4320334779,Fundação para a Ciência e a Tecnologia,5
+F4320306557,World Wildlife Fund,5
+F4320329594,Instituto Milenio de Oceanografía,5
+F4320337345,Office of Naval Research,5
+F4320338335,H2020 European Research Council,5
+F4320320875,Deutscher Akademischer Austauschdienst,5
+F4320326646,Genome Alberta,5
+F4320314070,Broad Institute,5
+F4320315855,Exxon Valdez Oil Spill Trustee Council,5
+F4320314025,Génome Québec,4
+F4320331638,Habitat Conservation Trust Foundation,4
+F4320335787,Fundamental Research Funds for the Central Universities,4
+F4320319272,"Meteorological Research Institute, Japan Meteorological Agency",4
+F4320321800,Nederlandse Organisatie voor Wetenschappelijk Onderzoek,4
+F4320332299,National Institute of Food and Agriculture,4
+F4320333318,Bureau of Ocean Energy Management,4
+F4320321504,Carlsbergfondet,4
+F4320315140,Nature Conservancy,4
+F4320318393,Deutsches Klimarechenzentrum,4
+F4320337370,Office of International Science and Engineering,4
+F4320321181,Austrian Science Fund,4
+F4320320912,"Ministry of Education, Culture, Sports, Science and Technology",4
+F4320337307,Japan Meteorological Agency,4
+F4320334812,Comisión Nacional de Investigación Científica y Tecnológica,4
+F4320338104,British Antarctic Survey,4
+F4320306540,G. Unger Vetlesen Foundation,4
+F4320328513,Marine National Facility,4
+F4320319950,Nova Scotia Health Research Foundation,4
+F4320309755,Univerzita Karlova v Praze,4
+F4320321739,Consejo Nacional de Ciencia y Tecnología,4
+F4320326645,Genome Atlantic,4
+F4320306434,Ambrose Monell Foundation,4
+F4320308681,Geological Society of America,3
+F4320331428,Institut Nordique De Recherche En Environnement Et En Santé Au Travail,3
+F4320321452,"Ministry of Forests, Lands and Natural Resource Operations",3
+F4320310376,National Institute of Water and Atmospheric Research,3
+F4320325509,National Institute of Polar Research,3
+F4320337986,Tsinghua Shenzhen International Graduate School,3
+F4320331257,Alliance de recherche numérique du Canada,3
+F4320313536,Commission for Environmental Cooperation,3
+F4320318328,Universities Space Research Association,3
+F4320332542,National Park Service,3
+F4320335598,Agencia Estatal de Investigación,3
+F4320337400,Division of Environmental Biology,3
+F4320310490,Villum Fonden,3
+F4320309169,Florida Fish and Wildlife Conservation Commission,3
+F4320321091,Coordenação de Aperfeiçoamento de Pessoal de Nível Superior,3
+F4320322025,Conselho Nacional de Desenvolvimento Científico e Tecnológico,3
+F4320324499,Università di Pisa,3
+F4320321983,"Ministry of Business, Innovation and Employment",3
+F4320325866,Universiteit Hasselt,3
+F4320321790,Alfred Wegener Institute Helmholtz Centre for Polar and Marine Research,3
+F4320335353,National Science Foundation of Sri Lanka,3
+F4320321873,"Ministero dell’Istruzione, dell’Università e della Ricerca",3
+F4320315287,Alaska Department of Transportation and Public Facilities,3
+F4320337368,Division of Graduate Education,3
+F4320338354,Pacific Northwest National Laboratory,3
+F4320322581,Vetenskapsrådet,3
+F4320308866,Wildlife Conservation Society,3
+F4320321005,"Ministerstvo Školství, Mládeže a Tělovýchovy",3
+F4320332383,California Department of Fish and Wildlife,3
+F4320312777,Santa Fe Institute,3
+F4320332386,National Museum of Natural History,3
+F4320334595,Agriculture and Agri-Food Canada,2
+F4320306550,Wenner-Gren Foundation,2
+F4320324622,Fundación Charles Darwin,2
+F4320332171,Directorate for Geosciences,2
+F4320314997,Strong,2
+F4320310302,National Estuarine Research Reserve System,2
+F4320320943,Danmarks Grundforskningsfond,2
+F4320337557,Climate Program Office,2
+F4320337772,National Marine Fisheries Service,2
+F4320310317,Cedar Tree Foundation,2
+F4320311299,Sveriges Meteorologiska och Hydrologiska Institut,2
+F4320311778,China Association for Science and Technology,2
+F4320312420,Newton Fund,2
+F4320317010,"Department of Science and Innovation, South Africa",2
+F4320320331,Met Office,2
+F4320321749,GEOMAR Helmholtz-Zentrum für Ozeanforschung Kiel,2
+F4320323858,"Far East Branch, Russian Academy of Sciences",2
+F4320333451,Bureau of Indian Affairs,2
+F4320334801,Russian Academy of Sciences,2
+F4320337584,Office for Coastal Management,2
+F4320326643,Ocean Frontier Institute,2
+F4320311063,Fondation Bertarelli,2
+F4320319915,Pierre Elliott Trudeau Foundation,2
+F4320322604,Universiti Malaya,2
+F4320326256,Grand Équipement National De Calcul Intensif,2
+F4320334960,Seventh Framework Programme,2
+F1692543598,Integrated Marine Observing System,2
+F1846185047,RIKEN Center for Computational Science,2
+F4320306106,U.S. Department of Education,2
+F4320318325,Animal Welfare Institute,2
+F4320321108,Academy of Finland,2
+F4320334789,Japan Science and Technology Agency,2
+F4320336608,Natural Science Foundation of Jiangsu Province for Distinguished Young Scholars,2
+F5132439605,Integrated Carbon Observation System,2
+F4320308022,California Department of Fish and Game,2
+F4320308088,Massachusetts Department of Fish and Game,2
+F4320316989,Havforskningsinstituttet,2
+F4320321505,Generalitat de Catalunya,2
+F4320338136,"Yellow Sea Fisheries Research Institute, Chinese Academy of Fishery Sciences",2
+F4320324506,Muséum National d'Histoire Naturelle,2
+F4320325076,Stifterverband,2
+F4320326750,Terres Australes et Antarctiques Françaises,2
+F4320334977,Beijing Municipal Natural Science Foundation,2
+F4320319983,W. Garfield Weston Foundation,2
+F4320313139,Niedersächsische Ministerium für Wissenschaft und Kultur,2
+F4320331146,Agencia Nacional de Investigación y Desarrollo,2
+F4320338206,Fondo de Financiamiento de Centros de Investigación en Áreas Prioritarias,2
+F4320334601,National Research Council Canada,2
+F4320338140,Canadian Forest Service,2
+F4320314707,Government of the United Kingdom,2
+F4320320995,Canada Foundation for Innovation,2
+F4320321038,Fonds National de la Recherche Luxembourg,2
+F4320337357,National Institute of Diabetes and Digestive and Kidney Diseases,2
+F4320337509,Biological and Environmental Research,2
+F4320314607,Government of Ontario,2
+F4320338424,NOAA's Atlantic Oceanographic and Meteorological Laboratory,2
+F4320306159,W. M. Keck Foundation,2
+F4320306193,John Templeton Foundation,2
+F4320319993,Leverhulme Trust,2
+F4320332377,Goddard Space Flight Center,2
+F4320334709,Australian Centre for International Agricultural Research,2
+F4320338284,Argonne National Laboratory,2
+F4320337354,National Institute of General Medical Sciences,2
+F4320328584,"Ministry of Forests, Lands, Natural Resource Operations and Rural Development",2
+F4320322928,Danmarks Frie Forskningsfond,2
+F4320324356,Stiftelsen för Åbo Akademi,2
+F4320324828,Åbo Akademi,2
+F4320323298,Háskóli Íslands,2
+F4320336979,"Raunvísindastofnun, Háskóli Íslands",2
+F4320312651,Watershed Watch Salmon Society,2
+F4320318829,Washington Department of Fish and Wildlife,2
+F4320322120,National Research Foundation of Korea,2
+F4320322468,Petrobras,2
+F4320332605,Agricultural Research Service,2
+F4320337770,Pacific Northwest Research Station,2
+F4320310926,Università degli Studi Roma Tre,2
+F4320306697,Fistula Foundation,1
+F4320312438,DigitalGlobe Foundation,1
+F4320315444,Clayoquot Biosphere Trust,1
+F4320337600,Center for Sponsored Coastal Ocean Research,1
+F4320337974,Coral Reef Conservation Program,1
+F4320313648,Pacific Northwest Shell Club,1
+F4320322011,Ministry of Oceans and Fisheries,1
+F4320322263,"Conseil Régional, Île-de-France",1
+F4320326632,Institut de Physique du Globe de Paris,1
+F4320327222,Korea Institute of Marine Science and Technology promotion,1
+F4320327493,Megagrants,1
+F4320337538,U.S. Army Corps of Engineers,1
+F4320338176,RES’EAU-WaterNET,1
+F4320338283,Office of Experimental Program to Stimulate Competitive Research,1
+F4320311764,Fulbright Canada,1
+F4320316566,Schmidt Ocean Institute,1
+F4320318819,Tides Foundation,1
+F4320323028,Atlantic Canada Opportunities Agency,1
+F4320323141,Australian Centre for Field Robotics,1
+F4320332374,Ames Research Center,1
+F6289146581,Commission Géologique du Canada,1
+F4320306137,Bill and Melinda Gates Foundation,1
+F4320307425,Primate Conservation,1
+F4320307639,George Cedric Metcalf Charitable Foundation,1
+F4320307873,William and Flora Hewlett Foundation,1
+F4320309955,"Departamento Administrativo de Ciencia, Tecnología e Innovación (COLCIENCIAS)",1
+F4320309996,Asahi Glass Foundation,1
+F4320310326,Holsworth Wildlife Research Endowment,1
+F4320310436,Australian Institute of Marine Science,1
+F4320310462,National Pork Board,1
+F4320312627,Biology Society of South Australia,1
+F4320313362,Cape Eleuthera Foundation,1
+F4320313364,Echo Foundation,1
+F4320313424,Association of Canadian Universities for Northern Studies,1
+F4320313506,Royal Bank of Canada,1
+F4320313627,"Department of Conservation, New Zealand",1
+F4320314720,David and Elaine Potter Foundation,1
+F4320316436,"Agência Regional para o Desenvolvimento da Investigação, Tecnologia e Inovação",1
+F4320318891,Virginia Marine Resources Commission,1
+F4320320458,Ian Potter Foundation,1
+F4320320758,National Parks Board - Singapore,1
+F4320321561,Churchill Northern Studies Centre,1
+F4320321747,Fonds Québécois de la Recherche sur la Nature et les Technologies,1
+F4320321837,Ministerio de Economía y Competitividad,1
+F4320322364,Labex,1
+F4320322381,A.G. Leventis Foundation,1
+F4320322724,"Ministry of Education, India",1
+F4320322798,Department of Environment and Water,1
+F4320324221,Instituto Nacional de Pesquisas da Amazônia,1
+F4320324598,Save Our Seas Foundation,1
+F4320326084,Regione Toscana,1
+F4320326086,Provincia Autonoma di Trento,1
+F4320327193,Mohamed bin Zayed Species Conservation Fund,1
+F4320329860,National Science and Technology Major Project,1
+F4320330385,Ministerio para la Transición Ecológica y el Reto Demográfico,1
+F4320330846,Instituto de Investigación de Recursos Biológicos Alexander von Humboldt,1
+F4320332042,Nunavut Wildlife Management Board,1
+F4320332276,Advanced Research Projects Agency - Energy,1
+F4320332815,Advanced Research Projects Agency,1
+F4320333277,Disney Conservation Fund,1
+F4320333679,South Central Climate Adaptation Science Center,1
+F4320334857,Consejo Superior de Investigaciones Científicas,1
+F4320335805,South African National Parks,1
+F4320335960,National Major Science and Technology Projects of China,1
+F4320336575,Ministry of Environment and Sustainable Development,1
+F1532834926,Stanford King Center on Global Development,1
+F4320310693,Deutsches Krebsforschungszentrum,1
+F4320312236,Canadian Celiac Association,1
+F4320314688,Canadian Association of Petroleum Producers,1
+F4320317176,Institut Català de Nanociència i Nanotecnologia,1
+F4320318195,Vlaams Instituut voor de Zee,1
+F4320319128,Vlaams Supercomputer Centrum,1
+F4320320950,United States-Israel Binational Science Foundation,1
+F4320329126,European Marine Biological Resource Centre Belgium,1
+F4320332170,Directorate for Engineering,1
+F4320333020,Stanford Woods Institute for the Environment,1
+F4320335227,Bijzonder Onderzoeksfonds UGent,1
+F4320337356,Fogarty International Center,1
+F4320308322,Arctic Institute of North America,1
+F4320314560,Great Barrier Reef Marine Park Authority,1
+F4320323641,Vedecká Grantová Agentúra MŠVVaŠ SR a SAV,1
+F4320324119,Uppsala Universitet,1
+F4320330944,Nature,1
+F4320311418,"National Academies of Sciences, Engineering, and Medicine",1
+F4320312558,Phycological Society of America,1
+F4320318435,California Ocean Protection Council,1
+F4320326721,Qingdao National Laboratory for Marine Science and Technology,1
+F4320335065,National Centre for Biological Sciences,1
+F4320335778,National Science and Technology Infrastructure Program,1
+F4320337369,Office of Polar Programs,1
+F4320309818,Rufford Foundation,1
+F4320320373,National Stroke Foundation,1
+F4320320923,Branco Weiss Fellowship – Society in Science,1
+F4320321806,Lunds Universitet,1
+F4320332754,Centre for Asia-Pacific Initiatives,1
+F4320334841,Fonds de recherche du Québec – Nature et technologies,1
+F4320335343,SFU Community Trust Endowment Fund,1
+F4320336696,Laboratory for Marine Ecology and Environmental Science,1
+F4320338141,"Central Public-interest Scientific Institution Basal Research Fund, Chinese Academy of Fishery Sciences",1
+F4320306845,Summerlee Foundation,1
+F4320313831,Comunidad de Madrid,1
+F4320320876,Helmholtz-Gemeinschaft,1
+F4320329501,Serono Symposia International Foundation,1
+F4320333065,Seventh Framework Programme,1
+F4320307844,European Molecular Biology Organization,1
+F4320314578,Society for Conservation Biology,1
+F4320315159,Transport Canada,1
+F4320337408,Division of Undergraduate Education,1
+F4320337504,Research and Development,1
+F4320306230,American Heart Association,1
+F4320319249,Belmont Forum,1
+F4320320257,Society for the Promotion of Roman Studies,1
+F4320321848,Cambridge Trust,1
+F4320322308,KU Leuven,1
+F4320327575,State of Maine Department of Marine Resources,1
+F4320331622,"Department of Forestry, Fisheries and the Environment",1
+F4320314539,Co-operative Education and Work-Integrated Learning Canada,1
+F4320306116,U.S. Department of the Interior,1
+F4320310835,Eppley Foundation for Research,1
+F4320313299,Baker Foundation,1
+F4320321770,"Siberian Branch, Russian Academy of Sciences",1
+F4320337372,U.S. National Library of Medicine,1
+F4320306164,Simons Foundation,1
+F4320308321,"United Nations Educational, Scientific and Cultural Organization",1
+F4320308774,John Simon Guggenheim Memorial Foundation,1
+F4320309928,Aarhus Universitet,1
+F4320310598,Amazon Web Services,1
+F4320311031,Northern Gulf Institute,1
+F4320311670,Lawrence Foundation,1
+F4320319907,Alberta Innovates - Technology Futures,1
+F4320319995,"Department for Environment, Food and Rural Affairs, UK Government",1
+F4320320774,Royal Society Te Apārangi,1
+F4320321040,National Science Council,1
+F4320323078,Universitetet i Bergen,1
+F4320323113,Banco Bilbao Vizcaya Argentaria,1
+F4320323185,Ministry of Innovation and Advanced Education,1
+F4320323444,Autoritatea Natională pentru Cercetare Stiintifică,1
+F4320326754,Junta de Andalucía,1
+F4320330235,NERC Biomolecular Analysis Facility,1
+F4320331667,National Oceanography Centre,1
+F4320334629,Biotechnology and Biological Sciences Research Council,1
+F4320335840,Antarctic Climate and Ecosystems Cooperative Research Centre,1
+F4320337285,"Bjerknessenteret for klimaforskning, Universitetet i Bergen",1
+F4320337348,National Human Genome Research Institute,1
+F4320306183,James S. McDonnell Foundation,1
+F4320310282,Ministry of Natural Resources,1
+F4320311904,Wellcome Trust,1
+F4320315473,Institute of Science and Technology Austria,1
+F4320324050,Ostravská Univerzita v Ostravě,1
+F4320329182,Consortium of International Agricultural Research Centers,1
+F4320334620,Natural Resources Canada,1
+F4320306203,M.J. Murdock Charitable Trust,1
+F4320308319,Link Foundation,1
+F4320310906,National Research Council Sri Lanka,1
+F4320311342,Joint Institute for the Study of the Atmosphere and Ocean,1
+F4320313410,Calgary Foundation,1
+F4320314718,Garfield Weston Foundation,1
+F4320319868,Canadian Aeronautics and Space Institute,1
+F4320320686,Claude Leon Foundation,1
+F4320323654,Hospital for Sick Children,1
+F4320323990,Bundesministerium für Bildung und Frauen,1
+F4320325677,Science for Life Laboratory,1
+F4320329049,Institut chilien de l'Antarctique,1
+F4320331117,South African Institute for Aquatic Biodiversity,1
+F4320332796,Marine Station at Fort Pierce,1
+F4320336376,Uppsala Multidisciplinary Center for Advanced Computational Science,1
+F4320337436,Division of Grants and Agreements,1
+F4320338429,Integrated Ocean Observing System,1
+F4320311022,Università Degli Studi di Modena e Reggio Emila,1
+F4320311350,Life Sciences Research Foundation,1
+F4320315694,Bloomberg Philanthropies,1
+F4320319201,Coral Reef Research Foundation,1
+F4320322436,Novo Nordisk,1
+F4320325957,Novo Nordisk Fonden,1
+F4320334146,Friday Harbor Laboratories,1
+F4320320719,"Department of Science and Technology, Ministry of Science and Technology, India",1
+F4320321026,Ministry of Earth Sciences,1
+F4320338075,Core Research for Evolutional Science and Technology,1
+F7782386586,Arthur N. Rupe Foundation,1
+F4320314024,Ontario Genomics,1
+F4320319905,Ontario Genomics Institute,1
+F4320334621,Networks of Centres of Excellence of Canada,1
+F4320309409,Lilly Endowment,1
+F4320306082,Howard Hughes Medical Institute,1
+F4320306364,George Gund Foundation,1
+F4320307514,American Association of Anatomists,1
+F4320309872,"Grantová Agentura, Univerzita Karlova",1
+F4320310362,Arkansas Biosciences Institute,1
+F4320312926,Crohn's and Colitis Foundation,1
+F4320319550,Gordon and Llura Gund Foundation,1
+F4320319876,Crohn's and Colitis Foundation of Canada,1
+F4320321885,Science and Technology Commission of Shanghai Municipality,1
+F4320334856,Bundesamt für Umwelt,1
+F4320337375,National Center for Research Resources,1
+F4320337975,NOAA Ocean Exploration,1
+F4320314473,Critical Ecosystem Partnership Fund,1
+F4320322035,Rural Development Administration,1
+F4320322614,Thailand Research Fund,1
+F4320325645,European Association of Zoos and Aquaria,1
+F4320334627,Engineering and Physical Sciences Research Council,1
+F4320337338,"National Heart, Lung, and Blood Institute",1
+F4320338243,JST-Mirai Program,1
+F4320338286,Lawrence Livermore National Laboratory,1
+F4320306080,Foundation for the National Institutes of Health,1
+F4320309787,National Fish and Wildlife Foundation,1
+F4320311311,Montana Agricultural Experiment Station,1
+F4320313535,Cook Inlet Regional Citizens Advisory Council,1
+F4320315051,Environmental Restoration and Conservation Agency,1
+F4320331934,NASA Astrobiology Institute,1
+F4320338463,CHIST-ERA,1
+F4320306320,Earthwatch Institute,1
+F4320308324,McKnight Foundation,1
+F4320309593,Utah Agricultural Experiment Station,1
+F4320310086,Helsingin Yliopisto,1
+F4320312210,Fulbright Association,1
+F4320313466,James Hutton Institute,1
+F4320313594,Linnean Society of NSW,1
+F4320314984,Mystic Seaport Museum,1
+F4320316432,National Institute of Ecology,1
+F4320318739,"Ministerio del Ambiente, Agua y Transición Ecológica",1
+F4320318746,Natural England,1
+F4320318789,Biodiversa+,1
+F4320320177,US-UK Fulbright Commission,1
+F4320320189,Fisheries Society of the British Isles,1
+F4320320528,Australian Marine Sciences Association,1
+F4320320887,European Synchrotron Radiation Facility,1
+F4320320948,"Ministry of Science, Technology and Space",1
+F4320321041,Academia Sinica,1
+F4320321087,Botanical Society of Britain and Ireland,1
+F4320321454,Belgian Federal Science Policy Office,1
+F4320321726,Suomen Kulttuurirahasto,1
+F4320321919,Euskal Herriko Unibertsitatea,1
+F4320322266,"Ministry of Agriculture, Forestry and Fisheries",1
+F4320322749,Fundação Carlos Chagas Filho de Amparo à Pesquisa do Estado do Rio de Janeiro,1
+F4320322908,Helmholtz-Zentrum für Umweltforschung,1
+F4320322980,Fundação de Amparo à Pesquisa do Estado de Minas Gerais,1
+F4320323344,Uniwersytet Łódzki,1
+F4320323354,"Fundação de Apoio ao Desenvolvimento do Ensino, Ciência e Tecnologia do Estado de Mato Grosso do Sul",1
+F4320323421,Göteborgs Universitet,1
+F4320325271,Nærings- og Fiskeridepartementet,1
+F4320328864,Provincia autonoma di Bolzano - Alto Adige,1
+F4320330258,Centro de Ciências do Mar,1
+F4320330723,Deutsches Zentrum für integrative Biodiversitätsforschung Halle-Jena-Leipzig,1
+F4320331164,National Science and Technology Council,1
+F4320331316,Operation Wallacea,1
+F4320331388,Office Français de la Biodiversité,1
+F4320333333,Environmental Studies Research Funds,1
+F4320334720,Australian Biological Resources Study,1
+F4320334979,Australian Antarctic Division,1
+F4320335111,"Kerala State Council for Science, Technology and Environment",1
+F4320335599,Instituto Español de Oceanografía,1
+F4320337251,"Instituut voor Landbouw-, Visserij- en Voedingsonderzoek, Vlaamse Overheid",1
+F4320337935,International Institute of Tropical Forestry,1
+F4320338388,Eurostars,1
+F4320313425,Florida Museum of Natural History,1
+F4320318890,BAND foundation,1
+F4320325961,Lembaga Ilmu Pengetahuan Indonesia,1
+F4320326568,Research Institute for Humanity and Nature,1
+F4320316906,Tru?ng Ð?i h?c Xây d?ng,1
+F4320321490,Canadian Water Network,1
+F4320322794,Università degli Studi di Genova,1
+F4320327469,Norsk Institutt for Vannforskning,1
+F4320307256,Explorers Club,1
+F4320310293,Cummings Foundation,1
+F4320335036,BC Cancer Agency,1
+F4320337409,Division of Research on Learning in Formal and Informal Settings,1
+F4320310285,Alaska Department of Fish and Game,1
+F4320330295,Centro de Ciências do Mar e do Ambiente,1
+F4320332282,"Virginia Sea Grant, Virginia Institute of Marine Science",1
+F4320333526,Bonneville Power Administration,1
+F8514452871,Washington State Legislature,1

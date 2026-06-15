@@ -1,0 +1,158 @@
+{
+  "corpus_works": 1496,
+  "total_citations": 58579,
+  "distinct_citing_countries": 199,
+  "distinct_citing_fields": 26,
+  "top_countries": [
+    [
+      "US",
+      "United States",
+      18443
+    ],
+    [
+      "CA",
+      "Canada",
+      9505
+    ],
+    [
+      "CN",
+      "China",
+      8456
+    ],
+    [
+      "GB",
+      "United Kingdom",
+      6167
+    ],
+    [
+      "DE",
+      "Germany",
+      5610
+    ],
+    [
+      "FR",
+      "France",
+      4446
+    ],
+    [
+      "AU",
+      "Australia",
+      3787
+    ],
+    [
+      "ES",
+      "Spain",
+      2999
+    ],
+    [
+      "JP",
+      "Japan",
+      2663
+    ],
+    [
+      "IT",
+      "Italy",
+      2257
+    ],
+    [
+      "NO",
+      "Norway",
+      1916
+    ],
+    [
+      "IN",
+      "India",
+      1844
+    ],
+    [
+      "CH",
+      "Switzerland",
+      1839
+    ],
+    [
+      "NL",
+      "Netherlands",
+      1799
+    ],
+    [
+      "SE",
+      "Sweden",
+      1710
+    ],
+    [
+      "BR",
+      "Brazil",
+      1392
+    ],
+    [
+      "RU",
+      "RU",
+      1306
+    ],
+    [
+      "CZ",
+      "CZ",
+      1229
+    ],
+    [
+      "DK",
+      "Denmark",
+      1211
+    ],
+    [
+      "AT",
+      "AT",
+      1091
+    ]
+  ],
+  "top_fields": [
+    [
+      "Environmental Science",
+      23461
+    ],
+    [
+      "Earth and Planetary Sciences",
+      9645
+    ],
+    [
+      "Biochemistry, Genetics and Molecular Biology",
+      9337
+    ],
+    [
+      "Agricultural and Biological Sciences",
+      4545
+    ],
+    [
+      "Engineering",
+      1528
+    ],
+    [
+      "Medicine",
+      1386
+    ],
+    [
+      "Social Sciences",
+      1305
+    ],
+    [
+      "Immunology and Microbiology",
+      655
+    ],
+    [
+      "Energy",
+      623
+    ],
+    [
+      "Economics, Econometrics and Finance",
+      585
+    ],
+    [
+      "Health Professions",
+      540
+    ],
+    [
+      "Materials Science",
+      375
+    ]
+  ]
+}

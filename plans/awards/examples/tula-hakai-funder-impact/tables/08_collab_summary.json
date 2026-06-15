@@ -1,0 +1,41 @@
+{
+  "topics": [
+    "Marine and coastal plant biology",
+    "Marine and fisheries research",
+    "Marine and coastal ecosystems",
+    "Fish Ecology and Management Studies",
+    "Ocean Acidification Effects and Responses",
+    "Marine Biology and Ecology Research",
+    "Environmental DNA in Biodiversity Studies"
+  ],
+  "links_pre_2009": 76,
+  "links_post_2009": 462,
+  "bc_output_pre": 1270,
+  "bc_output_post": 3478,
+  "intensity_pre": 0.06,
+  "intensity_post": 0.133,
+  "edges_pre": {
+    "UBC_SFU": 27,
+    "UBC_UVic": 14,
+    "UBC_UNBC": 11,
+    "UBC_VIU": 4,
+    "SFU_UVic": 5,
+    "SFU_UNBC": 5,
+    "SFU_VIU": 3,
+    "UVic_UNBC": 3,
+    "UVic_VIU": 4,
+    "UNBC_VIU": 0
+  },
+  "edges_post": {
+    "UBC_SFU": 196,
+    "UBC_UVic": 121,
+    "UBC_UNBC": 13,
+    "UBC_VIU": 20,
+    "SFU_UVic": 51,
+    "SFU_UNBC": 6,
+    "SFU_VIU": 14,
+    "UVic_UNBC": 14,
+    "UVic_VIU": 18,
+    "UNBC_VIU": 9
+  }
+}
