@@ -2209,6 +2209,42 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: KWF_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateKWFAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Cariplo_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateCariploAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: ETIS_ETAg_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateETISETAgAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: ETIS_ETF_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateETISETFAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
             - task_key: Keck_Awards
@@ -2216,6 +2252,10 @@ resources:
             - task_key: HealthFoundation_Awards
             - task_key: HRZZ_Awards
             - task_key: Marsden_Awards
+            - task_key: KWF_Awards
+            - task_key: Cariplo_Awards
+            - task_key: ETIS_ETAg_Awards
+            - task_key: ETIS_ETF_Awards
             - task_key: AES_Awards
             - task_key: AcMedSci_Awards
             - task_key: Autistica_Awards
