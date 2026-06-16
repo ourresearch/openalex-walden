@@ -202,6 +202,13 @@ def main():
     # ensure every column is string dtype (null where absent), per contract
     for c in df.columns:
         df[c] = df[c].astype("string")
+    # Completeness guard (Codex review): refuse to overwrite S3 with a shrunken /
+    # heavily-failed pull.
+    if len(df) < 11000 or len(fails) > 100:
+        print(f"[ERROR] VEGA pull incomplete — rows={len(df)} (expected ~11,900), "
+              f"{len(fails)} enrichment failures: refusing to write/upload",
+              file=sys.stderr, flush=True)
+        sys.exit(1)
     out = "/tmp/vega_sk_grants.parquet"
     df.to_parquet(out, index=False)
     import os as _os, subprocess as _sp

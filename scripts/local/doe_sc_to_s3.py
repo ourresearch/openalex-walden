@@ -30,6 +30,7 @@ READ-ONLY / HEADLESS: writes only to /tmp.
 import json
 import os
 import pickle
+import sys
 import time
 import http.client
 import urllib.request
@@ -253,6 +254,13 @@ def main():
     # cross-year dupes are the SAME award, so the kept row's fields are equivalent.
     df_dedup = df.drop_duplicates(subset=["funder_award_id"], keep="first").reset_index(drop=True)
     dups_removed = pre - len(df_dedup)
+
+    # Completeness guard (Codex review): a skipped year or a short pull must NOT
+    # silently overwrite the good S3 file — hard-fail before write/upload.
+    if skipped_years or len(df_dedup) < 18000:
+        print(f"[ERROR] DOE pull incomplete — skipped_years={skipped_years}, "
+              f"rows={len(df_dedup)} (expected ~20,900): refusing to write/upload", flush=True)
+        sys.exit(1)
 
     # Write parquet ONCE, at the very end, from accumulated rows.
     df_dedup.to_parquet(OUT, index=False)

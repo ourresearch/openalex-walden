@@ -244,9 +244,10 @@ def detect_total_pages(session):
 
 def main():
     import pandas as pd
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 5
     s = requests.Session()
     total = detect_total_pages(s)
+    # default to the FULL harvest (all pages), NOT a 5-page sample (Codex review)
+    n = int(sys.argv[1]) if len(sys.argv) > 1 else (total or 0)
     sys.stderr.write(f"[info] Humboldt last page = {total} "
                      f"(~{(total or 0)*10} rows)\n")
     recs = harvest_humboldt(n, s)
@@ -264,6 +265,12 @@ def main():
         return v or None
     for _c in ("pi_given", "pi_full"):
         df[_c] = df[_c].map(_strip_titles).astype("string")
+    # Completeness guard (Codex review): refuse to upload a partial harvest over the
+    # good S3 file.
+    if len(df) < 20000:
+        sys.stderr.write(f"[ERROR] only {len(df)} rows (expected ~28,000) — partial "
+                         f"harvest, refusing to write/upload\n")
+        sys.exit(1)
     out = "/tmp/humboldt_grants.parquet"
     df.to_parquet(out, index=False)
     import os as _os, subprocess as _sp
