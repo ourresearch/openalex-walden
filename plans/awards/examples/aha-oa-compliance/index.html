@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AHA Open Access Compliance Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --aha-red: #C0272D;
+            --aha-dark: #8B1A1F;
+            --aha-mahogany: #640711;
+            --aha-light: #FDF2F2;
+            --aha-accent: #E8384F;
+            --gray-50: #F9FAFB;
+            --gray-100: #F3F4F6;
+            --gray-200: #E5E7EB;
+            --gray-300: #D1D5DB;
+            --gray-500: #6B7280;
+            --gray-700: #374151;
+            --gray-900: #111827;
+            --green: #059669;
+            --amber: #D97706;
+            --radius: 12px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-900);
+            line-height: 1.5;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--aha-red), var(--aha-mahogany));
+            color: white;
+            padding: 0;
+            box-shadow: 0 4px 20px rgba(192, 39, 45, 0.3);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-inner {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .header-logo {
+            width: 48px;
+            height: 48px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            flex-shrink: 0;
+        }
+
+        .header-title h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+
+        .header-title p {
+            font-size: 13px;
+            opacity: 0.85;
+            font-weight: 400;
+        }
+
+        .header-badge {
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Policy Banner */
+        .policy-banner {
+            background: var(--aha-light);
+            border-bottom: 1px solid #F5C6CB;
+            padding: 10px 32px;
+            font-size: 13px;
+            color: var(--aha-mahogany);
+            max-width: 100%;
+        }
+
+        .policy-banner-inner {
+            max-width: 1440px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .policy-banner a {
+            color: var(--aha-red);
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .policy-banner a:hover { text-decoration: underline; }
+
+        /* Main */
+        .main {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 24px 32px 48px;
+        }
+
+        /* Filters */
+        .filters {
+            background: white;
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            border: 1px solid var(--gray-200);
+            display: flex;
+            align-items: flex-end;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-group select, .filter-group input {
+            padding: 8px 12px;
+            border: 1px solid var(--gray-300);
+            border-radius: 8px;
+            font-size: 14px;
+            color: var(--gray-900);
+            background: white;
+            min-width: 160px;
+            cursor: pointer;
+        }
+
+        .filter-group select:focus, .filter-group input:focus {
+            outline: none;
+            border-color: var(--aha-red);
+            box-shadow: 0 0 0 3px rgba(192,39,45,0.1);
+        }
+
+        .btn-apply {
+            background: var(--aha-red);
+            color: white;
+            border: none;
+            padding: 9px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-apply:hover { background: var(--aha-dark); }
+        .btn-apply:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .filter-summary {
+            margin-left: auto;
+            font-size: 13px;
+            color: var(--gray-500);
+            align-self: center;
+        }
+
+        .filter-summary strong {
+            color: var(--aha-red);
+            font-size: 18px;
+        }
+
+        /* KPI Cards */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .kpi-card {
+            background: white;
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            border: 1px solid var(--gray-200);
+        }
+
+        .kpi-card .kpi-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .kpi-card .kpi-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+
+        .kpi-card .kpi-sub {
+            font-size: 13px;
+            color: var(--gray-500);
+            margin-top: 2px;
+        }
+
+        .kpi-card.highlight {
+            border-left: 4px solid var(--aha-red);
+        }
+
+        .kpi-card.warning .kpi-value {
+            color: var(--amber);
+        }
+
+        /* Charts */
+        .charts-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .charts-row-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .chart-card {
+            background: white;
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            border: 1px solid var(--gray-200);
+        }
+
+        .chart-card h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--gray-700);
+            margin-bottom: 16px;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+        }
+
+        .chart-container.bar { height: 280px; }
+        .chart-container.donut { height: 280px; }
+        .chart-container.horizontal { height: 320px; }
+
+        /* Table */
+        .table-card {
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            border: 1px solid var(--gray-200);
+            overflow: hidden;
+        }
+
+        .table-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .table-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .table-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .table-controls input {
+            padding: 6px 12px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            font-size: 13px;
+            width: 240px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        thead th {
+            background: var(--gray-50);
+            padding: 10px 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--gray-700);
+            border-bottom: 2px solid var(--gray-200);
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        thead th:hover { background: var(--gray-100); }
+
+        thead th .sort-arrow {
+            font-size: 10px;
+            margin-left: 4px;
+            opacity: 0.3;
+        }
+
+        thead th.sorted .sort-arrow { opacity: 1; color: var(--aha-red); }
+
+        tbody tr {
+            border-bottom: 1px solid var(--gray-100);
+            transition: background 0.15s;
+        }
+
+        tbody tr:hover { background: var(--aha-light); }
+
+        tbody td {
+            padding: 10px 16px;
+            vertical-align: middle;
+        }
+
+        .work-title {
+            max-width: 360px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .work-title a {
+            color: var(--gray-900);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .work-title a:hover {
+            color: var(--aha-red);
+            text-decoration: underline;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+
+        .badge-green { background: #D1FAE5; color: #065F46; }
+        .badge-red { background: #FEE2E2; color: #991B1B; }
+        .badge-gold { background: #FEF3C7; color: #92400E; }
+        .badge-blue { background: #DBEAFE; color: #1E40AF; }
+        .badge-purple { background: #EDE9FE; color: #5B21B6; }
+        .badge-gray { background: var(--gray-100); color: var(--gray-700); }
+
+        .flag-overdue {
+            background: #FEE2E2;
+            color: #991B1B;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .flag-ok {
+            color: var(--green);
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .flag-na {
+            color: var(--gray-500);
+            font-size: 11px;
+        }
+
+        /* Pagination */
+        .pagination {
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid var(--gray-200);
+        }
+
+        .pagination button {
+            padding: 6px 16px;
+            border: 1px solid var(--gray-300);
+            background: white;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .pagination button:hover:not(:disabled) { background: var(--gray-50); }
+        .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .pagination .page-info {
+            font-size: 13px;
+            color: var(--gray-500);
+        }
+
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            backdrop-filter: blur(4px);
+        }
+
+        .loading-overlay.hidden { display: none; }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--gray-200);
+            border-top-color: var(--aha-red);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-text {
+            margin-top: 12px;
+            font-size: 14px;
+            color: var(--gray-500);
+        }
+
+        .loading-inner {
+            text-align: center;
+        }
+
+        /* Responsive */
+        @media (max-width: 1100px) {
+            .kpi-row { grid-template-columns: repeat(2, 1fr); }
+            .charts-row, .charts-row-2 { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 768px) {
+            .kpi-row { grid-template-columns: 1fr; }
+            .filters { flex-direction: column; align-items: stretch; }
+            .filter-summary { margin-left: 0; }
+            .header-inner { flex-direction: column; gap: 8px; text-align: center; }
+        }
+
+        /* Tooltip for table */
+        .tooltip-row {
+            position: relative;
+        }
+
+        .check-icon { color: var(--green); }
+        .x-icon { color: #DC2626; }
+    </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-inner">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading AHA-funded publications from OpenAlex...</div>
+    </div>
+</div>
+
+<!-- Header -->
+<header class="header">
+    <div class="header-inner">
+        <div class="header-brand">
+            <div class="header-logo">&#10084;&#65039;</div>
+            <div class="header-title">
+                <h1>American Heart Association</h1>
+                <p>Open Access Compliance Dashboard</p>
+            </div>
+        </div>
+        <div class="header-badge">Powered by OpenAlex</div>
+    </div>
+</header>
+
+<!-- Policy banner -->
+<div class="policy-banner">
+    <div class="policy-banner-inner">
+        <strong>Policy:</strong> AHA requires funded researchers to deposit a free copy in PubMed Central within 12 months of publication.
+        <a href="https://professional.heart.org/en/research-programs/awardee-resources/open-science-policy-statements-for-aha-funded-research" target="_blank">View Full Policy &rarr;</a>
+    </div>
+</div>
+
+<!-- Main -->
+<main class="main">
+
+    <!-- Filters -->
+    <div class="filters">
+        <div class="filter-group">
+            <label>Publication Year</label>
+            <select id="filterYear">
+                <option value="">All Years</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>Work Type</label>
+            <select id="filterType">
+                <option value="">All Types</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>OA Status</label>
+            <select id="filterOA">
+                <option value="">All</option>
+                <option value="true">Open Access</option>
+                <option value="false">Not Open Access</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>Compliance</label>
+            <select id="filterCompliance">
+                <option value="">All</option>
+                <option value="overdue">Overdue (&gt;12 months, not OA)</option>
+                <option value="ok">Compliant</option>
+            </select>
+        </div>
+        <button class="btn-apply" id="btnApply" onclick="applyFilters()">Apply Filters</button>
+        <div class="filter-summary" id="filterSummary"></div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-row" id="kpiRow">
+        <div class="kpi-card highlight">
+            <div class="kpi-label">Total Publications</div>
+            <div class="kpi-value" id="kpiTotal">--</div>
+            <div class="kpi-sub">matching current filters</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Open Access</div>
+            <div class="kpi-value" id="kpiOA">--</div>
+            <div class="kpi-sub" id="kpiOAPct"></div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Has PubMed Record</div>
+            <div class="kpi-value" id="kpiPMID">--</div>
+            <div class="kpi-sub" id="kpiPMIDPct"></div>
+        </div>
+        <div class="kpi-card warning">
+            <div class="kpi-label">Overdue (&gt;12mo, Not OA)</div>
+            <div class="kpi-value" id="kpiOverdue">--</div>
+            <div class="kpi-sub">potentially non-compliant</div>
+        </div>
+    </div>
+
+    <!-- Charts Row 1 -->
+    <div class="charts-row">
+        <div class="chart-card">
+            <h3>Publications Over Time</h3>
+            <div class="chart-container bar">
+                <canvas id="chartTimeline"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h3>Open Access Breakdown</h3>
+            <div class="chart-container donut">
+                <canvas id="chartOA"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 2 -->
+    <div class="charts-row-2">
+        <div class="chart-card">
+            <h3>Top Subfields</h3>
+            <div class="chart-container horizontal">
+                <canvas id="chartSubfield"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h3>Top Topics</h3>
+            <div class="chart-container horizontal">
+                <canvas id="chartTopic"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-card">
+        <div class="table-header">
+            <h3>Publications <span id="tableCount" style="font-weight:400;color:var(--gray-500);font-size:14px;"></span></h3>
+            <div class="table-controls">
+                <input type="text" id="searchBox" placeholder="Search titles..." oninput="filterTable()">
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th onclick="sortTable('title')">Title <span class="sort-arrow">&#9650;</span></th>
+                        <th onclick="sortTable('publication_date')" class="sorted">Date <span class="sort-arrow">&#9660;</span></th>
+                        <th onclick="sortTable('type')">Type <span class="sort-arrow">&#9650;</span></th>
+                        <th onclick="sortTable('is_oa')">OA <span class="sort-arrow">&#9650;</span></th>
+                        <th onclick="sortTable('oa_status')">OA Status <span class="sort-arrow">&#9650;</span></th>
+                        <th onclick="sortTable('has_pmid')">Has PMID <span class="sort-arrow">&#9650;</span></th>
+                        <th onclick="sortTable('compliance')">Compliance <span class="sort-arrow">&#9650;</span></th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+        <div class="pagination">
+            <button id="btnPrev" onclick="changePage(-1)" disabled>&larr; Previous</button>
+            <span class="page-info" id="pageInfo">Page 1</span>
+            <button id="btnNext" onclick="changePage(1)">Next &rarr;</button>
+        </div>
+    </div>
+
+</main>
+
+<script>
+// ── Configuration ──────────────────────────────────────────────
+const FUNDER_ID = 'F4320306230';
+const API_BASE = 'https://api.openalex.org';
+const PER_PAGE = 25;
+const TWELVE_MONTHS_AGO = new Date();
+TWELVE_MONTHS_AGO.setMonth(TWELVE_MONTHS_AGO.getMonth() - 12);
+
+let currentPage = 1;
+let currentWorks = [];
+let totalResults = 0;
+let sortField = 'publication_date';
+let sortDir = 'desc';
+let chartInstances = {};
+
+// ── Helpers ────────────────────────────────────────────────────
+function getBaseFilterParts() {
+    const parts = [`funders.id:${FUNDER_ID}`];
+    const year = document.getElementById('filterYear').value;
+    const type = document.getElementById('filterType').value;
+    const oa = document.getElementById('filterOA').value;
+
+    if (year) parts.push(`publication_year:${year}`);
+    if (type) parts.push(`type:${type}`);
+    if (oa) parts.push(`open_access.is_oa:${oa}`);
+
+    return parts;
+}
+
+function getComplianceFilter() {
+    return document.getElementById('filterCompliance').value;
+}
+
+const CUTOFF_DATE = TWELVE_MONTHS_AGO.toISOString().split('T')[0];
+
+function buildFilter() {
+    const parts = getBaseFilterParts();
+    const compliance = getComplianceFilter();
+
+    // Compliance is a derived filter: overdue = not OA + published >12 months ago
+    if (compliance === 'overdue') {
+        parts.push(`open_access.is_oa:false`);
+        parts.push(`to_publication_date:${CUTOFF_DATE}`);
+    }
+    // "ok" (compliant) can't be expressed as a single API filter (needs OR across fields)
+    // so it's handled specially in loadWorks and fetchGroupBy
+
+    return parts.join(',');
+}
+
+function oaBadge(status) {
+    const map = {
+        gold: 'badge-gold',
+        green: 'badge-green',
+        hybrid: 'badge-purple',
+        bronze: 'badge-gold',
+        diamond: 'badge-blue',
+        closed: 'badge-red',
+    };
+    return `<span class="badge ${map[status] || 'badge-gray'}">${status || 'unknown'}</span>`;
+}
+
+function hasPmidLocation(work) {
+    if (!work.locations) return false;
+    return work.locations.some(loc =>
+        loc.source && loc.source.id && (
+            loc.source.id.includes('pubmed') ||
+            loc.source.host_organization_name === 'National Library of Medicine' ||
+            (loc.source.display_name && loc.source.display_name.toLowerCase().includes('pubmed'))
+        )
+    ) || !!(work.ids && work.ids.pmid);
+}
+
+function isOverdue(work) {
+    if (work.open_access && work.open_access.is_oa) return false;
+    const pubDate = new Date(work.publication_date);
+    return pubDate < TWELVE_MONTHS_AGO;
+}
+
+function openAlexUrl(id) {
+    return id ? id.replace('https://openalex.org/', 'https://openalex.org/works/') : '#';
+}
+
+function workUrl(work) {
+    return work.id || '#';
+}
+
+// ── API Calls ──────────────────────────────────────────────────
+async function fetchJSON(url) {
+    const sep = url.includes('?') ? '&' : '?';
+    const res = await fetch(`${url}${sep}mailto=dashboard@example.com`);
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+}
+
+async function fetchWorksRaw(filter, page = 1) {
+    const sort = sortField === 'title' ? 'display_name' : sortField;
+    const url = `${API_BASE}/works?filter=${filter}&sort=${sort}:${sortDir}&page=${page}&per_page=${PER_PAGE}&select=id,doi,display_name,publication_date,type,open_access,locations,ids,primary_topic`;
+    return fetchJSON(url);
+}
+
+async function fetchWorks(page = 1) {
+    return fetchWorksRaw(buildFilter(), page);
+}
+
+async function fetchGroupBy(groupField, extraFilter = '') {
+    const parts = getBaseFilterParts();
+    const compliance = getComplianceFilter();
+
+    if (compliance === 'overdue') {
+        parts.push(`open_access.is_oa:false`);
+        parts.push(`to_publication_date:${CUTOFF_DATE}`);
+    }
+    if (extraFilter) parts.push(extraFilter);
+
+    let filter = parts.join(',');
+    const url = `${API_BASE}/works?filter=${filter}&group_by=${groupField}`;
+
+    // For "ok" compliance, we can't do a single query. Skip compliance filter
+    // for group_by (KPIs/charts show within the compliant subset context via renderKPIs)
+    if (compliance === 'ok') {
+        // Use base filter without compliance — KPIs will be adjusted in renderKPIs
+        const baseParts = getBaseFilterParts();
+        if (extraFilter) baseParts.push(extraFilter);
+        const baseFilter = baseParts.join(',');
+        const baseUrl = `${API_BASE}/works?filter=${baseFilter}&group_by=${groupField}`;
+        return fetchJSON(baseUrl);
+    }
+
+    return fetchJSON(url);
+}
+
+// ── Populate Filters ───────────────────────────────────────────
+async function populateFilters() {
+    // Years
+    const yearSelect = document.getElementById('filterYear');
+    const currentYear = new Date().getFullYear();
+    for (let y = currentYear; y >= 2000; y--) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        yearSelect.appendChild(opt);
+    }
+
+    // Types
+    try {
+        const data = await fetchGroupBy('type');
+        const typeSelect = document.getElementById('filterType');
+        data.group_by.forEach(g => {
+            const opt = document.createElement('option');
+            // group_by returns full URIs (e.g. https://openalex.org/types/article)
+            // but the filter API expects short names (e.g. article)
+            const shortKey = g.key.includes('/') ? g.key.split('/').pop() : g.key;
+            opt.value = shortKey;
+            opt.textContent = `${g.key_display_name} (${g.count.toLocaleString()})`;
+            typeSelect.appendChild(opt);
+        });
+    } catch (e) {
+        console.error('Failed to load types', e);
+    }
+}
+
+// ── Render KPIs ────────────────────────────────────────────────
+async function renderKPIs() {
+    const compliance = getComplianceFilter();
+
+    try {
+        // Always fetch base stats (ignoring compliance) plus overdue count
+        const baseParts = getBaseFilterParts();
+        const baseFilter = baseParts.join(',');
+        const overdueFilter = [...baseParts, `open_access.is_oa:false`, `to_publication_date:${CUTOFF_DATE}`].join(',');
+
+        const [oaData, pmidData, overdueData] = await Promise.all([
+            fetchJSON(`${API_BASE}/works?filter=${baseFilter}&group_by=open_access.is_oa`),
+            fetchJSON(`${API_BASE}/works?filter=${baseFilter}&group_by=has_pmid`),
+            fetchJSON(`${API_BASE}/works?filter=${overdueFilter}&per_page=1`),
+        ]);
+
+        const allTotal = oaData.meta.count;
+        const oaTrue = oaData.group_by.find(g => g.key === 'true' || g.key === '1' || g.key_display_name === 'true');
+        const oaCount = oaTrue ? oaTrue.count : 0;
+        const pmidTrue = pmidData.group_by.find(g => g.key === 'true' || g.key === '1' || g.key_display_name === 'true');
+        const pmidCount = pmidTrue ? pmidTrue.count : 0;
+        const overdueCount = overdueData.meta.count;
+        const compliantCount = allTotal - overdueCount;
+
+        // Determine displayed total based on compliance filter
+        let displayTotal;
+        if (compliance === 'overdue') {
+            displayTotal = overdueCount;
+        } else if (compliance === 'ok') {
+            displayTotal = compliantCount;
+        } else {
+            displayTotal = allTotal;
+        }
+
+        document.getElementById('kpiTotal').textContent = displayTotal.toLocaleString();
+        document.getElementById('kpiOA').textContent = oaCount.toLocaleString();
+        document.getElementById('kpiOAPct').textContent = `${((oaCount / allTotal) * 100).toFixed(1)}% of all`;
+        document.getElementById('kpiPMID').textContent = pmidCount.toLocaleString();
+        document.getElementById('kpiPMIDPct').textContent = `${((pmidCount / allTotal) * 100).toFixed(1)}% of all`;
+        document.getElementById('kpiOverdue').textContent = overdueCount.toLocaleString();
+
+        document.getElementById('filterSummary').innerHTML = `<strong>${displayTotal.toLocaleString()}</strong> results`;
+    } catch (e) {
+        console.error('KPI error', e);
+    }
+}
+
+// ── Charts ─────────────────────────────────────────────────────
+function destroyChart(name) {
+    if (chartInstances[name]) {
+        chartInstances[name].destroy();
+        delete chartInstances[name];
+    }
+}
+
+async function renderTimelineChart() {
+    destroyChart('timeline');
+    try {
+        const data = await fetchGroupBy('publication_year');
+        const groups = data.group_by
+            .map(g => ({ year: parseInt(g.key), count: g.count }))
+            .filter(g => g.year >= 2000)
+            .sort((a, b) => a.year - b.year);
+
+        const ctx = document.getElementById('chartTimeline').getContext('2d');
+        chartInstances.timeline = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: groups.map(g => g.year),
+                datasets: [{
+                    label: 'Publications',
+                    data: groups.map(g => g.count),
+                    backgroundColor: 'rgba(192, 39, 45, 0.75)',
+                    borderColor: '#C0272D',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `${ctx.parsed.y.toLocaleString()} publications`
+                        }
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() } },
+                    x: { grid: { display: false } }
+                },
+                onClick: (e, elements) => {
+                    if (elements.length > 0) {
+                        const idx = elements[0].index;
+                        const year = groups[idx].year;
+                        window.open(`https://openalex.org/works?filter=funders.id:${FUNDER_ID},publication_year:${year}`, '_blank');
+                    }
+                }
+            }
+        });
+    } catch (e) { console.error('Timeline chart error', e); }
+}
+
+async function renderOAChart() {
+    destroyChart('oa');
+    try {
+        const data = await fetchGroupBy('open_access.oa_status');
+        const groups = data.group_by.sort((a, b) => b.count - a.count);
+
+        const colorMap = {
+            gold: '#F59E0B', green: '#10B981', hybrid: '#8B5CF6',
+            bronze: '#D97706', diamond: '#3B82F6', closed: '#EF4444'
+        };
+
+        const ctx = document.getElementById('chartOA').getContext('2d');
+        chartInstances.oa = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: groups.map(g => g.key_display_name),
+                datasets: [{
+                    data: groups.map(g => g.count),
+                    backgroundColor: groups.map(g => colorMap[g.key] || '#9CA3AF'),
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '55%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 12, usePointStyle: true } },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                return `${ctx.label}: ${ctx.parsed.toLocaleString()} (${((ctx.parsed / total) * 100).toFixed(1)}%)`;
+                            }
+                        }
+                    }
+                },
+                onClick: (e, elements) => {
+                    if (elements.length > 0) {
+                        const idx = elements[0].index;
+                        const status = groups[idx].key;
+                        const filter = buildFilter() + `,open_access.oa_status:${status}`;
+                        window.open(`https://openalex.org/works?filter=${filter}`, '_blank');
+                    }
+                }
+            }
+        });
+    } catch (e) { console.error('OA chart error', e); }
+}
+
+async function renderSubfieldChart() {
+    destroyChart('subfield');
+    try {
+        const data = await fetchGroupBy('primary_topic.subfield.id');
+        const groups = data.group_by.slice(0, 10).reverse();
+
+        const ctx = document.getElementById('chartSubfield').getContext('2d');
+        chartInstances.subfield = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: groups.map(g => {
+                    const name = g.key_display_name;
+                    return name.length > 35 ? name.slice(0, 32) + '...' : name;
+                }),
+                datasets: [{
+                    data: groups.map(g => g.count),
+                    backgroundColor: 'rgba(192, 39, 45, 0.6)',
+                    borderColor: '#C0272D',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => groups[items[0].dataIndex].key_display_name,
+                            label: (ctx) => `${ctx.parsed.x.toLocaleString()} publications`
+                        }
+                    }
+                },
+                scales: {
+                    x: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() } },
+                    y: { grid: { display: false } }
+                },
+                onClick: (e, elements) => {
+                    if (elements.length > 0) {
+                        const idx = elements[0].index;
+                        const key = groups[idx].key;
+                        window.open(`https://openalex.org/works?filter=funders.id:${FUNDER_ID},primary_topic.subfield.id:${key}`, '_blank');
+                    }
+                }
+            }
+        });
+    } catch (e) { console.error('Subfield chart error', e); }
+}
+
+async function renderTopicChart() {
+    destroyChart('topic');
+    try {
+        const data = await fetchGroupBy('primary_topic.id');
+        const groups = data.group_by.slice(0, 10).reverse();
+
+        const ctx = document.getElementById('chartTopic').getContext('2d');
+        chartInstances.topic = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: groups.map(g => {
+                    const name = g.key_display_name;
+                    return name.length > 35 ? name.slice(0, 32) + '...' : name;
+                }),
+                datasets: [{
+                    data: groups.map(g => g.count),
+                    backgroundColor: 'rgba(100, 7, 17, 0.6)',
+                    borderColor: '#640711',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => groups[items[0].dataIndex].key_display_name,
+                            label: (ctx) => `${ctx.parsed.x.toLocaleString()} publications`
+                        }
+                    }
+                },
+                scales: {
+                    x: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() } },
+                    y: { grid: { display: false } }
+                },
+                onClick: (e, elements) => {
+                    if (elements.length > 0) {
+                        const idx = elements[0].index;
+                        const key = groups[idx].key;
+                        window.open(`https://openalex.org/works?filter=funders.id:${FUNDER_ID},primary_topic.id:${key}`, '_blank');
+                    }
+                }
+            }
+        });
+    } catch (e) { console.error('Topic chart error', e); }
+}
+
+// ── Table ──────────────────────────────────────────────────────
+function renderTable(works) {
+    const tbody = document.getElementById('tableBody');
+
+    let filtered = works;
+    const search = document.getElementById('searchBox').value.toLowerCase();
+    if (search) {
+        filtered = filtered.filter(w => w.display_name && w.display_name.toLowerCase().includes(search));
+    }
+
+    tbody.innerHTML = filtered.map(w => {
+        const oa = w.open_access || {};
+        const isOA = oa.is_oa;
+        const oaStatus = oa.oa_status || 'unknown';
+        const pmid = hasPmidLocation(w);
+        const overdue = isOverdue(w);
+        const pubDate = w.publication_date || '';
+        const workType = w.type || '';
+        const displayType = workType.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+        let complianceCell;
+        if (isOA) {
+            complianceCell = '<span class="flag-ok">&#10003; Compliant</span>';
+        } else if (overdue) {
+            complianceCell = '<span class="flag-overdue">&#9888; OVERDUE</span>';
+        } else {
+            complianceCell = '<span class="flag-na">Within window</span>';
+        }
+
+        return `<tr>
+            <td class="work-title"><a href="${w.id}" target="_blank" title="${(w.display_name || '').replace(/"/g, '&quot;')}">${w.display_name || 'Untitled'}</a></td>
+            <td>${pubDate}</td>
+            <td><span class="badge badge-gray">${displayType}</span></td>
+            <td>${isOA ? '<span class="check-icon">&#10003; Yes</span>' : '<span class="x-icon">&#10007; No</span>'}</td>
+            <td>${oaBadge(oaStatus)}</td>
+            <td>${pmid ? '<span class="check-icon">&#10003; Yes</span>' : '<span class="x-icon">&#10007; No</span>'}</td>
+            <td>${complianceCell}</td>
+        </tr>`;
+    }).join('');
+
+    document.getElementById('tableCount').textContent = `(showing ${filtered.length} of ${totalResults.toLocaleString()})`;
+}
+
+function filterTable() {
+    renderTable(currentWorks);
+}
+
+function sortTable(field) {
+    if (sortField === field) {
+        sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+    } else {
+        sortField = field;
+        sortDir = field === 'publication_date' ? 'desc' : 'asc';
+    }
+
+    // Update header UI
+    document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+    const headers = { title: 0, publication_date: 1, type: 2, is_oa: 3, oa_status: 4, has_pmid: 5, compliance: 6 };
+    const thIdx = headers[field];
+    if (thIdx !== undefined) {
+        const th = document.querySelectorAll('thead th')[thIdx];
+        th.classList.add('sorted');
+        th.querySelector('.sort-arrow').innerHTML = sortDir === 'desc' ? '&#9660;' : '&#9650;';
+    }
+
+    currentPage = 1;
+    loadWorks();
+}
+
+function changePage(delta) {
+    currentPage += delta;
+    if (currentPage < 1) currentPage = 1;
+    loadWorks();
+    window.scrollTo({ top: document.querySelector('.table-card').offsetTop - 100, behavior: 'smooth' });
+}
+
+// ── Main Load ──────────────────────────────────────────────────
+async function loadWorks() {
+    const compliance = getComplianceFilter();
+
+    try {
+        if (compliance === 'ok') {
+            // "Compliant" = OA works + non-OA works still within the 12-month window
+            // OpenAlex can't OR across fields, so we fetch two sets:
+            //   1) All OA works matching base filters
+            //   2) Non-OA works published within last 12 months
+            const baseParts = getBaseFilterParts();
+            const oaParts = [...baseParts, 'open_access.is_oa:true'];
+            const recentParts = [...baseParts, `open_access.is_oa:false`, `from_publication_date:${CUTOFF_DATE}`];
+
+            const [oaData, recentData] = await Promise.all([
+                fetchWorksRaw(oaParts.join(','), currentPage),
+                fetchWorksRaw(recentParts.join(','), currentPage),
+            ]);
+
+            // Merge and sort, then take PER_PAGE items
+            const allWorks = [...oaData.results, ...recentData.results];
+            allWorks.sort((a, b) => {
+                const aVal = a[sortField] || a.display_name || '';
+                const bVal = b[sortField] || b.display_name || '';
+                const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                return sortDir === 'desc' ? -cmp : cmp;
+            });
+
+            totalResults = oaData.meta.count + recentData.meta.count;
+            currentWorks = allWorks.slice(0, PER_PAGE);
+            renderTable(currentWorks);
+
+            const totalPages = Math.ceil(totalResults / PER_PAGE);
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages.toLocaleString()} (approx)`;
+            document.getElementById('btnPrev').disabled = currentPage <= 1;
+            document.getElementById('btnNext').disabled = currentPage >= totalPages;
+        } else {
+            // "All" or "Overdue" — buildFilter() handles it
+            const data = await fetchWorks(currentPage);
+            totalResults = data.meta.count;
+            currentWorks = data.results;
+            renderTable(currentWorks);
+
+            const totalPages = Math.ceil(totalResults / PER_PAGE);
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages.toLocaleString()}`;
+            document.getElementById('btnPrev').disabled = currentPage <= 1;
+            document.getElementById('btnNext').disabled = currentPage >= totalPages;
+        }
+    } catch (e) {
+        console.error('Load works error', e);
+        document.getElementById('tableBody').innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--gray-500);">Error loading data. Please try again.</td></tr>`;
+    }
+}
+
+async function applyFilters() {
+    const btn = document.getElementById('btnApply');
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+    currentPage = 1;
+
+    try {
+        await Promise.all([
+            renderKPIs(),
+            renderTimelineChart(),
+            renderOAChart(),
+            renderSubfieldChart(),
+            renderTopicChart(),
+            loadWorks(),
+        ]);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Apply Filters';
+    }
+}
+
+// ── Init ───────────────────────────────────────────────────────
+(async function init() {
+    try {
+        await populateFilters();
+        await applyFilters();
+    } finally {
+        document.getElementById('loadingOverlay').classList.add('hidden');
+    }
+})();
+</script>
+
+</body>
+</html>
