@@ -22,7 +22,7 @@ resources:
       job_clusters:
         - job_cluster_key: manifest-cluster
           new_cluster:
-            spark_version: 15.4.x-scala2.12
+            spark_version: 16.4.x-scala2.12
             # m5d.2xlarge has 300 GB NVMe at /local_disk0 → cheaper shuffle
             # than EBS-only. 4 workers × ~8 cores = 32 cores for the GROUP BY
             # over locations_mapped (~62M rows). Photon doubles aggregation
