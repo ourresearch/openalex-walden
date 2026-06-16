@@ -114,17 +114,11 @@ Psychology, Neuroscience) relating to TulaSalud as off-topic for this analysis.
 > what makes a study like this possible. A few years ago, it wasn't. And later this year, users
 > will be able to submit the types of curations I made during this analysis directly to OpenAlex!
 
-**A note on precision and recall.** For those who are interested, I estimated precision and recall
-of two search strategies: one with just the OpenAlex funder filter and one with all 9 queries
-combined (full search). Precision was calculated as the number of publications in the final set
-divided by the total candidates in each strategy, and recall against Hakai's public list of
-publications (<https://hakai.org/publications>). The funder filter alone is slightly more precise
-(95% vs 90%) but finds less than half of Hakai's known publications (49% recall); the full search
-trades a little precision for far better completeness (90% precision, 89% recall). The ~11% the
-full search still misses are works with no funder acknowledgement, no Hakai affiliation, and no
-searchable full text — the frontier that direct, funder-asserted linkages are built to close.
-
-![Precision and recall of the funder filter vs. the full search](../figures/13_precision_recall.png)
+**A note on precision and recall.** For those who are interested: precision — the share of
+candidates that turned out to be genuine — was 90%, and recall — measured against Hakai's public
+publication list (356 valid DOIs; <https://hakai.org/publications>) — was 89%. The ~11% the search
+misses are works with no funder acknowledgement, no Hakai affiliation, and no searchable full
+text — the frontier that direct, funder-asserted linkages are built to close.
 
 ## What the funding produced
 

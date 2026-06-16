@@ -16,8 +16,7 @@ open OpenAlex metadata.
 - **58,579** citations; median **FWCI 1.69**; **6.1%** in the world top-1% (6.1×), **35.2%** in
   top-10% (3.5×).
 - Cited by works from **199 countries** and all **26** fields of science.
-- **Search quality:** precision **90%** (full) / **95%** (funder-only); recall **89%** / **49%**
-  against Hakai's 356-DOI public list.
+- **Search quality:** precision **90%**, recall **89%** (against Hakai's 356-DOI public list).
 - Cross-university coastal co-authorship (equal 15-yr windows): **76 → 462** links; intensity
   **0.06 → 0.13**.
 - **537** distinct co-funders (NSERC 388, NSF 127, CIFAR 78, DFO 77, Mitacs 70…).
@@ -39,7 +38,7 @@ open OpenAlex metadata.
 10_research_lineage.py    # sea-otter & kelp lineage
 11_cofunders.py           # co-funder ranking (universities excluded)
 12_top_fwci_stories.py    # top-50 FWCI works table (for narrative)
-13_precision_recall.py    # precision & recall vs Hakai's public list
+13_precision_recall.py    # precision & recall of the full search vs Hakai's public list
 ```
 Set `PYTHONIOENCODING=utf-8` on Windows (cp1252 default mangles accents on print).
 Analyses cache OpenAlex API responses to `.cache/` (regenerated; gitignored).
@@ -53,7 +52,7 @@ Analyses cache OpenAlex API responses to `.cache/` (regenerated; gitignored).
   reconstruction). Note: the `+` AND-operator is kept **literal** in URLs (OpenAlex ignores `%2B`).
 - `lib/plotstyle.py` — shared figure style; `donut()`, `year_axis()`, `save()` (PNG + SVG).
 - `data/` — candidates, enriched works, verification verdicts, final corpora, `verify_rubric.md`.
-- `figures/` — the 10 figures used in the post (PNG 300 dpi + SVG).
+- `figures/` — the 9 figures used in the post (PNG 300 dpi + SVG).
 - `tables/` — CSV/JSON summaries behind every figure and number.
 - `blog/` — `tula-case-study.md` and the `.docx` export (for Google Docs editing).
 
