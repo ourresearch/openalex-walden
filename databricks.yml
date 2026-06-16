@@ -57,6 +57,7 @@ include:
   - jobs/doaj_csv.yaml
   - jobs/tag_pdf_awards_incremental.yaml
   - jobs/crossref_work_funders.yaml
+  - jobs/pubmed_work_funders.yaml
   - jobs/nwo_work_funders.yaml
   - jobs/hakai_work_funders.yaml
   - jobs/refresh_work_awards.yaml
