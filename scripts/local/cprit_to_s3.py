@@ -107,7 +107,7 @@ def fetch_rows():
 def nn(s):
     if s is None:
         return None
-    s = s.strip()
+    s = re.sub(r"\s+", " ", s).strip()   # collapse DataTables innerText whitespace runs
     return s or None
 
 
