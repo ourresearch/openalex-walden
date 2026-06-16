@@ -1,8 +1,0 @@
-# AHA's gold set is PRIVATE partner data (their internal compliance judgments) and
-# this is a PUBLIC repo. Commit the reproducible CODE only — never partner data or
-# results, until AHA/Kyle sign off on publication.
-data/
-tables/
-.cache/
-__pycache__/
-*.xlsx
