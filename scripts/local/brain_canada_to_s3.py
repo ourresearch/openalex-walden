@@ -527,6 +527,11 @@ def parse_detail(slug, html):
 # Main
 # --------------------------------------------------------------------------- #
 def main():
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(__doc__)
+        print("Usage: brain_canada_to_s3.py   "
+              "(no args; set SKIP_UPLOAD=1 to skip the S3 upload)")
+        return
     slugs, completeness_baseline = collect_all_slugs()
 
     # de-dup slugs defensively (also the natural-key dedup)

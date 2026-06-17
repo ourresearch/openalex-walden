@@ -280,6 +280,11 @@ def build_fund(slug, cfg):
 
 
 def main():
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(__doc__)
+        print("Usage: frq_to_s3.py [frqs|frqnt|frqsc ...]   "
+              "(default: all three; set SKIP_UPLOAD=1 to skip the S3 upload)")
+        return
     which = sys.argv[1:] or list(FUNDS)
     for slug in which:
         cfg = FUNDS[slug]
