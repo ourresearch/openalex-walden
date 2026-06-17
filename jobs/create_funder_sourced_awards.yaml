@@ -2335,6 +2335,15 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: BrainCanada_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateBrainCanadaAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: FRQS_Awards
           email_notifications: {}
           environment_key: Default
@@ -2364,6 +2373,7 @@ resources:
           webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
+            - task_key: BrainCanada_Awards
             - task_key: FRQS_Awards
             - task_key: FRQNT_Awards
             - task_key: FRQSC_Awards
