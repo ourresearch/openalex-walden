@@ -9,11 +9,10 @@ veluxfonden.dk and writes a parquet for Databricks.
 Data Source: https://veluxfonden.dk/en/data.js
   A single 6.3 MB JavaScript asset containing:
     siteData.merge(JSON.parse('<one big JSON blob>'))
-  The blob contains the entire grant database — 15,518 projects across
-  Villum Foundation (id=59, 2,878 projects — RESEARCH) and Velux Foundation
-  (id=58, 12,640 projects — welfare/culture/heritage). We filter to Villum
-  (foundation=59) for this ingest; F4320310489 (Velux Fonden) is a sibling
-  ingest under a different funder_id.
+  The blob contains the entire grant database across Villum Foundation
+  (foundation id=59) and Velux Foundation (foundation id=58). We filter to
+  Villum, then keep named research schemes only for this clean pilot ingest;
+  F4320310489 (Velux Fonden) is a sibling ingest under a different funder_id.
 
 Output: s3://openalex-ingest/awards/villum/villum_projects.parquet
 
@@ -32,18 +31,43 @@ Output columns:
   funder_award_id  → `villum-{project_id}` (the foundation has no public
                       cited grant prefix; `villum-647` is the URL-stable form)
   title (English), pa_name (PI), institution (dereferenced organisation),
-  country (dereferenced; almost all Denmark), amount (DKK), year,
+  country (dereferenced from the source FK), amount (DKK), year,
   funder_scheme (grant_sub_area.title), funder_area (grant_area.title)
 
 Usage:
     python villum_to_s3.py --skip-upload
+    python villum_to_s3.py --skip-download --limit 10 --skip-upload
 """
 import argparse, json, re, sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 try:
-    sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
-except Exception: pass
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+except (AttributeError, ValueError):
+    pass
+if sys.platform == "win32":
+    import builtins as _builtins_utf8
+    import pathlib as _pathlib_utf8
+
+    _orig_wt = _pathlib_utf8.Path.write_text
+    def _wt(self, data, encoding=None, errors=None, newline=None):
+        return _orig_wt(self, data, encoding=encoding or "utf-8", errors=errors, newline=newline)
+    _pathlib_utf8.Path.write_text = _wt
+
+    _orig_rt = _pathlib_utf8.Path.read_text
+    def _rt(self, encoding=None, errors=None, newline=None):
+        return _orig_rt(self, encoding=encoding or "utf-8", errors=errors, newline=newline)
+    _pathlib_utf8.Path.read_text = _rt
+
+    _orig_open = _builtins_utf8.open
+    def _open_utf8(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
+        if "b" not in mode and encoding is None:
+            encoding = "utf-8"
+        return _orig_open(file, mode, buffering, encoding, errors, newline, closefd, opener)
+    _builtins_utf8.open = _open_utf8
+import ssl
 import urllib.request
 import pandas as pd
 
@@ -52,12 +76,24 @@ S3_KEY    = "awards/villum/villum_projects.parquet"
 DATA_URL  = "https://veluxfonden.dk/en/data.js"
 FOUNDATION_ID_FILTER = 59   # Villum Foundation (Velux Foundation = 58, separate ingest)
 
-def fetch_data(output_dir: Path) -> dict:
-    print(f"[1/2] Downloading veluxfonden.dk/en/data.js")
+def _ssl_context():
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return None
+
+def fetch_data(output_dir: Path, skip_download: bool = False) -> dict:
     raw_path = output_dir / "velux_data.js"
-    req = urllib.request.Request(DATA_URL, headers={"User-Agent": "OpenAlex-Villum/1.0 (contact@openalex.org)"})
-    raw = urllib.request.urlopen(req, timeout=60).read()
-    raw_path.write_bytes(raw)
+    if skip_download:
+        if not raw_path.exists():
+            raise SystemExit(f"--skip-download requested but cache file is missing: {raw_path}")
+        print(f"[1/2] Reusing cached {raw_path}")
+    else:
+        print(f"[1/2] Downloading veluxfonden.dk/en/data.js")
+        req = urllib.request.Request(DATA_URL, headers={"User-Agent": "OpenAlex-Villum/1.0 (contact@openalex.org)"})
+        raw = urllib.request.urlopen(req, timeout=60, context=_ssl_context()).read()
+        raw_path.write_bytes(raw)
     print(f"      saved {raw_path.name}: {raw_path.stat().st_size/1e6:.1f} MB")
     text = raw_path.read_text(encoding="utf-8")
     # Extract the JSON blob from `siteData.merge(JSON.parse('...'))`
@@ -73,7 +109,7 @@ def fetch_data(output_dir: Path) -> dict:
           f"country={len(d.get('country',{}))}, foundation={len(d.get('foundation',{}))}")
     return d
 
-def transform(d: dict) -> pd.DataFrame:
+def transform(d: dict, limit: Optional[int] = None) -> pd.DataFrame:
     print(f"[2/2] Transforming → Villum (foundation={FOUNDATION_ID_FILTER}) projects only")
     # Build lookup maps
     sub_to_area  = {sid: s.get("grant_area") for sid, s in d["grant_sub_area"].items()}
@@ -142,10 +178,13 @@ def transform(d: dict) -> pd.DataFrame:
     # produced §6.4a flags (Topelmann-Weder n=20, Hemmingsen n=15). Restricting to the
     # flagship research programmes drops that noise (max PI freq -> 3) and keeps the
     # citable grants at KU/DTU/Aarhus/SDU.
-    RESEARCH_SCHEMES = re.compile(r"(?i)villum (experiment|young investigator|investigator|synergy|international postdoc)|technology and hands-on")
+    RESEARCH_SCHEMES = re.compile(r"(?i)villum (?:experiment|young investigator|investigator|synergy|international postdoc)|technology and hands-on")
     _before = len(df)
     df = df[df["funder_scheme"].astype("string").str.contains(RESEARCH_SCHEMES, na=False)].reset_index(drop=True)
     print(f"      research-scheme filter: {_before:,} -> {len(df):,} rows (dropped outreach/internal/welfare)")
+    if limit is not None:
+        df = df.head(limit).reset_index(drop=True)
+        print(f"      --limit applied: keeping {len(df):,} rows")
     # Slug-collision guard
     dup = df["funder_award_id"].duplicated().sum()
     if dup:
@@ -179,6 +218,8 @@ def check_no_shrink(df, allow_shrink):
 def main():
     ap = argparse.ArgumentParser(description="Villum Fonden (veluxfonden.dk/data.js) -> S3")
     ap.add_argument("--output-dir", type=Path, default=Path("/tmp/villum"))
+    ap.add_argument("--limit", type=int, default=None, help="Limit output rows after the research-scheme filter for smoke tests")
+    ap.add_argument("--skip-download", action="store_true", help="Reuse cached velux_data.js in --output-dir")
     ap.add_argument("--skip-upload", action="store_true")
     ap.add_argument("--allow-shrink", action="store_true")
     a = ap.parse_args()
@@ -186,11 +227,8 @@ def main():
     print("=" * 60)
     print("Villum Fonden (Denmark) -> S3")
     print("=" * 60)
-    raw = fetch_data(a.output_dir)
-    df = transform(raw)
-    out = a.output_dir / "villum_projects.parquet"
-    df.to_parquet(out, index=False)
-    print(f"\nSaved {out.name}: {len(df):,} rows, {out.stat().st_size/1e6:.1f} MB")
+    raw = fetch_data(a.output_dir, skip_download=a.skip_download)
+    df = transform(raw, limit=a.limit)
     nn = lambda c: 100 * df[c].notna().sum() / len(df)
     amt_cov = 100 * (df["amount"] > 0).sum() / len(df)
     print(f"\nCoverage:")
@@ -208,6 +246,10 @@ def main():
         print(f"  Year range: {int(df['year'].min())}-{int(df['year'].max())}")
     print(f"\nTop areas: {df['funder_area'].value_counts().head(5).to_dict()}")
     print(f"Top institutions: {df['institution_name'].value_counts().head(5).to_dict()}")
+    out = a.output_dir / "villum_projects.parquet"
+    df = df.astype("string")
+    df.to_parquet(out, index=False)
+    print(f"\nSaved {out.name}: {len(df):,} rows, {out.stat().st_size/1e6:.1f} MB")
     if not a.skip_upload:
         check_no_shrink(df, a.allow_shrink)
         import subprocess, shutil
