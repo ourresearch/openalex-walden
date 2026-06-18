@@ -2479,8 +2479,28 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: CyprusRIF_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateCyprusRIFAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: TaiwanMOSTGRB_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateTaiwanMOSTGRBAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
+            - task_key: TaiwanMOSTGRB_Awards
+            - task_key: CyprusRIF_Awards
             - task_key: EKFS_Awards
             - task_key: INCa_Awards
             - task_key: DeutscheKrebshilfe_Awards
