@@ -37,6 +37,7 @@ try:
     sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
 except Exception: pass
 import urllib.request
+import requests
 import pandas as pd
 
 S3_BUCKET = "openalex-ingest"
@@ -52,8 +53,10 @@ _AMOUNT_CLEAN = re.compile(r"[\s\?€]+")
 def fetch_dataset_metadata():
     """Hit the data.gouv.fr dataset endpoint and return the CSV resource URL.
     Re-fetch every run so we pick up the latest snapshot rather than a pinned URL."""
-    req = urllib.request.Request(DATA_GOUV_API, headers={"User-Agent": "OpenAlex-INCa/1.0 (contact@openalex.org)"})
-    d = json.loads(urllib.request.urlopen(req, timeout=30).read())
+    # requests follows redirects (data.gouv 308-redirects older dataset slugs; urllib on py<3.11 doesn't)
+    resp = requests.get(DATA_GOUV_API, headers={"User-Agent": "OpenAlex-INCa/1.0 (contact@openalex.org)"}, timeout=30)
+    resp.raise_for_status()
+    d = resp.json()
     for r in d.get("resources", []):
         if r.get("format") == "csv":
             return r["url"], r.get("title", "")
@@ -73,7 +76,11 @@ def download(output_dir: Path):
     print(f"[1/2] Downloading INCa CSV: {title}")
     print(f"      url={url}")
     csv_path = output_dir / "inca_raw.csv"
-    urllib.request.urlretrieve(url, csv_path)
+    with requests.get(url, stream=True, timeout=120) as resp:
+        resp.raise_for_status()
+        with open(csv_path, "wb") as fh:
+            for chunk in resp.iter_content(chunk_size=1 << 16):
+                fh.write(chunk)
     print(f"      saved {csv_path.name}: {csv_path.stat().st_size/1e6:.1f} MB")
     return csv_path
 

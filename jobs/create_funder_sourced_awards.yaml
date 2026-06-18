@@ -2515,8 +2515,18 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: BELSPO_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateBELSPOAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
+            - task_key: BELSPO_Awards
             - task_key: VlaamseRegering_Awards
             - task_key: VLAIO_Awards
             - task_key: TaiwanMOSTGRB_Awards
