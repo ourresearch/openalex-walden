@@ -3,7 +3,9 @@ resources:
     DataCite_Work_Funders:
       name: DataCite Work Funders
       schedule:
-        quartz_cron_expression: 0 0 4 * * ?
+        # Run alongside the other work-funder feeds so RefreshWorkAwards at 03:00 UTC
+        # picks up our table on the same day. NWO/Hakai at 01:30, Crossref at 02:00.
+        quartz_cron_expression: 0 0 2 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
