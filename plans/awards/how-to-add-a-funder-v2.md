@@ -868,6 +868,49 @@ Confirmed on HHMI ([5085aa8](https://github.com/ourresearch/openalex-walden/comm
 of 1,739 rows hit case 1, and another 42 rows hit case 2 after case 1 was
 patched. Both showed up only when grepping the produced `display_name` column.
 
+### 2.3.2 Shared-reporting sources bundle MULTIPLE funders — never blanket-assign one funder_id
+
+Some "single-funder" bulk downloads are actually shared reporting systems that
+include grants from **several** funders. If you `CROSS JOIN` one hardcoded
+funder onto every row, you silently mislabel everyone else's grants as that
+funder. **Before assuming one funder, look for an agency/department column and
+group by it.**
+
+Canonical case — **NIH ExPORTER** (`CreateNIHAwards.ipynb`): NIH RePORTER is the
+shared grants-reporting system for HHS, so the download bundles grants
+administered by CDC, FDA, SAMHSA, HRSA, AHRQ, ATSDR, IHS, ACF, ONC (and NIOSH),
+**plus** VA. The original notebook `CROSS JOIN`ed NIH onto all ~2.28M rows, so
+**~156K awards (6.8%) were mislabeled as NIH** (caught by Paula, 2026-06).
+The fix keys off the `administering_ic` column via an `ic_funder_map` lookup,
+defaulting to NIH only when the IC isn't a known non-NIH agency:
+
+```sql
+WITH ic_funder_map AS (
+    SELECT * FROM VALUES
+        ('VA',4320306127),('HS',4320332177),('FD',4320332163),('OH',4320337382),
+        ('PS',4320332162),('SU',4320332164),('PE',4320332175) /* …etc… */
+        AS t(ic, funder_id)
+),
+parsed AS (
+    SELECT r.*, COALESCE(m.funder_id, 4320332161 /* NIH default */) AS resolved_funder_id
+    FROM nih_grants_raw r
+    LEFT JOIN ic_funder_map m ON UPPER(TRIM(r.administering_ic)) = m.ic
+)
+-- then JOIN funder_lookup f ON f.funder_id = parsed.resolved_funder_id
+```
+
+Notes that generalize to any shared-reporting source:
+- **All target funders must already exist as OpenAlex funders** (here all F4320*,
+  so they're in `openalex.common.funder` — see the [common.funder F4320 gap]
+  caveat for non-F4320 IDs). Look each one up in Step 0 before mapping.
+- **Map at the right altitude.** Roll obscure sub-codes up to the parent agency
+  (CDC's many center codes → CDC) unless a sub-unit has its own clean funder
+  (NIOSH, NCI). Leave genuinely **ambiguous** low-volume codes (e.g. NIH's `AD`
+  "Office of the Administrator", possibly ADAMHA-era) at the default rather than
+  guessing — document the residual.
+- **Verify with a funder split** (Step 6.5): `GROUP BY funder_id` on the output
+  and eyeball that the non-primary agencies have plausible counts.
+
 ### 2.4 Common field mappings
 
 | OpenAlex field | Common source fields |
@@ -1416,11 +1459,16 @@ would have slipped through.
 
 ### 6.5 Funder consistency
 ```sql
-SELECT funder.display_name, COUNT(*)
+SELECT funder.display_name, funder_id, COUNT(*)
 FROM openalex.awards.{funder}_awards
-GROUP BY funder.display_name;
+GROUP BY funder.display_name, funder_id
+ORDER BY 3 DESC;
 ```
-Should show only the expected funder(s).
+Should show only the expected funder(s). For shared-reporting sources that
+intentionally map to several funders (see §2.3.2 — e.g. NIH ExPORTER), confirm
+each agency has a **plausible** count and that the primary funder didn't swallow
+everyone else (the blanket-`CROSS JOIN` bug). A single unexpected funder with
+~100% of rows is the classic symptom.
 
 ### 6.6 Year distribution
 ```sql
