@@ -1,0 +1,51 @@
+resources:
+  jobs:
+    EuropePMC_Work_Funders:
+      name: EuropePMC Work Funders
+      description: |
+        oxjob #477 — EuropePMC funder->work linkages (OUTPUT-LIST pattern, like Hakai).
+        Resolves EuropePMC grantsList agency strings to OpenAlex funder_ids (existing
+        registry matcher + verified NIH/HHS/VA acronym map), crosswalks DOI -> work_id,
+        writes openalex.awards.europepmc_work_funders. Source harvested by
+        openalex-ingest/europepmc.py -> s3://openalex-ingest/awards/europepmc/.
+      email_notifications:
+        on_failure:
+          - kyle@ourresearch.org
+      schedule:
+        # PAUSED: run on-demand for the initial full load. Later switch to a periodic
+        # incremental refresh (harvester --updated-from) as EuropePMC indexes new works.
+        quartz_cron_expression: 0 0 4 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED
+      tasks:
+        - task_key: create_europepmc_work_funders
+          notebook_task:
+            notebook_path: notebooks/awards/CreateEuropePmcWorkFunders
+            source: GIT
+            base_parameters:
+              data_prefix: ""        # full corpus; bounded test overrides to "_bounded/"
+          job_cluster_key: epmc-cluster
+      job_clusters:
+        - job_cluster_key: epmc-cluster
+          new_cluster:
+            spark_version: 16.4.x-scala2.12
+            # PySpark notebook: registry name-match broadcast + resolve UDF over ~10M
+            # mentions + DOI join to openalex_works. m5d.2xlarge x4 mirrors the content-
+            # manifest job (similar GROUP BY/join scale). Photon for the joins/aggs.
+            node_type_id: m5d.2xlarge
+            num_workers: 4
+            runtime_engine: PHOTON
+            aws_attributes:
+              availability: ON_DEMAND
+              zone_id: auto
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 64
+            data_security_mode: SINGLE_USER
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
