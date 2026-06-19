@@ -1,0 +1,27 @@
+resources:
+  jobs:
+    ANR_Work_Funders:
+      name: ANR Work Funders
+      schedule:
+        quartz_cron_expression: 0 30 1 * * ?
+        timezone_id: UTC
+        # PAUSED by design (mirrors NWO_Work_Funders): run ON-DEMAND, not on a schedule.
+        # The upstream ANR linkage file (anr_work_links_to_s3.py + anr_work_links_raw) is a
+        # periodic email delivery from ANR's Open Science Office, not a live feed, so a daily
+        # rebuild is wasted work. Trigger this manually after ANR sends a refreshed linkage
+        # file, or occasionally to sweep up lagged works as OpenAlex ingests them.
+        # PREREQUISITE: run CreateANRAwards first -- the grant join keys on
+        # anr_awards.funder_award_id; a stale anr_awards silently drops edges.
+        pause_status: PAUSED
+      tasks:
+        - task_key: create_anr_work_funders
+          notebook_task:
+            notebook_path: notebooks/awards/CreateANRWorkFunders
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
