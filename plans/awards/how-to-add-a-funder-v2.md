@@ -1737,12 +1737,23 @@ entities. Mirror `crossref_work_funders` / `nwo_work_funders`. **This is a linka
 award-entity job — keep it out of `CreateFunderSourcedAwards`** (that's award entities); it
 lives in its own job like `Crossref Work Funders` does.
 
-### 10.1 Confirm the products are captured
-The per-grant outputs should already be in the raw parquet from Step 1 (e.g. NWO keeps the
-whole array as a `products_json` string on `{funder}_projects_raw`). If your Step-1 script
-dropped them, add them — don't re-fetch from the funder API in this job.
+### 10.1 Confirm the products are captured — two source shapes
+The linkages arrive one of two ways:
+- **(a) Nested in the grant feed (NWO).** The per-grant outputs are already in the raw parquet
+  from Step 1 (NWO keeps the whole array as a `products_json` string on `{funder}_projects_raw`).
+  If your Step-1 script dropped them, add them — don't re-fetch from the funder API in this job.
+- **(b) A standalone file the funder sends you (ANR).** Increasingly a funder emails a separate
+  bulk file (ANR sent a 268,910-row CSV keyed by DOI: `doi; anr_grants; …`). This needs its own
+  tiny `{funder}_work_links_to_s3.py` + staging table (`{funder}_work_links_raw`), parallel to —
+  not part of — the grant ingest. Normalize there: one row per output, the grant id(s) as an
+  `ARRAY<STRING>` (funders pack **multiple grants per output**, e.g. ANR delimits with `|` —
+  explode to one `(output, grant)` pair each), and keep the funder's own fields for reference.
+  Confirm the file's grant identifier is the **same string you stored as `funder_award_id`** in
+  Step 2 (ANR's `anr_grants` = `projet.code_decision` = `funder_award_id` ✓; watch for
+  partner-suffix variants like `ANR-10-CAMP-0151-02` that won't exact-match the project code —
+  cheap to ignore if they're a rounding error, which they were).
 
-### 10.2 Build `Create{Funder}WorkAwards` (canonical: `CreateNWOWorkAwards.ipynb`)
+### 10.2 Build `Create{Funder}WorkAwards` (examples: `CreateNWOWorkAwards.ipynb` for nested-in-feed; `CreateANRWorkFunders.ipynb` for a standalone funder-sent file + pre-resolved-id case)
 Writes the junction. Two precision-ordered work-resolution paths (a third optional):
 - **Path 1 — DOI.** Reported identifiers are usually dirty (whitespace inside the DOI, leading
   junk). Salvage with `regexp_extract`/`regexp_replace`, rebuild the canonical
@@ -1754,9 +1765,34 @@ Writes the junction. Two precision-ordered work-resolution paths (a third option
   author (`exists(authorships, a -> array_contains(a.countries, '<CC>'))`, e.g. `'NL'` for
   NWO). Precision-risky; build + measure in the notebook (title joins time out interactively).
 
+**If the funder ships its own resolved OpenAlex work ids (ANR included an `ID Open Alex short`
+column), do NOT trust them — re-resolve from the DOI.** OpenAlex ids drift with merges: on a 3K
+ANR sample ~1.4% of the funder's W-ids pointed to a different work than the DOI did, and the
+W-id *never* resolved a work the DOI didn't. The DOI is canonical and strictly equal-or-better.
+Keep the funder's id as a reference column only. (ANR's DOIs resolved at ~99.8%.)
+
 Resolve the **award** by the funder's project/grant id → `(funder_id, funder_award_id)` on the
 already-ingested entity. Output one row per `(work_id, funder_id)` with `ARRAY_DISTINCT` of
-award ids. ⚠️ **Two SQL gotchas that bit #244:**
+award ids.
+
+> 🛑 **GOTCHA THAT COST THE MOST TIME ON ANR — the staging `{funder}_awards` table can be STALE,
+> and it fails *silently*.** The junction joins the funder's **staging** table (`nwo_awards`,
+> `anr_awards`, …), NOT `openalex_awards_raw`/`openalex_awards`. These can disagree: ANR's
+> deployed `anr_awards` held only 13,450 rows while the S3 parquet *and* `openalex_awards_raw`
+> held the full 34,435 — so a fresh-looking pipeline matched only **34%** of the linkage grants
+> and would have dropped two-thirds of the edges with no error. **Before building the junction,
+> assert the staging table is current:**
+> ```sql
+> SELECT (SELECT COUNT(*) FROM openalex.awards.{funder}_awards)                          AS staging,
+>        (SELECT COUNT(*) FROM parquet.`s3a://openalex-ingest/awards/{funder}/{file}.parquet`) AS parquet;
+> ```
+> If they differ, **re-run `Create{Funder}Awards` first** (it's `CREATE OR REPLACE` from the
+> parquet — no re-fetch needed). Better yet, validate the actual grant-overlap of your linkage
+> file against the staging table *before* writing any notebook (sample the linkage grant ids and
+> check membership via the SQL statement API) — a low join rate here is almost always a stale
+> staging table or a grant-id format mismatch, not a real coverage ceiling.
+
+⚠️ **Two SQL gotchas that bit #244:**
 - **Double-escape regex backslashes** (`'\\s'`, `'\\.'`). The job cluster runs legacy
   `escapedStringLiterals` mode — single-escape (`'\s'`) silently collapses (`'\s'`→`'s'`) and
   *shrinks the result with no error* (warehouse runs the opposite mode, so it masks the bug).
@@ -1769,6 +1805,14 @@ Mirror the `nwo_work_funder_awards` CTE: explode the junction's `award_ids`, joi
 and UNION it into `combined_awards` at **priority 3** (funder-reported — same tier as GTR/NWO,
 beats crossref text-mined p4). Confirm the funder's awards are present in `openalex_awards`
 with matching keys before trusting the join.
+
+> ⚠️ **`WorkAwards.ipynb` is a single shared file that every funder's linkage edits.** If your
+> working copy is on an unmerged feature branch (e.g. another funder's in-flight `*_work_funders`
+> work), its `WorkAwards.ipynb` already carries CTEs that aren't on `main` yet — push it as-is and
+> you ship that funder's linkage early. Apply your leg to a **clean `origin/main` checkout** (a
+> throwaway `git worktree add <dir> origin/main` is cleanest) and push a diff that adds **only your
+> funder's** CTEs + UNION line. Verify with `git diff` before committing. (ANR was applied this way
+> to avoid dragging unmerged EuropePMC CTEs onto `main`.)
 
 ### 10.4 Standalone DAB job
 Create `jobs/{funder}_work_funders.yaml` mirroring [jobs/nwo_work_funders.yaml](../../jobs/nwo_work_funders.yaml)
