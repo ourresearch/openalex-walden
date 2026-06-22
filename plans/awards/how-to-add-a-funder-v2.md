@@ -717,17 +717,15 @@ works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
    - Generate unique ID as `abs(xxhash64(CONCAT({funder_id}, ':', {lowercase_native_id}))) % 9000000000`
 
 6. **Step 3: Delete old data and insert into openalex_awards_raw with priority**
-   - Determine priority (lower = higher priority). Tier guide:
-     - 0: GTR Project Awards (authoritative UK grants, full metadata)
-     - 1: Crossref Awards
-     - 2: Backfill Awards (from publication acknowledgements)
-     - 3: NIH / NSF / NSERC / GTR (US/UK/CA flagship funders with full metadata)
-     - 4+: All other direct-from-funder ingests, assigned in roughly the order
-       they were added.
-   - **For a new funder, take the next free integer.** As of 2026-05 the
+   - Determine priority. **HIGHER number wins** (dedup direction flipped 2026-06-20, oxjob #500). Tier guide:
+     - 0: work-funder shells only — `crossref_work_funders`, `crossref_work.grants`, `datacite_work_funders`, `europepmc_work_funders`, `pubmed_work_funders`. These are sparse acknowledgement-derived stubs that should LOSE to every direct ingest.
+     - 1: bare grant-DOI records from Crossref/DataCite where we only know the (funder, award_id) pair (`crossref_work`, `datacite` provenance). Slightly above shells, still below any direct funder ingest.
+     - 3+: All direct-from-funder ingests (NIH, NSF, CORDIS, etc). Any number ≥ 3 wins over both shells and grant-DOI stubs. Pick the next free integer.
+   - **For a new direct funder ingest, take the next free integer ≥ 3.** As of 2026-06 the
      header of [CreateAwards.ipynb](../../notebooks/awards/CreateAwards.ipynb)
-     lists priorities through 49. Read that header — it's the authoritative
+     lists priorities through ~500. Read that header — it's the authoritative
      priority registry — and pick the next free number. Don't reuse a slot.
+   - **⚠️ Convention flipped 2026-06-20.** Previously "lower = higher priority" (ASC dedup); now "higher = higher priority" (DESC dedup). If you copy from a template authored before the flip, double-check the integer makes sense under the new direction. Anything at priority 0, 1, or 2 should ONLY be a shell — direct ingests at those numbers will silently lose.
    - **⚠️ The priority integer lives in TWO places that MUST match:**
      (a) the per-funder notebook's INSERT cell (`N as priority`), and
      (b) the priority list in `CreateAwards.ipynb`.
