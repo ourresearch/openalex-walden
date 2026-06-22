@@ -1974,6 +1974,83 @@ They do **not** pass through the 9-step grant ladder.
 
 ---
 
+## Step 12: Multi-era PDF-archive pattern — funders that publish only annual report PDFs
+
+Some funders publish **no API, no CSV/Excel export, and no per-grant landing
+pages** — only a series of **annual report PDFs**, one per year, each listing
+that year's awards as a table. This sits at the bottom of the ingest ladder
+(below static HTML), but it is still a clean GRANT-pattern ingest: the PDFs are
+digital text (not scans — no OCR), and the award rows are a regular implicit
+table. **Canonical example: British Heart Foundation** (`bhf_to_s3.py`,
+`CreateBHFAwards.ipynb`, priority 395) — ~20 annual "Research Grant Awards"
+PDFs, 2004/05–2024/25, 4,132 grants. This pattern will recur for the other
+heart/medical-research funders queued at Step 0 (Heart & Stroke Canada,
+National Heart Foundation Australia/NZ, etc.).
+
+**Parse by word coordinate, not by `page.get_text()` reading order.** The tables
+have no ruled lines, so `find_tables()` returns nothing and flat text
+interleaves columns. Use PyMuPDF `page.get_text("words")` (each word carries its
+`x0,y0`), cluster words into visual rows by `y`, and bin each row's words into
+columns by `x`. This is the load-bearing technique; everything below supports it.
+
+The hard part — and the reusable lesson — is that **the layout drifts across a
+multi-decade archive**, so the parser must adapt per PDF rather than hardcode one
+geometry. BHF alone had three layout families:
+
+| era | layout | reference format | gotchas |
+|-----|--------|------------------|---------|
+| recent | single/▢two-column, **header rows** present | `FS/SBSRF/24/31040` (scheme code embedded) | amount right-aligned *left* of the "Total" header |
+| middle | single-column, **no header rows** | `FS/13/16/30199` (no scheme code) | names carry degree suffixes; duration in years |
+| oldest | **stacked** two-column (ref/name/inst/title/amount on separate lines) | `FS/04/082/17531` | not a tabular row layout at all |
+
+Techniques that made it robust (each was a real bug first):
+
+1. **Cluster rows by `y` with a small tolerance (~4pt).** The Name often renders
+   ~1pt above its Reference on a separate text-line; a tolerance merges them into
+   one logical row. Title wraps (~10pt down) stay separate.
+2. **Detect two-column pages by the *reference* column, not the widest
+   whitespace.** Only treat a page as two-column when reference numbers form two
+   x-clusters >150pt apart; then split at the gutter between the left column's
+   rightmost content and the right column's reference start. Keying on whitespace
+   alone misfires — the intra-row name→institution gap (~75pt) looks just like a
+   column gutter and shreds every single-column page.
+3. **Thread column cuts *per stream index* across pages.** In a two-column page
+   the left and right columns have different absolute x, so a continuation page's
+   right column must keep the right column's cuts, not inherit the left's.
+4. **Thread the scheme/committee heading across pages.** A scheme (e.g. "Project
+   Grants") spans many pages; if you reset heading state at each page top, every
+   continuation page's rows get a NULL scheme. Carry it forward; reset only when
+   a new heading or the per-scheme header row appears. In the no-header eras the
+   heading is the **only** source of the program/scheme name.
+5. **Derive column cuts from the header row when present; else calibrate once per
+   PDF** from the word-x histogram (per-page detection is unstable on sparse
+   pages).
+6. **Route the amount by content (`£`/money-shape), not by x.** Right-aligned
+   amounts render to the *left* of the "Total" header label, so position alone
+   files them into the title column.
+7. **Reassemble references that wrap across two lines** (`FS/CRERF/` +
+   `DJT/25/22504`; `FS/13/16/` + `30199`).
+8. **Strip honorifics + degree suffixes (and parentheticals).** Names are often
+   initials-only (`Dr H F Jorgensen` → given `H F`) and trail degrees
+   (`BSc (Hons) PhD FRCP FMedSci`). Extend the canonical `split_name` suffix set;
+   drop `(...)` parentheticals before splitting. Also NULL placeholder PIs
+   ("to be appointed/confirmed").
+9. **Fold wrapped institution overflow back.** Narrow two-column institutions
+   wrap ("University of\nLeeds") or spill across the inst/title cut ("University"
+   in inst, "of Cambridge" in the title) — append inst-column continuation words,
+   and post-repair the inst/title spill with a bounded place-name match.
+
+Run the same per-era validation BHF used: group coverage (amount / scheme /
+institution / PI / duration) **by report year**, and eyeball a sample from each
+era — a layout family that silently fails shows up as one year-range with 0–40%
+coverage while the rest are ~100%. Document any residual (BHF: ~0.6% of titles
+keep a leading institution-overflow token; the single stacked 2004/05 PDF is the
+weakest at 87% institution). For dates, when the report only states the financial
+year an award was *made*, publish `start_year` and leave `start_date` NULL rather
+than fabricate a day/month; derive `end_year` from the published duration.
+
+---
+
 ## Reference: Existing Examples
 
 | Funder | Script                | Notebook                     | API Type      |
@@ -1982,6 +2059,7 @@ They do **not** pass through the 9-step grant ladder.
 | NWO    | nwo_to_s3.py          | CreateNWOAwards.ipynb        | JSON API      |
 | GTR    | gtr_to_s3.py          | CreateGTRProjectAwards.ipynb | XML API       |
 | Gates  | gates_to_s3.py        | CreateGatesAwards.ipynb      | CSV download  |
+| BHF    | bhf_to_s3.py          | CreateBHFAwards.ipynb        | Multi-era PDF archive (§12) |
 
 ## Reference: S3 Paths
 
