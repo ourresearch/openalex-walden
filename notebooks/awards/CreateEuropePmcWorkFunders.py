@@ -199,13 +199,13 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 
 # MAGIC %sql
 # MAGIC DELETE FROM openalex.awards.openalex_awards_raw
-# MAGIC WHERE provenance = 'europepmc_work_funders' AND priority = 2;
+# MAGIC WHERE provenance = 'europepmc_work_funders' AND priority IN (0, 2);
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC INSERT INTO openalex.awards.openalex_awards_raw
-# MAGIC SELECT *, 2 AS priority FROM europepmc_work_funder_awards;
+# MAGIC SELECT *, 0 AS priority FROM europepmc_work_funder_awards;
 
 # COMMAND ----------
 
