@@ -8,6 +8,11 @@ resources:
       parameters:
         - name: is_quarterly_release
           default: "false"
+        # Single shared snapshot date for the whole run. Fixed at job launch (UTC),
+        # so exports, update_meta, and smoke_tests all read the same date even when a
+        # run straddles UTC midnight. See get_snapshot_date() in notebooks/snapshot/_utils.py.
+        - name: snapshot_date
+          default: "{{job.start_time.iso_date}}"
       tasks:
         - task_key: export_works
           job_cluster_key: snapshot_works_cluster

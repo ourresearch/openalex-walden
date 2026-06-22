@@ -20,7 +20,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ---------------------------------------------------------------------------
 # Quarterly-release gate
@@ -46,7 +46,11 @@ PUBLIC_BUCKET = "openalex"
 PUBLIC_PREFIX = "data"
 FORMATS = ("jsonl", "parquet")
 
-date_str = datetime.now().strftime("%Y-%m-%d")
+# Shared snapshot date (default {{job.start_time.iso_date}}, UTC, fixed at job launch)
+# so the public sync reads the same staging folder the exports wrote to, even across
+# a UTC-midnight straddle. Falls back to now(UTC) for ad-hoc runs.
+dbutils.widgets.text("snapshot_date", "")
+date_str = dbutils.widgets.get("snapshot_date").strip() or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 staging_base = f"s3://{STAGING_BUCKET}/full/{date_str}"
 local_scratch = "/local_disk0/s3_transfer"
 

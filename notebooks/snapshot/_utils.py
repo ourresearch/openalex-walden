@@ -29,7 +29,19 @@ S3_BASE = f"s3://{S3_BUCKET}/full"
 # ---------------------------------------------------------------------------
 
 def get_snapshot_date():
-    """Return today's date as YYYY-MM-DD."""
+    """Return the shared snapshot date as YYYY-MM-DD.
+
+    Reads the `snapshot_date` job parameter (default {{job.start_time.iso_date}},
+    which is fixed at job launch and in UTC) so every task in the run — exports,
+    update_meta, smoke_tests — agrees on one date even when the run straddles UTC
+    midnight. Falls back to now(UTC) for ad-hoc/interactive runs without the param.
+    """
+    try:
+        val = dbutils.widgets.get("snapshot_date")  # noqa: F821 (notebook global)
+        if val:
+            return val
+    except Exception:
+        pass
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
