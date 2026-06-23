@@ -2051,6 +2051,36 @@ than fabricate a day/month; derive `end_year` from the published duration.
 
 ---
 
+## Step 13: Aggregator linkage source via API (EuropePMC) — funder *and* grant linkages onto existing works
+
+When an **aggregator** (not the funder itself) exposes, per output, the funders/grants
+acknowledged on it — and is queryable by funder/grant — you can assert BOTH funder→work and
+grant→work edges across *many* funders at once, onto works already in OpenAlex. Canonical:
+**EuropePMC** (oxjob #477). It's a hybrid of §11 (OUTPUT-LIST, resolve-to-existing-works, no new
+works) and the DataCite work-funders pattern (junction with `award_ids` + minted awards).
+
+Key choices that made it work (see oxjob #477 + the `reference_walden_ingest_golive_ops` note):
+- **Use the right API.** EuropePMC has TWO: the **Articles REST API** (`/webservices/rest/`,
+  191 searchable fields incl. `GRANT_ID`/`GRANT_AGENCY`, robust for ALL funders) is the one to
+  harvest; the **GRIST** grants endpoint is weak (`ga:` Wellcome-only). Harvest `GRANT_AGENCY:*`
+  (~9.95M works) → S3. ~99.9% carry a DOI, so a DOI→work_id crosswalk (like §11.2) suffices.
+- **Records are free-text agency only** (no FundRef/ROR; grantId on ~85%). Resolve with the
+  existing registry matcher (`display_name ∪ alternate_titles`, unambiguous) **+ a hand-built
+  NIH/HHS/VA acronym→funder_id map** (the MEDLINE `X NIH HHS` codes dominate biomedical funding
+  strings and are the single biggest recall lever). Split multi-grant strings before
+  `is_usable_award_id`. ~81% occurrence-weighted resolution; an LLM residual pass is a later option.
+- **Both edge types, no double-work:** one junction `{work_id, funder_id, award_ids}` →
+  (a) funder edges via the `funder_reported_work_funders` UNION (§11.4 leg) AND (b) grant entities
+  minted into `openalex_awards_raw` + a `WorkAwards` leg (§10.3). Award ids are a deterministic
+  `hash(funder_id, normalized_grant_id)`, identical across sources, so duplicates collapse and
+  every distinct linkage from every source is retained.
+- **Ops:** harvest is a multi-hour job — run it **detached** (PowerShell `Start-Process`, not a
+  Bash tool call, which caps at 10min), unbuffered, resumable/skip-existing, **≤2 API streams**
+  (more → 503). Deploy = **merge to main** (scheduled RefreshWorkAwards/end2end run from main and
+  will otherwise erode branch-staged tables); don't force-merge stale awards notebooks.
+
+---
+
 ## Reference: Existing Examples
 
 | Funder | Script                | Notebook                     | API Type      |
