@@ -26,10 +26,23 @@ resources:
             notebook_path: notebooks/authors/UpdateAuthorFullNames
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        - task_key: Sync_Author_Orcid_Curations
+          notebook_task:
+            notebook_path: notebooks/authors/SyncAuthorOrcidCurations
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: Apply_Author_Orcid_Curations
+          depends_on:
+            - task_key: Sync_Author_Orcid_Curations
+          notebook_task:
+            notebook_path: notebooks/authors/ApplyAuthorOrcidCurations
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Create_Authors
           depends_on:
             - task_key: Apply_Author_Name_Curations
             - task_key: Update_Author_Full_Names
+            - task_key: Apply_Author_Orcid_Curations
           notebook_task:
             notebook_path: notebooks/authors/CreateAuthors
             source: GIT
