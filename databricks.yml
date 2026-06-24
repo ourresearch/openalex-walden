@@ -65,3 +65,4 @@ include:
   - jobs/create_funder_sourced_awards.yaml
   - jobs/datacite_awards.yaml
   - jobs/crossref_awards.yaml
+  - jobs/works_daily_metrics.yaml
