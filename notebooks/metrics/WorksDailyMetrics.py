@@ -191,8 +191,7 @@ def compute_for(snapshot_date, asof_clause, version):
 # COMMAND ----------
 
 # Map each backfill date -> the Delta version current at end-of-day (latest commit
-# whose timestamp <= 23:59:59 of that date). Dates older than the oldest retained
-# version are skipped.
+# whose timestamp <= 23:59:59 of that date).
 hist = (
     spark.sql(f"DESCRIBE HISTORY {SRC_TABLE}")
     .select("version", "timestamp")
@@ -202,10 +201,45 @@ hist = sorted(((int(h["version"]), h["timestamp"]) for h in hist), key=lambda x:
 latest_version = hist[-1][0]
 
 
+def _retention_days():
+    """deletedFileRetentionDuration in days (default 30 if unreadable)."""
+    import re
+    try:
+        val = spark.sql(
+            f"SHOW TBLPROPERTIES {SRC_TABLE} ('delta.deletedFileRetentionDuration')"
+        ).collect()[0]["value"].lower()  # e.g. "30 days" / "720 hours" / "interval ..."
+        m = re.search(r"(\d+)\s*day", val)
+        if m:
+            return int(m.group(1))
+        m = re.search(r"(\d+)\s*hour", val)
+        if m:
+            return int(m.group(1)) // 24
+    except Exception as e:
+        print(f"  could not read retention ({e}); defaulting to 30 days")
+    return 30
+
+
+# Delta enforces deletedFileRetentionDuration as a ROLLING window against the
+# current wall-clock time, so any version older than (now - retention) is
+# unreadable — and the boundary advances during the (multi-hour) backfill. Keep a
+# 1-day safety margin below the horizon so a chosen version can't slip past it
+# mid-run. Net effect: a 30-day retention yields ~29 reachable daily snapshots.
+RETENTION_DAYS = _retention_days()
+SAFETY_MARGIN_DAYS = 1
+safe_lower_bound = datetime.now(timezone.utc) - timedelta(
+    days=RETENTION_DAYS - SAFETY_MARGIN_DAYS
+)
+print(f"retention={RETENTION_DAYS}d -> only time-travel to versions newer than "
+      f"{safe_lower_bound:%Y-%m-%d %H:%M} UTC")
+
+
 def version_asof_end_of(d):
     cutoff = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
-    candidates = [v for v, ts in hist if ts.replace(tzinfo=timezone.utc) <= cutoff]
-    return max(candidates) if candidates else None
+    cands = [
+        (v, ts) for v, ts in hist
+        if safe_lower_bound <= ts.replace(tzinfo=timezone.utc) <= cutoff
+    ]
+    return max(cands, key=lambda x: x[0])[0] if cands else None
 
 
 # Live "today" snapshot (current table) + any backfill days.
@@ -214,7 +248,7 @@ for n in range(1, BACKFILL_DAYS + 1):
     d = RUN_DATE - timedelta(days=n)
     v = version_asof_end_of(d)
     if v is None:
-        print(f"  skip {d}: no retained version (outside 30-day window)")
+        print(f"  skip {d}: no reachable version (outside retention window)")
         continue
     targets.append((d, f"VERSION AS OF {v}", v))
 

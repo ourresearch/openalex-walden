@@ -11,9 +11,14 @@ resources:
         on_failure:
           - casey@ourresearch.org
       schedule:
-        # 05:00 UTC — after end2end + the 03:30 content-manifest export, so the
-        # live table reflects the day's refresh before we snapshot its metrics.
-        quartz_cron_expression: 0 0 5 * * ?
+        # 22:00 UTC. end2end starts at 05:00 UTC and runs ~5-13h (clusters around
+        # 16:00-17:30 lately), so 22:00 leaves a buffer for the live works table to
+        # finish the day's rebuild before we snapshot its metrics. NOTE: this is a
+        # fixed-clock standalone schedule, NOT gated on end2end — on rare overrun
+        # days (end2end finishing >22:00 / next day) this row may reflect a
+        # mid-refresh or prior-day table. Writes are idempotent per snapshot_date,
+        # so just re-run that date manually to correct it.
+        quartz_cron_expression: 0 0 22 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       parameters:
