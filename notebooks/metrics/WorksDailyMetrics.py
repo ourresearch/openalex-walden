@@ -259,15 +259,12 @@ print(f"computing {len(targets)} snapshot(s): "
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Compute all snapshots
-
-# COMMAND ----------
-
-all_rows = []
-for d, asof, v in targets:
-    print(f"-> {d}  (version {v}{' live' if asof == '' else ''}) ...")
-    all_rows.extend(compute_for(d, asof, v))
-print(f"total rows computed: {len(all_rows)}")
+# MAGIC ## Compute + write each snapshot incrementally
+# MAGIC
+# MAGIC Each snapshot is written the moment it's computed (idempotent per
+# MAGIC snapshot_date), so a long backfill is durable and **restartable**: if the
+# MAGIC run dies partway, dates already written survive and a re-run skips them.
+# MAGIC The live RUN_DATE row is always (re)computed so same-day re-runs refresh it.
 
 # COMMAND ----------
 
@@ -278,30 +275,43 @@ schema = StructType([
     StructField("dimension", StringType(), True),
     StructField("value", LongType(), False),
 ])
-out = (
-    spark.createDataFrame(all_rows, schema)
-    .withColumn("computed_at", F.current_timestamp())
-)
 
-# COMMAND ----------
+# Dates already saved (so a restart skips them). RUN_DATE is never skipped.
+existing_dates = set()
+if table_exists:
+    existing_dates = {
+        r["snapshot_date"]
+        for r in spark.sql(f"SELECT DISTINCT snapshot_date FROM {DST_TABLE}").collect()
+    }
 
-# MAGIC %md
-# MAGIC ## Write (idempotent per snapshot_date)
 
-# COMMAND ----------
+def write_snapshot(d, rows):
+    """Idempotent per-date write: (re)create the table or replace just date d."""
+    global table_exists
+    df = (spark.createDataFrame(rows, schema)
+          .withColumn("computed_at", F.current_timestamp()))
+    if not table_exists:
+        (df.write.format("delta").mode("overwrite")
+           .option("overwriteSchema", "true").saveAsTable(DST_TABLE))
+        table_exists = True
+    else:
+        spark.sql(f"DELETE FROM {DST_TABLE} WHERE snapshot_date = DATE'{d}'")
+        df.write.format("delta").mode("append").saveAsTable(DST_TABLE)
 
-if not table_exists:
-    (out.write.format("delta")
-        .mode("overwrite")
-        .option("overwriteSchema", "true")
-        .saveAsTable(DST_TABLE))
-    print(f"created {DST_TABLE} with {out.count()} rows")
-else:
-    dates = [r["snapshot_date"] for r in out.select("snapshot_date").distinct().collect()]
-    in_list = ", ".join(f"DATE'{d}'" for d in dates)
-    spark.sql(f"DELETE FROM {DST_TABLE} WHERE snapshot_date IN ({in_list})")
-    out.write.format("delta").mode("append").saveAsTable(DST_TABLE)
-    print(f"replaced {len(dates)} date(s) in {DST_TABLE}; appended {out.count()} rows")
+
+written, skipped = 0, 0
+for d, asof, v in targets:
+    if d != RUN_DATE and d in existing_dates:
+        print(f"-> {d}: already saved, skipping")
+        skipped += 1
+        continue
+    print(f"-> {d}  (version {v}{' live' if asof == '' else ''}) computing ...")
+    rows = compute_for(d, asof, v)
+    write_snapshot(d, rows)
+    written += 1
+    print(f"   {d}: wrote {len(rows)} rows")
+
+print(f"done: {written} snapshot(s) written, {skipped} skipped")
 
 # COMMAND ----------
 
