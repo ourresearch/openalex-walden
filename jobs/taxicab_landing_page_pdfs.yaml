@@ -21,6 +21,10 @@ resources:
               lookback_days: "30"
               url_limit: "2000000"
               source_filter: "pdf_only"
+              # TEMP: skip the ~900K backfill-reparse PDF backlog; only harvest
+              # PDFs for works taxicab actually scraped (live pipeline). Drained
+              # the schedule-blocking ~31h runs. Backfill drained deliberately elsewhere.
+              only_scrape_new: "true"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -54,3 +58,5 @@ resources:
           default: "2000000"
         - name: source_filter
           default: "pdf_only"
+        - name: only_scrape_new
+          default: "true"
