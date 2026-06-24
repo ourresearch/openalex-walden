@@ -172,21 +172,33 @@ resources:
             - task_key: Sync_RAS_Curations
           run_job_task:
             job_id: 637771147662119
+          # Retry the whole child job on transient failures (e.g. GPU compute
+          # capacity) so one bad attempt doesn't fail all of end2end. The child
+          # job's inference task also retries internally; this re-acquires a
+          # fresh cluster after a longer pause to let capacity recover.
+          max_retries: 2
+          min_retry_interval_millis: 600000
         - task_key: SDG_Frontfill
           depends_on:
             - task_key: Works_Base
           run_job_task:
             job_id: 27479127407344
+          max_retries: 2
+          min_retry_interval_millis: 600000
         - task_key: Topics
           depends_on:
             - task_key: Works_Base
           run_job_task:
             job_id: 107953357639482
+          max_retries: 2
+          min_retry_interval_millis: 600000
         - task_key: Concepts
           depends_on:
             - task_key: Works_Base
           run_job_task:
             job_id: 948457692151163
+          max_retries: 2
+          min_retry_interval_millis: 600000
         - task_key: Author_Affiliations
           depends_on:
             - task_key: Parsed_Author_Names
