@@ -338,7 +338,7 @@ def download_grantees(output_dir: Path, limit: Optional[int]) -> Path:
 # Name normalization: BBRF formats most names as "First M. Last, Ph.D."
 # Strip postnominals before split.
 _DEGREE_SUFFIXES_RE = re.compile(
-    r",\s*(?:Ph\.?\s*D\.?|M\.?\s*D\.?|D\.?\s*Phil\.?|M\.?\s*D\.?\s*-?\s*Ph\.?\s*D\.?|"
+    r"(?:,\s*|\s+)(?:Ph\.?\s*D\.?|M\.?\s*D\.?|D\.?\s*Phil\.?|M\.?\s*D\.?\s*-?\s*Ph\.?\s*D\.?|"
     r"Sc\.?\s*D\.?|Dr\.?\s*P\.?\s*H\.?|D\.?\s*V\.?\s*M\.?|D\.?\s*O\.?|R\.?\s*N\.?|"
     r"M\.?\s*P\.?\s*H\.?|M\.?\s*Sc\.?|J\.?\s*D\.?|Jr\.?|Sr\.?|II|III|IV)"
     r"(?:[,\s.]|$)",
