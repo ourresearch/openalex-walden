@@ -17,23 +17,22 @@
 # MAGIC | value            | bigint    | the count                                                    |
 # MAGIC | computed_at      | timestamp | when this run computed the row                               |
 # MAGIC
-# MAGIC **Daily run**: computes metrics on the current (live) table, tagged with
-# MAGIC `snapshot_date`. Re-running a date is idempotent (deletes that date's rows
-# MAGIC then re-inserts).
+# MAGIC Computes metrics on the current (live) `openalex_works` and writes them
+# MAGIC tagged with `snapshot_date` (default today UTC). Re-running a date is
+# MAGIC idempotent — it deletes that date's rows then re-inserts — so a same-day
+# MAGIC re-run refreshes it and any day can be corrected by re-running with
+# MAGIC `snapshot_date` set to that date.
 # MAGIC
-# MAGIC **First run / backfill**: when the table doesn't exist yet (or `backfill_days`
-# MAGIC is set), it walks Delta time travel for the prior N days (default 30), picking
-# MAGIC the table version current at end-of-day for each date. openalex_works retains
-# MAGIC 30 days of history (`delta.deletedFileRetentionDuration` /
-# MAGIC `logRetentionDuration` = 30 days), so a 30-day backfill is the practical max.
+# MAGIC The initial 30-day history was seeded once via Delta time travel (see git
+# MAGIC history, commit removing the backfill path); this notebook is now daily-only.
 
 # COMMAND ----------
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
-    StructType, StructField, StringType, LongType, DateType, TimestampType,
+    StructType, StructField, StringType, LongType, DateType,
 )
 
 SRC_TABLE = "openalex.works.openalex_works"
@@ -43,7 +42,6 @@ DST_TABLE = "openalex.works.works_daily_metrics"
 
 # Job parameters
 dbutils.widgets.text("snapshot_date", "", "Snapshot date (YYYY-MM-DD, blank = today UTC)")
-dbutils.widgets.text("backfill_days", "", "Backfill N prior days via time travel (blank = auto: 30 on first run, else 0)")
 
 _sd = dbutils.widgets.get("snapshot_date").strip()
 RUN_DATE = (
@@ -52,16 +50,7 @@ RUN_DATE = (
 )
 
 table_exists = spark.catalog.tableExists(DST_TABLE)
-
-_bf = dbutils.widgets.get("backfill_days").strip()
-if _bf:
-    BACKFILL_DAYS = int(_bf)
-elif not table_exists:
-    BACKFILL_DAYS = 30  # auto-backfill the retention window on the very first run
-else:
-    BACKFILL_DAYS = 0
-
-print(f"RUN_DATE={RUN_DATE}  BACKFILL_DAYS={BACKFILL_DAYS}  dst_exists={table_exists}")
+print(f"RUN_DATE={RUN_DATE}  dst_exists={table_exists}")
 
 # COMMAND ----------
 
@@ -186,85 +175,20 @@ def compute_for(snapshot_date, asof_clause, version):
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Resolve which (date, version) snapshots to compute
+# MAGIC ## Record the live table version
 
 # COMMAND ----------
 
-# Map each backfill date -> the Delta version current at end-of-day (latest commit
-# whose timestamp <= 23:59:59 of that date).
-hist = (
-    spark.sql(f"DESCRIBE HISTORY {SRC_TABLE}")
-    .select("version", "timestamp")
-    .collect()
+# The current Delta version of openalex_works, stored on each row for provenance.
+latest_version = int(
+    spark.sql(f"DESCRIBE HISTORY {SRC_TABLE} LIMIT 1").collect()[0]["version"]
 )
-hist = sorted(((int(h["version"]), h["timestamp"]) for h in hist), key=lambda x: x[1])
-latest_version = hist[-1][0]
-
-
-def _retention_days():
-    """deletedFileRetentionDuration in days (default 30 if unreadable)."""
-    import re
-    try:
-        val = spark.sql(
-            f"SHOW TBLPROPERTIES {SRC_TABLE} ('delta.deletedFileRetentionDuration')"
-        ).collect()[0]["value"].lower()  # e.g. "30 days" / "720 hours" / "interval ..."
-        m = re.search(r"(\d+)\s*day", val)
-        if m:
-            return int(m.group(1))
-        m = re.search(r"(\d+)\s*hour", val)
-        if m:
-            return int(m.group(1)) // 24
-    except Exception as e:
-        print(f"  could not read retention ({e}); defaulting to 30 days")
-    return 30
-
-
-# Delta enforces deletedFileRetentionDuration as a ROLLING window against the
-# current wall-clock time, so any version older than (now - retention) is
-# unreadable — and the boundary advances during the (multi-hour) backfill. Keep a
-# 1-day safety margin below the horizon so a chosen version can't slip past it
-# mid-run. Net effect: a 30-day retention yields ~29 reachable daily snapshots.
-RETENTION_DAYS = _retention_days()
-SAFETY_MARGIN_DAYS = 1
-safe_lower_bound = datetime.now(timezone.utc) - timedelta(
-    days=RETENTION_DAYS - SAFETY_MARGIN_DAYS
-)
-print(f"retention={RETENTION_DAYS}d -> only time-travel to versions newer than "
-      f"{safe_lower_bound:%Y-%m-%d %H:%M} UTC")
-
-
-def version_asof_end_of(d):
-    cutoff = datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
-    cands = [
-        (v, ts) for v, ts in hist
-        if safe_lower_bound <= ts.replace(tzinfo=timezone.utc) <= cutoff
-    ]
-    return max(cands, key=lambda x: x[0])[0] if cands else None
-
-
-# Live "today" snapshot (current table) + any backfill days.
-targets = [(RUN_DATE, "", latest_version)]  # (date, asof_clause, version)
-for n in range(1, BACKFILL_DAYS + 1):
-    d = RUN_DATE - timedelta(days=n)
-    v = version_asof_end_of(d)
-    if v is None:
-        print(f"  skip {d}: no reachable version (outside retention window)")
-        continue
-    targets.append((d, f"VERSION AS OF {v}", v))
-
-targets.sort(key=lambda t: t[0])
-print(f"computing {len(targets)} snapshot(s): "
-      f"{targets[0][0]} .. {targets[-1][0]}")
+print(f"openalex_works current version = {latest_version}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Compute + write each snapshot incrementally
-# MAGIC
-# MAGIC Each snapshot is written the moment it's computed (idempotent per
-# MAGIC snapshot_date), so a long backfill is durable and **restartable**: if the
-# MAGIC run dies partway, dates already written survive and a re-run skips them.
-# MAGIC The live RUN_DATE row is always (re)computed so same-day re-runs refresh it.
+# MAGIC ## Compute + write today's snapshot (idempotent per snapshot_date)
 
 # COMMAND ----------
 
@@ -276,42 +200,21 @@ schema = StructType([
     StructField("value", LongType(), False),
 ])
 
-# Dates already saved (so a restart skips them). RUN_DATE is never skipped.
-existing_dates = set()
-if table_exists:
-    existing_dates = {
-        r["snapshot_date"]
-        for r in spark.sql(f"SELECT DISTINCT snapshot_date FROM {DST_TABLE}").collect()
-    }
+print(f"-> {RUN_DATE}  (version {latest_version}) computing ...")
+rows = compute_for(RUN_DATE, "", latest_version)  # "" = read the live table
 
+df = (spark.createDataFrame(rows, schema)
+      .withColumn("computed_at", F.current_timestamp()))
 
-def write_snapshot(d, rows):
-    """Idempotent per-date write: (re)create the table or replace just date d."""
-    global table_exists
-    df = (spark.createDataFrame(rows, schema)
-          .withColumn("computed_at", F.current_timestamp()))
-    if not table_exists:
-        (df.write.format("delta").mode("overwrite")
-           .option("overwriteSchema", "true").saveAsTable(DST_TABLE))
-        table_exists = True
-    else:
-        spark.sql(f"DELETE FROM {DST_TABLE} WHERE snapshot_date = DATE'{d}'")
-        df.write.format("delta").mode("append").saveAsTable(DST_TABLE)
+if not table_exists:
+    (df.write.format("delta").mode("overwrite")
+       .option("overwriteSchema", "true").saveAsTable(DST_TABLE))
+else:
+    # Replace just RUN_DATE so same-day re-runs / corrections are idempotent.
+    spark.sql(f"DELETE FROM {DST_TABLE} WHERE snapshot_date = DATE'{RUN_DATE}'")
+    df.write.format("delta").mode("append").saveAsTable(DST_TABLE)
 
-
-written, skipped = 0, 0
-for d, asof, v in targets:
-    if d != RUN_DATE and d in existing_dates:
-        print(f"-> {d}: already saved, skipping")
-        skipped += 1
-        continue
-    print(f"-> {d}  (version {v}{' live' if asof == '' else ''}) computing ...")
-    rows = compute_for(d, asof, v)
-    write_snapshot(d, rows)
-    written += 1
-    print(f"   {d}: wrote {len(rows)} rows")
-
-print(f"done: {written} snapshot(s) written, {skipped} skipped")
+print(f"done: wrote {len(rows)} rows for {RUN_DATE}")
 
 # COMMAND ----------
 
