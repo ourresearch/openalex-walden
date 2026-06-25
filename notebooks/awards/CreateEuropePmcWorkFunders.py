@@ -75,9 +75,43 @@ NIH_ACR = {acr: _fid(v) for acr, v in nrow.items()}
 NIH_NAME = {" ".join(v["display_name"].lower().split()): _fid(v) for v in nrow.values()}
 print("NIH acronym entries:", len(NIH_ACR))
 
+# 2c. qualifier-tolerant PREFIX matching for non-NIH funders whose EuropePMC agency strings
+# append a sub-organization / program / country qualifier to the canonical name, e.g. AHA:
+#   "American Heart Association-American Stroke Association"   (ASA is an AHA division)
+#   "American Heart Association, United States"
+#   "American Heart Association (AHA) Pre-doctoral Fellowship Award"
+# The existing matcher is exact-only, so these fall through and the AHA grant is dropped
+# (audit: 150 of 329 AHA gold-set recall misses are exactly this — EuropePMC has the grant,
+# we never resolved it).
+#
+# This is OPT-IN and SAFE BY CONSTRUCTION, not open substring matching: a canonical name is
+# enabled as a prefix only if NO OTHER funder's registry name (display_name or
+# alternate_title) extends it token-wise. That guard REFUSES the dangerous case
+# "National Science Foundation" (a token-prefix of "National Science Foundation of China" /
+# NSFC) — so NSF would never swallow NSFC's works — while allowing AHA, which nothing extends.
+def _toks(s):
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).split()
+
+PREFIX_CANDIDATES = {
+    "american heart association": 4320306230,   # AHA (F4320306230)
+    # add more non-NIH funders here as they're verified; each is checked by the guard below.
+}
+_all_name_tuples = [(tuple(_toks(r["nl"])), r["funder_id"]) for r in fv.collect() if r["nl"]]
+PREFIX_SAFE = {}
+for _canon, _fid in PREFIX_CANDIDATES.items():
+    _ct = tuple(_toks(_canon))
+    _blockers = sorted({f for tk, f in _all_name_tuples
+                        if f != _fid and len(tk) > len(_ct) and tk[:len(_ct)] == _ct})
+    if _blockers:
+        print(f"[prefix-guard] REFUSED {_canon!r} (F{_fid}): other funders extend it -> {_blockers}")
+    else:
+        PREFIX_SAFE[_ct] = _fid
+print("prefix-safe funders enabled:", {" ".join(k): v for k, v in PREFIX_SAFE.items()})
+
 bc_un = spark.sparkContext.broadcast(unambig)
 bc_acr = spark.sparkContext.broadcast(NIH_ACR)
 bc_nm = spark.sparkContext.broadcast(NIH_NAME)
+bc_pfx = spark.sparkContext.broadcast(PREFIX_SAFE)
 
 # COMMAND ----------
 
@@ -111,6 +145,16 @@ def resolve(agency):
         if not n: continue
         if n in nm: return nm[n]
         if n in un: return un[n]
+    # qualifier-tolerant prefix match, PREFIX-SAFE funders only (see 2c guard). Catches
+    # agency strings that append a sub-org/program/country qualifier to the canonical name
+    # (e.g. AHA '-American Stroke Association', ', United States', ' (AHA) ... Award').
+    pfx = bc_pfx.value
+    if pfx:
+        at = re.sub(r"[^a-z0-9]+", " ", s.lower()).split()
+        for ct, fid in pfx.items():
+            k = len(ct)
+            if len(at) >= k and tuple(at[:k]) == ct:
+                return fid
     return None
 
 resolve_udf = F.udf(resolve, LongType())
@@ -240,3 +284,17 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC JOIN openalex.mid.funder f ON f.funder_id = e.funder_id
 # MAGIC JOIN openalex.works.openalex_works w ON w.id = e.work_id
 # MAGIC WHERE SIZE(e.award_ids) > 0 LIMIT 25;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- AHA resolution fix validation (oxjob: non-NIH funder-name resolution).
+# MAGIC -- Before the prefix-safe rule, AHA (F4320306230) edges were near-zero because its
+# MAGIC -- EuropePMC agency strings ("American Heart Association-American Stroke Association",
+# MAGIC -- ", United States", " (AHA) ... Award") never exact-matched. Expect a large jump.
+# MAGIC SELECT
+# MAGIC   COUNT(*)                              AS aha_work_funder_edges,
+# MAGIC   COUNT(DISTINCT e.work_id)             AS aha_works,
+# MAGIC   SUM(SIZE(e.award_ids))                AS aha_grant_links
+# MAGIC FROM openalex.awards.europepmc_work_funders e
+# MAGIC WHERE e.funder_id = 4320306230;
