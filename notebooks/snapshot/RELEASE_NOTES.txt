@@ -1,5 +1,10 @@
 OPENALEX STANDARD-FORMAT SNAPSHOT RELEASE NOTES
 
+RELEASE 2026-06-25
+- overhauled corresponding author detection: removed first-author-default corresponding authors and re-derived is_corresponding from landing pages and PDFs; added 7.04M works and 8.21M corresponding authors, raising accuracy from ~60% to ~90%
+- added dozens of new award funders (including Cancer Research UK, British Heart Foundation, DOE Office of Science, Humboldt, FCT Portugal, PCORI, KWF, Marsden, MRFF) plus DataCite work-funder links and EuropePMC/ANR funder-reported grant-to-work linkages
+- recovered 1.1M author affiliations and 1.4M abstracts through parsing improvements
+
 RELEASE 2026-05-22
 - continued cleanup of overmerged authors: 2.6M splinter profiles merged across 7 phases, affecting ~5M works
 - added 16 new award funders (Japan Prize, Blavatnik, Breakthrough, Gairdner, Abel, Fields Medal, IES, NIST, USGS, USDA, HRSA, FDA, CDC, AHRQ, EPA, MinCiencias)
