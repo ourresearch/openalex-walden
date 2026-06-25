@@ -192,11 +192,22 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC   FROM epmc_resolved
 # MAGIC   LATERAL VIEW OUTER EXPLODE(split(grant_id, '[,;]')) AS aid_raw
 # MAGIC ),
+# MAGIC cleaned_awards AS (
+# MAGIC   -- EuropePMC grantIds often append a PI name after a spaced hyphen
+# MAGIC   -- ("20SFRN35360185 - ANDREA BEATON") or trailing text in parens. Strip from the first
+# MAGIC   -- " - " (space-hyphen-space) and drop a trailing "(...)". Real grant numbers never
+# MAGIC   -- contain " - " or end in parens, so internal hyphens ("268201600003C-0-0-1") and
+# MAGIC   -- mid-string content are untouched. Without this, the dirty id either fails
+# MAGIC   -- is_usable_award_id (grant link lost) or is stored with the name glued on.
+# MAGIC   SELECT work_id, funder_id,
+# MAGIC     trim(regexp_replace(regexp_replace(aid_raw, '\\s+-\\s+.*$', ''), '\\s*\\([^()]*\\)\\s*$', '')) AS aid_raw
+# MAGIC   FROM split_awards
+# MAGIC ),
 # MAGIC flattened AS (
 # MAGIC   SELECT work_id, funder_id,
 # MAGIC     CASE WHEN aid_raw IS NOT NULL AND aid_raw <> ''
 # MAGIC               AND openalex.common.is_usable_award_id(aid_raw) THEN aid_raw END AS aid
-# MAGIC   FROM split_awards
+# MAGIC   FROM cleaned_awards
 # MAGIC )
 # MAGIC SELECT work_id, funder_id, ARRAY_DISTINCT(COLLECT_LIST(aid)) AS award_ids
 # MAGIC FROM flattened
@@ -298,3 +309,59 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC   SUM(SIZE(e.award_ids))                AS aha_grant_links
 # MAGIC FROM openalex.awards.europepmc_work_funders e
 # MAGIC WHERE e.funder_id = 4320306230;
+
+# COMMAND ----------
+
+# MAGIC %md #### Diagnostic — top UNRESOLVED funder agencies (the non-NIH ~20%)
+# MAGIC Ranks the agency strings the matcher misses and auto-triages each: the longest registry
+# MAGIC funder-name that is a token-prefix of it, and whether that name is PREFIX-SAFE (no other
+# MAGIC funder extends it). Prefix-safe hits are ready candidates for `PREFIX_CANDIDATES` (like
+# MAGIC AHA); ambiguous hits need an exact alias or a manual call. Run once to build the worklist.
+
+# COMMAND ----------
+
+from collections import defaultdict
+
+# 1) occurrence-weighted resolution rate + unresolved-agency frequencies
+_mentions = (spark.table("europepmc_funding_raw")
+             .select(F.explode("grants").alias("g")).select(F.col("g.agency").alias("agency"))
+             .where(F.col("agency").isNotNull() & (F.trim("agency") != "")))
+_mentions = _mentions.withColumn("fid", resolve_udf("agency")).cache()
+_tot = _mentions.count(); _un = _mentions.where(F.col("fid").isNull()).count()
+print(f"agency mentions: {_tot:,} | resolved: {_tot-_un:,} ({100*(_tot-_un)/_tot:.1f}%) | "
+      f"unresolved: {_un:,} ({100*_un/_tot:.1f}%)")
+top_un = (_mentions.where(F.col("fid").isNull())
+          .groupBy("agency").count().orderBy(F.desc("count")).limit(200).collect())
+
+# 2) auto-triage each top unresolved agency vs the registry (token-prefix, longest wins)
+_by_first = defaultdict(list)
+for _tk, _f in _all_name_tuples:
+    if _tk: _by_first[_tk[0]].append((_tk, _f))
+
+def _suggest(agency):
+    at = tuple(_toks(agency))
+    if not at: return None
+    best = None
+    for tk, fid in _by_first.get(at[0], []):
+        if len(at) >= len(tk) and at[:len(tk)] == tk and (best is None or len(tk) > len(best[0])):
+            best = (tk, fid)
+    if not best: return None
+    tk, fid = best
+    safe = not any(f != fid and len(o) > len(tk) and o[:len(tk)] == tk for o, f in _all_name_tuples)
+    return (" ".join(tk), fid, safe)
+
+print(f"\n{'cnt':>8}  {'verdict':10}  agency  ->  suggested funder")
+_safe_adds = []
+for r in top_un:
+    s = _suggest(r["agency"])
+    if not s:
+        print(f"{r['count']:>8}  {'no-prefix':10}  {r['agency'][:58]!r}")
+        continue
+    canon, fid, safe = s
+    if safe: _safe_adds.append((canon, fid))
+    print(f"{r['count']:>8}  {('SAFE-add' if safe else 'ambiguous'):10}  {r['agency'][:58]!r}  ->  F{fid} ({canon})")
+
+# 3) ready-to-paste prefix-safe additions (review before adding)
+print("\n# Prefix-safe PREFIX_CANDIDATES additions to review:")
+for canon, fid in sorted(set(_safe_adds)):
+    print(f'    "{canon}": {fid},')
