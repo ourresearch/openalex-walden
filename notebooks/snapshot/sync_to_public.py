@@ -54,6 +54,14 @@ date_str = dbutils.widgets.get("snapshot_date").strip() or datetime.now(timezone
 staging_base = f"s3://{STAGING_BUCKET}/full/{date_str}"
 local_scratch = "/local_disk0/s3_transfer"
 
+# Manifests are written against the staging layout
+# (s3://openalex-snapshots/full/{date}/{fmt}/{entity}/...). On the public bucket
+# the same files live at s3://openalex/data/{fmt}/{entity}/..., so every URL inside
+# a manifest must be repointed from the staging prefix to the public prefix before
+# it is published — otherwise public consumers are sent to an inaccessible bucket.
+STAGING_URL_PREFIX = f"{staging_base}/"
+PUBLIC_URL_PREFIX = f"s3://{PUBLIC_BUCKET}/{PUBLIC_PREFIX}/"
+
 MAX_WORKERS = 30
 MAX_RETRIES = 3
 
@@ -139,6 +147,66 @@ def _get_public_client():
     return _thread_local.s3_client
 
 
+def _rewrite_manifest_urls(obj):
+    """Recursively repoint staging S3 URLs to their public-bucket equivalents.
+
+    Staging layout:  s3://openalex-snapshots/full/{date}/{fmt}/{entity}/...
+    Public layout:   s3://openalex/data/{fmt}/{entity}/...
+
+    Any string starting with the staging prefix has that prefix swapped for the
+    public prefix; everything else is returned unchanged.
+    """
+    if isinstance(obj, dict):
+        return {k: _rewrite_manifest_urls(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_rewrite_manifest_urls(v) for v in obj]
+    if isinstance(obj, str) and obj.startswith(STAGING_URL_PREFIX):
+        return PUBLIC_URL_PREFIX + obj[len(STAGING_URL_PREFIX):]
+    return obj
+
+
+def _publish_manifest(manifest_dbfs, public_key, local_rel):
+    """Copy a manifest from staging, rewrite its URLs to the public layout, upload it.
+
+    Returns the uploaded byte size. Raises if any staging reference survives the
+    rewrite (a guard against the public manifest pointing back at the private bucket).
+    """
+    local_path = os.path.join(local_scratch, local_rel)
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+    dbutils.fs.cp(manifest_dbfs, f"file:{local_path}")
+    with open(local_path) as f:
+        manifest = json.load(f)
+
+    rewritten = _rewrite_manifest_urls(manifest)
+    serialized = json.dumps(rewritten, indent=2)
+
+    # Guard: no staging-bucket reference may leak into a published manifest.
+    if f"s3://{STAGING_BUCKET}/" in serialized:
+        raise RuntimeError(f"staging URL survived rewrite for {public_key}")
+
+    with open(local_path, "w") as f:
+        f.write(serialized)
+    local_size = os.path.getsize(local_path)
+
+    client = _get_public_client()
+    client.upload_file(local_path, PUBLIC_BUCKET, public_key)
+
+    head = client.head_object(Bucket=PUBLIC_BUCKET, Key=public_key)
+    if head["ContentLength"] != local_size:
+        raise RuntimeError(
+            f"Manifest size mismatch for {public_key}: "
+            f"expected {local_size}, got {head['ContentLength']}"
+        )
+
+    try:
+        os.remove(local_path)
+    except OSError:
+        pass
+
+    return local_size
+
+
 def list_staging_files(fmt, entity):
     """List all files for an entity+format in staging.
 
@@ -158,6 +226,11 @@ def list_staging_files(fmt, entity):
             if entry.isDir():
                 _walk(entry.path)
             else:
+                # The per-entity manifest.json lives at the entity root. Skip it here:
+                # its URLs need staging→public rewriting (which changes its size), so
+                # it's published separately via upload_entity_manifest().
+                if entry.name == "manifest.json":
+                    continue
                 # Build the relative key: {fmt}/{entity}/updated_date=.../part_XXXX.{ext}
                 raw = entry.path.replace("dbfs:", "").replace("s3:", "")
                 idx = raw.find(marker)
@@ -220,37 +293,30 @@ def upload_file_to_public(dbfs_path, relative_key, expected_size):
     raise RuntimeError(f"Failed after {MAX_RETRIES} attempts for {relative_key}: {last_err}")
 
 
+def upload_entity_manifest(fmt, entity):
+    """Rewrite + upload the per-entity manifest (lives inside the entity folder).
+
+    Source: {staging_base}/{fmt}/{entity}/manifest.json
+    Target: s3://{PUBLIC_BUCKET}/{PUBLIC_PREFIX}/{fmt}/{entity}/manifest.json
+    """
+    return _publish_manifest(
+        f"{staging_base}/{fmt}/{entity}/manifest.json",
+        f"{PUBLIC_PREFIX}/{fmt}/{entity}/manifest.json",
+        os.path.join(fmt, entity, "manifest.json"),
+    )
+
+
 def upload_manifest(fmt):
-    """Copy the per-format combined manifest to the public bucket (last, as completion marker).
+    """Rewrite + upload the per-format combined manifest (last, as completion marker).
 
     Source: {staging_base}/{fmt}/manifest.json
     Target: s3://{PUBLIC_BUCKET}/{PUBLIC_PREFIX}/{fmt}/manifest.json
     """
-    manifest_dbfs = f"{staging_base}/{fmt}/manifest.json"
-    local_path = os.path.join(local_scratch, fmt, "manifest.json")
-    public_key = f"{PUBLIC_PREFIX}/{fmt}/manifest.json"
-
-    os.makedirs(os.path.dirname(local_path), exist_ok=True)
-
-    dbutils.fs.cp(manifest_dbfs, f"file:{local_path}")
-    local_size = os.path.getsize(local_path)
-
-    client = _get_public_client()
-    client.upload_file(local_path, PUBLIC_BUCKET, public_key)
-
-    head = client.head_object(Bucket=PUBLIC_BUCKET, Key=public_key)
-    if head["ContentLength"] != local_size:
-        raise RuntimeError(
-            f"Manifest size mismatch for {fmt}: "
-            f"expected {local_size}, got {head['ContentLength']}"
-        )
-
-    try:
-        os.remove(local_path)
-    except OSError:
-        pass
-
-    return local_size
+    return _publish_manifest(
+        f"{staging_base}/{fmt}/manifest.json",
+        f"{PUBLIC_PREFIX}/{fmt}/manifest.json",
+        os.path.join(fmt, "manifest.json"),
+    )
 
 # COMMAND ----------
 
@@ -352,6 +418,12 @@ for fmt in FORMATS:
                 f"Total size mismatch for {fmt}/{entity}: "
                 f"staged {staging_total_size}, public bucket has {public_total_size}"
             )
+
+        # 5. Rewrite + upload the per-entity manifest (URLs repointed to public).
+        #    Uploaded after the count/size verification above so it doesn't perturb
+        #    the data-file checks.
+        entity_manifest_size = upload_entity_manifest(fmt, entity)
+        print(f"  Entity manifest uploaded ({entity_manifest_size / 1024:.1f} KB)")
 
         elapsed = time.time() - entity_start
         print(f"  Done: {len(files)} files, {uploaded_size / (1024**3):.2f} GB, {elapsed:.0f}s")
