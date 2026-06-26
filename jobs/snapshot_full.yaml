@@ -355,12 +355,20 @@ resources:
               availability: SPOT_WITH_FALLBACK
               zone_id: auto
               spot_bid_price_percent: 100
+            # Network-bound work: each file is streamed staging->public through the
+            # cluster (no server-side copy across the two AWS accounts). Throughput
+            # scales with aggregate worker NIC, so run multi-node and let
+            # sync_to_public distribute the copy across executors via mapPartitions.
+            # Autoscale so non-quarterly runs (which hit the quarterly gate and exit
+            # immediately) pay for ~1 worker, while a real quarterly sync scales out
+            # to 8 as the distributed copy queues tasks.
             node_type_id: i3.2xlarge
+            autoscale:
+              min_workers: 1
+              max_workers: 8
             enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-            kind: CLASSIC_PREVIEW
-            is_single_node: true
       environments:
         - environment_key: serverless
           spec:
