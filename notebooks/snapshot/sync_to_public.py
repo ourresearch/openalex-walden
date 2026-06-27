@@ -16,8 +16,9 @@
 #   The two buckets live in different AWS accounts with no single principal that
 #   can read staging AND write public, so a server-side S3->S3 copy is not
 #   available. Instead each file is streamed staging->public THROUGH the cluster:
-#   the read side uses the cluster's ambient AWS creds (which can read staging),
-#   the write side uses the "openalex-open-data" keys (which can write public).
+#   the read side uses the "webscraper" keys (which can read staging), the write
+#   side uses the "openalex-open-data" keys (which can write public). boto3's
+#   default credential chain has no access to either bucket on these clusters.
 #
 #   The copy is distributed across Spark executors (mapPartitions) and streamed
 #   object-to-object (no local disk round-trip), so aggregate throughput scales
@@ -139,10 +140,20 @@ try:
 except Exception as e:
     raise RuntimeError(f"Staging preflight FAILED — cannot access {staging_base}: {e}")
 
-# Driver can read staging via ambient AWS creds (boto3 default chain).
-staging_client = boto3.client("s3")
+# Staging-read credentials. boto3's default chain has NO access to the staging
+# bucket on these clusters — dbutils/S3A read it via Databricks-managed creds that
+# boto3 does not share, and no EC2 instance profile is attached. Read staging with
+# the explicit "webscraper" keys, the same scope the daily changefiles job uses for
+# boto3 access to s3://openalex-snapshots.
+staging_access_key = dbutils.secrets.get("webscraper", "aws_access_key_id")
+staging_secret_key = dbutils.secrets.get("webscraper", "aws_secret_access_key")
+staging_client = boto3.client(
+    "s3",
+    aws_access_key_id=staging_access_key,
+    aws_secret_access_key=staging_secret_key,
+)
 staging_client.head_bucket(Bucket=STAGING_BUCKET)
-print(f"Driver staging-read OK: s3://{STAGING_BUCKET} reachable via boto3")
+print(f"Driver staging-read OK: s3://{STAGING_BUCKET} reachable via boto3 (webscraper creds)")
 
 # Public-bucket write credentials
 public_access_key = dbutils.secrets.get("openalex-open-data", "aws_access_key_id")
@@ -157,8 +168,10 @@ _preflight_public.head_bucket(Bucket=PUBLIC_BUCKET)
 print(f"Public-bucket preflight OK: s3://{PUBLIC_BUCKET} accessible")
 del _preflight_public
 
-# Broadcast the public-write keys to executors (read side uses ambient creds).
+# Broadcast both credential pairs to executors: staging keys for the read side,
+# open-data keys for the write side.
 sc = spark.sparkContext
+_bc_staging_keys = sc.broadcast((staging_access_key, staging_secret_key))
 _bc_public_keys = sc.broadcast((public_access_key, public_secret_key))
 print(f"Cluster defaultParallelism: {sc.defaultParallelism}")
 
@@ -166,18 +179,20 @@ print(f"Cluster defaultParallelism: {sc.defaultParallelism}")
 def executor_staging_read_check():
     """Confirm EXECUTORS (not just the driver) can read staging via boto3.
 
-    The distributed copy reads staging from worker nodes through boto3's default
-    credential chain. If the cluster's ambient creds are driver-only, every copy
-    task would fail — but only after we'd started mutating the public bucket.
-    Probe here so a credential gap fails fast, before any public-bucket writes.
+    The distributed copy reads staging from worker nodes with the broadcast
+    webscraper keys. Probe that from executors here so a credential gap fails
+    fast, before any public-bucket writes.
     """
     n = min(max(sc.defaultParallelism, 1), 8)
     staging_bucket = STAGING_BUCKET
     prefix = staging_key_prefix
+    bc_keys = _bc_staging_keys
 
     def _probe(_rows):
         import boto3 as _b
-        _b.client("s3").list_objects_v2(Bucket=staging_bucket, Prefix=prefix, MaxKeys=1)
+        ak, sk = bc_keys.value
+        client = _b.client("s3", aws_access_key_id=ak, aws_secret_access_key=sk)
+        client.list_objects_v2(Bucket=staging_bucket, Prefix=prefix, MaxKeys=1)
         yield 1
 
     try:
@@ -185,9 +200,8 @@ def executor_staging_read_check():
     except Exception as e:  # noqa: BLE001
         raise RuntimeError(
             "Executors cannot read the staging bucket via boto3 "
-            f"({type(e).__name__}: {e}). The distributed copy needs the cluster's "
-            "ambient AWS creds available on workers — aborting before any "
-            "public-bucket writes."
+            f"({type(e).__name__}: {e}). The distributed copy needs the webscraper "
+            "keys usable on workers — aborting before any public-bucket writes."
         )
     print(f"Executor staging-read preflight OK ({len(got)} partitions probed)")
 
@@ -270,22 +284,23 @@ def delete_keys(keys):
     return deleted
 
 
-def _make_copy_fn(staging_bucket, public_bucket, bc_keys, max_retries,
-                  mp_threshold, mp_chunksize, mp_concurrency):
+def _make_copy_fn(staging_bucket, public_bucket, bc_staging_keys, bc_public_keys,
+                  max_retries, mp_threshold, mp_chunksize, mp_concurrency):
     """Build the mapPartitions function that streams staging->public on executors.
 
-    Read side uses the ambient creds (boto3 default client); write side uses the
-    broadcast open-data keys. Each object is streamed straight from the GetObject
-    body into a multipart upload — no local disk.
+    Read side uses the broadcast webscraper keys; write side uses the broadcast
+    open-data keys. Each object is streamed straight from the GetObject body into
+    a multipart upload — no local disk.
     """
     def _copy_partition(rows):
         import time as _time
         import boto3 as _boto3
         from boto3.s3.transfer import TransferConfig
 
-        src = _boto3.client("s3")  # ambient creds -> reads staging
-        ak, sk = bc_keys.value
-        dst = _boto3.client("s3", aws_access_key_id=ak, aws_secret_access_key=sk)
+        sak, ssk = bc_staging_keys.value
+        src = _boto3.client("s3", aws_access_key_id=sak, aws_secret_access_key=ssk)
+        pak, psk = bc_public_keys.value
+        dst = _boto3.client("s3", aws_access_key_id=pak, aws_secret_access_key=psk)
         cfg = TransferConfig(
             multipart_threshold=mp_threshold,
             multipart_chunksize=mp_chunksize,
@@ -321,7 +336,7 @@ def _make_copy_fn(staging_bucket, public_bucket, bc_keys, max_retries,
 
 
 copy_partition_fn = _make_copy_fn(
-    STAGING_BUCKET, PUBLIC_BUCKET, _bc_public_keys, MAX_RETRIES,
+    STAGING_BUCKET, PUBLIC_BUCKET, _bc_staging_keys, _bc_public_keys, MAX_RETRIES,
     MULTIPART_THRESHOLD, MULTIPART_CHUNKSIZE, MULTIPART_CONCURRENCY,
 )
 
