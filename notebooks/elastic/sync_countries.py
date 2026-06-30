@@ -76,9 +76,9 @@ print("Hash snapshot complete")
 # MAGIC     co.full_name,
 # MAGIC     cc.works_count,
 # MAGIC     cc.total_citations as cited_by_count,
-# MAGIC     CONCAT('https://api.openalex.org/authors?data-version=2&filter=last_known_institutions.country_code:', co.id) as authors_api_url,
-# MAGIC     CONCAT('https://api.openalex.org/institutions?data-version=2&filter=country_code:', co.id) as institutions_api_url,
-# MAGIC     CONCAT('https://api.openalex.org/works?data-version=2&filter=authorships.countries:', co.id) as works_api_url,
+# MAGIC     CONCAT('https://api.openalex.org/authors?filter=last_known_institutions.country_code:', co.id) as authors_api_url,
+# MAGIC     CONCAT('https://api.openalex.org/institutions?filter=country_code:', co.id) as institutions_api_url,
+# MAGIC     CONCAT('https://api.openalex.org/works?filter=authorships.countries:', co.id) as works_api_url,
 # MAGIC     NAMED_STRUCT(
 # MAGIC         'openalex', CONCAT('https://openalex.org/countries/', co.id),
 # MAGIC         'iso', CONCAT('https://www.iso.org/obp/ui/#iso:code:3166:', co.id),

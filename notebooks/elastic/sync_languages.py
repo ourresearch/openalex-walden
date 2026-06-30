@@ -45,7 +45,7 @@ print("Hash snapshot complete")
 # MAGIC )
 # MAGIC SELECT
 # MAGIC     CONCAT('https://openalex.org/languages/', l.id) as id,
-# MAGIC     CONCAT('https://api.openalex.org/works?data-version=2&filter=language:', l.id) as works_api_url,
+# MAGIC     CONCAT('https://api.openalex.org/works?filter=language:', l.id) as works_api_url,
 # MAGIC     l.display_name,
 # MAGIC     lc.works_count,
 # MAGIC     lc.cited_by_count,

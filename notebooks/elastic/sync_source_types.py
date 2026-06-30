@@ -53,7 +53,7 @@ print("Hash snapshot complete")
 # MAGIC SELECT
 # MAGIC     CONCAT('https://openalex.org/source-types/', st.id) as id,
 # MAGIC     st.display_name,
-# MAGIC     CONCAT('https://api.openalex.org/works?data-version=2&filter=locations.source.type:', st.id) as works_api_url,
+# MAGIC     CONCAT('https://api.openalex.org/works?filter=locations.source.type:', st.id) as works_api_url,
 # MAGIC     stc.works_count,
 # MAGIC     stc.total_citations as cited_by_count,
 # MAGIC     DATE_TRUNC('SECOND', st.created_date) AS created_date,

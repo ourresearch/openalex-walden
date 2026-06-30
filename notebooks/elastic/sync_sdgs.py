@@ -60,7 +60,7 @@ print("Hash snapshot complete")
 # MAGIC     sc.cited_by_count,
 # MAGIC     s.image_url,
 # MAGIC     s.image_thumbnail_url,
-# MAGIC     CONCAT('https://api.openalex.org/works?data-version=2&filter=sustainable_development_goals.id:https://metadata.un.org/sdg/', s.id) as works_api_url,
+# MAGIC     CONCAT('https://api.openalex.org/works?filter=sustainable_development_goals.id:https://metadata.un.org/sdg/', s.id) as works_api_url,
 # MAGIC     DATE_TRUNC('SECOND', s.created_date) AS created_date,
 # MAGIC     CAST(NULL AS TIMESTAMP) AS updated_date
 # MAGIC FROM openalex.common.sdgs s

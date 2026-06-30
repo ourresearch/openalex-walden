@@ -59,7 +59,7 @@ print("Hash snapshot complete")
 # MAGIC     lc.total_citations as cited_by_count,
 # MAGIC     l.url,
 # MAGIC     l.description,
-# MAGIC     CONCAT('https://api.openalex.org/works?data-version=2&filter=locations.license_id:licenses/', l.id) as works_api_url,
+# MAGIC     CONCAT('https://api.openalex.org/works?filter=locations.license_id:licenses/', l.id) as works_api_url,
 # MAGIC     DATE_TRUNC('SECOND', l.created_date) AS created_date,
 # MAGIC     CAST(NULL AS TIMESTAMP) AS updated_date
 # MAGIC FROM openalex.common.licenses l
