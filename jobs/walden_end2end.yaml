@@ -66,20 +66,27 @@ resources:
           min_retry_interval_millis: 300000
           retry_on_timeout: true
           timeout_seconds: 3600
-        - task_key: Repos_Ingest_DLT
-          pipeline_task:
-            pipeline_id: fcd1ea61-2e07-433b-90ad-b3b0a0960158
-            full_refresh: false
-          max_retries: 3
-          min_retry_interval_millis: 300000
-          retry_on_timeout: true
-          timeout_seconds: 3600
+        # TEMPORARILY DISCONNECTED 2026-06-30 (oxjob #542): the Repo DLT pipeline is busy
+        # with a multi-day manual full refresh of repo_items/repo_parsed. While it's busy
+        # this task can't get its own update -> would time out and fail the whole end2end run.
+        # repo_works is frozen during the refresh anyway, so Union just reads it as-is.
+        # RECONNECT after the refresh completes: uncomment this task AND the Union depends_on
+        # line below, then watch the first incremental Repo update re-stream the reset
+        # repo_parsed -> repo_works (the #542 watch-item).
+        # - task_key: Repos_Ingest_DLT
+        #   pipeline_task:
+        #     pipeline_id: fcd1ea61-2e07-433b-90ad-b3b0a0960158
+        #     full_refresh: false
+        #   max_retries: 3
+        #   min_retry_interval_millis: 300000
+        #   retry_on_timeout: true
+        #   timeout_seconds: 3600
         - task_key: Union
           depends_on:
             - task_key: Crossref_Ingest_DLT
             - task_key: PubMed_Ingest_DLT
             - task_key: Mag_Ingest_DLT
-            - task_key: Repos_Ingest_DLT
+            # - task_key: Repos_Ingest_DLT  # TEMPORARILY DISCONNECTED (oxjob #542) — re-enable after repo_items full refresh
             - task_key: PDF_Ingest_DLT
             - task_key: DataCite_Ingest_DLT
             - task_key: Landing_Page_Ingest_DLT
