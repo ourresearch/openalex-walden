@@ -17,47 +17,56 @@ from openalex.dlt.transform import apply_initial_processing, apply_final_merge_k
 
 
 """
-Convert DataCite resource types to OpenAlex types.
-Returns 'other' for types that don't map to OpenAlex types.
+Convert DataCite resource types to OpenAlex types (oxjob #539).
+
+Tier 1 below maps the *controlled* `resourceTypeGeneral` vocabulary. Only SPECIFIC values are keys:
+the generic buckets (Text / Other / Collection) are deliberately OMITTED so the Tier-1 lookup returns
+null and `datacite_type_cascade` falls through to the citeproc (Tier 2) and resourceType (Tier 3)
+signals. Unmapped / unknown values default to 'other'. Full rationale + sizing in the job's MAPPING.md.
 """
 datacite_to_openalex = {
-    # article types
+    # article
     "JournalArticle": "article",
-    "ConferencePaper": "article",
-    "DataPaper": "article",
-    "Text": "article",
-    
-    # book types
+
+    # conference (#539: ConferencePaper/ConferenceProceeding were article/other; Poster was other)
+    "ConferencePaper": "conference-paper",
+    "ConferenceProceeding": "conference-paper",
+    "Poster": "conference-abstract",
+
+    # data-paper (#539: was article)
+    "DataPaper": "data-paper",
+
+    # book
     "Book": "book",
     "BookChapter": "book-chapter",
-    
+
     # dataset
     "Dataset": "dataset",
     "Model": "dataset",
-    "DatasetOutputManagementPlan": "dataset",
-    
+
     # dissertation
     "Dissertation": "dissertation",
-    
+
     # preprint
     "Preprint": "preprint",
-    
+
     # report
     "Report": "report",
     "ProjectReport": "report",
-    
+
     # standard
     "Standard": "standard",
-    
+
     # peer review
     "PeerReview": "peer-review",
 
-    # map everything else to other - AK, we don't *have* to do that - "other" is default anyway
+    # software (#539: Software/ComputationalNotebook were other)
+    "Software": "software",
+    "ComputationalNotebook": "software",
+
+    # explicit other (media / non-scholarly artifacts — NOT refined by the cascade)
     "Audiovisual": "other",
     "Award": "other",
-    "Collection": "other",
-    "ComputationalNotebook": "other",
-    "ConferenceProceeding": "other",
     "Event": "other",
     "Image": "other",
     "InteractiveResource": "other",
@@ -66,13 +75,52 @@ datacite_to_openalex = {
     "ModelOutput": "other",
     "PhysicalObject": "other",
     "Service": "other",
-    "Software": "other",
     "Sound": "other",
     "StudyRegistration": "other",
     "Workflow": "other",
-    "Other": "other"
+    # NOTE (#539): "Text", "Other", "Collection" intentionally absent -> handled by the cascade.
+    # Removed dead key "DatasetOutputManagementPlan" (real value is "OutputManagementPlan",
+    # which correctly falls to the 'other' default).
 }
 openalex_type_from_datacite_mapping_expr = F.create_map([F.lit(x) for pair in datacite_to_openalex.items() for x in pair])
+
+# Tier 2: citeproc value, used ONLY when Tier 1 is a generic bucket (Text/Other/Collection/null).
+# GUARDRAIL: citeproc='article' is DataCite's "no usable type" placeholder (image files, research
+# cruises, seismic events) and is intentionally NOT a key here -> it never becomes 'article'. Only the
+# genuine 'article-journal' is rescued. bibtex/schemaOrg are NOT cross-checked: they are lossier
+# co-derived vocabularies, so requiring agreement only drops real records (oxjob #539; e.g. it would
+# discard ~102K real reports typed bibtex='article' and ~96K datasets typed schemaOrg='DataDownload').
+citeproc_to_openalex = {
+    "book": "book",
+    "thesis": "dissertation",
+    "report": "report",
+    "chapter": "book-chapter",
+    "dataset": "dataset",
+    "article-journal": "article",
+}
+citeproc_type_from_datacite_mapping_expr = F.create_map([F.lit(x) for pair in citeproc_to_openalex.items() for x in pair])
+
+
+def datacite_type_cascade(rtg_col, citeproc_col, resource_type_col):
+    """oxjob #539: 3-tier DataCite work-type resolution (first match wins).
+
+    Tier 1  resourceTypeGeneral (controlled map above) — specific values win outright.
+    Tier 3  resourceType free-text allowlist — only for generic buckets; evaluated BEFORE Tier 2
+            because posts/posters carry citeproc='article-journal'.
+    Tier 2  citeproc value — only for generic buckets; the 'article' placeholder is excluded by
+            construction (see GUARDRAIL above).
+    Default Text historically -> article; everything else -> other.
+    See the job's MAPPING.md for sizing and the full rationale.
+    """
+    is_generic = rtg_col.isNull() | rtg_col.isin("Text", "Other", "Collection")
+    sub = F.lower(resource_type_col)
+    return F.coalesce(
+        openalex_type_from_datacite_mapping_expr[rtg_col],
+        F.when(is_generic & (sub == "post"), F.lit("other"))
+         .when(is_generic & sub.like("%poster%"), F.lit("conference-abstract")),
+        F.when(is_generic, citeproc_type_from_datacite_mapping_expr[citeproc_col]),
+        F.when(rtg_col == "Text", F.lit("article")).otherwise(F.lit("other")),
+    )
 
 @F.pandas_udf(StringType())
 def normalize_license_udf_vectorized(license_series: pd.Series) -> pd.Series:
@@ -229,9 +277,12 @@ def datacite_parsed():
         )
         # Skip UDF usage entirely and pre-build a MapType to use in lookup
         .withColumn("raw_type", F.col("attributes.types.citeproc"))
-        .withColumn("type", F.coalesce(
-                openalex_type_from_datacite_mapping_expr[F.col("attributes.types.resourceTypeGeneral")], F.lit("other"))
-        )
+        # oxjob #539: 3-tier resolution (resourceTypeGeneral -> resourceType allowlist -> citeproc)
+        .withColumn("type", datacite_type_cascade(
+                F.col("attributes.types.resourceTypeGeneral"),
+                F.col("attributes.types.citeproc"),
+                F.col("attributes.types.resourceType"),
+        ))
         .withColumn("version", F.lit(None).cast("string"))
         .withColumn(
             "raw_license",
