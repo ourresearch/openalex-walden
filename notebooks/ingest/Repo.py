@@ -449,7 +449,7 @@ repository_schema = StructType([
             StructField("dc:description", ArrayType(StringType()), True),
             StructField("dc:source", StringType(), True),
             StructField("dc:date", ArrayType(StringType()), True),
-            StructField("dc:type", ArrayType(StringType()), True),
+            StructField("dc:type", StringType(), True),
             StructField("dc:identifier", ArrayType(StringType()), True),
             StructField("dc:language", StringType(), True),
             StructField("dc:format", ArrayType(StringType()), True),
@@ -532,8 +532,7 @@ def repo_parsed():
             F.col("native_id")
         )
     )
-    .withColumn("raw_native_types", F.col("`ns0:metadata`.`ns1:dc`.`dc:type`"))
-    .withColumn("raw_native_type", F.element_at(F.col("raw_native_types"), 1))
+    .withColumn("raw_native_type", F.col("`ns0:metadata`.`ns1:dc`.`dc:type`"))
     # Compute type lookup key: extract suffix after "info:eu-repo/semantics/" if present
     .withColumn("_type_key",
         F.when(
@@ -734,7 +733,6 @@ def repo_parsed():
         "normalized_title",
         "authors",
         "ids",
-        "raw_native_types",
         "raw_native_type",
         "type",
         "version",
