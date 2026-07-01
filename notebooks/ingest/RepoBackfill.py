@@ -1873,11 +1873,9 @@ if table_exists:
     delta_table.alias("target").merge(
         parsed_df.alias("source"),
         "target.native_id = source.native_id"
-    ).whenMatchedUpdate(
-        condition="source.updated_date >= target.updated_date",
-        set={}  # Updates all columns from source
-    ).whenNotMatchedInsert(
-        values={}  # Inserts all columns from source
+    ).whenMatchedUpdateAll(
+        condition="source.updated_date >= target.updated_date"  # update ALL columns from source
+    ).whenNotMatchedInsertAll(  # insert ALL columns from source
     ).execute()
 else:
     # Table doesn't exist yet, create it (first run only)
