@@ -6,6 +6,8 @@
 import dlt
 import pyspark.sql.functions as F
 from pyspark.sql.types import *
+from pyspark.sql.functions import pandas_udf
+import pandas as pd
 
 import re
 import unicodedata
@@ -1194,6 +1196,69 @@ COAR_RESOURCE_TYPE_MAP = {
 }
 COAR_MAP = F.create_map([F.lit(x) for kv in COAR_RESOURCE_TYPE_MAP.items() for x in kv])
 
+# --- oxjob #537: best dc:type element selection over the full array ---
+def resolve_repo_type(input_type):
+    """One dc:type value -> OpenAlex work type (default 'other'). Applied per array element."""
+    if not input_type or not isinstance(input_type, str):
+        return "other"
+    low = input_type.strip().lower()
+    if "coar/resource_type/" in low or "coar-repositories.org/resource_types/" in low:
+        m = re.search(r"(c_[0-9a-z]+|r60j-j5bd)", low)
+        return COAR_RESOURCE_TYPE_MAP.get(m.group(1), "other") if m else "other"
+    if "purl.org/coar/version/" in low:
+        return "article"
+    if "info:eu-repo/semantics/" in low:
+        low = low.split("info:eu-repo/semantics/")[-1].strip()
+    return REPO_TYPE_MAPPING.get(low, "other")
+
+# type priority: specific types > 'article' > 'other'; 'preprint' sits below 'article'
+# (preprint-by-source is owned by the is_preprint_repository rule, oxjob #540).
+_TYPE_PRIORITY = [
+    "retraction", "dissertation", "conference-paper", "conference-abstract", "book-review",
+    "data-paper", "software", "dataset", "book-chapter", "book", "report", "reference-entry",
+    "standard", "editorial", "letter", "peer-review", "review", "paratext", "article",
+    "preprint", "supplementary-materials", "other",
+]
+_TYPE_RANK = {t: i for i, t in enumerate(_TYPE_PRIORITY)}
+
+def _source_quality(raw):
+    low = raw.lower()
+    if "coar/resource_type/" in low or "coar-repositories.org/resource_types/" in low:
+        return 2
+    if "info:eu-repo/semantics/" in low:
+        return 1
+    return 0
+
+def best_raw_and_type(dc_types):
+    """Pick the winning element of a dc:type array: highest-ranked canonical type; ties broken
+    toward the more structured raw (COAR > eu-repo > text), then array order. Returns
+    (raw_native_type, type) where raw_native_type is the ORIGINAL full string (not parsed)."""
+    if dc_types is None:
+        return (None, "other")
+    best = None
+    for idx, raw in enumerate(dc_types):
+        if raw is None or not str(raw).strip():
+            continue
+        raw = str(raw)
+        typ = resolve_repo_type(raw)
+        key = (_TYPE_RANK.get(typ, 999), -_source_quality(raw), idx)
+        if best is None or key < best[0]:
+            best = (key, raw, typ)
+    if best is None:
+        return (None, "other")
+    return (best[1], best[2])
+
+_BEST_TYPE_SCHEMA = StructType([
+    StructField("raw_native_type", StringType(), True),
+    StructField("type", StringType(), True),
+])
+
+@pandas_udf(_BEST_TYPE_SCHEMA)
+def best_type_udf(dc_type_arrays: pd.Series) -> pd.DataFrame:
+    rows = [best_raw_and_type(list(a) if a is not None else None) for a in dc_type_arrays]
+    return pd.DataFrame(rows, columns=["raw_native_type", "type"])
+
+
 def normalize_language_code(lang_code):
     """
     Normalize language codes to ISO 639-1 two-letter lowercase format.
@@ -1572,29 +1637,13 @@ def repo_parsed():
             F.col("native_id")
         )
     )
-    .withColumn("raw_native_types", F.col("`ns0:metadata`.`ns1:dc`.`dc:type`"))
-    .withColumn("raw_native_type", F.element_at(F.col("raw_native_types"), 1))
-    # Compute type lookup key: extract suffix after "info:eu-repo/semantics/" if present
-    .withColumn("_type_key",
-        F.when(
-            F.lower(F.col("raw_native_type")).contains("info:eu-repo/semantics/"),
-            F.element_at(F.split(F.lower(F.col("raw_native_type")), "info:eu-repo/semantics/"), -1)
-        ).otherwise(
-            F.lower(F.trim(F.col("raw_native_type")))
-        )
-    )
-    .withColumn("type",
-        F.when(
-            F.lower(F.col("raw_native_type")).rlike("coar/resource_type/|coar-repositories.org/resource_types/"),
-            F.coalesce(COAR_MAP[F.regexp_extract(F.lower(F.col("raw_native_type")), "(c_[0-9a-z]+|r60j-j5bd)", 1)], F.lit("other"))
-        ).when(
-            F.lower(F.col("raw_native_type")).contains("purl.org/coar/version/"),
-            F.lit("article")
-        ).otherwise(
-            F.coalesce(TYPE_MAP[F.col("_type_key")], F.lit("other"))
-        )
-    )
-    .drop("_type_key")
+        .withColumn("raw_native_types", F.col("`ns0:metadata`.`ns1:dc`.`dc:type`"))
+    # oxjob #537: choose the best element across the full dc:type array (not just the first).
+    # raw_native_type = the winning element's ORIGINAL full string; type = its mapped value.
+    .withColumn("_best", best_type_udf(F.col("raw_native_types")))
+    .withColumn("raw_native_type", F.col("_best.raw_native_type"))
+    .withColumn("type", F.col("_best.type"))
+    .drop("_best")
     .filter(
         # Records with a type: exclude only TYPES_TO_DELETE
         (~F.col("raw_native_type").isNull() & ~F.lower(F.col("raw_native_type")).isin(TYPES_TO_DELETE))

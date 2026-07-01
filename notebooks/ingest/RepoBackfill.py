@@ -1254,20 +1254,67 @@ COAR_RESOURCE_TYPE_MAP = {
     "c_8042": "report",              # working paper
 }
 
-def get_openalex_type_from_repo(input_type):
-    """Convert a repository dc:type value to an OpenAlex work type (default 'other')."""
+# --- oxjob #537: best dc:type element selection over the full array ---
+def resolve_repo_type(input_type):
+    """One dc:type value -> OpenAlex work type (default 'other'). Applied per array element."""
     if not input_type or not isinstance(input_type, str):
         return "other"
-    input_type_lower = input_type.strip().lower()
-    # COAR resource_type codes (both hosts) -> deterministic COAR map
-    if "coar/resource_type/" in input_type_lower or "coar-repositories.org/resource_types/" in input_type_lower:
-        m = re.search(r"(c_[0-9a-z]+|r60j-j5bd)", input_type_lower)
+    low = input_type.strip().lower()
+    if "coar/resource_type/" in low or "coar-repositories.org/resource_types/" in low:
+        m = re.search(r"(c_[0-9a-z]+|r60j-j5bd)", low)
         return COAR_RESOURCE_TYPE_MAP.get(m.group(1), "other") if m else "other"
-    if "purl.org/coar/version/" in input_type_lower:
+    if "purl.org/coar/version/" in low:
         return "article"
-    if "info:eu-repo/semantics/" in input_type_lower:
-        input_type_lower = input_type_lower.split("info:eu-repo/semantics/")[-1].strip()
-    return REPO_TYPE_MAPPING.get(input_type_lower, "other")
+    if "info:eu-repo/semantics/" in low:
+        low = low.split("info:eu-repo/semantics/")[-1].strip()
+    return REPO_TYPE_MAPPING.get(low, "other")
+
+# type priority: specific types > 'article' > 'other'; 'preprint' sits below 'article'
+# (preprint-by-source is owned by the is_preprint_repository rule, oxjob #540).
+_TYPE_PRIORITY = [
+    "retraction", "dissertation", "conference-paper", "conference-abstract", "book-review",
+    "data-paper", "software", "dataset", "book-chapter", "book", "report", "reference-entry",
+    "standard", "editorial", "letter", "peer-review", "review", "paratext", "article",
+    "preprint", "supplementary-materials", "other",
+]
+_TYPE_RANK = {t: i for i, t in enumerate(_TYPE_PRIORITY)}
+
+def _source_quality(raw):
+    low = raw.lower()
+    if "coar/resource_type/" in low or "coar-repositories.org/resource_types/" in low:
+        return 2
+    if "info:eu-repo/semantics/" in low:
+        return 1
+    return 0
+
+def best_raw_and_type(dc_types):
+    """Pick the winning element of a dc:type array: highest-ranked canonical type; ties broken
+    toward the more structured raw (COAR > eu-repo > text), then array order. Returns
+    (raw_native_type, type) where raw_native_type is the ORIGINAL full string (not parsed)."""
+    if dc_types is None:
+        return (None, "other")
+    best = None
+    for idx, raw in enumerate(dc_types):
+        if raw is None or not str(raw).strip():
+            continue
+        raw = str(raw)
+        typ = resolve_repo_type(raw)
+        key = (_TYPE_RANK.get(typ, 999), -_source_quality(raw), idx)
+        if best is None or key < best[0]:
+            best = (key, raw, typ)
+    if best is None:
+        return (None, "other")
+    return (best[1], best[2])
+
+_BEST_TYPE_SCHEMA = StructType([
+    StructField("raw_native_type", StringType(), True),
+    StructField("type", StringType(), True),
+])
+
+@pandas_udf(_BEST_TYPE_SCHEMA)
+def best_type_udf(dc_type_arrays: pd.Series) -> pd.DataFrame:
+    rows = [best_raw_and_type(list(a) if a is not None else None) for a in dc_type_arrays]
+    return pd.DataFrame(rows, columns=["raw_native_type", "type"])
 
 def normalize_language_code(lang_code):
     """
@@ -1593,9 +1640,6 @@ def normalize_license_udf(license_series: pd.Series) -> pd.Series:
 def normalize_title_udf(title_series: pd.Series) -> pd.Series:
     return title_series.apply(normalize_title)
 
-@pandas_udf(StringType())
-def get_openalex_type_from_repo_udf(repo_type_series: pd.Series) -> pd.Series:
-    return repo_type_series.apply(get_openalex_type_from_repo)
 
 @pandas_udf(StringType())
 def normalize_language_code_udf(language_code_series: pd.Series) -> pd.Series:
@@ -1647,9 +1691,12 @@ parsed_df = clean_df \
                 )
             )
         """)) \
-    .withColumn("raw_native_type", regexp_extract(col("cleaned_xml"), r"<dc:type.*?>(.*?)</dc:type>", 1)) \
-    .withColumn("type", get_openalex_type_from_repo_udf(col("raw_native_type"))) \
-    .filter(~lower(col("raw_native_type")).isin(TYPES_TO_DELETE)) \
+    .withColumn("raw_native_types", expr("regexp_extract_all(cleaned_xml, '<dc:type.*?>(.*?)</dc:type>', 1)")) \
+    .withColumn("_best", best_type_udf(col("raw_native_types"))) \
+    .withColumn("raw_native_type", col("_best.raw_native_type")) \
+    .withColumn("type", col("_best.type")) \
+    .drop("_best") \
+    .filter(col("raw_native_type").isNull() | ~lower(col("raw_native_type")).isin(TYPES_TO_DELETE)) \
     .withColumn("identifiers", 
         expr("""
             transform(
