@@ -1256,18 +1256,27 @@ COAR_RESOURCE_TYPE_MAP = {
 
 # --- oxjob #537: best dc:type element selection over the full array ---
 def resolve_repo_type(input_type):
-    """One dc:type value -> OpenAlex work type (default 'other'). Applied per array element."""
+    """One dc:type value -> OpenAlex work type (default 'other'). Applied per array element.
+    Our REPO_TYPE_MAPPING is PRIMARY (tried as-is, then eu-repo-stripped); the COAR / version
+    handling is only a fallback for values the text map does not cover."""
     if not input_type or not isinstance(input_type, str):
         return "other"
     low = input_type.strip().lower()
+    # 1) our mapping is primary
+    if low in REPO_TYPE_MAPPING:
+        return REPO_TYPE_MAPPING[low]
+    if "info:eu-repo/semantics/" in low:
+        stripped = low.split("info:eu-repo/semantics/")[-1].strip()
+        if stripped in REPO_TYPE_MAPPING:
+            return REPO_TYPE_MAPPING[stripped]
+    # 2) COAR resource_type code (both hosts) -- values not in the text map
     if "coar/resource_type/" in low or "coar-repositories.org/resource_types/" in low:
         m = re.search(r"(c_[0-9a-z]+|r60j-j5bd)", low)
         return COAR_RESOURCE_TYPE_MAP.get(m.group(1), "other") if m else "other"
+    # 3) COAR version marker -> article
     if "purl.org/coar/version/" in low:
         return "article"
-    if "info:eu-repo/semantics/" in low:
-        low = low.split("info:eu-repo/semantics/")[-1].strip()
-    return REPO_TYPE_MAPPING.get(low, "other")
+    return "other"
 
 # type priority: specific types > 'article' > 'other'; 'preprint' sits below 'article'
 # (preprint-by-source is owned by the is_preprint_repository rule, oxjob #540).
