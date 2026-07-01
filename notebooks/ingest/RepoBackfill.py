@@ -1771,6 +1771,7 @@ parsed_df = clean_df \
                 end,
                 x -> struct(
                     x as url,
+                    case when lower(x) like '%pdf%' then 'pdf' else 'html' end as `content-type`,
                     case when lower(x) like '%pdf%' then 'pdf' else 'html' end as `content_type`
                 )
             )
