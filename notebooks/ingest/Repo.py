@@ -1875,10 +1875,6 @@ def repo_parsed_backfill():
             .schema(repo_schema)
             .table("openalex.repo.repo_works_backfill")
             .filter(F.col("_change_type").isin("insert", "update_postimage"))
-            # backfill has no ingested_at; use the CDF commit time so the LATEST backfill
-            # write wins apply_changes' _sequence (updated_date is static → would otherwise tie
-            # across MERGE versions and keep an old-typed postimage). oxjob #537.
-            .withColumn("ingested_at", F.col("_commit_timestamp"))
             .drop("_change_type", "_commit_version", "_commit_timestamp")
     )
 
