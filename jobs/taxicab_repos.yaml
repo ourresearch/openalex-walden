@@ -21,6 +21,11 @@ resources:
               lookback_days: "3"
               url_limit: "500000"
               source_filter: "repo_only"
+              # oxjob #542: skip the bulk ingested_at re-stamp from the 2026-06-30/07-01
+              # repo_items full refresh (105M rows, max ingested_at 2026-07-01 12:37 UTC).
+              # cutoff = max(now-lookback, ingested_after); SELF-DEACTIVATES ~2026-07-04
+              # once the trailing window passes it, then inert. Safe to remove later.
+              ingested_after: "2026-07-01T13:00:00"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -54,3 +59,5 @@ resources:
           default: "500000"
         - name: source_filter
           default: "repo_only"
+        - name: ingested_after
+          default: "2026-07-01T13:00:00"
