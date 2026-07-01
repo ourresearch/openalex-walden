@@ -276,7 +276,19 @@ def datacite_parsed():
             )
         )
         # Skip UDF usage entirely and pre-build a MapType to use in lookup
-        .withColumn("raw_type", F.col("attributes.types.citeproc"))
+        # oxjob #476: raw_type carries the SOURCE-NATIVE type string (for filtering by native type),
+        # NOT the OpenAlex-mapped `type`. Primary = resourceTypeGeneral (DataCite's controlled vocab,
+        # e.g. 'Software', 'ConferencePaper'); for the generic 'Text' bucket fall back to citeproc
+        # ('article-journal'/'book'/'thesis'/...) which is genuinely more specific there. Do NOT fall
+        # back to citeproc for Other/Collection/null — citeproc there is the 'article' placeholder.
+        # (Was set to citeproc globally in fd8824e, which collapsed Software/Audiovisual/... -> 'article'.)
+        .withColumn("raw_type", F.coalesce(
+                F.when(~F.col("attributes.types.resourceTypeGeneral").isin("Text", "Other", "Collection"),
+                       F.col("attributes.types.resourceTypeGeneral")),
+                F.when(F.col("attributes.types.resourceTypeGeneral") == "Text",
+                       F.col("attributes.types.citeproc")),
+                F.col("attributes.types.resourceTypeGeneral"),
+        ))
         # oxjob #539: 3-tier resolution (resourceTypeGeneral -> resourceType allowlist -> citeproc)
         .withColumn("type", datacite_type_cascade(
                 F.col("attributes.types.resourceTypeGeneral"),
