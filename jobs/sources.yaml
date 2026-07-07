@@ -10,13 +10,14 @@ resources:
     sources_snapshot:
       name: Sources
       schedule:
-        # PAUSED 2026-07-07: end2end now refreshes the snapshot itself (Sources_Snapshot
-        # task at the top of every run) — an unpaused 05:00 cron here would CREATE OR
-        # REPLACE the same table concurrently with it. Kept for manual refreshes when
-        # a registry fix must reach consumers before the next end2end.
-        quartz_cron_expression: 0 0 5 * * ?
+        # 2026-07-07: end2end owns the 05:00 refresh (its Sources_Snapshot task runs the
+        # same notebook at the top of every run, so works always build against registry
+        # state as of run start). This job keeps the table fresh for ad-hoc viewers the
+        # rest of the day — intra-day slots chosen to never overlap the ~05:00 in-DAG
+        # refresh (concurrent CREATE OR REPLACE on the same table conflicts).
+        quartz_cron_expression: 0 0 11,17,23 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: create_sources
           notebook_task:
