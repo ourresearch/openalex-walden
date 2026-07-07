@@ -111,9 +111,21 @@ resources:
             notebook_path: notebooks/end2end/CreateSuperLocations
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        # Refresh openalex.sources.sources from the federated registry at the top of
+        # every run (oxjob #548): end2end and the standalone 05:00 Sources job shared
+        # a cron, so this run's consumers raced a snapshot that could be a day stale.
+        # Same CreateSources notebook — single source of truth for the legacy shape.
+        - task_key: Sources_Snapshot
+          notebook_task:
+            notebook_path: notebooks/sources/CreateSources
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+          max_retries: 2
+          min_retry_interval_millis: 300000
         - task_key: Locations_with_Sources
           depends_on:
             - task_key: Superlocations
+            - task_key: Sources_Snapshot
           notebook_task:
             notebook_path: notebooks/end2end/CreateLocationsWithSources
             source: GIT
