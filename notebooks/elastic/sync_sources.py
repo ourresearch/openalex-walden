@@ -98,3 +98,52 @@ client.indices.refresh(index=CONFIG["index_name"])
 # COMMAND ----------
 
 
+
+# MAGIC %md
+# MAGIC ### Delete stale docs (merged / deleted sources)
+# MAGIC
+# MAGIC The sync above is a full-table upsert, so sources that leave `sources_api`
+# MAGIC (merge losers get `merge_into_id` set and are filtered out; deleted sources
+# MAGIC drop out entirely) would otherwise linger in the index forever and keep
+# MAGIC resolving on the public API (oxjob #548 C1b: 3,525 cutover merge losers +
+# MAGIC 234 deleted DataCite mints). Mirror the table: delete any ES doc whose id
+# MAGIC is no longer in `sources_api`.
+
+# COMMAND ----------
+
+from elasticsearch.helpers import scan, bulk
+
+table_ids = {
+    f"https://openalex.org/S{r.id}"
+    for r in spark.sql(f"SELECT id FROM {CONFIG['table_name']}").collect()
+}
+es_ids = [
+    hit["_id"]
+    for hit in scan(client, index=CONFIG["index_name"],
+                    query={"query": {"match_all": {}}}, _source=False)
+]
+stale_ids = [i for i in es_ids if i not in table_ids]
+print(f"index docs: {len(es_ids)}, table rows: {len(table_ids)}, stale: {len(stale_ids)}")
+
+# A broken/empty sources_api must never mass-delete the index. Expected volume is
+# merge losers only (first run purges the ~3.8K cutover backlog).
+MAX_STALE = 10000
+if len(stale_ids) > MAX_STALE:
+    raise Exception(f"{len(stale_ids)} stale docs exceeds safety cap {MAX_STALE} — "
+                    "sources_api looks wrong, refusing to delete")
+
+if stale_ids:
+    deleted, errors = bulk(
+        client,
+        ({"_op_type": "delete", "_index": CONFIG["index_name"], "_id": i} for i in stale_ids),
+        chunk_size=1000,
+        raise_on_error=False,
+    )
+    not_found = [e for e in errors if e.get("delete", {}).get("status") == 404]
+    real_errors = [e for e in errors if e.get("delete", {}).get("status") != 404]
+    print(f"deleted {deleted} stale docs ({len(not_found)} already gone)")
+    if real_errors:
+        raise Exception(f"{len(real_errors)} delete failures, first: {real_errors[0]}")
+    client.indices.refresh(index=CONFIG["index_name"])
+else:
+    print("no stale docs")
