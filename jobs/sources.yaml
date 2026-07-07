@@ -1,4 +1,4 @@
-# CUTOVER-DAY FILE (oxjob #548, step B8) — copy over walden jobs/sources.yaml and push.
+# Post-cutover (oxjob #548, executed 2026-07-07) — copy over walden jobs/sources.yaml and push.
 # Replaces the Sources DLT pipeline resource with a plain serverless SQL job running the
 # converted CreateSources notebook (source: GIT, so it always runs main). CI deploy then
 # DESTROYS the pipeline — which DROPS its DLT-owned tables (sources + intermediates) — and
