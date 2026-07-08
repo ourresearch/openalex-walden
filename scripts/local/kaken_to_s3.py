@@ -13,6 +13,8 @@ Output: s3://openalex-ingest/awards/kaken/kaken_projects.parquet
 What this script does:
 1. Downloads project URLs from KAKEN sitemaps (~1M+ projects)
 2. Scrapes project pages to extract metadata (title, PI, dates, amount, etc.)
+   plus the grant's self-reported Research Products (publications) with their
+   DOIs -- the grant -> publication linkages, captured as products_json
 3. Combines into a single DataFrame
 4. Saves as parquet and uploads to S3
 
@@ -636,6 +638,102 @@ def fetch_project_with_retry(
     return (original_url, None, last_error, error_type)
 
 
+def parse_products(soup) -> list[dict]:
+    """
+    Parse the "Research Products" section of a KAKEN grant page.
+
+    KAKEN grant pages list every self-reported output (journal articles,
+    presentations, books, patents, etc.) as accordion items inside
+    ``#product_list``. Each item is:
+
+        <a class="accordion-toggle" href="#product_N">
+          <h4>[Journal Article]  Title<span class="... year">YEAR</span></h4>
+        </a>
+        <div id="product_N" class="accordion-body collapse"> ... fields ... </div>
+
+    where journal-article bodies carry a DOI as
+    ``<a href="https://doi.org/10.xxxx/yyyy" class="win_open">`` and, where
+    available, a NAID / CiNii link. The whole product list is in the served
+    HTML (no AJAX), so a single page fetch yields all outputs.
+
+    Returns a list of dicts: {type, title, year, doi, naid}. The DOI is the
+    key the downstream junction notebook resolves against OpenAlex works;
+    title/naid are kept for a future fuzzy fallback on DOI-less entries.
+    """
+    products: list[dict] = []
+
+    product_list = soup.find(id="product_list")
+    if not product_list:
+        return products
+
+    for toggle in product_list.find_all("a", class_="accordion-toggle"):
+        h4 = toggle.find("h4")
+        if not h4:
+            continue
+
+        # Pull the year out of its span first so it doesn't pollute the title.
+        year = None
+        year_span = h4.find("span", class_="year")
+        if year_span:
+            year_match = re.search(r"\d{4}", year_span.get_text(strip=True) or "")
+            if year_match:
+                year = year_match.group(0)
+            year_span.extract()
+
+        # Header text is "[Type]  Title". Split the bracketed type off the front.
+        header_text = h4.get_text(" ", strip=True)
+        type_match = re.match(r"\[([^\]]+)\]\s*(.*)", header_text)
+        if type_match:
+            product_type = type_match.group(1).strip()
+            title = type_match.group(2).strip() or None
+        else:
+            product_type = None
+            title = header_text or None
+
+        # Resolve the body div (#product_N) referenced by the toggle href.
+        doi = None
+        naid = None
+        href = toggle.get("href", "")
+        if href.startswith("#"):
+            body = soup.find(id=href[1:])
+            if body:
+                doi_link = body.find(
+                    "a", href=lambda h: h and "doi.org/" in h
+                )
+                if doi_link:
+                    doi_match = re.search(
+                        r"(10\.\d{4,}/[^\s\"<>]+)", doi_link.get("href", "")
+                    )
+                    if doi_match:
+                        doi = doi_match.group(1).rstrip(".")
+
+                naid_link = body.find(
+                    "a",
+                    href=lambda h: h
+                    and ("ci.nii.ac.jp" in h.lower() or "cir.nii.ac.jp" in h.lower()),
+                )
+                if naid_link:
+                    naid_match = re.search(r"(\d{8,})", naid_link.get("href", ""))
+                    if naid_match:
+                        naid = naid_match.group(1)
+
+        # Skip empty shells (an accordion with neither a title nor any id).
+        if not (title or doi or naid):
+            continue
+
+        products.append(
+            {
+                "type": product_type,
+                "title": title,
+                "year": year,
+                "doi": doi,
+                "naid": naid,
+            }
+        )
+
+    return products
+
+
 def parse_project_page(html: str, url: str) -> Optional[dict]:
     """
     Parse a KAKEN project page to extract grant data.
@@ -759,6 +857,12 @@ def parse_project_page(html: str, url: str) -> Optional[dict]:
         # Keywords
         keywords = get_table_value("Keywords")
 
+        # Self-reported research outputs (the grant -> publication linkages).
+        # Stored as a JSON string column, mirroring NWO's products_json so the
+        # downstream junction notebook can resolve them identically.
+        products = parse_products(soup)
+        products_json = json.dumps(products, ensure_ascii=False) if products else None
+
         # Abstract (Outline of Research at the Start or Final Research Achievements)
         abstract = None
         for header in ["Outline of Research at the Start", "Outline of Final Research Achievements",
@@ -788,6 +892,7 @@ def parse_project_page(html: str, url: str) -> Optional[dict]:
             "pi_nrid": pi_nrid,
             "institution": institution,
             "keywords": keywords,
+            "products_json": products_json,
             "landing_page_url": url,
         }
 
@@ -1016,6 +1121,11 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
     print(f"  Removed {original_count - len(df):,} duplicates")
     print(f"  Unique projects: {len(df):,}")
 
+    # products_json is added by parse_project_page; guarantee the column exists
+    # so reprocessing pre-products parquet (--skip-download) still matches schema.
+    if "products_json" not in df.columns:
+        df["products_json"] = None
+
     # Add metadata
     df["ingested_at"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1042,6 +1152,7 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
         ("pi_nrid", pa.string()),
         ("institution", pa.string()),
         ("keywords", pa.string()),
+        ("products_json", pa.string()),
         ("landing_page_url", pa.string()),
         ("ingested_at", pa.string()),
     ])
@@ -1059,6 +1170,8 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
     print(f"    - With dates: {df['start_date'].notna().sum():,}")
     print(f"    - With amount: {df['amount'].notna().sum():,}")
     print(f"    - With PI: {df['pi_family_name'].notna().sum():,}")
+    if "products_json" in df.columns:
+        print(f"    - With products: {df['products_json'].notna().sum():,}")
 
     if "category" in df.columns:
         print(f"\n  Categories:")
