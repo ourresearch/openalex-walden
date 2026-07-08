@@ -1,0 +1,32 @@
+# Repo DLT pipeline (fcd1ea61-2e07-433b-90ad-b3b0a0960158).
+# Bundle-managed: notebook code deploys via CI on push to main — do NOT pull the
+# /Shared/openalex-walden Git folder for this pipeline; edits made in the pipeline UI
+# (settings AND code) are reverted on the next deploy.
+#
+# FULL REFRESH cautions:
+#   - repo full refreshes are S3-listing-bound and can take DAYS (oxjob #546 small-files).
+#   - a full refresh of repo_items re-stamps ingested_at; TaxiCab Repos reads it as a
+#     watermark — set its ingested_after cutoff first (oxjob #542).
+resources:
+  pipelines:
+    repo_pipeline:
+      name: Repo
+      catalog: openalex
+      target: repo
+      serverless: true
+      photon: true
+      continuous: false
+      development: false
+      edition: ADVANCED
+      channel: CURRENT
+      configuration:
+        environment: prod
+        pipelines.clusterShutdown.delay: 300s
+        spark.sql.legacy.timeParserPolicy: CORRECTED
+        spark.sql.execution.arrow.maxRecordsPerBatch: "500"
+      tags:
+        environment: prod
+        workflow: repo
+      libraries:
+        - notebook:
+            path: ../notebooks/ingest/Repo.py
