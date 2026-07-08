@@ -1598,6 +1598,11 @@ def repo_items():
       .option("ignorMissingFiles", "true")
       .schema(repository_schema)
       .option("cloudFiles.schemaLocation", "dbfs:/pipelines/repo/schema")
+      # Discovery via UC managed file events on the openalex-ingest external location
+      # (millions of tiny per-record gzips make directory listing take hours).
+      # Weekly backfill sweep catches any event the queue misses.
+      .option("cloudFiles.useManagedFileEvents", "true")
+      .option("cloudFiles.backfillInterval", "1 week")
       .load("s3a://openalex-ingest/repositories/")
       # Named repository_id historically; renamed to endpoint_id in repo_parsed.
       # Kept here to avoid re-ingesting the entire streaming table.
