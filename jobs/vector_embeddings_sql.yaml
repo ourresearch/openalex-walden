@@ -1,0 +1,52 @@
+resources:
+  jobs:
+    Vector_Embeddings_SQL:
+      name: Vector Embeddings Generator (SQL)
+      description: |
+        Generates embeddings for OpenAlex works using SQL warehouse + ai_query.
+        Each run processes 50K works. Schedule to run continuously.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      schedule:
+        # Run every 4 minutes (each batch takes ~2-3 min)
+        quartz_cron_expression: "0 */4 * * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED  # Start paused, enable when ready
+      tasks:
+        - task_key: generate_embeddings_batch
+          sql_task:
+            warehouse_id: 4d37bf76372a2901
+            query:
+              # This INSERT embeds 50K works per run
+              query_text: |
+                INSERT INTO openalex.vector_search.work_embeddings
+                SELECT
+                    CAST(w.id AS STRING) as work_id,
+                    ai_query(
+                        'openai-embedding-3-small',
+                        CONCAT('Title: ', LEFT(w.title, 500), '\n\nAbstract: ', LEFT(w.abstract, 5500))
+                    ) as embedding,
+                    md5(CONCAT('Title: ', LEFT(w.title, 500), '\n\nAbstract: ', LEFT(w.abstract, 5500))) as text_hash,
+                    w.publication_year,
+                    w.type,
+                    w.open_access.is_oa as is_oa,
+                    true as has_abstract,
+                    current_timestamp() as created_at,
+                    current_timestamp() as updated_at,
+                    w.has_content.pdf as has_content_pdf,
+                    w.has_content.grobid_xml as has_content_grobid_xml
+                FROM openalex.works.openalex_works w
+                WHERE w.type != 'dataset'
+                  AND w.abstract IS NOT NULL
+                  AND w.title IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM openalex.vector_search.work_embeddings e
+                      WHERE e.work_id = CAST(w.id AS STRING)
+                  )
+                LIMIT 50000
+          timeout_seconds: 600  # 10 min timeout per batch
+      queue:
+        enabled: true
