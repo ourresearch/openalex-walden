@@ -67,3 +67,4 @@ include:
   - jobs/crossref_awards.yaml
   - jobs/works_daily_metrics.yaml
   - jobs/sources.yaml
+  - jobs/union_all_works_pipeline.yaml
