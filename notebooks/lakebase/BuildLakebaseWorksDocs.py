@@ -26,6 +26,11 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install -U -q databricks-sdk
+# MAGIC %restart_python
+
+# COMMAND ----------
+
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 

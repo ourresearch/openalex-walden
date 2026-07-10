@@ -288,6 +288,17 @@ resources:
               is_full_sync: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
+        - task_key: Sync_Works_to_Lakebase
+          depends_on:
+            - task_key: Guardrails
+          notebook_task:
+            notebook_path: notebooks/lakebase/BuildLakebaseWorksDocs
+            base_parameters:
+              is_full_build: "false"
+              trigger_syncs: "true"
+            source: GIT
+          job_cluster_key: lakebase_sync_cluster
+          timeout_seconds: 21600
         - task_key: Refresh_RAS_Counts
           depends_on:
             - task_key: Guardrails
@@ -373,6 +384,24 @@ resources:
             runtime_engine: STANDARD
             num_workers: 0
         - job_cluster_key: es_sync_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: rd-fleet.8xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 1
+        - job_cluster_key: lakebase_sync_cluster
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13
