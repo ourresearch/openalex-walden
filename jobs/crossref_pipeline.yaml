@@ -1,0 +1,25 @@
+# Crossref DLT pipeline (7def27a3-968c-4b1a-864b-0fc308756721).
+# Bundle-managed: notebook code deploys via CI on push to main — do NOT pull the
+# /Shared/openalex-walden Git folder for this pipeline; edits made in the pipeline UI
+# (settings AND code) are reverted on the next deploy.
+resources:
+  pipelines:
+    crossref_pipeline:
+      name: Crossref
+      catalog: openalex
+      target: crossref
+      serverless: true
+      photon: true
+      continuous: false
+      development: true
+      channel: CURRENT
+      configuration:
+        environment: prod
+        pipelines.clusterShutdown.delay: 300s
+        spark.sql.execution.arrow.maxRecordsPerBatch: "100"
+      tags:
+        environment: prod
+        workflow: crossref
+      libraries:
+        - notebook:
+            path: ../notebooks/ingest/Crossref.py

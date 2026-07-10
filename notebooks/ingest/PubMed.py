@@ -238,6 +238,8 @@ def pubmed_items():
       .option("ignorMissingFiles", "true")
       .option("ignoreCorruptFiles", "true")
       .option("mode", "PERMISSIVE")
+      # Discovery via UC managed file events on the openalex-ingest external location (oxjob #585)
+      .option("cloudFiles.useManagedFileEvents", "true")
       .load("s3a://openalex-ingest/pubmed/")
       .withColumn("ingested_at", F.current_timestamp())
   )

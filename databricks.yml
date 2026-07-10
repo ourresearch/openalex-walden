@@ -69,3 +69,7 @@ include:
   - jobs/sources.yaml
   - jobs/union_all_works_pipeline.yaml
   - jobs/repo_pipeline.yaml
+  - jobs/crossref_pipeline.yaml
+  - jobs/datacite_pipeline.yaml
+  - jobs/pubmed_pipeline.yaml
+  - jobs/irdb_pipeline.yaml

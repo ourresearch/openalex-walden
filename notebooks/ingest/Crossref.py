@@ -276,6 +276,8 @@ def crossref_items():
     .option("cloudFiles.format", "json")
     .option("multiline", "true")
     .schema(current_schema)  # Explicitly use fixed schema to avoid errors and drift (it is 6k lines long)
+    # Discovery via UC managed file events on the openalex-ingest external location (oxjob #585)
+    .option("cloudFiles.useManagedFileEvents", "true")
     .load("s3a://openalex-ingest/crossref/")
     .withColumn("ingested_at", F.current_timestamp())
   )

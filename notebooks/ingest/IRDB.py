@@ -408,6 +408,8 @@ def irdb_items():
         .option("ignoreMissingFiles", "true")
         .schema(jpcoar_schema)
         .option("cloudFiles.schemaLocation", "dbfs:/pipelines/irdb/schema")
+        # Discovery via UC managed file events on the openalex-ingest external location (oxjob #585)
+        .option("cloudFiles.useManagedFileEvents", "true")
         .load("s3a://openalex-ingest/irdb/")
         .withColumn("ingested_at", F.current_timestamp())
     )

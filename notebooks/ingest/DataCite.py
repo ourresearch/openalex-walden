@@ -159,6 +159,8 @@ def datacite_items():
       .option("mergeSchema", "true")
       .option("compression", "gzip")
       .option("pathGlobFilter", "*.json*.gz")
+      # Discovery via UC managed file events on the openalex-ingest external location (oxjob #585)
+      .option("cloudFiles.useManagedFileEvents", "true")
       .load("s3a://openalex-ingest/datacite/")
       .withColumn("ingested_at", F.current_timestamp())
   )
