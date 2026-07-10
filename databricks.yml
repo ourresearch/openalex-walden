@@ -72,4 +72,3 @@ include:
   - jobs/datacite_pipeline.yaml
   - jobs/pubmed_pipeline.yaml
   - jobs/irdb_pipeline.yaml
-  - jobs/hello_world.yaml
