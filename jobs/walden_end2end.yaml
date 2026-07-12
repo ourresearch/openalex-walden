@@ -296,6 +296,7 @@ resources:
             base_parameters:
               is_full_build: "false"
               trigger_syncs: "true"
+              run_deletes: "false"
             source: GIT
           job_cluster_key: lakebase_sync_cluster
           timeout_seconds: 21600
@@ -418,7 +419,7 @@ resources:
             enable_elastic_disk: true
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-            num_workers: 1
+            num_workers: 2
         - job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
           new_cluster:
             cluster_name: ""

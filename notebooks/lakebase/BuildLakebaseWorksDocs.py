@@ -45,10 +45,12 @@ INCR_STAGING = f"{SCHEMA}._lakebase_docs_incr"
 dbutils.widgets.text("is_full_build", "false")
 dbutils.widgets.text("guardrails_override", "false")
 dbutils.widgets.text("trigger_syncs", "false")  # end2end passes true once synced tables exist
+dbutils.widgets.text("run_deletes", "false")    # force the full delete sweep (auto-runs when doc count > works count)
 
 IS_FULL_BUILD = dbutils.widgets.get("is_full_build").lower() == "true"
 GUARDRAILS_OVERRIDE = dbutils.widgets.get("guardrails_override").lower() == "true"
 TRIGGER_SYNCS = dbutils.widgets.get("trigger_syncs").lower() == "true"
+RUN_DELETES = dbutils.widgets.get("run_deletes").lower() == "true"
 
 print(f"IS_FULL_BUILD: {IS_FULL_BUILD}")
 
@@ -425,46 +427,86 @@ if IS_FULL_BUILD:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Incremental: hash-gated MERGE per shard + deletes, then id map
+# MAGIC ### Incremental: churn-only hash-gated MERGE per shard, then id map
 # MAGIC
-# MAGIC One MERGE per shard: source = all current work_ids for the shard (id-only scan, cheap)
-# MAGIC left-joined to the transformed churn docs. Hash gate keeps CDF churn == true churn
-# MAGIC (pattern: CreateSourcesApi.ipynb); `NOT MATCHED BY SOURCE` deletes merged/removed works
-# MAGIC (pattern: SyncRasCurations.ipynb).
+# MAGIC Daily MERGEs use ONLY the transformed churn as source (file-pruned by work_id
+# MAGIC clustering — minutes). The full-table delete sweep (`NOT MATCHED BY SOURCE`) forces a
+# MAGIC complete scan of every shard (~90 min observed 2026-07-11) so it does NOT run daily:
+# MAGIC it runs when `run_deletes=true` OR automatically when the doc tables hold more rows
+# MAGIC than `openalex_works` (i.e. upstream deletions happened). Deletes lagging by days is
+# MAGIC still stricter than ES, whose works sync never propagates deletes at all.
 
 # COMMAND ----------
 
 if not IS_FULL_BUILD:
+    total_docs = sum(
+        spark.sql(f"SELECT COUNT(*) AS cnt FROM {DOCS_TABLE(s)}").collect()[0].cnt
+        for s in range(N_SHARDS)
+    )
+    do_deletes = RUN_DELETES or (total_docs > total_works)
+    if do_deletes and not RUN_DELETES:
+        print(f"Auto-enabling delete sweep: docs total {total_docs:,} > openalex_works {total_works:,}")
+    print(f"docs total: {total_docs:,} | works: {total_works:,} | delete sweep this run: {do_deletes}")
+
     for s in range(N_SHARDS):
         t = DOCS_TABLE(s)
         result = spark.sql(f"""
             MERGE INTO {t} AS target
-            USING (
-                SELECT w.id AS work_id, d.doc, d.doc_hash
-                FROM (SELECT id FROM {WORKS_TABLE} WHERE id IS NOT NULL AND pmod(id, {N_SHARDS}) = {s}) w
-                LEFT JOIN {INCR_STAGING} d ON w.id = d.work_id
-            ) AS source
+            USING (SELECT work_id, doc, doc_hash FROM {INCR_STAGING} WHERE pmod(work_id, {N_SHARDS}) = {s}) AS source
             ON target.work_id = source.work_id
-            WHEN MATCHED AND source.doc_hash IS NOT NULL AND target.doc_hash <> source.doc_hash THEN
+            WHEN MATCHED AND target.doc_hash <> source.doc_hash THEN
                 UPDATE SET doc = source.doc, doc_hash = source.doc_hash, updated_at = current_timestamp()
-            WHEN NOT MATCHED AND source.doc IS NOT NULL THEN
+            WHEN NOT MATCHED THEN
                 INSERT (work_id, doc, doc_hash, updated_at)
                 VALUES (source.work_id, source.doc, source.doc_hash, current_timestamp())
-            WHEN NOT MATCHED BY SOURCE THEN DELETE
         """).collect()[0]
-        print(f"{t}: updated={result.num_updated_rows:,} inserted={result.num_inserted_rows:,} deleted={result.num_deleted_rows:,}")
+        print(f"{t}: updated={result.num_updated_rows:,} inserted={result.num_inserted_rows:,}")
 
+    # Id map, churn-only: keys of just the churned works (update moved keys, insert new ones).
     result = spark.sql(f"""
         MERGE INTO {IDS_TABLE} AS target
-        USING ({EXT_ID_SOURCE}) AS source
+        USING (
+            SELECT ext_id, MIN(work_id) AS work_id
+            FROM (
+                SELECT CONCAT('https://doi.org/', w.ids['doi']) AS ext_id, w.id AS work_id
+                FROM {WORKS_TABLE} w JOIN {INCR_STAGING} d ON w.id = d.work_id
+                WHERE w.ids['doi'] IS NOT NULL
+                UNION ALL
+                SELECT w.ids['pmid'] AS ext_id, w.id AS work_id
+                FROM {WORKS_TABLE} w JOIN {INCR_STAGING} d ON w.id = d.work_id
+                WHERE w.ids['pmid'] IS NOT NULL
+            )
+            GROUP BY ext_id
+        ) AS source
         ON target.ext_id = source.ext_id
         WHEN MATCHED AND target.work_id <> source.work_id THEN
             UPDATE SET work_id = source.work_id, updated_at = current_timestamp()
         WHEN NOT MATCHED THEN
             INSERT (ext_id, work_id, updated_at) VALUES (source.ext_id, source.work_id, current_timestamp())
-        WHEN NOT MATCHED BY SOURCE THEN DELETE
     """).collect()[0]
-    print(f"{IDS_TABLE}: updated={result.num_updated_rows:,} inserted={result.num_inserted_rows:,} deleted={result.num_deleted_rows:,}")
+    print(f"{IDS_TABLE} (churn): updated={result.num_updated_rows:,} inserted={result.num_inserted_rows:,}")
+
+    if do_deletes:
+        for s in range(N_SHARDS):
+            t = DOCS_TABLE(s)
+            result = spark.sql(f"""
+                MERGE INTO {t} AS target
+                USING (SELECT id FROM {WORKS_TABLE} WHERE id IS NOT NULL AND pmod(id, {N_SHARDS}) = {s}) AS source
+                ON target.work_id = source.id
+                WHEN NOT MATCHED BY SOURCE THEN DELETE
+            """).collect()[0]
+            print(f"{t} (sweep): deleted={result.num_deleted_rows:,}")
+        result = spark.sql(f"""
+            MERGE INTO {IDS_TABLE} AS target
+            USING ({EXT_ID_SOURCE}) AS source
+            ON target.ext_id = source.ext_id
+            WHEN MATCHED AND target.work_id <> source.work_id THEN
+                UPDATE SET work_id = source.work_id, updated_at = current_timestamp()
+            WHEN NOT MATCHED THEN
+                INSERT (ext_id, work_id, updated_at) VALUES (source.ext_id, source.work_id, current_timestamp())
+            WHEN NOT MATCHED BY SOURCE THEN DELETE
+        """).collect()[0]
+        print(f"{IDS_TABLE} (sweep): updated={result.num_updated_rows:,} inserted={result.num_inserted_rows:,} deleted={result.num_deleted_rows:,}")
 
     spark.sql(f"DROP TABLE IF EXISTS {INCR_STAGING}")
 
