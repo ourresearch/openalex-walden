@@ -2758,8 +2758,18 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: OTKA_NKFIH_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateOTKAAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
+            - task_key: OTKA_NKFIH_Awards
             - task_key: JiangxiNSF_Awards
             - task_key: LiaoningNSF_Awards
             - task_key: NSSFC_Awards
