@@ -16,6 +16,9 @@
 # MAGIC shape that the API's WorksSchema consumes), with three deliberate exclusions:
 # MAGIC `fulltext` and plaintext `abstract` (not part of API responses; excluded from the #576
 # MAGIC storage sizing) and `indexed_timestamp` (nondeterministic — would churn every doc_hash).
+# MAGIC Exact-parity serialization (2026-07-13): created/updated_date pre-formatted to mimic
+# MAGIC Python isoformat (fraction omitted when zero), and all FLOATs widened to DOUBLE so
+# MAGIC to_json prints the same double expansions Python json.dumps sent to ES.
 # MAGIC TODO(#576 follow-up): unify this transform with sync_works/export_works into a shared
 # MAGIC builder; deliberately not touching the production ES sync in Phase 1.
 # MAGIC
@@ -199,6 +202,22 @@ def sanitize_name(col_name: str):
 def sanitize_string(col_name: str, max_len: int = 32000):
     return F.when(F.col(col_name).isNotNull(), F.substring(F.col(col_name), 1, max_len)).otherwise(None)
 
+def iso_ts(col_name: str):
+    # Mimic Python datetime.isoformat(), which is what the ES bulk sync emits into
+    # _source (elasticsearch-py json default): fractional seconds are 6 digits when
+    # nonzero and OMITTED entirely when zero. A fixed to_json timestampFormat cannot
+    # reproduce the conditional omission, so pre-format to string here (oxjob #576
+    # exact-parity fix, 2026-07-13).
+    return F.when(F.col(col_name).isNull(), F.lit(None).cast("string")).otherwise(
+        F.concat(
+            F.date_format(col_name, "yyyy-MM-dd'T'HH:mm:ss"),
+            F.when(
+                F.date_format(col_name, "SSSSSS") != "000000",
+                F.concat(F.lit("."), F.date_format(col_name, "SSSSSS")),
+            ).otherwise(F.lit("")),
+        )
+    )
+
 empty_sdg_array = F.array().cast("array<struct<id:string,display_name:string,score:double>>")
 
 df_transformed = (
@@ -339,11 +358,30 @@ df_transformed = (
         F.col("abstract_inverted_index").isNotNull().alias("has_abstract"),
         F.col("has_content"),
         F.col("has_fulltext"),
-        F.col("created_date"),
-        F.col("updated_date")
+        iso_ts("created_date").alias("created_date"),
+        iso_ts("updated_date").alias("updated_date")
     ))
     .select("work_id", "_doc")
 )
+
+# Widen every FLOAT to DOUBLE before serializing: the ES sync hands Spark floats to
+# Python, where they become doubles, and json.dumps prints the full double expansion
+# (e.g. 0.6881897449493408). to_json on a raw float prints the short form (0.68818974),
+# which parses to a DIFFERENT double at serve time. float->double cast is exact and
+# reproduces the ES bytes. (oxjob #576 exact-parity fix, 2026-07-13)
+def _widen_floats(dt):
+    if isinstance(dt, FloatType):
+        return DoubleType()
+    if isinstance(dt, StructType):
+        return StructType([StructField(f.name, _widen_floats(f.dataType), f.nullable) for f in dt.fields])
+    if isinstance(dt, ArrayType):
+        return ArrayType(_widen_floats(dt.elementType), dt.containsNull)
+    if isinstance(dt, MapType):
+        return MapType(_widen_floats(dt.keyType), _widen_floats(dt.valueType), dt.valueContainsNull)
+    return dt
+
+_doc_type = df_transformed.schema["_doc"].dataType
+df_transformed = df_transformed.withColumn("_doc", F.col("_doc").cast(_widen_floats(_doc_type)))
 
 # Explicit nulls (ignoreNullFields=false) so the JSON matches the ES _source shape,
 # where absent-vs-null matters to the API serializer.
