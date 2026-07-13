@@ -84,7 +84,7 @@ if _sys_utf8.platform == "win32":
 # SweCRIS API endpoint for Formas
 SWECRIS_API_BASE = "https://swecris-api.vr.se/v1"
 SWECRIS_FUNDER_ID = "202100-5232"  # Formas
-SWECRIS_API_TOKEN = "VRSwecrisAPI2025-1"  # Public API token
+SWECRIS_API_TOKEN = "VRSwecrisAPI2026-1"  # Public API token
 
 # S3 destination
 S3_BUCKET = "openalex-ingest"

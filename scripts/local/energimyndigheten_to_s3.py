@@ -1,26 +1,37 @@
 #!/usr/bin/env python3
 """
-IFAU (Institute for Evaluation of Labour Market and Education Policy) to S3
-============================================================================
+Energimyndigheten (Swedish Energy Agency) to S3 Data Pipeline
+=============================================================
 
-RE-SOURCED 2026-07-12 (S7 wave-1 follow-up, Kyle-approved): previously this
-script scraped the ~16 grants listed on ifau.se's awarded-research-grants
-page (three-line text blocks). SweCRIS (Sweden's national research-grants
-registry, CC0) carries IFAU's full grant history — 131 projects 2005-2026
-with SEK amounts, dates, abstracts and partial PI/ORCID data — so the ingest
-now pulls from SweCRIS.
+Downloads Energimyndigheten (Statens energimyndighet, org nr 202100-5000)
+grant data from SweCRIS (Sweden's national research-grants registry, run by
+Vetenskapsradet, CC0), processes it into a parquet file, and uploads to S3.
+
+Why SweCRIS and not energimyndigheten.se's own projektdatabas:
+- The projektdatabas (energimyndigheten.se/forskning-och-innovation/
+  data-om-finansiering-av-forskning-och-innovation/projektdatabas/) is a
+  server-rendered Episerver search with a hard 100-results-per-query cap,
+  no pagination, and no JSON endpoint (probed 2026-07-12).
+- The agency's machine API ("GDP" joint-data API shared by 5 Swedish
+  funders) requires an API key application.
+- SweCRIS carries the same native project numbers (P-numbers, e.g.
+  "P2023-00317"), SEK amounts, dates, Swedish+English titles and abstracts
+  for ~6,000 Energimyndigheten projects 2008-2026.
 
 Data source: SweCRIS API (https://swecris-api.vr.se), public token.
-Funder org nr in SweCRIS: 202100-4946.
-Output: s3://openalex-ingest/awards/ifau/ifau_grants.parquet
-        (path unchanged — the notebook re-run cleanly replaces the old rows
-        via DELETE provenance='ifau' AND priority=338)
+Output: s3://openalex-ingest/awards/energimyndigheten/energimyndigheten_projects.parquet
 
-provenance `ifau`, priority 338. F4320327653 (Path A).
+Notes:
+- SweCRIS peopleList is EMPTY for Energimyndigheten projects (the agency
+  does not report PIs to SweCRIS), so pi_* columns are NULL by design.
+- SweCRIS projectId carries an "_Energi" suffix ("P2023-00317_Energi");
+  the raw value is preserved here, the notebook strips the suffix so
+  funder_award_id matches the citable grant number.
 
 Usage:
-    python ifau_to_s3.py [--output-dir DIR] [--limit N]
-                         [--skip-download] [--skip-upload] [--allow-shrink]
+    python energimyndigheten_to_s3.py [--output-dir DIR] [--limit N]
+                                      [--skip-download] [--skip-upload]
+                                      [--allow-shrink]
 """
 
 import argparse
@@ -64,12 +75,13 @@ if sys.platform == "win32":
 # --- end shim ---
 
 SWECRIS_API_BASE = "https://swecris-api.vr.se/v1"
-SWECRIS_FUNDER_ORG_NR = "202100-4946"   # IFAU
-# Public API token. Rotates yearly; "VRSwecrisAPI2026-1" confirmed live 2026-07-12.
+SWECRIS_FUNDER_ORG_NR = "202100-5000"   # Statens energimyndighet
+# Public API token. NOTE: rotates yearly — the 2025 token ("VRSwecrisAPI2025-1")
+# stopped working; confirmed "VRSwecrisAPI2026-1" live on 2026-07-12.
 SWECRIS_API_TOKEN = "VRSwecrisAPI2026-1"
 
 S3_BUCKET = "openalex-ingest"
-S3_KEY = "awards/ifau/ifau_grants.parquet"
+S3_KEY = "awards/energimyndigheten/energimyndigheten_projects.parquet"
 
 USER_AGENT = "OpenAlex awards ingest (mailto:kyle@ourresearch.org)"
 
@@ -91,28 +103,13 @@ def load_repo_dotenv() -> None:
         os.environ.setdefault(k.strip(), v.strip())
 
 
-def split_name(name: str):
-    """Canonical helper from wolf_to_s3.py (§2.4.1)."""
-    if not name:
-        return None, None
-    tokens = str(name).split()
-    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
-    while tokens and tokens[-1].lower().strip(",.") in suffixes:
-        tokens.pop()
-    if not tokens:
-        return None, None
-    if len(tokens) == 1:
-        return None, tokens[0]
-    return " ".join(tokens[:-1]), tokens[-1]
-
-
 def download_grants(output_dir: Path) -> Path:
     url = f"{SWECRIS_API_BASE}/projects/funders/{SWECRIS_FUNDER_ORG_NR}"
-    log(f"Downloading IFAU projects from {url}")
+    log(f"Downloading Energimyndigheten projects from {url}")
     headers = {"Authorization": f"Bearer {SWECRIS_API_TOKEN}", "User-Agent": USER_AGENT}
     r = requests.get(url, headers=headers, timeout=600)
     r.raise_for_status()
-    out = output_dir / "swecris_ifau_raw.json"
+    out = output_dir / "swecris_energimyndigheten_raw.json"
     out.write_text(r.text)
     log(f"  saved {out.stat().st_size/1e6:.1f} MB -> {out}")
     return out
@@ -126,13 +123,6 @@ def parse_projects(json_path: Path, limit=None) -> list[dict]:
         log(f"  --limit {limit}: truncated to {len(data):,}")
     rows = []
     for row in data:
-        pi_given = pi_family = pi_orcid = pi_full = None
-        for person in row.get("peopleList") or []:
-            if person.get("roleEn") == "Principal Investigator":
-                pi_full = person.get("fullName")
-                pi_given, pi_family = split_name(pi_full)
-                pi_orcid = person.get("orcId")
-                break
         scbs = row.get("scbs") or []
         rows.append({
             "project_id": row.get("projectId"),
@@ -149,12 +139,12 @@ def parse_projects(json_path: Path, limit=None) -> list[dict]:
             "funding_organisation": row.get("fundingOrganisationNameEn") or row.get("fundingOrganisationNameSv"),
             "amount": row.get("fundingsSek"),
             "funding_year": row.get("fundingYear"),
+            "funding_start_date": row.get("fundingStartDate"),
+            "funding_end_date": row.get("fundingEndDate"),
             "type_of_award_id": row.get("typeOfAwardId"),
             "type_of_award": row.get("typeOfAwardDescrEn") or row.get("typeOfAwardDescrSv"),
-            "pi_full_name": pi_full,
-            "pi_given_name": pi_given,
-            "pi_family_name": pi_family,
-            "pi_orcid": pi_orcid,
+            # peopleList is empty for Energimyndigheten in SweCRIS; keep the
+            # raw JSON anyway so a future SweCRIS change is captured.
             "people_json": json.dumps(row.get("peopleList") or [], ensure_ascii=False),
             "main_discipline": scbs[0].get("scb5NameEn") if scbs else None,
             "main_discipline_level1": scbs[0].get("scb1NameEn") if scbs else None,
@@ -169,7 +159,6 @@ def build_dataframe(rows: list[dict]) -> pd.DataFrame:
     for col in ("start_date", "end_date"):
         df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%Y-%m-%d")
     before = len(df)
-    # §1.2 #6: dedup sorted by the column shipped as amount
     df = df.sort_values("amount", ascending=False, na_position="last")
     df = df.drop_duplicates(subset=["project_id"], keep="first").reset_index(drop=True)
     if len(df) < before:
@@ -210,9 +199,9 @@ def upload_to_s3(local_file: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="IFAU (via SweCRIS) -> parquet -> S3")
+    parser = argparse.ArgumentParser(description="Energimyndigheten (via SweCRIS) -> parquet -> S3")
     parser.add_argument("--output-dir", type=Path,
-                        default=Path(__file__).parent / "ifau_data",
+                        default=Path(__file__).parent / "energimyndigheten_data",
                         help="Directory for downloaded/processed files")
     parser.add_argument("--limit", type=int, default=None,
                         help="Smoke test: only process the first N projects")
@@ -225,7 +214,7 @@ def main() -> None:
     load_repo_dotenv()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw = args.output_dir / "swecris_ifau_raw.json"
+    raw = args.output_dir / "swecris_energimyndigheten_raw.json"
     if not args.skip_download or not raw.exists():
         raw = download_grants(args.output_dir)
     else:
@@ -236,10 +225,10 @@ def main() -> None:
         log("ERROR: no projects parsed"); sys.exit(1)
 
     df = build_dataframe(rows)
-    out = args.output_dir / "ifau_grants.parquet"
+    out = args.output_dir / "energimyndigheten_projects.parquet"
     df.to_parquet(out, index=False)
     log(f"Wrote {len(df):,} rows -> {out} ({out.stat().st_size/1e6:.1f} MB)")
-    log(f"  with amount: {df['amount'].notna().sum():,} | with PI: {df['pi_family_name'].notna().sum():,} | with abstract: {(df['abstract'].notna() | df['abstract_english'].notna()).sum():,}")
+    log(f"  with amount: {df['amount'].notna().sum():,} | with title_en: {df['title_english'].notna().sum():,} | with abstract: {(df['abstract'].notna() | df['abstract_english'].notna()).sum():,}")
 
     if args.limit:
         log("--limit run: refusing to upload a truncated corpus (use full run for S3)")

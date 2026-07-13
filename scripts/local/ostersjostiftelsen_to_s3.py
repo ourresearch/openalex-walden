@@ -1,168 +1,267 @@
 #!/usr/bin/env python3
 """
-Foundation for Baltic and East European Studies (Östersjöstiftelsen) to S3
-==========================================================================
+Östersjöstiftelsen (Foundation for Baltic and East European Studies) to S3
+===========================================================================
 
-Harvests the Östersjöstiftelsen funded-project database (ostersjostiftelsen.se)
-via its WordPress REST API and uploads a parquet to S3 for Databricks ingestion.
+RE-SOURCED 2026-07-12 (S7 wave-1 follow-up, Kyle-approved): previously this
+script scraped ostersjostiftelsen.se's WordPress REST API (wp-json `project`,
+426 title+abstract-only rows — per-project PI, year and amount were NOT
+exposed in wp-json, so they shipped NULL). SweCRIS (Sweden's national
+research-grants registry, CC0) carries the foundation's grants WITH SEK
+amounts, start/end dates, abstracts and partial PI data, so the ingest now
+pulls from SweCRIS.
 
-Data source: WordPress REST custom post type `project`:
-    https://www.ostersjostiftelsen.se/wp-json/wp/v2/project?per_page=100&page=N
-    (X-WP-Total ~426; English titles + abstracts on the .se host)
-Each record gives id, slug, link, title.rendered, content.rendered (abstract).
+Trade-off (documented): 242 SweCRIS projects (2008-2023) vs 426 wp-json
+titles — fewer rows, but every row gains amount + dates + a citable native
+grant number; the wp-json extras had no metadata to link on beyond title.
 
-LIMITATION: the per-project Principal Investigator, research field, project type,
-and grant year are NOT exposed in wp-json (acf is empty, no taxonomies) and on
-the site they render only inside a global filter widget / JS archive — not
-per-project. So this ingest carries title + abstract only; PI, year, institution
-and amount are NULL. The title is the award-linkage signal. provenance
-`ostersjostiftelsen`, priority 327. F4320310975 (Path A).
-
+Data source: SweCRIS API (https://swecris-api.vr.se), public token.
+Funder org nr in SweCRIS: 802400-4155.
 Output: s3://openalex-ingest/awards/ostersjostiftelsen/ostersjostiftelsen_projects.parquet
+        (path unchanged — the notebook re-run cleanly replaces the old rows
+        via DELETE provenance='ostersjostiftelsen' AND priority=327)
+
+NOTE: the first re-sourced upload shrinks the corpus 426 -> 242 by design;
+run with --allow-shrink once. provenance `ostersjostiftelsen`, priority 327.
+F4320310975 (Path A).
 
 Usage:
-    python ostersjostiftelsen_to_s3.py
-    python ostersjostiftelsen_to_s3.py --limit 10
-    python ostersjostiftelsen_to_s3.py --skip-upload
-
-Author: OpenAlex Team
+    python ostersjostiftelsen_to_s3.py [--output-dir DIR] [--limit N]
+                                       [--skip-download] [--skip-upload]
+                                       [--allow-shrink]
 """
 
 import argparse
-import re
-import subprocess
+import json
+import os
 import sys
-import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
 import requests
 
+# --- Windows UTF-8 compatibility shim (fleet-fix 2026-05-22, runbook §1.2 #7) ---
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
     sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
-except Exception:
+except (AttributeError, ValueError):
     pass
 
-from bs4 import BeautifulSoup
+if sys.platform == "win32":
+    import builtins as _builtins_utf8
+    import pathlib as _pathlib_utf8
 
-API = "https://www.ostersjostiftelsen.se/wp-json/wp/v2/project"
+    _orig_wt = _pathlib_utf8.Path.write_text
+    def _wt(self, data, encoding=None, errors=None, newline=None):
+        return _orig_wt(self, data, encoding=encoding or "utf-8", errors=errors, newline=newline)
+    _pathlib_utf8.Path.write_text = _wt
+
+    _orig_rt = _pathlib_utf8.Path.read_text
+    def _rt(self, encoding=None, errors=None, newline=None):
+        return _orig_rt(self, encoding=encoding or "utf-8", errors=errors, newline=newline)
+    _pathlib_utf8.Path.read_text = _rt
+
+    _orig_open = _builtins_utf8.open
+    def _open(file, mode="r", buffering=-1, encoding=None, errors=None,
+              newline=None, closefd=True, opener=None):
+        if "b" not in mode and encoding is None:
+            encoding = "utf-8"
+        return _orig_open(file, mode, buffering, encoding, errors, newline, closefd, opener)
+    _builtins_utf8.open = _open
+# --- end shim ---
+
+SWECRIS_API_BASE = "https://swecris-api.vr.se/v1"
+SWECRIS_FUNDER_ORG_NR = "802400-4155"   # Östersjöstiftelsen
+# Public API token. Rotates yearly; "VRSwecrisAPI2026-1" confirmed live 2026-07-12.
+SWECRIS_API_TOKEN = "VRSwecrisAPI2026-1"
+
 S3_BUCKET = "openalex-ingest"
 S3_KEY = "awards/ostersjostiftelsen/ostersjostiftelsen_projects.parquet"
-PER_PAGE = 100
-EXPECTED_MIN = 350
-UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-MAX_NON200 = 5
+
+USER_AGENT = "OpenAlex awards ingest (mailto:kyle@ourresearch.org)"
 
 
-def clean_html(s):
-    if not s:
-        return None
-    txt = BeautifulSoup(s, "html.parser").get_text(" ", strip=True)
-    txt = re.sub(r"\s+", " ", txt).strip()
-    return txt or None
+def log(msg: str) -> None:
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def upload_to_s3(local_path: Path, bucket: str, key: str) -> bool:
-    s3_uri = f"s3://{bucket}/{key}"
-    print(f"\nUploading to {s3_uri}...")
-    try:
-        subprocess.run(["aws", "s3", "cp", str(local_path), s3_uri],
-                       capture_output=True, text=True, check=True)
-        print(f"Upload complete: {s3_uri}")
+def load_repo_dotenv() -> None:
+    """AWS creds live in the repo .env (never ~/.aws). Load if unset."""
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip())
+
+
+def split_name(name: str):
+    """Canonical helper from wolf_to_s3.py (§2.4.1)."""
+    if not name:
+        return None, None
+    tokens = str(name).split()
+    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    while tokens and tokens[-1].lower().strip(",.") in suffixes:
+        tokens.pop()
+    if not tokens:
+        return None, None
+    if len(tokens) == 1:
+        return None, tokens[0]
+    return " ".join(tokens[:-1]), tokens[-1]
+
+
+def download_grants(output_dir: Path) -> Path:
+    url = f"{SWECRIS_API_BASE}/projects/funders/{SWECRIS_FUNDER_ORG_NR}"
+    log(f"Downloading Östersjöstiftelsen projects from {url}")
+    headers = {"Authorization": f"Bearer {SWECRIS_API_TOKEN}", "User-Agent": USER_AGENT}
+    r = requests.get(url, headers=headers, timeout=600)
+    r.raise_for_status()
+    out = output_dir / "swecris_ostersjostiftelsen_raw.json"
+    out.write_text(r.text)
+    log(f"  saved {out.stat().st_size/1e6:.1f} MB -> {out}")
+    return out
+
+
+def parse_projects(json_path: Path, limit=None) -> list[dict]:
+    data = json.loads(json_path.read_text())
+    log(f"  {len(data):,} projects in raw JSON")
+    if limit:
+        data = data[:limit]
+        log(f"  --limit {limit}: truncated to {len(data):,}")
+    rows = []
+    for row in data:
+        pi_given = pi_family = pi_orcid = pi_full = None
+        for person in row.get("peopleList") or []:
+            if person.get("roleEn") == "Principal Investigator":
+                pi_full = person.get("fullName")
+                pi_given, pi_family = split_name(pi_full)
+                pi_orcid = person.get("orcId")
+                break
+        scbs = row.get("scbs") or []
+        rows.append({
+            "project_id": row.get("projectId"),
+            "title": row.get("projectTitleSv"),
+            "title_english": row.get("projectTitleEn"),
+            "abstract": row.get("projectAbstractSv"),
+            "abstract_english": row.get("projectAbstractEn"),
+            "start_date": row.get("projectStartDate"),
+            "end_date": row.get("projectEndDate"),
+            "coordinating_organisation_id": row.get("coordinatingOrganisationId"),
+            "coordinating_organisation": row.get("coordinatingOrganisationNameEn") or row.get("coordinatingOrganisationNameSv"),
+            "coordinating_organisation_type": row.get("coordinatingOrganisationTypeOfOrganisationEn"),
+            "funding_organisation_id": row.get("fundingOrganisationId"),
+            "funding_organisation": row.get("fundingOrganisationNameEn") or row.get("fundingOrganisationNameSv"),
+            "amount": row.get("fundingsSek"),
+            "funding_year": row.get("fundingYear"),
+            "type_of_award_id": row.get("typeOfAwardId"),
+            "type_of_award": row.get("typeOfAwardDescrEn") or row.get("typeOfAwardDescrSv"),
+            "pi_full_name": pi_full,
+            "pi_given_name": pi_given,
+            "pi_family_name": pi_family,
+            "pi_orcid": pi_orcid,
+            "people_json": json.dumps(row.get("peopleList") or [], ensure_ascii=False),
+            "main_discipline": scbs[0].get("scb5NameEn") if scbs else None,
+            "main_discipline_level1": scbs[0].get("scb1NameEn") if scbs else None,
+            "updated_date": row.get("updatedDate"),
+            "loaded_date": row.get("loadedDate"),
+        })
+    return rows
+
+
+def build_dataframe(rows: list[dict]) -> pd.DataFrame:
+    df = pd.DataFrame(rows)
+    for col in ("start_date", "end_date"):
+        df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%Y-%m-%d")
+    before = len(df)
+    # §1.2 #6: dedup sorted by the column shipped as amount
+    df = df.sort_values("amount", ascending=False, na_position="last")
+    df = df.drop_duplicates(subset=["project_id"], keep="first").reset_index(drop=True)
+    if len(df) < before:
+        log(f"  deduped {before - len(df)} duplicate project_ids (kept max-amount row)")
+    df["ingested_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    df = df.astype("string")   # §1.2 #5: force string dtype before to_parquet
+    return df
+
+
+def check_no_shrink(new_count: int, allow_shrink: bool, output_dir: Path) -> bool:
+    """§1.4 re-ingest safety: never overwrite S3 with a smaller corpus.
+
+    The 2026-07-12 re-source from wp-json (426 rows) to SweCRIS (242 rows)
+    is a deliberate one-time shrink — pass --allow-shrink for that run.
+    """
+    if allow_shrink:
+        log("  --allow-shrink set; skipping §1.4 shrink-check")
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"Upload failed: {e.stderr}")
-        return False
+    try:
+        import boto3
+        client = boto3.client("s3")
+        client.head_object(Bucket=S3_BUCKET, Key=S3_KEY)
+        prev_path = output_dir / "_previous_s3.parquet"
+        client.download_file(S3_BUCKET, S3_KEY, str(prev_path))
+        prev_count = len(pd.read_parquet(prev_path))
+        log(f"  §1.4 shrink-check: previous S3 parquet has {prev_count:,} rows")
+        if new_count < prev_count:
+            log(f"  §1.4 FAIL: new ({new_count:,}) < previous ({prev_count:,}). Aborting upload.")
+            return False
+        log(f"  §1.4 OK: new {new_count:,} >= previous {prev_count:,}")
+        return True
+    except Exception as e:
+        log(f"  §1.4 shrink-check skipped ({type(e).__name__}: {str(e)[:80]}) — normal on first run")
+        return True
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Östersjöstiftelsen projects to S3")
-    ap.add_argument("--output-dir", type=Path, default=Path("/tmp/ostersjostiftelsen_data"))
-    ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--skip-upload", action="store_true")
-    args = ap.parse_args()
+def upload_to_s3(local_file: Path) -> None:
+    import boto3
+    log(f"Uploading {local_file.name} -> s3://{S3_BUCKET}/{S3_KEY}")
+    boto3.client("s3").upload_file(str(local_file), S3_BUCKET, S3_KEY)
+    log("  upload OK")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Östersjöstiftelsen (via SweCRIS) -> parquet -> S3")
+    parser.add_argument("--output-dir", type=Path,
+                        default=Path(__file__).parent / "ostersjostiftelsen_data",
+                        help="Directory for downloaded/processed files")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Smoke test: only process the first N projects")
+    parser.add_argument("--skip-download", action="store_true", help="Reuse existing raw JSON")
+    parser.add_argument("--skip-upload", action="store_true", help="Build parquet only")
+    parser.add_argument("--allow-shrink", action="store_true",
+                        help="Override the §1.4 never-shrink safety check (needed once for the 2026-07 re-source)")
+    args = parser.parse_args()
+
+    load_repo_dotenv()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("=" * 60)
-    print("Östersjöstiftelsen projects -> S3")
-    print("=" * 60)
+    raw = args.output_dir / "swecris_ostersjostiftelsen_raw.json"
+    if not args.skip_download or not raw.exists():
+        raw = download_grants(args.output_dir)
+    else:
+        log(f"--skip-download: using {raw}")
 
-    s = requests.Session()
-    s.headers["User-Agent"] = UA
-    rows, seen = [], set()
-    page, total_pages, non200 = 1, None, 0
-    while True:
-        try:
-            r = s.get(API, params={"per_page": PER_PAGE, "page": page}, timeout=60)
-        except Exception as e:
-            non200 += 1
-            print(f"  page {page}: error {e} ({non200}/{MAX_NON200})")
-            if non200 >= MAX_NON200:
-                raise
-            time.sleep(3)
-            continue
-        if r.status_code != 200:
-            # WP returns 400 past the last page — that's the terminator only if
-            # we've already collected pages; otherwise treat as a flake.
-            if r.status_code == 400 and rows:
-                print(f"  page {page}: HTTP 400 (past last page) — stopping")
-                break
-            non200 += 1
-            print(f"  page {page}: HTTP {r.status_code} ({non200}/{MAX_NON200})")
-            if non200 >= MAX_NON200:
-                raise RuntimeError(f"too many non-200s at page {page}")
-            time.sleep(3)
-            continue
-        non200 = 0
-        if total_pages is None:
-            total_pages = int(r.headers.get("X-WP-TotalPages", "0") or 0)
-            print(f"  X-WP-Total={r.headers.get('X-WP-Total')} pages={total_pages}")
-        batch = r.json()
-        if not batch:
-            break
-        for rec in batch:
-            slug = rec.get("slug") or str(rec.get("id"))
-            if slug in seen:
-                continue
-            seen.add(slug)
-            rows.append({
-                "funder_award_id": f"osg-{slug}"[:120],
-                "title": clean_html((rec.get("title") or {}).get("rendered")),
-                "description": clean_html((rec.get("content") or {}).get("rendered")),
-                "landing_page_url": rec.get("link"),
-            })
-        print(f"  page {page}: +{len(batch)} ({len(rows)} total)")
-        if args.limit and len(rows) >= args.limit:
-            rows = rows[: args.limit]
-            break
-        if total_pages and page >= total_pages:
-            break
-        page += 1
-        time.sleep(0.3)
+    rows = parse_projects(raw, limit=args.limit)
+    if not rows:
+        log("ERROR: no projects parsed"); sys.exit(1)
 
-    rows = [r for r in rows if r["title"]]
-    if not args.limit and len(rows) < EXPECTED_MIN:
-        print(f"[ERROR] only {len(rows)} projects — expected >={EXPECTED_MIN}; refusing partial ship")
-        sys.exit(1)
-
-    df = pd.DataFrame(rows).astype("string")
-    print(f"\nDataFrame: {len(df)} rows, {len(df.columns)} columns")
-    for c in ("title", "description"):
-        nn = df[c].notna().sum()
-        print(f"  {c}: {nn}/{len(df)} ({round(100 * nn / max(len(df), 1))}%)")
-    print(f"  dupes: {df.funder_award_id.duplicated().sum()}")
+    df = build_dataframe(rows)
     out = args.output_dir / "ostersjostiftelsen_projects.parquet"
     df.to_parquet(out, index=False)
-    print(f"Wrote {out} ({out.stat().st_size / 1e3:.0f} KB)")
+    log(f"Wrote {len(df):,} rows -> {out} ({out.stat().st_size/1e6:.1f} MB)")
+    log(f"  with amount: {df['amount'].notna().sum():,} | with PI: {df['pi_family_name'].notna().sum():,} | with abstract: {(df['abstract'].notna() | df['abstract_english'].notna()).sum():,}")
 
     if args.limit:
-        print("\nSmoke run complete (no upload with --limit).")
+        log("--limit run: refusing to upload a truncated corpus (use full run for S3)")
         return
-    if not args.skip_upload:
-        if not upload_to_s3(out, S3_BUCKET, S3_KEY):
-            sys.exit(1)
-    print("\nPipeline complete!")
+    if args.skip_upload:
+        log("--skip-upload: done (no S3 write)")
+        return
+    if not check_no_shrink(len(df), args.allow_shrink, args.output_dir):
+        sys.exit(2)
+    upload_to_s3(out)
 
 
 if __name__ == "__main__":

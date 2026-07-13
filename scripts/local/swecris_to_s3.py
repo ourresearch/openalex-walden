@@ -1,32 +1,47 @@
 #!/usr/bin/env python3
 """
-IFAU (Institute for Evaluation of Labour Market and Education Policy) to S3
-============================================================================
+SweCRIS sweep to S3 Data Pipeline (multi-funder)
+================================================
 
-RE-SOURCED 2026-07-12 (S7 wave-1 follow-up, Kyle-approved): previously this
-script scraped the ~16 grants listed on ifau.se's awarded-research-grants
-page (three-line text blocks). SweCRIS (Sweden's national research-grants
-registry, CC0) carries IFAU's full grant history — 131 projects 2005-2026
-with SEK amounts, dates, abstracts and partial PI/ORCID data — so the ingest
-now pulls from SweCRIS.
+Downloads grants for the Swedish funders in SweCRIS (Sweden's national
+research-grants registry, CC0, run by Vetenskapsradet) that are NOT already
+first-party ingests in OpenAlex, and writes ONE parquet with an
+`openalex_funder_id` column per row (runbook §2.3.2 multi-funder rule).
+
+SweCRIS carries 13 funders (probed 2026-07-12). Excluded from this sweep:
+- Vetenskapsradet, Vinnova, Formas, Forte, Riksbankens Jubileumsfond —
+  already Complete first-party ingests.
+- Statens energimyndighet (202100-5000) — separate ingest at its own
+  provenance/priority (energimyndigheten_to_s3.py, priority 435).
+- Ostersjostiftelsen (802400-4155) and IFAU (202100-4946) — first-party
+  ingests already in openalex_awards_raw at priorities 327/338 (tracker
+  Step 6, batch #8); double-ingesting here would duplicate awards.
+
+Included funders (SweCRIS org nr -> OpenAlex funder):
+- 202100-2585  Swedish National Space Agency (Rymdstyrelsen)      F4320321031
+- 202100-1975  Naturvardsverket (Swedish EPA)                     F4320322579
+- 802400-4213  The Knowledge Foundation (KK-stiftelsen)           F4320321759
+- 202100-0712  Swedish Geotechnical Institute (SGI)               F4320316858
+- 802423-4075  The Kamprad Family Foundation                      F4320325984
 
 Data source: SweCRIS API (https://swecris-api.vr.se), public token.
-Funder org nr in SweCRIS: 202100-4946.
-Output: s3://openalex-ingest/awards/ifau/ifau_grants.parquet
-        (path unchanged — the notebook re-run cleanly replaces the old rows
-        via DELETE provenance='ifau' AND priority=338)
+Output: s3://openalex-ingest/awards/swecris/swecris_projects.parquet
 
-provenance `ifau`, priority 338. F4320327653 (Path A).
+Notes:
+- SweCRIS projectId may carry a per-funder suffix ("..._SGI"); raw value is
+  preserved, the notebook strips the trailing "_Xxx" token.
+- PI name split uses the canonical split_name helper (wolf_to_s3.py).
 
 Usage:
-    python ifau_to_s3.py [--output-dir DIR] [--limit N]
-                         [--skip-download] [--skip-upload] [--allow-shrink]
+    python swecris_to_s3.py [--output-dir DIR] [--limit N]
+                            [--skip-download] [--skip-upload] [--allow-shrink]
 """
 
 import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -64,12 +79,21 @@ if sys.platform == "win32":
 # --- end shim ---
 
 SWECRIS_API_BASE = "https://swecris-api.vr.se/v1"
-SWECRIS_FUNDER_ORG_NR = "202100-4946"   # IFAU
-# Public API token. Rotates yearly; "VRSwecrisAPI2026-1" confirmed live 2026-07-12.
+# Public API token. NOTE: rotates yearly — "VRSwecrisAPI2025-1" stopped
+# working; "VRSwecrisAPI2026-1" confirmed live 2026-07-12.
 SWECRIS_API_TOKEN = "VRSwecrisAPI2026-1"
 
+# SweCRIS org nr -> (OpenAlex funder_id numeric, canonical display name)
+SWEEP_FUNDERS = {
+    "202100-2585": (4320321031, "Swedish National Space Agency"),
+    "202100-1975": (4320322579, "Naturvårdsverket"),
+    "802400-4213": (4320321759, "Stiftelsen för Kunskaps- och Kompetensutveckling"),
+    "202100-0712": (4320316858, "Statens geotekniska institut"),
+    "802423-4075": (4320325984, "Familjen Kamprads Stiftelse"),
+}
+
 S3_BUCKET = "openalex-ingest"
-S3_KEY = "awards/ifau/ifau_grants.parquet"
+S3_KEY = "awards/swecris/swecris_projects.parquet"
 
 USER_AGENT = "OpenAlex awards ingest (mailto:kyle@ourresearch.org)"
 
@@ -92,7 +116,11 @@ def load_repo_dotenv() -> None:
 
 
 def split_name(name: str):
-    """Canonical helper from wolf_to_s3.py (§2.4.1)."""
+    """Split 'James P. Eisenstein' -> ('James P.', 'Eisenstein').
+
+    Canonical helper from wolf_to_s3.py (§2.4.1): strips trailing
+    degree/suffix tokens before splitting; last token = family name.
+    """
     if not name:
         return None, None
     tokens = str(name).split()
@@ -106,24 +134,23 @@ def split_name(name: str):
     return " ".join(tokens[:-1]), tokens[-1]
 
 
-def download_grants(output_dir: Path) -> Path:
-    url = f"{SWECRIS_API_BASE}/projects/funders/{SWECRIS_FUNDER_ORG_NR}"
-    log(f"Downloading IFAU projects from {url}")
+def download_funder(org_nr: str, output_dir: Path) -> Path:
+    url = f"{SWECRIS_API_BASE}/projects/funders/{org_nr}"
+    out = output_dir / f"swecris_raw_{org_nr}.json"
+    log(f"Downloading {org_nr} from {url}")
     headers = {"Authorization": f"Bearer {SWECRIS_API_TOKEN}", "User-Agent": USER_AGENT}
     r = requests.get(url, headers=headers, timeout=600)
     r.raise_for_status()
-    out = output_dir / "swecris_ifau_raw.json"
     out.write_text(r.text)
-    log(f"  saved {out.stat().st_size/1e6:.1f} MB -> {out}")
+    log(f"  saved {out.stat().st_size/1e6:.1f} MB -> {out.name}")
     return out
 
 
-def parse_projects(json_path: Path, limit=None) -> list[dict]:
+def parse_projects(json_path: Path, org_nr: str, limit=None) -> list[dict]:
+    funder_id, funder_name = SWEEP_FUNDERS[org_nr]
     data = json.loads(json_path.read_text())
-    log(f"  {len(data):,} projects in raw JSON")
     if limit:
         data = data[:limit]
-        log(f"  --limit {limit}: truncated to {len(data):,}")
     rows = []
     for row in data:
         pi_given = pi_family = pi_orcid = pi_full = None
@@ -135,6 +162,9 @@ def parse_projects(json_path: Path, limit=None) -> list[dict]:
                 break
         scbs = row.get("scbs") or []
         rows.append({
+            "openalex_funder_id": funder_id,
+            "funder_display_name": funder_name,
+            "swecris_org_nr": org_nr,
             "project_id": row.get("projectId"),
             "title": row.get("projectTitleSv"),
             "title_english": row.get("projectTitleEn"),
@@ -164,16 +194,16 @@ def parse_projects(json_path: Path, limit=None) -> list[dict]:
     return rows
 
 
-def build_dataframe(rows: list[dict]) -> pd.DataFrame:
-    df = pd.DataFrame(rows)
+def build_dataframe(all_rows: list[dict]) -> pd.DataFrame:
+    df = pd.DataFrame(all_rows)
     for col in ("start_date", "end_date"):
         df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%Y-%m-%d")
     before = len(df)
     # §1.2 #6: dedup sorted by the column shipped as amount
     df = df.sort_values("amount", ascending=False, na_position="last")
-    df = df.drop_duplicates(subset=["project_id"], keep="first").reset_index(drop=True)
+    df = df.drop_duplicates(subset=["swecris_org_nr", "project_id"], keep="first").reset_index(drop=True)
     if len(df) < before:
-        log(f"  deduped {before - len(df)} duplicate project_ids (kept max-amount row)")
+        log(f"  deduped {before - len(df)} duplicate (funder, project_id) rows (kept max-amount)")
     df["ingested_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     df = df.astype("string")   # §1.2 #5: force string dtype before to_parquet
     return df
@@ -210,13 +240,13 @@ def upload_to_s3(local_file: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="IFAU (via SweCRIS) -> parquet -> S3")
+    parser = argparse.ArgumentParser(description="SweCRIS sweep (5 funders) -> parquet -> S3")
     parser.add_argument("--output-dir", type=Path,
-                        default=Path(__file__).parent / "ifau_data",
+                        default=Path(__file__).parent / "swecris_data",
                         help="Directory for downloaded/processed files")
     parser.add_argument("--limit", type=int, default=None,
-                        help="Smoke test: only process the first N projects")
-    parser.add_argument("--skip-download", action="store_true", help="Reuse existing raw JSON")
+                        help="Smoke test: only process the first N projects per funder")
+    parser.add_argument("--skip-download", action="store_true", help="Reuse existing raw JSONs")
     parser.add_argument("--skip-upload", action="store_true", help="Build parquet only")
     parser.add_argument("--allow-shrink", action="store_true",
                         help="Override the §1.4 never-shrink safety check")
@@ -225,21 +255,31 @@ def main() -> None:
     load_repo_dotenv()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw = args.output_dir / "swecris_ifau_raw.json"
-    if not args.skip_download or not raw.exists():
-        raw = download_grants(args.output_dir)
-    else:
-        log(f"--skip-download: using {raw}")
+    all_rows = []
+    for org_nr in SWEEP_FUNDERS:
+        raw = args.output_dir / f"swecris_raw_{org_nr}.json"
+        if not args.skip_download or not raw.exists():
+            raw = download_funder(org_nr, args.output_dir)
+            time.sleep(1.0)
+        else:
+            log(f"--skip-download: using {raw.name}")
+        rows = parse_projects(raw, org_nr, limit=args.limit)
+        log(f"  {SWEEP_FUNDERS[org_nr][1]}: {len(rows):,} project rows")
+        all_rows.extend(rows)
 
-    rows = parse_projects(raw, limit=args.limit)
-    if not rows:
+    if not all_rows:
         log("ERROR: no projects parsed"); sys.exit(1)
 
-    df = build_dataframe(rows)
-    out = args.output_dir / "ifau_grants.parquet"
+    df = build_dataframe(all_rows)
+    out = args.output_dir / "swecris_projects.parquet"
     df.to_parquet(out, index=False)
     log(f"Wrote {len(df):,} rows -> {out} ({out.stat().st_size/1e6:.1f} MB)")
-    log(f"  with amount: {df['amount'].notna().sum():,} | with PI: {df['pi_family_name'].notna().sum():,} | with abstract: {(df['abstract'].notna() | df['abstract_english'].notna()).sum():,}")
+    log("Per-funder counts after dedup:")
+    for org_nr, (fid, name) in SWEEP_FUNDERS.items():
+        sub = df[df["swecris_org_nr"] == org_nr]
+        n_amt = sub["amount"].notna().sum()
+        n_pi = sub["pi_family_name"].notna().sum()
+        log(f"  F{fid} {name}: {len(sub):,} projects | amount {n_amt:,} | PI {n_pi:,}")
 
     if args.limit:
         log("--limit run: refusing to upload a truncated corpus (use full run for S3)")

@@ -71,7 +71,7 @@ if _sys_utf8.platform == "win32":
 
 SWECRIS_API_BASE = "https://swecris-api.vr.se/v1"
 SWECRIS_FUNDER_ID = "202100-5240"  # Forte
-SWECRIS_API_TOKEN = "VRSwecrisAPI2025-1"
+SWECRIS_API_TOKEN = "VRSwecrisAPI2026-1"
 
 S3_BUCKET = "openalex-ingest"
 S3_KEY = "awards/forte/forte_projects.parquet"
