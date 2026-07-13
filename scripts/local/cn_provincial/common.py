@@ -139,6 +139,16 @@ class ProvinceConfig:
     # Optional: derive start_year from article title (fallback when table lacks a year col).
     year_from_title: Optional[Callable[[str], Optional[int]]] = None
     request_pause: float = 0.8
+    # --- W2-B additive extensions (defaults keep pilot behaviour unchanged) ---
+    # Custom listing enumerator for NON-Hanweb sources (people.cn CMS pagination,
+    # newer-Hanweb /queryList JSON, Wayback-CDX replay of removed articles).
+    # Returns [{url,title,date}] with ABSOLUTE urls; when set, listing_columns
+    # is ignored (pass []).
+    listing_fn: Optional[Callable[["ProvinceConfig", Any], list]] = None
+    # Derive funder_scheme from the ATTACHMENT link text — one article can carry
+    # several rosters (NSSFC ships 重点/一般/青年/西部 as 4 PDFs on one page).
+    # Takes precedence over scheme_from_title when it returns a value.
+    scheme_from_attachment: Optional[Callable[[str], Optional[str]]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +160,7 @@ class ProvinceConfig:
 HEADER_KEYWORDS: list[tuple[str, list[str]]] = [
     ("funder_award_id", ["立项编号", "项目编号", "申报编号", "受理号", "批准号", "课题编号", "编号"]),
     ("institution",     ["依托单位", "申报单位", "承担单位", "推荐单位", "单位名称", "所在单位", "单位"]),
-    ("lead_name",       ["项目负责人", "团队负责人", "申报者", "申报人", "负责人", "主持人", "姓名"]),
+    ("lead_name",       ["项目负责人", "团队负责人", "首席专家", "申报者", "申报人", "负责人", "主持人", "申请人", "姓名"]),
     ("display_name",    ["项目名称", "课题名称", "项目及方向", "项目名", "专项及项目名称", "名称"]),
     ("funder_scheme",   ["项目类别", "项目类型", "计划类别", "资助类别", "类别", "类型"]),
     ("amount",          ["资助金额", "资助经费", "经费", "金额", "拨款", "预算"]),
@@ -211,14 +221,27 @@ def rows_to_records(rows: list[list[Any]], cfg: ProvinceConfig, source_file: str
     hi, mapping = hdr
     title_ci = mapping["display_name"]
     scheme_default = cfg.scheme_from_title(article_title) if cfg.scheme_from_title else None
+    # Attachment-level scheme wins when the config can derive one from the link
+    # text (one article page may carry several per-program rosters).
+    if cfg.scheme_from_attachment:
+        att_scheme = cfg.scheme_from_attachment(source_file)
+        if att_scheme:
+            scheme_default = att_scheme
     year_default = cfg.year_from_title(article_title) if cfg.year_from_title else None
     out = []
     current_scheme = scheme_default
+    def _cell(cells, role):
+        # NB: a plain `mapping.get(role, 99) < len(cells)` guard KeyErrors on
+        # rows wider than 99 cells (hit on a malformed-width NSSFC xls row);
+        # check for None explicitly. W2-B fix.
+        idx = mapping.get(role)
+        return cells[idx] if idx is not None and idx < len(cells) else ""
+
     for row in rows[hi + 1:]:
         cells = [_norm(c) for c in row]
         title = cells[title_ci] if title_ci < len(cells) else ""
-        pi = cells[mapping["lead_name"]] if mapping.get("lead_name", 99) < len(cells) else ""
-        inst = cells[mapping["institution"]] if mapping.get("institution", 99) < len(cells) else ""
+        pi = _cell(cells, "lead_name")
+        inst = _cell(cells, "institution")
         # Section-heading rows (e.g. "1.区块链安全...") carry a title but no PI/inst;
         # capture them as the running scheme/direction and skip.
         if title and not pi and not inst and SECTION_ROW.match(title):
@@ -232,19 +255,11 @@ def rows_to_records(rows: list[list[Any]], cfg: ProvinceConfig, source_file: str
         # PI name normalization: split off a "/" leader==team form ("郝京诚/郝京诚").
         if "/" in pi:
             pi = pi.split("/", 1)[0].strip()
-        scheme = ""
-        if mapping.get("funder_scheme", 99) < len(cells):
-            scheme = cells[mapping["funder_scheme"]]
+        scheme = _cell(cells, "funder_scheme")
         scheme = scheme or (current_scheme if current_scheme != scheme_default else "") or scheme_default or ""
-        award_id = ""
-        if mapping.get("funder_award_id", 99) < len(cells):
-            award_id = cells[mapping["funder_award_id"]]
-        amount = ""
-        if mapping.get("amount", 99) < len(cells):
-            amount = cells[mapping["amount"]]
-        year = ""
-        if mapping.get("start_year", 99) < len(cells):
-            year = cells[mapping["start_year"]]
+        award_id = _cell(cells, "funder_award_id")
+        amount = _cell(cells, "amount")
+        year = _cell(cells, "start_year")
         if not year and year_default:
             year = str(year_default)
         # Chinese PI: full name -> family_name, given_name NULL (NSFC precedent).
@@ -506,7 +521,12 @@ def process_article(cfg: ProvinceConfig, art: dict, sess: requests.Session,
     except Exception as exc:
         print(f"  [WARN] article fetch failed {url}: {exc}")
         return []
-    html = r.content.decode("utf-8", "replace")
+    # Decode: default utf-8, but honor a declared GB charset (older people.cn /
+    # provincial pages are GB2312/GBK; hard utf-8 garbles attachment link text,
+    # which scheme_from_attachment needs). W2-B additive fix.
+    head = r.content[:600].decode("ascii", "ignore").lower()
+    enc = "gb18030" if re.search(r"charset=\s*[\"']?gb", head) else "utf-8"
+    html = r.content.decode(enc, "replace")
     records: list[dict] = []
     links = find_attachment_links(cfg, html)
     adir = work_dir / "attachments"
@@ -648,8 +668,12 @@ def run_province(cfg: ProvinceConfig, argv: Optional[list[str]] = None) -> None:
         print(f"[cache] {len(all_records)} listing records")
     else:
         all_records = []
-        for col in cfg.listing_columns:
-            all_records += enumerate_listing(cfg, col, sess)
+        if cfg.listing_fn is not None:
+            # W2-B extension: custom enumerator for non-Hanweb sources.
+            all_records = list(cfg.listing_fn(cfg, sess))
+        else:
+            for col in cfg.listing_columns:
+                all_records += enumerate_listing(cfg, col, sess)
         # dedup by url
         seen, dedup = set(), []
         for r in all_records:
