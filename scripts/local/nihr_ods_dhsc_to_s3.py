@@ -6,16 +6,19 @@ DHSC (UK Department of Health and Social Care) via NIHR Open Data -> S3
 Harvests the FULL NIHR funded portfolio from NIHR's Opendatasoft portal
 (https://nihr.opendatasoft.com) and splits it into:
 
-  1. SHIP set (this funder's parquet): DHSC-direct programme awards that are
-     NOT already covered by the existing first-party NIHR ingest
-     (provenance='nihr', priority 13, built from the same portal).
+  1. SHIP set (this funder's parquet): ALL DHSC-direct programme awards.
      DHSC-direct = Policy Research Programme rows + NIHR (ODA) global-health
      rows from `nihr-summary-view`, plus the DHSC Policy Research Unit (PRU)
      sub-project records from the dedicated `prp_dataset`.
-  2. STAGING set (side parquet, NOT read by any notebook): every other row of
-     the refreshed portfolio + the DHSC-direct rows that ARE already covered
-     as NIHR awards. This is decision input for the coordinator on whether to
-     refresh/extend the old (truncated) 9,999-row NIHR ingest.
+     (2026-07-12 update, coordinator-approved: the NIHR priority-13 refresh in
+     nihr_to_s3.py now DROPS these rows from the NIHR side, so they ship here
+     unconditionally — including the 676 that were previously covered by the
+     truncated NIHR ingest. Without this, those 676 awards would vanish from
+     OpenAlex entirely after the refresh. `already_in_openalex_nihr` is kept
+     as an audit column.)
+  2. STAGING set (side parquet, NOT read by any notebook): the NIHR-side rows
+     of the refreshed portfolio with coverage flags — audit trail for the
+     priority-13 refresh decision.
 
 Why the old NIHR ingest is truncated: nihr_to_s3.py paginates the ODS
 Explore records API with offset+limit, which Opendatasoft hard-caps at
@@ -450,12 +453,13 @@ def main() -> None:
         rec["already_in_openalex_nihr"] = str(covered)
         if is_dhsc_direct(r):
             rec["dhsc_direct"] = "True"
+            # ALL DHSC-direct rows ship (2026-07-12: the NIHR prio-13 refresh
+            # drops them from the NIHR side; 'covered' is audit info only).
             if covered:
                 dhsc_covered += 1
-                staging_records.append(rec)     # overlap: coordinator decides
             else:
                 dhsc_new += 1
-                ship_records.append(rec)
+            ship_records.append(rec)
         else:
             rec["dhsc_direct"] = "False"
             staging_records.append(rec)
@@ -467,18 +471,18 @@ def main() -> None:
     prp_added = 0
     for r in prp:
         ref = clean(r.get("project_reference"))
-        if not ref or ref in sv_ids or ref in seen or ref in first_party_ids:
+        if not ref or ref in sv_ids or ref in seen:
             continue
         seen.add(ref)
         rec = prp_row_to_record(r)
-        rec["already_in_openalex_nihr"] = "False"
+        rec["already_in_openalex_nihr"] = str(ref in first_party_ids)
         rec["dhsc_direct"] = "True"
         ship_records.append(rec)
         prp_added += 1
 
     print(f"  portal rows: {len(summary):,} summary + {len(prp):,} prp_dataset")
-    print(f"  DHSC-direct in summary view: {dhsc_covered + dhsc_new:,} "
-          f"(covered by old NIHR ingest: {dhsc_covered:,} -> staging; new: {dhsc_new:,} -> ship)")
+    print(f"  DHSC-direct in summary view: {dhsc_covered + dhsc_new:,} -> ship "
+          f"(audit: {dhsc_covered:,} were in the truncated NIHR prio-13 ingest, {dhsc_new:,} were not)")
     print(f"  PRU sub-projects added from prp_dataset: {prp_added:,} -> ship")
     print(f"  SHIP:    {len(ship_records):,} rows")
     print(f"  STAGING: {len(staging_records):,} rows")
