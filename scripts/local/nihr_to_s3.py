@@ -11,16 +11,29 @@ API Docs: https://help.opendatasoft.com/apis/ods-explore-v2/
 Output: s3://openalex-ingest/awards/nihr/nihr_projects.parquet
 
 What this script does:
-1. Fetches all projects from the NIHR OpenDataSoft API (paginated JSON)
-2. Parses JSON responses to extract project metadata
-3. Extracts award ID, funder, amount, dates, PI, and organization info
-4. Combines into a single DataFrame
-5. Saves as parquet and uploads to S3
+1. Fetches ALL projects via the ODS *export* endpoint
+   (/api/explore/v2.1/catalog/datasets/nihr-summary-view/exports/json).
+   NOTE (2026-07-12 refresh): the previous version paginated the records
+   API with offset+limit, which Opendatasoft hard-caps at offset+limit
+   <= 10,000 — the original ingest silently truncated at 9,999 rows.
+   The export endpoint streams the full dataset (11,502 rows as of
+   2026-07-12) with no cap.
+2. Parses records to extract award ID, funder, amount, dates, PI, org info
+3. **Drops DHSC-direct rows** (see below), combines into a DataFrame
+4. Saves as parquet and uploads to S3 (with §1.4 never-shrink guard)
+
+DHSC exclusion rule (2026-07-12, coordinator-approved; the rule lives HERE
+and only here — CreateNIHRAwards.ipynb ships everything in the parquet):
+rows with programme = 'Policy Research Programme' OR funder = 'NIHR (ODA)'
+are DHSC-direct programmes (DHSC commissions PRP; ODA global-health rows
+are paid from DHSC's UK-aid allocation). They are ingested separately under
+funder F4320319994 / provenance 'nihr_ods_dhsc' / priority 425 by
+scripts/local/nihr_ods_dhsc_to_s3.py + CreateDHSCAwards.ipynb, and are
+excluded here so the same grant is not asserted under both funders.
 
 Features:
-- Checkpointing: Progress is saved periodically; resume with --resume
-- Retry logic: Failed requests are retried up to 3 times with exponential backoff
-- ETA reporting: Shows estimated time remaining based on current progress
+- Retry logic and §1.4 shrink check (--allow-shrink to override)
+- --limit N for smoke testing (alias of --max-records)
 
 Requirements:
     pip install pandas pyarrow requests
@@ -96,6 +109,8 @@ if _sys_utf8.platform == "win32":
 # NIHR OpenDataSoft API settings
 # Using nihr-summary-view which has consolidated data including PI info
 NIHR_API_BASE = "https://nihr.opendatasoft.com/api/explore/v2.1/catalog/datasets/nihr-summary-view/records"
+# Export endpoint: streams the FULL dataset, no 10k offset cap (records API has one)
+NIHR_EXPORT_URL = "https://nihr.opendatasoft.com/api/explore/v2.1/catalog/datasets/nihr-summary-view/exports/json"
 PAGE_SIZE = 100  # Results per page (max 100 for OpenDataSoft)
 REQUEST_DELAY = 0.2  # Seconds between requests (be polite to API)
 MAX_RETRIES = 3  # Max retries per request
@@ -438,6 +453,20 @@ def parse_single_record(record: dict) -> Optional[dict]:
         return None
 
 
+def load_repo_dotenv() -> None:
+    """Populate AWS creds from openalex-walden/.env when unset (Windows dev)."""
+    import os
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip())
+
+
 def get_total_count(session: requests.Session) -> int:
     """
     Get total number of records from API.
@@ -485,112 +514,76 @@ def download_all_projects(
     max_records: Optional[int] = None
 ) -> list[dict]:
     """
-    Download all projects from the NIHR API with checkpointing.
+    Download all projects via the ODS export endpoint (single streaming GET).
+
+    The export endpoint has no 10,000-row offset cap (the records API does —
+    that cap truncated the original ingest at 9,999 rows). Checkpointing is
+    no longer needed: the whole dataset is one ~65 MB response. --resume is
+    accepted for backwards compatibility but is a no-op.
 
     Args:
         output_dir: Directory for intermediate files
-        resume: Whether to resume from checkpoint
-        max_records: Optional limit on records to download (for testing)
+        resume: Ignored (kept for CLI compatibility)
+        max_records: Optional limit on records (for testing)
 
     Returns:
-        List of all project dictionaries
+        List of all parsed project dictionaries
     """
     print(f"\n{'='*60}")
-    print("Step 1: Downloading projects from NIHR Open Data API")
+    print("Step 1: Downloading projects from NIHR Open Data (export endpoint)")
     print(f"{'='*60}")
 
-    # Initialize checkpoint manager
-    checkpoint = CheckpointManager(output_dir)
+    if resume:
+        print("  [INFO] --resume is a no-op now (single-shot export download)")
 
-    # Initialize session
     session = requests.Session()
     session.headers.update({
         "Accept": "application/json",
-        "User-Agent": "OpenAlex-NIHR-Ingest/1.0"
+        "User-Agent": "OpenAlex-NIHR-Ingest/2.0"
     })
 
-    # Get total count
+    # Cross-check: the records API still reports the authoritative total
     print("  [INFO] Fetching total record count...")
     total_count = get_total_count(session)
 
-    if max_records:
-        total_count = min(total_count, max_records)
-        print(f"  [INFO] Limited to {total_count:,} records (--max-records)")
-
-    # Check for existing checkpoint
-    starting_offset = 0
-    if resume and checkpoint.load():
-        starting_offset = checkpoint.get_offset()
-        checkpoint.set_total_records(total_count)
-        print(f"  [RESUME] Resuming from offset {starting_offset:,}")
-    else:
-        checkpoint.set_total_records(total_count)
-        checkpoint.projects = []
-        print(f"  [INFO] Starting fresh download")
-
-    if starting_offset >= total_count:
-        print("  [INFO] All records already downloaded!")
-        return checkpoint.projects
-
-    # Initialize progress tracker
-    progress = ProgressTracker(total_count)
-    progress.completed_records = len(checkpoint.projects)
-
-    records_since_checkpoint = 0
-
-    print(f"\n  Starting download at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  {progress.get_progress_line()}")
-
-    # Download in batches
-    offset = starting_offset
-    while offset < total_count:
-        projects, api_total, error = fetch_records_with_retry(offset, session)
-
-        if error:
-            progress.update(0, is_error=True)
-            print(f"\n  [ERROR] Offset {offset}: {error}")
-            # Continue to next batch
-            offset += PAGE_SIZE
-            continue
-
-        if not projects:
-            # Empty response, might be end of data
-            print(f"\n  [INFO] Empty response at offset {offset}, stopping")
+    export_url = NIHR_EXPORT_URL
+    print(f"  [INFO] GET {export_url}")
+    t0 = time.time()
+    records = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = session.get(export_url, timeout=600)
+            response.raise_for_status()
+            records = response.json()
             break
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                wait = RETRY_BACKOFF ** attempt
+                print(f"  [WARN] Export download failed (attempt {attempt + 1}): {e}; "
+                      f"retrying in {wait:.0f}s")
+                time.sleep(wait)
+            else:
+                raise RuntimeError(f"Export download failed after {MAX_RETRIES} attempts: {e}")
 
-        progress.update(len(projects))
-        checkpoint.add_projects(projects)
-        checkpoint.set_offset(offset + PAGE_SIZE)
+    print(f"  [OK] Downloaded {len(records):,} records in {time.time() - t0:.1f}s")
 
-        records_since_checkpoint += len(projects)
+    if total_count and len(records) < total_count:
+        raise RuntimeError(
+            f"Export returned {len(records):,} records but the API reports "
+            f"{total_count:,} — partial download, refusing to continue")
 
-        # Print progress every 10 seconds
-        if progress.should_report(10):
-            print(f"\r{progress.get_progress_line()}", flush=True)
+    if max_records:
+        records = records[:max_records]
+        print(f"  [INFO] Limited to {len(records):,} records (--limit/--max-records)")
 
-        # Save checkpoint periodically
-        if records_since_checkpoint >= CHECKPOINT_INTERVAL:
-            checkpoint.save()
-            records_since_checkpoint = 0
-            print(f"\n  [CHECKPOINT] Saved progress: {progress.completed_records:,} records")
+    projects = []
+    for rec in records:
+        parsed = parse_single_record(rec)
+        if parsed:
+            projects.append(parsed)
+    print(f"  [OK] Parsed {len(projects):,} projects")
 
-        offset += PAGE_SIZE
-
-        # Rate limiting
-        time.sleep(REQUEST_DELAY)
-
-    # Final save
-    checkpoint.save()
-
-    # Final progress report
-    print(f"\n\n  {'='*50}")
-    print(f"  Download complete!")
-    print(f"  {'='*50}")
-    print(f"  Total records: {len(checkpoint.projects):,}")
-    print(f"  Total time: {progress.get_elapsed()}")
-    print(f"  Average rate: {progress.get_rate():.1f} records/second")
-
-    return checkpoint.projects
+    return projects
 
 
 # =============================================================================
@@ -619,6 +612,17 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
     df = pd.DataFrame(projects)
     print(f"  Total rows: {len(df):,}")
 
+    # DHSC exclusion rule (2026-07-12, see module docstring): PRP + ODA rows
+    # are DHSC-direct programmes, ingested under provenance 'nihr_ods_dhsc'
+    # (priority 425) instead. Drop them here so the same grant is not
+    # asserted under both NIHR and DHSC.
+    dhsc_mask = (df["programme"] == "Policy Research Programme") | (df["funder"] == "NIHR (ODA)")
+    print(f"  [INFO] Dropping {int(dhsc_mask.sum()):,} DHSC-direct rows "
+          f"(Policy Research Programme / NIHR (ODA)) — ingested separately "
+          f"under provenance 'nihr_ods_dhsc'")
+    df = df[~dhsc_mask].reset_index(drop=True)
+    print(f"  Rows after DHSC exclusion: {len(df):,}")
+
     # Convert dates to string format (YYYY-MM-DD) to avoid Spark compatibility issues
     print("  [INFO] Converting dates to string format...")
     for col in ["start_date", "end_date"]:
@@ -637,6 +641,15 @@ def process_projects(projects: list[dict], output_dir: Path) -> Path:
 
     # Add metadata (as string to avoid Spark timestamp issues)
     df["ingested_at"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Force string dtype on scalar columns (runbook §1.2 item 5: pyarrow
+    # infers null-heavy columns as int otherwise). institution_country and
+    # ukcrc_value stay as list<string> — CreateNIHRAwards.ipynb indexes
+    # institution_country with size()/[0] and needs the array type.
+    list_cols = {"institution_country", "ukcrc_value"}
+    for col in df.columns:
+        if col not in list_cols:
+            df[col] = df[col].astype("string")
 
     # Save to parquet
     output_path = output_dir / "nihr_projects.parquet"
@@ -695,19 +708,67 @@ def find_aws_cli() -> Optional[str]:
     return None
 
 
-def upload_to_s3(local_path: Path) -> bool:
+def check_no_shrink(new_count: int, allow_shrink: bool, output_dir: Path) -> bool:
+    """§1.4 re-ingest safety: never overwrite the S3 parquet with fewer rows.
+
+    Note: the refreshed corpus (11,502 portal rows minus 739 DHSC-direct
+    rows = 10,763) is still larger than the truncated 9,999-row original,
+    so the first refresh passes this check without an override.
     """
-    Upload the parquet file to S3.
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+    except ImportError as exc:
+        raise RuntimeError(
+            "boto3 required for §1.4 shrink-check; rerun with --skip-upload to bypass"
+        ) from exc
+    client = boto3.client("s3")
+    print(f"  §1.4 re-ingest safety check vs s3://{S3_BUCKET}/{S3_KEY}")
+    try:
+        client.head_object(Bucket=S3_BUCKET, Key=S3_KEY)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            print("    no existing parquet — first ingest, no shrink check.")
+            return True
+        print(f"    [WARN] head_object failed ({code}); treating as first ingest")
+        return True
+    prev_path = output_dir / "_prev_nihr_projects.parquet"
+    try:
+        client.download_file(S3_BUCKET, S3_KEY, str(prev_path))
+        prev_count = len(pd.read_parquet(prev_path))
+    except Exception as e:
+        print(f"    [ERROR] couldn't read existing parquet ({e}); aborting upload.")
+        return False
+    print(f"    previous: {prev_count}   new: {new_count}")
+    if new_count < prev_count:
+        if allow_shrink:
+            print("    [OVERRIDE] --allow-shrink set; proceeding.")
+            return True
+        print(f"\n[ERROR] §1.4 violation: refusing to shrink ({prev_count} -> {new_count}).")
+        return False
+    print("    [OK] not smaller; safe to overwrite.")
+    return True
+
+
+def upload_to_s3(local_path: Path, allow_shrink: bool = False) -> bool:
+    """
+    Upload the parquet file to S3 (after the §1.4 shrink check).
 
     Args:
         local_path: Path to local parquet file
+        allow_shrink: Override the never-shrink guard
 
     Returns:
         True if upload succeeded
     """
     print(f"\n{'='*60}")
-    print("Step 3: Uploading to S3")
+    print("Step 3: Uploading to S3 (with §1.4 shrink check)")
     print(f"{'='*60}")
+
+    new_count = len(pd.read_parquet(local_path))
+    if not check_no_shrink(new_count, allow_shrink, local_path.parent):
+        return False
 
     s3_uri = f"s3://{S3_BUCKET}/{S3_KEY}"
     print(f"  [UPLOAD] {local_path.name} -> {s3_uri}")
@@ -766,13 +827,26 @@ def main():
     )
     parser.add_argument(
         "--max-records",
+        "--limit",
+        dest="max_records",
         type=int,
         default=None,
         help="Limit to N records (for testing)"
     )
+    parser.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        help="Override the §1.4 never-shrink guard on upload"
+    )
     args = parser.parse_args()
 
+    if args.max_records and not args.skip_upload:
+        print("[INFO] --limit/--max-records set; forcing --skip-upload "
+              "(never upload a truncated corpus)")
+        args.skip_upload = True
+
     # Create output directory
+    load_repo_dotenv()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 60)
@@ -816,7 +890,7 @@ def main():
     # Step 3: Upload to S3
     upload_success = True
     if not args.skip_upload:
-        upload_success = upload_to_s3(parquet_path)
+        upload_success = upload_to_s3(parquet_path, allow_shrink=args.allow_shrink)
         if not upload_success:
             print("\n[WARNING] S3 upload failed. You can upload manually:")
             print(f"  aws s3 cp {parquet_path} s3://{S3_BUCKET}/{S3_KEY}")
