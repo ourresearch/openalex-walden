@@ -139,6 +139,16 @@ resources:
             notebook_path: notebooks/end2end/CreateWorksBase
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        - task_key: Work_Types
+          depends_on:
+            - task_key: Works_Base
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateWorkTypes
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
         - task_key: Parsed_Author_Names
           depends_on:
             - task_key: Works_Base

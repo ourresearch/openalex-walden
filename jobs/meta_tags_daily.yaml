@@ -1,0 +1,77 @@
+resources:
+  jobs:
+    Meta_Tags_Daily:
+      name: Meta Tags Daily
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: 0 0 3 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: Harvest_Meta_Tags
+          job_cluster_key: harvest_cluster
+          notebook_task:
+            notebook_path: notebooks/meta_tags/harvest_meta_tags
+            source: GIT
+            base_parameters:
+              mode: incremental
+              lookback_hours: "48"
+              target_table: openalex.landing_page.meta_tags
+          max_retries: 2
+          min_retry_interval_millis: 300000
+        - task_key: Refresh_For_Work_Type
+          depends_on:
+            - task_key: Harvest_Meta_Tags
+          job_cluster_key: refresh_cluster
+          notebook_task:
+            notebook_path: notebooks/meta_tags/classifier_meta_view
+            source: GIT
+            base_parameters:
+              source_table: openalex.landing_page.meta_tags
+              target_table: openalex.landing_page.meta_tags_for_work_type
+          max_retries: 2
+          min_retry_interval_millis: 300000
+      job_clusters:
+        - job_cluster_key: harvest_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.master: local[*, 4]
+              spark.databricks.cluster.profile: singleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+            node_type_id: m5d.4xlarge
+            driver_node_type_id: m5d.4xlarge
+            custom_tags:
+              ResourceClass: SingleNode
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+        - job_cluster_key: refresh_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.sql.execution.arrow.maxRecordsPerBatch: "2000"
+              spark.sql.shuffle.partitions: "1024"
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+            node_type_id: m5d.4xlarge
+            driver_node_type_id: m5d.4xlarge
+            num_workers: 8
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
