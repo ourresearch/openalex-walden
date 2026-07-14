@@ -90,8 +90,8 @@ TBLPROPERTIES (
 -- COMMAND ----------
 
 -- MAGIC %md
--- MAGIC > ### Merge deduplicated records from `locations_w_sources` into `locations_mapped`
--- MAGIC Merge deduplicated records from `locations_w_sources` into `locations_mapped`, inserting rows with `work_id = NULL` and updating others.
+-- MAGIC > ### Merge deduplicated records from `locations_with_types` into `locations_mapped`
+-- MAGIC Merge deduplicated records from `locations_with_types` into `locations_mapped`, inserting rows with `work_id = NULL` and updating others.
 
 -- COMMAND ----------
 
