@@ -3,6 +3,10 @@ resources:
     Meta_Tags_Daily:
       name: Meta Tags Daily
       max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+          - rohan@openalex.org
       schedule:
         quartz_cron_expression: 0 0 3 * * ?
         timezone_id: UTC
@@ -48,6 +52,7 @@ resources:
             driver_node_type_id: m5d.4xlarge
             custom_tags:
               ResourceClass: SingleNode
+            num_workers: 0
             enable_elastic_disk: true
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD

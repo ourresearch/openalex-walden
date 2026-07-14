@@ -196,7 +196,8 @@ if existing and set(existing) != {EXTRACTOR_VERSION}:
                     "write to a new table or delete old-version rows first.")
 
 # resume/retry: skip only files that already SUCCEEDED — error rows (e.g. NoSuchKey on very
-# fresh scrapes) retry on the next run and get a newer row when they succeed
+# fresh scrapes) retry on later runs WHILE their taxicab row is inside the lookback window
+# (daily run + 48h window = one retry day); older misses are caught by historical passes
 done = spark.read.table(target_table).filter("status = 'ok'").select("file_key")
 keys = keys.join(done, "file_key", "left_anti")
 if file_limit > 0:
