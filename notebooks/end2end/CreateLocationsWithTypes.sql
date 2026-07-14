@@ -579,8 +579,8 @@ dict_map AS (
     ('datacite', 'workflow', 'other')) AS t(family, k, mapped_type)
 )
 SELECT l.*,
-  CASE WHEN sc.cascade_rule = 'default: -> article' THEN coalesce(dm.mapped_type, nullif(l.type, ''), 'article') ELSE sc.cascade_type END AS classified_type,
-  CASE WHEN sc.cascade_rule = 'default: -> article' AND dm.mapped_type IS NOT NULL THEN concat('ingest-dict fallback: ', dm.family) WHEN sc.cascade_rule = 'default: -> article' AND nullif(l.type, '') IS NOT NULL THEN 'ingest-type preserved' ELSE sc.cascade_rule END AS classified_rule
+  CASE WHEN (l.best_doi LIKE '10.48550/%' OR l.best_doi LIKE '10.1101/%' OR l.best_doi LIKE '10.21203/rs.%' OR l.best_doi LIKE '10.2139/ssrn.%' OR l.best_doi LIKE '10.20944/preprints%') THEN 'preprint' WHEN sc.cascade_rule = 'default: -> article' THEN coalesce(dm.mapped_type, nullif(l.type, ''), 'article') ELSE sc.cascade_type END AS classified_type,
+  CASE WHEN (l.best_doi LIKE '10.48550/%' OR l.best_doi LIKE '10.1101/%' OR l.best_doi LIKE '10.21203/rs.%' OR l.best_doi LIKE '10.2139/ssrn.%' OR l.best_doi LIKE '10.20944/preprints%') THEN 'preprint-registrant DOI prefix' WHEN sc.cascade_rule = 'default: -> article' AND dm.mapped_type IS NOT NULL THEN concat('ingest-dict fallback: ', dm.family) WHEN sc.cascade_rule = 'default: -> article' AND nullif(l.type, '') IS NOT NULL THEN 'ingest-type preserved' ELSE sc.cascade_rule END AS classified_rule
 FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources') l
 JOIN scored sc ON sc.work_id = concat_ws('~', l.provenance, l.native_id_namespace, l.native_id)
 LEFT JOIN dict_map dm
