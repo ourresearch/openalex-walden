@@ -36,11 +36,11 @@ EXTRACTOR_VERSION = "allmeta-2026-07-13"   # bumped: ALL tags kept (was w2ref-20
 
 # COMMAND ----------
 
-R2_ENDPOINT = dbutils.secrets.get("cloudflare", "r2-endpoint")
+R2_ENDPOINT = dbutils.secrets.get("meta-tags-r2", "r2-endpoint")
 if not R2_ENDPOINT.startswith("http"):
     R2_ENDPOINT = "https://" + R2_ENDPOINT
-R2_ACCESS_KEY = dbutils.secrets.get("cloudflare", "r2-access-key-id")
-R2_SECRET_KEY = dbutils.secrets.get("cloudflare", "r2-secret-access-key")
+R2_ACCESS_KEY = dbutils.secrets.get("meta-tags-r2", "r2-access-key-id")
+R2_SECRET_KEY = dbutils.secrets.get("meta-tags-r2", "r2-secret-access-key")
 R2_BUCKET = "openalex-html"
 
 
