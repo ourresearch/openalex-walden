@@ -10,7 +10,7 @@
 
 -- COMMAND ----------
 
-CREATE OR REPLACE TABLE identifier('openalex' || :env_suffix || '.works.locations_with_types')
+CREATE OR REPLACE TABLE identifier('openalex' || :env_suffix || '.works.locations_w_types')
 CLUSTER BY (best_doi, provenance, native_id)
 TBLPROPERTIES (
   'delta.dataSkippingNumIndexedCols' = 40,
@@ -592,5 +592,5 @@ LEFT JOIN dict_map dm
 -- COMMAND ----------
 
 SELECT classified_type, count(*) AS n
-FROM identifier('openalex' || :env_suffix || '.works.locations_with_types')
+FROM identifier('openalex' || :env_suffix || '.works.locations_w_types')
 GROUP BY 1 ORDER BY n DESC LIMIT 30;
