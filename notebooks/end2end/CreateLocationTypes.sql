@@ -12,6 +12,11 @@
 
 CREATE OR REPLACE TABLE identifier('openalex' || :env_suffix || '.works.locations_with_types')
 CLUSTER BY (best_doi, provenance, native_id)
+TBLPROPERTIES (
+  'delta.dataSkippingNumIndexedCols' = 40,
+  'delta.deletedFileRetentionDuration' = '30 days',
+  'delta.logRetentionDuration' = '30 days'
+)
 AS (
 
 WITH loc AS (
