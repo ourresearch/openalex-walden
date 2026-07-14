@@ -118,6 +118,16 @@ resources:
             notebook_path: notebooks/end2end/CreateLocationsWithSources
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        - task_key: Location_Types
+          depends_on:
+            - task_key: Locations_with_Sources
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateLocationTypes
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+          max_retries: 3
+          min_retry_interval_millis: 300000
+          retry_on_timeout: true
         - task_key: Locations_Mapped
           depends_on:
             - task_key: Locations_with_Sources
