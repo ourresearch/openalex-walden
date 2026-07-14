@@ -2,9 +2,10 @@
 -- CreateLocationTypes — work-type classifier at LOCATION level (Casey/Jason design
 -- 2026-07-14). New step between Locations_with_Sources and Locations_Mapped.
 -- Rulings: n_refs + has_journal = merge_key group windows; new table (rebuild idiom);
--- BOTH columns written: `type` passes through UNCHANGED (day-one inert) and
--- `classified_type` carries the cascade's answer — the flip is `type = classified_type`
--- in this one step, later, deliberately. Full daily recompute, no hash (Jason).
+-- LIVE (flipped 2026-07-14, Casey-confirmed): `type` carries the classifier verdict;
+-- `classified_type` (same value) + `classified_rule` are the audit columns.
+-- Preprint rule is GROUP-level: registrant-prefix DOI anywhere in the work_group marks
+-- every location of that work preprint. Full daily recompute, no hash (Jason).
 -- Classifier: frozen post-T5 CASE (163 rules; parity 52,383/52,383, synth 117/117,
 -- escape PASS, gold 85.65 ratified at WORK grain — location-grain re-validation tracked).
 
@@ -41,7 +42,7 @@ WITH loc AS (
     coalesce(l.is_retracted, false) AS oa_is_retracted,
     CAST(NULL AS STRING) AS oa_type,        -- recovery rule deliberately dormant (types being nulled)
     l.abstract AS oa_abstract,
-    coalesce(l.best_doi, CASE WHEN l.native_id_namespace = 'doi' THEN l.native_id END) AS doi,
+    coalesce(l.best_doi, l.merge_key.doi, CASE WHEN l.native_id_namespace = 'doi' THEN l.native_id END) AS doi,
     l.landing_page_url AS tx_resolved_url
   FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources') l
   
@@ -69,7 +70,11 @@ works AS (
     m.tx_meta AS tx_meta, m.tx_page_title AS tx_page_title,
     loc.tx_resolved_url, loc.doi,
     max(CASE WHEN lower(coalesce(s.src_type, '')) = 'journal' THEN 1 ELSE 0 END)
-      OVER (PARTITION BY loc.work_group) = 1 AS oa_has_journal_location
+      OVER (PARTITION BY loc.work_group) = 1 AS oa_has_journal_location,
+    max(CASE WHEN loc.doi LIKE '10.48550/%' OR loc.doi LIKE '10.1101/%'
+          OR loc.doi LIKE '10.21203/rs.%' OR loc.doi LIKE '10.2139/ssrn.%'
+          OR loc.doi LIKE '10.20944/preprints%' THEN 1 ELSE 0 END)
+      OVER (PARTITION BY loc.work_group) = 1 AS preprint_registrant
   FROM loc
   LEFT JOIN cr_sub cs ON cs.native_id = loc.native_id AND loc.provenance = 'crossref'
   LEFT JOIN src s ON s.source_id = loc.source_id
@@ -578,11 +583,14 @@ dict_map AS (
     ('datacite', 'text', 'article'),
     ('datacite', 'workflow', 'other')) AS t(family, k, mapped_type)
 )
-SELECT l.*,
-  CASE WHEN (l.best_doi LIKE '10.48550/%' OR l.best_doi LIKE '10.1101/%' OR l.best_doi LIKE '10.21203/rs.%' OR l.best_doi LIKE '10.2139/ssrn.%' OR l.best_doi LIKE '10.20944/preprints%') THEN 'preprint' WHEN sc.cascade_rule = 'default: -> article' THEN coalesce(dm.mapped_type, nullif(l.type, ''), 'article') ELSE sc.cascade_type END AS classified_type,
-  CASE WHEN (l.best_doi LIKE '10.48550/%' OR l.best_doi LIKE '10.1101/%' OR l.best_doi LIKE '10.21203/rs.%' OR l.best_doi LIKE '10.2139/ssrn.%' OR l.best_doi LIKE '10.20944/preprints%') THEN 'preprint-registrant DOI prefix' WHEN sc.cascade_rule = 'default: -> article' AND dm.mapped_type IS NOT NULL THEN concat('ingest-dict fallback: ', dm.family) WHEN sc.cascade_rule = 'default: -> article' AND nullif(l.type, '') IS NOT NULL THEN 'ingest-type preserved' ELSE sc.cascade_rule END AS classified_rule
+SELECT l.* EXCEPT (type),
+  CASE WHEN pw.preprint_registrant THEN 'preprint' WHEN sc.cascade_rule = 'default: -> article' THEN coalesce(dm.mapped_type, nullif(l.type, ''), 'article') ELSE sc.cascade_type END AS type,  -- THE FLIP: classifier verdict IS the type
+  CASE WHEN pw.preprint_registrant THEN 'preprint' WHEN sc.cascade_rule = 'default: -> article' THEN coalesce(dm.mapped_type, nullif(l.type, ''), 'article') ELSE sc.cascade_type END AS classified_type,
+  CASE WHEN pw.preprint_registrant THEN 'preprint-registrant DOI prefix' WHEN sc.cascade_rule = 'default: -> article' AND dm.mapped_type IS NOT NULL THEN concat('ingest-dict fallback: ', dm.family) WHEN sc.cascade_rule = 'default: -> article' AND nullif(l.type, '') IS NOT NULL THEN 'ingest-type preserved' ELSE sc.cascade_rule END AS classified_rule
 FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources') l
 JOIN scored sc ON sc.work_id = concat_ws('~', l.provenance, l.native_id_namespace, l.native_id)
+JOIN (SELECT work_id AS pw_id, preprint_registrant FROM works) pw
+  ON pw.pw_id = sc.work_id
 LEFT JOIN dict_map dm
   ON dm.family = CASE WHEN l.provenance IN ('repo', 'repo_backfill') THEN 'repo'
                       WHEN l.provenance = 'datacite' THEN 'datacite' END
