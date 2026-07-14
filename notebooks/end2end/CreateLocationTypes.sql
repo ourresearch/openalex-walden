@@ -22,8 +22,12 @@ AS (
 WITH loc AS (
   SELECT
     l.provenance, l.native_id, l.native_id_namespace, l.source_id, l.type AS existing_type,
-    concat_ws('|', coalesce(l.merge_key.doi,''), coalesce(l.merge_key.pmid,''),
-              coalesce(l.merge_key.arxiv,''), coalesce(l.merge_key.title_author,'')) AS work_group,
+    CASE WHEN coalesce(l.merge_key.doi,'') = '' AND coalesce(l.merge_key.pmid,'') = ''
+              AND coalesce(l.merge_key.arxiv,'') = '' AND coalesce(l.merge_key.title_author,'') = ''
+         THEN concat_ws('~', 'row', l.provenance, l.native_id_namespace, l.native_id)
+         ELSE concat_ws('|', coalesce(l.merge_key.doi,''), coalesce(l.merge_key.pmid,''),
+              coalesce(l.merge_key.arxiv,''), coalesce(l.merge_key.title_author,''))
+    END AS work_group,  -- keyless rows get a per-row group: no '|||' mega-partition / feature leak
     l.title AS oa_title,
     l.raw_type AS oa_raw_type,
     CASE WHEN l.provenance = 'crossref' THEN l.raw_type END AS cr_type,
@@ -69,8 +73,10 @@ works AS (
   FROM loc
   LEFT JOIN cr_sub cs ON cs.native_id = loc.native_id AND loc.provenance = 'crossref'
   LEFT JOIN src s ON s.source_id = loc.source_id
-  LEFT JOIN openalex.landing_page.meta_tags_for_work_type m ON m.native_id = loc.native_id
-    AND m.native_id_namespace = loc.native_id_namespace
+  LEFT JOIN openalex.landing_page.meta_tags_for_work_type m
+    ON m.native_id = CASE WHEN loc.native_id_namespace = 'doi'
+                          THEN lower(loc.native_id) ELSE loc.native_id END
+    AND m.native_id_namespace = loc.native_id_namespace  -- tags table stores DOIs lowercase; pmh handles case-preserved
 ),
 feat AS (
   SELECT work_id,
@@ -277,12 +283,310 @@ scored AS (
       WHEN f_raw IN ('dataset','database') THEN 'dataset'
       WHEN f_raw = 'proceedings' THEN 'paratext'
       WHEN f_raw = 'other' THEN 'other'
-      ELSE 'article' END AS classified_type
+      ELSE 'article' END AS cascade_type,
+  CASE
+      WHEN (f_title LIKE 'retraction%' OR f_title LIKE 'statement of retraction%') OR (f_retr AND f_title LIKE 'withdrawn%') OR (f_abs LIKE '%this retracts%' OR f_abs LIKE '%retracts the article%') THEN 'retraction: dc.type / title-start'
+      WHEN (f_title LIKE '%erratum%' OR f_title LIKE '%corrigendum%' OR f_title LIKE '%correction to%' OR f_title LIKE '%author correction%' OR f_title LIKE '%publisher correction%') OR f_title LIKE 'correction%' OR (f_abs LIKE '%this corrects the article%' OR f_abs LIKE '%corrects the article%') THEN 'erratum: title / dc.type'
+      WHEN f_rawnorm = 'peerreview' OR (f_title LIKE 'review for%' OR f_title LIKE 'decision letter%' OR f_title LIKE 'author response%' OR f_title LIKE 'reply on%' OR f_title LIKE 'peer review of%' OR f_title LIKE 'reviewer public%' OR f_title LIKE 'comment on egusphere%') THEN 'peer-review: raw/title/dc'
+      WHEN f_crtype = 'dissertation' THEN 'cr=dissertation'
+      WHEN f_crtype IN ('reference-entry','reference-book') THEN 'cr=reference-entry'
+      WHEN f_crtype = 'standard' THEN 'cr=standard'
+      WHEN f_crtype = 'report-component' THEN 'cr=report-component'
+      WHEN f_sub = 'preprint' THEN 'cr_subtype=preprint'
+      WHEN f_host IN ('osf.io', 'www.researchsquare.com') THEN 'URL host -> type'
+      WHEN f_host IN ('www.encodeproject.org', 'www.rcsb.org', 'www.wwpdb.org') THEN 'URL host -> type'
+      WHEN f_host IN ('www.softxjournal.com') THEN 'URL host -> type'
+      WHEN (f_host IN ('cran.r-project.org', 'demonstrations.wolfram.com')) AND f_raw <> 'dataset' THEN 'URL host -> type'
+      WHEN f_host IN ('facultyopinions.com', 'publons.com', 'www.webofscience.com') THEN 'URL host -> type'
+      WHEN f_host IN ('theses.fr', 'theses.hal.science') THEN 'URL host -> type'
+      WHEN f_host IN ('materials.springer.com', 'referenceworks.brill.com', 'www.cabidigitallibrary.org', 'www.oed.com', 'www.oxfordartonline.com', 'www.ukwhoswho.com') THEN 'URL host -> type'
+      WHEN f_host IN ('meetingorganizer.copernicus.org', 'www.morressier.com') THEN 'URL host -> type'
+      WHEN f_host IN ('goodreads.com', 'www.goodreads.com') THEN 'URL host -> type'
+      WHEN f_host IN ('picryl.com', 'www.picryl.com') THEN 'URL host -> type'
+      WHEN f_src IN ('abstracts', 'abstracts with programs - geological society of america', 'academy of management proceedings', 'endocrine abstracts', 'the proceedings of the annual convention of the japanese psychological association') THEN 'source-name exact -> type'
+      WHEN f_src IN ('brill’s new pauly', 'definitions', 'der neue pauly', 'encyclopédie de l’islam', 'iucn red list of threatened species', 'lexikon des gesamten buchwesens online', 'radiopaedia.org', 'religion in geschichte und gegenwart', 'springerreference', 'supplementum epigraphicum graecum', 'the shafr guide online', 'who was who', 'who\'s who') THEN 'source-name exact -> type'
+      WHEN f_src IN ('psyctests dataset') THEN 'source-name exact -> type'
+      WHEN f_src IN ('research square', 'ssrn electronic journal') THEN 'source-name exact -> type'
+      WHEN f_src IN ('data in brief') THEN 'source-name exact -> type'
+      WHEN f_src IN ('softwarex', 'the journal of open source software') THEN 'source-name exact -> type'
+      WHEN f_src IN ('acta horticulturae', 'ecs transactions', 'iceri proceedings', 'ifac proceedings volumes', 'materials today proceedings', 'procedia engineering') THEN 'source-name exact -> type'
+      WHEN f_src IN ('faculty opinions – post-publication peer review of the biomedical literature') THEN 'source-name exact -> type'
+      WHEN f_src IN ('apress ebooks', 'jaypee brothers medical publishers (p) ltd. ebooks') THEN 'source-name exact -> type'
+      WHEN f_src IN ('bulletin of the center for children\'s books', 'choice reviews online') THEN 'source-name exact -> type'
+      WHEN f_src IN ('electronic enlightenment scholarly edition of correspondence') THEN 'source-name exact -> type'
+      WHEN f_src IN ('national bureau of economic research') THEN 'source-name exact -> type'
+      WHEN f_src IN ('synfacts') THEN 'source-name exact -> type'
+      WHEN f_sc LIKE '%datasets%' THEN 'source substring (hard) -> type'
+      WHEN f_sc LIKE '%web of conferences%' THEN 'source substring (hard) -> type'
+      WHEN f_sc LIKE '%rxiv%' THEN 'source substring (hard) -> type'
+      WHEN f_sc LIKE '%preprint%' THEN 'source substring (hard) -> type'
+      WHEN f_sc LIKE '%dictionary%' THEN 'source substring (hard) -> type'
+      WHEN f_sc LIKE '%encyclopedia%' THEN 'source substring (hard) -> type'
+      WHEN f_sc LIKE '%lexicon%' THEN 'source substring (hard) -> type'
+      WHEN f_sc LIKE '%meeting abstracts%' THEN 'source substring (hard) -> type'
+      WHEN f_src IN ('e3s web of conferences', 'lecture notes on data engineering and communications technologies', 'procedia - social and behavioral sciences') THEN '#547 single-type src (hard)'
+      WHEN f_src IN ('european urology supplements') THEN '#547 single-type src (hard)'
+      WHEN f_src IN ('gisaid') THEN '#547 single-type src (hard)'
+      WHEN (f_src LIKE '%encode%' OR f_cont LIKE '%encode%') THEN '#547 single-type src (hard)'
+      WHEN (f_src LIKE '%spie proceedings%' OR f_cont LIKE '%spie proceedings%') THEN '#547 single-type src (hard)'
+      WHEN (f_src LIKE '%worldwide protein data bank%' OR f_cont LIKE '%worldwide protein data bank%') THEN '#547 single-type src (hard)'
+      WHEN (f_src LIKE '%sae technical paper series%' OR f_cont LIKE '%sae technical paper series%') THEN '#547 single-type src (hard)'
+      WHEN (f_src LIKE '%advances in social science, education and humanities research%' OR f_cont LIKE '%advances in social science, education and humanities research%') THEN '#547 single-type src (hard)'
+      WHEN (f_src LIKE '%conference on lasers and electro-optics%' OR f_cont LIKE '%conference on lasers and electro-optics%') THEN '#547 single-type src (hard)'
+      WHEN (f_src LIKE '%ifmbe proceedings%' OR f_cont LIKE '%ifmbe proceedings%') THEN '#547 single-type src (hard)'
+      WHEN (f_src LIKE '%morphosource%' OR f_cont LIKE '%morphosource%') THEN '#547 single-type src (hard)'
+      WHEN (f_src LIKE '%sgem international multidisciplinary scientific geoconference%' OR f_cont LIKE '%sgem international multidisciplinary scientific geoconference%') THEN '#547 single-type src (hard)'
+      WHEN f_doi LIKE '%meetingabstracts%' OR f_doi LIKE '%meeting-abstracts%' OR f_url LIKE '%meetingabstracts%' OR f_url LIKE '%meeting-abstracts%' THEN 'K: meetingabstracts doi/url'
+      WHEN f_title LIKE 'editorial board%' THEN 'K: title editorial-board -> para'
+      WHEN f_title LIKE 'front matter%' THEN 'K: title front-matter -> para'
+      WHEN (f_title LIKE 'preface%' OR f_title LIKE 'appendix%' OR f_title LIKE 'proofs of%') AND (f_raw IN ('book-chapter','book-part','chapter','book-section') OR f_crtype IN ('book-chapter','monograph','edited-book')) THEN 'K: book preface/appendix -> para'
+      WHEN array_contains(f_urltok, 'referenceworkentry') THEN 'URL path token -> type'
+      WHEN array_contains(f_urltok, 'meetingabstracts') THEN 'URL path token -> type'
+      WHEN (array_contains(f_urltok, 'thesis') OR array_contains(f_urltok, 'theses') OR array_contains(f_urltok, 'dissertations')) AND f_crtype = '' AND f_srctype <> 'journal' THEN 'K: url thesis-path -> dissertation'
+      WHEN k_confabs THEN 'key:citation_conference loc/date'
+      WHEN k_confpap THEN 'key:citation_conference id/series'
+      WHEN array_contains(f_dc, 'book-review') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'bookreview') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'book reviews') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'book review') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'reseñas') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'thesis') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'dissertação') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'doctoral dissertation') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'pg_thesis') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'editorial') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'editorialnotes') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'article-commentary') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'meeting-report') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'congress-abstract') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'oxan-executive-summary') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'news') THEN 'dc.type value -> type'
+      WHEN array_contains(f_dc, 'chapter') THEN 'dc.type value -> type'
+      WHEN f_ptl LIKE 'reply%' THEN 'page-title ^reply -> letter'
+      WHEN (f_title LIKE 'supplementary%' OR f_title LIKE 'supplemental%' OR f_title LIKE 'figure from%') OR (f_title LIKE '%supplementary figure%' OR f_title LIKE '%supplementary table%' OR f_title LIKE '%supplemental material%' OR f_title LIKE '%figure from%') THEN 'title: supplementary-materials'
+      WHEN (f_title LIKE 'table of contents%' OR f_title LIKE 'contents%' OR f_title LIKE 'front matter%' OR f_title LIKE 'back matter%' OR f_title LIKE 'frontmatter%' OR f_title LIKE 'front cover%' OR f_title LIKE 'editorial board%' OR f_title LIKE 'subject index%' OR f_title LIKE 'author index%' OR f_title LIKE 'name index%' OR f_title LIKE 'list of figures%' OR f_title LIKE 'list of tables%' OR f_title LIKE 'list of contributors%' OR f_title LIKE 'list of abbreviations%' OR f_title LIKE 'list of illustrations%' OR f_title LIKE 'list of plates%' OR f_title LIKE 'bibliography%' OR f_title LIKE 'abbreviations%' OR f_title LIKE 'abbreviation%' OR f_title LIKE 'acknowledgment%' OR f_title LIKE 'acknowledgments%' OR f_title LIKE 'acknowledgement%' OR f_title LIKE 'acknowledgements%' OR f_title LIKE 'dedication%' OR f_title LIKE 'contributors%' OR f_title LIKE 'about the author%' OR f_title LIKE 'about the editor%' OR f_title LIKE 'copyright%' OR f_title LIKE 'title page%' OR f_title LIKE 'masthead%' OR f_title LIKE 'frontispiece%' OR f_title LIKE 'titelei%' OR f_title LIKE 'inhaltsverzeichnis%' OR f_title LIKE 'sachregister%' OR f_title LIKE 'literaturverzeichnis%' OR f_title LIKE 'inhalt%' OR f_title LIKE 'session details%' OR f_title LIKE 'forthcoming%' OR f_title LIKE 'calendar%' OR f_title LIKE 'general index%' OR f_title LIKE 'back cover%' OR f_title LIKE 'inside front cover%' OR f_title LIKE 'prelims%' OR f_title LIKE 'preliminary material%' OR f_title LIKE 'backmatter%' OR f_title LIKE 'books received%' OR f_title LIKE 'works cited%' OR f_title LIKE 'about the contributors%' OR f_title LIKE 'author biograph%' OR f_title LIKE 'expediente%' OR f_title LIKE 'table des mati%' OR f_title LIKE 'remerciements%') THEN 'title: paratext starts-lexicon'
+      WHEN (f_title LIKE '%issue information%' OR f_title LIKE '%masthead%' OR f_title LIKE '%editorial board%' OR f_title LIKE '%instructions for authors%' OR f_title LIKE '%list of reviewers%' OR f_title LIKE '%acknowledgment of reviewers%' OR f_title LIKE '%acknowledgement of reviewers%' OR f_title LIKE '%cover image%' OR f_title LIKE '%information for authors%' OR f_title LIKE '%society information%' OR f_title LIKE '%information for contributors%' OR f_title LIKE '%information for readers%' OR f_title LIKE '%notes for contributors%' OR f_title LIKE '%notes on contributors%' OR f_title LIKE '%call for papers%' OR f_title LIKE '%call for submissions%' OR f_title LIKE '%call for abstracts%' OR f_title LIKE '%guide for authors%' OR f_title LIKE '%impressum%' OR f_title LIKE '%publication information%' OR f_title LIKE '%reviewer acknowledgement%') THEN 'title: paratext contains-lexicon'
+      WHEN trim(f_title) = 'notes' THEN 'title: paratext == notes'
+      WHEN trim(f_title) = 'peer review statement' THEN 'K: title == peer review statement'
+      WHEN (f_title LIKE 'program committee%' OR f_title LIKE 'organizing committee%' OR f_title LIKE 'workshop committee%' OR f_title LIKE 'conference committee%' OR f_title LIKE 'scientific committee%' OR f_title LIKE 'technical program committee%' OR f_title LIKE 'steering committee%') OR trim(f_title) RLIKE '^(program |organizing |scientific |technical |workshop |conference |steering )?committee(s)?( members| list(ing)?s?)?$' THEN 'K: title committee -> para (PT-3)'
+      WHEN f_title LIKE 'index%' OR ((f_title LIKE 'references%' OR f_title LIKE 'list of%') AND (f_fp IN ('i','ii','iii','iv','ix','v','vi','vii','viii','x','xi','xii','xiii','xiv','xv') OR f_nrefs = 0 OR NOT f_hasabs)) THEN 'title: paratext ^index / idx+guard'
+      WHEN (f_title LIKE '%python package%') THEN 'title: software-paper'
+      WHEN (f_title LIKE 'din en%' OR f_title LIKE 'specification for%' OR f_title LIKE 'test method%') OR (f_title LIKE '%englische fassung%') THEN 'title: standard'
+      WHEN (f_title LIKE 'encsr%') THEN 'title: dataset (deposit)'
+      WHEN (f_title LIKE 'book review%' OR f_title LIKE 'review of the book%' OR f_title LIKE 'reseña del libro%') OR (f_title LIKE '% isbn%' OR f_title LIKE '%edited by%') OR array_contains(f_dc, 'book-review') OR (f_title LIKE '%pp.%' AND (f_title LIKE '%isbn%' OR f_title LIKE '%press%' OR f_title LIKE '%£%')) THEN 'title: book-review'
+      WHEN (f_title LIKE 'guest editorial%' OR f_title LIKE 'editorial comment%' OR f_title LIKE 'guest editor%' OR f_title LIKE 'commentary on%' OR f_title LIKE 'message from%' OR f_title LIKE 'editorial board is%' OR f_title LIKE 'editorial:%' OR f_title LIKE 'preface:%' OR f_title LIKE 'préambule%' OR f_title LIKE 'éditorial%' OR f_title LIKE 'editors\' note%' OR f_title LIKE 'editors note%' OR f_title LIKE 'special thanks%' OR f_title LIKE 'nota de la directora%' OR f_title LIKE 'note from the editor%' OR f_title LIKE 'interview with%' OR f_title LIKE 'interview:%' OR f_title LIKE 'entrevista%') OR (f_title LIKE '%from the editor%' OR f_title LIKE '%special issue on%' OR f_title LIKE '%to the special issue%' OR f_title LIKE '%commentary:%') OR (f_title LIKE 'editorial%' AND f_title NOT LIKE '%board%') THEN 'title: editorial'
+      WHEN (f_title LIKE 'letter to the%' OR f_title LIKE 'reply to%' OR f_title LIKE 'in reply%' OR f_title LIKE 'reader response%' OR f_title LIKE 'comments on the article%') OR (f_title LIKE '%to the editor%' OR f_title LIKE '%authors\' reply%' OR f_title LIKE '%reply to comment%') OR ((f_title LIKE 'reply%' OR f_title LIKE 'comment on%') AND f_single) OR f_title LIKE 'correspondence%' THEN 'title: letter'
+      WHEN (f_title LIKE '%narrative review%' OR f_title LIKE '%mini-review%' OR f_title LIKE '%meta-analysis of%') THEN 'title: review'
+      WHEN (f_title LIKE 'libguides%' OR f_title LIKE 'all guides%' OR f_title LIKE 'research guides%') THEN 'K: title libguides'
+      WHEN (f_title LIKE 're:%' OR f_title LIKE 'the authors reply%' OR f_title LIKE 'comment on:%') THEN 'K: title letter starts'
+      WHEN f_title LIKE 'discussion of%' THEN 'K: title discussion-of -> editorial'
+      WHEN f_title LIKE 'data for %' THEN 'K: title data-for -> dataset'
+      WHEN f_title LIKE '%systematic literature review%' AND NOT (f_title LIKE '%case report%' OR f_title LIKE '%case study%') THEN 'title: systematic-lit-review (Jason guard)'
+      WHEN (f_title LIKE '%in memoriam%' OR f_title LIKE '%autograph letter%' OR f_title LIKE '%obituary%') THEN 'title: other'
+      WHEN f_title LIKE 'abstract%' THEN 'title: conference-abstract'
+      WHEN (f_src LIKE '%abstract%' OR f_cont LIKE '%abstract%') AND (f_single OR (f_nrefs = 0 AND f_hasabs)) THEN 'struct: conf-abstract (abstracts venue)'
+      WHEN f_src LIKE '%supplement%' AND f_single AND f_nrefs = 0 THEN 'struct: conf-abstract (suppl+single)'
+      WHEN f_issue LIKE '%suppl%' AND f_single THEN 'struct: conf-abstract (suppl issue)'
+      WHEN f_raw = 'journal-article' AND f_nrefs = 0 AND f_single AND (f_issue RLIKE '^s[0-9]' OR f_issue RLIKE '^[0-9]+s$') THEN 'struct: conf-abstract (numeric suppl)'
+      WHEN (f_abs LIKE '%abstracts of presentations%' OR f_abs LIKE '%searchable abstracts%') THEN 'abs: conf-abstract phrases'
+      WHEN ltrim(f_abs) LIKE 'reviewed by%' THEN 'abs: book-review (reviewed by)'
+      WHEN (f_abs LIKE '%this data article%') THEN 'abs: data-paper (this data article)'
+      WHEN (f_abs LIKE '%this editorial%' OR f_abs LIKE '%in this editorial%') THEN 'abs: editorial (this editorial)'
+      WHEN f_src IN ('communications in computer and information science', 'energy procedia', 'lecture notes in civil engineering', 'lecture notes in computer science', 'procedia computer science') AND (f_nrefs = 0 AND f_single AND f_hasabs) THEN '#547 single-type src (guarded)'
+      WHEN f_src IN ('communications in computer and information science', 'energy procedia', 'lecture notes in civil engineering', 'lecture notes in computer science', 'procedia computer science') THEN '#547 single-type src (guarded)'
+      WHEN f_src IN ('scientific data') THEN '#547 single-type src (guarded)'
+      WHEN (f_src LIKE '%journal of physics: conference series%' OR f_cont LIKE '%journal of physics: conference series%') AND (f_nrefs = 0 AND f_single AND f_hasabs) THEN '#547 single-type src (guarded)'
+      WHEN (f_src LIKE '%journal of physics: conference series%' OR f_cont LIKE '%journal of physics: conference series%') THEN '#547 single-type src (guarded)'
+      WHEN f_title RLIKE '^[a-z]{1,3}-?[0-9]{2,5}[.:\\s\\p{Z}]' AND f_nrefs = 0 AND f_raw NOT IN ('dataset','database') THEN 'guard: conf-abstract (title code)'
+      WHEN f_title LIKE '%systematic review%' AND f_nrefs > 0 THEN 'guard: review (systematic+refs)'
+      WHEN f_oatype = 'review' AND f_nrefs >= 25 AND f_hasabs THEN 'oa_type=review (+refs+abstract)'
+      WHEN f_sc LIKE '%conference%' AND (f_nrefs = 0 AND f_single AND f_hasabs) THEN 'source substring (conf, guarded)'
+      WHEN f_sc LIKE '%conference%' THEN 'source substring (conf, guarded)'
+      WHEN f_sc LIKE '%symposium%' AND (f_nrefs = 0 AND f_single AND f_hasabs) THEN 'source substring (conf, guarded)'
+      WHEN f_sc LIKE '%symposium%' THEN 'source substring (conf, guarded)'
+      WHEN f_sc LIKE '%workshop%' AND (f_nrefs = 0 AND f_single AND f_hasabs) THEN 'source substring (conf, guarded)'
+      WHEN f_sc LIKE '%workshop%' THEN 'source substring (conf, guarded)'
+      WHEN f_raw = 'proceedings-article' AND (f_nrefs = 0 AND f_single AND f_hasabs) THEN 'raw=proceedings-article split'
+      WHEN f_raw = 'proceedings-article' THEN 'raw=proceedings-article split'
+      WHEN f_raw = 'proceedings' AND f_crtype = '' AND f_title NOT LIKE 'proceedings%' AND (f_nrefs = 0 AND f_single AND f_hasabs) THEN 'K: raw=proceedings repo-shaped -> conf-paper'
+      WHEN f_raw = 'proceedings' AND f_crtype = '' AND f_title NOT LIKE 'proceedings%' THEN 'K: raw=proceedings repo-shaped -> conf-paper'
+      WHEN f_crtype = 'journal-issue' THEN 'cr=journal-issue -> paratext'
+      WHEN f_crtype IN ('edited-book','monograph') THEN 'cr=edited-book/monograph -> book'
+      WHEN f_raw = 'reference-entry' THEN 'raw=reference-entry'
+      WHEN f_raw = 'dissertation' THEN 'raw=dissertation'
+      WHEN f_nrefs >= 20 AND (rtrim(f_title, ' .') LIKE '%a review' OR rtrim(f_title, ' .') LIKE '%a literature review' OR f_title LIKE '%scientometric review%') THEN 'K: title ends \'a review\''
+      WHEN f_title LIKE '%a meta-analysis%' AND f_nrefs >= 20 THEN 'K: title meta-analysis'
+      WHEN f_raw LIKE '%eu-repo/semantics/%' AND trim(f_raw) LIKE '%/conferenceobject' THEN 'K: raw eu-repo/semantics map'
+      WHEN f_raw LIKE '%eu-repo/semantics/%' AND trim(f_raw) LIKE '%/bookpart' THEN 'K: raw eu-repo/semantics map'
+      WHEN f_raw LIKE '%eu-repo/semantics/%' AND trim(f_raw) LIKE '%/doctoralthesis' THEN 'K: raw eu-repo/semantics map'
+      WHEN f_raw LIKE '%eu-repo/semantics/%' AND trim(f_raw) LIKE '%/masterthesis' THEN 'K: raw eu-repo/semantics map'
+      WHEN f_raw LIKE '%eu-repo/semantics/%' AND trim(f_raw) LIKE '%/article' THEN 'K: raw eu-repo/semantics map'
+      WHEN f_raw LIKE '%eu-repo/semantics/%' AND trim(f_raw) LIKE '%/report' THEN 'K: raw eu-repo/semantics map'
+      WHEN f_raw LIKE '%eu-repo/semantics/%' AND trim(f_raw) LIKE '%/other' THEN 'K: raw eu-repo/semantics map'
+      WHEN f_raw LIKE '%thesis%' THEN 'K: raw thesis-family'
+      WHEN f_raw LIKE '%väitöskirja%' THEN 'K: raw väitöskirja -> dissertation'
+      WHEN f_raw LIKE '%hochschulschrift%' THEN 'K2: raw hochschulschrift'
+      WHEN (f_raw LIKE 'tesis%' OR f_raw LIKE '%bakalářská práce%') THEN 'K2: raw thesis vocab (multiling)'
+      WHEN f_raw LIKE '%final year project%' THEN 'K: raw final-year-project -> report'
+      WHEN f_rawnorm IN ('chapter','bookpart') THEN 'K: raw chapter/bookpart'
+      WHEN f_rawnorm LIKE '%conferencepaper' THEN 'K: raw conferencepaper'
+      WHEN f_rawnorm = 'researchreport' THEN 'K: raw research-report'
+      WHEN f_raw = 'figure' THEN 'K: raw figure -> supp-mat'
+      WHEN f_rawnorm = 'software,multimedia' THEN 'K: raw software,multimedia -> other'
+      WHEN f_raw = 'software' THEN 'K: raw software -> software'
+      WHEN f_raw LIKE '%printed serial%' THEN 'K: raw printed-serial -> other'
+      WHEN f_rawnorm IN ('image','physicalobject') THEN 'K: raw image/physobj -> other'
+      WHEN f_rawnorm IN ('audiovisual','sound') THEN 'K2: raw audiovisual/sound -> other'
+      WHEN (f_raw LIKE '%monograf%' OR f_raw LIKE '%monograph%') THEN 'K2: raw monograf -> book'
+      WHEN f_rawnorm LIKE '%book' AND f_raw NOT IN ('book','edited-book','monograph','book-set') THEN 'K: raw ends-in book'
+      WHEN f_raw LIKE '%preprint%' AND NOT (f_raw LIKE '%eu-repo%' AND NOT trim(f_raw) LIKE '%/preprint') AND NOT (f_srctype = 'journal' AND NOT (f_src LIKE '%rxiv%' OR f_src LIKE '%preprint%' OR f_src LIKE '%repec%' OR f_src LIKE '%ssrn%' OR f_src LIKE '%zenodo%' OR f_src LIKE '%research square%' OR f_src LIKE '%osf%')) AND NOT f_hasjournal THEN 'K: raw preprint (server guard)'
+      WHEN f_raw IN ('book-chapter','book-part') THEN 'default: raw=book-chapter/part'
+      WHEN f_raw = 'book-section' THEN 'default: raw=book-section -> ref'
+      WHEN f_raw IN ('book','edited-book','monograph','book-set') THEN 'default: raw=book-family -> book'
+      WHEN f_raw = 'report' THEN 'default: raw=report -> report'
+      WHEN f_raw = 'posted-content' THEN 'default: raw=posted-content -> other'
+      WHEN f_raw IN ('dataset','database') THEN 'default: raw=dataset/database -> ds'
+      WHEN f_raw = 'proceedings' THEN 'default: raw=proceedings -> para'
+      WHEN f_raw = 'other' THEN 'default: raw=other -> other'
+      ELSE 'default: -> article' END AS cascade_rule
   FROM feat2
+  QUALIFY row_number() OVER (PARTITION BY work_id ORDER BY cascade_type, cascade_rule) = 1
+),
+dict_map AS (
+  SELECT * FROM (VALUES
+    ('repo', 'acceptedversion', 'article'),
+    ('repo', 'article', 'article'),
+    ('repo', 'article / letter to editor', 'article'),
+    ('repo', 'artigo de jornal', 'article'),
+    ('repo', 'award/grant', 'award'),
+    ('repo', 'bachelorthesis', 'dissertation'),
+    ('repo', 'book', 'book'),
+    ('repo', 'book article', 'book-chapter'),
+    ('repo', 'book part', 'book-chapter'),
+    ('repo', 'book sections', 'book-chapter'),
+    ('repo', 'bookpart', 'book-chapter'),
+    ('repo', 'books', 'book'),
+    ('repo', 'chapter, part of book', 'book-chapter'),
+    ('repo', 'chemical structures', 'other'),
+    ('repo', 'conference paper', 'article'),
+    ('repo', 'conference papers', 'article'),
+    ('repo', 'conferencecontribution', 'article'),
+    ('repo', 'conferenceitem', 'article'),
+    ('repo', 'conferenceobject', 'article'),
+    ('repo', 'conferencepaper', 'article'),
+    ('repo', 'conferenceposter', 'article'),
+    ('repo', 'conferenceproceedings', 'article'),
+    ('repo', 'contributiontoperiodical', 'article'),
+    ('repo', 'creative project', 'other'),
+    ('repo', 'dataset', 'dataset'),
+    ('repo', 'dataset/mass spectrometry', 'dataset'),
+    ('repo', 'diplomová práce', 'dissertation'),
+    ('repo', 'dissertation', 'dissertation'),
+    ('repo', 'dissertation-reproduction (electronic)', 'dissertation'),
+    ('repo', 'dissertação', 'dissertation'),
+    ('repo', 'doc-type:article', 'article'),
+    ('repo', 'doc-type:bookpart', 'book-chapter'),
+    ('repo', 'doc-type:doctoralthesis', 'dissertation'),
+    ('repo', 'doctor of philosophy', 'dissertation'),
+    ('repo', 'doctoral thesis', 'dissertation'),
+    ('repo', 'doctoral_dissertation', 'dissertation'),
+    ('repo', 'doctoralthesis', 'dissertation'),
+    ('repo', 'electronic dissertation', 'dissertation'),
+    ('repo', 'hochschulschrift', 'dissertation'),
+    ('repo', 'image', 'other'),
+    ('repo', 'info:ulb-repo/semantics/openurl/article', 'article'),
+    ('repo', 'inproceedings', 'article'),
+    ('repo', 'journal article', 'article'),
+    ('repo', 'journal articles', 'article'),
+    ('repo', 'journal contribution', 'article'),
+    ('repo', 'konferenzschrift', 'article'),
+    ('repo', 'lecture', 'other'),
+    ('repo', 'letter', 'article'),
+    ('repo', 'libros', 'book'),
+    ('repo', 'manuscript', 'article'),
+    ('repo', 'master thesis', 'dissertation'),
+    ('repo', 'masters paper', 'dissertation'),
+    ('repo', 'masters thesis', 'dissertation'),
+    ('repo', 'masterthesis', 'dissertation'),
+    ('repo', 'monografische reihe', 'book'),
+    ('repo', 'monograph', 'book'),
+    ('repo', 'null', 'other'),
+    ('repo', 'other', 'other'),
+    ('repo', 'part of book or chapter of book', 'book-chapter'),
+    ('repo', 'patent', 'other'),
+    ('repo', 'peer reviewed', 'article'),
+    ('repo', 'peer-review', 'peer-review'),
+    ('repo', 'peerreviewed', 'article'),
+    ('repo', 'phd', 'dissertation'),
+    ('repo', 'phdthesis', 'dissertation'),
+    ('repo', 'preprint', 'preprint'),
+    ('repo', 'preprints, working papers, ...', 'preprint'),
+    ('repo', 'publishedversion', 'article'),
+    ('repo', 'report', 'report'),
+    ('repo', 'reportpart', 'report'),
+    ('repo', 'reports', 'report'),
+    ('repo', 'review', 'review'),
+    ('repo', 'software', 'software'),
+    ('repo', 'submittedversion', 'article'),
+    ('repo', 'technical documentation', 'report'),
+    ('repo', 'technical report', 'report'),
+    ('repo', 'tesi doctoral', 'dissertation'),
+    ('repo', 'text', 'article'),
+    ('repo', 'text (article)', 'article'),
+    ('repo', 'theses', 'dissertation'),
+    ('repo', 'thesis', 'dissertation'),
+    ('repo', 'thesis or dissertation', 'dissertation'),
+    ('repo', 'thesis-reproduction (electronic)', 'dissertation'),
+    ('repo', 'thèse', 'dissertation'),
+    ('repo', 'undergraduate senior honors thesis', 'dissertation'),
+    ('repo', 'volume', 'book'),
+    ('repo', 'vor', 'article'),
+    ('repo', 'working paper', 'report'),
+    ('repo', 'workingpaper', 'report'),
+    ('repo', 'zeitschrift', 'article'),
+    ('datacite', 'audiovisual', 'other'),
+    ('datacite', 'award', 'other'),
+    ('datacite', 'book', 'book'),
+    ('datacite', 'bookchapter', 'book-chapter'),
+    ('datacite', 'collection', 'other'),
+    ('datacite', 'computationalnotebook', 'other'),
+    ('datacite', 'conferencepaper', 'article'),
+    ('datacite', 'conferenceproceeding', 'other'),
+    ('datacite', 'datapaper', 'article'),
+    ('datacite', 'dataset', 'dataset'),
+    ('datacite', 'datasetoutputmanagementplan', 'dataset'),
+    ('datacite', 'dissertation', 'dissertation'),
+    ('datacite', 'event', 'other'),
+    ('datacite', 'image', 'other'),
+    ('datacite', 'instrument', 'other'),
+    ('datacite', 'interactiveresource', 'other'),
+    ('datacite', 'journal', 'other'),
+    ('datacite', 'journalarticle', 'article'),
+    ('datacite', 'model', 'dataset'),
+    ('datacite', 'modeloutput', 'other'),
+    ('datacite', 'other', 'other'),
+    ('datacite', 'peerreview', 'peer-review'),
+    ('datacite', 'physicalobject', 'other'),
+    ('datacite', 'preprint', 'preprint'),
+    ('datacite', 'projectreport', 'report'),
+    ('datacite', 'report', 'report'),
+    ('datacite', 'service', 'other'),
+    ('datacite', 'software', 'other'),
+    ('datacite', 'sound', 'other'),
+    ('datacite', 'standard', 'standard'),
+    ('datacite', 'studyregistration', 'other'),
+    ('datacite', 'text', 'article'),
+    ('datacite', 'workflow', 'other')) AS t(family, k, mapped_type)
 )
-SELECT l.*, sc.classified_type
+SELECT l.*,
+  CASE WHEN sc.cascade_rule = 'default: -> article' AND dm.mapped_type IS NOT NULL THEN dm.mapped_type ELSE sc.cascade_type END AS classified_type,
+  CASE WHEN sc.cascade_rule = 'default: -> article' AND dm.mapped_type IS NOT NULL THEN concat('ingest-dict fallback: ', dm.family) ELSE sc.cascade_rule END AS classified_rule
 FROM identifier('openalex' || :env_suffix || '.works.locations_w_sources') l
 JOIN scored sc ON sc.work_id = concat_ws('~', l.provenance, l.native_id_namespace, l.native_id)
+LEFT JOIN dict_map dm
+  ON dm.family = CASE WHEN l.provenance IN ('repo', 'repo_backfill') THEN 'repo'
+                      WHEN l.provenance = 'datacite' THEN 'datacite' END
+  AND dm.k = lower(coalesce(l.raw_type, ''))
 );
 
 -- COMMAND ----------
