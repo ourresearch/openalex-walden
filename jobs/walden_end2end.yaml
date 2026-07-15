@@ -225,6 +225,9 @@ resources:
           depends_on:
             - task_key: Parsed_Author_Names
             - task_key: Institutions_Frontfill
+            # oxjob #608: guard's curated flag reads work_author_claim_curations —
+            # must not race the sync's full MERGE
+            - task_key: Sync_Work_Author_Curations
           notebook_task:
             notebook_path: notebooks/end2end/UpdateWorkAuthors
             source: GIT
