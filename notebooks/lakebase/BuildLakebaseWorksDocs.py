@@ -597,7 +597,7 @@ if TRIGGER_SYNCS:
         w.pipelines.start_update(pipeline_id=pid)
         print(f"Triggered refresh: {name} (pipeline {pid})")
 
-    TIMEOUT_S = 2 * 3600
+    TIMEOUT_S = 3 * 3600
     start = time.time()
     pending = dict(pipeline_ids)
     failed = {}
