@@ -88,66 +88,6 @@ MAX_AUTHOR_NAME_LENGTH = 500
 
 # COAR resource type → OpenAlex type
 # JPCOAR 2.0 uses COAR URIs like http://purl.org/coar/resource_type/c_6501
-IRDB_COAR_TYPE_MAP = F.create_map(
-    F.lit("c_6501"), F.lit("article"),       # journal article
-    F.lit("c_bdcc"), F.lit("article"),       # research article
-    F.lit("c_93fc"), F.lit("article"),       # contribution to journal
-    F.lit("c_186u"), F.lit("article"),       # departmental bulletin paper (very common in IRDB)
-    F.lit("c_18cf"), F.lit("article"),       # text
-    F.lit("c_18co"), F.lit("article"),       # conference paper
-    F.lit("c_18op"), F.lit("article"),       # conference proceedings
-    F.lit("c_efa0"), F.lit("article"),       # conference poster
-    F.lit("c_5794"), F.lit("article"),       # conference paper (alt)
-    F.lit("c_2f33"), F.lit("article"),       # book review
-    F.lit("r60j-j5bd"), F.lit("article"),    # article (alt code)
-    F.lit("c_db06"), F.lit("dissertation"),  # doctoral thesis
-    F.lit("c_46ec"), F.lit("dissertation"),  # thesis
-    F.lit("c_bdcc"), F.lit("article"),       # research article
-    F.lit("c_816b"), F.lit("preprint"),      # preprint
-    F.lit("c_8042"), F.lit("report"),        # working paper
-    F.lit("c_18gh"), F.lit("report"),        # technical report
-    F.lit("c_18ws"), F.lit("report"),        # report
-    F.lit("c_beb9"), F.lit("dataset"),       # research data
-    F.lit("c_2f33"), F.lit("book"),          # book
-    F.lit("c_3248"), F.lit("book-chapter"),  # book part
-    F.lit("c_ba08"), F.lit("review"),        # review article
-    F.lit("c_dcae04bc"), F.lit("review"),    # review
-)
-
-# Text-based type fallback for records without COAR URIs
-IRDB_TEXT_TYPE_MAP = F.create_map(
-    F.lit("article"), F.lit("article"),
-    F.lit("journal article"), F.lit("article"),
-    F.lit("departmental bulletin paper"), F.lit("article"),
-    F.lit("conference paper"), F.lit("article"),
-    F.lit("conference object"), F.lit("article"),
-    F.lit("text"), F.lit("article"),
-    F.lit("thesis"), F.lit("dissertation"),
-    F.lit("doctoral thesis"), F.lit("dissertation"),
-    F.lit("master thesis"), F.lit("dissertation"),
-    F.lit("bachelor thesis"), F.lit("dissertation"),
-    F.lit("book"), F.lit("book"),
-    F.lit("book part"), F.lit("book-chapter"),
-    F.lit("report"), F.lit("report"),
-    F.lit("technical report"), F.lit("report"),
-    F.lit("working paper"), F.lit("report"),
-    F.lit("preprint"), F.lit("preprint"),
-    F.lit("research data"), F.lit("dataset"),
-    F.lit("dataset"), F.lit("dataset"),
-    F.lit("review"), F.lit("review"),
-    F.lit("review article"), F.lit("review"),
-    F.lit("software"), F.lit("software"),
-    F.lit("conference proceedings"), F.lit("article"),
-    F.lit("conference output"), F.lit("article"),
-    F.lit("conference presentation"), F.lit("article"),
-    F.lit("research paper"), F.lit("article"),
-    F.lit("manuscript"), F.lit("article"),
-    F.lit("learning object"), F.lit("other"),
-    F.lit("lecture"), F.lit("other"),
-    F.lit("presentation"), F.lit("other"),
-    F.lit("other"), F.lit("other"),
-)
-
 # COAR version URI → walden version string
 COAR_VERSION_MAP = F.create_map(
     F.lit("c_b1a7d7d4d402bcce"), F.lit("submittedVersion"),   # AO (Author's Original)
@@ -568,23 +508,12 @@ def irdb_parsed():
                 F.col("native_id"),
             ),
         )
-        # === type (COAR URI lookup, with text fallback) ===
+        # === type: ingest no longer assigns it; the work-type cascade owns it ===
+        # raw_native_type = the dc:type text, unchanged: text-null records must keep being
+        # dropped by the non-scholarly filter below (a COAR-URI fallback here would newly
+        # admit them — separate decision, not part of the null-type change).
         .withColumn("raw_native_type", F.col(f"{md}.`dc:type`.`_VALUE`"))
-        .withColumn(
-            "_coar_code",
-            F.element_at(
-                F.split(F.col(f"{md}.`dc:type`.`_rdf:resource`"), "/"), -1
-            ),
-        )
-        .withColumn(
-            "type",
-            F.coalesce(
-                IRDB_COAR_TYPE_MAP[F.col("_coar_code")],
-                IRDB_TEXT_TYPE_MAP[F.lower(F.trim(F.col("raw_native_type")))],
-                F.lit("other"),
-            ),
-        )
-        .drop("_coar_code")
+        .withColumn("type", F.lit(None).cast("string"))
         # === version (from variable-namespace COAR version URI) ===
         .withColumn("_version_uri", _coalesce_version(md))
         .withColumn(

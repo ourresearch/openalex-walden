@@ -214,50 +214,6 @@ def is_valid_author(author):
 
 # COMMAND ----------
 
-def get_openalex_type(crossref_type):
-    """
-    Convert Crossref types to OpenAlex types based on mappings.
-    """
-    crossref_to_openalex = {
-        # article
-        "journal-article": "article",
-        "proceedings-article": "article",
-        "posted-content": "article",
-        
-        # book
-        "book-set": "book",
-        "edited-book": "book",
-        "monograph": "book",
-        "reference-book": "book",
-        
-        # book-chapter
-        "book-part": "book-chapter",
-        
-        # paratext
-        "book-series": "paratext",
-        "component": "paratext",
-        "journal": "paratext", 
-        "journal-issue": "paratext",
-        "journal-volume": "paratext",
-        "proceedings": "paratext",
-        "proceedings-series": "paratext",
-        "report-series": "paratext",
-
-        # pass-through types
-        "dataset": "dataset",
-        "dissertation": "dissertation",
-        "standard": "standard",
-        "peer-review": "peer-review",
-        "report": "report",
-        "other": "other"
-    }
-    
-    return crossref_to_openalex.get(crossref_type, crossref_type)
-
-@F.pandas_udf(StringType())
-def get_openalex_type_udf(series: pd.Series) -> pd.Series:
-    return series.apply(get_openalex_type)
-
 # COMMAND ----------
 
 # Raw data in single column as items table
@@ -438,7 +394,8 @@ def crossref_parsed():
             .otherwise(F.lit("publishedVersion"))
         )
         .withColumn("raw_type", F.col("type"))
-        .withColumn("type", get_openalex_type_udf(F.col("type")))
+        # ingest no longer assigns type; the work-type cascade owns it (raw_type kept as evidence)
+        .withColumn("type", F.lit(None).cast("string"))
         .withColumn("raw_license",  
             # Filter out content-version = "tdm", then prioritize the url containing "creativecommons.org", otherwise select the first url
             F.when(

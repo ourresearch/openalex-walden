@@ -19,119 +19,6 @@ from openalex.dlt.transform import apply_initial_processing, apply_final_merge_k
 
 # COMMAND ----------
 
-def get_openalex_type_from_pubmed(pubmed_type):
-    """
-    Convert PubMed publication types to OpenAlex types.
-    """
-    pubmed_to_openalex = {
-        # article
-        "Journal Article": "article",
-        "Clinical Study": "article",
-        "Clinical Trial": "article",
-        "Clinical Trial, Phase I": "article",
-        "Clinical Trial, Phase II": "article",
-        "Clinical Trial, Phase III": "article",
-        "Clinical Trial, Phase IV": "article",
-        "Controlled Clinical Trial": "article",
-        "Adaptive Clinical Trial": "article",
-        "Pragmatic Clinical Trial": "article",
-        "Randomized Controlled Trial": "article",
-        "Observational Study": "article",
-        "Case Reports": "article",
-        "Comparative Study": "article",
-        "Validation Study": "article",
-        "Multicenter Study": "article",
-        "Evaluation Study": "article",
-        
-        # review
-        "Review": "review",
-        "Systematic Review": "review",
-        "Meta-Analysis": "review",
-        "Scientific Integrity Review": "review",
-        
-        # letter
-        "Letter": "letter",
-        "Comment": "letter",
-        
-        # editorial
-        "Editorial": "editorial",
-        
-        # dataset
-        "Dataset": "dataset",
-        
-        # report
-        "Technical Report": "report",
-        
-        # erratum
-        "Published Erratum": "erratum",
-        "Corrected and Republished Article": "erratum",
-        
-        # retraction
-        "Retraction of Publication": "retraction",
-        "Retracted Publication": "retraction",
-        
-        # preprint
-        "Preprint": "preprint",
-        
-        # paratext (supplementary/administrative content)
-        "Bibliography": "paratext",
-        "Congress": "paratext",
-        "Dictionary": "paratext",
-        "Directory": "paratext",
-        "Periodical Index": "paratext",
-        
-        # supplementary-materials
-        "Electronic Supplementary Materials": "supplementary-materials",
-        
-        # peer-review
-        "Peer Review": "peer-review",
-        
-        # everything else maps to "other"
-        "Research Support, American Recovery and Reinvestment Act": "other",
-        "Research Support, N.I.H., Extramural": "other",
-        "Research Support, N.I.H., Intramural": "other",
-        "Research Support, Non-U.S. Gov't": "other",
-        "Research Support, U.S. Gov't, Non-P.H.S.": "other",
-        "Research Support, U.S. Gov't, P.H.S.": "other",
-        "Address": "other",
-        "Autobiography": "other",
-        "Biography": "other",
-        "Classical Article": "other",
-        "Clinical Conference": "other",
-        "Collected Work": "other",
-        "Consensus Development Conference": "other",
-        "Duplicate Publication": "other",
-        "English Abstract": "other",
-        "Expression of Concern": "other",
-        "Festschrift": "other",
-        "Government Publication": "other",
-        "Guideline": "other",
-        "Historical Article": "other",
-        "Interactive Tutorial": "other",
-        "Interview": "other",
-        "Introductory Journal Article": "other",
-        "Lecture": "other",
-        "Legal Case": "other",
-        "Legislation": "other",
-        "News": "other",
-        "Newspaper Article": "other",
-        "Overall": "other",
-        "Patient Education Handout": "other",
-        "Personal Narrative": "other",
-        "Portrait": "other",
-        "Practice Guideline": "other",
-        "Video-Audio Media": "other",
-        "Webcast": "other",
-    }
-    
-    return pubmed_to_openalex.get(pubmed_type, "other")
-
-@F.pandas_udf(StringType())
-def get_openalex_type_from_pubmed_udf(series: pd.Series) -> pd.Series:
-    return series.apply(get_openalex_type_from_pubmed)
-
-# COMMAND ----------
-
 # Define a UDF to consolidate award_id's per agency
 def consolidate_awards(records):
 
@@ -368,14 +255,15 @@ def pubmed_parsed():
                 ),
                 lambda x: x.id != "",
             ),  # Filter out empty ids
-            "type": get_openalex_type_from_pubmed_udf(
-                F.get(
-                    F.col(
-                        "MedlineCitation.Article.PublicationTypelist.PublicationType._VALUE"
-                    ),
-                    0,
-                )
+            # ingest no longer assigns type; the work-type cascade owns it.
+            # raw_type = the same PublicationType element the old mapping consumed (evidence for the cascade dict).
+            "raw_type": F.get(
+                F.col(
+                    "MedlineCitation.Article.PublicationTypelist.PublicationType._VALUE"
+                ),
+                0,
             ),
+            "type": F.lit(None).cast("string"),
             "version": F.lit('publishedVersion'),
             "license": F.lit(None).cast("string"),
             "language":  convert_language_code_udf(F.get(F.col("MedlineCitation.Article.Language"), 0)),
@@ -515,6 +403,7 @@ def pubmed_parsed():
         "normalized_title",
         "authors",
         "ids",
+        "raw_type",
         "type",
         "version",
         "license",
@@ -542,8 +431,49 @@ def pubmed_parsed():
 @dlt.table(name="pubmed_enriched",
            comment="PubMed data after full parsing and author/feature enrichment.")
 def pubmed_enriched():
+    # Same walden works schema plus raw_type (mirrors Crossref/DataCite; shared schema lacks it)
+    walden_works_with_raw_type_schema = StructType([
+        StructField("provenance", StringType(), True), StructField("native_id", StringType(), True),
+        StructField("native_id_namespace", StringType(), True), StructField("title", StringType(), True),
+        StructField("normalized_title", StringType(), True),
+        StructField("authors", ArrayType(StructType([
+            StructField("given", StringType(), True), StructField("family", StringType(), True),
+            StructField("name", StringType(), True), StructField("orcid", StringType(), True),
+            StructField("affiliations", ArrayType(StructType([
+                StructField("name", StringType(), True), StructField("department", StringType(), True),
+                StructField("ror_id", StringType(), True)])), True),
+            StructField("is_corresponding", BooleanType(), True)
+        ])), True),
+        StructField("ids", ArrayType(StructType([
+            StructField("id", StringType(), True), StructField("namespace", StringType(), True),
+            StructField("relationship", StringType(), True)])), True),
+        StructField("raw_type", StringType(), True), StructField("type", StringType(), True), StructField("version", StringType(), True),
+        StructField("license", StringType(), True), StructField("language", StringType(), True),
+        StructField("published_date", DateType(), True), StructField("created_date", DateType(), True),
+        StructField("updated_date", DateType(), True), StructField("issue", StringType(), True),
+        StructField("volume", StringType(), True), StructField("first_page", StringType(), True),
+        StructField("last_page", StringType(), True), StructField("is_retracted", BooleanType(), True),
+        StructField("abstract", StringType(), True), StructField("source_name", StringType(), True),
+        StructField("publisher", StringType(), True),
+        StructField("funders", ArrayType(StructType([
+            StructField("doi", StringType(), True), StructField("ror", StringType(), True),
+            StructField("name", StringType(), True), StructField("awards", ArrayType(StringType(), True), True)
+        ])), True),
+        StructField("references", ArrayType(StructType([
+            StructField("doi", StringType(), True), StructField("pmid", StringType(), True),
+            StructField("arxiv", StringType(), True), StructField("title", StringType(), True),
+            StructField("authors", StringType(), True), StructField("year", StringType(), True),
+            StructField("raw", StringType(), True)
+        ])), True),
+        StructField("urls", ArrayType(StructType([
+            StructField("url", StringType(), True), StructField("content_type", StringType(), True)
+        ])), True),
+        StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
+        StructField("ingested_at", TimestampType(), True)
+    ])
+
     df_parsed_input = dlt.read_stream("pubmed_parsed")
-    df_walden_works_schema = apply_initial_processing(df_parsed_input, "pubmed", walden_works_schema)
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "pubmed", walden_works_with_raw_type_schema)
 
     # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
     # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
