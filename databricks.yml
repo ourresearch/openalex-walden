@@ -67,6 +67,7 @@ include:
   - jobs/datacite_awards.yaml
   - jobs/crossref_awards.yaml
   - jobs/works_daily_metrics.yaml
+  - jobs/repair_misbound_authorships.yaml
   - jobs/sources.yaml
   - jobs/union_all_works_pipeline.yaml
   - jobs/repo_pipeline.yaml
