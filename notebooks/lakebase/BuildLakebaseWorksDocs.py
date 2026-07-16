@@ -572,20 +572,26 @@ if sum(shard_counts) != total_works:
 # MAGIC ### Trigger Lakebase synced-table refreshes (end2end only)
 # MAGIC
 # MAGIC Triggered-mode synced tables refresh on demand; this starts all 9 pipeline updates and
-# MAGIC waits. Requires the synced tables to exist (created in oxjob #576 step 4).
+# MAGIC returns WITHOUT waiting — the Postgres apply can run 4h+ on spike days (7.7M rows/shard
+# MAGIC took 4h33m on 2026-07-15) and holding this cluster idle to poll for it blocked end2end.
+# MAGIC Each run instead verifies the PREVIOUS run's updates before triggering: a FAILED or
+# MAGIC CANCELED refresh fails this task a day late, which is the alerting channel. A refresh
+# MAGIC still RUNNING from yesterday is skipped (its CDF cursor advances next run), not an error.
+# MAGIC Requires the synced tables to exist (created in oxjob #576 step 4).
 
 # COMMAND ----------
 
 if TRIGGER_SYNCS:
-    import time
     from databricks.sdk import WorkspaceClient
+    from databricks.sdk.errors import ResourceConflict
 
     SYNCED_TABLES = [f"openalex.lakebase.lakebase_works_docs_{s}" for s in range(N_SHARDS)] + [
         "openalex.lakebase.lakebase_works_ids"
     ]
 
     w = WorkspaceClient()
-    pipeline_ids = {}
+    failed_prev = {}
+    still_running = []
     for name in SYNCED_TABLES:
         st = w.database.get_synced_database_table(name=name)
         pid = getattr(st.data_synchronization_status, "pipeline_id", None) or getattr(
@@ -593,25 +599,23 @@ if TRIGGER_SYNCS:
         )
         if not pid:
             raise Exception(f"Could not resolve pipeline id for synced table {name}: {st}")
-        pipeline_ids[name] = pid
-        w.pipelines.start_update(pipeline_id=pid)
-        print(f"Triggered refresh: {name} (pipeline {pid})")
 
-    TIMEOUT_S = 3 * 3600
-    start = time.time()
-    pending = dict(pipeline_ids)
-    failed = {}
-    while pending and time.time() - start < TIMEOUT_S:
-        time.sleep(60)
-        for name, pid in list(pending.items()):
-            latest = w.pipelines.list_updates(pipeline_id=pid, max_results=1).updates
-            state = latest[0].state.value if latest else "UNKNOWN"
-            if state == "COMPLETED":
-                print(f"Sync complete: {name}")
-                del pending[name]
-            elif state in ("FAILED", "CANCELED"):
-                failed[name] = state
-                del pending[name]
-    if failed or pending:
-        raise Exception(f"Synced-table refreshes not clean — failed: {failed}, still pending: {list(pending)}")
-    print("All synced-table refreshes completed")
+        latest = w.pipelines.list_updates(pipeline_id=pid, max_results=1).updates or []
+        prev_state = latest[0].state.value if latest else None
+        if prev_state in ("FAILED", "CANCELED"):
+            failed_prev[name] = prev_state
+
+        try:
+            w.pipelines.start_update(pipeline_id=pid)
+            print(f"Triggered refresh: {name} (pipeline {pid})")
+        except ResourceConflict as e:
+            still_running.append(name)
+            print(f"Skipped {name}: previous update still applying ({e})")
+
+    if still_running:
+        print(f"{len(still_running)} refresh(es) still applying yesterday's changes: {still_running}")
+    if failed_prev:
+        raise Exception(
+            f"Previous synced-table refresh(es) ended dirty (found at trigger time, one run late): {failed_prev}"
+        )
+    print(f"{len(SYNCED_TABLES) - len(still_running)}/{len(SYNCED_TABLES)} refreshes triggered (not awaited)")
