@@ -1703,7 +1703,7 @@ parsed_df = clean_df \
     .withColumn("raw_native_types", expr("regexp_extract_all(cleaned_xml, '<dc:type.*?>(.*?)</dc:type>', 1)")) \
     .withColumn("_best", best_type_udf(col("raw_native_types"))) \
     .withColumn("raw_native_type", col("_best.raw_native_type")) \
-    .withColumn("type", col("_best.type")) \
+    .withColumn("type", lit(None).cast("string")) \
     .drop("_best") \
     .filter(col("raw_native_type").isNull() | ~lower(col("raw_native_type")).isin(TYPES_TO_DELETE)) \
     .withColumn("identifiers", 

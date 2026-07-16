@@ -1654,7 +1654,8 @@ def repo_parsed():
     # raw_native_type = the winning element's ORIGINAL full string; type = its mapped value.
     .withColumn("_best", best_type_udf(F.col("raw_native_types")))
     .withColumn("raw_native_type", F.col("_best.raw_native_type"))
-    .withColumn("type", F.col("_best.type"))
+    # ingest no longer assigns type; the work-type cascade owns it (raw_native_type kept as evidence)
+    .withColumn("type", F.lit(None).cast("string"))
     .drop("_best")
     .filter(
         # Records with a type: exclude only TYPES_TO_DELETE
