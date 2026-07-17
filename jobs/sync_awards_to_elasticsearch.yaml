@@ -27,4 +27,6 @@ resources:
       parameters:
         - name: is_full_sync
           default: "false"
+        - name: delete_guard_fraction
+          default: "0.05"
       performance_target: STANDARD
