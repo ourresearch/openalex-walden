@@ -26,15 +26,15 @@ TYPES_TO_DELETE = [
     "image;", "ilustraciones y fotos", "fotografie", "fotografía"
 ]
 
-# Repository dc:type -> OpenAlex work type.
-# Generated for oxjob #537 from the validated top-2000 repository dc:type values
-# (LLM-classified vs the #535 25-type defs, adversarially validated), MERGED over the
-# legacy hand-curated keys. Conference -> conference-paper/-abstract; multilingual
-# article/thesis/chapter/report variants added; 'award/grant' dropped (non-canonical);
-# 'posted-content' left to default 'other' (#540 sets preprint via is_preprint_repository).
+# RAW-TYPE RANKING MAP (renamed from RAW_TYPE_RANKING_MAP, 2026-07-17 per Casey).
+# ASSIGNS NO TYPE — ingest `type` is NULL; the work-type cascade owns classification.
+# Sole remaining job: repo records send MULTIPLE dc:type strings; best_type_udf scores each
+# candidate via this map's would-be type (specific beats article beats other, see
+# _TYPE_PRIORITY) and keeps the most informative ORIGINAL string as raw_native_type —
+# the classifier's evidence. Provenance: oxjob #537 top-2000 validated values.
 # KEEP IN SYNC with the other ingest notebook (Repo.py <-> RepoBackfill.py).
 # Full review + per-value CSVs: oxjobs working/improve-repository-type-crosswalk/MAPPING.md
-REPO_TYPE_MAPPING = {
+RAW_TYPE_RANKING_MAP = {
     # --- article  (225 keys) ---
     "article": "article",
     "text": "article",
@@ -1175,8 +1175,6 @@ REPO_TYPE_MAPPING = {
     "null": "other",
 }
 
-# Native Spark map for type lookups (created from REPO_TYPE_MAPPING)
-TYPE_MAP = F.create_map([F.lit(x) for kv in REPO_TYPE_MAPPING.items() for x in kv])
 
 # COAR resource type codes (official COAR vocabulary) -> OpenAlex type.
 # Source of truth = COAR_RESOURCE_TYPE_MAP (mirror in RepoBackfill.py).
@@ -1194,23 +1192,22 @@ COAR_RESOURCE_TYPE_MAP = {
     "c_816b": "preprint",            # preprint
     "c_8042": "report",              # working paper
 }
-COAR_MAP = F.create_map([F.lit(x) for kv in COAR_RESOURCE_TYPE_MAP.items() for x in kv])
 
 # --- oxjob #537: best dc:type element selection over the full array ---
 def resolve_repo_type(input_type):
     """One dc:type value -> OpenAlex work type (default 'other'). Applied per array element.
-    Our REPO_TYPE_MAPPING is PRIMARY (tried as-is, then eu-repo-stripped); the COAR / version
+    Our RAW_TYPE_RANKING_MAP is PRIMARY (tried as-is, then eu-repo-stripped); the COAR / version
     handling is only a fallback for values the text map does not cover."""
     if not input_type or not isinstance(input_type, str):
         return "other"
     low = input_type.strip().lower()
     # 1) our mapping is primary
-    if low in REPO_TYPE_MAPPING:
-        return REPO_TYPE_MAPPING[low]
+    if low in RAW_TYPE_RANKING_MAP:
+        return RAW_TYPE_RANKING_MAP[low]
     if "info:eu-repo/semantics/" in low:
         stripped = low.split("info:eu-repo/semantics/")[-1].strip()
-        if stripped in REPO_TYPE_MAPPING:
-            return REPO_TYPE_MAPPING[stripped]
+        if stripped in RAW_TYPE_RANKING_MAP:
+            return RAW_TYPE_RANKING_MAP[stripped]
     # 2) COAR resource_type code (both hosts) -- values not in the text map
     if "coar/resource_type/" in low or "coar-repositories.org/resource_types/" in low:
         m = re.search(r"(c_[0-9a-z]+|r60j-j5bd)", low)
