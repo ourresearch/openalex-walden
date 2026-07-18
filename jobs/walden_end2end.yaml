@@ -156,7 +156,7 @@ resources:
             warehouse_id: 3996dc0a9b183ce3
         - task_key: Works_Base
           depends_on:
-            - task_key: parse_referenced_works
+            - task_key: Locations_Mapped
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorksBase
             source: GIT
@@ -268,6 +268,8 @@ resources:
             - task_key: SDG_Frontfill
             - task_key: Concepts
             - task_key: Works_Fulltext
+            # referenced_works merge (cell 5) reads its output; Works_Base does not
+            - task_key: parse_referenced_works
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT
