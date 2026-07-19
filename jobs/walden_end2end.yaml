@@ -149,7 +149,7 @@ resources:
             warehouse_id: 4d37bf76372a2901
         - task_key: parse_referenced_works
           depends_on:
-            - task_key: Locations_Mapped
+            - task_key: Works_Base
           notebook_task:
             notebook_path: notebooks/parsing/parse_work_references
             source: GIT
