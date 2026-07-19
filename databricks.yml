@@ -68,6 +68,7 @@ include:
   - jobs/crossref_awards.yaml
   - jobs/works_daily_metrics.yaml
   - jobs/repair_misbound_authorships.yaml
+  - jobs/repair_orcid_displacement.yaml
   - jobs/reparse_author_names.yaml
   - jobs/sources.yaml
   - jobs/union_all_works_pipeline.yaml

@@ -1,0 +1,43 @@
+resources:
+  jobs:
+    Repair_Orcid_Displacement:
+      name: Repair Orcid Displacement
+      description: |
+        oxjob #608 Phase 1 wind-down: authority-evidence repair waves.
+        waveO_orcid_split = fused profiles (>=3 qualified ORCIDs) — minority-ORCID
+        seats rebind to the ORCID's sole other supported profile, else NULL.
+        waveD_displacement = off-by-one displaced profiles (>=80% of incompatible
+        seats have the profile's own name at seat +/-1) — realign to the unique
+        misplaced on-work donor, else NULL.
+        MANUAL TRIGGER ONLY — no schedule. One run = candidates -> batch ->
+        150/tier opus anchor gate -> gated apply -> verify. Apply requires
+        repair_apply='true' AND a passing gate (>=98% per tier, operator-checked
+        on a dry run first) AND the end2end quiet window.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      max_concurrent_runs: 1
+      parameters:
+        - name: repair_wave
+          default: "waveO_orcid_split"
+        - name: repair_apply
+          default: "false"
+        - name: batch_max_profiles
+          default: "1000"
+      tasks:
+        - task_key: authority_wave_cycle
+          notebook_task:
+            notebook_path: notebooks/authors/RepairOrcidDisplacementWaves
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+            base_parameters:
+              repair_wave: "{{job.parameters.repair_wave}}"
+              repair_apply: "{{job.parameters.repair_apply}}"
+              batch_max_profiles: "{{job.parameters.batch_max_profiles}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
