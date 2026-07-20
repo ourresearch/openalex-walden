@@ -304,6 +304,16 @@ if ephemeral_present[PENDING_TABLE]:
     add_query(f"SELECT COALESCE(match_method, '(none)') AS d, COUNT(*) AS c FROM {PENDING_TABLE} GROUP BY 1",
               "match_method", "d", "c")
 
+    # name_match_tier: which cascade tier fired (added to MatchAuthors 2026-07-20,
+    # oxjob #640). Guarded so the monitor still runs against a pre-change batch.
+    if "name_match_tier" in [f.name for f in spark.table(PENDING_TABLE).schema]:
+        add_query(f"""
+            SELECT CASE WHEN match_method = 'orcid' THEN 'orcid'
+                        ELSE COALESCE(name_match_tier, '(none)') END AS d,
+                   COUNT(*) AS c
+            FROM {PENDING_TABLE} GROUP BY 1
+        """, "match_tier", "d", "c")
+
     qa = spark.sql(f"""
         SELECT SUM(CASE WHEN orcid_name_conflict THEN 1 ELSE 0 END) AS name_conflict,
                SUM(CASE WHEN orcid_blind_match THEN 1 ELSE 0 END) AS blind_match,
