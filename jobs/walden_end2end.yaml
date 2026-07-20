@@ -238,7 +238,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/end2end/UpdateWorkAuthors
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3
+            warehouse_id: 4d37bf76372a2901
         - task_key: Author_Matching
           depends_on:
             - task_key: Author_Affiliations
