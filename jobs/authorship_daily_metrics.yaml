@@ -1,0 +1,62 @@
+resources:
+  jobs:
+    Authorship_Daily_Metrics:
+      name: Authorship Daily Metrics
+      description: |
+        Observation-only daily monitor for the author-matching pipeline
+        (oxjob #640). Snapshots the ephemeral MatchAuthors/UpdateWorkAuthors
+        run-state before the next end2end run overwrites it, diffs a per-work
+        author-list fingerprint to detect list growth/shrinkage/name changes,
+        and appends tall metrics to openalex.authors.authorship_daily_metrics.
+        Writes ONLY monitor-owned tables (authorship_daily_metrics,
+        work_author_list_fingerprint, work_author_change_events,
+        authorship_monitor_candidates) — never pipeline tables.
+        First run bootstraps the fingerprint for every work (one-time, hours);
+        daily runs are incremental over the day's touched works.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        # 22:30 UTC — after end2end (05:00 UTC start, usually done by ~17:30)
+        # and offset from Works Daily Metrics (22:00) so both aren't spinning
+        # clusters at once. Must run BEFORE the next end2end (05:00) replaces
+        # the ephemeral run-state tables this job snapshots. Metrics writes
+        # are idempotent per snapshot_date; change events are append-only.
+        quartz_cron_expression: 0 30 22 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      parameters:
+        - name: snapshot_date
+          default: "{{job.start_time.iso_date}}"
+      tasks:
+        - task_key: authorship_daily_metrics
+          notebook_task:
+            notebook_path: notebooks/metrics/AuthorshipDailyMetrics
+            source: GIT
+          job_cluster_key: metrics-cluster
+      job_clusters:
+        - job_cluster_key: metrics-cluster
+          new_cluster:
+            # Daily run: incremental candidate set (0.1-1M works typical) plus
+            # column-pruned scans of work_authors for daily-activity counters.
+            # First run bootstraps the fingerprint: full work_authors group-by
+            # (~3B rows) + hash of every base author list (~510M works) — the
+            # NVMe on m5d.2xlarge absorbs the shuffle spill; expect hours once.
+            spark_version: 16.4.x-scala2.12
+            node_type_id: m5d.2xlarge
+            num_workers: 4
+            runtime_engine: PHOTON
+            aws_attributes:
+              availability: ON_DEMAND
+              zone_id: auto
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 64
+            data_security_mode: SINGLE_USER
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
