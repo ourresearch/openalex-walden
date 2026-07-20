@@ -119,7 +119,6 @@ resources:
           notebook_task:
             notebook_path: notebooks/sources/CreateSources
             source: GIT
-            # oxjob #636: small task, moved off the 4XL (own wake-up window)
             warehouse_id: 3996dc0a9b183ce3
           max_retries: 2
           min_retry_interval_millis: 300000
@@ -181,21 +180,21 @@ resources:
           notebook_task:
             notebook_path: notebooks/end2end/PrepareAffiliationStrings
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3  # oxjob #636: moved off the 4XL
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Sync_RAS_Curations
           depends_on:
             - task_key: Works_Base
           notebook_task:
             notebook_path: notebooks/end2end/SyncRasCurations
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3  # oxjob #636: moved off the 4XL
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Sync_Work_Author_Curations
           depends_on:
             - task_key: Works_Base
           notebook_task:
             notebook_path: notebooks/end2end/SyncWorkAuthorCurations
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3  # oxjob #636: moved off the 4XL
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Institutions_Frontfill
           depends_on:
             - task_key: Prepare_Affiliation_Strings
@@ -239,7 +238,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/end2end/UpdateWorkAuthors
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3  # oxjob #636: moved off the 4XL
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Author_Matching
           depends_on:
             - task_key: Author_Affiliations
@@ -330,7 +329,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/end2end/RefreshRasWorksCounts
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3  # oxjob #636: moved off the 4XL
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Sync_RAS_to_Elasticsearch
           depends_on:
             - task_key: Refresh_RAS_Counts
@@ -347,7 +346,7 @@ resources:
           notebook_task:
             notebook_path: notebooks/end2end/CreateWunpaywall
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3  # oxjob #636: moved off the 4XL
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: IS_PROD
           depends_on:
             - task_key: Wunpaywall
