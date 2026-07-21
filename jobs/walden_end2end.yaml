@@ -259,7 +259,7 @@ resources:
           depends_on:
             - task_key: Apply_Work_Author_Curations
           notebook_task:
-            notebook_path: notebooks/end2end/UpdateWorkAuthorships
+            notebook_path: notebooks/end2end/CreateWorkAuthorships
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Works_Enriched

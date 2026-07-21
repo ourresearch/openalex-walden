@@ -162,8 +162,8 @@ else:
 spark.sql(f"CREATE OR REPLACE TEMP VIEW _cand_ids AS SELECT DISTINCT work_id FROM ({cand_ids_sql})")
 
 # Current authorship state for every candidate. The sort + struct mirror the
-# oxjob 401-WB change-detection compare in UpdateWorkAuthorships exactly, so
-# content_hash changes if and only if that intake would consider the list changed.
+# former 401-WB change-detection compare (retired by the CreateWorkAuthorships
+# full rebuild, oxjob #660); the fingerprint definition itself is unchanged.
 spark.sql(f"""
 CREATE OR REPLACE TABLE {CAND_TABLE} AS
 WITH base_state AS (
