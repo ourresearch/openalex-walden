@@ -16,8 +16,10 @@
 # MAGIC    #608 guard cannot see.
 # MAGIC 3. **`openalex.authors.work_author_change_events`** — append-only, one row
 # MAGIC    per work whose author-list INPUT changed (GREW / SHRANK /
-# MAGIC    NAMES_CHANGED / METADATA_CHANGED). This is the observed workload for a
-# MAGIC    future rematch-on-change trigger.
+# MAGIC    NAMES_CHANGED / ORCIDS_CHANGED / METADATA_CHANGED), with
+# MAGIC    `incompatible_positions` judging name changes via the #608
+# MAGIC    `names_compatible` comparator (cosmetic drift vs different person).
+# MAGIC    This is the observed workload for a future rematch-on-change trigger.
 # MAGIC
 # MAGIC **Timing**: runs standalone at 22:30 UTC, after end2end (05:00 start) has
 # MAGIC finished, so the run-state tables MatchAuthors/UpdateWorkAuthors
@@ -97,7 +99,8 @@ CREATE TABLE IF NOT EXISTS {FINGERPRINT_TABLE} (
   seat_n       INT,       -- rows in work_authors for this work
   null_seat_n  INT,       -- work_authors rows with author_id IS NULL
   eligible     BOOLEAN,   -- passes MatchAuthors gates (work_id > 7e9, created >= 2025-12-20)
-  as_of        TIMESTAMP  -- when this row was last refreshed; MAX(as_of) is the run watermark
+  as_of        TIMESTAMP, -- when this row was last refreshed; MAX(as_of) is the run watermark
+  orcids_hash  BIGINT     -- hash of ordered raw_orcid list; NULL = not yet computed for this row
 )
 """)
 
@@ -114,9 +117,21 @@ CREATE TABLE IF NOT EXISTS {EVENTS_TABLE} (
   new_seat_n      INT,
   prev_null_seat_n INT,
   new_null_seat_n  INT,
-  detected_at     TIMESTAMP
+  detected_at     TIMESTAMP,
+  orcids_changed  BOOLEAN,
+  incompatible_positions INT  -- seats whose occupant name change fails names_compatible; NULL = not judged
 )
 """)
+
+# Schema migration for tables created before these columns existed (idempotent).
+for _tbl, _cols in [(FINGERPRINT_TABLE, {"orcids_hash": "BIGINT"}),
+                    (EVENTS_TABLE, {"orcids_changed": "BOOLEAN",
+                                    "incompatible_positions": "INT"})]:
+    _have = {f.name for f in spark.table(_tbl).schema}
+    _missing = [f"{c} {t}" for c, t in _cols.items() if c not in _have]
+    if _missing:
+        spark.sql(f"ALTER TABLE {_tbl} ADD COLUMNS ({', '.join(_missing)})")
+        print(f"migrated {_tbl}: added {_missing}")
 
 # COMMAND ----------
 
@@ -134,6 +149,32 @@ ephemeral_present = {
 }
 print(f"BOOTSTRAP={BOOTSTRAP}  WATERMARK={WATERMARK}")
 print(f"ephemeral tables present: {ephemeral_present}")
+
+# COMMAND ----------
+
+# One-time backfill: rows fingerprinted before orcids_hash existed. Hashes come
+# from CURRENT base, so ORCID changes on backfill day itself go undetected —
+# detection starts the following run. as_of untouched (watermark semantics).
+if not BOOTSTRAP:
+    _null_hashes = spark.sql(
+        f"SELECT COUNT(*) AS c FROM {FINGERPRINT_TABLE} WHERE orcids_hash IS NULL"
+    ).collect()[0]["c"]
+    if _null_hashes > 100_000_000:
+        print(f"backfilling orcids_hash for {_null_hashes:,} rows (one-time)")
+        spark.sql(f"""
+        MERGE INTO {FINGERPRINT_TABLE} t
+        USING (
+          SELECT id AS work_id,
+                 xxhash64(to_json(TRANSFORM(
+                   ARRAY_SORT(authorships, (l, r) ->
+                     CASE WHEN l.author_order_number < r.author_order_number THEN -1
+                          WHEN l.author_order_number > r.author_order_number THEN 1 ELSE 0 END),
+                   a -> COALESCE(a.raw_orcid, '')))) AS orcids_hash
+          FROM {BASE_TABLE}
+        ) s
+        ON t.work_id = s.work_id AND t.orcids_hash IS NULL
+        WHEN MATCHED THEN UPDATE SET t.orcids_hash = s.orcids_hash
+        """)
 
 # COMMAND ----------
 
@@ -192,6 +233,7 @@ SELECT
   xxhash64(to_json(TRANSFORM(bs.sorted_auths, a -> STRUCT(
       a.raw_author_name AS n, a.raw_orcid AS o, a.is_corresponding AS c,
       ARRAY_SORT(a.raw_affiliation_strings) AS af)))) AS content_hash,
+  xxhash64(to_json(TRANSFORM(bs.sorted_auths, a -> COALESCE(a.raw_orcid, '')))) AS orcids_hash,
   CAST(COALESCE(ss.seat_n, 0) AS INT) AS seat_n,
   CAST(COALESCE(ss.null_seat_n, 0) AS INT) AS null_seat_n,
   bs.eligible
@@ -223,12 +265,20 @@ if not BOOTSTRAP:
 
     spark.sql(f"""
     INSERT INTO {EVENTS_TABLE}
+      (event_date, work_id, event_type, prev_base_n, new_base_n,
+       names_changed, content_changed, prev_seat_n, new_seat_n,
+       prev_null_seat_n, new_null_seat_n, detected_at,
+       orcids_changed, incompatible_positions)
     SELECT
       DATE'{RUN_DATE}' AS event_date,
       c.work_id,
+      -- ORCIDS_CHANGED requires a non-NULL previous hash: rows fingerprinted
+      -- before the orcids_hash column existed must not read as changes.
       CASE WHEN c.base_n > f.base_n THEN 'GREW'
            WHEN c.base_n < f.base_n THEN 'SHRANK'
            WHEN NOT (c.names_hash <=> f.names_hash) THEN 'NAMES_CHANGED'
+           WHEN f.orcids_hash IS NOT NULL
+                AND NOT (c.orcids_hash <=> f.orcids_hash) THEN 'ORCIDS_CHANGED'
            ELSE 'METADATA_CHANGED' END AS event_type,
       f.base_n AS prev_base_n,
       c.base_n AS new_base_n,
@@ -238,7 +288,9 @@ if not BOOTSTRAP:
       c.seat_n AS new_seat_n,
       f.null_seat_n AS prev_null_seat_n,
       c.null_seat_n AS new_null_seat_n,
-      current_timestamp() AS detected_at
+      current_timestamp() AS detected_at,
+      (f.orcids_hash IS NOT NULL AND NOT (c.orcids_hash <=> f.orcids_hash)) AS orcids_changed,
+      CAST(NULL AS INT) AS incompatible_positions
     FROM {CAND_TABLE} c
     JOIN {FINGERPRINT_TABLE} f ON c.work_id = f.work_id
     WHERE c.base_n <> f.base_n
@@ -246,6 +298,93 @@ if not BOOTSTRAP:
        OR NOT (c.content_hash <=> f.content_hash)
     """)
     print(f"new works: {NEW_WORKS:,}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Reservoir flow (pre-refresh) + name-change compatibility judging
+# MAGIC
+# MAGIC Flow must be read against the OLD fingerprint, so it runs before the MERGE.
+# MAGIC The judge pass recovers yesterday's names via Delta time travel at the
+# MAGIC watermark and scores each changed occupant with the #608 `names_compatible`
+# MAGIC comparator — the split between cosmetic drift and wrong-person replacement.
+
+# COMMAND ----------
+
+FLOW = None
+if not BOOTSTRAP:
+    FLOW = spark.sql(f"""
+        SELECT
+          SUM(CASE WHEN f.work_id IS NOT NULL THEN GREATEST(f.null_seat_n - c.null_seat_n, 0) ELSE 0 END) AS filled,
+          SUM(CASE WHEN f.work_id IS NOT NULL THEN GREATEST(c.null_seat_n - f.null_seat_n, 0) ELSE 0 END) AS added_existing,
+          SUM(CASE WHEN f.work_id IS NULL THEN c.null_seat_n ELSE 0 END) AS added_new_works,
+          SUM(CASE WHEN f.work_id IS NOT NULL AND c.eligible THEN GREATEST(f.null_seat_n - c.null_seat_n, 0) ELSE 0 END) AS eligible_filled,
+          SUM(CASE WHEN f.work_id IS NOT NULL AND c.eligible THEN GREATEST(c.null_seat_n - f.null_seat_n, 0) ELSE 0 END) AS eligible_added_existing,
+          SUM(CASE WHEN f.work_id IS NULL AND c.eligible THEN c.null_seat_n ELSE 0 END) AS eligible_added_new_works
+        FROM {CAND_TABLE} c
+        LEFT JOIN {FINGERPRINT_TABLE} f ON c.work_id = f.work_id
+    """).collect()[0].asDict()
+
+# COMMAND ----------
+
+# Same ranges as the #608 guard batch (UpdateWorkAuthors); Java regex \uXXXX form.
+CJK_RE = r'[\u1100-\u11FF\u3040-\u30FF\u3130-\u318F\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]'
+
+if not BOOTSTRAP:
+    try:
+        spark.sql(f"""
+        MERGE INTO {EVENTS_TABLE} t
+        USING (
+          WITH ev AS (
+            SELECT work_id FROM {EVENTS_TABLE}
+            WHERE event_date = DATE'{RUN_DATE}' AND names_changed
+          ),
+          before AS (
+            SELECT work_id, author_sequence, raw_author_name
+            FROM {SEATS_TABLE} TIMESTAMP AS OF '{WATERMARK}'
+            WHERE work_id IN (SELECT work_id FROM ev)
+          ),
+          after AS (
+            SELECT work_id, author_sequence, raw_author_name
+            FROM {SEATS_TABLE}
+            WHERE work_id IN (SELECT work_id FROM ev)
+          ),
+          changed AS (
+            SELECT b.work_id, b.raw_author_name AS before_name, a.raw_author_name AS after_name
+            FROM before b
+            JOIN after a ON b.work_id = a.work_id AND b.author_sequence = a.author_sequence
+            WHERE NOT (LOWER(TRIM(b.raw_author_name)) <=> LOWER(TRIM(a.raw_author_name)))
+          ),
+          judged AS (
+            SELECT c.work_id,
+              CASE
+                WHEN c.before_name RLIKE '{CJK_RE}' OR c.after_name RLIKE '{CJK_RE}' THEN 'ABSTAIN_CJK'
+                WHEN an_b.match_last IS NULL OR an_a.match_last IS NULL THEN 'ABSTAIN_UNPARSED'
+                WHEN openalex.authors.names_compatible(
+                       an_b.match_last, an_b.match_first,
+                       an_a.match_last, an_a.match_first,
+                       c.before_name, c.after_name) THEN 'COMPATIBLE'
+                ELSE 'INCOMPATIBLE'
+              END AS verdict
+            FROM changed c
+            LEFT JOIN openalex.authors.author_names an_b ON TRIM(c.before_name) = an_b.raw_author_name
+            LEFT JOIN openalex.authors.author_names an_a ON TRIM(c.after_name) = an_a.raw_author_name
+          )
+          SELECT e.work_id,
+                 CAST(COALESCE(j.incompat, 0) AS INT) AS incompat
+          FROM ev e
+          LEFT JOIN (
+            SELECT work_id, COUNT(CASE WHEN verdict = 'INCOMPATIBLE' THEN 1 END) AS incompat
+            FROM judged GROUP BY work_id
+          ) j ON e.work_id = j.work_id
+        ) s
+        ON t.work_id = s.work_id AND t.event_date = DATE'{RUN_DATE}'
+        WHEN MATCHED THEN UPDATE SET t.incompatible_positions = s.incompat
+        """)
+    except Exception as e:
+        # Time travel can fail if work_authors history was vacuumed past the
+        # watermark; events keep incompatible_positions = NULL for the day.
+        print(f"name-compatibility judge pass skipped: {e}")
 
 # COMMAND ----------
 
@@ -260,13 +399,14 @@ USING {CAND_TABLE} s
 ON t.work_id = s.work_id
 WHEN MATCHED THEN UPDATE SET
   t.base_n = s.base_n, t.names_hash = s.names_hash, t.content_hash = s.content_hash,
+  t.orcids_hash = s.orcids_hash,
   t.seat_n = s.seat_n, t.null_seat_n = s.null_seat_n, t.eligible = s.eligible,
   t.as_of = current_timestamp()
 WHEN NOT MATCHED THEN INSERT
-  (work_id, base_n, names_hash, content_hash, seat_n, null_seat_n, eligible, as_of)
+  (work_id, base_n, names_hash, content_hash, orcids_hash, seat_n, null_seat_n, eligible, as_of)
 VALUES
-  (s.work_id, s.base_n, s.names_hash, s.content_hash, s.seat_n, s.null_seat_n, s.eligible,
-   current_timestamp())
+  (s.work_id, s.base_n, s.names_hash, s.content_hash, s.orcids_hash, s.seat_n, s.null_seat_n,
+   s.eligible, current_timestamp())
 """)
 
 # COMMAND ----------
@@ -376,6 +516,40 @@ if ephemeral_present[MINT_QUEUE_TABLE]:
     add("new_authors_minted", None, mq["total"])
     add("new_authors_minted", "with_orcid", mq["with_orcid"])
 
+    # Mint provenance: clusters minted despite existing candidates (any AMBIGUOUS
+    # feeder seat) are the splinter-risk pool; NO_CANDIDATES mints are clean-new.
+    if ephemeral_present[PENDING_TABLE] and ephemeral_present[MATCH_BATCH_TABLE]:
+        add_query(f"""
+            WITH unmatched AS (
+              SELECT pa.match_outcome,
+                xxhash64(
+                  CASE WHEN pa.pn_first IS NOT NULL AND pa.pn_first != '' AND pa.pn_last IS NOT NULL
+                       THEN CONCAT(pa.pn_first, ' ', pa.pn_last)
+                       WHEN pa.pn_first_initial IS NOT NULL AND pa.pn_first_initial != '' AND pa.pn_last IS NOT NULL
+                       THEN CONCAT(pa.pn_first_initial, ' ', pa.pn_last)
+                       ELSE LOWER(TRIM(pa.raw_author_name)) END,
+                  CASE WHEN SIZE(b.all_institution_ids) > 0
+                       THEN concat_ws('|', sort_array(b.all_institution_ids))
+                       ELSE concat_ws('|', sort_array(pa.work_source_ids)) END
+                ) AS cluster_hash
+              FROM {PENDING_TABLE} pa
+              JOIN {MATCH_BATCH_TABLE} b
+                ON pa.work_id = b.work_id AND pa.author_sequence = b.author_sequence
+              WHERE pa.match_outcome <> 'MATCHED'
+            ),
+            cluster_prov AS (
+              SELECT q.cluster_hash,
+                     MAX(CASE WHEN u.match_outcome = 'AMBIGUOUS' THEN 1 ELSE 0 END) AS any_ambiguous
+              FROM {MINT_QUEUE_TABLE} q
+              JOIN unmatched u ON q.cluster_hash = u.cluster_hash
+              GROUP BY q.cluster_hash
+            )
+            SELECT CASE WHEN any_ambiguous = 1 THEN 'from_ambiguous'
+                        ELSE 'from_no_candidates' END AS d,
+                   COUNT(*) AS c
+            FROM cluster_prov GROUP BY 1
+        """, "new_authors_minted", "d", "c")
+
 if ephemeral_present[DRIFT_TABLE]:
     add("string_drift_works", None,
         spark.sql(f"SELECT COUNT(DISTINCT work_id) AS c FROM {DRIFT_TABLE}").collect()[0]["c"])
@@ -422,6 +596,24 @@ if not BOOTSTRAP:
     """).collect()[0]
     add("author_list_seats_added", None, ev["seats_added"])
     add("author_list_seats_removed", None, ev["seats_removed"])
+
+    if FLOW is not None:
+        for k in ["filled", "added_existing", "added_new_works",
+                  "eligible_filled", "eligible_added_existing", "eligible_added_new_works"]:
+            add("null_reservoir_flow", k, FLOW[k])
+
+    # Name-change compatibility split (NULL incompatible_positions = judge pass
+    # skipped, e.g. time travel unavailable — those days emit works_judged only).
+    nq = spark.sql(f"""
+        SELECT COUNT(CASE WHEN incompatible_positions IS NOT NULL THEN 1 END) AS works_judged,
+               COUNT(CASE WHEN incompatible_positions > 0 THEN 1 END) AS works_incompatible,
+               SUM(COALESCE(incompatible_positions, 0)) AS incompatible_positions
+        FROM {EVENTS_TABLE}
+        WHERE event_date = DATE'{RUN_DATE}' AND names_changed
+    """).collect()[0]
+    add("name_change_quality", "works_judged", nq["works_judged"])
+    add("name_change_quality", "works_incompatible", nq["works_incompatible"])
+    add("name_change_quality", "incompatible_positions", nq["incompatible_positions"])
 
 # COMMAND ----------
 
