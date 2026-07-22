@@ -44,7 +44,11 @@ the sources registry, oxjob #548).
 
 - `GET /funders/F<winner>` — works_count / awards_count ≈ old winner + old loser − overlap
   (works citing both DOIs and awards present under both profiles dedupe).
-- `GET /funders/F<loser>` — 301 → winner (after step 4; 404 in the interim).
+- `GET /funders/F<loser>` — origin emits the documented **301** → winner, but note:
+  api.openalex.org's Cloudflare worker follows origin redirects (it always has — the
+  lowercase-id normalize redirect behaves the same), so clients observe a **200 with the
+  winner's record** at the loser URL rather than a raw 301. Both are correct outcomes;
+  test the mapping by checking the returned `id` is the winner. (404 before step 4.)
 - Direct-ingest awards unchanged (Wellcome: 19,611 `wellcome_trust` on the winner).
 - The MergeFunders verification cell: zero loser rows across junctions/awards_raw.
 
