@@ -56,6 +56,8 @@ print("staged works:", raw.count())
 # 2a. unambiguous registry names (display_name ∪ alternate_titles), DataCite #268 pattern
 fv = (spark.table("openalex.mid.funder")
       .where(F.col("display_name").isNotNull())
+      # resolve merged funders (merge_into_id alias rows) to the canonical id
+      .withColumn("funder_id", F.coalesce(F.col("merge_into_id"), F.col("funder_id")))
       .select("funder_id",
               F.explode(F.array_union(
                   F.array("display_name"),
