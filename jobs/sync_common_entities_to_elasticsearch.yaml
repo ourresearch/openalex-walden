@@ -15,6 +15,10 @@ resources:
           notebook_task:
             notebook_path: notebooks/elastic/sync_countries
             source: GIT
+        - task_key: sync_indexes
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_indexes
+            source: GIT
         - task_key: sync_institution_types
           notebook_task:
             notebook_path: notebooks/elastic/sync_institution_types
