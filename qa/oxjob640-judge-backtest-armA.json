@@ -1,0 +1,342 @@
+[
+ {
+  "work_id": 7170791588,
+  "author_sequence": 2,
+  "tier": "s2_n2",
+  "raw_author_name": "Jiuzhou Chen",
+  "existing_author_id": 5090173359,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Jiuzhou Chen\ncoauthors on this work: Haoyue Zheng; Cai Chen; Zihan Gao; Jiaming Ma; Junpeng Yang; Wenqiao Xu; Hongwei Yin\ninstitutions: Research Institute of Petroleum Exploration and Development; China National Petroleum Corporation (China)\nwork: \"Structural features and evolution of the multi-stage tectonic deformation in the southwestern Tarim Basin (China): insights from discrete numerical simulations\" (2026)\n\nASSIGNED AUTHOR PROFILE\nJiuzhou Chen (variants: jiuzhou chen; chen, jiuzhou); institutions: Jiangnan University; Zhejiang A & F University; Xuzhou Medical College; Chinese Academy of Sciences; Shenhua Group (China); active 2011-2026; works: 76",
+  "prompt_chars": 864,
+  "out": "{\"verdict\":\"different_person\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170842062,
+  "author_sequence": 123,
+  "tier": "s5_n2",
+  "raw_author_name": "Lopes Da Costa, B.",
+  "existing_author_id": 5128812177,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Lopes Da Costa, B.\ncoauthors on this work: Bhattacharya, S.; Kalogeropoulos, A.; Branson, J. G.; Mastrapasqua, V.; Nessi-Tedaldi, F.; Ptochos, F.; Baechler, J.; Ravera, F.\ninstitutions: (none listed)\nwork: \"Search for a boosted Higgs boson decaying to bottom quark pairs in association with a W or Z boson in proton-proton collisions at \u221as=13 TeV\" (2026)\n\nASSIGNED AUTHOR PROFILE\nB. Lopes Da Costa (variants: b. lopes da costa; lopes da costa, b.); institutions: (none); active 2025-2026; works: 16",
+  "prompt_chars": 701,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170456799,
+  "author_sequence": 3,
+  "tier": "s6_n2",
+  "raw_author_name": "Dan Yu",
+  "existing_author_id": 5100580293,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Dan Yu\ncoauthors on this work: Qingyang Ni; Lei Nie; Yiqing Yang; Xiangyu Yang; Bing Su; Kai Ye; FeiFei Zhou; Yafei Mao\ninstitutions: Zhejiang University\nwork: \"Multidimensional variation and population stratification across 8000 complete human centromeres\" (2026)\n\nASSIGNED AUTHOR PROFILE\nDan Yu (variants: dan yu; chengbi xu; yu dan; yu, dan); institutions: Hunan Institute of Science and Technology; Jiangnan University; Guangzhou University of Chinese Medicine; Liaoning University; Shandong University of Technology; active 2002-2026; works: 264",
+  "prompt_chars": 753,
+  "out": "{\"verdict\":\"cannot_determine\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170629200,
+  "author_sequence": 0,
+  "tier": "s4_n1",
+  "raw_author_name": "Muhammad Dzikry Abdullah Al Ghazaly",
+  "existing_author_id": 5106872900,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Muhammad Dzikry Abdullah Al Ghazaly\ncoauthors on this work: Rifki Rosad; Mochamad Derry Prasaja; Agung Hilmi Wahdi; Nadila Maesara\ninstitutions: Indonesia University of Education\nwork: \"Trends and Developments in Fitness Test Research: A Scopus Bibliometric Analysis\" (2026)\n\nASSIGNED AUTHOR PROFILE\nMuhammad Dzikry Abdullah Al Ghazaly; institutions: Indonesia University of Education; active 2024-2026; works: 2",
+  "prompt_chars": 615,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170717741,
+  "author_sequence": 2,
+  "tier": "orcid",
+  "raw_author_name": "IDA, Katsumi",
+  "existing_author_id": 5086806278,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: IDA, Katsumi\ncoauthors on this work: KOBAYASHI, Tatsuya; YOSHINUMA, Mikirou\ninstitutions: National Institute for Fusion Science; National Institutes of Natural Sciences; Ministry of Education, Culture, Sports, Science and Technology\nwork: \"LHD lhdbesapd3_LP1kHz #161997.1 (analyzed)\" (2026)\n\nASSIGNED AUTHOR PROFILE\nK. Ida (variants: k. ida; ida,  katsumi; ida, katsumi; ida, k); institutions: University of Stuttgart; Australian National University; Poznan University of Medical Sciences; Toshiba (Japan); Sony (Taiwan); active 1960-2026; works: 1354922",
+  "prompt_chars": 757,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170459591,
+  "author_sequence": 3,
+  "tier": "s5_n1",
+  "raw_author_name": "Cristian Ioan Tarba",
+  "existing_author_id": 5066468220,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Cristian Ioan Tarba\ncoauthors on this work: Oana Elena Burlacu Vatamanu; Irina Adriana Beuran; Corina Marilena Cristache; Stefan Cristian Dumitru; Ionut Gabriel Ghionea\ninstitutions: (none listed)\nwork: \"A Finite Element Analysis of Stackable Surgical Guide System for Flapless Dental Implants Insertion in Fully Edentulous Maxilla\" (2026)\n\nASSIGNED AUTHOR PROFILE\nCristian Ioan Tarba (variants: cristian ioan tarba; cristian tarba; cristian tarb\u0103; cristian-ioan tarb\u0103); institutions: Universitatea Na\u021bional\u0103 de \u0218tiin\u021b\u0103 \u0219i Tehnologie Politehnica Bucure\u0219ti; active 2015-2026; works: 21",
+  "prompt_chars": 787,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170724165,
+  "author_sequence": 1,
+  "tier": "s6_n8",
+  "raw_author_name": "Liang Yu",
+  "existing_author_id": 5107311577,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Liang Yu\ncoauthors on this work: Jiahui Wang\ninstitutions: Beijing Institute of Technology; Ministry of Industry and Information Technology\nwork: \"Ladder-like polysilsesquioxane gas separation membranes for high-pressure natural gas decarbonization\" (2026)\n\nASSIGNED AUTHOR PROFILE\nY Liang (variants: y liang; liang yu; liang, y. f.; liang, y. t.); institutions: Stevens Institute of Technology; Beijing Institute of Technology; University of Iowa; Tangshan College; Justus-Liebig-Universit\u00e4t Gie\u00dfen; active 2018-2026; works: 133",
+  "prompt_chars": 732,
+  "out": "{\"verdict\":\"cannot_determine\",\"confidence\":\"low\"}"
+ },
+ {
+  "work_id": 7170865212,
+  "author_sequence": 0,
+  "tier": "s4_n2",
+  "raw_author_name": "Menghan Liu",
+  "existing_author_id": 5014171327,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Menghan Liu\ncoauthors on this work: Ronghua Zhou; Dan Lin\ninstitutions: Sichuan University; West China Hospital of Sichuan University\nwork: \"Intraoperative hemoadsorption and cardiac surgery-associated acute kidney injury: an updated systematic review and meta-analysis with trial sequential analysis\" (2026)\n\nASSIGNED AUTHOR PROFILE\nMenghan Liu (variants: menghan liu; liu, menghan); institutions: University of California, Riverside; Hebei Medical University; Northwestern University; Nanjing Agricultural University; Pace University; active 2013-2026; works: 112",
+  "prompt_chars": 768,
+  "out": "{\"verdict\":\"different_person\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170897446,
+  "author_sequence": 2,
+  "tier": "s4_n1",
+  "raw_author_name": "Muhammad Kashif Hanif",
+  "existing_author_id": 5101961234,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Muhammad Kashif Hanif\ncoauthors on this work: Muhammad Umer Sarwar; Ramzan Talib; Aalia Zafar\ninstitutions: Government College University, Faisalabad\nwork: \"FROM MORPHOLOGY TO MACHINE LEARNING: RANDOM FOREST-BASED APPROACH FOR FISH SPECIES IDENTIFICATION\" (2026)\n\nASSIGNED AUTHOR PROFILE\nMuhammad Kashif Hanif (variants: muhammad kashif hanif; m.kashif hanif; muhammad hanif; muhammad kashif); institutions: National Institute for Biotechnology and Genetic Engineering; Pakistan Institute of Engineering and Applied Sciences; University of Lahore; University of Sargodha; Government College University, Faisalabad; active 2006-2026; works: 41",
+  "prompt_chars": 845,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170722181,
+  "author_sequence": 0,
+  "tier": "orcid",
+  "raw_author_name": "TSUCHIYA, Hayato",
+  "existing_author_id": 5112247009,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: TSUCHIYA, Hayato\ncoauthors on this work: NAGAYAMA, Yoshio\ninstitutions: National Institute for Fusion Science; National Institutes of Natural Sciences; Ministry of Education, Culture, Sports, Science and Technology\nwork: \"LHD ece_fast_calThom #114613.1 (analyzed)\" (2026)\n\nASSIGNED AUTHOR PROFILE\nHayato Tsuchiya (variants: hayato tsuchiya; h. tsuchiya; tsuchiya, hayato; tsuchiya, h.); institutions: Yamagata University; Kyushu University; Tokyo University of Science; Gunma University; The Graduate University for Advanced Studies, SOKENDAI; active 1979-2026; works: 169196",
+  "prompt_chars": 778,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170442283,
+  "author_sequence": 5,
+  "tier": "s2_n1",
+  "raw_author_name": "Muhammad Auliya Rahman",
+  "existing_author_id": 5123896227,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Muhammad Auliya Rahman\ncoauthors on this work: Salma Nur Fadhillah; Risya Dian Fadylla; Nur Endah Wahyuningsih; Budiyono Budiyono; Dias Aditia Subyakto; Septiria Irawati; Rizky Nur Hidayat; Sulistiyani Sulistiyani\ninstitutions: Diponegoro University\nwork: \"Komunikasi Informasi dan Edukasi Tentang Kolaborasi Lintas Sektor dalam Pengendalian Tuberkulosis\" (2026)\n\nASSIGNED AUTHOR PROFILE\nMuhammad Auliya Rahman; institutions: Diponegoro University; active 2026-2026; works: 4",
+  "prompt_chars": 678,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170468274,
+  "author_sequence": 3,
+  "tier": "s3_n1",
+  "raw_author_name": "Byeng D. Youn",
+  "existing_author_id": 5112519747,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Byeng D. Youn\ncoauthors on this work: Wonjae Choi; Jong Moon Ha; Donghyu Lee; Jongheok Park\ninstitutions: (none listed)\nwork: \"A robust deep learning framework for weld defect classification in PAUT with specimen-level preprocessing\" (2026)\n\nASSIGNED AUTHOR PROFILE\nByeng D. Youn; institutions: Seoul National University; Korea Research Institute of Chemical Technology; active 2014-2026; works: 6",
+  "prompt_chars": 600,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170817291,
+  "author_sequence": 1,
+  "tier": "s2_n2",
+  "raw_author_name": "Arief Pratomo",
+  "existing_author_id": 5002271520,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Arief Pratomo\ncoauthors on this work: Lily Viruly; Muzahar\ninstitutions: Universitas Maritim Raja Ali Haji\nwork: \"Metabarcoding-Based Characterization of Diet Biota in the Gonggong Conch &lt;i&gt;Laevistrombus turturella&lt;/i&gt; as a Potential Natural Feed Source\" (2026)\n\nASSIGNED AUTHOR PROFILE\nArief Pratomo; institutions: Universitas Maritim Raja Ali Haji; active 2017-2026; works: 8",
+  "prompt_chars": 592,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170821945,
+  "author_sequence": 3,
+  "tier": "s1_n2",
+  "raw_author_name": "Aseesh Pandey",
+  "existing_author_id": 5013457201,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Aseesh Pandey\ncoauthors on this work: Ashutosh Kumar; Vandita Srivastava; Tannu Kumari; Arushi Sharma; Kapil Kesarwani; Jagdish Chandra Kuniyal\ninstitutions: (none listed)\nwork: \"Global evolution and emerging trends in lichenometry research: A bibliometric synthesis of potential role of lichenometry in climate and multidisciplinary science\" (2026)\n\nASSIGNED AUTHOR PROFILE\nAseesh Pandey (variants: aseesh pandey; a. k. pandey; a.k. pandey); institutions: Kumaun University; Forest Research Institute; G.B. Pant Institute of Himalayan Environment and Development; active 2001-2026; works: 78",
+  "prompt_chars": 795,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170498927,
+  "author_sequence": 6,
+  "tier": "s2_n8",
+  "raw_author_name": "Hao Wu",
+  "existing_author_id": 5052637740,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Hao Wu\ncoauthors on this work: Yihai Peng; Yiran Wang; Jing Ding; Zhenzhen Liu; Xipo Zhao; Ling Zhou; Yuan Yu\ninstitutions: Hubei University of Technology\nwork: \"Flexible and High Oxygen-Barrier Nanocellulose-Based Coatings via In-situ UV-Crosslinking for PLA Packaging Films\" (2026)\n\nASSIGNED AUTHOR PROFILE\nHS Wu (variants: hs wu; h s wu; h.c. wu; hailong wu); institutions: Ningbo University; Electric Power University; Southwest University of Science and Technology; Tianjin University of Science and Technology; Nanjing Tech University; active 2007-2026; works: 51",
+  "prompt_chars": 772,
+  "out": "{\"verdict\":\"different_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170269008,
+  "author_sequence": 6,
+  "tier": "s3_n2",
+  "raw_author_name": "Hanjie Yu",
+  "existing_author_id": 5009388530,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Hanjie Yu\ncoauthors on this work: Yanan Shen; Shanshan Yang; Zengqi Zhao; Jianlong Du; Xiaolu Zhang; Geye Ding; Wencong Lai; Bingyuan Yang\ninstitutions: Ministry of Agriculture and Rural Affairs; State Council of the People's Republic of China; Ocean University of China\nwork: \"<scp>SRM</scp>\n                    \u2010Mediated Spermidine Synthesis Links Lipid Overload With\n                    <scp>AMPK</scp>\n                    Pathway to Regulate Hepatic Insulin Signaling and Gluconeogenesis\" (2026)\n\nASSIGNED AUTHOR PROFILE\nHanjie Yu (variants: hanjie yu; h yu; h. yu; h.c. yu); institutions: National Natural Science Foundation of China; University of Southern California; Apple (Israel); Ministry of Education of the People's Republic of China; Central South University; active 2006-2026; works: 95",
+  "prompt_chars": 1004,
+  "out": "{\"verdict\":\"cannot_determine\",\"confidence\":\"low\"}"
+ },
+ {
+  "work_id": 7170659301,
+  "author_sequence": 0,
+  "tier": "s6_n1",
+  "raw_author_name": "Dario, Fabio Rossano",
+  "existing_author_id": 5123817626,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Dario, Fabio Rossano\ncoauthors on this work: (none listed)\ninstitutions: Charles Darwin University\nwork: \"The importance of the canoe in the lives of indigenous peoples of Brazil\" (2026)\n\nASSIGNED AUTHOR PROFILE\nFabio Rossano Dario (variants: fabio rossano dario; dario, fabio rossano); institutions: Charles Darwin University; active 2022-2026; works: 6",
+  "prompt_chars": 557,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170574336,
+  "author_sequence": 4,
+  "tier": "s3_n2",
+  "raw_author_name": "Yapeng He",
+  "existing_author_id": 5028679693,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Yapeng He\ncoauthors on this work: Shengcheng Mao; Yang Ren; David J. Srolovitz; Zhaowei Wang; Ze Zhang; Xiaodong Han; Xianmeng Xue; Ming Sun\ninstitutions: (none listed)\nwork: \"Frustrating dislocation resistance inhomogeneity at multiscale levels to enable strength-ductility synergy in multi-principal element alloys\" (2026)\n\nASSIGNED AUTHOR PROFILE\nYapeng He (variants: yapeng he; he yapeng; ya-peng he); institutions: Kunming University of Science and Technology; University of Science and Technology of China; Kunming University; Gansu Agricultural University; Shanghai Jiao Tong University; active 2011-2026; works: 167",
+  "prompt_chars": 826,
+  "out": "{\"verdict\":\"cannot_determine\",\"confidence\":\"low\"}"
+ },
+ {
+  "work_id": 7170931936,
+  "author_sequence": 6,
+  "tier": "s5_n1",
+  "raw_author_name": "Banasree Roy Urmi",
+  "existing_author_id": 5117328911,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Banasree Roy Urmi\ncoauthors on this work: Maliha Sahreen Hossain; Asif Manwar; Sayema Afroz Eva; Rasheda Yasmin; Kazi Foyeza Akther; Prianka Saha\ninstitutions: Tbilisi State Medical University\nwork: \"RELATIONSHIP BETWEEN CHRONIC SLEEP RESTRICTION (&lt;6 HOURS/NIGHT) AND GLYCEMIC VARIABILITY IN WORKING ADULTS WITH TYPE 2 DIABETES: A SYSTEMATIC REVIEW\" (2026)\n\nASSIGNED AUTHOR PROFILE\nBanasree Roy Urmi; institutions: American University in Dubai; BRAC; Tbilisi State Medical University; active 2023-2026; works: 7",
+  "prompt_chars": 717,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170585218,
+  "author_sequence": 2,
+  "tier": "s1_n1",
+  "raw_author_name": "Eva Ferdita Yuhantini",
+  "existing_author_id": 5085482603,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Eva Ferdita Yuhantini\ncoauthors on this work: Catur Supriyanto; Suryanto Agung Prabowo; Alvin Afandi; Nandya Rizky Nur Febriana\ninstitutions: (none listed)\nwork: \"Pelatihan Manajemen Event sebagai Upaya Peningkatan Kompetensi Mahasiswa Olahraga dalam Pengelolaan Event\" (2026)\n\nASSIGNED AUTHOR PROFILE\nEva Ferdita Yuhantini; institutions: State University of Semarang; Universitas Negeri Surabaya; Universitas Muhammadiyah Tapanuli Selatan; STKIP PGRI Bangkalan; active 2020-2026; works: 22",
+  "prompt_chars": 693,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170374832,
+  "author_sequence": 0,
+  "tier": "s2_n1",
+  "raw_author_name": "Rosa M. Fern\u00e1ndez Egea",
+  "existing_author_id": 5115635428,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Rosa M. Fern\u00e1ndez Egea\ncoauthors on this work: (none listed)\ninstitutions: Universidad Aut\u00f3noma de Madrid\nwork: \"Fern\u00e1ndez Pons, Xavier, Abeg\u00f3n Novella, Marta y Campins Eritja, Mar (dirs.), Cambio clim\u00e1tico, biodiversidad y salud p\u00fablica global en el Derecho Internacional, Tirant Lo Blanch, Valencia, 2025, 440 pp.\" (2026)\n\nASSIGNED AUTHOR PROFILE\nRosa M. Fern\u00e1ndez Egea; institutions: Universidad Aut\u00f3noma de Madrid; active 2015-2026; works: 6",
+  "prompt_chars": 648,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170844046,
+  "author_sequence": 1,
+  "tier": "s6_n1",
+  "raw_author_name": "Agustinus G. Gifelem",
+  "existing_author_id": 5121959118,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Agustinus G. Gifelem\ncoauthors on this work: Dinda I. Soulisa; Jesinta Jaftoran; Agustinus L. Masan; Irwan Soulisa\ninstitutions: Universitas Victory Sorong\nwork: \"Dampak Bullying Terhadap Perilaku Dan Emosi Siswa Kelas X Akuntansi SMK Negeri 1 Kabupaten Sorong\" (2026)\n\nASSIGNED AUTHOR PROFILE\nAgustinus G. Gifelem; institutions: Universitas Victory Sorong; active 2026-2026; works: 2",
+  "prompt_chars": 587,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170487755,
+  "author_sequence": 24,
+  "tier": "s1_n1",
+  "raw_author_name": "Raphaell Moreira Martins",
+  "existing_author_id": 5043128895,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Raphaell Moreira Martins\ncoauthors on this work: Guilherme Alves Grubertt; Junior Vagner Pereira Da Silva; Doiara Silva Dos Santos; \u00c9rico Chagas Caperuto; Felipe Rodrigues Da Costa; Ana J\u00falia Moraes Saccol Caetano; Maressa D\u2019paula Gon\u00e7alves Rosa Nogueira; Nathalia Bernardes\ninstitutions: (none listed)\nwork: \"Pol\u00edticas esportivas e atendimento ao estudante-atleta nas institui\u00e7\u00f5es p\u00fablicas de ensino superior do Brasil\" (2026)\n\nASSIGNED AUTHOR PROFILE\nRaphaell Moreira Martins (variants: raphaell moreira martins; martins, raphaell moreira; martins, raphaell moreira [unesp]; r. m. martins); institutions: Instituto Federal de Educa\u00e7\u00e3o, Ci\u00eancia e Tecnologia do Cear\u00e1; Universidade Paulista; Associa\u00e7\u00e3o Paulista de Medicina; Universidade Estadual Paulista (Unesp); active 2014-2026; works: 41",
+  "prompt_chars": 995,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 2997651897,
+  "author_sequence": 4,
+  "tier": "s3_n1",
+  "raw_author_name": "Jin Hee Lee",
+  "existing_author_id": 5100610605,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Jin Hee Lee\ncoauthors on this work: Gyung Ah Oh; Su Hyang Lee; Ji Young Na\ninstitutions: (none listed)\nwork: \"Visual Attention Patterns on PCS Emotion Symbols in American and Korean College Students: An Eye-Tracking Study\" (2019)\n\nASSIGNED AUTHOR PROFILE\nJin Hee Lee (variants: jin hee lee; jin-hee lee; jinhee lee; jin\u00a0hee lee); institutions: CJ CheilJedang (South Korea); Inje University; Kookmin University; Chonnam National University; Ulsan College; active 1981-2026; works: 395",
+  "prompt_chars": 686,
+  "out": "{\"verdict\":\"cannot_determine\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170540584,
+  "author_sequence": 1,
+  "tier": "s4_n8",
+  "raw_author_name": "Zelin Li",
+  "existing_author_id": 5056628813,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Zelin Li\ncoauthors on this work: Xuan Wang; Shuhan Qi; Aiwei Liu; Bin Chen; Yuxin Wang; Yulin Wu\ninstitutions: Shenzhen Institute of Information Technology; Harbin Institute of Technology\nwork: \"Query-based model extraction attack: A survey\" (2026)\n\nASSIGNED AUTHOR PROFILE\nZ Y Li (variants: z y li; li zhengyou; li zhi; li zou); institutions: Shihezi University; Shenyang Pharmaceutical University; Chinese Academy of Tropical Agricultural Sciences; Dalian Ocean University; Hebei Agricultural University; active 2016-2026; works: 368",
+  "prompt_chars": 738,
+  "out": "{\"verdict\":\"different_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170531334,
+  "author_sequence": 3,
+  "tier": "s6_n8",
+  "raw_author_name": "Wenfeng Xiao",
+  "existing_author_id": 5007612560,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Wenfeng Xiao\ncoauthors on this work: Yusheng Li; Zhihao Xie; Xucheng Yang; Kai Zhang; Meihui Huang; Bin Lin; Haitao Long; Ting Wen\ninstitutions: Xiangya Hospital Central South University; Central South University\nwork: \"Effects of exercise on clinical outcomes in patients undergoing haemodialysis for chronic kidney disease: an umbrella review\" (2026)\n\nASSIGNED AUTHOR PROFILE\nXiao Wm (variants: xiao wm; w m xiao; wei-min xiao; wenfeng xiao); institutions: Central South University; Changsha Medical University; Xiangya Hospital Central South University; active 2000-2026; works: 6",
+  "prompt_chars": 786,
+  "out": "{\"verdict\":\"cannot_determine\",\"confidence\":\"low\"}"
+ },
+ {
+  "work_id": 7170748656,
+  "author_sequence": 1,
+  "tier": "s6_n2",
+  "raw_author_name": "Jiangang Li",
+  "existing_author_id": 5102010510,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Jiangang Li\ncoauthors on this work: Xiao Lei; Guohong Yun; Narsu Bai\ninstitutions: Shanxi Datong University\nwork: \"Bending and vibration of nanoplates: Symmetry lowering and surface elastic effects\" (2026)\n\nASSIGNED AUTHOR PROFILE\nJiangang Li (variants: jiangang li; j.g. li; jian-gang li; jiangang \u5efa\u521a li \u674e); institutions: Rutgers, The State University of New Jersey; University of Science and Technology of China; Xinjiang Medical University; Shenzhen University; Chinese Academy of Sciences; active 1994-2026; works: 159",
+  "prompt_chars": 725,
+  "out": "{\"verdict\":\"cannot_determine\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170695075,
+  "author_sequence": 0,
+  "tier": "s1_n2",
+  "raw_author_name": "Xianrong Xiang",
+  "existing_author_id": 5027470925,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Xianrong Xiang\ncoauthors on this work: Xichang Liu; Shiyu Zhu\ninstitutions: China Three Gorges University\nwork: \"Association of transverse sinus stenosis and dominant venous sinus drainage pattern with chronic migraine: A matched case-control study\" (2026)\n\nASSIGNED AUTHOR PROFILE\nXianrong Xiang; institutions: China Three Gorges University; Sichuan Agricultural University; Ministry of Agriculture and Rural Affairs; active 2022-2026; works: 6",
+  "prompt_chars": 648,
+  "out": "{\"verdict\":\"cannot_determine\",\"confidence\":\"low\"}"
+ },
+ {
+  "work_id": 7170528193,
+  "author_sequence": 0,
+  "tier": "s2_n8",
+  "raw_author_name": "Xu-dong Song",
+  "existing_author_id": 5137297145,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Xu-dong Song\ncoauthors on this work: Wen-jun Mao; Jing-jing Dai; Xiao-guang Xu\ninstitutions: Nanjing Medical University; Xuzhou Medical College; Second People\u2019s Hospital of Huai\u2019an\nwork: \"Targeting Ferroptosis in Adenocarcinoma of the Esophagogastric Junction: From a Natural Compound to Clinical Translation\" (2026)\n\nASSIGNED AUTHOR PROFILE\nX C Song (variants: x c song; xu-dong song; xue song); institutions: Xuzhou Medical College; Second People\u2019s Hospital of Huai\u2019an; Center for Global Health; Nanjing Medical University; active 2026-2026; works: 3",
+  "prompt_chars": 755,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170692578,
+  "author_sequence": 16,
+  "tier": "s5_n2",
+  "raw_author_name": "Putcha, Nirupama",
+  "existing_author_id": 5059306478,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Putcha, Nirupama\ncoauthors on this work: Freeman, Christine M.; Liu, Chen; Couper, David J.; Comellas, Alejandro; Fawzy, Ashraf; Woo, Han; Ortega, Victor E.; Pottinger, Tess D.\ninstitutions: (none listed)\nwork: \"Associations of serum and bronchoalveolar immunoglobulins with lung microbiota diversity, B-cell memory phenotypes, and COPD morbidity and exacerbations\" (2026)\n\nASSIGNED AUTHOR PROFILE\nNirupama Putcha (variants: nirupama putcha; n. putcha; putcha, n.; putcha, nirupama); institutions: University of North Carolina at Chapel Hill; Brigham and Women's Hospital; Novartis (Switzerland); Tri-Service General Hospital; Occupational Safety & Health Administration; active 2007-2026; works: 255",
+  "prompt_chars": 903,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ },
+ {
+  "work_id": 7170860310,
+  "author_sequence": 1,
+  "tier": "s4_n2",
+  "raw_author_name": "Tingting Yan",
+  "existing_author_id": 5051642723,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Tingting Yan\ncoauthors on this work: Zhenqi Jiang; Lulu Zhou; Ming Liu\ninstitutions: Shanghai Institute of Technology\nwork: \"Rational Design of Controlled Aroma Delivery Systems for Bioactive Applications\" (2026)\n\nASSIGNED AUTHOR PROFILE\nTingting Yan (variants: tingting yan; t.y. yan; ting-ting yan; ting\u2010ting yan); institutions: Kunming University of Science and Technology; Qingdao University; Jiangnan University; Shanghai University; Shanghai International Studies University; active 1972-2026; works: 505",
+  "prompt_chars": 713,
+  "out": "{\"verdict\":\"cannot_determine\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7171005799,
+  "author_sequence": 0,
+  "tier": "s5_n8",
+  "raw_author_name": "KUWABARA, TOSHIKAZU",
+  "existing_author_id": 5142081018,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: KUWABARA, TOSHIKAZU\ncoauthors on this work: (none listed)\ninstitutions: (none listed)\nwork: \"\u6b7b\u306b\u884c\u304f\u795e\u306e\u4f1d\u64ad\u3068\u30a4\u30b9\u30e9\u30a8\u30eb\u306e\u795e : \u5606\u304d\u306e\u5973\u6027\u3092\u3081\u3050\u3063\u3066\" (2000)\n\nASSIGNED AUTHOR PROFILE\nT Kuwabara (variants: t kuwabara; kuwabara, toshikazu; kuwabara, t); institutions: (none); active 2000-2016; works: 15",
+  "prompt_chars": 477,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170252171,
+  "author_sequence": 4,
+  "tier": "s4_n8",
+  "raw_author_name": "Chaohuang Chen",
+  "existing_author_id": 5077668624,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Chaohuang Chen\ncoauthors on this work: Chen Miao; Yue Chen; Xunheng Jiang; Jiang Xu; Jirui Guo; Zixuan Cao; Lizhong Zhu; Can Li\ninstitutions: Zhejiang University\nwork: \"Nanoconfined single-atom catalysis enables long-lived hydroxyl radicals for low-cost, versatile on-site water purification\" (2026)\n\nASSIGNED AUTHOR PROFILE\nC Chen (variants: c chen; can chen; canfeng chen; cangsong chen); institutions: Zhejiang International Studies University; Zhejiang Chinese Medical University; Ministry of Education; Zhejiang University of Science and Technology; Petronas (Malaysia); active 2019-2026; works: 25",
+  "prompt_chars": 806,
+  "out": "{\"verdict\":\"different_person\",\"confidence\":\"medium\"}"
+ },
+ {
+  "work_id": 7170280059,
+  "author_sequence": 919,
+  "tier": "s5_n8",
+  "raw_author_name": "Ciocci, M. A.",
+  "existing_author_id": 5135062714,
+  "prompt": "Decide whether the incoming authorship and the author profile are the same person. Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\n\nINCOMING AUTHORSHIP\nname: Ciocci, M. A.\ncoauthors on this work: Mazumdar, K.; Azzi, P.; Elmer, P.; Delgado Peris, A.; Spiga, D.; Botta, V.; Kasieczka, G.; Abbiendi, G.\ninstitutions: (none listed)\nwork: \"Search for a new neutral gauge boson produced in association with one or two b jets and decaying into a pair of muons in proton-proton collisions at $ \\sqrt{s}=13 $ TeV\" (2026)\n\nASSIGNED AUTHOR PROFILE\nM A Ciocci (variants: m a ciocci; ciocci, m a; ciocci, m. a.; ciocci, maria agnese); institutions: Istituto Nazionale di Fisica Nucleare, Sezione di Pisa; active 1996-2026; works: 57",
+  "prompt_chars": 764,
+  "out": "{\"verdict\":\"same_person\",\"confidence\":\"high\"}"
+ }
+]

@@ -34,6 +34,13 @@ resources:
             notebook_path: notebooks/metrics/AuthorshipDailyMetrics
             source: GIT
           job_cluster_key: metrics-cluster
+        - task_key: authorship_quality_judge
+          depends_on:
+            - task_key: authorship_daily_metrics
+          notebook_task:
+            notebook_path: notebooks/metrics/AuthorshipQualityJudge
+            source: GIT
+          job_cluster_key: metrics-cluster
       job_clusters:
         - job_cluster_key: metrics-cluster
           new_cluster:
