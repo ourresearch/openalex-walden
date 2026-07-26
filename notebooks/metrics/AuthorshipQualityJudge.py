@@ -32,7 +32,6 @@
 
 # COMMAND ----------
 
-import json
 from datetime import datetime, timezone
 
 MODEL = "databricks-claude-opus-4-8"
@@ -54,26 +53,8 @@ DST_METRICS = "openalex.authors.authorship_daily_metrics"
 PROMPTS_A = "openalex.authors.judge_prompts_arm_a"  # per-run scratch
 PROMPTS_B = "openalex.authors.judge_prompts_arm_b"  # per-run scratch
 
-SCHEMA_BINARY = json.dumps({
-    "type": "json_schema",
-    "json_schema": {"name": "verdict", "schema": {
-        "type": "object",
-        "properties": {
-            "verdict": {"type": "string", "enum": ["same_person", "different_person", "cannot_determine"]},
-            "confidence": {"type": "string", "enum": ["high", "medium", "low"]}},
-        "required": ["verdict", "confidence"]}, "strict": True},
-})
-SCHEMA_CHOICE = json.dumps({
-    "type": "json_schema",
-    "json_schema": {"name": "verdict", "schema": {
-        "type": "object",
-        "properties": {
-            "verdict": {"type": "string", "enum": ["candidate_1", "candidate_2", "candidate_3",
-                                                   "candidate_4", "candidate_5", "none_correct",
-                                                   "cannot_determine"]},
-            "confidence": {"type": "string", "enum": ["high", "medium", "low"]}},
-        "required": ["verdict", "confidence"]}, "strict": True},
-})
+# Judge schemas live in AuthorshipQualityJudgeApply.sql (the warehouse task
+# that actually calls ai_query).
 
 # COMMAND ----------
 
@@ -313,107 +294,15 @@ if projected_usd >= ABORT_THRESHOLD_USD:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Judge (ai_query) → append verdicts
+# MAGIC ## Done — prompts staged, cost approved
+# MAGIC
+# MAGIC The LLM calls themselves run in the next task
+# MAGIC (`AuthorshipQualityJudgeApply`, SQL warehouse): cluster-side `ai_query`
+# MAGIC on DBR 16.4 injects a `temperature` parameter that the opus-4-8
+# MAGIC reasoning endpoint rejects (night-1 failure, 2026-07-25); the
+# MAGIC warehouse ai_query path is the one the backtest validated.
 
 # COMMAND ----------
 
-spark.sql(f"""
-INSERT INTO {DST_SAMPLE}
-  (sample_date, arm, work_id, author_sequence, match_tier, assigned_author_id,
-   cand_author_ids, verdict, confidence, model, prompt_chars, judged_at)
-SELECT DATE'{RUN_DATE}', 'armA', work_id, author_sequence, tier, existing_author_id,
-       NULL,
-       get_json_object(out, '$.verdict'),
-       get_json_object(out, '$.confidence'),
-       '{MODEL}', LENGTH(prompt), current_timestamp()
-FROM (
-  SELECT *, ai_query('{MODEL}', prompt, responseFormat => '{SCHEMA_BINARY}') AS out
-  FROM {PROMPTS_A}
-)
-""")
-
-spark.sql(f"""
-INSERT INTO {DST_SAMPLE}
-  (sample_date, arm, work_id, author_sequence, match_tier, assigned_author_id,
-   cand_author_ids, verdict, confidence, model, prompt_chars, judged_at)
-SELECT DATE'{RUN_DATE}', 'armB', work_id, author_sequence, NULL, NULL,
-       cand_author_ids,
-       get_json_object(out, '$.verdict'),
-       get_json_object(out, '$.confidence'),
-       '{MODEL}', LENGTH(prompt), current_timestamp()
-FROM (
-  SELECT *, ai_query('{MODEL}', prompt, responseFormat => '{SCHEMA_CHOICE}') AS out
-  FROM {PROMPTS_B}
-)
-""")
-
-# COMMAND ----------
-
-# Arm D: deterministic ORCID collisions among today's mints (no LLM).
-spark.sql(f"""
-INSERT INTO {DST_SAMPLE}
-  (sample_date, arm, work_id, author_sequence, match_tier, assigned_author_id,
-   cand_author_ids, verdict, confidence, model, prompt_chars, judged_at)
-SELECT DATE'{RUN_DATE}', 'orcid_collision', NULL, NULL, NULL, minted.id,
-       CAST(older.id AS STRING), 'collision', 'high', NULL, NULL, current_timestamp()
-FROM {AUTHORS} minted
-JOIN {AUTHORS} older
-  ON minted.orcid = older.orcid AND older.id < minted.id
-WHERE DATE(minted.created_date) = DATE'{RUN_DATE}'
-  AND minted.orcid IS NOT NULL
-""")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Roll judge metrics into the tall table (idempotent for this date)
-
-# COMMAND ----------
-
-spark.sql(f"""
-DELETE FROM {DST_METRICS}
-WHERE snapshot_date = DATE'{RUN_DATE}'
-  AND metric IN ('judge_arm_a', 'judge_arm_b', 'orcid_mint_collisions', 'judge_cost_cents')
-""")
-
-spark.sql(f"""
-INSERT INTO {DST_METRICS} (snapshot_date, snapshot_version, metric, dimension, value, computed_at)
-SELECT DATE'{RUN_DATE}', NULL, 'judge_arm_a', CONCAT(match_tier, '|', verdict), COUNT(*), current_timestamp()
-FROM {DST_SAMPLE}
-WHERE sample_date = DATE'{RUN_DATE}' AND arm = 'armA'
-GROUP BY match_tier, verdict
-""")
-
-spark.sql(f"""
-INSERT INTO {DST_METRICS} (snapshot_date, snapshot_version, metric, dimension, value, computed_at)
-SELECT DATE'{RUN_DATE}', NULL, 'judge_arm_b',
-       CASE WHEN verdict LIKE 'candidate%' THEN 'candidate_pick' ELSE verdict END,
-       COUNT(*), current_timestamp()
-FROM {DST_SAMPLE}
-WHERE sample_date = DATE'{RUN_DATE}' AND arm = 'armB'
-GROUP BY CASE WHEN verdict LIKE 'candidate%' THEN 'candidate_pick' ELSE verdict END
-""")
-
-spark.sql(f"""
-INSERT INTO {DST_METRICS} (snapshot_date, snapshot_version, metric, dimension, value, computed_at)
-SELECT DATE'{RUN_DATE}', NULL, 'orcid_mint_collisions', NULL,
-       COUNT(DISTINCT assigned_author_id), current_timestamp()
-FROM {DST_SAMPLE}
-WHERE sample_date = DATE'{RUN_DATE}' AND arm = 'orcid_collision'
-""")
-
-spark.sql(f"""
-INSERT INTO {DST_METRICS} (snapshot_date, snapshot_version, metric, dimension, value, computed_at)
-VALUES (DATE'{RUN_DATE}', NULL, 'judge_cost_cents', NULL,
-        CAST({projected_usd} * 100 AS BIGINT), current_timestamp())
-""")
-
-# COMMAND ----------
-
-display(spark.sql(f"""
-    SELECT metric, dimension, value
-    FROM {DST_METRICS}
-    WHERE snapshot_date = DATE'{RUN_DATE}'
-      AND metric IN ('judge_arm_a', 'judge_arm_b', 'orcid_mint_collisions', 'judge_cost_cents')
-    ORDER BY metric, value DESC
-"""))
+print(f"staged {stats['a_rows']} armA + {stats['b_rows']} armB prompts, "
+      f"projected ${projected_usd:.2f} — apply task takes it from here")

@@ -41,6 +41,15 @@ resources:
             notebook_path: notebooks/metrics/AuthorshipQualityJudge
             source: GIT
           job_cluster_key: metrics-cluster
+        # ai_query runs on a WAREHOUSE: cluster-side ai_query (DBR 16.4) sends
+        # a temperature param the opus-4-8 reasoning endpoint rejects.
+        - task_key: authorship_quality_judge_apply
+          depends_on:
+            - task_key: authorship_quality_judge
+          notebook_task:
+            notebook_path: notebooks/metrics/AuthorshipQualityJudgeApply
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
       job_clusters:
         - job_cluster_key: metrics-cluster
           new_cluster:
