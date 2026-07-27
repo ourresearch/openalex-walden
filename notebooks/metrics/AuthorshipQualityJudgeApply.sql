@@ -13,7 +13,8 @@
 -- MAGIC
 -- MAGIC Dates use current_date() (UTC): tasks 2 and 3 run in the same 22:30 UTC
 -- MAGIC window. A cross-midnight manual rerun would mislabel the sample date —
--- MAGIC rerun the whole job instead.-- MAGIC
+-- MAGIC rerun the whole job instead.
+-- MAGIC
 -- MAGIC Re-runs on the same UTC date are idempotent: each arm deletes its rows
 -- MAGIC for the date before inserting (a rerun re-judges and re-pays — 2x runs
 -- MAGIC on 2026-07-26 duplicated every verdict before this guard existed).
