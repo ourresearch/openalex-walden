@@ -13,7 +13,15 @@
 -- MAGIC
 -- MAGIC Dates use current_date() (UTC): tasks 2 and 3 run in the same 22:30 UTC
 -- MAGIC window. A cross-midnight manual rerun would mislabel the sample date —
--- MAGIC rerun the whole job instead.
+-- MAGIC rerun the whole job instead.-- MAGIC
+-- MAGIC Re-runs on the same UTC date are idempotent: each arm deletes its rows
+-- MAGIC for the date before inserting (a rerun re-judges and re-pays — 2x runs
+-- MAGIC on 2026-07-26 duplicated every verdict before this guard existed).
+
+-- COMMAND ----------
+
+DELETE FROM openalex.authors.authorship_daily_quality_sample
+WHERE sample_date = current_date() AND arm = 'armA'
 
 -- COMMAND ----------
 
@@ -35,6 +43,11 @@ FROM (
 
 -- COMMAND ----------
 
+DELETE FROM openalex.authors.authorship_daily_quality_sample
+WHERE sample_date = current_date() AND arm = 'armB'
+
+-- COMMAND ----------
+
 INSERT INTO openalex.authors.authorship_daily_quality_sample
   (sample_date, arm, work_id, author_sequence, match_tier, assigned_author_id,
    cand_author_ids, verdict, confidence, model, prompt_chars, judged_at)
@@ -50,6 +63,11 @@ FROM (
   ) AS out
   FROM openalex.authors.judge_prompts_arm_b
 )
+
+-- COMMAND ----------
+
+DELETE FROM openalex.authors.authorship_daily_quality_sample
+WHERE sample_date = current_date() AND arm = 'orcid_collision'
 
 -- COMMAND ----------
 
