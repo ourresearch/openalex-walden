@@ -42,3 +42,5 @@ resources:
       parameters:
         - name: reparse_queue_only
           default: "true"
+        - name: max_workers
+          default: "256"
