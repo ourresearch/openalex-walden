@@ -59,7 +59,7 @@ PROMPTS_B = "openalex.authors.judge_prompts_arm_b"  # per-run scratch
 # COMMAND ----------
 
 dbutils.widgets.text("snapshot_date", "", "Snapshot date (YYYY-MM-DD, blank = today UTC)")
-dbutils.widgets.text("arm_a_per_tier", "25", "Arm A samples per match_tier")
+dbutils.widgets.text("arm_a_per_tier", "50", "Arm A samples per match_tier")
 dbutils.widgets.text("arm_b_seats", "150", "Arm B ambiguous seats to judge")
 
 _sd = dbutils.widgets.get("snapshot_date").strip()
