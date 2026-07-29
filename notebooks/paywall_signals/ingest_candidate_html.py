@@ -126,7 +126,7 @@ if rebuild_cohort:
     attempted_urls AS (SELECT DISTINCT url FROM openalex.taxicab.taxicab_results)
     SELECT
       c.file_key, c.work_key, c.work_key_ns, c.native_id, c.native_id_namespace,
-      c.pdf_url, lower(parse_url(c.pdf_url, 'HOST')) AS url_host, c.publisher,
+      c.pdf_url, lower(try_parse_url(c.pdf_url, 'HOST')) AS url_host, c.publisher,
       current_timestamp() AS snapshot_at
     FROM cand c
     LEFT ANTI JOIN harvested h ON c.work_key = h.work_key
