@@ -20,6 +20,7 @@ resources:
               bucket: "0"
               file_limit: "0"
               max_threads: "24"
+              chunk_size: "200000"
           max_retries: 2
           min_retry_interval_millis: 300000
       job_clusters:
@@ -30,7 +31,8 @@ resources:
             spark_conf:
               spark.master: local[*, 4]
               spark.databricks.cluster.profile: singleNode
-              spark.sql.execution.arrow.maxRecordsPerBatch: "200"
+              spark.task.cpus: "2"
+              spark.sql.execution.arrow.maxRecordsPerBatch: "100"
             aws_attributes:
               first_on_demand: 1
               availability: SPOT_WITH_FALLBACK

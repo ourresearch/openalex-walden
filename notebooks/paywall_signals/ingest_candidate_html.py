@@ -22,6 +22,7 @@ dbutils.widgets.text("num_buckets", "1")       # split the run: hash(file_key) %
 dbutils.widgets.text("bucket", "0")            # which bucket THIS run processes
 dbutils.widgets.text("file_limit", "0")        # 0 = no cap; small value = pilot
 dbutils.widgets.text("max_threads", "24")      # downloads in flight per partition
+dbutils.widgets.text("chunk_size", "200000")   # files per append; bounds driver memory (137 OOM at 3.9M single-write)
 
 rebuild_cohort = dbutils.widgets.get("rebuild_cohort") == "true"
 cohort_table = dbutils.widgets.get("cohort_table")
@@ -30,11 +31,12 @@ num_buckets = int(dbutils.widgets.get("num_buckets"))
 bucket = int(dbutils.widgets.get("bucket"))
 file_limit = int(dbutils.widgets.get("file_limit"))
 max_threads = int(dbutils.widgets.get("max_threads"))
+chunk_size = int(dbutils.widgets.get("chunk_size"))
 
 INGEST_VERSION = "fullhtml-2026-07-29"
 HTML_CAP = 2_000_000   # chars; truncated flag records the cut
 
-spark.conf.set("spark.sql.execution.arrow.maxRecordsPerBatch", "200")  # full-HTML rows are wide
+spark.conf.set("spark.sql.execution.arrow.maxRecordsPerBatch", "100")  # full-HTML rows are wide
 
 # COMMAND ----------
 
@@ -205,12 +207,12 @@ def fetch_html_udf(file_keys: pd.Series) -> pd.DataFrame:
 
 # COMMAND ----------
 
-keys = spark.read.table(cohort_table).select(
+keys_base = spark.read.table(cohort_table).select(
     "file_key", "work_key", "work_key_ns", "native_id", "native_id_namespace",
     "pdf_url", "url_host", "publisher").dropDuplicates(["file_key"])
 
 if num_buckets > 1:
-    keys = keys.filter((F.abs(F.hash("file_key")) % num_buckets) == bucket)
+    keys_base = keys_base.filter((F.abs(F.hash("file_key")) % num_buckets) == bucket)
 
 existing = [r.ingest_version for r in
             spark.read.table(target_table).filter("status = 'ok'")
@@ -220,35 +222,44 @@ if existing and set(existing) != {INGEST_VERSION}:
                     f"current '{INGEST_VERSION}'. Re-ingestion must be deliberate — "
                     "write to a new table or delete old-version rows first.")
 
-# resume/retry: skip only files that already SUCCEEDED — error rows retry on later runs
-done = spark.read.table(target_table).filter("status = 'ok'").select("file_key")
-keys = keys.join(done, "file_key", "left_anti")
-if file_limit > 0:
-    keys = keys.limit(file_limit)
-
-keys = keys.cache()
-print(f"bucket={bucket}/{num_buckets} | files to ingest: {keys.count():,}")
-
 # COMMAND ----------
 
+# chunked appends: each iteration re-derives (bucket keys) - (already ok), fetches one
+# chunk, commits. Bounds any single write job (the 3.9M single-write OOMed the driver,
+# exit 137) and makes every chunk resume-safe.
 run_start = spark.sql("SELECT current_timestamp() AS t").collect()[0].t
+total = 0
+while True:
+    if file_limit > 0 and total >= file_limit:
+        break
+    cap = min(chunk_size, file_limit - total) if file_limit > 0 else chunk_size
 
-result_df = (
-    keys.repartition(max(8, sc.defaultParallelism * 2))
-    .withColumn("r", fetch_html_udf(F.col("file_key")))
-    .select(
-        "file_key", "work_key", "work_key_ns", "native_id", "native_id_namespace",
-        "pdf_url", "url_host", "publisher",
-        F.col("r.html").alias("html"),
-        F.col("r.truncated").alias("truncated"),
-        F.col("r.nbytes").alias("nbytes"),
-        F.col("r.status").alias("status"),
-        F.col("r.error").alias("error"),
-        F.lit(INGEST_VERSION).alias("ingest_version"),
-        F.current_timestamp().alias("fetched_at"),
-    ))
+    # ok-rows ever + anything attempted THIS run (in-run errors retry next run, not next chunk)
+    done = spark.read.table(target_table).filter(
+        (F.col("status") == "ok") | (F.col("fetched_at") >= F.lit(run_start))).select("file_key")
+    chunk = keys_base.join(done, "file_key", "left_anti").limit(cap)
+    n_planned = chunk.count()
+    if n_planned == 0:
+        break
 
-result_df.write.mode("append").saveAsTable(target_table)
+    result_df = (
+        chunk.repartition(max(8, sc.defaultParallelism * 2))
+        .withColumn("r", fetch_html_udf(F.col("file_key")))
+        .select(
+            "file_key", "work_key", "work_key_ns", "native_id", "native_id_namespace",
+            "pdf_url", "url_host", "publisher",
+            F.col("r.html").alias("html"),
+            F.col("r.truncated").alias("truncated"),
+            F.col("r.nbytes").alias("nbytes"),
+            F.col("r.status").alias("status"),
+            F.col("r.error").alias("error"),
+            F.lit(INGEST_VERSION).alias("ingest_version"),
+            F.current_timestamp().alias("fetched_at"),
+        ))
+    result_df.write.mode("append").saveAsTable(target_table)
+
+    total += n_planned
+    print(f"bucket={bucket}/{num_buckets} | chunk of {n_planned:,} written | total this run: {total:,}")
 
 # COMMAND ----------
 
