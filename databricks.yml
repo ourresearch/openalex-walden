@@ -15,6 +15,7 @@ permissions:
 include:
   - jobs/authors.yaml
   - jobs/meta_tags_daily.yaml
+  - jobs/paywall_candidate_html.yaml
   - jobs/concepts.yaml
   - jobs/institutions.yaml
   - jobs/institutions_frontfill.yaml
