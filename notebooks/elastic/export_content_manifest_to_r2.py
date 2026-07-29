@@ -3,7 +3,8 @@
 # MAGIC # Export Content Manifest to R2
 # MAGIC
 # MAGIC Exports a Parquet manifest mapping OpenAlex work IDs to PDF/Grobid UUIDs in the
-# MAGIC `openalex-pdfs` R2 bucket. Partners doing bulk sync use this to locate files.
+# MAGIC `openalex-pdfs` R2 bucket, plus the source native_id/native_id_namespace of the
+# MAGIC location that supplied the file. Partners doing bulk sync use this to locate files.
 # MAGIC
 # MAGIC **Runs**: Daily after end2end completes
 # MAGIC **Source**: `openalex.works.locations_mapped`
@@ -55,16 +56,31 @@ s3 = boto3.client(
 # Use GROUP BY instead of ROW_NUMBER window function — much faster on single node.
 # No ORDER BY needed — Parquet handles random access fine.
 # Skip separate count() — get it from the write stats instead.
+# native_id comes from the same location row as the reported pdf_uuid
+# (grobid row as fallback) — ~7.5% of works have multiple native_ids.
 df = spark.sql("""
     SELECT
-      CONCAT('W', work_id) AS openalex_id,
-      REPLACE(MIN(pdf_s3_id), '.pdf', '') AS pdf_uuid,
-      REPLACE(MIN(grobid_s3_id), '.xml.gz', '') AS grobid_xml_id,
-      MAX(updated_date) AS updated_date
-    FROM openalex.works.locations_mapped
-    WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
-      AND work_id IS NOT NULL
-    GROUP BY work_id
+      openalex_id,
+      pdf_uuid,
+      grobid_xml_id,
+      src.native_id,
+      src.native_id_namespace,
+      updated_date
+    FROM (
+      SELECT
+        CONCAT('W', work_id) AS openalex_id,
+        REPLACE(MIN(pdf_s3_id), '.pdf', '') AS pdf_uuid,
+        REPLACE(MIN(grobid_s3_id), '.xml.gz', '') AS grobid_xml_id,
+        COALESCE(
+          MIN_BY(STRUCT(native_id, native_id_namespace), pdf_s3_id),
+          MIN_BY(STRUCT(native_id, native_id_namespace), grobid_s3_id)
+        ) AS src,
+        MAX(updated_date) AS updated_date
+      FROM openalex.works.locations_mapped
+      WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
+        AND work_id IS NOT NULL
+      GROUP BY work_id
+    )
 """)
 
 # COMMAND ----------
