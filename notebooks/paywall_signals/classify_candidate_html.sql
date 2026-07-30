@@ -1,10 +1,13 @@
--- oxjob #695: HTML-only paywall classifier v2.
+-- oxjob #695: HTML-only paywall classifier v3.
 -- TaxiCab outcomes calibrated these rules, but no TaxiCab field is a feature.
 -- Re-run after refreshing pdf_candidate_html; the output is intentionally thin.
 -- v2 2026-07-29: linkinghub.elsevier.com carries ScienceDirect DOM (SD rules extended;
 -- drain must rewrite pdf_url to sciencedirect.com/science/article/pii/{PII}/pdf —
--- linkinghub URLs have 0 wins in 149K taxicab attempts); Lancet/Cell (Elsevier jbs
--- platform) article-tools__purchase widget = paywalled (0.8% live leak, 119/120).
+-- linkinghub URLs have 0 wins in 149K taxicab attempts).
+-- v3 2026-07-30: jbs.elsevierhealth.com fingerprint generalizes the Lancet/Cell purchase
+-- widget to 307 Elsevier journal-branded hosts; Cambridge buttonGetAccess split
+-- (no-getaccess = 81/81 live PDFs); LWW purchase block; researchsquare host prior
+-- (84/87); image-extension pdf_urls are parser artifacts, not candidates.
 
 CREATE OR REPLACE TABLE openalex.parseland.pdf_candidate_classification
 CLUSTER BY AUTO
@@ -49,7 +52,19 @@ WITH features AS (
       WHEN url_host = 'linkinghub.elsevier.com'
         AND html RLIKE '(?i)(class=["''][^"'']*PurchasePDF|remoteaccessbutton)'
         THEN 'paywalled'
-      WHEN url_host IN ('www.thelancet.com', 'www.cell.com')
+
+      WHEN LOWER(pdf_url) RLIKE '\\.(jpg|jpeg|png|gif|svg)([?#].*)?$'
+        THEN 'bad_candidate_url'
+      WHEN url_host = 'www.researchsquare.com'
+        THEN 'likely_free'
+      WHEN url_host = 'www.cambridge.org' AND html RLIKE 'buttonGetAccess'
+        THEN 'paywalled'
+      WHEN url_host = 'www.cambridge.org'
+        THEN 'likely_free'
+      WHEN url_host = 'journals.lww.com'
+        AND html RLIKE '(?i)(liPurchase|ejp-access-options)'
+        THEN 'paywalled'
+      WHEN html LIKE '%jbs.elsevierhealth.com%'
         AND html RLIKE '(?i)article-tools__purchase'
         THEN 'paywalled'
 
@@ -86,9 +101,20 @@ WITH features AS (
       WHEN url_host = 'linkinghub.elsevier.com'
         AND html RLIKE '(?i)(class=["''][^"'']*PurchasePDF|remoteaccessbutton)'
         THEN 'linkinghub_sd_purchase_dom_v2'
-      WHEN url_host IN ('www.thelancet.com', 'www.cell.com')
+      WHEN LOWER(pdf_url) RLIKE '\\.(jpg|jpeg|png|gif|svg)([?#].*)?$'
+        THEN 'image_pdf_url_v3'
+      WHEN url_host = 'www.researchsquare.com'
+        THEN 'researchsquare_host_v3'
+      WHEN url_host = 'www.cambridge.org' AND html RLIKE 'buttonGetAccess'
+        THEN 'cambridge_getaccess_dom_v3'
+      WHEN url_host = 'www.cambridge.org'
+        THEN 'cambridge_no_getaccess_dom_v3'
+      WHEN url_host = 'journals.lww.com'
+        AND html RLIKE '(?i)(liPurchase|ejp-access-options)'
+        THEN 'lww_purchase_dom_v3'
+      WHEN html LIKE '%jbs.elsevierhealth.com%'
         AND html RLIKE '(?i)article-tools__purchase'
-        THEN 'jbs_purchase_widget_dom_v2'
+        THEN 'jbs_purchase_widget_dom_v3'
       ELSE 'no_calibrated_html_rule_v1'
     END AS classifier_rule
   FROM openalex.landing_page.pdf_candidate_html
@@ -106,9 +132,14 @@ SELECT *,
     WHEN 'tandfonline_access_denial_dom_v1' THEN 0.000
     WHEN 'linkinghub_sd_open_access_dom_v2' THEN 0.981
     WHEN 'linkinghub_sd_purchase_dom_v2' THEN 0.055
-    WHEN 'jbs_purchase_widget_dom_v2' THEN 0.008
+    WHEN 'jbs_purchase_widget_dom_v3' THEN 0.008
+    WHEN 'image_pdf_url_v3' THEN 0.000
+    WHEN 'researchsquare_host_v3' THEN 0.966
+    WHEN 'cambridge_getaccess_dom_v3' THEN 0.000
+    WHEN 'cambridge_no_getaccess_dom_v3' THEN 0.995
+    WHEN 'lww_purchase_dom_v3' THEN 0.000
     ELSE NULL
   END AS calibrated_pdf_yield,
-  'html-dom-v2-2026-07-29' AS classifier_version,
+  'html-dom-v3-2026-07-30' AS classifier_version,
   current_timestamp() AS classified_at
 FROM features;
