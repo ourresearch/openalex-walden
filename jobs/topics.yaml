@@ -39,7 +39,7 @@ resources:
             aws_attributes:
               first_on_demand: 0
               availability: SPOT_WITH_FALLBACK
-              zone_id: us-east-1b
+              zone_id: auto
               spot_bid_price_percent: 100
               ebs_volume_count: 0
             node_type_id: g6.2xlarge
@@ -47,7 +47,7 @@ resources:
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
             autoscale:
-              min_workers: 16
+              min_workers: 4
               max_workers: 32
         - job_cluster_key: gpu-large
           new_cluster:
@@ -57,7 +57,7 @@ resources:
               spark.task.resource.gpu.amount: "0.25"
             aws_attributes:
               availability: SPOT_WITH_FALLBACK
-              zone_id: us-east-1b
+              zone_id: auto
             node_type_id: g5.12xlarge
             driver_node_type_id: md-fleet.12xlarge
             spark_env_vars:
