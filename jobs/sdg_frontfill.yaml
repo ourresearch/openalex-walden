@@ -31,7 +31,7 @@ resources:
             aws_attributes:
               first_on_demand: 0
               availability: SPOT_WITH_FALLBACK
-              zone_id: auto
+              zone_id: us-east-1b
               spot_bid_price_percent: 100
               ebs_volume_count: 0
             node_type_id: g6.2xlarge

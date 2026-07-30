@@ -39,7 +39,7 @@ resources:
             aws_attributes:
               first_on_demand: 0
               availability: SPOT_WITH_FALLBACK
-              zone_id: auto
+              zone_id: us-east-1b
               spot_bid_price_percent: 100
               ebs_volume_count: 0
             node_type_id: g6.2xlarge
@@ -57,7 +57,7 @@ resources:
               spark.task.resource.gpu.amount: "0.25"
             aws_attributes:
               availability: SPOT_WITH_FALLBACK
-              zone_id: auto
+              zone_id: us-east-1b
             node_type_id: g5.12xlarge
             driver_node_type_id: md-fleet.12xlarge
             spark_env_vars:
