@@ -34,7 +34,7 @@ resources:
               zone_id: auto
               spot_bid_price_percent: 100
               ebs_volume_count: 0
-            node_type_id: g6.12xlarge
+            node_type_id: g5.12xlarge
             enable_elastic_disk: false
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
