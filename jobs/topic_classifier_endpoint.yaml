@@ -4,21 +4,18 @@ resources:
       name: topic-classifier
       config:
         served_entities:
-          - name: topic-classifier-1
+          - name: topic-classifier-2
             entity_name: openalex.works.topic_classifier
-            entity_version: "1"
+            entity_version: "2"
             workload_type: GPU_MEDIUM
-            workload_size: Small
+            workload_size: Medium
             scale_to_zero_enabled: true
         traffic_config:
           routes:
-            - served_model_name: topic-classifier-1
+            - served_model_name: topic-classifier-2
               traffic_percentage: 100
       permissions:
         - level: CAN_MANAGE
           group_name: openalex-admins
         - level: CAN_QUERY
           service_principal_name: 736e2b72-37fd-4cbd-9313-0e68514ab813
-      tags:
-        - key: oxjob
-          value: "709"
