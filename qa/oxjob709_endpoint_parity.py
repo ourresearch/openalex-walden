@@ -18,13 +18,6 @@ CONCURRENCY = int(dbutils.widgets.get("concurrency"))
 
 # COMMAND ----------
 
-import sys
-
-sys.path.append("/Workspace/Shared/openalex-walden/notebooks/topics")
-from topic_predictor import clean_title, clean_abstract, is_heavily_stripped
-
-# COMMAND ----------
-
 baseline = spark.sql(
     f"""
     SELECT work_id, title, abstract, lm_topics
