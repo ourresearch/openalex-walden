@@ -556,6 +556,29 @@ if ephemeral_present[DRIFT_TABLE]:
 
 # COMMAND ----------
 
+# --- Name-concentration wave detector -------------------------------------
+# One raw_author_name flooding the day's batch = a wave: org pseudo-authors
+# (dataset/instrument repos), or a parser bug emitting identical names. Source-
+# agnostic — surfaces the offender by name so it's visible at the metric level,
+# no judge sample needed. Caught "Geoscience Australia" (36K IGSN seats,
+# 2026-07-30) after it was only found via ad-hoc judge slicing.
+if ephemeral_present[PENDING_TABLE]:
+    HOT_SEATS = 1000  # a single name matching/minting >1K seats in one batch
+    hot = spark.sql(f"""
+        SELECT raw_author_name, COUNT(*) AS seats
+        FROM {PENDING_TABLE}
+        WHERE raw_author_name IS NOT NULL AND TRIM(raw_author_name) <> ''
+        GROUP BY raw_author_name
+        HAVING COUNT(*) >= {HOT_SEATS}
+    """).collect()
+    add("name_concentration", "hot_names", len(hot))
+    add("name_concentration", "seats_in_hot_names", sum(r["seats"] for r in hot))
+    # Name each offender (top 15) so "which" is answerable straight from metrics.
+    for r in sorted(hot, key=lambda x: -x["seats"])[:15]:
+        add("name_concentration_top", r["raw_author_name"][:120], r["seats"])
+
+# COMMAND ----------
+
 # --- #608 guard telemetry (already persisted; roll up today's runs) --------
 gt = spark.sql(f"""
     SELECT COUNT(*) AS runs,

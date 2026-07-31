@@ -28,9 +28,9 @@ WHERE sample_date = current_date() AND arm = 'armA'
 
 INSERT INTO openalex.authors.authorship_daily_quality_sample
   (sample_date, arm, work_id, author_sequence, match_tier, assigned_author_id,
-   cand_author_ids, verdict, confidence, model, prompt_chars, judged_at)
+   cand_author_ids, raw_author_name, primary_source_id, verdict, confidence, model, prompt_chars, judged_at)
 SELECT current_date(), 'armA', work_id, author_sequence, tier, existing_author_id,
-       NULL,
+       NULL, raw_author_name, primary_source_id,
        get_json_object(out, '$.verdict'),
        get_json_object(out, '$.confidence'),
        'databricks-claude-opus-4-8', LENGTH(prompt), current_timestamp()
@@ -51,9 +51,9 @@ WHERE sample_date = current_date() AND arm = 'armB'
 
 INSERT INTO openalex.authors.authorship_daily_quality_sample
   (sample_date, arm, work_id, author_sequence, match_tier, assigned_author_id,
-   cand_author_ids, verdict, confidence, model, prompt_chars, judged_at)
+   cand_author_ids, raw_author_name, primary_source_id, verdict, confidence, model, prompt_chars, judged_at)
 SELECT current_date(), 'armB', work_id, author_sequence, NULL, NULL,
-       cand_author_ids,
+       cand_author_ids, raw_author_name, primary_source_id,
        get_json_object(out, '$.verdict'),
        get_json_object(out, '$.confidence'),
        'databricks-claude-opus-4-8', LENGTH(prompt), current_timestamp()
@@ -74,9 +74,9 @@ WHERE sample_date = current_date() AND arm = 'orcid_collision'
 
 INSERT INTO openalex.authors.authorship_daily_quality_sample
   (sample_date, arm, work_id, author_sequence, match_tier, assigned_author_id,
-   cand_author_ids, verdict, confidence, model, prompt_chars, judged_at)
+   cand_author_ids, raw_author_name, primary_source_id, verdict, confidence, model, prompt_chars, judged_at)
 SELECT current_date(), 'orcid_collision', NULL, NULL, NULL, minted.id,
-       CAST(older.id AS STRING), 'collision', 'high', NULL, NULL, current_timestamp()
+       CAST(older.id AS STRING), NULL, NULL, 'collision', 'high', NULL, NULL, current_timestamp()
 FROM openalex.authors.authors minted
 JOIN openalex.authors.authors older
   ON minted.orcid = older.orcid AND older.id < minted.id

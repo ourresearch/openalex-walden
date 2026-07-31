@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS {DST_SAMPLE} (
   match_tier         STRING,   -- armA stratum (tier / orcid / orcid_blind); NULL for armB/D
   assigned_author_id BIGINT,   -- armA: the id being judged; D: the minted id
   cand_author_ids    STRING,   -- armB: comma-joined candidate ids in lineup order
+  raw_author_name    STRING,   -- incoming name (armA/armB): wave/name-concentration slicing
+  primary_source_id  STRING,   -- first work source id (armA/armB): source-size/type slicing
   verdict            STRING,
   confidence         STRING,
   model              STRING,
@@ -87,6 +89,13 @@ CREATE TABLE IF NOT EXISTS {DST_SAMPLE} (
   judged_at          TIMESTAMP
 )
 """)
+
+# Schema migration for samples written before these context columns existed.
+_have = {f.name for f in spark.table(DST_SAMPLE).schema}
+for _col in ["raw_author_name", "primary_source_id"]:
+    if _col not in _have:
+        spark.sql(f"ALTER TABLE {DST_SAMPLE} ADD COLUMNS ({_col} STRING)")
+        print(f"migrated {DST_SAMPLE}: added {_col}")
 
 if not spark.catalog.tableExists(P):
     dbutils.notebook.exit("pending_author_assignments missing — nothing to judge")
@@ -164,7 +173,7 @@ spark.sql(f"""
 CREATE OR REPLACE TABLE {PROMPTS_A} AS
 WITH sample AS (
   SELECT p.work_id, p.author_sequence, p.raw_author_name, p.institution_ids,
-         p.existing_author_id,
+         p.work_source_ids, p.existing_author_id,
          CASE WHEN p.match_method = 'orcid' AND p.orcid_blind_match THEN 'orcid_blind'
               WHEN p.match_method = 'orcid' THEN 'orcid'
               ELSE p.name_match_tier END AS tier
@@ -181,6 +190,7 @@ cand_ids AS (SELECT DISTINCT existing_author_id AS author_id FROM sample),
 {INCOMING_CTES},
 {PROF_INST}
 SELECT s.work_id, s.author_sequence, s.tier, s.existing_author_id,
+  s.raw_author_name, TRY_ELEMENT_AT(s.work_source_ids, 1) AS primary_source_id,
   CONCAT(
     'Decide whether the incoming authorship and the author profile are the same person. ',
     'Weigh name compatibility, institutions, research era, and field. Answer only via the schema.\\n\\n',
@@ -257,6 +267,7 @@ cand_lines AS (
   GROUP BY rc.work_id, rc.author_sequence
 )
 SELECT s.work_id, s.author_sequence, cl.cand_author_ids,
+  s.raw_author_name, TRY_ELEMENT_AT(s.work_source_ids, 1) AS primary_source_id,
   CONCAT(
     'The incoming authorship was NOT matched to any existing author (a new author profile would be minted). ',
     'Decide whether it is actually the same person as one of the candidate profiles below. ',
