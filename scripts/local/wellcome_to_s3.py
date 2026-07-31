@@ -187,9 +187,11 @@ def process_xlsx(xlsx_path: Path, output_dir: Path) -> Path:
     # - Grant Programme:Title
     # - Beneficiary Location:Name, Beneficiary Location:Country Code
 
+    # Note that Identifier gives the 360Giving ID so use Internal ID (Wellcome's grant reference) as the grant id
+
     # Rename 360Giving columns to our internal names
     column_mapping = {
-        'identifier': 'grant_id',
+        'internal_id': 'grant_id',
         'title': 'title',
         'description': 'description',
         'currency': 'currency',
