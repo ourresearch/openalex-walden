@@ -1,11 +1,12 @@
 # Databricks notebook source
-# MAGIC %pip install -U mlflow transformers==4.50.2 accelerate==1.5.2
+# MAGIC %pip install transformers==4.50.2 accelerate==1.5.2
 # MAGIC dbutils.library.restartPython()
 
 # COMMAND ----------
 
 import mlflow
 import pandas as pd
+import torch
 
 MODEL_DIR = "/Volumes/openalex/works/models/topic-classification-title-abstract"
 UC_MODEL = "openalex.works.topic_classifier"
@@ -68,8 +69,8 @@ with mlflow.start_run(run_name="topic-classifier"):
         signature=signature,
         input_example=example,
         pip_requirements=[
-            "mlflow",
-            "torch==2.6.0",
+            f"mlflow=={mlflow.__version__}",
+            f"torch=={torch.__version__.split('+')[0]}",
             "transformers==4.50.2",
             "accelerate==1.5.2",
         ],
