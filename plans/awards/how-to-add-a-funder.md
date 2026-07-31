@@ -393,7 +393,7 @@ The output table MUST have exactly these columns (no additions or subtractions):
 id                    -- Format: abs(xxhash64(CONCAT({funder_id}, ':', {lowercase_award_id}))) % 9000000000
 display_name          -- Award/project title
 description           -- Abstract or description
-funder_award_id       -- The funder's native award ID
+funder_award_id       -- The funder's CITABLE award reference — see §2.1.1
 currency              -- "USD", "EUR", "GBP", etc.
 funding_type          -- "research", "fellowship", "training", "grant", etc.
 funder_scheme         -- The specific program/scheme name (nullable)
@@ -449,6 +449,59 @@ investigators ARRAY<lead_investigator struct>
 -- URL field
 works_api_url -- concat('https://api.openalex.org/works?filter=awards.id:G', id)
 ```
+
+### 2.1.1 Choosing `funder_award_id` when the source has MULTIPLE identifiers (CRITICAL)
+
+`funder_award_id` is not a label — it is the **join key** that collapses our
+direct ingest with the Crossref/DataCite-derived award stubs that works link
+to. Both sides mint award `id` with the same formula
+(`abs(xxhash64(funder_id:lower(funder_award_id))) % 9000000000`), so if we
+ship a different spelling of the grant reference than researchers cite, the
+dedup in `CreateAwards.ipynb` can never merge them. The result is a
+split-brain funder: our metadata-rich records sit orphaned with zero
+`funded_outputs`, while the works all hang off bare Crossref stubs.
+
+**Confirmed incident — Wellcome Trust (fixed 2026-07-31).** Wellcome's
+360Giving XLSX has two identifier columns:
+
+| column | example | what it is |
+|---|---|---|
+| `Identifier` | `360G-Wellcome-323416_Z_24_Z` | 360Giving **registry-namespaced** ID (prefix + `/`→`_` mangling) |
+| `Internal ID` | `323416/Z/24/Z` | the **citable grant reference** — what grantees put in acknowledgements and what Crossref carries |
+
+We shipped `Identifier`. Live impact when caught: 19,612 direct-ingest awards
+with only **6** linked works, alongside 8,910 slash-form Crossref stubs
+carrying 8,908 works — 6,770 grants existed as BOTH records. Note the column
+**names point the wrong way**: the "real" ID was the one called *Internal*.
+Never choose by column name.
+
+**The rule: ship the reference researchers put in acknowledgements.** That is
+whatever the funder tells grantees to cite — which is also what ends up in
+Crossref funding metadata. When a source exposes several identifiers:
+
+1. **Sample the citation side FIRST** (before writing the transform):
+   ```
+   https://api.openalex.org/works?filter=grants.funder:F{funder_id},is_xpac:!null&select=grants&per-page=100
+   ```
+   Collect `grants[].award_id` for entries whose funder matches. The dominant
+   format there is your target — pick the source column that matches it.
+2. **If the citation side is empty** (small charities, prizes, community
+   funders — common), ship the funder's own *public-facing* reference: the ID
+   printed on the grant's detail page / award letter. Document the choice in
+   the notebook header.
+3. **Keep the rejected identifier(s)** as extra columns in the raw parquet
+   (e.g. `identifier_360g`) — they cost nothing and preserve the audit trail.
+4. **Add a shape-check verification cell** to the notebook asserting the
+   shipped `funder_award_id` matches the expected pattern and that zero rows
+   carry the rejected form.
+
+**Red flags that you grabbed an internal/system ID, not the citable one:**
+- `360G-` prefix (360Giving registry form — ALWAYS wrong for `funder_award_id`;
+  every 360Giving `Identifier` is `360G-{org}-{internal_ref_with_mangled_separators}`)
+- Salesforce object IDs (`a06...`, 15/18 chars), UUIDs, hex hashes
+- bare row numbers / small sequential integers that restart per file
+- a value that equals another column with separators replaced (`/`→`_`, `-`→``)
+- `registry_identifier` / `source_identifier` / `line_no` style column names
 
 ### 2.2 Notebook structure
 
@@ -802,7 +855,7 @@ patched. Both showed up only when grepping the produced `display_name` column.
 |----------------|---------------------|
 | display_name | title, project_title, name |
 | description | abstract, summary, description |
-| funder_award_id | grant_id, project_id, award_number, grant_reference |
+| funder_award_id | grant_id, project_id, award_number, grant_reference — **when several exist, apply §2.1.1** (ship the citable reference, never a `360G-*`/registry/system ID) |
 | amount | `total_cost`, `amount`, `funding_amount`, `grant_offer`, `value`, `valuePounds`, `funded_value`, `awarded_amount`, `award_amount`, `total`, `budget`, `project_cost`, `monto`, `importe`, `montant`, `betrag`, `valor`, `kwota`, `belopp`. **May be nested** inside an array/struct (e.g., DataCite `fundingReferences[].fundingAmount`). Run the discovery scan in Step 1.6 before mapping. |
 | currency | `currency`, `currencyCode`, `currency_code`, `ccy`, `fundingAmountCurrency`, `amountCurrency`. May be **implicit** — hardcode from funder country/region (e.g., GTR = GBP) and document in the notebook header. |
 | funding_type | Map from activity codes or categories |

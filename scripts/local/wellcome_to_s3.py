@@ -14,8 +14,14 @@ What this script does:
 1. Downloads the Wellcome grants XLSX from their website
 2. Parses the main grants sheet and additional locations sheet
 3. Cleans and standardizes field names
-4. Converts to parquet format
-5. Uploads to S3
+4. Builds `grant_ref` = the CITABLE Wellcome grant reference
+   ("323416/Z/24/Z", from the `Internal ID` column) - NOT the 360Giving
+   `Identifier` ("360G-Wellcome-323416_Z_24_Z"), which is kept only as
+   `identifier_360g`. The citable form is what appears in acknowledgements
+   and Crossref funding metadata; shipping the 360G form orphaned ~19.6K
+   award records from their funded works (fixed 2026-07-31).
+5. Converts to parquet format
+6. Uploads to S3 (refusing to shrink the existing corpus, runbook §1.4)
 
 The Wellcome XLSX contains two sheets:
 - Main Grant List: core grant data
@@ -188,8 +194,18 @@ def process_xlsx(xlsx_path: Path, output_dir: Path) -> Path:
     # - Beneficiary Location:Name, Beneficiary Location:Country Code
 
     # Rename 360Giving columns to our internal names
+    #
+    # ⚠️ AWARD-ID COLUMN CHOICE (fixed 2026-07-31):
+    # The 360Giving `Identifier` column is the registry-namespaced form
+    # ("360G-Wellcome-323416_Z_24_Z") — it is NOT the grant reference
+    # researchers cite. The citable reference lives in Wellcome's
+    # `Internal ID` column ("323416/Z/24/Z"), which is what appears in
+    # acknowledgements, Crossref funding metadata, and Wellcome's own
+    # reporting. The 360G form is a pure derivation of it (prefix +
+    # "/"→"_"). We ship `internal_id` as the award id (grant_ref) and
+    # keep the 360G identifier only as a secondary column.
     column_mapping = {
-        'identifier': 'grant_id',
+        'identifier': 'identifier_360g',
         'title': 'title',
         'description': 'description',
         'currency': 'currency',
@@ -224,6 +240,38 @@ def process_xlsx(xlsx_path: Path, output_dir: Path) -> Path:
 
     print(f"  Final columns: {list(df.columns)}")
 
+    # Build grant_ref = the citable Wellcome grant reference (e.g. "323416/Z/24/Z").
+    # Primary source: the `Internal ID` column. Fallback: strip the 360Giving
+    # prefix and restore "/" separators from the Identifier column.
+    print("  [INFO] Building grant_ref (citable award id)...")
+    if 'internal_id' not in df.columns:
+        raise SystemExit(
+            "[FATAL] 'Internal ID' column missing from Wellcome XLSX - "
+            "cannot build citable grant_ref. Inspect the source file."
+        )
+    df['grant_ref'] = df['internal_id'].str.strip()
+    fallback_mask = df['grant_ref'].isna() | (df['grant_ref'] == '')
+    if fallback_mask.any() and 'identifier_360g' in df.columns:
+        derived = (df.loc[fallback_mask, 'identifier_360g']
+                   .str.replace('360G-Wellcome-', '', regex=False)
+                   .str.replace('_', '/', regex=False))
+        df.loc[fallback_mask, 'grant_ref'] = derived
+        print(f"  [WARN] {fallback_mask.sum():,} rows had no Internal ID; derived from 360G identifier")
+
+    # Sanity gate: the canonical Wellcome shape is NNNNNN/L/NN/L (with /A/, /B/
+    # amendment variants). If most rows don't look like that, the source layout
+    # changed - stop rather than ship garbage.
+    shape_ok = df['grant_ref'].str.match(r'^\d{5,6}/[A-Z]/\d{2}/[A-Z]$', na=False)
+    pct_ok = shape_ok.mean() * 100
+    print(f"  grant_ref matching NNNNNN/L/NN/L shape: {shape_ok.sum():,}/{len(df):,} ({pct_ok:.1f}%)")
+    if pct_ok < 95:
+        print(df.loc[~shape_ok, ['grant_ref', 'identifier_360g']].head(10).to_string())
+        raise SystemExit("[FATAL] <95% of grant_ref values match the Wellcome reference shape - inspect source")
+
+    # No 360G prefix may survive in the citable column
+    assert not df['grant_ref'].str.startswith('360G-', na=False).any(), \
+        "360G-prefixed values leaked into grant_ref"
+
     # Parse dates
     print("  [INFO] Parsing dates...")
 
@@ -251,14 +299,12 @@ def process_xlsx(xlsx_path: Path, output_dir: Path) -> Path:
         df['amount'] = df['amount'].str.replace(',', '', regex=False).str.strip()
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
 
-    # Use grant_id for deduplication if available
-    id_col = 'grant_id' if 'grant_id' in df.columns else 'internal_id'
-    if id_col in df.columns:
-        print(f"  [INFO] Deduplicating by {id_col}...")
-        original_count = len(df)
-        df = df.drop_duplicates(subset=[id_col], keep='first')
-        print(f"  Removed {original_count - len(df):,} duplicates")
-        print(f"  Unique grants: {len(df):,}")
+    # Deduplicate by the citable grant reference
+    print("  [INFO] Deduplicating by grant_ref...")
+    original_count = len(df)
+    df = df.drop_duplicates(subset=['grant_ref'], keep='first')
+    print(f"  Removed {original_count - len(df):,} duplicates")
+    print(f"  Unique grants: {len(df):,}")
 
     # Add metadata
     df['ingested_at'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
@@ -345,6 +391,33 @@ def find_aws_cli() -> Optional[str]:
     return None
 
 
+def check_no_shrink(local_path: Path, allow_shrink: bool) -> None:
+    """Re-ingestion safety (runbook §1.4): never overwrite the S3 parquet with
+    fewer rows than it already has. A shrinking corpus almost always means a
+    partial outage or a broken parse, not retracted grants."""
+    import pyarrow.parquet as _pq
+
+    new_count = _pq.ParquetFile(local_path).metadata.num_rows
+    try:
+        from pyarrow.fs import S3FileSystem
+
+        fs = S3FileSystem(region="us-east-1")
+        prev = _pq.ParquetFile(f"{S3_BUCKET}/{S3_KEY}", filesystem=fs)
+        prev_count = prev.metadata.num_rows
+    except Exception as e:
+        print(f"  [WARN] Could not read previous S3 row count ({e}); "
+              "treating as first upload")
+        return
+
+    print(f"  [CHECK] previous S3 rows: {prev_count:,} | new rows: {new_count:,}")
+    if new_count < prev_count and not allow_shrink:
+        raise SystemExit(
+            f"[FATAL] New corpus ({new_count:,}) is SMALLER than previous "
+            f"({prev_count:,}). Refusing to overwrite (runbook §1.4). "
+            "Re-run with --allow-shrink only if the shrink is genuinely expected."
+        )
+
+
 def upload_to_s3(local_path: Path) -> bool:
     """
     Upload the parquet file to S3.
@@ -409,6 +482,11 @@ def main():
         action="store_true",
         help="Skip S3 upload step"
     )
+    parser.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        help="Allow overwriting S3 with fewer rows than the previous corpus (runbook §1.4)"
+    )
     args = parser.parse_args()
 
     # Create output directory
@@ -436,6 +514,7 @@ def main():
     # Step 3: Upload to S3
     upload_success = True
     if not args.skip_upload:
+        check_no_shrink(parquet_path, args.allow_shrink)
         upload_success = upload_to_s3(parquet_path)
         if not upload_success:
             print("\n[WARNING] S3 upload failed. You can upload manually:")
