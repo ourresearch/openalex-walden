@@ -1,0 +1,19 @@
+resources:
+  model_serving_endpoints:
+    Topic_Classifier:
+      name: topic-classifier
+      config:
+        served_entities:
+          - name: topic-classifier-1
+            entity_name: openalex.works.topic_classifier
+            entity_version: "1"
+            workload_type: GPU_MEDIUM
+            workload_size: Small
+            scale_to_zero_enabled: true
+        traffic_config:
+          routes:
+            - served_model_name: topic-classifier-1
+              traffic_percentage: 100
+      tags:
+        - key: oxjob
+          value: "709"
