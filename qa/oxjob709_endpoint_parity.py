@@ -128,10 +128,14 @@ print(f"max score delta  = {cmp['max_score_delta'].max():.6f}")
 
 # COMMAND ----------
 
-display(cmp[~cmp["top3_set_match"]].head(50))
+mismatches = cmp[~cmp["top3_set_match"]]
+print(f"mismatches: {len(mismatches)}")
+if not mismatches.empty:
+    display(mismatches.head(50))
 
 # COMMAND ----------
 
-spark.createDataFrame(cmp.astype({"work_id": "str"})).write.mode("overwrite").saveAsTable(
-    "openalex.works.qa_oxjob709_endpoint_parity"
-)
+if not cmp.empty:
+    spark.createDataFrame(cmp.astype({"work_id": "str"})).write.mode("overwrite").saveAsTable(
+        "openalex.works.qa_oxjob709_endpoint_parity"
+    )
