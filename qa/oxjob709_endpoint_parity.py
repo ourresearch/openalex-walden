@@ -30,32 +30,13 @@ baseline = spark.sql(
     SELECT work_id, title, abstract, lm_topics
     FROM openalex.works.work_topics_lm_output
     WHERE created_timestamp >= current_date() - INTERVAL 1 DAY
-      AND lm_topics IS NOT NULL
-      AND SIZE(lm_topics) = 3
     ORDER BY RANDOM()
     LIMIT {SAMPLE_SIZE}
     """
 ).toPandas()
 
-print(f"baseline rows: {len(baseline):,}")
-
-# COMMAND ----------
-
-
-def build_text(row):
-    title = clean_title(row["title"]) or ""
-    abstract = clean_abstract(row["abstract"]) or ""
-    if is_heavily_stripped(row["title"], title) and (
-        is_heavily_stripped(row["abstract"], abstract) or not row["abstract"]
-    ):
-        return None
-    return f"[CLS]<TITLE> {title.strip()} <ABSTRACT> {abstract.strip()} [SEP]"
-
-
-baseline["text"] = baseline.apply(build_text, axis=1)
-skipped = baseline["text"].isna().sum()
-baseline = baseline[baseline["text"].notna()].reset_index(drop=True)
-print(f"skipped by cleaning rule: {skipped} | scoring: {len(baseline):,}")
+declined_baseline = baseline["lm_topics"].isna().sum()
+print(f"baseline rows: {len(baseline):,} | declined by the GPU job: {declined_baseline:,}")
 
 # COMMAND ----------
 
@@ -66,15 +47,12 @@ from databricks.sdk import WorkspaceClient
 
 w = WorkspaceClient()
 
-texts = baseline["text"].tolist()
-batches = [texts[i : i + REQUEST_BATCH] for i in range(0, len(texts), REQUEST_BATCH)]
+records = baseline[["title", "abstract"]].where(baseline.notna(), None).to_dict("records")
+batches = [records[i : i + REQUEST_BATCH] for i in range(0, len(records), REQUEST_BATCH)]
 
 
 def score(batch):
-    resp = w.serving_endpoints.query(
-        name=ENDPOINT,
-        dataframe_records=[{"text": t} for t in batch],
-    )
+    resp = w.serving_endpoints.query(name=ENDPOINT, dataframe_records=batch)
     return resp.predictions
 
 
@@ -92,20 +70,25 @@ print(f"concurrency={CONCURRENCY} request_batch={REQUEST_BATCH}")
 
 def as_pairs(topics):
     if isinstance(topics, dict):
-        topics = topics.get("topics", topics)
+        topics = topics.get("topics")
+    if topics is None or (hasattr(topics, "__len__") and len(topics) == 0):
+        return []
     return [(int(t["topic_id"]), float(t["score"])) for t in topics]
 
 
 rows = []
 for i, pred in enumerate(predictions):
     old = as_pairs(baseline.loc[i, "lm_topics"])
-    new = as_pairs(pred if not isinstance(pred, dict) else pred["topics"])
+    new = as_pairs(pred)
     old_ids = [t[0] for t in old]
     new_ids = [t[0] for t in new]
     rows.append(
         {
             "work_id": baseline.loc[i, "work_id"],
-            "top1_match": old_ids[0] == new_ids[0],
+            "both_declined": not old_ids and not new_ids,
+            "decline_match": bool(old_ids) == bool(new_ids),
+            "top1_match": bool(old_ids) == bool(new_ids)
+            and (not old_ids or old_ids[0] == new_ids[0]),
             "top3_set_match": set(old_ids) == set(new_ids),
             "top3_exact_match": old_ids == new_ids,
             "max_score_delta": max(
@@ -121,6 +104,8 @@ import pandas as pd
 cmp = pd.DataFrame(rows)
 n = len(cmp)
 print(f"n                = {n:,}")
+print(f"both declined    = {cmp['both_declined'].sum():,}")
+print(f"decline agreement= {cmp['decline_match'].mean():.4%}")
 print(f"top-1 match      = {cmp['top1_match'].mean():.4%}")
 print(f"top-3 set match  = {cmp['top3_set_match'].mean():.4%}")
 print(f"top-3 exact      = {cmp['top3_exact_match'].mean():.4%}")
