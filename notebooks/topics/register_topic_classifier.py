@@ -45,13 +45,29 @@ class TopicClassifier(mlflow.pyfunc.PythonModel):
         )
 
     def predict(self, context, model_input):
-        outputs = self.pipe(model_input["text"].tolist())
+        from topic_text_cleaning import clean_abstract, clean_title, is_heavily_stripped
+
+        texts, keep = [], []
+        for title, abstract in zip(model_input["title"], model_input["abstract"]):
+            clean_t = clean_title(title) or ""
+            clean_a = clean_abstract(abstract) or ""
+            if is_heavily_stripped(title, clean_t) and (
+                is_heavily_stripped(abstract, clean_a) or not abstract
+            ):
+                keep.append(False)
+                continue
+            keep.append(True)
+            texts.append(f"[CLS]<TITLE> {clean_t.strip()} <ABSTRACT> {clean_a.strip()} [SEP]")
+
+        scored = iter(self.pipe(texts) if texts else [])
         topics = [
             [
                 {"topic_id": 10000 + int(t["label"].split(":")[0]), "score": float(t["score"])}
-                for t in row
+                for t in next(scored)
             ]
-            for row in outputs
+            if k
+            else None
+            for k in keep
         ]
         return pd.DataFrame({"topics": topics})
 
@@ -60,10 +76,8 @@ class TopicClassifier(mlflow.pyfunc.PythonModel):
 
 example = pd.DataFrame(
     {
-        "text": [
-            "[CLS]<TITLE> Deep learning for protein structure prediction "
-            "<ABSTRACT> We present a neural approach to folding. [SEP]"
-        ]
+        "title": ["Deep learning for protein structure prediction"],
+        "abstract": ["We present a neural approach to folding."],
     }
 )
 
@@ -77,6 +91,7 @@ with mlflow.start_run(run_name="topic-classifier"):
         artifact_path="model",
         python_model=TopicClassifier(),
         artifacts={"model_dir": MODEL_DIR},
+        code_paths=["topic_text_cleaning.py"],
         signature=signature,
         input_example=example,
         pip_requirements=[
@@ -94,3 +109,4 @@ print("registered version:", info.registered_model_version)
 
 loaded = mlflow.pyfunc.load_model(info.model_uri)
 print(loaded.predict(example))
+print(loaded.predict(pd.DataFrame({"title": ["日本語のタイトルです"], "abstract": [None]})))
