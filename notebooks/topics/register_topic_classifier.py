@@ -4,16 +4,27 @@
 
 # COMMAND ----------
 
+import os
+import shutil
+
 import mlflow
 import pandas as pd
 import torch
 
-MODEL_DIR = "/Volumes/openalex/works/models/topic-classification-title-abstract"
+VOLUME_DIR = "/Volumes/openalex/works/models/topic-classification-title-abstract"
+MODEL_DIR = "/local_disk0/topic_classifier_model"
 UC_MODEL = "openalex.works.topic_classifier"
 TOP_K = 3
 BATCH_SIZE = 25
 
 mlflow.set_registry_uri("databricks-uc")
+
+# COMMAND ----------
+
+os.makedirs(MODEL_DIR, exist_ok=True)
+for name in os.listdir(VOLUME_DIR):
+    shutil.copyfile(os.path.join(VOLUME_DIR, name), os.path.join(MODEL_DIR, name))
+print(sorted(os.listdir(MODEL_DIR)))
 
 # COMMAND ----------
 
