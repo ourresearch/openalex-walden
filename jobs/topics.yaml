@@ -17,9 +17,13 @@ resources:
           depends_on:
             - task_key: topics_create_input
           notebook_task:
-            notebook_path: notebooks/topics/topics_inference
+            notebook_path: notebooks/topics/topics_inference_endpoint
             source: GIT
-          job_cluster_key: topics-gpu-cluster
+            base_parameters:
+              endpoint: topic-classifier
+              concurrency: "24"
+              request_batch: "25"
+          job_cluster_key: topics-cpu-cluster
           max_retries: 3
           min_retry_interval_millis: 300000
         - task_key: topics_merge_output
@@ -30,6 +34,22 @@ resources:
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
       job_clusters:
+        - job_cluster_key: topics-cpu-cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.12
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+            node_type_id: m5d.2xlarge
+            data_security_mode: SINGLE_USER
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            num_workers: 0
         - job_cluster_key: topics-gpu-cluster
           new_cluster:
             cluster_name: ""
