@@ -14,6 +14,11 @@ resources:
           routes:
             - served_model_name: topic-classifier-1
               traffic_percentage: 100
+      permissions:
+        - level: CAN_MANAGE
+          group_name: openalex-admins
+        - level: CAN_QUERY
+          service_principal_name: 736e2b72-37fd-4cbd-9313-0e68514ab813
       tags:
         - key: oxjob
           value: "709"
