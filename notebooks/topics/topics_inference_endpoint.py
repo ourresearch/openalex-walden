@@ -51,6 +51,11 @@ def score(batch):
     return None
 
 
+if batches:
+    warm = time.time()
+    score(batches[0][:1])
+    print(f"warm-up request: {time.time() - warm:.1f}s")
+
 start = time.time()
 with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
     results = list(pool.map(score, batches))
