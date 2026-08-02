@@ -94,8 +94,8 @@ rows = [
 ]
 print(f"empty sdg: {sum(1 for r in rows if not r[1]):,} of {len(rows):,}")
 
-inferred_sdg_df = spark.createDataFrame(rows, output_schema).cache()
-print(f"output rows: {inferred_sdg_df.count():,}")
+inferred_sdg_df = spark.createDataFrame(rows, output_schema)
+print(f"output rows: {len(rows):,}")
 
 # COMMAND ----------
 
@@ -113,7 +113,7 @@ target_table = DeltaTable.forName(spark, "openalex.works.works_sdg_frontfill")
     .whenNotMatchedInsertAll()
     .execute()
 )
-print(f"merged {output_df.count():,} rows to works_sdg_frontfill")
+print(f"merged {len(rows):,} rows to works_sdg_frontfill")
 
 # COMMAND ----------
 

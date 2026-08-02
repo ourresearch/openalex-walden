@@ -109,8 +109,8 @@ res_df = (
     .withColumn("lm_primary_topic", col("lm_topics")[0])
     .withColumn("source", lit("bert_lm"))
     .withColumn("created_timestamp", current_timestamp())
-).cache()
-print(f"output rows: {res_df.count():,}")
+)
+print(f"output rows: {len(rows):,}")
 
 res_df.write.mode("append").saveAsTable("openalex.works.work_topics_lm_output")
 
