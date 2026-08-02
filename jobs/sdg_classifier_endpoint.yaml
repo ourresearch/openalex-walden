@@ -1,19 +1,18 @@
 resources:
   model_serving_endpoints:
-    Topic_Classifier:
-      name: topic-classifier
+    SDG_Classifier:
+      name: sdg-classifier
       config:
         served_entities:
-          - name: topic-classifier-2
-            entity_name: openalex.works.topic_classifier
-            entity_version: "2"
+          - name: sdg-classifier-1
+            entity_name: openalex.works.sdg_classifier
+            entity_version: "1"
             workload_type: GPU_MEDIUM
-            min_provisioned_concurrency: 0
-            max_provisioned_concurrency: 16
+            workload_size: Small
             scale_to_zero_enabled: true
         traffic_config:
           routes:
-            - served_model_name: topic-classifier-2
+            - served_model_name: sdg-classifier-1
               traffic_percentage: 100
       permissions:
         - level: CAN_MANAGE
