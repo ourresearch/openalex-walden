@@ -11,9 +11,12 @@ WITH deduped AS (
   SELECT *,
     ROW_NUMBER() OVER (PARTITION BY work_key, work_key_ns ORDER BY file_key) AS rn
   FROM openalex.parseland.pdf_candidate_cohort
-  -- mdpi EXCLUDED 2026-08-02: 63% historical but 0/40 on cohort URLs (same URL shape as
-  -- winners; our rows are older articles) — needs its own investigation before draining.
-  WHERE url_host IN ('www.jstage.jst.go.jp', 'www.scielo.br')
+  -- Membership decided by probing ACTUAL cohort URLs (40/host), not host-level history —
+  -- history was wrong for 3 of 5. Measured 2026-08-02: jstage 95.7%, zenodo 100.0%.
+  -- EXCLUDED: mdpi 0/40 (63% historical; cohort rows are older articles, same URL shape),
+  -- figshare 0/40 (wrong host form entirely), scielo 35.3% (below the 60% gate; the
+  -- earlier 100% read was 4 rows).
+  WHERE url_host IN ('www.jstage.jst.go.jp', 'zenodo.org')
 )
 SELECT
   work_key, work_key_ns, native_id, native_id_namespace,
