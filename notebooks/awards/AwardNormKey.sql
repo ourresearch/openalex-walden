@@ -84,10 +84,15 @@ WITH dep AS (
     SELECT funder_id, aid AS funder_award_id
     FROM openalex.awards.datacite_work_funders LATERAL VIEW EXPLODE(award_ids) AS aid
     UNION ALL
-    -- legacy crossref provenances (scored, not guarded — no junction table)
+    -- 4th guarded door: CreateBackfillAwards ('crossref_work.grants'); its
+    -- pre-guard source is the backfill_awards intermediate (already exploded)
+    SELECT funder_id, funder_award_id
+    FROM openalex.awards.backfill_awards
+    UNION ALL
+    -- legacy crossref provenance (scored, not guarded — no pre-guard table)
     SELECT funder_id, funder_award_id
     FROM openalex.awards.openalex_awards_raw
-    WHERE provenance IN ('crossref_work.grants','crossref_work') AND funder_award_id IS NOT NULL
+    WHERE provenance IN ('crossref_work') AND funder_award_id IS NOT NULL
   ) WHERE funder_award_id IS NOT NULL
 ),
 -- TWO-KEY registry check, mirroring the CreateAwards alias/collapse machinery
@@ -335,11 +340,12 @@ SELECT funder_id, funder_award_id, action, target_funder_id, target_nk,
 FROM (SELECT * FROM s1 UNION ALL SELECT * FROM s2 UNION ALL SELECT * FROM s3);
 
 -- ============================================================================
--- Guard decision table — the single checkpoint the three covered ingest legs
+-- Guard decision table — the single checkpoint the four covered ingest doors
 -- (CreateCrossrefWorkFunders / CreateEuropePmcWorkFunders /
--- CreateDataCiteWorkFunders) consume at mint time. One row per scored
--- (funder_id, funder_award_id). suppress = garbage with no salvage rescue.
--- Ids ABSENT from this table (new since the last scoring run) mint fail-open.
+-- CreateDataCiteWorkFunders / CreateBackfillAwards) consume at mint time.
+-- One row per scored (funder_id, funder_award_id). suppress = garbage with no
+-- salvage rescue. Ids ABSENT from this table (new since the last scoring run)
+-- mint fail-open.
 -- ============================================================================
 CREATE OR REPLACE TABLE openalex.awards.award_id_guard
 USING delta

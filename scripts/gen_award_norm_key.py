@@ -46,9 +46,12 @@ WEAK_BARE = {
   4320334593: r"^[0-9]{4,6}$",          # NSERC bare serials (19.9%; 70% 4-digit density; review F2)
 }
 
-# Legacy crossref provenances with no junction table: scored (for the repair
-# plan) but NOT guarded — their ids stay sourced from openalex_awards_raw.
-LEGACY_PROV = "'crossref_work.grants','crossref_work'"
+# Legacy provenance still sourced from openalex_awards_raw: scored but NOT
+# guarded (tiny: 3 suppressed-id survivors measured 2026-08-03), so no
+# oscillation risk. 'crossref_work.grants' moved OUT of here when its door
+# (CreateBackfillAwards) became the 4th guarded leg — its pre-guard source is
+# the backfill_awards intermediate in JUNCTIONS.
+LEGACY_PROV = "'crossref_work'"
 
 # Pre-guard junction tables of the three guarded legs. Verdicts MUST source
 # deposited ids from these, not from openalex_awards_raw: once the legs consume
@@ -103,7 +106,12 @@ def gen(schema):
         f"    FROM {j} LATERAL VIEW EXPLODE(award_ids) AS aid"
         for j in JUNCTIONS) + f"""
     UNION ALL
-    -- legacy crossref provenances (scored, not guarded — no junction table)
+    -- 4th guarded door: CreateBackfillAwards ('crossref_work.grants'); its
+    -- pre-guard source is the backfill_awards intermediate (already exploded)
+    SELECT funder_id, funder_award_id
+    FROM openalex.awards.backfill_awards
+    UNION ALL
+    -- legacy crossref provenance (scored, not guarded — no pre-guard table)
     SELECT funder_id, funder_award_id
     FROM openalex.awards.openalex_awards_raw
     WHERE provenance IN ({LEGACY_PROV}) AND funder_award_id IS NOT NULL"""
@@ -354,11 +362,12 @@ SELECT funder_id, funder_award_id, action, target_funder_id, target_nk,
 FROM (SELECT * FROM s1 UNION ALL SELECT * FROM s2 UNION ALL SELECT * FROM s3);
 
 -- ============================================================================
--- Guard decision table — the single checkpoint the three covered ingest legs
+-- Guard decision table — the single checkpoint the four covered ingest doors
 -- (CreateCrossrefWorkFunders / CreateEuropePmcWorkFunders /
--- CreateDataCiteWorkFunders) consume at mint time. One row per scored
--- (funder_id, funder_award_id). suppress = garbage with no salvage rescue.
--- Ids ABSENT from this table (new since the last scoring run) mint fail-open.
+-- CreateDataCiteWorkFunders / CreateBackfillAwards) consume at mint time.
+-- One row per scored (funder_id, funder_award_id). suppress = garbage with no
+-- salvage rescue. Ids ABSENT from this table (new since the last scoring run)
+-- mint fail-open.
 -- ============================================================================
 CREATE OR REPLACE TABLE {schema}.award_id_guard
 USING delta
