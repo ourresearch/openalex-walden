@@ -14,13 +14,15 @@ Family policy (merge onto newest-year record, @kyle-approved 2026-08-03) is
 implemented in the notebooks; this generator emits keys + weakness + verdicts.
 
 Usage: python3 scripts/gen_award_norm_key.py [--schema openalex.awards]
-       [--merge-families true|false]
 Emits notebooks/awards/AwardNormKey.sql (function + verdict table).
 """
 import argparse, os, sys
 
-sys.path.insert(0, "/tmp")
-from rules_src import FUNDERS, NORM  # validated per-funder SQL exprs (over `norm`)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from award_translation_rules import FUNDERS, NORM  # vendored rules (source of truth: #690 audit)
+except ImportError:  # legacy dev path
+    sys.path.insert(0, "/tmp"); from rules_src import FUNDERS, NORM
 
 GENERIC = ("CASE WHEN award_id IS NULL THEN NULL "
            "WHEN LENGTH(REGEXP_REPLACE(LOWER(award_id), '[^a-z0-9]', '')) >= 4 "
