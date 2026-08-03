@@ -46,19 +46,31 @@ fields are NOT usable cross-funder: SNSF/CIHR/NSERC-style loose arms produced
 tens of thousands of coincidental hits against dense numeric registries; NSFC
 and SNSF have no distinctive lettered form and are excluded as targets).
 
-`award_id_guard` — the single checkpoint the three covered legs
+`award_id_guard` — the single checkpoint the FOUR covered doors
 (CreateCrossrefWorkFunders / CreateEuropePmcWorkFunders /
-CreateDataCiteWorkFunders) consume at mint time via one identical LEFT-JOIN
-CTE. `suppress` = garbage with no salvage rescue; everything else, all
-unscored funders, and ids absent from the table mint fail-open.
+CreateDataCiteWorkFunders / CreateBackfillAwards) consume at mint time via one
+identical LEFT-JOIN CTE. `suppress` = garbage with no salvage rescue;
+everything else, all unscored funders, and ids absent from the table mint
+fail-open. Deploy ordering is a hard prerequisite: AwardNormKey.sql must run
+in prod BEFORE any door ships (the join target must exist).
 
-Dev rehearsal 2026-08-03 (openalex_dev.rohan_lab): verdicts reconcile
-(confirmed 781,679 / weak 101,156 / garbage 552,845; junction-sourced dep
-byte-equal to raw for the covered legs); salvage = 21,380 multi-id + 13,646
-wrong-funder + 6,112 decorated; guard = 511,837 suppress / 9,982,415 mint;
-anchors 35/35 mint; suppressed ∩ alias-collapse = **0**; leg pre-guard counts
-== raw provenance counts exactly (8,427,335 / 5,402,568 / 149,820), post-guard
-suppression 5.4% / 3.7% / 3.1% of minted rows.
+Review pass-4 (fresh-context adversarial, 2026-08-03 late) FAILED the first
+build — remediated same session: F1 generator f-string ate the S3 chassis
+regex braces (arm silently dead; now constant S3_NUMERIC_CHASSIS); F2
+fired-extractor floor (EXTRACTIVE_FIDS: an extracted structured id that
+misses the registry scores plausible, never garbage); F3 NSFC U-series +
+strip-space; F4 EPSRC truncated refs kept (completion = #171); F5 KAKEN
+strip-space; F6 long-word no-separator decoration strip.
+
+Dev rehearsal FINAL (openalex_dev.rohan_lab, 20 funders): guard 506,668
+suppress / 9,995,792 mint; anchors 43/43 + reviewer harm cases 10/11 mint
+(1 policy-suppress: unverifiable bare number at a WEAK_BARE funder);
+suppressed ∩ alias-collapse = **0**; verbatim-cell rehearsal of all four
+doors (same-snapshot identity exact); full fold rehearsal: alias_lost 0 /
+gained 22 (#511 collision flips) / entities removed 504,619 = 100%
+suppressed-contained / gained 0 / common rows identical except provenance-
+label election (pre-existing nondeterministic tie among equal-priority doors)
+and 393 #511-collision flips; two-build determinism 0/0/0.
 
 ## Known deferrals
 
