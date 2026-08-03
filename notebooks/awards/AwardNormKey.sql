@@ -72,10 +72,30 @@ CREATE OR REPLACE TABLE openalex.awards.award_id_verdicts
 USING delta
 AS
 WITH dep AS (
-  SELECT DISTINCT funder_id, funder_award_id
-  FROM openalex.awards.openalex_awards_raw
-  WHERE provenance IN ('crossref_work_funders','crossref_work.grants','crossref_work','europepmc_work_funders','datacite_work_funders') AND funder_award_id IS NOT NULL
+  -- Deposited ids from the PRE-GUARD junction tables (see JUNCTIONS note in
+  -- the generator) plus legacy crossref provenances that have no junction.
+  SELECT DISTINCT funder_id, funder_award_id FROM (
+    SELECT funder_id, aid AS funder_award_id
+    FROM openalex.awards.crossref_work_funders LATERAL VIEW EXPLODE(award_ids) AS aid
+    UNION ALL
+    SELECT funder_id, aid AS funder_award_id
+    FROM openalex.awards.europepmc_work_funders LATERAL VIEW EXPLODE(award_ids) AS aid
+    UNION ALL
+    SELECT funder_id, aid AS funder_award_id
+    FROM openalex.awards.datacite_work_funders LATERAL VIEW EXPLODE(award_ids) AS aid
+    UNION ALL
+    -- legacy crossref provenances (scored, not guarded — no junction table)
+    SELECT funder_id, funder_award_id
+    FROM openalex.awards.openalex_awards_raw
+    WHERE provenance IN ('crossref_work.grants','crossref_work') AND funder_award_id IS NOT NULL
+  ) WHERE funder_award_id IS NOT NULL
 ),
+-- TWO-KEY registry check, mirroring the CreateAwards alias/collapse machinery
+-- exactly (canonical_g on the pure generic key + canonical_s on the sharp
+-- COALESCE key). Checking only the COALESCE key under-detects: an id whose
+-- sharp extraction fires but misses the registry can still collapse via its
+-- generic key — scoring it 'garbage' would suppress ids the fold merges today
+-- (2,848 such ids caught by the collapse-safety gate, 2026-08-03).
 reg AS (
   SELECT funder_id, openalex.awards.award_norm_key(funder_id, funder_award_id, 'registry') AS nk,
          COUNT(DISTINCT id) AS n_awards
@@ -83,15 +103,24 @@ reg AS (
   WHERE priority >= 3 AND funder_award_id IS NOT NULL
   GROUP BY 1, 2
 ),
+reg_g AS (
+  SELECT funder_id, CASE WHEN funder_award_id IS NULL THEN NULL WHEN LENGTH(REGEXP_REPLACE(LOWER(funder_award_id), '[^a-z0-9]', '')) >= 4 THEN REGEXP_REPLACE(LOWER(funder_award_id), '[^a-z0-9]', '') ELSE LOWER(TRIM(funder_award_id)) END AS nk_g,
+         COUNT(DISTINCT id) AS n_awards
+  FROM openalex.awards.openalex_awards_raw
+  WHERE priority >= 3 AND funder_award_id IS NOT NULL
+  GROUP BY 1, 2
+),
 keyed AS (
   SELECT funder_id, funder_award_id, _n,
-    openalex.awards.award_norm_key(funder_id, funder_award_id, 'deposited') AS nk
+    openalex.awards.award_norm_key(funder_id, funder_award_id, 'deposited') AS nk,
+    CASE WHEN funder_award_id IS NULL THEN NULL WHEN LENGTH(REGEXP_REPLACE(LOWER(funder_award_id), '[^a-z0-9]', '')) >= 4 THEN REGEXP_REPLACE(LOWER(funder_award_id), '[^a-z0-9]', '') ELSE LOWER(TRIM(funder_award_id)) END AS nk_g
   FROM (SELECT funder_id, funder_award_id,
           regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
         FROM dep)
 ),
 scored AS (
-  SELECT k.funder_id, k.funder_award_id, k._n, k.nk, r.n_awards,
+  SELECT k.funder_id, k.funder_award_id, k._n, k.nk,
+    COALESCE(r.n_awards, rg.n_awards) AS n_awards,
     CASE
       WHEN k.funder_id = 4320321001 THEN (k._n rlike '(?<!\\d)\\d{8}(?!\\d)')
       WHEN k.funder_id = 4320332161 THEN (k._n rlike '[A-Z]\\d{2} ?-?[A-Z]{2} ?-?\\d{5,6}' or k._n rlike '^[A-Z]{2} ?-?\\d{5,6}')
@@ -113,6 +142,7 @@ scored AS (
     END AS grammar_pass
   FROM keyed k
   LEFT JOIN reg r ON r.funder_id = k.funder_id AND r.nk = k.nk
+  LEFT JOIN reg_g rg ON rg.funder_id = k.funder_id AND rg.nk_g = k.nk_g
 )
 SELECT funder_id, funder_award_id, nk, n_awards,
   CASE
@@ -127,3 +157,203 @@ SELECT funder_id, funder_award_id, nk, n_awards,
   END AS verdict,
   current_timestamp() AS scored_date
 FROM scored;
+
+-- ============================================================================
+-- Salvage chain (#690 guard, 2026-08-03 priority 1). Runs over garbage-verdict
+-- ids BEFORE any suppression. Three rescue steps:
+--   decorated_own_id  generic decoration strip -> re-key -> own-registry hit
+--                     (suffix _weak when the stripped form is a bare number at
+--                     a WEAK_BARE funder: minted but never merge material)
+--   multi_id_split    concatenated ids ("A123, B456"): split, score each part;
+--                     rescued when any part confirms or is plausible
+--   wrong_funder      DETECTION ONLY (re-link write = #624's): letter-bearing
+--                     ids that pass another funder's STRONG cross-grammar
+--                     (XGRAM: distinctive funder tokens only) AND hit that
+--                     funder's registry. Bare numerics are excluded by
+--                     construction (the 2026-08-03 foreign-numeric control
+--                     measured 15-40% coincidental hits on dense-numeric
+--                     registries), which also makes WEAK_BARE unreachable here.
+-- A salvage row exempts the id from suppression; it never changes minting or
+-- merging by itself.
+-- ============================================================================
+CREATE OR REPLACE TABLE openalex.awards.award_id_salvage
+USING delta
+AS
+WITH reg AS (
+  SELECT funder_id, nk, COUNT(DISTINCT id) AS n_awards FROM (
+    SELECT funder_id, id,
+      openalex.awards.award_norm_key(funder_id, funder_award_id, 'registry') AS nk
+    FROM openalex.awards.openalex_awards_raw
+    WHERE priority >= 3 AND funder_award_id IS NOT NULL
+  ) WHERE nk IS NOT NULL GROUP BY 1, 2
+),
+-- generic-key registry arm: S1/S2 rescue checks BOTH keys, mirroring the
+-- two-key alias/collapse machinery (same reasoning as in award_id_verdicts)
+reg_g AS (
+  SELECT funder_id, CASE WHEN funder_award_id IS NULL THEN NULL WHEN LENGTH(REGEXP_REPLACE(LOWER(funder_award_id), '[^a-z0-9]', '')) >= 4 THEN REGEXP_REPLACE(LOWER(funder_award_id), '[^a-z0-9]', '') ELSE LOWER(TRIM(funder_award_id)) END AS nk_g,
+         COUNT(DISTINCT id) AS n_awards
+  FROM openalex.awards.openalex_awards_raw
+  WHERE priority >= 3 AND funder_award_id IS NOT NULL
+  GROUP BY 1, 2
+),
+garbage AS (
+  SELECT funder_id, funder_award_id,
+    regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
+  FROM openalex.awards.award_id_verdicts WHERE verdict = 'garbage'
+),
+-- S1: decorated own-id (strip applied lead-then-trail-twice: "12345 (ABC).")
+stripped AS (
+  SELECT funder_id, funder_award_id, _n,
+    regexp_replace(regexp_replace(regexp_replace(_n,
+      '^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT)[ .:#°-]+|[#№(\\[]+ ?)+', ''), '([ .,;:)\\]]+|[ -]*\\(.*\\))$', ''), '([ .,;:)\\]]+|[ -]*\\(.*\\))$', '') AS s
+  FROM garbage
+),
+s1_keyed AS (
+  -- UDFs in projection only (Spark forbids them in JOIN ON / LATERAL VIEW)
+  SELECT funder_id, funder_award_id, s,
+    openalex.awards.award_norm_key(funder_id, s, 'deposited') AS s_nk,
+    CASE WHEN s IS NULL THEN NULL WHEN LENGTH(REGEXP_REPLACE(LOWER(s), '[^a-z0-9]', '')) >= 4 THEN REGEXP_REPLACE(LOWER(s), '[^a-z0-9]', '') ELSE LOWER(TRIM(s)) END AS s_nk_g,
+    openalex.awards.award_id_is_weak(funder_id, s) AS s_weak
+  FROM stripped WHERE s <> '' AND s <> _n
+),
+s1 AS (
+  SELECT k.funder_id, k.funder_award_id,
+    CASE WHEN k.s_weak THEN 'decorated_own_id_weak' ELSE 'decorated_own_id' END AS action,
+    k.funder_id AS target_funder_id,
+    COALESCE(r.nk, rg.nk_g) AS target_nk,
+    COALESCE(r.n_awards, rg.n_awards) AS n_awards,
+    k.s AS detail
+  FROM s1_keyed k
+  LEFT JOIN reg r ON r.funder_id = k.funder_id AND r.nk = k.s_nk
+  LEFT JOIN reg_g rg ON rg.funder_id = k.funder_id AND rg.nk_g = k.s_nk_g
+  WHERE COALESCE(r.nk, rg.nk_g) IS NOT NULL
+),
+-- S2: multi-id concat split
+multi AS (
+  SELECT funder_id, funder_award_id, _n FROM garbage
+  WHERE ((_n rlike '[,;&]') OR (_n rlike ' AND ') OR (_n rlike ' \\+ ')) AND _n rlike '[0-9]{3}'
+),
+parts0 AS (
+  SELECT funder_id, funder_award_id, TRIM(p) AS p0
+  FROM multi LATERAL VIEW EXPLODE(split(_n, '[,;&+]|\\bAND\\b')) AS p
+),
+parts AS (
+  SELECT funder_id, funder_award_id,
+    regexp_replace(regexp_replace(regexp_replace(p0,
+      '^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT)[ .:#°-]+|[#№(\\[]+ ?)+', ''), '([ .,;:)\\]]+|[ -]*\\(.*\\))$', ''), '([ .,;:)\\]]+|[ -]*\\(.*\\))$', '') AS part
+  FROM parts0 WHERE p0 <> ''
+),
+parts_keyed AS (
+  SELECT funder_id, funder_award_id, part,
+    openalex.awards.award_norm_key(funder_id, part, 'deposited') AS p_nk,
+    CASE WHEN part IS NULL THEN NULL WHEN LENGTH(REGEXP_REPLACE(LOWER(part), '[^a-z0-9]', '')) >= 4 THEN REGEXP_REPLACE(LOWER(part), '[^a-z0-9]', '') ELSE LOWER(TRIM(part)) END AS p_nk_g,
+    openalex.awards.award_id_is_weak(funder_id, part) AS p_weak,
+    CASE
+      WHEN funder_id = 4320321001 THEN (part rlike '(?<!\\d)\\d{8}(?!\\d)')
+      WHEN funder_id = 4320332161 THEN (part rlike '[A-Z]\\d{2} ?-?[A-Z]{2} ?-?\\d{5,6}' or part rlike '^[A-Z]{2} ?-?\\d{5,6}')
+      WHEN funder_id = 4320306076 THEN (part rlike '^([A-Z]{2,5}[ -]?)?\\d{7}$')
+      WHEN funder_id = 4320334764 THEN (part rlike '^(KAKENHI|JP|NO\\.?|GRANT)?[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$')
+      WHEN funder_id = 4320320879 THEN (part rlike '^(SFB|TRR|CRC|EXC|GRK|RTG|FOR|SPP|INST|NFDI|KFO|FZT) ?/?-?\\d+' or part rlike '^(DFG[ -])?[A-Z]{1,4} ?\\d{2,4}(/\\d+)?(-\\d+)?( .*)?$' or part rlike '(?<!\\d)\\d{9}(?!\\d)')
+      WHEN funder_id = 4320322795 THEN (regexp_replace(regexp_replace(part,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN funder_id = 4320320997 THEN (part rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)')
+      WHEN funder_id = 4320334779 THEN (part rlike '^[A-Z0-9 ./-]+$' and (part rlike '/' or part rlike '^\\d{4}\\.\\d{5}\\.'))
+      WHEN funder_id = 4320320300 THEN (part rlike '^(GA ?N?°? ?)?\\d{6}$' or part rlike '^101\\d{6}$' or part rlike '-CT-\\d{4}-' or part rlike '(FP[567]|H2020|HORIZON|MSCA|ERC|GA) ?N?°? ?-?\\d{6}')
+      WHEN funder_id = 4320334593 THEN (part rlike '^[A-Z]{3,7}[ /-]?\\d{4}[ -]?\\d{4,6}$' or part rlike '^[A-Z]{3,7}[ -]?\\d{4,6}([ -]?\\d{2,4})?$' or part rlike '^\\d{5,6}([ -]?\\d{2,4})?$')
+      WHEN funder_id = 4320320883 THEN (regexp_replace(part,' ','') rlike '(ANR-?)?\\d{2}-[A-Z0-9]{2,6}-\\d{4}')
+      WHEN funder_id = 4320320924 THEN (part rlike '^[0-9A-Z]{0,8}[_-]?\\d{4,6}$' or part rlike '^\\d{12}$')
+      WHEN funder_id = 4320311904 THEN (part rlike '^\\d{5,6}([/_ ][A-Z][/_ ]\\d{2}[/_ ][A-Z])?$')
+      WHEN funder_id = 4320334627 THEN (regexp_replace(part,' ','') rlike '^EP/[A-Z0-9]{6,7}/[0-9]$' or part rlike '^\\d{7}$')
+      WHEN funder_id = 2461203286 THEN (regexp_replace(regexp_replace(part,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN funder_id = 4320334506 THEN (part rlike '^#? ?(950[- ])?([A-Z]{2,4}[- ]?)?\\d{4,6}([-_]\\d+)?$')
+      WHEN funder_id = 4320306230 THEN (regexp_replace(part,' ','') rlike '^\\d{2}[A-Z]{2,10}\\d{4,9}$' or part rlike '^\\d{6,9}$')
+    END AS p_gram
+  FROM parts WHERE part <> ''
+),
+s2_scored AS (
+  SELECT p.funder_id, p.funder_award_id,
+    COUNT(*) AS n_parts,
+    SUM(CASE WHEN COALESCE(r.nk, rg.nk_g) IS NOT NULL AND NOT p.p_weak THEN 1 ELSE 0 END) AS n_confirmed_parts,
+    SUM(CASE WHEN COALESCE(r.nk, rg.nk_g) IS NULL AND p.p_gram AND NOT p.p_weak THEN 1 ELSE 0 END) AS n_plausible_parts
+  FROM parts_keyed p
+  LEFT JOIN reg r ON r.funder_id = p.funder_id AND r.nk = p.p_nk
+  LEFT JOIN reg_g rg ON rg.funder_id = p.funder_id AND rg.nk_g = p.p_nk_g
+  GROUP BY 1, 2
+),
+s2 AS (
+  SELECT funder_id, funder_award_id, 'multi_id_split' AS action,
+    funder_id AS target_funder_id, CAST(NULL AS STRING) AS target_nk,
+    n_confirmed_parts AS n_awards,
+    CONCAT('parts=', n_parts, ' confirmed=', n_confirmed_parts,
+           ' plausible=', n_plausible_parts) AS detail
+  FROM s2_scored
+  WHERE n_confirmed_parts >= 1 OR n_plausible_parts >= 1
+),
+-- S3: wrong-funder detection. Letter-bearing ids only (bare numerics excluded
+-- by the foreign-numeric control), and the claim requires the target funder's
+-- STRONG cross-grammar (XGRAM): funders without a distinctive lettered token
+-- structure (NSFC, SNSF) are not cross-targets at all — their generic `gram`
+-- fields accept non-self-identifying strings and produced tens of thousands
+-- of coincidental hits against dense numeric registries in the first build.
+wf0 AS (
+  SELECT g.funder_id, g.funder_award_id, g._n, t.t_fid
+  FROM (SELECT * FROM garbage WHERE _n rlike '[A-Z]') g
+  CROSS JOIN (SELECT explode(array(4320332161,4320306076,4320334764,4320320879,4320322795,2461203286,4320320997,4320334779,4320320300,4320334593,4320320883,4320311904,4320334627,4320334506,4320306230)) AS t_fid) t
+  WHERE t.t_fid <> g.funder_id
+),
+wf_keyed AS (
+  SELECT funder_id, funder_award_id, t_fid,
+    openalex.awards.award_norm_key(t_fid, funder_award_id, 'deposited') AS f_nk,
+    CASE
+      WHEN t_fid = 4320332161 THEN (_n rlike '(^|[^A-Z0-9])[A-Z]\\d{2}[ -]?[A-Z]{2}[ -]?\\d{5,6}([^0-9]|$)' or _n rlike '^[A-Z]{2}[ -]?\\d{6}$')
+      WHEN t_fid = 4320306076 THEN (_n rlike '^[A-Z]{2,5}[ -]\\d{7}$')
+      WHEN t_fid = 4320334764 THEN (_n rlike '^(KAKENHI|JP)[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$' or _n rlike '^\\d{2}[A-Z]\\d{5}$')
+      WHEN t_fid = 4320320879 THEN (_n rlike '^(SFB|TRR|CRC|EXC|GRK|RTG|FOR|SPP|INST|NFDI|KFO|FZT) ?/?-?\\d+')
+      WHEN t_fid = 4320322795 THEN (regexp_replace(regexp_replace(_n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN t_fid = 2461203286 THEN (regexp_replace(regexp_replace(_n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN t_fid = 4320320997 THEN (_n rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)')
+      WHEN t_fid = 4320334779 THEN (_n rlike '^[A-Z0-9 ./-]+$' and _n rlike '[A-Z]' and _n rlike '/')
+      WHEN t_fid = 4320320300 THEN (_n rlike '-CT-\\d{4}-' or _n rlike '(FP[567]|H2020|HORIZON|MSCA|ERC|GA) ?N?°? ?-?\\d{6}')
+      WHEN t_fid = 4320334593 THEN (_n rlike '^(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|SAPIN)[ -/]?\\d{4}[ -]?\\d{4,6}$')
+      WHEN t_fid = 4320320883 THEN (regexp_replace(_n,' ','') rlike '(ANR-?)?\\d{2}-[A-Z0-9]{2,6}-\\d{4}')
+      WHEN t_fid = 4320311904 THEN (_n rlike '^\\d{5,6}[/_ ][A-Z][/_ ]\\d{2}[/_ ][A-Z]$')
+      WHEN t_fid = 4320334627 THEN (regexp_replace(_n,' ','') rlike '^EP/[A-Z0-9]{6,7}/[0-9]$')
+      WHEN t_fid = 4320334506 THEN (_n rlike '^#? ?(950|MOP|PJT|FDN|FRN|CIHR)[- ]?\\d{4,6}([-_]\\d+)?$')
+      WHEN t_fid = 4320306230 THEN (regexp_replace(_n,' ','') rlike '^\\d{2}[A-Z]{2,10}\\d{4,9}$')
+    END AS f_gram
+  FROM wf0
+),
+s3 AS (
+  SELECT k.funder_id, k.funder_award_id, 'wrong_funder' AS action,
+    k.t_fid AS target_funder_id, r.nk AS target_nk, r.n_awards,
+    CAST(NULL AS STRING) AS detail
+  FROM (SELECT * FROM wf_keyed WHERE f_gram) k
+  JOIN reg r ON r.funder_id = k.t_fid AND r.nk = k.f_nk
+)
+SELECT funder_id, funder_award_id, action, target_funder_id, target_nk,
+       n_awards AS n_registry_awards, detail,
+       current_timestamp() AS created_date
+FROM (SELECT * FROM s1 UNION ALL SELECT * FROM s2 UNION ALL SELECT * FROM s3);
+
+-- ============================================================================
+-- Guard decision table — the single checkpoint the three covered ingest legs
+-- (CreateCrossrefWorkFunders / CreateEuropePmcWorkFunders /
+-- CreateDataCiteWorkFunders) consume at mint time. One row per scored
+-- (funder_id, funder_award_id). suppress = garbage with no salvage rescue.
+-- Ids ABSENT from this table (new since the last scoring run) mint fail-open.
+-- ============================================================================
+CREATE OR REPLACE TABLE openalex.awards.award_id_guard
+USING delta
+AS
+SELECT v.funder_id, v.funder_award_id, v.verdict,
+  CASE WHEN v.verdict = 'garbage' AND s.actions IS NULL
+       THEN 'suppress' ELSE 'mint' END AS decision,
+  CASE WHEN v.verdict <> 'garbage' THEN v.verdict
+       WHEN s.actions IS NOT NULL THEN CONCAT('salvaged:', s.actions)
+       ELSE 'garbage_unsalvaged' END AS reason,
+  current_timestamp() AS created_date
+FROM openalex.awards.award_id_verdicts v
+LEFT JOIN (
+  SELECT funder_id, funder_award_id,
+         array_join(array_sort(collect_set(action)), '+') AS actions
+  FROM openalex.awards.award_id_salvage GROUP BY 1, 2
+) s ON s.funder_id = v.funder_id AND s.funder_award_id = v.funder_award_id;

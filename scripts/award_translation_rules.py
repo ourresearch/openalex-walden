@@ -134,6 +134,73 @@ FUNDERS = {
 
 XREF = "('crossref_work_funders','crossref_work.grants','crossref_work')"
 
+# ---- Salvage-chain constants (#690 guard; classification ported from
+# ---- 690-audit/classify.py — keep in lockstep) ----
+# Generic decorations the sharp deposited-side keys don't strip, applied to the
+# normalized (upper/trim/unicode-cleaned) form. Leading words require >=1
+# separator so prefixes of real tokens ("NOVO...") survive; a corrupted strip
+# is harmless anyway because rescue still requires a registry hit.
+DECOR_LEAD = (r"^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP"
+              r"|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT)"
+              r"[ .:#°-]+|[#№(\\[]+ ?)+")
+DECOR_TRAIL = r"([ .,;:)\\]]+|[ -]*\\(.*\\))$"
+# multi-id concat detection + split (mirrors classify.py CLS 'multi_id' arm)
+MULTI_DETECT = ("((_n rlike '[,;&]') OR (_n rlike ' AND ') OR (_n rlike ' \\\\+ '))"
+                " AND _n rlike '[0-9]{3}'")
+MULTI_SPLIT = r"[,;&+]|\\bAND\\b"
+
+# STRONG cross-grammars for wrong-funder detection (S3) — measured lesson
+# 2026-08-03: the per-funder `gram` fields are calibrated for ids ALREADY
+# attributed to that funder; several (SNSF '^[0-9A-Z]{0,8}[_-]?\d{4,6}$',
+# CIHR/NSERC any-letter-prefix arms) accept strings with no funder-specific
+# token, and against dense numeric registries that yields tens of thousands
+# of coincidental "detections" (first build: 23.7k NSFC ids "belonging to"
+# SNSF). Claiming an id for ANOTHER funder therefore requires the funder's
+# DISTINCTIVE token structure below. Funders with no distinctive lettered
+# form (NSFC bare 8-digit, SNSF bare serials) cannot be cross-targets: absent
+# here = excluded from S3. Philosophy + several patterns = classify.py OF_PAT.
+XGRAM = {
+  # NIH activity-code form (classify.py NIH_PAT) + bare institute+serial
+  4320332161: (r"norm rlike '(^|[^A-Z0-9])[A-Z]\\d{2}[ -]?[A-Z]{2}[ -]?\\d{5,6}([^0-9]|$)'"
+               r" or norm rlike '^[A-Z]{2}[ -]?\\d{6}$'"),
+  # NSF: division-prefixed 7-digit, separator REQUIRED — concatenated forms
+  # ("AC2019004", "AF0710020") are dominated by Asian program codes whose
+  # trailing yy+serial digits coincidentally form valid NSF numbers (measured
+  # in the NSFC->NSF flow of the second build); "ACI-1053575"/"ACI 1626217"
+  # style survives. Concatenated true NSF cites ("DMS0819762") are a known
+  # recall sacrifice.
+  4320306076: r"norm rlike '^[A-Z]{2,5}[ -]\\d{7}$'",
+  # KAKEN: JP/KAKENHI prefix, or the yy[A-Z]ddddd core (letter is structural)
+  4320334764: (r"norm rlike '^(KAKENHI|JP)[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$'"
+               r" or norm rlike '^\\d{2}[A-Z]\\d{5}$'"),
+  # DFG: programme-prefixed forms only
+  4320320879: r"norm rlike '^(SFB|TRR|CRC|EXC|GRK|RTG|FOR|SPP|INST|NFDI|KFO|FZT) ?/?-?\\d+'",
+  # MOST/NSTC Taiwan: distinctive ddddddd[A-Z]dddddd core, prefixed or not
+  4320322795: (r"regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','')"
+               r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"),
+  2461203286: (r"regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','')"
+               r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"),
+  # FAPESP: NN/NNNNN-N shape is unique to it
+  4320320997: r"norm rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)'",
+  # FCT: slash-path grant refs (registry strings are long paths; exact-ish join)
+  4320334779: r"norm rlike '^[A-Z0-9 ./-]+$' and norm rlike '[A-Z]' and norm rlike '/'",
+  # EC: framework-token or CT-era forms only (bare 6/9-digit arms dropped)
+  4320320300: (r"norm rlike '-CT-\\d{4}-'"
+               r" or norm rlike '(FP[567]|H2020|HORIZON|MSCA|ERC|GA) ?N?°? ?-?\\d{6}'"),
+  # NSERC: programme-code-prefixed modern forms only (classify.py used ^RGPIN)
+  4320334593: r"norm rlike '^(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|SAPIN)[ -/]?\\d{4}[ -]?\\d{4,6}$'",
+  # ANR: dd-TOKEN-dddd chassis (with or without ANR prefix)
+  4320320883: r"regexp_replace(norm,' ','') rlike '(ANR-?)?\\d{2}-[A-Z0-9]{2,6}-\\d{4}'",
+  # Wellcome: full nnnnnn/L/nn/L citable form only
+  4320311904: r"norm rlike '^\\d{5,6}[/_ ][A-Z][/_ ]\\d{2}[/_ ][A-Z]$'",
+  # EPSRC: EP/xxxxxxx/n council form only
+  4320334627: r"regexp_replace(norm,' ','') rlike '^EP/[A-Z0-9]{6,7}/[0-9]$'",
+  # CIHR: CIHR-specific program tokens only (NOT any 2-4 letter prefix)
+  4320334506: r"norm rlike '^#? ?(950|MOP|PJT|FDN|FRN|CIHR)[- ]?\\d{4,6}([-_]\\d+)?$'",
+  # AHA: yy + programme letters + serial
+  4320306230: r"regexp_replace(norm,' ','') rlike '^\\d{2}[A-Z]{2,10}\\d{4,9}$'",
+}
+
 def summary_sql(name, f):
     norm_x = NORM.format(c="funder_award_id")
     return f"""

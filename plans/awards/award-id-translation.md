@@ -28,6 +28,38 @@ confirmed 775,931 · confirmed_weak 101,075 · confirmed_ambiguous / plausible /
 unscored. Weak forms are labeled weak regardless of registry hit count (checked before the
 family split).
 
+## Guard + salvage (2026-08-03 priority-1 build)
+
+`award_id_verdicts` now uses a TWO-KEY registry check (generic + sharp, mirroring
+the alias/collapse machinery exactly — single-COALESCE checking mis-scored 2,848
+generic-collapsing ids as garbage, caught by the collapse-safety gate) and sources
+deposited ids from the PRE-GUARD junction tables (raw-sourcing would oscillate
+once the guard suppresses minting).
+
+`award_id_salvage` — three rescue steps over garbage-verdict ids, before any
+suppression: **decorated_own_id** (generic decoration strip → re-key → own
+registry; `_weak` variant flagged), **multi_id_split** (split concats, score
+parts; rescued when ≥1 part confirms or is plausible), **wrong_funder**
+(DETECTION ONLY — re-link write is #624's; letter-bearing ids passing another
+funder's STRONG cross-grammar `XGRAM` + registry hit. Generic per-funder `gram`
+fields are NOT usable cross-funder: SNSF/CIHR/NSERC-style loose arms produced
+tens of thousands of coincidental hits against dense numeric registries; NSFC
+and SNSF have no distinctive lettered form and are excluded as targets).
+
+`award_id_guard` — the single checkpoint the three covered legs
+(CreateCrossrefWorkFunders / CreateEuropePmcWorkFunders /
+CreateDataCiteWorkFunders) consume at mint time via one identical LEFT-JOIN
+CTE. `suppress` = garbage with no salvage rescue; everything else, all
+unscored funders, and ids absent from the table mint fail-open.
+
+Dev rehearsal 2026-08-03 (openalex_dev.rohan_lab): verdicts reconcile
+(confirmed 781,679 / weak 101,156 / garbage 552,845; junction-sourced dep
+byte-equal to raw for the covered legs); salvage = 21,380 multi-id + 13,646
+wrong-funder + 6,112 decorated; guard = 511,837 suppress / 9,982,415 mint;
+anchors 35/35 mint; suppressed ∩ alias-collapse = **0**; leg pre-guard counts
+== raw provenance counts exactly (8,427,335 / 5,402,568 / 149,820), post-guard
+suppression 5.4% / 3.7% / 3.1% of minted rows.
+
 ## Known deferrals
 
 - F10: NIH institute-level funder ids don't get the NIH rule; supplement/subproject

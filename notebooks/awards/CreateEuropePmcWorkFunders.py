@@ -174,6 +174,20 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC   LATERAL VIEW EXPLODE(award_ids) AS award_id
 # MAGIC   WHERE SIZE(award_ids) > 0
 # MAGIC ),
+# MAGIC -- #690 verdict-consuming guard: ids scored 'garbage' for a configured funder
+# MAGIC -- with NO salvage rescue (decorated own-id / multi-id split / wrong-funder
+# MAGIC -- detection) do not mint award entities. Fail-open by design: ids with no
+# MAGIC -- guard row (new since the last AwardNormKey scoring run, or at unconfigured
+# MAGIC -- funders -> verdict 'unscored' -> decision 'mint') mint exactly as before.
+# MAGIC -- Ordering: openalex.awards.award_id_guard (AwardNormKey.sql) must exist
+# MAGIC -- before this leg first runs with the guard in place.
+# MAGIC guarded AS (
+# MAGIC   SELECT e.funder_id, e.normalized_award_id, e.funder_award_id
+# MAGIC   FROM exploded e
+# MAGIC   LEFT JOIN openalex.awards.award_id_guard g
+# MAGIC     ON g.funder_id = e.funder_id AND g.funder_award_id = e.funder_award_id
+# MAGIC   WHERE COALESCE(g.decision, 'mint') <> 'suppress'
+# MAGIC ),
 # MAGIC funders AS (SELECT funder_id, display_name, ror_id, doi FROM openalex.mid.funder)
 # MAGIC SELECT
 # MAGIC   ABS(XXHASH64(CONCAT(f.funder_id, ':', e.normalized_award_id))) % 9000000000 AS id,
@@ -195,7 +209,7 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC   openalex.common.extract_grant_doi(e.funder_award_id) AS doi,
 # MAGIC   CONCAT('https://api.openalex.org/works?filter=awards.id:G', ABS(XXHASH64(CONCAT(f.funder_id, ':', e.normalized_award_id))) % 9000000000) AS works_api_url,
 # MAGIC   CURRENT_TIMESTAMP() AS created_date, CURRENT_TIMESTAMP() AS updated_date
-# MAGIC FROM exploded e JOIN funders f ON f.funder_id = e.funder_id;
+# MAGIC FROM guarded e JOIN funders f ON f.funder_id = e.funder_id;
 
 # COMMAND ----------
 
@@ -208,6 +222,19 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC %sql
 # MAGIC INSERT INTO openalex.awards.openalex_awards_raw
 # MAGIC SELECT *, 0 AS priority FROM europepmc_work_funder_awards;
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC -- #690 guard telemetry: how many junction award ids the checkpoint suppressed
+# MAGIC -- this run (verdict 'garbage', no salvage rescue). Expect a stable-ish number;
+# MAGIC -- a jump means a scoring or registry regression upstream.
+# MAGIC SELECT COUNT(*) AS suppressed_ids, COUNT(DISTINCT j.funder_id) AS funders_hit
+# MAGIC FROM (SELECT DISTINCT funder_id, aid AS funder_award_id
+# MAGIC       FROM openalex.awards.europepmc_work_funders LATERAL VIEW EXPLODE(award_ids) AS aid) j
+# MAGIC JOIN openalex.awards.award_id_guard g
+# MAGIC   ON g.funder_id = j.funder_id AND g.funder_award_id = j.funder_award_id
+# MAGIC WHERE g.decision = 'suppress';
 
 # COMMAND ----------
 
