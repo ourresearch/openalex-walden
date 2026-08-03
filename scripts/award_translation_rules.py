@@ -237,6 +237,12 @@ S3_NUMERIC_CHASSIS = r"(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)"
 # (NCN), "PROBRAL - 88887.283886/2018-00" (CAPES), 16/16 sampled real.
 # Transform-based xkeys (MOST/NSTC/FCT/EPSRC/AHA strip-space) fire on ANY
 # string and are excluded — membership here would neuter their suppression.
+# DHHS is ALSO excluded (pass-4 follow-up): NIH activity codes syntactically
+# fit the TAGGS shape ([A-Z][A-Z0-9]{4}\d{6}), so a fired TAGGS extraction is
+# NOT evidence-of-DHHS — membership reclassified ~31k NIH-under-DHHS ids as
+# DHHS-plausible and hid them from wrong-funder detection (#624 feed dropped
+# 40,290 -> 9,071). Real DHHS ids stay protected by registry-hit, gram
+# (NIH-shape-excluding), and the salvage chain.
 EXTRACTIVE_FIDS = {
   4320321001,  # NSFC
   4320332161,  # NIH
@@ -250,7 +256,6 @@ EXTRACTIVE_FIDS = {
   4320320924,  # SNSF
   4320311904,  # WELLCOME
   4320334506,  # CIHR
-  4320306085,  # DHHS
   4320321091,  # CAPES
   4320322511,  # NCN
 }

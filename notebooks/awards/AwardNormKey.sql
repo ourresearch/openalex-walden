@@ -142,7 +142,6 @@ keyed AS (
       WHEN funder_id = 4320334506 THEN ((CAST(CAST(NULLIF(regexp_extract(regexp_replace(regexp_replace(_n,'^[#]+ ?',''),'^(950[- ]|[A-Z]{2,4}[- ]?)',''),'^(\\d{4,6})([-_]\\d+)?$',1),'') AS BIGINT) AS STRING)) IS NOT NULL)
       WHEN funder_id = 4320321091 THEN ((NULLIF(regexp_extract(regexp_replace(_n,' ',''),'(8888\\d\\.\\d{6}/\\d{4}-\\d{2})', 1), '')) IS NOT NULL)
       WHEN funder_id = 4320322511 THEN ((NULLIF(regexp_extract(regexp_replace(_n,' ',''),'(20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5})', 1), '')) IS NOT NULL)
-      WHEN funder_id = 4320306085 THEN ((NULLIF(regexp_extract(regexp_replace(_n,'[ -]',''),'([A-Z][A-Z0-9]{4}\\d{6}|(?<!\\d)\\d{2}[A-Z][A-Z0-9]\\d{4,5}(?!\\d))', 1), '')) IS NOT NULL)
       ELSE FALSE END AS sk_fired
   FROM (SELECT funder_id, funder_award_id,
           regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
