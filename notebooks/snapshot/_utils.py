@@ -3,15 +3,14 @@
 # quarterly releases additionally sync to the public bucket).
 # %run'd by all notebooks/snapshot/export_*.ipynb.
 #
-# Output layout (mirrors notebooks/changefiles/daily/_utils.py shape):
+# Output layout:
 #   s3://openalex-snapshots/full/{date}/jsonl/{entity}/updated_date=*/part_NNNN.gz
 #   s3://openalex-snapshots/full/{date}/parquet/{entity}/updated_date=*/part_NNNN.parquet
-#     (snappy-compressed, but named `.parquet` to match daily-changefiles convention)
+#     (snappy-compressed)
 #   s3://openalex-snapshots/full/{date}/_meta/{format}/{entity}.json   # consumed by update_meta
 #
 # Snapshot scale (works ~500M, authors ~110M) means we keep updated_date partitioning
-# and produce many per-partition part files per entity per format — unlike the daily
-# changefile which collapses to one merged file per entity.
+# and produce many per-partition part files per entity per format.
 
 import json
 import threading
@@ -127,8 +126,7 @@ def _rename_partitions(dbutils, output_path: str, match_extension: str,
     `match_extension` is the suffix Spark writes (e.g. "gz", "snappy.parquet").
     `target_extension` is the suffix we want on disk (defaults to match_extension).
     For parquet we pass match="snappy.parquet" / target="parquet" so files end up
-    named `part_NNNN.parquet` even though they're snappy-compressed — matching the
-    daily-changefiles convention.
+    named `part_NNNN.parquet` even though they're snappy-compressed.
 
     All moves run on one flat thread pool (no per-partition serialization), using
     boto3 server-side copies when credentials allow. Any failed move raises so a
@@ -394,7 +392,7 @@ def export_partitioned_parquet(spark, dbutils, df: DataFrame, date_str: str, ent
 
     Same salting logic as JSONL for large entities. Output:
       {S3_BASE}/{date}/parquet/{entity}/updated_date=*/part_NNNN.parquet
-    (snappy-compressed; the `.snappy.` suffix is dropped to match daily changefiles)
+    (snappy-compressed; the `.snappy.` suffix is dropped from filenames)
     """
     # Force INT64 microsecond encoding. Spark's default (INT96) is deprecated,
     # and `F.to_timestamp(...)` on Spark 4 / DBR 16.x can produce INT64 nanoseconds
@@ -476,7 +474,7 @@ def export_partitioned_all_formats(spark, dbutils, df: DataFrame, date_str: str,
     forcing a full memory/disk materialization up front.
 
     `abstract_inverted_index`, when present and stored as a JSON string, is parsed
-    to a MapType for the JSONL writer (matching the daily-changefile behavior).
+    to a MapType for the JSONL writer.
     Parquet keeps the raw schema unchanged.
     """
     if "_rescued_data" in df.columns:

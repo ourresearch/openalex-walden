@@ -143,8 +143,7 @@ except Exception as e:
 # Staging-read credentials. boto3's default chain has NO access to the staging
 # bucket on these clusters — dbutils/S3A read it via Databricks-managed creds that
 # boto3 does not share, and no EC2 instance profile is attached. Read staging with
-# the explicit "webscraper" keys, the same scope the daily changefiles job uses for
-# boto3 access to s3://openalex-snapshots.
+# the explicit "webscraper" keys, which have boto3 access to s3://openalex-snapshots.
 staging_access_key = dbutils.secrets.get("webscraper", "aws_access_key_id")
 staging_secret_key = dbutils.secrets.get("webscraper", "aws_secret_access_key")
 staging_client = boto3.client(

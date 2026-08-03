@@ -53,7 +53,6 @@ include:
   - jobs/walden_end2end.yaml
   - jobs/wunpaywall_weekly_data_feed.yaml
   - jobs/snapshot_full.yaml
-  - jobs/daily_changefiles.yaml
   - jobs/topics.yaml
   - jobs/sdg_frontfill.yaml
   - jobs/award_topics.yaml

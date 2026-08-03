@@ -286,11 +286,6 @@ resources:
               guardrails_override: "{{job.parameters.guardrails_override}}"
               env_suffix: "{{job.parameters.env_suffix}}"
             source: GIT
-        - task_key: Daily_Changefiles
-          depends_on:
-            - task_key: Guardrails
-          run_job_task:
-            job_id: ${resources.jobs.Daily_Changefiles.id}
         - task_key: Full_Snapshot
           depends_on:
             - task_key: Guardrails
