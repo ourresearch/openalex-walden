@@ -148,6 +148,22 @@ FUNDERS = {
     gram=r"(regexp_replace(norm,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$'"
          r" or regexp_replace(norm,' ','') rlike '^(BEX|PDSE|PNPD|PROEX|DS|AUX)-?\\d{3,7}([-/.]\\d{1,4}){0,3}$'"
          r" or norm rlike '^\\d{1,4}/(19|20)\\d{2}$')"),
+  "NCN": dict(fid=4320322511,
+    # derived 2026-08-03 (worklist #20): registry = internal edition_CALL_serial
+    # codes (17_OPUS_10000) with NO citable reference anywhere in the row —
+    # the world cites the UMO registration number (2018/29/B/HS1/02676,
+    # optionally UMO-/DEC- prefixed). projekty.ncn.gov.pl publishes the UMO
+    # number, so NCN joins the rescrape/citable-ref list (like CAPES). Keys
+    # target the UMO core so matching lights up post-rescrape. gram also
+    # accepts inherited MNiSW 'N Ndddd dddddd' grants. NAWA (PPN/...), EU
+    # POWER (POWR....), EUREKA (E!...) deposits = garbage here, correctly.
+    # Measured (crossref door): grammar 75.2% / fail 24.8%.
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'^(20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5})$', 1), '')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'(20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5})', 1), '')",
+    gram=r"(regexp_replace(norm,' ','') rlike '^(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}$'"
+         r" or norm rlike '^N ?N[A-Z]?\\d{3} ?\\d{6}$')"),
   "DHHS": dict(fid=4320306085,
     # derived 2026-08-03 (worklist #18): registry = hhs_taggs (964 ids), two
     # shapes: 5-alnum-starting-letter + 6 digits (CPIMP151089, TP1AH000086,
@@ -239,6 +255,9 @@ XGRAM = {
   # CAPES: process-number chassis (inert until the hash-id registry gets
   # citable refs — S3 requires a registry hit; future-proofing)
   4320321091: r"regexp_replace(norm,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$'",
+  # NCN: UMO chassis (inert until the internal-code registry gets citable
+  # refs; slash-structured so the S3 letter filter admits it)
+  4320322511: r"regexp_replace(norm,' ','') rlike '(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}'",
   # FCT: slash-path grant refs (registry strings are long paths; exact-ish join)
   4320334779: r"norm rlike '^[A-Z0-9 ./-]+$' and norm rlike '[A-Z]' and norm rlike '/'",
   # EC: framework-token or CT-era forms only (bare 6/9-digit arms dropped)
