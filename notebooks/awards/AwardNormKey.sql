@@ -21,7 +21,7 @@ SELECT COALESCE(
       WHEN funder_id = 4320334593 THEN (CAST(CAST(COALESCE(NULLIF(regexp_extract(_n, '^(\\d{1,6})-\\d{4}$', 1), ''), NULLIF(regexp_extract(_n, '^[A-Z]+-\\d{4}-(\\d{4,6})$', 1), '')) AS BIGINT) AS STRING))
       WHEN funder_id = 4320320883 THEN (CASE WHEN NULLIF(regexp_extract(_n, '^ANR-(\\d{2})-([A-Z0-9]{2,6})-(\\d{4})', 1), '') IS NOT NULL THEN CONCAT(regexp_extract(_n,'^ANR-(\\d{2})-([A-Z0-9]{2,6})-(\\d{4})',1),'-',regexp_extract(_n,'^ANR-(\\d{2})-([A-Z0-9]{2,6})-(\\d{4})',2),'-',regexp_extract(_n,'^ANR-(\\d{2})-([A-Z0-9]{2,6})-(\\d{4})',3)) END)
       WHEN funder_id = 4320320924 THEN (CAST(CAST(NULLIF(regexp_extract(_n, '^(\\d{1,6})$', 1), '') AS BIGINT) AS STRING))
-      WHEN funder_id = 4320311904 THEN (LPAD(NULLIF(regexp_extract(_n, '360G-WELLCOME-(\\d{5,6})', 1), ''),6,'0'))
+      WHEN funder_id = 4320311904 THEN (LPAD(COALESCE(NULLIF(regexp_extract(_n, '360G-WELLCOME-(\\d{5,6})', 1), ''), NULLIF(regexp_extract(_n, '^(\\d{5,6})(?:[/_ ][A-Z](?:[/_ ]\\d{2})?([/_ ][A-Z])?)?$', 1), '')),6,'0'))
       WHEN funder_id = 4320334627 THEN (NULLIF(regexp_replace(_n,' ',''),''))
       WHEN funder_id = 4320306230 THEN (NULLIF(regexp_replace(_n,' ',''),''))
     END
