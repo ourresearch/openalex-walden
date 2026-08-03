@@ -40,7 +40,7 @@ pmod = int(sys.argv[2])
 keys = "(" + sys.argv[3] + ")"
 num_shards = int(sys.argv[4])
 max_workers = sys.argv[5] if len(sys.argv) > 5 else "640"
-predicate = FAMILY_PREDICATES.get(family) if family not in ('remaining_doi', 'remaining_nondoi', 'backfill_pmh') else None
+predicate = FAMILY_PREDICATES.get(family) if family not in ('remaining_doi', 'remaining_nondoi', 'backfill_pmh', 'excluded_dois') else None
 
 w = WorkspaceClient(profile="DEFAULT")
 
@@ -99,7 +99,38 @@ if n != 0:
     raise SystemExit(1)
 
 log(f"enqueueing {family} PMOD-{pmod} keys {keys}...")
-if family == "backfill_pmh":
+if family == "excluded_dois":
+    # Re-test of the #508-era exclusions (book DOIs 978-/979-, SSRN 10.2139, Thieme):
+    # parsers have been rebuilt since June — pilot first, then full run if clean.
+    enqueue_sql = rf"""
+INSERT INTO openalex.parseland.reparse_queue (native_id, native_id_namespace, created_date)
+SELECT doi, 'doi', current_timestamp()
+FROM (
+  SELECT DISTINCT u.doi
+  FROM (
+    SELECT lower(regexp_replace(native_id, '^https?://(dx\\.)?doi\\.org/', '')) AS doi
+    FROM openalex.landing_page.landing_page_works_backfill
+    WHERE native_id LIKE '%doi.org/%' AND array_contains(ids.namespace, 'html.gz')
+    UNION
+    SELECT lower(native_id)
+    FROM openalex.taxicab.taxicab_results
+    WHERE taxicab_id IS NOT NULL AND content_type LIKE '%html%' AND native_id_namespace = 'doi'
+  ) u
+  LEFT ANTI JOIN (
+    SELECT DISTINCT lower(native_id) AS doi
+    FROM openalex.parseland.parsed_pages
+    WHERE parsed_date >= '2026-07-27T20:40:00Z' AND parsed_date < '2027-01-01'
+      AND native_id_namespace = 'doi'
+  ) p ON u.doi = p.doi
+  LEFT JOIN openalex.crossref.crossref_works c ON u.doi = lower(c.native_id)
+  WHERE (u.doi LIKE '10.2139/%'
+      OR u.doi LIKE '%/978-%'
+      OR u.doi LIKE '%/979-%'
+      OR COALESCE(c.publisher, '') = 'Georg Thieme Verlag KG')
+    AND PMOD(HASH(u.doi), {pmod}) IN {keys}
+)
+"""
+elif family == "backfill_pmh":
     # Repo-side backfill reachable only via the pmh bridge (parseland.ipynb arm (c)).
     # Enqueue the pmh id itself; the resolver joins it to ids[namespace='pmh'] and uses the
     # backfill record's own native_id as the url. Anti-join on (native_id, namespace) so
