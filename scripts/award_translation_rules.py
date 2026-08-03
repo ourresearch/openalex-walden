@@ -23,10 +23,18 @@ def ex(pattern, src="norm", grp=1):
     return f"NULLIF(regexp_extract({src}, '{pattern}', {grp}), '')"
 
 FUNDERS = {
+  # review pass-4 F3: (a) U-series joint-fund ids (U2243213) are REGISTRY-
+  # ATTESTED (407 U\d{7} ids in the NSFC registry) — added to all three
+  # fields; (b) spaced deposits ("51 708 106") die because NORM keeps single
+  # spaces — xkey/gram get a strip-space arm (8-digit-exact runs only, so
+  # stripping can't conjure an id out of shorter fragments).
   "NSFC": dict(fid=4320321001,
-    rkey=ex(r"^(\\d{8})$"),
-    xkey=ex(r"(?<!\\d)(\\d{8})(?!\\d)"),
-    gram=r"norm rlike '(?<!\\d)\\d{8}(?!\\d)'"),
+    rkey=ex(r"^(U?\\d{7,8})$"),
+    xkey=f"COALESCE({ex(r'(?<![A-Z0-9])(U\\d{7})(?!\\d)')}, "
+         f"{ex(r'(?<!\\d)(\\d{8})(?!\\d)')}, "
+         f"""{ex(r'(?<!\\d)(\\d{8})(?!\\d)', src="regexp_replace(norm,' ','')")})""",
+    gram=r"norm rlike '(?<!\\d)\\d{8}(?!\\d)' or norm rlike '(?<![A-Z0-9])U\\d{7}(?!\\d)'"
+         r" or regexp_replace(norm,' ','') rlike '(?<!\\d)\\d{8}(?!\\d)'"),
   "NIH": dict(fid=4320332161,
     rkey=ex(r"([A-Z]{2}\\d{6})"),
     xkey=f"CASE WHEN {ex(r'([A-Z]{2}) ?-?(\\d{5,6})(?!\\d)')} IS NOT NULL THEN "
@@ -37,10 +45,13 @@ FUNDERS = {
     rkey=ex(r"^(\\d{7})$"),
     xkey=ex(r"(?<!\\d)(\\d{7})(?!\\d)"),
     gram=r"norm rlike '^([A-Z]{2,5}[ -]?)?\\d{7}$'"),
+  # review pass-4 F5: spaced cores ("23 K22132") get a strip-space fallback arm
   "KAKEN": dict(fid=4320334764,
     rkey=ex(r"^(\\d{2}[A-Z]\\d{5}|\\d{8})$"),
-    xkey=ex(r"^(?:KAKENHI|JP|NO\\.?|GRANT)?[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$"),
-    gram=r"norm rlike '^(KAKENHI|JP|NO\\.?|GRANT)?[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$'"),
+    xkey=f"COALESCE({ex(r'^(?:KAKENHI|JP|NO\\.?|GRANT)?[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$')}, "
+         f"""{ex(r'^(?:KAKENHI|JP|NO\\.?|GRANT)?(\\d{2}[A-Z]\\d{5}|\\d{8})$', src="regexp_replace(norm,' ','')")})""",
+    gram=r"norm rlike '^(KAKENHI|JP|NO\\.?|GRANT)?[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$'"
+         r" or regexp_replace(norm,' ','') rlike '^(KAKENHI|JP|NO\\.?|GRANT)?(\\d{2}[A-Z]\\d{5}|\\d{8})$'"),
   "DFG": dict(fid=4320320879,
     rkey=ex(r"^(\\d{9})$"),
     xkey=ex(r"(?<!\\d)(\\d{9})(?!\\d)"),
@@ -106,10 +117,13 @@ FUNDERS = {
          f"{ex(r'^(\\d{5,6})(?:[/_ ][A-Z](?:[/_ ]\\d{2})?([/_ ][A-Z])?)?$')}),6,'0')",
     xkey=f"LPAD({ex(r'^(\\d{5,6})(?:[/_ ][A-Z](?:[/_ ]\\d{2})?([/_ ][A-Z])?)?$')},6,'0')",
     gram=r"norm rlike '^\\d{5,6}([/_ ][A-Z][/_ ]\\d{2}[/_ ][A-Z])?$'"),
+  # review pass-4 F4: truncated council refs missing the /check-digit
+  # ("EP/J016918") are registry-attested prefixes — KEPT as plausible via the
+  # extra gram arm; completion/canonicalization is #171's job, not ours.
   "EPSRC": dict(fid=4320334627,
     rkey="NULLIF(regexp_replace(norm,' ',''),'')",
     xkey="NULLIF(regexp_replace(norm,' ',''),'')",
-    gram=r"regexp_replace(norm,' ','') rlike '^EP/[A-Z0-9]{6,7}/[0-9]$' or norm rlike '^\\d{7}$'"),
+    gram=r"regexp_replace(norm,' ','') rlike '^EP/[A-Z0-9]{6,7}(/[0-9])?$' or norm rlike '^\\d{7}$'"),
   "NSTC_TW": dict(fid=2461203286,
     # 2026-08-03: Taiwan NSTC = MOST's 2022 rename (the "mystery funder" — in
     # mid.funder but absent from common.funders, curation gap flagged). Same
@@ -194,13 +208,52 @@ XREF = "('crossref_work_funders','crossref_work.grants','crossref_work')"
 # separator so prefixes of real tokens ("NOVO...") survive; a corrupted strip
 # is harmless anyway because rescue still requires a registry hit.
 DECOR_LEAD = (r"^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP"
-              r"|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT)"
-              r"[ .:#°-]+|[#№(\\[]+ ?)+")
+              r"|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT"
+              r"|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS)"
+              r"[ .:#°-]+"
+              # review pass-4 F6: LONG words (>=5 chars, unambiguous) also strip
+              # with NO separator ("award307834"); short words keep the
+              # separator requirement so real-token prefixes survive
+              r"|(GRANT|AWARD|PROJECT|CONTRACT|NUMBER|KAKENHI|REFERENCE|APPLICATION|PROCESSO|PROCESS)"
+              r"|[#№(\\[]+ ?)+")
 DECOR_TRAIL = r"([ .,;:)\\]]+|[ -]*\\(.*\\))$"
 # multi-id concat detection + split (mirrors classify.py CLS 'multi_id' arm)
 MULTI_DETECT = ("((_n rlike '[,;&]') OR (_n rlike ' AND ') OR (_n rlike ' \\\\+ '))"
                 " AND _n rlike '[0-9]{3}'")
 MULTI_SPLIT = r"[,;&+]|\\bAND\\b"
+
+# S3 candidate admission for letterless-but-structured ids (FAPESP chassis).
+# MUST live here as a constant: review pass-4 F1 found the literal inlined in
+# the generator f-string, where {2,4} was evaluated as a Python tuple and the
+# emitted regex matched nothing (1,798 FAPESP-registry-verified ids would have
+# been suppressed).
+S3_NUMERIC_CHASSIS = r"(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)"
+
+# Funders whose deposited-side xkey is a TRUE EXTRACTOR (regexp_extract of a
+# structured id; returns NULL when nothing id-shaped is present). Review
+# pass-4 F2: when such an extractor FIRES but the registry misses (registry
+# coverage gap), the id is evidence-bearing and must score >= 'plausible',
+# never garbage/suppress — measured harm class: "OPUS 2019/35/B/ST10/04141"
+# (NCN), "PROBRAL - 88887.283886/2018-00" (CAPES), 16/16 sampled real.
+# Transform-based xkeys (MOST/NSTC/FCT/EPSRC/AHA strip-space) fire on ANY
+# string and are excluded — membership here would neuter their suppression.
+EXTRACTIVE_FIDS = {
+  4320321001,  # NSFC
+  4320332161,  # NIH
+  4320306076,  # NSF
+  4320334764,  # KAKEN
+  4320320879,  # DFG
+  4320320997,  # FAPESP
+  4320320300,  # EC
+  4320334593,  # NSERC
+  4320320883,  # ANR
+  4320320924,  # SNSF
+  4320311904,  # WELLCOME
+  4320334506,  # CIHR
+  4320306085,  # DHHS
+  4320321091,  # CAPES
+  4320322511,  # NCN
+}
 
 # STRONG cross-grammars for wrong-funder detection (S3) — measured lesson
 # 2026-08-03: the per-funder `gram` fields are calibrated for ids ALREADY

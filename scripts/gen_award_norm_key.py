@@ -22,7 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     # vendored rules (source of truth: #690 audit)
     from award_translation_rules import (FUNDERS, NORM, DECOR_LEAD, DECOR_TRAIL,
-                                         MULTI_DETECT, MULTI_SPLIT, XGRAM)
+                                         MULTI_DETECT, MULTI_SPLIT, XGRAM,
+                                         S3_NUMERIC_CHASSIS, EXTRACTIVE_FIDS)
 except ImportError:  # legacy dev path
     sys.path.insert(0, "/tmp"); from rules_src import FUNDERS, NORM
 
@@ -80,6 +81,18 @@ def gram_case_over(fid_col, var):
     return "\n".join(
         f"      WHEN {fid_col} = {r['fid']} THEN ({r['gram'].replace('norm', var)})"
         for r in FUNDERS.values())
+
+
+def sharp_fired_case(var):
+    """Boolean CASE: TRUE when an EXTRACTIVE funder's deposited-side xkey
+    fires (extracts a structured id) on `var`. Review pass-4 F2: a fired
+    extractor that misses the registry means registry-coverage gap, not
+    garbage — such ids score 'plausible', never suppress. Transform-based
+    xkeys are excluded (they fire on everything)."""
+    arms = "\n".join(
+        f"      WHEN funder_id = {r['fid']} THEN (({r['xkey'].replace('norm', var)}) IS NOT NULL)"
+        for r in FUNDERS.values() if r["fid"] in EXTRACTIVE_FIDS)
+    return f"CASE\n{arms}\n      ELSE FALSE END"
 
 
 def xgram_case_over(fid_col, var):
@@ -186,13 +199,16 @@ reg_g AS (
 keyed AS (
   SELECT funder_id, funder_award_id, _n,
     {schema}.award_norm_key(funder_id, funder_award_id, 'deposited') AS nk,
-    {GENERIC.replace("award_id", "funder_award_id")} AS nk_g
+    {GENERIC.replace("award_id", "funder_award_id")} AS nk_g,
+    -- review F2: extractor fired = evidence-bearing id even without a
+    -- registry hit (registry-coverage gap, not garbage)
+    {sharp_fired_case('_n')} AS sk_fired
   FROM (SELECT funder_id, funder_award_id,
           {NORM.format(c="funder_award_id")} AS _n
         FROM dep)
 ),
 scored AS (
-  SELECT k.funder_id, k.funder_award_id, k._n, k.nk,
+  SELECT k.funder_id, k.funder_award_id, k._n, k.nk, k.sk_fired,
     COALESCE(r.n_awards, rg.n_awards) AS n_awards,
     CASE
 {gram_case()}
@@ -210,6 +226,10 @@ SELECT funder_id, funder_award_id, nk, n_awards,
     WHEN n_awards = 1 THEN 'confirmed'
     WHEN n_awards > 1 THEN 'confirmed_ambiguous'
     WHEN grammar_pass THEN 'plausible'
+    -- review F2: fired extractor without a registry hit = plausible, never
+    -- garbage (harm class: "OPUS 2019/35/B/ST10/04141", real ids the
+    -- registry doesn't carry yet)
+    WHEN sk_fired THEN 'plausible'
     ELSE 'garbage'
   END AS verdict,
   current_timestamp() AS scored_date
@@ -347,10 +367,13 @@ s2 AS (
 -- of coincidental hits against dense numeric registries in the first build.
 wf0 AS (
   -- candidates: letter-bearing, or the FAPESP numeric chassis (NN/NNNNN-N —
-  -- structured punctuation, not a bare number; 2.8k FAPESP ids sat under CAPES)
+  -- structured punctuation, not a bare number). Chassis pattern comes from
+  -- the S3_NUMERIC_CHASSIS constant: inlining it in the generator f-string
+  -- turned the braces into Python tuples and emitted a never-matching regex
+  -- (review pass-4 F1).
   SELECT g.funder_id, g.funder_award_id, g._n, t.t_fid
   FROM (SELECT * FROM garbage
-        WHERE _n rlike '[A-Z]' OR _n rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)') g
+        WHERE _n rlike '[A-Z]' OR _n rlike '{S3_NUMERIC_CHASSIS}') g
   CROSS JOIN (SELECT explode(array({xfids})) AS t_fid) t
   WHERE t.t_fid <> g.funder_id
 ),
