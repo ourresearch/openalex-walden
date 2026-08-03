@@ -130,6 +130,25 @@ FUNDERS = {
     rkey="NULLIF(regexp_replace(norm,' ',''),'')",
     xkey="NULLIF(regexp_replace(norm,' ',''),'')",
     gram=r"regexp_replace(norm,' ','') rlike '^\\d{2}[A-Z]{2,10}\\d{4,9}$' or norm rlike '^\\d{6,9}$'"),
+  "DHHS": dict(fid=4320306085,
+    # derived 2026-08-03 (worklist #18): registry = hhs_taggs (964 ids), two
+    # shapes: 5-alnum-starting-letter + 6 digits (CPIMP151089, TP1AH000086,
+    # H79AE000058) and 90-series dd[A-Z][A-Z0-9]dddd(d) (90AX0005, 90C30001).
+    # Deposits are ~all NIH ids filed under the parent dept (R01..., bare
+    # IC+serial) + HHS contract PIIDs (75R60220C00011, HHSN...). gram EXCLUDES
+    # the NIH activity-code shape so those flow to wrong-funder detection
+    # (S3 -> #624 re-link) instead of dying as DHHS-plausible; registry-hit
+    # precedes grammar, so TAGGS codes that look NIH-ish (H79AE000058) still
+    # confirm. Contracts count as DHHS-plausible (75/HHSN are HHS PIID forms).
+    # Controls: foreign-numeric probe = 0 by construction (rkey requires a
+    # letter); foreign-lettered probe 19,902 shape-passes -> 0 registry hits.
+    rkey="NULLIF(regexp_extract(regexp_replace(norm,'[ -]',''),"
+         "'^([A-Z][A-Z0-9]{4}\\\\d{6}|\\\\d{2}[A-Z][A-Z0-9]\\\\d{4,5})$', 1), '')",
+    xkey="NULLIF(regexp_extract(regexp_replace(norm,'[ -]',''),"
+         "'([A-Z][A-Z0-9]{4}\\\\d{6}|(?<!\\\\d)\\\\d{2}[A-Z][A-Z0-9]\\\\d{4,5}(?!\\\\d))', 1), '')",
+    gram=r"((regexp_replace(norm,'[ -]','') rlike '^([A-Z][A-Z0-9]{4}\\d{6}|\\d{2}[A-Z][A-Z0-9]\\d{4,5})$'"
+         r" and not regexp_replace(norm,'[ -]','') rlike '^[A-Z]\\d{2}[A-Z]{2}\\d{5,6}$')"
+         r" or regexp_replace(norm,'[ -]','') rlike '^(75[A-Z0-9]{9,13}|HHSN[A-Z0-9]{9,15})$')"),
 }
 
 XREF = "('crossref_work_funders','crossref_work.grants','crossref_work')"
@@ -160,9 +179,24 @@ MULTI_SPLIT = r"[,;&+]|\\bAND\\b"
 # form (NSFC bare 8-digit, SNSF bare serials) cannot be cross-targets: absent
 # here = excluded from S3. Philosophy + several patterns = classify.py OF_PAT.
 XGRAM = {
-  # NIH activity-code form (classify.py NIH_PAT) + bare institute+serial
-  4320332161: (r"norm rlike '(^|[^A-Z0-9])[A-Z]\\d{2}[ -]?[A-Z]{2}[ -]?\\d{5,6}([^0-9]|$)'"
-               r" or norm rlike '^[A-Z]{2}[ -]?\\d{6}$'"),
+  # NIH: activity-code form (classify.py NIH_PAT) + IC-restricted bare
+  # institute+serial. The IC list is the closed set of NIH institute codes —
+  # unrestricted [A-Z]{2} would accept any 2-letter prefix. 6-digit serials
+  # are unanchored (tolerates '1'/'5' prefixes and '-01A1' suffixes:
+  # "AR063759-05", "RO1 AR079224"); 5-digit serials stay anchored AND
+  # exclude CA — EU COST Actions are exactly 'CA' + 5 digits.
+  # arm 1 allows an ATTACHED application-type digit ("1R01AR059270-01",
+  # "5U01MH105985" — digit is alphanumeric, so it defeats a plain boundary)
+  # and both activity-code chassis: [A-Z]dd (R01, K99, T32) and [A-Z][A-Z]d
+  # (KL2, UL1, UG1, DP2)
+  4320332161: (r"norm rlike '(^|[^A-Z0-9])\\d?([A-Z]\\d{2}|[A-Z]{2}\\d)[ -]?[A-Z]{2}[ -]?\\d{5,6}([^0-9]|$)'"
+               r" or norm rlike '(^|[^A-Z0-9])(AA|AG|AI|AR|AT|CA|DA|DC|DE|DK|EB|ES|EY|GM|HD|HG|HL|LM|MD|MH|NR|NS|OD|RR|TR|TW)[ -]?\\d{6}([^0-9]|$)'"
+               r" or norm rlike '^(AA|AG|AI|AR|AT|DA|DC|DE|DK|EB|ES|EY|GM|HD|HG|HL|LM|MD|MH|NR|NS|OD|RR|TR|TW)[ -]?\\d{5}$'"),
+  # DHHS/TAGGS: 5-alnum + 6-digit shape, minus the NIH activity-code shape
+  # (which belongs to the NIH arm above); 90-series is too short/loose for
+  # cross-funder claims
+  4320306085: (r"(regexp_replace(norm,'[ -]','') rlike '^[A-Z][A-Z0-9]{4}\\d{6}$'"
+               r" and not regexp_replace(norm,'[ -]','') rlike '^[A-Z]\\d{2}[A-Z]{2}\\d{5,6}$')"),
   # NSF: division-prefixed 7-digit, separator REQUIRED — concatenated forms
   # ("AC2019004", "AF0710020") are dominated by Asian program codes whose
   # trailing yy+serial digits coincidentally form valid NSF numbers (measured
