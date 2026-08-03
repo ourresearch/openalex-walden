@@ -5,7 +5,7 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
-      max_concurrent_runs: 1
+      max_concurrent_runs: 4
       queue:
         enabled: false
       tasks:
@@ -18,6 +18,7 @@ resources:
               url_limit: "1000000"
               rescrape_queue_only: "true"
               harvest_workers: "600"
+              queue_table: "openalex.taxicab.rescrape_queue"
           job_cluster_key: Taxicab_Rescrape_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_Rescrape_job_cluster
@@ -53,3 +54,5 @@ resources:
           default: "true"
         - name: harvest_workers
           default: "600"
+        - name: queue_table
+          default: "openalex.taxicab.rescrape_queue"
