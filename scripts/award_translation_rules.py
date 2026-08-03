@@ -74,10 +74,14 @@ FUNDERS = {
   "NSERC": dict(fid=4320334593,
     # registry has BOTH old 'serial-year' (341949-2008) and new 'rgpin-2020-03053';
     # serial-int key spans both (year-collision risk noted in EXPLORE — guard should be year-aware)
-    rkey=f"CAST(CAST(COALESCE({ex(r'^(\\d{1,6})-\\d{4}$')}, "
-         f"{ex(r'^[A-Z]+-\\d{4}-(\\d{4,6})$')}) AS BIGINT) AS STRING)",
-    xkey=f"CAST(CAST(COALESCE({ex(r'[A-Z]{3,7}[ /-]?(?:\\d{4})[ -]?(\\d{4,6})$')}, "
-         f"{ex(r'(?<!\\d)(\\d{5,6})(?!\\d)')}) AS BIGINT) AS STRING)",
+    rkey="CASE WHEN norm rlike '^\\\\d{1,6}-\\\\d{4}$' THEN "
+         "CONCAT(regexp_extract(norm,'-(\\\\d{4})$',1),'-',CAST(CAST(regexp_extract(norm,'^(\\\\d{1,6})-',1) AS BIGINT) AS STRING)) "
+         "WHEN norm rlike '^[A-Z]+-\\\\d{4}-\\\\d{4,6}$' THEN "
+         "CONCAT(regexp_extract(norm,'-(\\\\d{4})-',1),'-',CAST(CAST(regexp_extract(norm,'-(\\\\d{4,6})$',1) AS BIGINT) AS STRING)) END",
+    xkey="CASE WHEN regexp_replace(norm,' ','') rlike '[A-Z]{3,7}/?-?\\\\d{4}-?\\\\d{4,6}$' THEN "
+         "CONCAT(regexp_extract(regexp_replace(norm,' ',''),'(\\\\d{4})-?\\\\d{4,6}$',1),'-',CAST(CAST(regexp_extract(regexp_replace(norm,' ',''),'(\\\\d{4,6})$',1) AS BIGINT) AS STRING)) "
+         "WHEN norm rlike '^\\\\d{5,6}[ -]\\\\d{4}$' THEN "
+         "CONCAT(regexp_extract(norm,'(\\\\d{4})$',1),'-',CAST(CAST(regexp_extract(norm,'^(\\\\d{5,6})',1) AS BIGINT) AS STRING)) END",
     gram=r"norm rlike '^[A-Z]{3,7}[ /-]?\\d{4}[ -]?\\d{4,6}$' or "
          r"norm rlike '^[A-Z]{3,7}[ -]?\\d{4,6}([ -]?\\d{2,4})?$' or norm rlike '^\\d{5,6}([ -]?\\d{2,4})?$'"),
   "ANR": dict(fid=4320320883,
@@ -93,7 +97,7 @@ FUNDERS = {
   "SNSF": dict(fid=4320320924,
     rkey=f"CAST(CAST({ex(r'^(\\d{1,6})$')} AS BIGINT) AS STRING)",
     xkey=f"CAST(CAST(CASE WHEN norm rlike '^\\\\d{{12}}$' THEN SUBSTR(norm,7) "
-         f"ELSE {ex(r'(\\d{4,6})$')} END AS BIGINT) AS STRING)",
+         f"ELSE {ex(r'(\\d{5,6})$')} END AS BIGINT) AS STRING)",
     gram=r"norm rlike '^[0-9A-Z]{0,8}[_-]?\\d{4,6}$' or norm rlike '^\\d{12}$'"),
   "WELLCOME": dict(fid=4320311904,
     # registry re-derived 2026-08-03: source ships citable refs since the
