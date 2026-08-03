@@ -178,6 +178,28 @@ FUNDERS = {
          r"'(20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5})', 1), '')",
     gram=r"(regexp_replace(norm,' ','') rlike '^(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}$'"
          r" or norm rlike '^N ?N[A-Z]?\\d{3} ?\\d{6}$')"),
+  "DOE": dict(fid=4320306084,
+    # derived 2026-08-03 (worklist #21): registry = usaspending (51,766 rows)
+    # storing the DE-family scheme in MULTIPLE spellings (DESC0000033,
+    # FG02-00ER14980, DEFG0200ER15031). Canonical key = strip spaces/hyphens,
+    # strip leading DE only when followed by office-code shape (lookahead, so
+    # NSF-style DEB-1234567 is untouched), then extract one of two chassis:
+    # office+7-digit (SC0019115) or field-office FGdddd[A-Z]{1,2}ddddd
+    # (FG0209ER46577). FOA references (SC-FOA-...) and bare numbers are
+    # correctly garbage. Controls: crossref-door match 30.9% (vs 2.0%
+    # generic); foreign-lettered probe 4,945 fires -> 264 registry hits,
+    # 12/12 sampled = real DE- ids under NSF/NSFC/NIH/EC/NSERC (true
+    # positives -> S3). DOE Office of Science (4320332359) deposits the same
+    # scheme; S3 cross-detection to DOE covers it once this entry exists.
+    rkey=ex(r"^((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}"
+            r"|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})$",
+            src="regexp_replace(regexp_replace(norm,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])','')"),
+    xkey=ex(r"((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}"
+            r"|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})",
+            src="regexp_replace(regexp_replace(norm,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])','')"),
+    gram=r"regexp_replace(regexp_replace(norm,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])','')"
+         r" rlike '^((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}"
+         r"|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})$'"),
   "DHHS": dict(fid=4320306085,
     # derived 2026-08-03 (worklist #18): registry = hhs_taggs (964 ids), two
     # shapes: 5-alnum-starting-letter + 6 digits (CPIMP151089, TP1AH000086,
@@ -258,6 +280,7 @@ EXTRACTIVE_FIDS = {
   4320334506,  # CIHR
   4320321091,  # CAPES
   4320322511,  # NCN
+  4320306084,  # DOE (chassis extractor; no cross-shape overlap — unlike DHHS)
 }
 
 # STRONG cross-grammars for wrong-funder detection (S3) — measured lesson
@@ -316,6 +339,10 @@ XGRAM = {
   # NCN: UMO chassis (inert until the internal-code registry gets citable
   # refs; slash-structured so the S3 letter filter admits it)
   4320322511: r"regexp_replace(norm,' ','') rlike '(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}'",
+  # DOE: cross-funder claims require the literal DE prefix (self-identifying;
+  # control: 12/12 sampled cross-hits were real DE- ids)
+  4320306084: (r"regexp_replace(norm,'[ -]','') rlike '(?<![A-Z])DE(SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}'"
+               r" or regexp_replace(norm,'[ -]','') rlike '(?<![A-Z])DE(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6}'"),
   # FCT: slash-path grant refs (registry strings are long paths; exact-ish join)
   4320334779: r"norm rlike '^[A-Z0-9 ./-]+$' and norm rlike '[A-Z]' and norm rlike '/'",
   # EC: framework-token or CT-era forms only (bare 6/9-digit arms dropped)
