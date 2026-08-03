@@ -130,6 +130,24 @@ FUNDERS = {
     rkey="NULLIF(regexp_replace(norm,' ',''),'')",
     xkey="NULLIF(regexp_replace(norm,' ',''),'')",
     gram=r"regexp_replace(norm,' ','') rlike '^\\d{2}[A-Z]{2,10}\\d{4,9}$' or norm rlike '^\\d{6,9}$'"),
+  "CAPES": dict(fid=4320321091,
+    # derived 2026-08-03 (worklist #19): registry = capes_cooperacao_internacional
+    # (2,065 rows) but its ids are SYNTHETIC HASHES (capes-cooperation-<hex>) —
+    # no citable reference exists, so registry matching is impossible until the
+    # source gets the 07-31 citable-ref treatment (flagged for Kyle's rescrape
+    # list). Keys target the real CAPES process number (8888d.dddddd/yyyy-dd)
+    # so matching lights up automatically once the registry carries them.
+    # Deposits: process numbers, BEX/PDSE/PNPD/PROEX/DS scholarship codes,
+    # nnn/yyyy convenio refs, and the blanket "Finance Code: 001" (not an
+    # award id -> garbage by design). Measured (crossref door): grammar 32.1%,
+    # fail 67.9% incl. 2.8k FAPESP ids (-> S3) and Finance-Code junk.
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'^(8888\\d\\.\\d{6}/\\d{4}-\\d{2})$', 1), '')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'(8888\\d\\.\\d{6}/\\d{4}-\\d{2})', 1), '')",
+    gram=r"(regexp_replace(norm,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$'"
+         r" or regexp_replace(norm,' ','') rlike '^(BEX|PDSE|PNPD|PROEX|DS|AUX)-?\\d{3,7}([-/.]\\d{1,4}){0,3}$'"
+         r" or norm rlike '^\\d{1,4}/(19|20)\\d{2}$')"),
   "DHHS": dict(fid=4320306085,
     # derived 2026-08-03 (worklist #18): registry = hhs_taggs (964 ids), two
     # shapes: 5-alnum-starting-letter + 6 digits (CPIMP151089, TP1AH000086,
@@ -214,8 +232,13 @@ XGRAM = {
                r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"),
   2461203286: (r"regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','')"
                r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"),
-  # FAPESP: NN/NNNNN-N shape is unique to it
+  # FAPESP: NN/NNNNN-N shape is unique to it. NOTE: FAPESP ids are numeric-
+  # with-structure (no letters) — the S3 candidate filter admits this chassis
+  # explicitly alongside letter-bearing ids (2.8k FAPESP ids sat under CAPES).
   4320320997: r"norm rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)'",
+  # CAPES: process-number chassis (inert until the hash-id registry gets
+  # citable refs — S3 requires a registry hit; future-proofing)
+  4320321091: r"regexp_replace(norm,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$'",
   # FCT: slash-path grant refs (registry strings are long paths; exact-ish join)
   4320334779: r"norm rlike '^[A-Z0-9 ./-]+$' and norm rlike '[A-Z]' and norm rlike '/'",
   # EC: framework-token or CT-era forms only (bare 6/9-digit arms dropped)

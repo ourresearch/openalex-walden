@@ -220,7 +220,9 @@ FROM scored;
 -- ids BEFORE any suppression. Three rescue steps:
 --   decorated_own_id  generic decoration strip -> re-key -> own-registry hit
 --                     (suffix _weak when the stripped form is a bare number at
---                     a WEAK_BARE funder: minted but never merge material)
+--                     a WEAK_BARE funder: minted but never merge material;
+--                     decorated_plausible when the stripped form only passes
+--                     the funder's grammar — parity with S2 plausible parts)
 --   multi_id_split    concatenated ids ("A123, B456"): split, score each part;
 --                     rescued when any part confirms or is plausible
 --   wrong_funder      DETECTION ONLY (re-link write = #624's): letter-bearing
@@ -270,12 +272,20 @@ s1_keyed AS (
   SELECT funder_id, funder_award_id, s,
     {schema}.award_norm_key(funder_id, s, 'deposited') AS s_nk,
     {GENERIC.replace("award_id", "s")} AS s_nk_g,
-    {schema}.award_id_is_weak(funder_id, s) AS s_weak
+    {schema}.award_id_is_weak(funder_id, s) AS s_weak,
+    CASE
+{gram_case_over('funder_id', 's')}
+    END AS s_gram
   FROM stripped WHERE s <> '' AND s <> _n
 ),
 s1 AS (
+  -- rescue on registry hit (either key), or — parity with S2's plausible
+  -- parts — on the stripped form passing the funder's own grammar
+  -- ("# 88887.684374/2022-00" at a funder whose registry can't confirm it)
   SELECT k.funder_id, k.funder_award_id,
-    CASE WHEN k.s_weak THEN 'decorated_own_id_weak' ELSE 'decorated_own_id' END AS action,
+    CASE WHEN COALESCE(r.nk, rg.nk_g) IS NULL THEN 'decorated_plausible'
+         WHEN k.s_weak THEN 'decorated_own_id_weak'
+         ELSE 'decorated_own_id' END AS action,
     k.funder_id AS target_funder_id,
     COALESCE(r.nk, rg.nk_g) AS target_nk,
     COALESCE(r.n_awards, rg.n_awards) AS n_awards,
@@ -283,7 +293,7 @@ s1 AS (
   FROM s1_keyed k
   LEFT JOIN reg r ON r.funder_id = k.funder_id AND r.nk = k.s_nk
   LEFT JOIN reg_g rg ON rg.funder_id = k.funder_id AND rg.nk_g = k.s_nk_g
-  WHERE COALESCE(r.nk, rg.nk_g) IS NOT NULL
+  WHERE COALESCE(r.nk, rg.nk_g) IS NOT NULL OR (k.s_gram AND NOT k.s_weak)
 ),
 -- S2: multi-id concat split
 multi AS (
@@ -336,8 +346,11 @@ s2 AS (
 -- fields accept non-self-identifying strings and produced tens of thousands
 -- of coincidental hits against dense numeric registries in the first build.
 wf0 AS (
+  -- candidates: letter-bearing, or the FAPESP numeric chassis (NN/NNNNN-N —
+  -- structured punctuation, not a bare number; 2.8k FAPESP ids sat under CAPES)
   SELECT g.funder_id, g.funder_award_id, g._n, t.t_fid
-  FROM (SELECT * FROM garbage WHERE _n rlike '[A-Z]') g
+  FROM (SELECT * FROM garbage
+        WHERE _n rlike '[A-Z]' OR _n rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)') g
   CROSS JOIN (SELECT explode(array({xfids})) AS t_fid) t
   WHERE t.t_fid <> g.funder_id
 ),
