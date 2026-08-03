@@ -106,6 +106,7 @@ scored AS (
 SELECT funder_id, funder_award_id, nk, n_awards,
   CASE
     WHEN funder_id NOT IN (4320321001,4320332161,4320306076,4320334764,4320320879,4320322795,4320320997,4320334779,4320320300,4320334593,4320320883,4320320924,4320311904,4320334627,2461203286,4320334506,4320306230) THEN 'unscored'
+    WHEN n_awards = 1 AND ((funder_id = 4320334506 AND UPPER(TRIM(funder_award_id)) rlike '^[0-9]{4,6}$') OR (funder_id = 4320311904 AND UPPER(TRIM(funder_award_id)) rlike '^[0-9]{5,6}$') OR (funder_id = 4320320924 AND UPPER(TRIM(funder_award_id)) rlike '^[0-9]{4,6}$') OR (funder_id = 4320320300 AND UPPER(TRIM(funder_award_id)) rlike '^[0-9]{6}$')) THEN 'confirmed_weak'
     WHEN n_awards = 1 THEN 'confirmed'
     WHEN n_awards > 1 THEN 'confirmed_ambiguous'
     WHEN grammar_pass THEN 'plausible'
