@@ -23,6 +23,7 @@ SELECT COALESCE(
       WHEN funder_id = 4320320924 THEN (CAST(CAST(NULLIF(regexp_extract(_n, '^(\\d{1,6})$', 1), '') AS BIGINT) AS STRING))
       WHEN funder_id = 4320311904 THEN (LPAD(COALESCE(NULLIF(regexp_extract(_n, '360G-WELLCOME-(\\d{5,6})', 1), ''), NULLIF(regexp_extract(_n, '^(\\d{5,6})(?:[/_ ][A-Z](?:[/_ ]\\d{2})?([/_ ][A-Z])?)?$', 1), '')),6,'0'))
       WHEN funder_id = 4320334627 THEN (NULLIF(regexp_replace(_n,' ',''),''))
+      WHEN funder_id = 2461203286 THEN (NULLIF(regexp_replace(regexp_replace(_n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),''))
       WHEN funder_id = 4320334506 THEN (CAST(CAST(NULLIF(regexp_extract(_n, '^(\\d{4,6})_\\d+$', 1), '') AS BIGINT) AS STRING))
       WHEN funder_id = 4320306230 THEN (NULLIF(regexp_replace(_n,' ',''),''))
     END
@@ -42,6 +43,7 @@ SELECT COALESCE(
       WHEN funder_id = 4320320924 THEN (CAST(CAST(CASE WHEN _n rlike '^\\d{12}$' THEN SUBSTR(_n,7) ELSE NULLIF(regexp_extract(_n, '(\\d{4,6})$', 1), '') END AS BIGINT) AS STRING))
       WHEN funder_id = 4320311904 THEN (LPAD(NULLIF(regexp_extract(_n, '^(\\d{5,6})(?:[/_ ][A-Z](?:[/_ ]\\d{2})?([/_ ][A-Z])?)?$', 1), ''),6,'0'))
       WHEN funder_id = 4320334627 THEN (NULLIF(regexp_replace(_n,' ',''),''))
+      WHEN funder_id = 2461203286 THEN (NULLIF(regexp_replace(regexp_replace(_n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),''))
       WHEN funder_id = 4320334506 THEN (CAST(CAST(NULLIF(regexp_extract(regexp_replace(regexp_replace(_n,'^[#]+ ?',''),'^(950[- ]|[A-Z]{2,4}[- ]?)',''),'^(\\d{4,6})([-_]\\d+)?$',1),'') AS BIGINT) AS STRING))
       WHEN funder_id = 4320306230 THEN (NULLIF(regexp_replace(_n,' ',''),''))
     END
@@ -94,6 +96,7 @@ scored AS (
       WHEN k.funder_id = 4320320924 THEN (k._n rlike '^[0-9A-Z]{0,8}[_-]?\\d{4,6}$' or k._n rlike '^\\d{12}$')
       WHEN k.funder_id = 4320311904 THEN (k._n rlike '^\\d{5,6}([/_ ][A-Z][/_ ]\\d{2}[/_ ][A-Z])?$')
       WHEN k.funder_id = 4320334627 THEN (regexp_replace(k._n,' ','') rlike '^EP/[A-Z0-9]{6,7}/[0-9]$' or k._n rlike '^\\d{7}$')
+      WHEN k.funder_id = 2461203286 THEN (regexp_replace(regexp_replace(k._n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
       WHEN k.funder_id = 4320334506 THEN (k._n rlike '^#? ?(950[- ])?([A-Z]{2,4}[- ]?)?\\d{4,6}([-_]\\d+)?$')
       WHEN k.funder_id = 4320306230 THEN (regexp_replace(k._n,' ','') rlike '^\\d{2}[A-Z]{2,10}\\d{4,9}$' or k._n rlike '^\\d{6,9}$')
     END AS grammar_pass
@@ -102,7 +105,7 @@ scored AS (
 )
 SELECT funder_id, funder_award_id, nk, n_awards,
   CASE
-    WHEN funder_id NOT IN (4320321001,4320332161,4320306076,4320334764,4320320879,4320322795,4320320997,4320334779,4320320300,4320334593,4320320883,4320320924,4320311904,4320334627,4320334506,4320306230) THEN 'unscored'
+    WHEN funder_id NOT IN (4320321001,4320332161,4320306076,4320334764,4320320879,4320322795,4320320997,4320334779,4320320300,4320334593,4320320883,4320320924,4320311904,4320334627,2461203286,4320334506,4320306230) THEN 'unscored'
     WHEN n_awards = 1 THEN 'confirmed'
     WHEN n_awards > 1 THEN 'confirmed_ambiguous'
     WHEN grammar_pass THEN 'plausible'

@@ -106,6 +106,14 @@ FUNDERS = {
     rkey="NULLIF(regexp_replace(norm,' ',''),'')",
     xkey="NULLIF(regexp_replace(norm,' ',''),'')",
     gram=r"regexp_replace(norm,' ','') rlike '^EP/[A-Z0-9]{6,7}/[0-9]$' or norm rlike '^\\d{7}$'"),
+  "NSTC_TW": dict(fid=2461203286,
+    # 2026-08-03: Taiwan NSTC = MOST's 2022 rename (the "mystery funder" — in
+    # mid.funder but absent from common.funders, curation gap flagged). Same
+    # grammar as MOST_TW; registry = grb_nstc_projects.
+    rkey="NULLIF(regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),'')",
+    xkey="NULLIF(regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),'')",
+    gram=r"regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','')"
+         r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"),
   "CIHR": dict(fid=4320334506,
     # derived 2026-08-03 (worklist #16): registry = NNNNNN_1 (application no. +
     # installment); deposits = program prefixes (MOP/PJT/FDN...), '950-' funding
