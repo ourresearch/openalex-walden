@@ -241,6 +241,41 @@ FUNDERS = {
     gram=r"((regexp_replace(norm,'[+ /-]','') rlike '^\\d{2}[0-9A-Z]{5,10}$'"
          r" and regexp_replace(norm,'[+ /-]','') rlike '[A-Z]')"
          r" or regexp_replace(norm,'[+ /-]','') rlike '^[A-Z]\\d{6}[A-Z0-9]{0,2}$')"),
+  "FWF": dict(fid=4320321181,
+    # derived 2026-08-04 (overnight): registry = LETTER(S)+space+digits
+    # (P 10186, PAT 1041324). Deposits: no-space, board suffixes (-N25/-B16),
+    # FWF grant DOIs 10.55776/P37169 (audit-flagged misattribution class).
+    # Control: foreign fires 7.8% but registry-hits 0.6% of fires -> NOT
+    # extractive; XGRAM = DOI form only (bare P+5digit collides w/ JSPS).
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'^([A-Z]{1,3}\\d{3,7})$', 1), '')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'^(?:10\\.55776/|HTTPS?://(?:DX\\.)?DOI\\.ORG/10\\.55776/)?([A-Z]{1,3}\\d{3,7})(?:-[A-Z]\\d{1,3})?$', 1), '')",
+    gram=r"regexp_replace(norm,' ','') rlike"
+         r" '^(10\\.55776/|HTTPS?://(DX\\.)?DOI\\.ORG/10\\.55776/)?[A-Z]{1,3}\\d{3,7}(-[A-Z]\\d{1,3})?$'"),
+  "ISCIII": dict(fid=4320334923,
+    # derived 2026-08-04 (overnight): registry = canonical scheme codes
+    # (PI13/00002, DTS14/00004, PI14CIII/00005, AC18/00002, COV20/00004).
+    # Deposits cite PI20/01076 and hyphen variants (PI08-1389, audit-real).
+    # Key = SCHEME+yy(+CIII)/serial LPAD5, separator-tolerant on deposits.
+    rkey=r"CASE WHEN regexp_replace(norm,' ','') rlike '^[A-Z]{2,4}\\d{2}(CIII)?/\\d{5}$' THEN"
+         r" CONCAT(regexp_extract(regexp_replace(norm,' ',''),'^([A-Z]{2,4}\\d{2}(CIII)?)/',1),'/',"
+         r"regexp_extract(regexp_replace(norm,' ',''),'/(\\d{5})$',1)) END",
+    xkey=r"CASE WHEN regexp_replace(norm,' ','') rlike '^[A-Z]{2,4}\\d{2}(CIII)?[/-]\\d{1,5}$' THEN"
+         r" CONCAT(regexp_extract(regexp_replace(norm,' ',''),'^([A-Z]{2,4}\\d{2}(CIII)?)[/-]',1),'/',"
+         r"LPAD(regexp_extract(regexp_replace(norm,' ',''),'[/-](\\d{1,5})$',1),5,'0')) END",
+    gram=r"regexp_replace(norm,' ','') rlike '^[A-Z]{2,4}\\d{2}(CIII)?[/-]\\d{1,5}$'"),
+  "AEI": dict(fid=4320335598,
+    # derived 2026-08-04 (overnight): registry ids are INTERNAL row codes
+    # (SB64030786, PR113143046) — NOT the citable PID2019-106337GB-I00 the
+    # world cites -> grammar-first (rescrape-list candidate); keys target
+    # the citable format so matching auto-lights post-rescrape.
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'^((PID|PGC|RYC|RTI|CEX|TED|SEV|BES|FPU|FJC|IJC|CNS|EUR|EQC|PLEC|PDC)\\d{4}-\\d{5,6}[A-Z0-9-]{0,8})$', 1), '')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'((PID|PGC|RYC|RTI|CEX|TED|SEV|BES|FPU|FJC|IJC|CNS|EUR|EQC|PLEC|PDC)\\d{4}-\\d{5,6})', 1), '')",
+    gram=r"regexp_replace(norm,' ','') rlike"
+         r" '^(PID|PGC|RYC|RTI|CEX|TED|SEV|BES|FPU|FJC|IJC|CNS|EUR|EQC|PLEC|PDC)\\d{4}-\\d{5,6}([A-Z0-9/-]{0,12})?$'"),
   "DHHS": dict(fid=4320306085,
     # derived 2026-08-03 (worklist #18): registry = hhs_taggs (964 ids), two
     # shapes: 5-alnum-starting-letter + 6 digits (CPIMP151089, TP1AH000086,
