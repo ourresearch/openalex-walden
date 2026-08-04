@@ -458,16 +458,41 @@ FROM (SELECT * FROM s1 UNION ALL SELECT * FROM s2 UNION ALL SELECT * FROM s3);
 CREATE OR REPLACE TABLE openalex.awards.award_id_guard
 USING delta
 AS
-SELECT v.funder_id, v.funder_award_id, v.verdict,
-  CASE WHEN v.verdict = 'garbage' AND s.actions IS NULL
+-- DESIGN FLIP (recalibration round 1, 2026-08-03): suppression requires
+-- POSITIVE junk classification. "Failed to verify" alone is NOT junk — the
+-- random-327 audit measured 64.8% of failed-to-verify suppressions as real
+-- grants in mangled dialects. Unclassifiable strings default to KEEP.
+SELECT funder_id, funder_award_id, verdict,
+  CASE WHEN verdict = 'garbage' AND actions IS NULL AND is_junk
        THEN 'suppress' ELSE 'mint' END AS decision,
-  CASE WHEN v.verdict <> 'garbage' THEN v.verdict
-       WHEN s.actions IS NOT NULL THEN CONCAT('salvaged:', s.actions)
-       ELSE 'garbage_unsalvaged' END AS reason,
+  CASE WHEN verdict <> 'garbage' THEN verdict
+       WHEN actions IS NOT NULL THEN CONCAT('salvaged:', actions)
+       WHEN is_junk THEN 'junk_positive'
+       ELSE 'unclassified_kept' END AS reason,
   current_timestamp() AS created_date
-FROM openalex.awards.award_id_verdicts v
+FROM (
+SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
+  (_n rlike '^(HORIZON ?2020|HORIZON ?EUROPE|H2020|FP[4-7]|ERASMUS(\\+| ?PLUS)?|MSCA|COST( ACTION)?|PRELUDIUM ?\\d{0,2}|OPUS ?\\d{0,2}|SONATA( BIS)? ?\\d{0,2}|CAREER|EPSCOR|CREST|INSPIRE|SBIR|STTR|R&D|COVID(-?19)?|RESEARCH ?4 ?COVID.*|FRANCE ?2030|STI ?2030.*|EDCTP2?|PT ?2020|COMPETE ?2020?|NORTE ?2020|CENTRO ?2020|LISBOA ?2020|POCI|FEDER|NSFC|973( PROGRAM)?|863( PROGRAM)?|111( PROJECT)?|NIH|NSF|DFG|ANR|AHA|ERC|GACR|MOST|JSPS|KAKENHI|CNPQ|CAPES|FCT|N/?A)$'
+         OR _n rlike '^(19|20)\\d{2}[-–/ ]{1,3}(19|20)\\d{2}$'
+         OR _n rlike '^(19|20)\\d{2}$'
+         OR _n rlike '^10\\.13039/\\d{6,12}$'
+         OR _n rlike '10\\.13039'
+         OR _n rlike '^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499))'
+         OR _n rlike '^0000-000\\d-\\d{4}-[0-9X]{4}$'
+         OR _n rlike '^0(?=.*[A-Z])[A-Z0-9]{8}$'
+         OR _n rlike '^(N/?A|NA|NONE|NIL|NOT APPLICABLE|UNKNOWN|TBD|PENDING|NULL|XXX+|[-.,;:/#*+ ]+)$'
+         OR _n rlike '^\\(?CODE ?0*1\\)?$|FINANCE CODE|FINANCIAL CODE|^0*1$'
+         OR _n rlike '^.{1,3}$'
+         OR _n rlike '^( ?[A-Z]{2,}){4,}$'
+         OR _n rlike '^[0-9]{1,6}$'
+         OR _n rlike '^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]* (19|20)\\d{2}$|^\\d{1,2}[./]\\d{1,2}[./](19|20)?\\d{2}$'
+         OR _n rlike '[-/_.]$|^[-/_.]'
+         OR _n rlike '^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|GA|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$'
+         OR _n rlike '^(19|20)\\d{2}[-–/](19|20)?\\d{1,2}$') AS is_junk
+FROM (SELECT *, regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n FROM openalex.awards.award_id_verdicts) v
 LEFT JOIN (
   SELECT funder_id, funder_award_id,
          array_join(array_sort(collect_set(action)), '+') AS actions
   FROM openalex.awards.award_id_salvage GROUP BY 1, 2
-) s ON s.funder_id = v.funder_id AND s.funder_award_id = v.funder_award_id;
+) s ON s.funder_id = v.funder_id AND s.funder_award_id = v.funder_award_id
+);

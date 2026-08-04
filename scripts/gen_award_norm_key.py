@@ -24,7 +24,7 @@ try:
     from award_translation_rules import (FUNDERS, NORM, DECOR_LEAD, DECOR_TRAIL,
                                          MULTI_DETECT, MULTI_SPLIT, XGRAM,
                                          S3_NUMERIC_CHASSIS, EXTRACTIVE_FIDS,
-                                         FOREIGN_SCHEMES)
+                                         FOREIGN_SCHEMES, JUNK_POSITIVE)
 except ImportError:  # legacy dev path
     sys.path.insert(0, "/tmp"); from rules_src import FUNDERS, NORM
 
@@ -117,6 +117,8 @@ def gen(schema):
     xfids = ",".join(str(fid) for fid in XGRAM)
     foreign_cond = "(" + "\n      OR ".join(
         f"_n rlike '{p}'" for p in FOREIGN_SCHEMES) + ")"
+    junk_cond = "(" + "\n         OR ".join(
+        f"_n rlike '{p}'" for p in JUNK_POSITIVE) + ")"
     dep_union = "\n    UNION ALL\n".join(
         f"    SELECT funder_id, aid AS funder_award_id\n"
         f"    FROM {j} LATERAL VIEW EXPLODE(award_ids) AS aid"
@@ -414,19 +416,28 @@ FROM (SELECT * FROM s1 UNION ALL SELECT * FROM s2 UNION ALL SELECT * FROM s3);
 CREATE OR REPLACE TABLE {schema}.award_id_guard
 USING delta
 AS
-SELECT v.funder_id, v.funder_award_id, v.verdict,
-  CASE WHEN v.verdict = 'garbage' AND s.actions IS NULL
+-- DESIGN FLIP (recalibration round 1, 2026-08-03): suppression requires
+-- POSITIVE junk classification. "Failed to verify" alone is NOT junk — the
+-- random-327 audit measured 64.8% of failed-to-verify suppressions as real
+-- grants in mangled dialects. Unclassifiable strings default to KEEP.
+SELECT funder_id, funder_award_id, verdict,
+  CASE WHEN verdict = 'garbage' AND actions IS NULL AND is_junk
        THEN 'suppress' ELSE 'mint' END AS decision,
-  CASE WHEN v.verdict <> 'garbage' THEN v.verdict
-       WHEN s.actions IS NOT NULL THEN CONCAT('salvaged:', s.actions)
-       ELSE 'garbage_unsalvaged' END AS reason,
+  CASE WHEN verdict <> 'garbage' THEN verdict
+       WHEN actions IS NOT NULL THEN CONCAT('salvaged:', actions)
+       WHEN is_junk THEN 'junk_positive'
+       ELSE 'unclassified_kept' END AS reason,
   current_timestamp() AS created_date
-FROM {schema}.award_id_verdicts v
+FROM (
+SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
+  {junk_cond} AS is_junk
+FROM (SELECT *, {NORM.format(c='funder_award_id')} AS _n FROM {schema}.award_id_verdicts) v
 LEFT JOIN (
   SELECT funder_id, funder_award_id,
          array_join(array_sort(collect_set(action)), '+') AS actions
   FROM {schema}.award_id_salvage GROUP BY 1, 2
-) s ON s.funder_id = v.funder_id AND s.funder_award_id = v.funder_award_id;
+) s ON s.funder_id = v.funder_id AND s.funder_award_id = v.funder_award_id
+);
 """
 
 

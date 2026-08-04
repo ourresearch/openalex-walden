@@ -285,6 +285,34 @@ MULTI_SPLIT = r"[,;&+]|\\bAND\\b"
 # been suppressed).
 S3_NUMERIC_CHASSIS = r"(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)"
 
+# POSITIVE-JUNK CLASSES (recalibration round 1, 2026-08-03). DESIGN FLIP after
+# the random-327 audit measured 64.8% of "failed to verify" suppressions as
+# REAL grants in mangled dialects: suppression now requires POSITIVE
+# classification as junk — an unclassifiable string defaults to KEEP. The
+# space of real-id dialects is open-ended; the space of junk is enumerable
+# (top-150 audit: 94.4% of junk links = exactly these classes). Patterns run
+# on _n (normalized). Bare 7-digit (NSF-form) and 8-digit (NSFC-form) numbers
+# are deliberately NOT junk (audit graded them [form]-real cross-deposits).
+JUNK_POSITIVE = [
+  r"^(HORIZON ?2020|HORIZON ?EUROPE|H2020|FP[4-7]|ERASMUS(\\+| ?PLUS)?|MSCA|COST( ACTION)?|PRELUDIUM ?\\d{0,2}|OPUS ?\\d{0,2}|SONATA( BIS)? ?\\d{0,2}|CAREER|EPSCOR|CREST|INSPIRE|SBIR|STTR|R&D|COVID(-?19)?|RESEARCH ?4 ?COVID.*|FRANCE ?2030|STI ?2030.*|EDCTP2?|PT ?2020|COMPETE ?2020?|NORTE ?2020|CENTRO ?2020|LISBOA ?2020|POCI|FEDER|NSFC|973( PROGRAM)?|863( PROGRAM)?|111( PROJECT)?|NIH|NSF|DFG|ANR|AHA|ERC|GACR|MOST|JSPS|KAKENHI|CNPQ|CAPES|FCT|N/?A)$",  # program/framework/funder NAMES
+  r"^(19|20)\\d{2}[-–/ ]{1,3}(19|20)\\d{2}$",                            # year ranges (2007-2013)
+  r"^(19|20)\\d{2}$",                                                    # bare year
+  r"^10\\.13039/\\d{6,12}$",                                             # Crossref funder DOIs
+  r"10\\.13039",                                                         # funder-DOI anywhere (incl. URL forms)
+  r"^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499))",                        # URLs — EXCEPT grant-DOI registrars (AHA 10.58275, FCT 10.54499: they embed a real award id)
+  r"^0000-000\\d-\\d{4}-[0-9X]{4}$",                                     # ORCIDs
+  r"^0(?=.*[A-Z])[A-Z0-9]{8}$",                                          # ROR ids (00x0ma614; 9 chars, leading 0, must contain a letter — runs on uppercased _n)
+  r"^(N/?A|NA|NONE|NIL|NOT APPLICABLE|UNKNOWN|TBD|PENDING|NULL|XXX+|[-.,;:/#*+ ]+)$",  # placeholders
+  r"^\\(?CODE ?0*1\\)?$|FINANCE CODE|FINANCIAL CODE|^0*1$",              # CAPES finance-code boilerplate
+  r"^.{1,3}$",                                                           # <=3 chars
+  r"^( ?[A-Z]{2,}){4,}$",                                                # prose: 4+ all-letter words
+  r"^[0-9]{1,6}$",                                                       # bare integer <=6 digits (no scheme; weak-registry hits were already kept upstream)
+  r"^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]* (19|20)\\d{2}$|^\\d{1,2}[./]\\d{1,2}[./](19|20)?\\d{2}$",  # dates
+  r"[-/_.]$|^[-/_.]",                                                    # truncation fragments (leading/trailing separator: 'DE-AC02-', '/Z/15/Z', '-0001')
+  r"^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|GA|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$",  # scheme prefix with no serial (ANR-10, MOST 104)
+  r"^(19|20)\\d{2}[-–/](19|20)?\\d{1,2}$",                               # year-edition fragments (2014/, 2019/20)
+]
+
 # FOREIGN-SCHEME KEEP-LIST (2026-08-03, shape census over the suppress pile):
 # ids matching a KNOWN grant-id scheme of a funder OUTSIDE the configured 23
 # must never suppress — they are real grants wrongly filed (the ~57k class the
