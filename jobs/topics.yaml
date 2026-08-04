@@ -26,6 +26,15 @@ resources:
           environment_key: Default
           max_retries: 3
           min_retry_interval_millis: 300000
+        - task_key: rearm_topic_classifier
+          depends_on:
+            - task_key: topics_inference
+          notebook_task:
+            notebook_path: notebooks/serving/rearm_endpoint
+            source: GIT
+            base_parameters:
+              endpoint: topic-classifier
+          environment_key: Default
         - task_key: topics_merge_output
           depends_on:
             - task_key: topics_inference

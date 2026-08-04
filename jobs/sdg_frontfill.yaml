@@ -25,6 +25,15 @@ resources:
           environment_key: Default
           max_retries: 3
           min_retry_interval_millis: 300000
+        - task_key: rearm_sdg_classifier
+          depends_on:
+            - task_key: sdg_inference_frontfill
+          notebook_task:
+            notebook_path: notebooks/serving/rearm_endpoint
+            source: GIT
+            base_parameters:
+              endpoint: sdg-classifier
+          environment_key: Default
       job_clusters:
         - job_cluster_key: sdg-cpu-cluster
           new_cluster:
