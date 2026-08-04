@@ -290,6 +290,23 @@ FUNDERS = {
          r" CONCAT(regexp_extract(regexp_replace(norm,'^(VR|DNR|GRANT)[ .:#-]*',''),'^((19|20)\\d{2})',1),'-',"
          r"LPAD(regexp_extract(regexp_replace(norm,'^(VR|DNR|GRANT)[ .:#-]*',''),'[- ](\\d{4,5})$',1),5,'0')) END",
     gram=r"regexp_replace(norm,'^(VR|DNR|GRANT)[ .:#-]*','') rlike '^(19|20)\\d{2}[- ]\\d{4,5}$'"),
+  "NASA": dict(fid=4320306101,
+    # derived 2026-08-04 (overnight): registry = NAG/NAGW/NCC/NGT/NAS legacy
+    # + 80NSSCyyKnnnn modern. Deposits add NNXyyAAnnG era + hyphen/space
+    # variants (NAG5-12345). Key = strip [- ] exact match.
+    rkey="NULLIF(regexp_replace(norm,'[ -]',''),'')",
+    xkey="NULLIF(regexp_replace(norm,'[ -]',''),'')",
+    gram=r"regexp_replace(norm,'[ -]','') rlike '^80NSSC\\d{2}[KM]\\d{4}$'"
+         r" or regexp_replace(norm,'[ -]','') rlike '^NNX\\d{2}[A-Z]{2}\\d{2,3}[A-Z]?$'"
+         r" or regexp_replace(norm,'[ -]','') rlike '^(NAG|NAGW|NCC|NGT|NAS|NNG|NNH|NNJ)\\d{0,2}[A-Z]?\\d{3,6}[A-Z]{0,3}$'"),
+  "AMED": dict(fid=4320311405,
+    # derived 2026-08-04 (overnight): registry = per-installment codes
+    # yy+prog2+serial7+h+inst4 (15ek0109022h0002); deposits cite the 11-char
+    # CORE with optional JP prefix (JP25EK0109811). Core key -> installments
+    # form a family per core (existing newest-year election applies).
+    rkey=r"NULLIF(regexp_extract(norm,'^(\\d{2}[A-Z]{2}\\d{7})H\\d{4}$',1),'')",
+    xkey=r"NULLIF(regexp_extract(norm,'^(?:JP)?(\\d{2}[A-Z]{2}\\d{7})(?:H\\d{4})?$',1),'')",
+    gram=r"norm rlike '^(JP)?\\d{2}[A-Z]{2}\\d{7}(H\\d{4})?$'"),
   "DHHS": dict(fid=4320306085,
     # derived 2026-08-03 (worklist #18): registry = hhs_taggs (964 ids), two
     # shapes: 5-alnum-starting-letter + 6 digits (CPIMP151089, TP1AH000086,
@@ -482,6 +499,7 @@ EXTRACTIVE_FIDS = {
   4320321091,  # CAPES
   4320322511,  # NCN
   4320306084,  # DOE (chassis extractor; no cross-shape overlap — unlike DHHS)
+  4320311405,  # AMED (JP-core extractor)
   4320324174,  # Shandong NSF (ZR chassis extractor)
 }
 
@@ -544,6 +562,11 @@ XGRAM = {
   # Shandong NSF: modern ZR-prefixed chassis is distinctive (inert until
   # the stub registry is extended)
   4320324174: r"regexp_replace(norm,'[ -]','') rlike 'ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}'",
+  # AMED: JP-prefixed core is distinctive
+  4320311405: r"norm rlike '^JP\\d{2}[A-Z]{2}\\d{7}$'",
+  # NASA: modern + NNX-era forms are distinctive
+  4320306101: (r"regexp_replace(norm,'[ -]','') rlike '^80NSSC\\d{2}[KM]\\d{4}$'"
+               r" or regexp_replace(norm,'[ -]','') rlike '^NNX\\d{2}[A-Z]{2}\\d{2,3}[A-Z]$'"),
   # DOE: cross-funder claims require the literal DE prefix (self-identifying;
   # control: 12/12 sampled cross-hits were real DE- ids)
   4320306084: (r"regexp_replace(norm,'[ -]','') rlike '(?<![A-Z])DE(SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}'"
