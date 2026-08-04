@@ -119,6 +119,7 @@ def gen(schema):
         f"_n rlike '{p}'" for p in FOREIGN_SCHEMES) + ")"
     junk_cond = "(" + "\n         OR ".join(
         f"_n rlike '{p}'" for p in JUNK_POSITIVE) + ")"
+    foreign_cond_s = foreign_cond.replace("_n rlike", "s rlike")
     dep_union = "\n    UNION ALL\n".join(
         f"    SELECT funder_id, aid AS funder_award_id\n"
         f"    FROM {j} LATERAL VIEW EXPLODE(award_ids) AS aid"
@@ -311,9 +312,10 @@ s1 AS (
   -- parts — on the stripped form passing the funder's own grammar
   -- ("# 88887.684374/2022-00" at a funder whose registry can't confirm it)
   SELECT k.funder_id, k.funder_award_id,
-    CASE WHEN COALESCE(r.nk, rg.nk_g) IS NULL THEN 'decorated_plausible'
-         WHEN k.s_weak THEN 'decorated_own_id_weak'
-         ELSE 'decorated_own_id' END AS action,
+    CASE WHEN COALESCE(r.nk, rg.nk_g) IS NOT NULL AND k.s_weak THEN 'decorated_own_id_weak'
+         WHEN COALESCE(r.nk, rg.nk_g) IS NOT NULL THEN 'decorated_own_id'
+         WHEN k.s_gram AND NOT k.s_weak THEN 'decorated_plausible'
+         ELSE 'foreign_scheme_decorated' END AS action,
     k.funder_id AS target_funder_id,
     COALESCE(r.nk, rg.nk_g) AS target_nk,
     COALESCE(r.n_awards, rg.n_awards) AS n_awards,
@@ -321,7 +323,13 @@ s1 AS (
   FROM s1_keyed k
   LEFT JOIN reg r ON r.funder_id = k.funder_id AND r.nk = k.s_nk
   LEFT JOIN reg_g rg ON rg.funder_id = k.funder_id AND rg.nk_g = k.s_nk_g
+  -- round-2 audit: the stripped residue matching a FOREIGN scheme also
+  -- rescues ("DGE-1650116)." at NIH, "107337/Z/15/Z/" trailing slash)
   WHERE COALESCE(r.nk, rg.nk_g) IS NOT NULL OR (k.s_gram AND NOT k.s_weak)
+     OR {foreign_cond_s}
+     -- round-3: bare 7-8 digit residues are non-junk whole-string (NSF/NSFC
+     -- forms), so a trailing-punctuation variant must not die either
+     OR k.s rlike '^[0-9]{{7,8}}$'
 ),
 -- S2: multi-id concat split
 multi AS (
@@ -430,7 +438,9 @@ SELECT funder_id, funder_award_id, verdict,
   current_timestamp() AS created_date
 FROM (
 SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
-  {junk_cond} AS is_junk
+  ({junk_cond}
+   OR (v.funder_id = 4320306084 AND _n rlike '^[0-9]{{6}}$')  -- DOE-scoped: bare-6 = facility proposal ids (auditor-endorsed junk); global bare-6 carved out for SNSF/EC GA space
+  ) AS is_junk
 FROM (SELECT *, {NORM.format(c='funder_award_id')} AS _n FROM {schema}.award_id_verdicts) v
 LEFT JOIN (
   SELECT funder_id, funder_award_id,

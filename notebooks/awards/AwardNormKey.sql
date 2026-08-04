@@ -37,7 +37,7 @@ SELECT COALESCE(
       WHEN funder_id = 2461203286 THEN (NULLIF(regexp_replace(regexp_replace(_n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),''))
       WHEN funder_id = 4320334506 THEN (CAST(CAST(NULLIF(regexp_extract(_n, '^(\\d{4,6})_\\d+$', 1), '') AS BIGINT) AS STRING))
       WHEN funder_id = 4320306230 THEN (NULLIF(regexp_replace(_n,' ',''),''))
-      WHEN funder_id = 4320321091 THEN (NULLIF(regexp_extract(regexp_replace(_n,' ',''),'^(8888\\d\\.\\d{6}/\\d{4}-\\d{2})$', 1), ''))
+      WHEN funder_id = 4320321091 THEN (NULLIF(regexp_extract(regexp_replace(_n,' ',''),'^((8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2})$', 1), ''))
       WHEN funder_id = 4320322511 THEN (NULLIF(regexp_extract(regexp_replace(_n,' ',''),'^(20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5})$', 1), ''))
       WHEN funder_id = 4320306084 THEN (NULLIF(regexp_extract(regexp_replace(regexp_replace(_n,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])',''), '^((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})$', 1), ''))
       WHEN funder_id = 4320324174 THEN (NULLIF(regexp_extract(regexp_replace(_n,'[ -]',''), '^(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})$', 1), ''))
@@ -63,7 +63,7 @@ SELECT COALESCE(
       WHEN funder_id = 2461203286 THEN (NULLIF(regexp_replace(regexp_replace(_n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),''))
       WHEN funder_id = 4320334506 THEN (CAST(CAST(NULLIF(regexp_extract(regexp_replace(regexp_replace(_n,'^[#]+ ?',''),'^(950[- ]|[A-Z]{2,4}[- ]?)',''),'^(\\d{4,6})([-_]\\d+)?$',1),'') AS BIGINT) AS STRING))
       WHEN funder_id = 4320306230 THEN (NULLIF(regexp_replace(_n,' ',''),''))
-      WHEN funder_id = 4320321091 THEN (NULLIF(regexp_extract(regexp_replace(_n,' ',''),'(8888\\d\\.\\d{6}/\\d{4}-\\d{2})', 1), ''))
+      WHEN funder_id = 4320321091 THEN (NULLIF(regexp_extract(regexp_replace(_n,' ',''),'((8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2})', 1), ''))
       WHEN funder_id = 4320322511 THEN (NULLIF(regexp_extract(regexp_replace(_n,' ',''),'(20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5})', 1), ''))
       WHEN funder_id = 4320306084 THEN (NULLIF(regexp_extract(regexp_replace(regexp_replace(_n,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])',''), '((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})', 1), ''))
       WHEN funder_id = 4320324174 THEN (NULLIF(regexp_extract(regexp_replace(_n,'[ -]',''), '(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})', 1), ''))
@@ -146,7 +146,7 @@ keyed AS (
       WHEN funder_id = 4320320924 THEN ((CAST(CAST(CASE WHEN _n rlike '^\\d{12}$' THEN SUBSTR(_n,7) ELSE NULLIF(regexp_extract(_n, '(\\d{5,6})$', 1), '') END AS BIGINT) AS STRING)) IS NOT NULL)
       WHEN funder_id = 4320311904 THEN ((LPAD(NULLIF(regexp_extract(_n, '^(\\d{5,6})(?:[/_ ][A-Z](?:[/_ ]\\d{2})?([/_ ][A-Z])?)?$', 1), ''),6,'0')) IS NOT NULL)
       WHEN funder_id = 4320334506 THEN ((CAST(CAST(NULLIF(regexp_extract(regexp_replace(regexp_replace(_n,'^[#]+ ?',''),'^(950[- ]|[A-Z]{2,4}[- ]?)',''),'^(\\d{4,6})([-_]\\d+)?$',1),'') AS BIGINT) AS STRING)) IS NOT NULL)
-      WHEN funder_id = 4320321091 THEN ((NULLIF(regexp_extract(regexp_replace(_n,' ',''),'(8888\\d\\.\\d{6}/\\d{4}-\\d{2})', 1), '')) IS NOT NULL)
+      WHEN funder_id = 4320321091 THEN ((NULLIF(regexp_extract(regexp_replace(_n,' ',''),'((8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2})', 1), '')) IS NOT NULL)
       WHEN funder_id = 4320322511 THEN ((NULLIF(regexp_extract(regexp_replace(_n,' ',''),'(20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5})', 1), '')) IS NOT NULL)
       WHEN funder_id = 4320306084 THEN ((NULLIF(regexp_extract(regexp_replace(regexp_replace(_n,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])',''), '((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})', 1), '')) IS NOT NULL)
       WHEN funder_id = 4320324174 THEN ((NULLIF(regexp_extract(regexp_replace(_n,'[ -]',''), '(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})', 1), '')) IS NOT NULL)
@@ -164,7 +164,7 @@ scored AS (
       WHEN k.funder_id = 4320306076 THEN (k._n rlike '^([A-Z]{2,5}[ -]?)?\\d{7}$' or k._n rlike '^[A-Z]{2,5}[ -]?\\d{2}[ -]\\d{5}$')
       WHEN k.funder_id = 4320334764 THEN (k._n rlike '^(KAKENHI|JP|NO\\.?|GRANT)?[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$' or regexp_replace(k._n,' ','') rlike '^(KAKENHI|JP|NO\\.?|GRANT)?(\\d{2}[A-Z]\\d{5}|\\d{8})$')
       WHEN k.funder_id = 4320320879 THEN (k._n rlike '^(SFB|TRR|CRC|EXC|GRK|RTG|FOR|SPP|INST|NFDI|KFO|FZT) ?/?-?\\d+' or k._n rlike '^(DFG[ -])?[A-Z]{1,4} ?\\d{2,4}(/\\d+)?(-\\d+)?( .*)?$' or k._n rlike '(?<!\\d)\\d{9}(?!\\d)')
-      WHEN k.funder_id = 4320322795 THEN (regexp_replace(regexp_replace(k._n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN k.funder_id = 4320322795 THEN (regexp_replace(regexp_replace(k._n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$' or k._n rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$')
       WHEN k.funder_id = 4320320997 THEN (k._n rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)')
       WHEN k.funder_id = 4320334779 THEN (k._n rlike '^[A-Z0-9 ./-]+$' and (k._n rlike '/' or k._n rlike '^\\d{4}\\.\\d{5}\\.'))
       WHEN k.funder_id = 4320320300 THEN (k._n rlike '^(GA ?N?°? ?)?\\d{6}$' or k._n rlike '^101\\d{6}$' or k._n rlike '-CT-\\d{4}-' or k._n rlike '(FP[567]|H2020|HORIZON|MSCA|ERC|GA) ?N?°? ?-?\\d{6}')
@@ -173,10 +173,10 @@ scored AS (
       WHEN k.funder_id = 4320320924 THEN (k._n rlike '^[0-9A-Z]{0,8}[_-]?\\d{4,6}$' or k._n rlike '^\\d{12}$')
       WHEN k.funder_id = 4320311904 THEN (k._n rlike '^\\d{5,6}([/_ ][A-Z][/_ ]\\d{2}[/_ ][A-Z])?$')
       WHEN k.funder_id = 4320334627 THEN (regexp_replace(k._n,' ','') rlike '^EP/[A-Z0-9]{6,7}(/[0-9])?$' or k._n rlike '^\\d{7}$')
-      WHEN k.funder_id = 2461203286 THEN (regexp_replace(regexp_replace(k._n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN k.funder_id = 2461203286 THEN (regexp_replace(regexp_replace(k._n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$' or k._n rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$')
       WHEN k.funder_id = 4320334506 THEN (k._n rlike '^#? ?(950[- ])?([A-Z]{2,4}[- ]?)?\\d{4,6}([-_]\\d+)?$')
       WHEN k.funder_id = 4320306230 THEN (regexp_replace(k._n,' ','') rlike '^\\d{2}[A-Z]{2,10}\\d{4,9}$' or k._n rlike '^\\d{6,9}$')
-      WHEN k.funder_id = 4320321091 THEN ((regexp_replace(k._n,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$' or regexp_replace(k._n,' ','') rlike '^(BEX|PDSE|PNPD|PROEX|DS|AUX)-?\\d{3,7}([-/.]\\d{1,4}){0,3}$' or k._n rlike '^\\d{1,4}/(19|20)\\d{2}$'))
+      WHEN k.funder_id = 4320321091 THEN ((regexp_replace(k._n,' ','') rlike '^(8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2}$' or regexp_replace(k._n,' ','') rlike '^(BEX|PDSE|PNPD|PROEX|DS|AUX)-?\\d{3,7}([-/.]\\d{1,4}){0,3}$' or k._n rlike '^\\d{1,4}/(19|20)\\d{2}$'))
       WHEN k.funder_id = 4320322511 THEN ((regexp_replace(k._n,' ','') rlike '^(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}$' or k._n rlike '^N ?N[A-Z]?\\d{3} ?\\d{6}$'))
       WHEN k.funder_id = 4320306084 THEN (regexp_replace(regexp_replace(k._n,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])','') rlike '^((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})$')
       WHEN k.funder_id = 4320324174 THEN (regexp_replace(k._n,'[ -]','') rlike '^(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})$')
@@ -210,7 +210,10 @@ SELECT funder_id, funder_award_id, nk, n_awards,
       OR _n rlike '^(POWR|POIR|POPC|POPW|RPMA)\\.[0-9.]{2,12}[/-][0-9A-Z-]{2,}$'
       OR _n rlike '^(ANID|FONDECYT|FONDAP|PIA|ACT|ICN)[ /-]?[0-9]{4,8}$'
       OR _n rlike '^2[0-9]{3}[A-Z]{2,8}[0-9]{3,8}$'
-      OR _n rlike '^[A-Z]{1,4} ?[0-9]{2,4}/[0-9]{1,3}(-[0-9])?$'
+      OR _n rlike '^(INST )?[A-Z]{1,4}[- ]?[0-9]{2,4}/[0-9]{1,3}(-[0-9]{1,2})?( FUGG)?$'
+      OR _n rlike '^[0-9]{2}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{2,4}[0-9]{3,4}[A-Z]{0,3}$'
+      OR _n rlike '^[0-9]{2}(JJ|ZR|DZ|JC|SF|SK|YF)[0-9]{4,7}$'
+      OR _n rlike '^[A-Z]{2,5}-[0-9]{7}$'
       OR _n rlike '^(DE[- ]?)?A[CR][0-9]{2}[- ]{0,2}[0-9]{2}[- ]{0,2}[A-Z]{2,3} ?[0-9]{4,6}$'
       OR _n rlike '^W[- ]?[0-9]{2,4}([- ]?[0-9]{1,3})?[- ]?ENG[- ]?[0-9]{2}$'
       OR _n rlike '^W81XWH[- ]?[0-9]{2}[- ]?[0-9][- ]?[0-9]{4}$'
@@ -271,7 +274,7 @@ garbage AS (
 stripped AS (
   SELECT funder_id, funder_award_id, _n,
     regexp_replace(regexp_replace(regexp_replace(_n,
-      '^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS)[ .:#°-]+|(GRANT|AWARD|PROJECT|CONTRACT|NUMBER|KAKENHI|REFERENCE|APPLICATION|PROCESSO|PROCESS)|[#№(\\[]+ ?)+', ''), '([ .,;:)\\]]+|[ -]*\\(.*\\))$', ''), '([ .,;:)\\]]+|[ -]*\\(.*\\))$', '') AS s
+      '^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS)[ .:#°-]+|HTTPS?://KAKEN\\.NII\\.AC\\.JP/GRANT/KAKENHI-PROJECT-|GRANT ?\\(?NO\\.? ?|(GRANT|AWARD|PROJECT|CONTRACT|NUMBER|KAKENHI|REFERENCE|APPLICATION|PROCESSO|PROCESS)|[#№(\\[]+ ?)+', ''), '([ .,;:)/\\]]+|[ -]*\\(.*\\)| TO [A-Z][A-Z. -]{1,14})$', ''), '([ .,;:)/\\]]+|[ -]*\\(.*\\)| TO [A-Z][A-Z. -]{1,14})$', '') AS s
   FROM garbage
 ),
 s1_keyed AS (
@@ -286,7 +289,7 @@ s1_keyed AS (
       WHEN funder_id = 4320306076 THEN (s rlike '^([A-Z]{2,5}[ -]?)?\\d{7}$' or s rlike '^[A-Z]{2,5}[ -]?\\d{2}[ -]\\d{5}$')
       WHEN funder_id = 4320334764 THEN (s rlike '^(KAKENHI|JP|NO\\.?|GRANT)?[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$' or regexp_replace(s,' ','') rlike '^(KAKENHI|JP|NO\\.?|GRANT)?(\\d{2}[A-Z]\\d{5}|\\d{8})$')
       WHEN funder_id = 4320320879 THEN (s rlike '^(SFB|TRR|CRC|EXC|GRK|RTG|FOR|SPP|INST|NFDI|KFO|FZT) ?/?-?\\d+' or s rlike '^(DFG[ -])?[A-Z]{1,4} ?\\d{2,4}(/\\d+)?(-\\d+)?( .*)?$' or s rlike '(?<!\\d)\\d{9}(?!\\d)')
-      WHEN funder_id = 4320322795 THEN (regexp_replace(regexp_replace(s,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN funder_id = 4320322795 THEN (regexp_replace(regexp_replace(s,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$' or s rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$')
       WHEN funder_id = 4320320997 THEN (s rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)')
       WHEN funder_id = 4320334779 THEN (s rlike '^[A-Z0-9 ./-]+$' and (s rlike '/' or s rlike '^\\d{4}\\.\\d{5}\\.'))
       WHEN funder_id = 4320320300 THEN (s rlike '^(GA ?N?°? ?)?\\d{6}$' or s rlike '^101\\d{6}$' or s rlike '-CT-\\d{4}-' or s rlike '(FP[567]|H2020|HORIZON|MSCA|ERC|GA) ?N?°? ?-?\\d{6}')
@@ -295,10 +298,10 @@ s1_keyed AS (
       WHEN funder_id = 4320320924 THEN (s rlike '^[0-9A-Z]{0,8}[_-]?\\d{4,6}$' or s rlike '^\\d{12}$')
       WHEN funder_id = 4320311904 THEN (s rlike '^\\d{5,6}([/_ ][A-Z][/_ ]\\d{2}[/_ ][A-Z])?$')
       WHEN funder_id = 4320334627 THEN (regexp_replace(s,' ','') rlike '^EP/[A-Z0-9]{6,7}(/[0-9])?$' or s rlike '^\\d{7}$')
-      WHEN funder_id = 2461203286 THEN (regexp_replace(regexp_replace(s,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN funder_id = 2461203286 THEN (regexp_replace(regexp_replace(s,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$' or s rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$')
       WHEN funder_id = 4320334506 THEN (s rlike '^#? ?(950[- ])?([A-Z]{2,4}[- ]?)?\\d{4,6}([-_]\\d+)?$')
       WHEN funder_id = 4320306230 THEN (regexp_replace(s,' ','') rlike '^\\d{2}[A-Z]{2,10}\\d{4,9}$' or s rlike '^\\d{6,9}$')
-      WHEN funder_id = 4320321091 THEN ((regexp_replace(s,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$' or regexp_replace(s,' ','') rlike '^(BEX|PDSE|PNPD|PROEX|DS|AUX)-?\\d{3,7}([-/.]\\d{1,4}){0,3}$' or s rlike '^\\d{1,4}/(19|20)\\d{2}$'))
+      WHEN funder_id = 4320321091 THEN ((regexp_replace(s,' ','') rlike '^(8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2}$' or regexp_replace(s,' ','') rlike '^(BEX|PDSE|PNPD|PROEX|DS|AUX)-?\\d{3,7}([-/.]\\d{1,4}){0,3}$' or s rlike '^\\d{1,4}/(19|20)\\d{2}$'))
       WHEN funder_id = 4320322511 THEN ((regexp_replace(s,' ','') rlike '^(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}$' or s rlike '^N ?N[A-Z]?\\d{3} ?\\d{6}$'))
       WHEN funder_id = 4320306084 THEN (regexp_replace(regexp_replace(s,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])','') rlike '^((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})$')
       WHEN funder_id = 4320324174 THEN (regexp_replace(s,'[ -]','') rlike '^(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})$')
@@ -312,9 +315,10 @@ s1 AS (
   -- parts — on the stripped form passing the funder's own grammar
   -- ("# 88887.684374/2022-00" at a funder whose registry can't confirm it)
   SELECT k.funder_id, k.funder_award_id,
-    CASE WHEN COALESCE(r.nk, rg.nk_g) IS NULL THEN 'decorated_plausible'
-         WHEN k.s_weak THEN 'decorated_own_id_weak'
-         ELSE 'decorated_own_id' END AS action,
+    CASE WHEN COALESCE(r.nk, rg.nk_g) IS NOT NULL AND k.s_weak THEN 'decorated_own_id_weak'
+         WHEN COALESCE(r.nk, rg.nk_g) IS NOT NULL THEN 'decorated_own_id'
+         WHEN k.s_gram AND NOT k.s_weak THEN 'decorated_plausible'
+         ELSE 'foreign_scheme_decorated' END AS action,
     k.funder_id AS target_funder_id,
     COALESCE(r.nk, rg.nk_g) AS target_nk,
     COALESCE(r.n_awards, rg.n_awards) AS n_awards,
@@ -322,7 +326,30 @@ s1 AS (
   FROM s1_keyed k
   LEFT JOIN reg r ON r.funder_id = k.funder_id AND r.nk = k.s_nk
   LEFT JOIN reg_g rg ON rg.funder_id = k.funder_id AND rg.nk_g = k.s_nk_g
+  -- round-2 audit: the stripped residue matching a FOREIGN scheme also
+  -- rescues ("DGE-1650116)." at NIH, "107337/Z/15/Z/" trailing slash)
   WHERE COALESCE(r.nk, rg.nk_g) IS NOT NULL OR (k.s_gram AND NOT k.s_weak)
+     OR (s rlike '^(MR|BB|EP|NE|ES|AH|ST|EY|G)[0-9]{0,2}/[A-Z0-9]{6,8}/[0-9]{1,2}$'
+      OR s rlike '^(PID|PGC|RYC|RTI|CEX|TED|SEV|BES|FPU|FJC|IJC|MAT|FIS|CTQ|SAF|BFU|AGL|ECO|DPI|TIN|FFI|HAR)[0-9]{4}-[0-9A-Z-]{3,}$'
+      OR s rlike '^(PRIN|PNRR|FIRB|FISR|PON|POR)[ :-]?[0-9A-Z]{2,}$'
+      OR s rlike '^CUP[ :]?[A-Z][0-9][0-9A-Z]{8,13}$'
+      OR s rlike '^(RVO|MSM|LO|LM|LQ|GA|GX|GJ)[.:]? ?[0-9]{2,8}([./-][0-9A-Z]+)?$'
+      OR s rlike '^(POWR|POIR|POPC|POPW|RPMA)\\.[0-9.]{2,12}[/-][0-9A-Z-]{2,}$'
+      OR s rlike '^(ANID|FONDECYT|FONDAP|PIA|ACT|ICN)[ /-]?[0-9]{4,8}$'
+      OR s rlike '^2[0-9]{3}[A-Z]{2,8}[0-9]{3,8}$'
+      OR s rlike '^(INST )?[A-Z]{1,4}[- ]?[0-9]{2,4}/[0-9]{1,3}(-[0-9]{1,2})?( FUGG)?$'
+      OR s rlike '^[0-9]{2}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{2,4}[0-9]{3,4}[A-Z]{0,3}$'
+      OR s rlike '^[0-9]{2}(JJ|ZR|DZ|JC|SF|SK|YF)[0-9]{4,7}$'
+      OR s rlike '^[A-Z]{2,5}-[0-9]{7}$'
+      OR s rlike '^(DE[- ]?)?A[CR][0-9]{2}[- ]{0,2}[0-9]{2}[- ]{0,2}[A-Z]{2,3} ?[0-9]{4,6}$'
+      OR s rlike '^W[- ]?[0-9]{2,4}([- ]?[0-9]{1,3})?[- ]?ENG[- ]?[0-9]{2}$'
+      OR s rlike '^W81XWH[- ]?[0-9]{2}[- ]?[0-9][- ]?[0-9]{4}$'
+      OR s rlike '^#? ?[0-9]{2}[A-Z0-9]{6,14}(CNA|NA)[0-9]{6}$'
+      OR s rlike '^#? ?HHSN[0-9]{9,12}[A-Z]?$'
+      OR s rlike '^[A-Z]{3,8}[0-9]{0,2}[- ]?CT[- ]?[0-9]{2}[- ]?[0-9]{4}$')
+     -- round-3: bare 7-8 digit residues are non-junk whole-string (NSF/NSFC
+     -- forms), so a trailing-punctuation variant must not die either
+     OR k.s rlike '^[0-9]{7,8}$'
 ),
 -- S2: multi-id concat split
 multi AS (
@@ -336,7 +363,7 @@ parts0 AS (
 parts AS (
   SELECT funder_id, funder_award_id,
     regexp_replace(regexp_replace(regexp_replace(p0,
-      '^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS)[ .:#°-]+|(GRANT|AWARD|PROJECT|CONTRACT|NUMBER|KAKENHI|REFERENCE|APPLICATION|PROCESSO|PROCESS)|[#№(\\[]+ ?)+', ''), '([ .,;:)\\]]+|[ -]*\\(.*\\))$', ''), '([ .,;:)\\]]+|[ -]*\\(.*\\))$', '') AS part
+      '^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS)[ .:#°-]+|HTTPS?://KAKEN\\.NII\\.AC\\.JP/GRANT/KAKENHI-PROJECT-|GRANT ?\\(?NO\\.? ?|(GRANT|AWARD|PROJECT|CONTRACT|NUMBER|KAKENHI|REFERENCE|APPLICATION|PROCESSO|PROCESS)|[#№(\\[]+ ?)+', ''), '([ .,;:)/\\]]+|[ -]*\\(.*\\)| TO [A-Z][A-Z. -]{1,14})$', ''), '([ .,;:)/\\]]+|[ -]*\\(.*\\)| TO [A-Z][A-Z. -]{1,14})$', '') AS part
   FROM parts0 WHERE p0 <> ''
 ),
 parts_keyed AS (
@@ -350,7 +377,7 @@ parts_keyed AS (
       WHEN funder_id = 4320306076 THEN (part rlike '^([A-Z]{2,5}[ -]?)?\\d{7}$' or part rlike '^[A-Z]{2,5}[ -]?\\d{2}[ -]\\d{5}$')
       WHEN funder_id = 4320334764 THEN (part rlike '^(KAKENHI|JP|NO\\.?|GRANT)?[ -]*(\\d{2}[A-Z]\\d{5}|\\d{8})$' or regexp_replace(part,' ','') rlike '^(KAKENHI|JP|NO\\.?|GRANT)?(\\d{2}[A-Z]\\d{5}|\\d{8})$')
       WHEN funder_id = 4320320879 THEN (part rlike '^(SFB|TRR|CRC|EXC|GRK|RTG|FOR|SPP|INST|NFDI|KFO|FZT) ?/?-?\\d+' or part rlike '^(DFG[ -])?[A-Z]{1,4} ?\\d{2,4}(/\\d+)?(-\\d+)?( .*)?$' or part rlike '(?<!\\d)\\d{9}(?!\\d)')
-      WHEN funder_id = 4320322795 THEN (regexp_replace(regexp_replace(part,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN funder_id = 4320322795 THEN (regexp_replace(regexp_replace(part,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$' or part rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$')
       WHEN funder_id = 4320320997 THEN (part rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)')
       WHEN funder_id = 4320334779 THEN (part rlike '^[A-Z0-9 ./-]+$' and (part rlike '/' or part rlike '^\\d{4}\\.\\d{5}\\.'))
       WHEN funder_id = 4320320300 THEN (part rlike '^(GA ?N?°? ?)?\\d{6}$' or part rlike '^101\\d{6}$' or part rlike '-CT-\\d{4}-' or part rlike '(FP[567]|H2020|HORIZON|MSCA|ERC|GA) ?N?°? ?-?\\d{6}')
@@ -359,10 +386,10 @@ parts_keyed AS (
       WHEN funder_id = 4320320924 THEN (part rlike '^[0-9A-Z]{0,8}[_-]?\\d{4,6}$' or part rlike '^\\d{12}$')
       WHEN funder_id = 4320311904 THEN (part rlike '^\\d{5,6}([/_ ][A-Z][/_ ]\\d{2}[/_ ][A-Z])?$')
       WHEN funder_id = 4320334627 THEN (regexp_replace(part,' ','') rlike '^EP/[A-Z0-9]{6,7}(/[0-9])?$' or part rlike '^\\d{7}$')
-      WHEN funder_id = 2461203286 THEN (regexp_replace(regexp_replace(part,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
+      WHEN funder_id = 2461203286 THEN (regexp_replace(regexp_replace(part,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$' or part rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$')
       WHEN funder_id = 4320334506 THEN (part rlike '^#? ?(950[- ])?([A-Z]{2,4}[- ]?)?\\d{4,6}([-_]\\d+)?$')
       WHEN funder_id = 4320306230 THEN (regexp_replace(part,' ','') rlike '^\\d{2}[A-Z]{2,10}\\d{4,9}$' or part rlike '^\\d{6,9}$')
-      WHEN funder_id = 4320321091 THEN ((regexp_replace(part,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$' or regexp_replace(part,' ','') rlike '^(BEX|PDSE|PNPD|PROEX|DS|AUX)-?\\d{3,7}([-/.]\\d{1,4}){0,3}$' or part rlike '^\\d{1,4}/(19|20)\\d{2}$'))
+      WHEN funder_id = 4320321091 THEN ((regexp_replace(part,' ','') rlike '^(8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2}$' or regexp_replace(part,' ','') rlike '^(BEX|PDSE|PNPD|PROEX|DS|AUX)-?\\d{3,7}([-/.]\\d{1,4}){0,3}$' or part rlike '^\\d{1,4}/(19|20)\\d{2}$'))
       WHEN funder_id = 4320322511 THEN ((regexp_replace(part,' ','') rlike '^(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}$' or part rlike '^N ?N[A-Z]?\\d{3} ?\\d{6}$'))
       WHEN funder_id = 4320306084 THEN (regexp_replace(regexp_replace(part,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])','') rlike '^((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})$')
       WHEN funder_id = 4320324174 THEN (regexp_replace(part,'[ -]','') rlike '^(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})$')
@@ -420,7 +447,7 @@ wf_keyed AS (
       WHEN t_fid = 4320322795 THEN (regexp_replace(regexp_replace(_n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
       WHEN t_fid = 2461203286 THEN (regexp_replace(regexp_replace(_n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','') rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$')
       WHEN t_fid = 4320320997 THEN (_n rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)')
-      WHEN t_fid = 4320321091 THEN (regexp_replace(_n,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$')
+      WHEN t_fid = 4320321091 THEN (regexp_replace(_n,' ','') rlike '^(8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2}$')
       WHEN t_fid = 4320322511 THEN (regexp_replace(_n,' ','') rlike '(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}')
       WHEN t_fid = 4320324174 THEN (regexp_replace(_n,'[ -]','') rlike 'ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}')
       WHEN t_fid = 4320306084 THEN (regexp_replace(_n,'[ -]','') rlike '(?<![A-Z])DE(SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}' or regexp_replace(_n,'[ -]','') rlike '(?<![A-Z])DE(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6}')
@@ -472,23 +499,25 @@ SELECT funder_id, funder_award_id, verdict,
   current_timestamp() AS created_date
 FROM (
 SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
-  (_n rlike '^(HORIZON ?2020|HORIZON ?EUROPE|H2020|FP[4-7]|ERASMUS(\\+| ?PLUS)?|MSCA|COST( ACTION)?|PRELUDIUM ?\\d{0,2}|OPUS ?\\d{0,2}|SONATA( BIS)? ?\\d{0,2}|CAREER|EPSCOR|CREST|INSPIRE|SBIR|STTR|R&D|COVID(-?19)?|RESEARCH ?4 ?COVID.*|FRANCE ?2030|STI ?2030.*|EDCTP2?|PT ?2020|COMPETE ?2020?|NORTE ?2020|CENTRO ?2020|LISBOA ?2020|POCI|FEDER|NSFC|973( PROGRAM)?|863( PROGRAM)?|111( PROJECT)?|NIH|NSF|DFG|ANR|AHA|ERC|GACR|MOST|JSPS|KAKENHI|CNPQ|CAPES|FCT|N/?A)$'
+  ((_n rlike '^(HORIZON ?2020|HORIZON ?EUROPE|H2020|FP[4-7]|ERASMUS(\\+| ?PLUS)?|MSCA|COST( ACTION)?|PRELUDIUM ?\\d{0,2}|OPUS ?\\d{0,2}|SONATA( BIS)? ?\\d{0,2}|CAREER|EPSCOR|CREST|INSPIRE|SBIR|STTR|R&D|COVID(-?19)?|RESEARCH ?4 ?COVID.*|FRANCE ?2030|STI ?2030.*|EDCTP2?|PT ?2020|COMPETE ?2020?|NORTE ?2020|CENTRO ?2020|LISBOA ?2020|POCI|FEDER|NSFC|973( PROGRAM)?|863( PROGRAM)?|111( PROJECT)?|NIH|NSF|DFG|ANR|AHA|ERC|GACR|MOST|JSPS|KAKENHI|CNPQ|CAPES|FCT|N/?A)$'
          OR _n rlike '^(19|20)\\d{2}[-–/ ]{1,3}(19|20)\\d{2}$'
          OR _n rlike '^(19|20)\\d{2}$'
          OR _n rlike '^10\\.13039/\\d{6,12}$'
          OR _n rlike '10\\.13039'
          OR _n rlike '^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499))'
          OR _n rlike '^0000-000\\d-\\d{4}-[0-9X]{4}$'
-         OR _n rlike '^0(?=.*[A-Z])[A-Z0-9]{8}$'
+         OR _n rlike '^0(?=.*[A-Z])[A-Z0-9]{6}[0-9]{2}$'
          OR _n rlike '^(N/?A|NA|NONE|NIL|NOT APPLICABLE|UNKNOWN|TBD|PENDING|NULL|XXX+|[-.,;:/#*+ ]+)$'
-         OR _n rlike '^\\(?CODE ?0*1\\)?$|FINANCE CODE|FINANCIAL CODE|^0*1$'
+         OR _n rlike '^\\(?(FINANCE|FINANCIAL)? ?CODE[ :]*0*1\\)?\\.?$|^0*1$'
          OR _n rlike '^.{1,3}$'
          OR _n rlike '^( ?[A-Z]{2,}){4,}$'
-         OR _n rlike '^[0-9]{1,6}$'
+         OR _n rlike '^[0-9]{1,5}$'
          OR _n rlike '^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]* (19|20)\\d{2}$|^\\d{1,2}[./]\\d{1,2}[./](19|20)?\\d{2}$'
          OR _n rlike '[-/_.]$|^[-/_.]'
          OR _n rlike '^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|GA|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$'
-         OR _n rlike '^(19|20)\\d{2}[-–/](19|20)?\\d{1,2}$') AS is_junk
+         OR _n rlike '^(19|20)\\d{2}[-–/](19|20)?\\d{1,2}$')
+   OR (v.funder_id = 4320306084 AND _n rlike '^[0-9]{6}$')  -- DOE-scoped: bare-6 = facility proposal ids (auditor-endorsed junk); global bare-6 carved out for SNSF/EC GA space
+  ) AS is_junk
 FROM (SELECT *, regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n FROM openalex.awards.award_id_verdicts) v
 LEFT JOIN (
   SELECT funder_id, funder_award_id,

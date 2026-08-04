@@ -66,7 +66,10 @@ FUNDERS = {
     rkey="NULLIF(regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),'')",
     xkey="NULLIF(regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),'')",
     gram=r"regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','')"
-         r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"),
+         r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"
+         # round-2 audit: hyphenated form with ALNUM institution codes (A49,
+         # 182A, 002) and optional -MYn / letter suffix / trailing hyphen
+         r" or norm rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$'"),
   "FAPESP": dict(fid=4320320997,
     rkey=f"CASE WHEN {ex(r'^(\\d{2})/(\\d{5})-(\\d)$')} IS NOT NULL THEN "
          f"CONCAT(regexp_extract(norm,'^(\\\\d{{2}})/(\\\\d{{5}})-(\\\\d)$',1),'/',"
@@ -137,7 +140,10 @@ FUNDERS = {
     rkey="NULLIF(regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),'')",
     xkey="NULLIF(regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),'')",
     gram=r"regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]','')"
-         r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"),
+         r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"
+         # round-2 audit: hyphenated form with ALNUM institution codes (A49,
+         # 182A, 002) and optional -MYn / letter suffix / trailing hyphen
+         r" or norm rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$'"),
   "CIHR": dict(fid=4320334506,
     # derived 2026-08-03 (worklist #16): registry = NNNNNN_1 (application no. +
     # installment); deposits = program prefixes (MOP/PJT/FDN...), '950-' funding
@@ -162,10 +168,10 @@ FUNDERS = {
     # award id -> garbage by design). Measured (crossref door): grammar 32.1%,
     # fail 67.9% incl. 2.8k FAPESP ids (-> S3) and Finance-Code junk.
     rkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
-         r"'^(8888\\d\\.\\d{6}/\\d{4}-\\d{2})$', 1), '')",
+         r"'^((8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2})$', 1), '')",
     xkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
-         r"'(8888\\d\\.\\d{6}/\\d{4}-\\d{2})', 1), '')",
-    gram=r"(regexp_replace(norm,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$'"
+         r"'((8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2})', 1), '')",
+    gram=r"(regexp_replace(norm,' ','') rlike '^(8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2}$'"
          r" or regexp_replace(norm,' ','') rlike '^(BEX|PDSE|PNPD|PROEX|DS|AUX)-?\\d{3,7}([-/.]\\d{1,4}){0,3}$'"
          r" or norm rlike '^\\d{1,4}/(19|20)\\d{2}$')"),
   "NCN": dict(fid=4320322511,
@@ -267,12 +273,16 @@ DECOR_LEAD = (r"^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICAT
               r"|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT"
               r"|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS)"
               r"[ .:#°-]+"
+              r"|HTTPS?://KAKEN\\.NII\\.AC\\.JP/GRANT/KAKENHI-PROJECT-"
+              r"|GRANT ?\\(?NO\\.? ?"
               # review pass-4 F6: LONG words (>=5 chars, unambiguous) also strip
               # with NO separator ("award307834"); short words keep the
               # separator requirement so real-token prefixes survive
               r"|(GRANT|AWARD|PROJECT|CONTRACT|NUMBER|KAKENHI|REFERENCE|APPLICATION|PROCESSO|PROCESS)"
               r"|[#№(\\[]+ ?)+")
-DECOR_TRAIL = r"([ .,;:)\\]]+|[ -]*\\(.*\\))$"
+DECOR_TRAIL = (r"([ .,;:)/\\]]+|[ -]*\\(.*\\)"
+               r"| TO [A-Z][A-Z. -]{1,14}"          # attribution: "... to S.F.", "to HMS"
+               r")$")
 # multi-id concat detection + split (mirrors classify.py CLS 'multi_id' arm)
 MULTI_DETECT = ("((_n rlike '[,;&]') OR (_n rlike ' AND ') OR (_n rlike ' \\\\+ '))"
                 " AND _n rlike '[0-9]{3}'")
@@ -301,12 +311,12 @@ JUNK_POSITIVE = [
   r"10\\.13039",                                                         # funder-DOI anywhere (incl. URL forms)
   r"^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499))",                        # URLs — EXCEPT grant-DOI registrars (AHA 10.58275, FCT 10.54499: they embed a real award id)
   r"^0000-000\\d-\\d{4}-[0-9X]{4}$",                                     # ORCIDs
-  r"^0(?=.*[A-Z])[A-Z0-9]{8}$",                                          # ROR ids (00x0ma614; 9 chars, leading 0, must contain a letter — runs on uppercased _n)
+  r"^0(?=.*[A-Z])[A-Z0-9]{6}[0-9]{2}$",                                  # ROR ids (00x0ma614): 0 + 6 alnum + 2-digit checksum; letter required (round-3: tail digits kill FKZ false-positives like 031L0260B)
   r"^(N/?A|NA|NONE|NIL|NOT APPLICABLE|UNKNOWN|TBD|PENDING|NULL|XXX+|[-.,;:/#*+ ]+)$",  # placeholders
-  r"^\\(?CODE ?0*1\\)?$|FINANCE CODE|FINANCIAL CODE|^0*1$",              # CAPES finance-code boilerplate
+  r"^\\(?(FINANCE|FINANCIAL)? ?CODE[ :]*0*1\\)?\\.?$|^0*1$",              # CAPES finance-code boilerplate (ANCHORED round-2: substring form swallowed ids embedding a real process number)
   r"^.{1,3}$",                                                           # <=3 chars
   r"^( ?[A-Z]{2,}){4,}$",                                                # prose: 4+ all-letter words
-  r"^[0-9]{1,6}$",                                                       # bare integer <=6 digits (no scheme; weak-registry hits were already kept upstream)
+  r"^[0-9]{1,5}$",                                                       # bare integer <=5 digits (6-digit carved out round-2: SNSF project-number and H2020 GA space)
   r"^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]* (19|20)\\d{2}$|^\\d{1,2}[./]\\d{1,2}[./](19|20)?\\d{2}$",  # dates
   r"[-/_.]$|^[-/_.]",                                                    # truncation fragments (leading/trailing separator: 'DE-AC02-', '/Z/15/Z', '-0001')
   r"^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|GA|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$",  # scheme prefix with no serial (ANR-10, MOST 104)
@@ -330,7 +340,10 @@ FOREIGN_SCHEMES = [
   r"^(POWR|POIR|POPC|POPW|RPMA)\\.[0-9.]{2,12}[/-][0-9A-Z-]{2,}$",       # Polish EU OPs
   r"^(ANID|FONDECYT|FONDAP|PIA|ACT|ICN)[ /-]?[0-9]{4,8}$",               # Chilean ANID family
   r"^2[0-9]{3}[A-Z]{2,8}[0-9]{3,8}$",                                    # CN provincial year+letters+serial
-  r"^[A-Z]{1,4} ?[0-9]{2,4}/[0-9]{1,3}(-[0-9])?$",                       # DFG signature under non-DFG funders
+  r"^(INST )?[A-Z]{1,4}[- ]?[0-9]{2,4}/[0-9]{1,3}(-[0-9]{1,2})?( FUGG)?$",  # DFG signature under non-DFG funders (round-2: hyphen sep, INST, FUGG)
+  r"^[0-9]{2}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{2,4}[0-9]{3,4}[A-Z]{0,3}$",      # BMBF FKZ chassis under any funder (01KR1304A, 031L0260B — program token may contain a digit)
+  r"^[0-9]{2}(JJ|ZR|DZ|JC|SF|SK|YF)[0-9]{4,7}$",                         # CN provincial two-letter series (Hunan 06JJ50029, Shanghai ZR/DZ)
+  r"^[A-Z]{2,5}-[0-9]{7}$",                                              # NSF division form under other funders (DGE-1650116)
   # --- contract-number schemes (top-150 link-weighted audit, 2026-08-03):
   # real research CONTRACTS (not grants) that no grant registry holds ---
   r"^(DE[- ]?)?A[CR][0-9]{2}[- ]{0,2}[0-9]{2}[- ]{0,2}[A-Z]{2,3} ?[0-9]{4,6}$",  # DOE M&O contracts (DE-AC02-05CH11231 + mangled variants incl. extra/double separators)
@@ -426,7 +439,7 @@ XGRAM = {
   4320320997: r"norm rlike '(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)'",
   # CAPES: process-number chassis (inert until the hash-id registry gets
   # citable refs — S3 requires a registry hit; future-proofing)
-  4320321091: r"regexp_replace(norm,' ','') rlike '^8888\\d\\.\\d{6}/\\d{4}-\\d{2}$'",
+  4320321091: r"regexp_replace(norm,' ','') rlike '^(8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2}$'",
   # NCN: UMO chassis (inert until the internal-code registry gets citable
   # refs; slash-structured so the S3 letter filter admits it)
   4320322511: r"regexp_replace(norm,' ','') rlike '(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}'",
