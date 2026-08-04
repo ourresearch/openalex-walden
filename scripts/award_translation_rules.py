@@ -14,7 +14,7 @@ SQLQ = os.path.expanduser("~/openalex-onboarding-labs/sqlq")
 OUT = os.path.dirname(os.path.abspath(__file__))
 
 # norm: upper, trim, unicode dashes -> '-', unicode spaces -> ' ', collapse spaces
-NORM = (r"regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM({c})),"
+NORM = (r"regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM({c}))," r" '\\\\\\\\U20[0-9A-F]{{2}}', '-'),"
         r" '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'),"
         r" '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '),"
         r" '  +', ' ')")
@@ -275,7 +275,7 @@ DECOR_LEAD = (r"^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICAT
               r"|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS"
               r"|FKZ|PHD|POSTDOC|FELLOWSHIP|STUDENTSHIP"
               r"|AND|NSERC|CIHR|SNSF|SNF|CNPQ)"
-              r"[ .:#°-]+"
+              r"[ .:#°_-]+"
               r"|HTTPS?://KAKEN\\.NII\\.AC\\.JP/GRANT/KAKENHI-PROJECT-"
               r"|KAKENHI[ /]+"
               r"|[A-Z]{2,10} ?\\(+ ?"
@@ -284,7 +284,8 @@ DECOR_LEAD = (r"^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICAT
               # with NO separator ("award307834"); short words keep the
               # separator requirement so real-token prefixes survive
               r"|(GRANT|AWARD|PROJECT|CONTRACT|NUMBER|KAKENHI|REFERENCE|APPLICATION|PROCESSO|PROCESS)"
-              r"|[#№(\\[]+ ?)+")
+              r"|\\([A-Z0-9]{1,3}\\) ?"
+              r"|[#№(\\[/]+ ?)+")
 DECOR_TRAIL = (r"([ .,;:)/\\]]+|[ -]*\\(.*\\)"
                # attributions: "to S.F.", "- C.G.M.", "for K. N.",
                # "awarded to A.B. and K.Z."
@@ -292,7 +293,7 @@ DECOR_TRAIL = (r"([ .,;:)/\\]]+|[ -]*\\(.*\\)"
                r"|[ -]+[A-Z]\\.( ?[A-Z]\\.?){1,3}"
                r")$")
 # multi-id concat detection + split (mirrors classify.py CLS 'multi_id' arm)
-MULTI_DETECT = ("((_n rlike '[,;&]') OR (_n rlike ' AND ') OR (_n rlike ' \\\\+ '))"
+MULTI_DETECT = ("((_n rlike '[,;&]') OR (_n rlike ' AND ') OR (_n rlike '[0-9A-Z]\\\\+[0-9A-Z]'))"
                 " AND _n rlike '[0-9]{3}'")
 MULTI_SPLIT = r"[,;&+]|\\bAND\\b"
 
@@ -358,6 +359,7 @@ FOREIGN_SCHEMES = [
   r"^[0-9]{2,3}-EPA-[A-Z0-9-]{5,12}$",                                   # Taiwan EPA commissioned projects
   r"^(HTTPS?://(DX\\.)?DOI\\.ORG/)?10\\.35802/[0-9]{5,6}$",              # Wellcome grant DOIs (10.35802/210622)
   r"(?<![0-9])[0-9]{6}/[0-9]{2,4}-[0-9](?![0-9])",                       # CNPq process numbers incl. legacy 2-digit years (303715/2011-1) — was lost in a revert
+  r"^(ECS|IR|CN|PE|SOE)0{3,6}[0-9]{2,5}$",                               # Italian PNRR codes (ECS00000022 ecosystems, IR0000029 infrastructures, PE/CN partenariati)
   # --- contract-number schemes (top-150 link-weighted audit, 2026-08-03):
   # real research CONTRACTS (not grants) that no grant registry holds ---
   r"^(DE[- ]?)?A[CR][0-9]{2}[- ]{0,2}[0-9]{2}[- ]{0,2}[A-Z]{2,3} ?[0-9]{4,6}$",  # DOE M&O contracts (DE-AC02-05CH11231 + mangled variants incl. extra/double separators)
