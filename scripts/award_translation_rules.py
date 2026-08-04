@@ -430,23 +430,23 @@ CHASSIS_ANYWHERE = [
   r"EP/[A-Z][0-9]{5,6}[A-Z0-9]?(/[0-9])?",                               # EPSRC (incl. X-suffix)
   r"AHA[ -]?[0-9]{6,9}|[0-9]{2}(PRE|POST|SDG|GRNT|CDA|EIA|TPA|SFRN|IPA)[0-9]{6,8}",
   r"(?<![0-9])[0-9]{3}[- ](19|20)[0-9]{2}[- ][0-9]{4,5}(?![0-9])",  # VR/Formas dnr 3-seg
-  r"(?<![0-9])(19|20)[0-9]{2}-[0-9]{5}(?![0-9])",  # VR modern dnr year-5 (5 digits excludes year-range junk)
+  r"(?<![0-9/])(?<![0-9])(19|20)[0-9]{2}-[0-9]{5}(?![0-9])",  # VR modern dnr year-5 (5 digits excludes year-range junk)
   r"PNRR[- ][A-Z]{1,4}[- ]?[A-Z0-9-]{0,10}20[0-9]{2}[- ][0-9]{6,9}",  # Italian PNRR project codes
-  r"(ECS|PE|CN|IR)_?[0-9]{8}(?![0-9])",  # PNRR ecosystem/partenariato codes e.g. ECS00000036
+  r"(?<![A-Z0-9])(ECS|PE|CN|IR)_?[0-9]{8}(?![0-9])",  # PNRR ecosystem/partenariato codes e.g. ECS00000036
   r"20[0-9]{2}ZD[0-9]{7}(?![0-9])",  # China STI2030 major project
   r"CUP[ :]{0,2}[A-Z][0-9A-Z]{10,14}",
   r"NNN[0-9]{2}[A-Z]{2}[0-9]{2}[A-Z](?![A-Z0-9])",  # NASA contracts (NNN06AA01C)
   r"FA[0-9]{4}-[0-9]{2}-[0-9]-[0-9]{4}",  # AFOSR
   r"JP ?[0-9]{2}[A-Z]{2}[0-9]{7}(?![0-9])",  # AMED canonical JP-form
-  r"PI[0-9]{6}(?![0-9])",  # ISCIII FIS compact (PI020499)
-  r"(?<![0-9])(19|20)[0-9]{2}-(?!(19|20)[0-9]{2}(?![0-9]))[0-9]{4}(?![0-9])",  # VR 4-digit dnr; 2nd part may not be a year
+  r"(?<![A-Z0-9/])PI[0-9]{6}(?![0-9])",  # ISCIII FIS compact (PI020499)
+  r"(?<![0-9])(?<![0-9]-)(?<![0-9/])(19|20)[0-9]{2}-(?!(19|20)[0-9]{2}(?![0-9]))[0-9]{4}(?![0-9])",  # VR 4-digit dnr; 2nd part may not be a year
   r"[0-9]{2}-AIST[0-9]{2}-[0-9]-[0-9]{4}",  # NASA AIST awards
   r"80NSSC[0-9]{2}[A-Z][0-9]{4}",  # NASA NSSC awards
   r"[A-Z]{2,6}_[0-9]{1,2}-[0-9][- ]20[0-9]{2}-[0-9]{4}",  # Hungarian NKFIH (NVKP_16-1-2016-0017)
   r"N N[0-9]{3} [0-9]{4} [0-9]{2}(?![0-9])",  # Polish MNiSW legacy N-grants
   r"436 ?[A-Z]{3} ?[0-9]{2}/[0-9]{2}/[0-9]{2}",  # DFG bilateral 436-scheme
-  r"RP[A-Z]{2}\.[0-9]{2}\.[0-9]{2}\.[0-9]{2}-[0-9]{2}-[0-9]{4}/[0-9]{2}",  # Polish ROP/ERDF project ids
-  r"(?<![0-9])[0-9]{2,4}/[0-9]{5}[- ]?[0-9]?(?![0-9])",  # FAPESP year/serial(-check-digit optional)
+  r"RP[A-Z]{2}[.][0-9]{2}[.][0-9]{2}[.][0-9]{2}-[0-9]{2}-[0-9]{4}/[0-9]{2}",  # Polish ROP/ERDF project ids
+  r"(?<![0-9/.])[0-9]{2,4}/[0-9]{5}[- ]?[0-9]?(?![0-9])",  # FAPESP year/serial(-check-digit optional)
   r"20[0-9]{2}[MT][0-9]{6}(?![0-9])"  # China Postdoctoral Science Foundation,  # AHA
 ]
 
@@ -656,7 +656,7 @@ if __name__ == "__main__":
 # Funder-scoped junk exemptions: shapes that are real ids AT THIS FUNDER but
 # would be unsafe as global chassis (non-DOE r3 audit, 2026-08-04).
 FUNDER_KEEPS = [
-  (4320321181, r"^[A-Z] ?[0-9]{1,5}[.]?$"),          # FWF short ids (T7, F45, Z49 — all resolvable at 10.55776/<id>)
+  (4320321181, r"^(?!H ?2020[.]?$)[A-Z] ?[0-9]{1,5}[.]?$"),          # FWF short ids (T7, F45, Z49 — all resolvable at 10.55776/<id>)
   (4320321001, r"(?<![0-9A-Z])[WT][0-9]{7,10}(?![0-9])"),  # NSFC W-/T-series
   (4320321001, r"(?<![0-9])8[0-9]{10}(?![0-9])"),
   (4320321181, r"^[1-3][0-9]{4}[.]?$"),  # FWF bare 5-digit project numbers (grader: 10000-39999 = unambiguous P-series, all resolve at 10.55776)    # NSFC 11-digit joint/major grants
