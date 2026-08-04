@@ -386,7 +386,7 @@ JUNK_POSITIVE = [
   r"^(19|20)\\d{2}$",                                                    # bare year
   r"^10\\.13039/\\d{6,12}$",                                             # Crossref funder DOIs
   r"^[^0-9]*10\\.13039/[0-9]{6,12}[^0-9]*$",                                                         # funder-DOI anywhere (incl. URL forms)
-  r"^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499|35802))",                        # URLs — EXCEPT grant-DOI registrars (AHA 10.58275, FCT 10.54499: they embed a real award id)
+  r"^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499|35802|55776))",                        # URLs — EXCEPT grant-DOI registrars (AHA 10.58275, FCT 10.54499: they embed a real award id)
   r"^0000-000\\d-\\d{4}-[0-9X]{4}$",                                     # ORCIDs
   r"^0(?=.*[A-Z])[A-Z0-9]{6}[0-9]{2}$",                                  # ROR ids (00x0ma614): 0 + 6 alnum + 2-digit checksum; letter required (round-3: tail digits kill FKZ false-positives like 031L0260B)
   r"^(N/?A|NA|NONE|NIL|NOT APPLICABLE|UNKNOWN|TBD|PENDING|NULL|XXX+|[-.,;:/#*+ ]+)$",  # placeholders
@@ -446,7 +446,8 @@ CHASSIS_ANYWHERE = [
   r"N N[0-9]{3} [0-9]{4} [0-9]{2}(?![0-9])",  # Polish MNiSW legacy N-grants
   r"436 ?[A-Z]{3} ?[0-9]{2}/[0-9]{2}/[0-9]{2}",  # DFG bilateral 436-scheme
   r"RP[A-Z]{2}[.][0-9]{2}[.][0-9]{2}[.][0-9]{2}-[0-9]{2}-[0-9]{4}/[0-9]{2}",  # Polish ROP/ERDF project ids
-  r"(?<![0-9/.])[0-9]{2,4}/[0-9]{5}[- ]?[0-9]?(?![0-9])",  # FAPESP year/serial(-check-digit optional)
+  r"(?<![0-9/.])[0-9]{2,4}/[0-9]{5}[- ]?[0-9]?(?![0-9])",
+  r"10[.]55776/[A-Z]{0,4}[0-9]{1,6}"  # FWF grant DOIs are the funder's own award ids,  # FAPESP year/serial(-check-digit optional)
   r"20[0-9]{2}[MT][0-9]{6}(?![0-9])"  # China Postdoctoral Science Foundation,  # AHA
 ]
 
@@ -656,7 +657,7 @@ if __name__ == "__main__":
 # Funder-scoped junk exemptions: shapes that are real ids AT THIS FUNDER but
 # would be unsafe as global chassis (non-DOE r3 audit, 2026-08-04).
 FUNDER_KEEPS = [
-  (4320321181, r"^(?!H ?2020[.]?$)[A-Z] ?[0-9]{1,5}[.]?$"),          # FWF short ids (T7, F45, Z49 — all resolvable at 10.55776/<id>)
+  (4320321181, r"^(?!H ?2020[.]?$)[A-Z]{1,3} ?[0-9]{1,5}[.]?$"),          # FWF short ids (T7, F45, Z49 — all resolvable at 10.55776/<id>)
   (4320321001, r"(?<![0-9A-Z])[WT][0-9]{7,10}(?![0-9])"),  # NSFC W-/T-series
   (4320321001, r"(?<![0-9])8[0-9]{10}(?![0-9])"),
   (4320321181, r"^[1-3][0-9]{4}[.]?$"),  # FWF bare 5-digit project numbers (grader: 10000-39999 = unambiguous P-series, all resolve at 10.55776)    # NSFC 11-digit joint/major grants

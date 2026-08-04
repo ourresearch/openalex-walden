@@ -548,12 +548,12 @@ SELECT funder_id, funder_award_id, verdict,
   current_timestamp() AS created_date
 FROM (
 SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
-  (((_n rlike '^(HORIZON ?2020|HORIZON ?EUROPE|H2020|FP[4-7]|ERASMUS(\\+| ?PLUS)?|MSCA|COST( ACTION)?|PRELUDIUM ?\\d{0,2}|OPUS ?\\d{0,2}|SONATA( BIS)? ?\\d{0,2}|CAREER|EPSCOR|CREST|INSPIRE|SBIR|STTR|R&D|COVID(-?19)?|RESEARCH ?4 ?COVID.*|FRANCE ?2030|STI ?2030.*|EDCTP2?|PT ?2020|COMPETE ?2020?|NORTE ?2020|CENTRO ?2020|LISBOA ?2020|POCI|FEDER|NSFC|973( PROGRAM)?|863( PROGRAM)?|111( PROJECT)?|NIH|NSF|DFG|ANR|AHA|ERC|GACR|MOST|JSPS|KAKENHI|CNPQ|CAPES|FCT|N/?A)$'
+  ((((_n rlike '^(HORIZON ?2020|HORIZON ?EUROPE|H2020|FP[4-7]|ERASMUS(\\+| ?PLUS)?|MSCA|COST( ACTION)?|PRELUDIUM ?\\d{0,2}|OPUS ?\\d{0,2}|SONATA( BIS)? ?\\d{0,2}|CAREER|EPSCOR|CREST|INSPIRE|SBIR|STTR|R&D|COVID(-?19)?|RESEARCH ?4 ?COVID.*|FRANCE ?2030|STI ?2030.*|EDCTP2?|PT ?2020|COMPETE ?2020?|NORTE ?2020|CENTRO ?2020|LISBOA ?2020|POCI|FEDER|NSFC|973( PROGRAM)?|863( PROGRAM)?|111( PROJECT)?|NIH|NSF|DFG|ANR|AHA|ERC|GACR|MOST|JSPS|KAKENHI|CNPQ|CAPES|FCT|N/?A)$'
          OR _n rlike '^(19|20)\\d{2}[-–/ ]{1,3}(19|20)\\d{2}$'
          OR _n rlike '^(19|20)\\d{2}$'
          OR _n rlike '^10\\.13039/\\d{6,12}$'
          OR _n rlike '^[^0-9]*10\\.13039/[0-9]{6,12}[^0-9]*$'
-         OR _n rlike '^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499|35802))'
+         OR _n rlike '^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499|35802|55776))'
          OR _n rlike '^0000-000\\d-\\d{4}-[0-9X]{4}$'
          OR _n rlike '^0(?=.*[A-Z])[A-Z0-9]{6}[0-9]{2}$'
          OR _n rlike '^(N/?A|NA|NONE|NIL|NOT APPLICABLE|UNKNOWN|TBD|PENDING|NULL|XXX+|[-.,;:/#*+ ]+)$'
@@ -565,6 +565,30 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
          OR _n rlike '[-/_.]$|^[-/_.]'
          OR _n rlike '^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$'
          OR _n rlike '^(19|20)\\d{2}[-–/](19|20)?\\d{1,2}$')
+     -- strip-and-retest (final n=500 audit): a string is junk only if the
+     -- decoration-stripped core ALSO classifies as junk (or strips to
+     -- nothing). Rescues clean ids in wrappers (_JP22390400, 'U21B2041.',
+     -- 'grant 01KT1801 to M.K.') without touching real junk, whose core
+     -- stays classifiable after stripping.
+     AND ((_ns rlike '^(HORIZON ?2020|HORIZON ?EUROPE|H2020|FP[4-7]|ERASMUS(\\+| ?PLUS)?|MSCA|COST( ACTION)?|PRELUDIUM ?\\d{0,2}|OPUS ?\\d{0,2}|SONATA( BIS)? ?\\d{0,2}|CAREER|EPSCOR|CREST|INSPIRE|SBIR|STTR|R&D|COVID(-?19)?|RESEARCH ?4 ?COVID.*|FRANCE ?2030|STI ?2030.*|EDCTP2?|PT ?2020|COMPETE ?2020?|NORTE ?2020|CENTRO ?2020|LISBOA ?2020|POCI|FEDER|NSFC|973( PROGRAM)?|863( PROGRAM)?|111( PROJECT)?|NIH|NSF|DFG|ANR|AHA|ERC|GACR|MOST|JSPS|KAKENHI|CNPQ|CAPES|FCT|N/?A)$'
+         OR _ns rlike '^(19|20)\\d{2}[-–/ ]{1,3}(19|20)\\d{2}$'
+         OR _ns rlike '^(19|20)\\d{2}$'
+         OR _ns rlike '^10\\.13039/\\d{6,12}$'
+         OR _ns rlike '^[^0-9]*10\\.13039/[0-9]{6,12}[^0-9]*$'
+         OR _ns rlike '^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499|35802|55776))'
+         OR _ns rlike '^0000-000\\d-\\d{4}-[0-9X]{4}$'
+         OR _ns rlike '^0(?=.*[A-Z])[A-Z0-9]{6}[0-9]{2}$'
+         OR _ns rlike '^(N/?A|NA|NONE|NIL|NOT APPLICABLE|UNKNOWN|TBD|PENDING|NULL|XXX+|[-.,;:/#*+ ]+)$'
+         OR _ns rlike '^\\(?(FINANCE|FINANCIAL)? ?CODE[ :]*0*1\\)?\\.?$|^0*1$'
+         OR _ns rlike '^.{1,3}$'
+         OR _ns rlike '^( ?[A-Z]{2,}){4,}$'
+         OR _ns rlike '^[0-9]{1,5}$'
+         OR _ns rlike '^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]* (19|20)\\d{2}$|^\\d{1,2}[./]\\d{1,2}[./](19|20)?\\d{2}$'
+         OR _ns rlike '[-/_.]$|^[-/_.]'
+         OR _ns rlike '^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$'
+         OR _ns rlike '^(19|20)\\d{2}[-–/](19|20)?\\d{1,2}$')
+          OR _ns = ''
+          OR (v.funder_id = 4320306084 AND _ns rlike '^[0-9]{6}$')))
    OR (v.funder_id = 4320306084 AND _n rlike '^[0-9]{6}$')  -- DOE-scoped: bare-6 = facility proposal ids (auditor-endorsed junk); global bare-6 carved out for SNSF/EC GA space
    )
    -- chassis-anywhere rescue (non-DOE n=400 audit): a string CONTAINING a
@@ -610,14 +634,20 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
          OR _n rlike '436 ?[A-Z]{3} ?[0-9]{2}/[0-9]{2}/[0-9]{2}'
          OR _n rlike 'RP[A-Z]{2}[.][0-9]{2}[.][0-9]{2}[.][0-9]{2}-[0-9]{2}-[0-9]{4}/[0-9]{2}'
          OR _n rlike '(?<![0-9/.])[0-9]{2,4}/[0-9]{5}[- ]?[0-9]?(?![0-9])'
-         OR _n rlike '20[0-9]{2}[MT][0-9]{6}(?![0-9])')
+         OR _n rlike '10[.]55776/[A-Z]{0,4}[0-9]{1,6}20[0-9]{2}[MT][0-9]{6}(?![0-9])')
    -- funder-scoped keeps (real id shapes AT this funder; unsafe as global chassis)
-   AND NOT ((v.funder_id = 4320321181 AND _n rlike '^(?!H ?2020[.]?$)[A-Z] ?[0-9]{1,5}[.]?$')
+   AND NOT ((v.funder_id = 4320321181 AND _n rlike '^(?!H ?2020[.]?$)[A-Z]{1,3} ?[0-9]{1,5}[.]?$')
          OR (v.funder_id = 4320321001 AND _n rlike '(?<![0-9A-Z])[WT][0-9]{7,10}(?![0-9])')
          OR (v.funder_id = 4320321001 AND _n rlike '(?<![0-9])8[0-9]{10}(?![0-9])')
          OR (v.funder_id = 4320321181 AND _n rlike '^[1-3][0-9]{4}[.]?$'))
   ) AS is_junk
-FROM (SELECT *, regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U2[0-9A-F]{3}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n FROM openalex.awards.award_id_verdicts) v
+FROM (SELECT *,
+        regexp_replace(regexp_replace(regexp_replace(_n,
+          ' TO [A-Z][A-Z. ]{0,24}$', ''),
+          '^[ _./,;:()-]+', ''),
+          '[ _./,;:()-]+$', '') AS _ns
+      FROM (SELECT *, regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U2[0-9A-F]{3}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
+            FROM openalex.awards.award_id_verdicts)) v
 LEFT JOIN (
   SELECT funder_id, funder_award_id,
          array_join(array_sort(collect_set(action)), '+') AS actions

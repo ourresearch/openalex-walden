@@ -120,6 +120,7 @@ def gen(schema):
         f"_n rlike '{p}'" for p in FOREIGN_SCHEMES) + ")"
     junk_cond = "(" + "\n         OR ".join(
         f"_n rlike '{p}'" for p in JUNK_POSITIVE) + ")"
+    junk_cond_ns = junk_cond.replace("_n rlike", "_ns rlike")
     chassis_cond = "(" + "\n         OR ".join(
         f"_n rlike '{p}'" for p in CHASSIS_ANYWHERE) + ")"
     keep_cond = "(" + "\n         OR ".join(
@@ -445,7 +446,15 @@ SELECT funder_id, funder_award_id, verdict,
   current_timestamp() AS created_date
 FROM (
 SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
-  (({junk_cond}
+  ((({junk_cond}
+     -- strip-and-retest (final n=500 audit): a string is junk only if the
+     -- decoration-stripped core ALSO classifies as junk (or strips to
+     -- nothing). Rescues clean ids in wrappers (_JP22390400, 'U21B2041.',
+     -- 'grant 01KT1801 to M.K.') without touching real junk, whose core
+     -- stays classifiable after stripping.
+     AND ({junk_cond_ns}
+          OR _ns = ''
+          OR (v.funder_id = 4320306084 AND _ns rlike '^[0-9]{{6}}$')))
    OR (v.funder_id = 4320306084 AND _n rlike '^[0-9]{{6}}$')  -- DOE-scoped: bare-6 = facility proposal ids (auditor-endorsed junk); global bare-6 carved out for SNSF/EC GA space
    )
    -- chassis-anywhere rescue (non-DOE n=400 audit): a string CONTAINING a
@@ -454,7 +463,13 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
    -- funder-scoped keeps (real id shapes AT this funder; unsafe as global chassis)
    AND NOT {keep_cond}
   ) AS is_junk
-FROM (SELECT *, {NORM.format(c='funder_award_id')} AS _n FROM {schema}.award_id_verdicts) v
+FROM (SELECT *,
+        regexp_replace(regexp_replace(regexp_replace(_n,
+          ' TO [A-Z][A-Z. ]{{0,24}}$', ''),
+          '^[ _./,;:()-]+', ''),
+          '[ _./,;:()-]+$', '') AS _ns
+      FROM (SELECT *, {NORM.format(c='funder_award_id')} AS _n
+            FROM {schema}.award_id_verdicts)) v
 LEFT JOIN (
   SELECT funder_id, funder_award_id,
          array_join(array_sort(collect_set(action)), '+') AS actions
