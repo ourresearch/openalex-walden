@@ -215,6 +215,19 @@ FUNDERS = {
             src="regexp_replace(norm,'[ -]','')"),
     gram=r"regexp_replace(norm,'[ -]','') rlike"
          r" '^(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})$'"),
+  "BMBF": dict(fid=4320321114,
+    # derived 2026-08-03 (worklist #23): registry = Foerderkatalog FKZ in messy
+    # encodings ('01IF20018N', 'NT+0062+/5', 'M000100+/A', 'U100100U/A');
+    # deposits = clean FKZ ('01IS19078', '031L0251', '02NUK025B', '01GL1752A').
+    # Key = strip [+ /-] and spaces, exact match (transform-based -> NOT
+    # extractive, NO XGRAM: no single distinctive token). gram arms: FKZ
+    # (2 digits + alnum body containing a letter) and letter-series
+    # (M/G/U + 6 digits + optional letter suffix).
+    rkey="NULLIF(regexp_replace(norm,'[+ /-]',''),'')",
+    xkey="NULLIF(regexp_replace(norm,'[+ /-]',''),'')",
+    gram=r"((regexp_replace(norm,'[+ /-]','') rlike '^\\d{2}[0-9A-Z]{5,10}$'"
+         r" and regexp_replace(norm,'[+ /-]','') rlike '[A-Z]')"
+         r" or regexp_replace(norm,'[+ /-]','') rlike '^[A-Z]\\d{6}[A-Z0-9]{0,2}$')"),
   "DHHS": dict(fid=4320306085,
     # derived 2026-08-03 (worklist #18): registry = hhs_taggs (964 ids), two
     # shapes: 5-alnum-starting-letter + 6 digits (CPIMP151089, TP1AH000086,
