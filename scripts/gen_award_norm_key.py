@@ -461,6 +461,52 @@ LEFT JOIN (
   FROM {schema}.award_id_salvage GROUP BY 1, 2
 ) s ON s.funder_id = v.funder_id AND s.funder_award_id = v.funder_award_id
 );
+
+-- ============================================================================
+-- Label-entanglement hold-back (2026-08-04, Rohan decision). A junk id whose
+-- work_awards links are some (work, funder) pair's ONLY funder connection
+-- (no crossref/funder-reported/mid/fulltext leg covers the pair) is HELD
+-- BACK from suppression until CreateWorksEnriched gains direct paper->funder
+-- legs -- then this table empties and the hold-back lifts on its own.
+-- Zero papers lose funder attribution at any point.
+-- ============================================================================
+CREATE OR REPLACE TABLE {schema}.award_id_label_entangled
+USING delta
+AS
+WITH sup AS (
+  SELECT funder_id, funder_award_id FROM {schema}.award_id_guard WHERE decision = 'suppress'
+),
+at_risk AS (
+  SELECT work_id, funder_id FROM (
+    SELECT wa.work_id, CAST(regexp_extract(wa.award.funder_id, '([0-9]+)$', 1) AS BIGINT) AS funder_id,
+           MAX(CASE WHEN s.funder_award_id IS NULL THEN 1 ELSE 0 END) AS has_kept
+    FROM openalex.awards.work_awards wa
+    LEFT JOIN sup s ON CAST(regexp_extract(wa.award.funder_id, '([0-9]+)$', 1) AS BIGINT) = s.funder_id
+                   AND wa.award.funder_award_id = s.funder_award_id
+    GROUP BY 1, 2) WHERE has_kept = 0
+),
+covered AS (
+  SELECT work_id, funder_id FROM openalex.awards.crossref_work_funders
+  UNION SELECT work_id, funder_id FROM openalex.awards.funder_reported_work_funders
+  UNION SELECT paper_id, funder_id FROM openalex.mid.work_funder
+  UNION SELECT w.paper_id, CAST(regexp_extract(f.funder_id, '([0-9]+)$', 1) AS BIGINT)
+        FROM openalex.works.fulltext_work_funders f
+        JOIN openalex.mid.work w ON lower(f.doi) = w.doi_lower
+),
+sole_path AS (
+  SELECT a.work_id, a.funder_id FROM at_risk a
+  LEFT ANTI JOIN covered c ON a.work_id = c.work_id AND a.funder_id = c.funder_id
+)
+SELECT DISTINCT s.funder_id, s.funder_award_id, current_timestamp() AS created_date
+FROM openalex.awards.work_awards wa
+JOIN sole_path sp ON wa.work_id = sp.work_id
+  AND CAST(regexp_extract(wa.award.funder_id, '([0-9]+)$', 1) AS BIGINT) = sp.funder_id
+JOIN sup s ON s.funder_id = sp.funder_id AND s.funder_award_id = wa.award.funder_award_id;
+
+UPDATE {schema}.award_id_guard g
+SET decision = 'mint', reason = 'label_entangled_held'
+WHERE EXISTS (SELECT 1 FROM {schema}.award_id_label_entangled e
+              WHERE e.funder_id = g.funder_id AND e.funder_award_id = g.funder_award_id);
 """
 
 
