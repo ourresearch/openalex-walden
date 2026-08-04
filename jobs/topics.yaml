@@ -13,9 +13,19 @@ resources:
             notebook_path: notebooks/topics/topics_create_input
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        - task_key: scale_up_topic_classifier
+          notebook_task:
+            notebook_path: notebooks/serving/rearm_endpoint
+            source: GIT
+            base_parameters:
+              endpoint: topic-classifier
+              mode: up
+              up_max: "16"
+          environment_key: Default
         - task_key: topics_inference
           depends_on:
             - task_key: topics_create_input
+            - task_key: scale_up_topic_classifier
           notebook_task:
             notebook_path: notebooks/topics/topics_inference_endpoint
             source: GIT
