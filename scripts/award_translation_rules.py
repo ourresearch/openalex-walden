@@ -41,10 +41,14 @@ FUNDERS = {
          f"CONCAT(regexp_extract(norm,'([A-Z]{{2}}) ?-?(\\\\d{{5,6}})(?!\\\\d)',1),"
          f" LPAD(regexp_extract(norm,'([A-Z]{{2}}) ?-?(\\\\d{{5,6}})(?!\\\\d)',2),6,'0')) END",
     gram=r"norm rlike '[A-Z]\\d{2} ?-?[A-Z]{2} ?-?\\d{5,6}' or norm rlike '^[A-Z]{2} ?-?\\d{5,6}'"),
+  # 2026-08-03 audit: publishers regroup digits ("PHY17-48958" = PHY-1748958)
+  # -> extra xkey arm rejoining the split groups; gram accepts the split form
   "NSF": dict(fid=4320306076,
     rkey=ex(r"^(\\d{7})$"),
-    xkey=ex(r"(?<!\\d)(\\d{7})(?!\\d)"),
-    gram=r"norm rlike '^([A-Z]{2,5}[ -]?)?\\d{7}$'"),
+    xkey=f"COALESCE({ex(r'(?<!\\d)(\\d{7})(?!\\d)')}, "
+         "CASE WHEN norm rlike '^[A-Z]{2,5}[ -]?\\d{2}[ -]\\d{5}$' THEN "
+         "CONCAT(regexp_extract(norm,'(\\d{2})[ -]\\d{5}$',1), regexp_extract(norm,'(\\d{5})$',1)) END)",
+    gram=r"norm rlike '^([A-Z]{2,5}[ -]?)?\\d{7}$' or norm rlike '^[A-Z]{2,5}[ -]?\\d{2}[ -]\\d{5}$'"),
   # review pass-4 F5: spaced cores ("23 K22132") get a strip-space fallback arm
   "KAKEN": dict(fid=4320334764,
     rkey=ex(r"^(\\d{2}[A-Z]\\d{5}|\\d{8})$"),
@@ -104,7 +108,9 @@ FUNDERS = {
          f"CONCAT(regexp_extract(regexp_replace(norm,' ',''),'(?:ANR-?)?(\\\\d{{2}})-([A-Z0-9]{{2,6}})-(\\\\d{{4}})',1),'-',"
          f"regexp_extract(regexp_replace(norm,' ',''),'(?:ANR-?)?(\\\\d{{2}})-([A-Z0-9]{{2,6}})-(\\\\d{{4}})',2),'-',"
          f"regexp_extract(regexp_replace(norm,' ',''),'(?:ANR-?)?(\\\\d{{2}})-([A-Z0-9]{{2,6}})-(\\\\d{{4}})',3)) END",
-    gram=r"regexp_replace(norm,' ','') rlike '(ANR-?)?\\d{2}-[A-Z0-9]{2,6}-\\d{4}'"),
+    # 2026-08-03 audit: publishers cite short serials (ANR-15-IDEX-02, ANR-10-
+    # INBS-04) and underscore variants; widen gram to 1-4-digit serials + [-_]
+    gram=r"regexp_replace(norm,' ','') rlike '(ANR[-_]?)?\\d{2}[-_]?[A-Z0-9]{2,6}[-_]\\d{1,4}'"),
   "SNSF": dict(fid=4320320924,
     rkey=f"CAST(CAST({ex(r'^(\\d{1,6})$')} AS BIGINT) AS STRING)",
     xkey=f"CAST(CAST(CASE WHEN norm rlike '^\\\\d{{12}}$' THEN SUBSTR(norm,7) "
@@ -297,6 +303,14 @@ FOREIGN_SCHEMES = [
   r"^(ANID|FONDECYT|FONDAP|PIA|ACT|ICN)[ /-]?[0-9]{4,8}$",               # Chilean ANID family
   r"^2[0-9]{3}[A-Z]{2,8}[0-9]{3,8}$",                                    # CN provincial year+letters+serial
   r"^[A-Z]{1,4} ?[0-9]{2,4}/[0-9]{1,3}(-[0-9])?$",                       # DFG signature under non-DFG funders
+  # --- contract-number schemes (top-150 link-weighted audit, 2026-08-03):
+  # real research CONTRACTS (not grants) that no grant registry holds ---
+  r"^(DE[- ]?)?A[CR][0-9]{2}[- ]{0,2}[0-9]{2}[- ]{0,2}[A-Z]{2,3} ?[0-9]{4,6}$",  # DOE M&O contracts (DE-AC02-05CH11231 + mangled variants incl. extra/double separators)
+  r"^W[- ]?[0-9]{2,4}([- ]?[0-9]{1,3})?[- ]?ENG[- ]?[0-9]{2}$",          # DOE W-contracts (W-7405-ENG-48, W-31-109-Eng-38)
+  r"^W81XWH[- ]?[0-9]{2}[- ]?[0-9][- ]?[0-9]{4}$",                       # DoD CDMRP (W81XWH-12-2-0012)
+  r"^#? ?[0-9]{2}[A-Z0-9]{6,14}(CNA|NA)[0-9]{6}$",                       # NNSA lab contracts (89233218CNA000001)
+  r"^#? ?HHSN[0-9]{9,12}[A-Z]?$",                                        # NIH/HHS contracts (HHSN261200800001C/E)
+  r"^[A-Z]{3,8}[0-9]{0,2}[- ]?CT[- ]?[0-9]{2}[- ]?[0-9]{4}$",            # EU FP-era contracts (MAS3-CT98-0174, ERBIC20-CT98-0103)
 ]
 
 # Funders whose deposited-side xkey is a TRUE EXTRACTOR (regexp_extract of a
