@@ -25,7 +25,7 @@ try:
                                          MULTI_DETECT, MULTI_SPLIT, XGRAM,
                                          S3_NUMERIC_CHASSIS, EXTRACTIVE_FIDS,
                                          FOREIGN_SCHEMES, JUNK_POSITIVE,
-                                         CHASSIS_ANYWHERE)
+                                         CHASSIS_ANYWHERE, FUNDER_KEEPS)
 except ImportError:  # legacy dev path
     sys.path.insert(0, "/tmp"); from rules_src import FUNDERS, NORM
 
@@ -122,6 +122,8 @@ def gen(schema):
         f"_n rlike '{p}'" for p in JUNK_POSITIVE) + ")"
     chassis_cond = "(" + "\n         OR ".join(
         f"_n rlike '{p}'" for p in CHASSIS_ANYWHERE) + ")"
+    keep_cond = "(" + "\n         OR ".join(
+        f"(v.funder_id = {fid} AND _n rlike '{p}')" for fid, p in FUNDER_KEEPS) + ")"
     foreign_cond_s = foreign_cond.replace("_n rlike", "s rlike")
     dep_union = "\n    UNION ALL\n".join(
         f"    SELECT funder_id, aid AS funder_award_id\n"
@@ -449,6 +451,8 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
    -- chassis-anywhere rescue (non-DOE n=400 audit): a string CONTAINING a
    -- complete structural id core can never be junk, whatever the wrapper
    AND NOT {chassis_cond}
+   -- funder-scoped keeps (real id shapes AT this funder; unsafe as global chassis)
+   AND NOT {keep_cond}
   ) AS is_junk
 FROM (SELECT *, {NORM.format(c='funder_award_id')} AS _n FROM {schema}.award_id_verdicts) v
 LEFT JOIN (
