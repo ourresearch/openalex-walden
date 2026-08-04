@@ -11,11 +11,12 @@ resources:
       serverless: true
       photon: true
       continuous: false
-      development: false
+      development: true
       edition: ADVANCED
       channel: CURRENT
       configuration:
         environment: prod
+        pipelines.clusterShutdown.delay: 300s
         spark.sql.execution.arrow.maxRecordsPerBatch: "1000"
       tags:
         environment: prod
