@@ -42,18 +42,28 @@ def send_partition_to_elastic(partition, index_name):
 
     try:
         count = 0
+        errors = []
         for success, info in helpers.parallel_bulk(
             client,
             generate_actions(),
             chunk_size=500,
-            thread_count=1
+            thread_count=1,
+            raise_on_error=False,
+            raise_on_exception=False
         ):
-            count += 1
-            if not success:
-                print(f"FAILED TO INDEX: {info}")
-                raise Exception(f"Failed to index document: {info}")
+            if success:
+                count += 1
+            else:
+                errors.append(info)
 
-        print(f"Successfully indexed {count} total documents to {index_name}")
+        if errors:
+            print(f"PARTITION HAD {len(errors)} FAILED DOCS (indexed {count}). First 5 reasons:")
+            for e in errors[:5]:
+                print(str(e)[:500])
+            if len(errors) > 1000:
+                raise Exception(f"{len(errors)} failed docs in one partition - aborting")
+        else:
+            print(f"Successfully indexed {count} total documents to {index_name}")
 
     except Exception as e:
         log.error(f"Error indexing documents to {index_name}: {e}", stack_info=True, exc_info=True)
