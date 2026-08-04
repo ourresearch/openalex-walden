@@ -46,7 +46,7 @@ def send_partition_to_elastic(partition, index_name):
             client,
             generate_actions(),
             chunk_size=500,
-            thread_count=4
+            thread_count=1
         ):
             count += 1
             if not success:
