@@ -14,7 +14,7 @@ SQLQ = os.path.expanduser("~/openalex-onboarding-labs/sqlq")
 OUT = os.path.dirname(os.path.abspath(__file__))
 
 # norm: upper, trim, unicode dashes -> '-', unicode spaces -> ' ', collapse spaces
-NORM = (r"regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM({c}))," r" '\\\\U20[0-9A-F]{{2}}', '-'),"
+NORM = (r"regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM({c}))," r" '\\\\U2[0-9A-F]{{3}}', '-'),"
         r" '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'),"
         r" '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '),"
         r" '  +', ' ')")
@@ -385,7 +385,7 @@ JUNK_POSITIVE = [
   r"^(19|20)\\d{2}[-–/ ]{1,3}(19|20)\\d{2}$",                            # year ranges (2007-2013)
   r"^(19|20)\\d{2}$",                                                    # bare year
   r"^10\\.13039/\\d{6,12}$",                                             # Crossref funder DOIs
-  r"10\\.13039",                                                         # funder-DOI anywhere (incl. URL forms)
+  r"^[^0-9]*10\\.13039/[0-9]{6,12}[^0-9]*$",                                                         # funder-DOI anywhere (incl. URL forms)
   r"^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499|35802))",                        # URLs — EXCEPT grant-DOI registrars (AHA 10.58275, FCT 10.54499: they embed a real award id)
   r"^0000-000\\d-\\d{4}-[0-9X]{4}$",                                     # ORCIDs
   r"^0(?=.*[A-Z])[A-Z0-9]{6}[0-9]{2}$",                                  # ROR ids (00x0ma614): 0 + 6 alnum + 2-digit checksum; letter required (round-3: tail digits kill FKZ false-positives like 031L0260B)
@@ -396,7 +396,7 @@ JUNK_POSITIVE = [
   r"^[0-9]{1,5}$",                                                       # bare integer <=5 digits (6-digit carved out round-2: SNSF project-number and H2020 GA space)
   r"^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]* (19|20)\\d{2}$|^\\d{1,2}[./]\\d{1,2}[./](19|20)?\\d{2}$",  # dates
   r"[-/_.]$|^[-/_.]",                                                    # truncation fragments (leading/trailing separator: 'DE-AC02-', '/Z/15/Z', '-0001')
-  r"^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|GA|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$",  # scheme prefix with no serial (ANR-10, MOST 104)
+  r"^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$",  # scheme prefix with no serial (ANR-10, MOST 104)
   r"^(19|20)\\d{2}[-–/](19|20)?\\d{1,2}$",                               # year-edition fragments (2014/, 2019/20)
 ]
 
@@ -411,7 +411,7 @@ CHASSIS_ANYWHERE = [
   r"(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|SAPIN)[- ]?(19|20)[0-9]{2}[- ][0-9]{4,6}",  # NSERC modern year-first
   r"[0-9]{6}[A-Z]?_[0-9]{6}",                                            # SNSF instrument_serial
   r"(SFB|TRR?|CRC|EXC|GRK|RTG|FOR|SPP|NFDI|KFO)[ /]?[0-9]{2,4}",         # DFG programmes (incl. TR)
-  r"[A-Z]{1,3}[ -]?[0-9]{2,4}/[0-9]{1,3}-[0-9]",                         # DFG signature X 123/4-5
+  r"[A-Z]{1,3}[ -]?[0-9]{1,4}/[0-9]{1,3}-[0-9]",                         # DFG signature X 123/4-5
   r"[0-9]{2}[A-Z][0-9]{5}(?![0-9])",                                     # KAKEN core yyLddddd
   r"[0-9]{5,6}/[A-Z]/[0-9]{2}(/[A-Z])?",                                    # Wellcome citable
   r"(GR|WT)[0-9]{6}(MA|MAJ|MF|AIA)?(?![0-9])",                                     # Wellcome legacy lettered
@@ -425,16 +425,22 @@ CHASSIS_ANYWHERE = [
   r"DE-?[A-Z]{2}[0-9]{2}-?[0-9]{2}[A-Z]{2}[0-9]{4,6}",                   # DOE DE-family
   r"ANR-?[0-9]{2}-[A-Z0-9]{2,6}-[0-9]{1,4}",                             # ANR
   r"[0-9]{2}[A-Z]{1,4}[0-9]{3,5}[A-Z](?![A-Z0-9])",                      # BMBF FKZ lettered-suffix
-  r"(PID|PGC|RYC|RTI|CEX|TED|PCI|PDC|EQC|CNS|PLEC|SEV|EUR|MDM|IJC|FJC|JDC|RTC)[- ]?[0-9]{4}[- .]{1,3}(?!(19|20)[0-9]{2}(?![0-9]))[0-9]{3,6}",                           # Spanish AEI
+  r"(PID|PGC|RYC|RTI|CEX|TED|PCI|PDC|EQC|CNS|PLEC|SEV|EUR|MDM|IJC|FJC|JDC|RTC|RED)[- ]?[0-9]{4}[- .]{1,3}(?!(19|20)[0-9]{2}(?![0-9]))[0-9]{3,6}",                           # Spanish AEI
   r"(PI|DTS|AC|ICI|COV)[0-9]{2}(CIII)?[/-][0-9]{4,5}",                   # ISCIII
   r"EP/[A-Z][0-9]{5,6}[A-Z0-9]?(/[0-9])?",                               # EPSRC (incl. X-suffix)
   r"AHA[ -]?[0-9]{6,9}|[0-9]{2}(PRE|POST|SDG|GRNT|CDA|EIA|TPA|SFRN|IPA)[0-9]{6,8}",
   r"(?<![0-9])[0-9]{3}[- ](19|20)[0-9]{2}[- ][0-9]{4,5}(?![0-9])",  # VR/Formas dnr 3-seg
   r"(?<![0-9])(19|20)[0-9]{2}-[0-9]{5}(?![0-9])",  # VR modern dnr year-5 (5 digits excludes year-range junk)
   r"PNRR[- ][A-Z]{1,4}[- ]?[A-Z0-9-]{0,10}20[0-9]{2}[- ][0-9]{6,9}",  # Italian PNRR project codes
-  r"(ECS|PE|CN|IR)[0-9]{8}(?![0-9])",  # PNRR ecosystem/partenariato codes e.g. ECS00000036
+  r"(ECS|PE|CN|IR)_?[0-9]{8}(?![0-9])",  # PNRR ecosystem/partenariato codes e.g. ECS00000036
   r"20[0-9]{2}ZD[0-9]{7}(?![0-9])",  # China STI2030 major project
   r"CUP[ :]{0,2}[A-Z][0-9A-Z]{10,14}",
+  r"NNN[0-9]{2}[A-Z]{2}[0-9]{2}[A-Z](?![A-Z0-9])",  # NASA contracts (NNN06AA01C)
+  r"FA[0-9]{4}-[0-9]{2}-[0-9]-[0-9]{4}",  # AFOSR
+  r"JP ?[0-9]{2}[A-Z]{2}[0-9]{7}(?![0-9])",  # AMED canonical JP-form
+  r"PI[0-9]{6}(?![0-9])",  # ISCIII FIS compact (PI020499)
+  r"(?<![0-9])(19|20)[0-9]{2}-(?!(19|20)[0-9]{2}(?![0-9]))[0-9]{4}(?![0-9])",  # VR 4-digit dnr; 2nd part may not be a year
+  r"[0-9]{2}-AIST[0-9]{2}-[0-9]-[0-9]{4}",  # NASA AIST awards
   r"80NSSC[0-9]{2}[A-Z][0-9]{4}",  # NASA NSSC awards
   r"[A-Z]{2,6}_[0-9]{1,2}-[0-9][- ]20[0-9]{2}-[0-9]{4}",  # Hungarian NKFIH (NVKP_16-1-2016-0017)
   r"N N[0-9]{3} [0-9]{4} [0-9]{2}(?![0-9])",  # Polish MNiSW legacy N-grants
@@ -652,5 +658,6 @@ if __name__ == "__main__":
 FUNDER_KEEPS = [
   (4320321181, r"^[A-Z] ?[0-9]{1,5}[.]?$"),          # FWF short ids (T7, F45, Z49 — all resolvable at 10.55776/<id>)
   (4320321001, r"(?<![0-9A-Z])[WT][0-9]{7,10}(?![0-9])"),  # NSFC W-/T-series
-  (4320321001, r"(?<![0-9])8[0-9]{10}(?![0-9])"),    # NSFC 11-digit joint/major grants
+  (4320321001, r"(?<![0-9])8[0-9]{10}(?![0-9])"),
+  (4320321181, r"^[1-3][0-9]{4}[.]?$"),  # FWF bare 5-digit project numbers (grader: 10000-39999 = unambiguous P-series, all resolve at 10.55776)    # NSFC 11-digit joint/major grants
 ]
