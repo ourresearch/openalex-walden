@@ -143,7 +143,9 @@ def extract_fields(xml_content):
     # authors
     def _authors():
         authors = []
-        author_elements = root.findall(".//tei:author", namespaces=ns)
+        # scope to teiHeader: document authors only, not bibliography authors in back/listBibl
+        header = root.find(".//tei:teiHeader", namespaces=ns)
+        author_elements = header.findall(".//tei:author", namespaces=ns) if header is not None else []
         for author in author_elements:
             given_name = author.find(".//tei:persName/tei:forename[@type='first']", namespaces=ns)
             family_name = author.find(".//tei:persName/tei:surname", namespaces=ns)
@@ -153,8 +155,12 @@ def extract_fields(xml_content):
             affiliation_elements = author.findall(".//tei:affiliation", namespaces=ns)
             for affiliation in affiliation_elements:
                 name = affiliation.find(".//tei:note[@type='raw_affiliation']", namespaces=ns)
+                # text outside child elements: skips the <label> marker, keeps the affiliation string
+                raw_name = None
+                if name is not None:
+                    raw_name = ((name.text or "") + "".join(c.tail or "" for c in name)).strip() or None
                 affiliations.append({
-                    "name": name.text.strip() if name is not None else None,
+                    "name": raw_name,
                     "department": None,
                     "ror_id": None
                 })
