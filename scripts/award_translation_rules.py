@@ -34,7 +34,8 @@ FUNDERS = {
          f"{ex(r'(?<!\\d)(\\d{8})(?!\\d)')}, "
          f"""{ex(r'(?<!\\d)(\\d{8})(?!\\d)', src="regexp_replace(norm,' ','')")})""",
     gram=r"norm rlike '(?<!\\d)\\d{8}(?!\\d)' or norm rlike '(?<![A-Z0-9])U\\d{7}(?!\\d)'"
-         r" or regexp_replace(norm,' ','') rlike '(?<!\\d)\\d{8}(?!\\d)'"),
+         r" or regexp_replace(norm,' ','') rlike '(?<!\\d)\\d{8}(?!\\d)'"
+         r" or norm rlike '^8\\d{10}$'"),
   "NIH": dict(fid=4320332161,
     rkey=ex(r"([A-Z]{2}\\d{6})"),
     xkey=f"CASE WHEN {ex(r'([A-Z]{2}) ?-?(\\d{5,6})(?!\\d)')} IS NOT NULL THEN "
@@ -69,7 +70,7 @@ FUNDERS = {
          r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"
          # round-2 audit: hyphenated form with ALNUM institution codes (A49,
          # 182A, 002) and optional -MYn / letter suffix / trailing hyphen
-         r" or norm rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$'"),
+         r" or norm rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}[ -]+\\d{4}[ -]+[A-Z0-9][ -]+[A-Z0-9]{3,4}[ -]+\\d{3}([ -]+MY\\d)?([ -]+[A-Z0-9]{1,3})?[ -]*$'"),
   "FAPESP": dict(fid=4320320997,
     rkey=f"CASE WHEN {ex(r'^(\\d{2})/(\\d{5})-(\\d)$')} IS NOT NULL THEN "
          f"CONCAT(regexp_extract(norm,'^(\\\\d{{2}})/(\\\\d{{5}})-(\\\\d)$',1),'/',"
@@ -143,7 +144,7 @@ FUNDERS = {
          r" rlike '^\\d{6,7}[A-Z]\\d{6}(MY\\d)?E?\\d?$'"
          # round-2 audit: hyphenated form with ALNUM institution codes (A49,
          # 182A, 002) and optional -MYn / letter suffix / trailing hyphen
-         r" or norm rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}-\\d{4}-[A-Z0-9]-[A-Z0-9]{3,4}-\\d{3}(-MY\\d)?(-[A-Z0-9]{1,3})?[ -]*$'"),
+         r" or norm rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}[ -]+\\d{4}[ -]+[A-Z0-9][ -]+[A-Z0-9]{3,4}[ -]+\\d{3}([ -]+MY\\d)?([ -]+[A-Z0-9]{1,3})?[ -]*$'"),
   "CIHR": dict(fid=4320334506,
     # derived 2026-08-03 (worklist #16): registry = NNNNNN_1 (application no. +
     # installment); deposits = program prefixes (MOP/PJT/FDN...), '950-' funding
@@ -271,7 +272,8 @@ XREF = "('crossref_work_funders','crossref_work.grants','crossref_work')"
 # is harmless anyway because rescue still requires a registry hit.
 DECOR_LEAD = (r"^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP"
               r"|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT"
-              r"|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS)"
+              r"|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS"
+              r"|FKZ|PHD|POSTDOC|FELLOWSHIP|STUDENTSHIP)"
               r"[ .:#°-]+"
               r"|HTTPS?://KAKEN\\.NII\\.AC\\.JP/GRANT/KAKENHI-PROJECT-"
               r"|GRANT ?\\(?NO\\.? ?"
@@ -344,6 +346,10 @@ FOREIGN_SCHEMES = [
   r"^[0-9]{2}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{2,4}[0-9]{3,4}[A-Z]{0,3}$",      # BMBF FKZ chassis under any funder (01KR1304A, 031L0260B — program token may contain a digit)
   r"^[0-9]{2}(JJ|ZR|DZ|JC|SF|SK|YF)[0-9]{4,7}$",                         # CN provincial two-letter series (Hunan 06JJ50029, Shanghai ZR/DZ)
   r"^[A-Z]{2,5}-[0-9]{7}$",                                              # NSF division form under other funders (DGE-1650116)
+  r"^[0-9]{6}[A-Z]?_[0-9]{6}(/[0-9])?$",                                 # SNSF instrument-coded (200020L_175755) under any funder
+  r"^EFOP-[0-9]\\.[0-9]\\.[0-9]-[0-9]{2}-20[0-9]{2}-[0-9]{5}$",           # Hungarian EFOP
+  r"^YXJL-20[0-9]{2}-[0-9]{4}-[0-9]{4}$",                                # Beijing Medical Award Foundation
+  r"^[0-9]{2,3}-EPA-[A-Z0-9-]{5,12}$",                                   # Taiwan EPA commissioned projects
   # --- contract-number schemes (top-150 link-weighted audit, 2026-08-03):
   # real research CONTRACTS (not grants) that no grant registry holds ---
   r"^(DE[- ]?)?A[CR][0-9]{2}[- ]{0,2}[0-9]{2}[- ]{0,2}[A-Z]{2,3} ?[0-9]{4,6}$",  # DOE M&O contracts (DE-AC02-05CH11231 + mangled variants incl. extra/double separators)

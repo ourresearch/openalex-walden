@@ -329,7 +329,7 @@ s1 AS (
      OR {foreign_cond_s}
      -- round-3: bare 7-8 digit residues are non-junk whole-string (NSF/NSFC
      -- forms), so a trailing-punctuation variant must not die either
-     OR k.s rlike '^[0-9]{{7,8}}$'
+     OR k.s rlike '^[0-9]{{6,8}}$'
 ),
 -- S2: multi-id concat split
 multi AS (
