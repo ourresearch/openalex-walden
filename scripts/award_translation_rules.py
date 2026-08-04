@@ -15,7 +15,7 @@ OUT = os.path.dirname(os.path.abspath(__file__))
 
 # norm: upper, trim, unicode dashes -> '-', unicode spaces -> ' ', collapse spaces
 NORM = (r"regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM({c})),"
-        r" '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'),"
+        r" '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'),"
         r" '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '),"
         r" '  +', ' ')")
 
@@ -102,7 +102,7 @@ FUNDERS = {
          "WHEN norm rlike '^\\\\d{5,6}[ -]\\\\d{4}$' THEN "
          "CONCAT(regexp_extract(norm,'(\\\\d{4})$',1),'-',CAST(CAST(regexp_extract(norm,'^(\\\\d{5,6})',1) AS BIGINT) AS STRING)) END",
     gram=r"norm rlike '^[A-Z]{3,7}[ /-]?\\d{4}[ -]?\\d{4,6}$' or "
-         r"norm rlike '^[A-Z]{3,7}[ -]?\\d{4,6}([ -]?\\d{2,4})?$' or norm rlike '^\\d{5,6}([ -]?\\d{2,4})?$'"),
+         r"norm rlike '^[A-Z]{3,7}[ -]?\\d{4,6}([ -]{1,3}\\d{2,4})?$' or norm rlike '^\\d{5,6}([ -]?\\d{2,4})?$'"),
   "ANR": dict(fid=4320320883,
     rkey=f"CASE WHEN {ex(r'^ANR-(\\d{2})-([A-Z0-9]{2,6})-(\\d{4})')} IS NOT NULL THEN "
          f"CONCAT(regexp_extract(norm,'^ANR-(\\\\d{{2}})-([A-Z0-9]{{2,6}})-(\\\\d{{4}})',1),'-',"
@@ -151,8 +151,8 @@ FUNDERS = {
     # reference wrapper, '#' decorations. Match key = application number as int.
     rkey="CAST(CAST(" + ex(r"^(\\d{4,6})_\\d+$") + " AS BIGINT) AS STRING)",
     xkey="CAST(CAST(NULLIF(regexp_extract(regexp_replace(regexp_replace(norm,'^[#]+ ?',''),"
-         "'^(950[- ]|[A-Z]{2,4}[- ]?)',''),'^(\\\\d{4,6})([-_]\\\\d+)?$',1),'') AS BIGINT) AS STRING)",
-    gram=r"norm rlike '^#? ?(950[- ])?([A-Z]{2,4}[- ]?)?\\d{4,6}([-_]\\d+)?$'"),
+         "'^(950[- ]|[A-Z]{2,4}[0-9]?[- ]?)',''),'^(\\\\d{4,6})([-_]\\\\d+)?$',1),'') AS BIGINT) AS STRING)",
+    gram=r"norm rlike '^#? ?(950[- ])?([A-Z]{2,4}[0-9]?[- ]?)?\\d{4,6}([-_]\\d+)?$'"),
   "AHA": dict(fid=4320306230,
     rkey="NULLIF(regexp_replace(norm,' ',''),'')",
     xkey="NULLIF(regexp_replace(norm,' ',''),'')",
@@ -273,9 +273,12 @@ XREF = "('crossref_work_funders','crossref_work.grants','crossref_work')"
 DECOR_LEAD = (r"^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICATION|APP"
               r"|REFERENCE|REF|NUMBER|NUM|NO|N0|ID|CODE|FUNDREF|UNDER|JSPS|KAKENHI|MEXT"
               r"|OPUS|SONATA|PRELUDIUM|HARMONIA|MAESTRO|ETIUDA|GRIEG|NCN|PROBRAL|PROCESSO|PROCESS"
-              r"|FKZ|PHD|POSTDOC|FELLOWSHIP|STUDENTSHIP)"
+              r"|FKZ|PHD|POSTDOC|FELLOWSHIP|STUDENTSHIP"
+              r"|AND|NSERC|CIHR|SNSF|SNF|CNPQ)"
               r"[ .:#°-]+"
               r"|HTTPS?://KAKEN\\.NII\\.AC\\.JP/GRANT/KAKENHI-PROJECT-"
+              r"|KAKENHI[ /]+"
+              r"|[A-Z]{2,10} ?\\(+ ?"
               r"|GRANT ?\\(?NO\\.? ?"
               # review pass-4 F6: LONG words (>=5 chars, unambiguous) also strip
               # with NO separator ("award307834"); short words keep the
@@ -283,7 +286,10 @@ DECOR_LEAD = (r"^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICAT
               r"|(GRANT|AWARD|PROJECT|CONTRACT|NUMBER|KAKENHI|REFERENCE|APPLICATION|PROCESSO|PROCESS)"
               r"|[#№(\\[]+ ?)+")
 DECOR_TRAIL = (r"([ .,;:)/\\]]+|[ -]*\\(.*\\)"
-               r"| TO [A-Z][A-Z. -]{1,14}"          # attribution: "... to S.F.", "to HMS"
+               # attributions: "to S.F.", "- C.G.M.", "for K. N.",
+               # "awarded to A.B. and K.Z."
+               r"|[ -]+((AWARDED )?TO|FOR) [A-Z][A-Z. ]{1,20}( AND [A-Z][A-Z. ]{1,10})?"
+               r"|[ -]+[A-Z]\\.( ?[A-Z]\\.?){1,3}"
                r")$")
 # multi-id concat detection + split (mirrors classify.py CLS 'multi_id' arm)
 MULTI_DETECT = ("((_n rlike '[,;&]') OR (_n rlike ' AND ') OR (_n rlike ' \\\\+ '))"
@@ -311,7 +317,7 @@ JUNK_POSITIVE = [
   r"^(19|20)\\d{2}$",                                                    # bare year
   r"^10\\.13039/\\d{6,12}$",                                             # Crossref funder DOIs
   r"10\\.13039",                                                         # funder-DOI anywhere (incl. URL forms)
-  r"^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499))",                        # URLs — EXCEPT grant-DOI registrars (AHA 10.58275, FCT 10.54499: they embed a real award id)
+  r"^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499|35802))",                        # URLs — EXCEPT grant-DOI registrars (AHA 10.58275, FCT 10.54499: they embed a real award id)
   r"^0000-000\\d-\\d{4}-[0-9X]{4}$",                                     # ORCIDs
   r"^0(?=.*[A-Z])[A-Z0-9]{6}[0-9]{2}$",                                  # ROR ids (00x0ma614): 0 + 6 alnum + 2-digit checksum; letter required (round-3: tail digits kill FKZ false-positives like 031L0260B)
   r"^(N/?A|NA|NONE|NIL|NOT APPLICABLE|UNKNOWN|TBD|PENDING|NULL|XXX+|[-.,;:/#*+ ]+)$",  # placeholders
@@ -350,6 +356,8 @@ FOREIGN_SCHEMES = [
   r"^EFOP-[0-9]\\.[0-9]\\.[0-9]-[0-9]{2}-20[0-9]{2}-[0-9]{5}$",           # Hungarian EFOP
   r"^YXJL-20[0-9]{2}-[0-9]{4}-[0-9]{4}$",                                # Beijing Medical Award Foundation
   r"^[0-9]{2,3}-EPA-[A-Z0-9-]{5,12}$",                                   # Taiwan EPA commissioned projects
+  r"^(HTTPS?://(DX\\.)?DOI\\.ORG/)?10\\.35802/[0-9]{5,6}$",              # Wellcome grant DOIs (10.35802/210622)
+  r"(?<![0-9])[0-9]{6}/[0-9]{2,4}-[0-9](?![0-9])",                       # CNPq process numbers incl. legacy 2-digit years (303715/2011-1) — was lost in a revert
   # --- contract-number schemes (top-150 link-weighted audit, 2026-08-03):
   # real research CONTRACTS (not grants) that no grant registry holds ---
   r"^(DE[- ]?)?A[CR][0-9]{2}[- ]{0,2}[0-9]{2}[- ]{0,2}[A-Z]{2,3} ?[0-9]{4,6}$",  # DOE M&O contracts (DE-AC02-05CH11231 + mangled variants incl. extra/double separators)
