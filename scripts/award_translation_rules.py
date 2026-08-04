@@ -200,6 +200,21 @@ FUNDERS = {
     gram=r"regexp_replace(regexp_replace(norm,'[ -]',''),'^DE(?=[A-Z]{2}[0-9])','')"
          r" rlike '^((SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}"
          r"|(FG|FC|AC|AI|GO|PS|EV|ER|AA)\\d{4}[A-Z]{1,2}\\d{4,6})$'"),
+  "SHANDONG": dict(fid=4320324174,
+    # derived 2026-08-03 (worklist #22): registry = ~100-row STUB of the OLD
+    # format only (2014ZRE27001 = yyyyZR[A-E]xxxxx, 2014-15 vintage); deposits
+    # are ~all the MODERN format ZRyyyy + program letters + serial
+    # (ZR2016EEQ14, ZR2022QH134) which the registry doesn't carry -> grammar
+    # recipe now, keys accept both formats so matching lights up if the
+    # registry is ever extended (rescrape-list candidate, low priority given
+    # stub size). Bare 8-digit NSFC ids under the province stay unclaimed by
+    # policy (bare numbers are never cross-claimed).
+    rkey=ex(r"^(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})$",
+            src="regexp_replace(norm,'[ -]','')"),
+    xkey=ex(r"(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})",
+            src="regexp_replace(norm,'[ -]','')"),
+    gram=r"regexp_replace(norm,'[ -]','') rlike"
+         r" '^(ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}|\\d{4}ZR[A-Z][0-9A-Z]{5})$'"),
   "DHHS": dict(fid=4320306085,
     # derived 2026-08-03 (worklist #18): registry = hhs_taggs (964 ids), two
     # shapes: 5-alnum-starting-letter + 6 digits (CPIMP151089, TP1AH000086,
@@ -281,6 +296,7 @@ EXTRACTIVE_FIDS = {
   4320321091,  # CAPES
   4320322511,  # NCN
   4320306084,  # DOE (chassis extractor; no cross-shape overlap — unlike DHHS)
+  4320324174,  # Shandong NSF (ZR chassis extractor)
 }
 
 # STRONG cross-grammars for wrong-funder detection (S3) — measured lesson
@@ -339,6 +355,9 @@ XGRAM = {
   # NCN: UMO chassis (inert until the internal-code registry gets citable
   # refs; slash-structured so the S3 letter filter admits it)
   4320322511: r"regexp_replace(norm,' ','') rlike '(UMO-?|DEC-?)?20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5}'",
+  # Shandong NSF: modern ZR-prefixed chassis is distinctive (inert until
+  # the stub registry is extended)
+  4320324174: r"regexp_replace(norm,'[ -]','') rlike 'ZR(19|20)\\d{2}[A-Z]{1,3}\\d{2,4}'",
   # DOE: cross-funder claims require the literal DE prefix (self-identifying;
   # control: 12/12 sampled cross-hits were real DE- ids)
   4320306084: (r"regexp_replace(norm,'[ -]','') rlike '(?<![A-Z])DE(SC|EE|FE|AR|NE|NA|EM|OE|IA|PI|BI|CF|ET|SF|HS|DP|EW)\\d{7}'"
