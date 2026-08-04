@@ -279,6 +279,26 @@ MULTI_SPLIT = r"[,;&+]|\\bAND\\b"
 # been suppressed).
 S3_NUMERIC_CHASSIS = r"(?<!\\d)\\d{2,4}/\\d{4,5}-\\d(?!\\d)"
 
+# FOREIGN-SCHEME KEEP-LIST (2026-08-03, shape census over the suppress pile):
+# ids matching a KNOWN grant-id scheme of a funder OUTSIDE the configured 23
+# must never suppress — they are real grants wrongly filed (the ~57k class the
+# census surfaced: UKRI council refs, Spanish AEI, Italian PRIN/PNRR/CUP,
+# Czech RVO/LM, Polish EU operational programmes, Chilean ANID, Chinese
+# provincial year+letters+serial, DFG signature forms under non-DFG funders).
+# Verdict 'foreign_scheme' -> kept + flagged (future re-link material once
+# those funders get registries); grammar-only, no registry to verify against.
+FOREIGN_SCHEMES = [
+  r"^(MR|BB|EP|NE|ES|AH|ST|EY|G)[0-9]{0,2}/[A-Z0-9]{6,8}/[0-9]{1,2}$",  # UKRI councils
+  r"^(PID|PGC|RYC|RTI|CEX|TED|SEV|BES|FPU|FJC|IJC|MAT|FIS|CTQ|SAF|BFU|AGL|ECO|DPI|TIN|FFI|HAR)[0-9]{4}-[0-9A-Z-]{3,}$",  # Spanish AEI/MICINN
+  r"^(PRIN|PNRR|FIRB|FISR|PON|POR)[ :-]?[0-9A-Z]{2,}$",                  # Italian nationals
+  r"^CUP[ :]?[A-Z][0-9][0-9A-Z]{8,13}$",                                 # Italian CUP codes
+  r"^(RVO|MSM|LO|LM|LQ|GA|GX|GJ)[.:]? ?[0-9]{2,8}([./-][0-9A-Z]+)?$",   # Czech schemes
+  r"^(POWR|POIR|POPC|POPW|RPMA)\\.[0-9.]{2,12}[/-][0-9A-Z-]{2,}$",       # Polish EU OPs
+  r"^(ANID|FONDECYT|FONDAP|PIA|ACT|ICN)[ /-]?[0-9]{4,8}$",               # Chilean ANID family
+  r"^2[0-9]{3}[A-Z]{2,8}[0-9]{3,8}$",                                    # CN provincial year+letters+serial
+  r"^[A-Z]{1,4} ?[0-9]{2,4}/[0-9]{1,3}(-[0-9])?$",                       # DFG signature under non-DFG funders
+]
+
 # Funders whose deposited-side xkey is a TRUE EXTRACTOR (regexp_extract of a
 # structured id; returns NULL when nothing id-shaped is present). Review
 # pass-4 F2: when such an extractor FIRES but the registry misses (registry

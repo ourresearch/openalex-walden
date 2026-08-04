@@ -23,7 +23,8 @@ try:
     # vendored rules (source of truth: #690 audit)
     from award_translation_rules import (FUNDERS, NORM, DECOR_LEAD, DECOR_TRAIL,
                                          MULTI_DETECT, MULTI_SPLIT, XGRAM,
-                                         S3_NUMERIC_CHASSIS, EXTRACTIVE_FIDS)
+                                         S3_NUMERIC_CHASSIS, EXTRACTIVE_FIDS,
+                                         FOREIGN_SCHEMES)
 except ImportError:  # legacy dev path
     sys.path.insert(0, "/tmp"); from rules_src import FUNDERS, NORM
 
@@ -114,6 +115,8 @@ def gen(schema):
         f"(funder_id = {fid} AND _n rlike '{pat}')"
         for fid, pat in WEAK_BARE.items()) or "FALSE"
     xfids = ",".join(str(fid) for fid in XGRAM)
+    foreign_cond = "(" + "\n      OR ".join(
+        f"_n rlike '{p}'" for p in FOREIGN_SCHEMES) + ")"
     dep_union = "\n    UNION ALL\n".join(
         f"    SELECT funder_id, aid AS funder_award_id\n"
         f"    FROM {j} LATERAL VIEW EXPLODE(award_ids) AS aid"
@@ -230,6 +233,9 @@ SELECT funder_id, funder_award_id, nk, n_awards,
     -- garbage (harm class: "OPUS 2019/35/B/ST10/04141", real ids the
     -- registry doesn't carry yet)
     WHEN sk_fired THEN 'plausible'
+    -- foreign-scheme keep-list (2026-08-03 shape census): a known grant-id
+    -- scheme of a funder OUTSIDE the configured set never suppresses
+    WHEN {foreign_cond} THEN 'foreign_scheme'
     ELSE 'garbage'
   END AS verdict,
   current_timestamp() AS scored_date

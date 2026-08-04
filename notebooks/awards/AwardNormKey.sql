@@ -200,6 +200,17 @@ SELECT funder_id, funder_award_id, nk, n_awards,
     -- garbage (harm class: "OPUS 2019/35/B/ST10/04141", real ids the
     -- registry doesn't carry yet)
     WHEN sk_fired THEN 'plausible'
+    -- foreign-scheme keep-list (2026-08-03 shape census): a known grant-id
+    -- scheme of a funder OUTSIDE the configured set never suppresses
+    WHEN (_n rlike '^(MR|BB|EP|NE|ES|AH|ST|EY|G)[0-9]{0,2}/[A-Z0-9]{6,8}/[0-9]{1,2}$'
+      OR _n rlike '^(PID|PGC|RYC|RTI|CEX|TED|SEV|BES|FPU|FJC|IJC|MAT|FIS|CTQ|SAF|BFU|AGL|ECO|DPI|TIN|FFI|HAR)[0-9]{4}-[0-9A-Z-]{3,}$'
+      OR _n rlike '^(PRIN|PNRR|FIRB|FISR|PON|POR)[ :-]?[0-9A-Z]{2,}$'
+      OR _n rlike '^CUP[ :]?[A-Z][0-9][0-9A-Z]{8,13}$'
+      OR _n rlike '^(RVO|MSM|LO|LM|LQ|GA|GX|GJ)[.:]? ?[0-9]{2,8}([./-][0-9A-Z]+)?$'
+      OR _n rlike '^(POWR|POIR|POPC|POPW|RPMA)\\.[0-9.]{2,12}[/-][0-9A-Z-]{2,}$'
+      OR _n rlike '^(ANID|FONDECYT|FONDAP|PIA|ACT|ICN)[ /-]?[0-9]{4,8}$'
+      OR _n rlike '^2[0-9]{3}[A-Z]{2,8}[0-9]{3,8}$'
+      OR _n rlike '^[A-Z]{1,4} ?[0-9]{2,4}/[0-9]{1,3}(-[0-9])?$') THEN 'foreign_scheme'
     ELSE 'garbage'
   END AS verdict,
   current_timestamp() AS scored_date
