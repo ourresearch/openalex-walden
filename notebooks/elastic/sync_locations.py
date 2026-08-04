@@ -93,7 +93,7 @@ print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 doc_columns = [
     "work_id", "native_id", "native_id_namespace", "provenance", "merge_key",
-    "title", "type", "version", "license", "language",
+    "title", "type", "raw_type", "version", "license", "language",
     "published_date", "created_date", "updated_date",
     "issue", "volume", "first_page", "last_page",
     "is_retracted", "is_oa", "is_oa_source",
