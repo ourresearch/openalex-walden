@@ -10,13 +10,13 @@
 CREATE OR REPLACE FUNCTION openalex.awards.award_id_is_weak(funder_id BIGINT, award_id STRING)
 RETURNS BOOLEAN
 RETURN
-WITH _t AS (SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n)
+WITH _t AS (SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(award_id)), '\\\\U2[0-9A-F]{3}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n)
 SELECT COALESCE((funder_id = 4320334506 AND _n rlike '^[0-9]{4,6}$') OR (funder_id = 4320311904 AND _n rlike '^[0-9]{5,6}$') OR (funder_id = 4320320924 AND _n rlike '^[0-9]{4,6}$') OR (funder_id = 4320320300 AND _n rlike '^[0-9]{6}$') OR (funder_id = 4320306076 AND _n rlike '^[0-9]{7}$') OR (funder_id = 4320334593 AND _n rlike '^[0-9]{4,6}$'), FALSE) FROM _t;
 
 CREATE OR REPLACE FUNCTION openalex.awards.award_norm_key(funder_id BIGINT, award_id STRING, side STRING)
 RETURNS STRING
 RETURN
-WITH _t AS (SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n)
+WITH _t AS (SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(award_id)), '\\\\U2[0-9A-F]{3}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n)
 SELECT COALESCE(
   CASE WHEN side = 'registry' THEN
     CASE
@@ -165,7 +165,7 @@ keyed AS (
       WHEN funder_id = 4320311405 THEN ((NULLIF(regexp_extract(_n,'^(?:JP)?(\\d{2}[A-Z]{2}\\d{7})(?:H\\d{4})?$',1),'')) IS NOT NULL)
       ELSE FALSE END AS sk_fired
   FROM (SELECT funder_id, funder_award_id,
-          regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
+          regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U2[0-9A-F]{3}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
         FROM dep)
 ),
 scored AS (
@@ -256,10 +256,10 @@ FROM scored;
 -- ids BEFORE any suppression. Three rescue steps:
 --   decorated_own_id  generic decoration strip -> re-key -> own-registry hit
 --                     (suffix _weak when the stripped form is a bare number at
---                     a WEAK_BARE funder: minted but never merge material;
+--                     a WEAK_BARE funder: minted but never merge material --
 --                     decorated_plausible when the stripped form only passes
 --                     the funder's grammar — parity with S2 plausible parts)
---   multi_id_split    concatenated ids ("A123, B456"): split, score each part;
+--   multi_id_split    concatenated ids ("A123, B456"): split, score each part --
 --                     rescued when any part confirms or is plausible
 --   wrong_funder      DETECTION ONLY (re-link write = #624's): letter-bearing
 --                     ids that pass another funder's STRONG cross-grammar
@@ -293,7 +293,7 @@ reg_g AS (
 ),
 garbage AS (
   SELECT funder_id, funder_award_id,
-    regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
+    regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U2[0-9A-F]{3}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
   FROM openalex.awards.award_id_verdicts WHERE verdict = 'garbage'
 ),
 -- S1: decorated own-id (strip applied lead-then-trail-twice: "12345 (ABC).")
@@ -552,7 +552,7 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
          OR _n rlike '^(19|20)\\d{2}[-–/ ]{1,3}(19|20)\\d{2}$'
          OR _n rlike '^(19|20)\\d{2}$'
          OR _n rlike '^10\\.13039/\\d{6,12}$'
-         OR _n rlike '10\\.13039'
+         OR _n rlike '^[^0-9]*10\\.13039/[0-9]{6,12}[^0-9]*$'
          OR _n rlike '^(HTTPS?://|WWW\\.)(?!.*10\\.(58275|54499|35802))'
          OR _n rlike '^0000-000\\d-\\d{4}-[0-9X]{4}$'
          OR _n rlike '^0(?=.*[A-Z])[A-Z0-9]{6}[0-9]{2}$'
@@ -563,20 +563,20 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
          OR _n rlike '^[0-9]{1,5}$'
          OR _n rlike '^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]* (19|20)\\d{2}$|^\\d{1,2}[./]\\d{1,2}[./](19|20)?\\d{2}$'
          OR _n rlike '[-/_.]$|^[-/_.]'
-         OR _n rlike '^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|GA|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$'
+         OR _n rlike '^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$'
          OR _n rlike '^(19|20)\\d{2}[-–/](19|20)?\\d{1,2}$')
    OR (v.funder_id = 4320306084 AND _n rlike '^[0-9]{6}$')  -- DOE-scoped: bare-6 = facility proposal ids (auditor-endorsed junk); global bare-6 carved out for SNSF/EC GA space
    )
    -- chassis-anywhere rescue (non-DOE n=400 audit): a string CONTAINING a
    -- complete structural id core can never be junk, whatever the wrapper
-   AND NOT (_n rlike '[0-9]{2,3}[- ][0-9]{4}[- ]?[A-Z][- ][A-Z0-9]{3,4}[- ][0-9]{2,3}'
-         OR _n rlike '(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|SAPIN|PGSD?[0-9]?)[ /=-]{1,3}[0-9]{5,6}([ -][0-9]{2,4})?'
+   AND NOT (_n rlike '[0-9]{2,3}[- ][0-9]{4}[- ]?[A-Z][- ][A-Z0-9]{3,4}[- ]{1,3}[0-9]{2,3}'
+         OR _n rlike '(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|RDCPJ|SAPIN|PGSD?[0-9]?)[ /=-]{1,3}[0-9]{5,6}([ -][0-9]{2,4})?'
          OR _n rlike '(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|SAPIN)[- ]?(19|20)[0-9]{2}[- ][0-9]{4,6}'
          OR _n rlike '[0-9]{6}[A-Z]?_[0-9]{6}'
          OR _n rlike '(SFB|TRR?|CRC|EXC|GRK|RTG|FOR|SPP|NFDI|KFO)[ /]?[0-9]{2,4}'
-         OR _n rlike '[A-Z]{1,3}[ -]?[0-9]{2,4}/[0-9]{1,3}-[0-9]'
+         OR _n rlike '[A-Z]{1,3}[ -]?[0-9]{1,4}/[0-9]{1,3}-[0-9]'
          OR _n rlike '[0-9]{2}[A-Z][0-9]{5}(?![0-9])'
-         OR _n rlike '[0-9]{5,6}/[A-Z]/[0-9]{2}/[A-Z]'
+         OR _n rlike '[0-9]{5,6}/[A-Z]/[0-9]{2}(/[A-Z])?'
          OR _n rlike '(GR|WT)[0-9]{6}(MA|MAJ|MF|AIA)?(?![0-9])'
          OR _n rlike '(?<![0-9])(19|20)[0-9]{2}/[0-9]{4,5}-[0-9](?![0-9])'
          OR _n rlike '(UIDB?|UIDP|PTDC|SFRH|CEEC(IND)?|POCI|ALT[0-9]{2}|LA/P)[/ -][A-Z0-9/. -]{3,24}[0-9]'
@@ -588,21 +588,85 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
          OR _n rlike 'DE-?[A-Z]{2}[0-9]{2}-?[0-9]{2}[A-Z]{2}[0-9]{4,6}'
          OR _n rlike 'ANR-?[0-9]{2}-[A-Z0-9]{2,6}-[0-9]{1,4}'
          OR _n rlike '[0-9]{2}[A-Z]{1,4}[0-9]{3,5}[A-Z](?![A-Z0-9])'
-         OR _n rlike '(PID|PGC|RYC|RTI|CEX|TED|PCI|PDC|EQC|CNS|PLEC|SEV|EUR|MDM)[0-9]{4}[-. ] ?[0-9]{5,6}'
+         OR _n rlike '(PID|PGC|RYC|RTI|CEX|TED|PCI|PDC|EQC|CNS|PLEC|SEV|EUR|MDM|IJC|FJC|JDC|RTC|RED)[- ]?[0-9]{4}[- .]{1,3}(?!(19|20)[0-9]{2}(?![0-9]))[0-9]{3,6}'
          OR _n rlike '(PI|DTS|AC|ICI|COV)[0-9]{2}(CIII)?[/-][0-9]{4,5}'
          OR _n rlike 'EP/[A-Z][0-9]{5,6}[A-Z0-9]?(/[0-9])?'
          OR _n rlike 'AHA[ -]?[0-9]{6,9}|[0-9]{2}(PRE|POST|SDG|GRNT|CDA|EIA|TPA|SFRN|IPA)[0-9]{6,8}'
          OR _n rlike '(?<![0-9])[0-9]{3}[- ](19|20)[0-9]{2}[- ][0-9]{4,5}(?![0-9])'
          OR _n rlike '(?<![0-9])(19|20)[0-9]{2}-[0-9]{5}(?![0-9])'
          OR _n rlike 'PNRR[- ][A-Z]{1,4}[- ]?[A-Z0-9-]{0,10}20[0-9]{2}[- ][0-9]{6,9}'
-         OR _n rlike '(ECS|PE|CN|IR)[0-9]{8}(?![0-9])'
+         OR _n rlike '(ECS|PE|CN|IR)_?[0-9]{8}(?![0-9])'
          OR _n rlike '20[0-9]{2}ZD[0-9]{7}(?![0-9])'
-         OR _n rlike 'CUP[ :]{0,2}[A-Z][0-9A-Z]{10,14}')
+         OR _n rlike 'CUP[ :]{0,2}[A-Z][0-9A-Z]{10,14}'
+         OR _n rlike 'NNN[0-9]{2}[A-Z]{2}[0-9]{2}[A-Z](?![A-Z0-9])'
+         OR _n rlike 'FA[0-9]{4}-[0-9]{2}-[0-9]-[0-9]{4}'
+         OR _n rlike 'JP ?[0-9]{2}[A-Z]{2}[0-9]{7}(?![0-9])'
+         OR _n rlike 'PI[0-9]{6}(?![0-9])'
+         OR _n rlike '(?<![0-9])(19|20)[0-9]{2}-(?!(19|20)[0-9]{2}(?![0-9]))[0-9]{4}(?![0-9])'
+         OR _n rlike '[0-9]{2}-AIST[0-9]{2}-[0-9]-[0-9]{4}'
+         OR _n rlike '80NSSC[0-9]{2}[A-Z][0-9]{4}'
+         OR _n rlike '[A-Z]{2,6}_[0-9]{1,2}-[0-9][- ]20[0-9]{2}-[0-9]{4}'
+         OR _n rlike 'N N[0-9]{3} [0-9]{4} [0-9]{2}(?![0-9])'
+         OR _n rlike '436 ?[A-Z]{3} ?[0-9]{2}/[0-9]{2}/[0-9]{2}'
+         OR _n rlike 'RP[A-Z]{2}\.[0-9]{2}\.[0-9]{2}\.[0-9]{2}-[0-9]{2}-[0-9]{4}/[0-9]{2}'
+         OR _n rlike '(?<![0-9])[0-9]{2,4}/[0-9]{5}[- ]?[0-9]?(?![0-9])'
+         OR _n rlike '20[0-9]{2}[MT][0-9]{6}(?![0-9])')
+   -- funder-scoped keeps (real id shapes AT this funder; unsafe as global chassis)
+   AND NOT ((v.funder_id = 4320321181 AND _n rlike '^[A-Z] ?[0-9]{1,5}[.]?$')
+         OR (v.funder_id = 4320321001 AND _n rlike '(?<![0-9A-Z])[WT][0-9]{7,10}(?![0-9])')
+         OR (v.funder_id = 4320321001 AND _n rlike '(?<![0-9])8[0-9]{10}(?![0-9])')
+         OR (v.funder_id = 4320321181 AND _n rlike '^[1-3][0-9]{4}[.]?$'))
   ) AS is_junk
-FROM (SELECT *, regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n FROM openalex.awards.award_id_verdicts) v
+FROM (SELECT *, regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U2[0-9A-F]{3}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n FROM openalex.awards.award_id_verdicts) v
 LEFT JOIN (
   SELECT funder_id, funder_award_id,
          array_join(array_sort(collect_set(action)), '+') AS actions
   FROM openalex.awards.award_id_salvage GROUP BY 1, 2
 ) s ON s.funder_id = v.funder_id AND s.funder_award_id = v.funder_award_id
 );
+
+-- ============================================================================
+-- Label-entanglement hold-back (2026-08-04, Rohan decision). A junk id whose
+-- work_awards links are some (work, funder) pair's ONLY funder connection
+-- (no crossref/funder-reported/mid/fulltext leg covers the pair) is HELD
+-- BACK from suppression until CreateWorksEnriched gains direct paper->funder
+-- legs -- then this table empties and the hold-back lifts on its own.
+-- Zero papers lose funder attribution at any point.
+-- ============================================================================
+CREATE OR REPLACE TABLE openalex.awards.award_id_label_entangled
+USING delta
+AS
+WITH sup AS (
+  SELECT funder_id, funder_award_id FROM openalex.awards.award_id_guard WHERE decision = 'suppress'
+),
+at_risk AS (
+  SELECT work_id, funder_id FROM (
+    SELECT wa.work_id, CAST(regexp_extract(wa.award.funder_id, '([0-9]+)$', 1) AS BIGINT) AS funder_id,
+           MAX(CASE WHEN s.funder_award_id IS NULL THEN 1 ELSE 0 END) AS has_kept
+    FROM openalex.awards.work_awards wa
+    LEFT JOIN sup s ON CAST(regexp_extract(wa.award.funder_id, '([0-9]+)$', 1) AS BIGINT) = s.funder_id
+                   AND wa.award.funder_award_id = s.funder_award_id
+    GROUP BY 1, 2) WHERE has_kept = 0
+),
+covered AS (
+  SELECT work_id, funder_id FROM openalex.awards.crossref_work_funders
+  UNION SELECT work_id, funder_id FROM openalex.awards.funder_reported_work_funders
+  UNION SELECT paper_id, funder_id FROM openalex.mid.work_funder
+  UNION SELECT w.paper_id, CAST(regexp_extract(f.funder_id, '([0-9]+)$', 1) AS BIGINT)
+        FROM openalex.works.fulltext_work_funders f
+        JOIN openalex.mid.work w ON lower(f.doi) = w.doi_lower
+),
+sole_path AS (
+  SELECT a.work_id, a.funder_id FROM at_risk a
+  LEFT ANTI JOIN covered c ON a.work_id = c.work_id AND a.funder_id = c.funder_id
+)
+SELECT DISTINCT s.funder_id, s.funder_award_id, current_timestamp() AS created_date
+FROM openalex.awards.work_awards wa
+JOIN sole_path sp ON wa.work_id = sp.work_id
+  AND CAST(regexp_extract(wa.award.funder_id, '([0-9]+)$', 1) AS BIGINT) = sp.funder_id
+JOIN sup s ON s.funder_id = sp.funder_id AND s.funder_award_id = wa.award.funder_award_id;
+
+UPDATE openalex.awards.award_id_guard g
+SET decision = 'mint', reason = 'label_entangled_held'
+WHERE EXISTS (SELECT 1 FROM openalex.awards.award_id_label_entangled e
+              WHERE e.funder_id = g.funder_id AND e.funder_award_id = g.funder_award_id);
