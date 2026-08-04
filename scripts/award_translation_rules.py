@@ -14,7 +14,7 @@ SQLQ = os.path.expanduser("~/openalex-onboarding-labs/sqlq")
 OUT = os.path.dirname(os.path.abspath(__file__))
 
 # norm: upper, trim, unicode dashes -> '-', unicode spaces -> ' ', collapse spaces
-NORM = (r"regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM({c}))," r" '\\\\\\\\U20[0-9A-F]{{2}}', '-'),"
+NORM = (r"regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM({c}))," r" '\\\\U20[0-9A-F]{{2}}', '-'),"
         r" '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'),"
         r" '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '),"
         r" '  +', ' ')")
@@ -414,7 +414,7 @@ CHASSIS_ANYWHERE = [
   r"[A-Z]{1,3}[ -]?[0-9]{2,4}/[0-9]{1,3}-[0-9]",                         # DFG signature X 123/4-5
   r"[0-9]{2}[A-Z][0-9]{5}(?![0-9])",                                     # KAKEN core yyLddddd
   r"[0-9]{5,6}/[A-Z]/[0-9]{2}/[A-Z]",                                    # Wellcome citable
-  r"(GR|WT)[0-9]{6}(MA|MAJ|MF|AIA)",                                     # Wellcome legacy lettered
+  r"(GR|WT)[0-9]{6}(MA|MAJ|MF|AIA)?(?![0-9])",                                     # Wellcome legacy lettered
   r"(?<![0-9])(19|20)[0-9]{2}/[0-9]{4,5}-[0-9](?![0-9])",                # FAPESP full form
   r"(UIDB?|UIDP|PTDC|SFRH|CEEC(IND)?|POCI|ALT[0-9]{2}|LA/P)[/ -][A-Z0-9/. -]{3,24}[0-9]",  # FCT families
   r"(8888[0-9]|99999|23038)\\.[0-9]{6}/[0-9]{4}",                         # CAPES process core
@@ -424,11 +424,17 @@ CHASSIS_ANYWHERE = [
   r"HHSN[0-9]{9,13}[A-Z]?",                                              # NIH/HHS contracts (incl. typo'd lengths)
   r"DE-?[A-Z]{2}[0-9]{2}-?[0-9]{2}[A-Z]{2}[0-9]{4,6}",                   # DOE DE-family
   r"ANR-?[0-9]{2}-[A-Z0-9]{2,6}-[0-9]{1,4}",                             # ANR
-  r"[0-9]{2}[A-Z]{1,4}[0-9]{4,5}[A-Z](?![A-Z0-9])",                      # BMBF FKZ lettered-suffix
-  r"(PID|PGC|RYC|RTI|CEX)[0-9]{4}-[0-9]{5,6}",                           # Spanish AEI
+  r"[0-9]{2}[A-Z]{1,4}[0-9]{3,5}[A-Z](?![A-Z0-9])",                      # BMBF FKZ lettered-suffix
+  r"(PID|PGC|RYC|RTI|CEX|TED|PCI|PDC|EQC|CNS|PLEC|SEV|EUR|MDM)[0-9]{4}[-. ] ?[0-9]{5,6}",                           # Spanish AEI
   r"(PI|DTS|AC|ICI|COV)[0-9]{2}(CIII)?[/-][0-9]{4,5}",                   # ISCIII
   r"EP/[A-Z][0-9]{5,6}[A-Z0-9]?(/[0-9])?",                               # EPSRC (incl. X-suffix)
-  r"AHA[ -]?[0-9]{6,9}|[0-9]{2}(PRE|POST|SDG|GRNT|CDA|EIA|TPA|SFRN|IPA)[0-9]{6,8}",  # AHA
+  r"AHA[ -]?[0-9]{6,9}|[0-9]{2}(PRE|POST|SDG|GRNT|CDA|EIA|TPA|SFRN|IPA)[0-9]{6,8}",
+  r"(?<![0-9])[0-9]{3}[- ](19|20)[0-9]{2}[- ][0-9]{4,5}(?![0-9])",  # VR/Formas dnr 3-seg
+  r"(?<![0-9])(19|20)[0-9]{2}-[0-9]{5}(?![0-9])",  # VR modern dnr year-5 (5 digits excludes year-range junk)
+  r"PNRR[- ][A-Z]{1,4}[- ]?[A-Z0-9-]{0,10}20[0-9]{2}[- ][0-9]{6,9}",  # Italian PNRR project codes
+  r"(ECS|PE|CN|IR)[0-9]{8}(?![0-9])",  # PNRR ecosystem/partenariato codes e.g. ECS00000036
+  r"20[0-9]{2}ZD[0-9]{7}(?![0-9])",  # China STI2030 major project
+  r"CUP[ :]{0,2}[A-Z][0-9A-Z]{10,14}",  # AHA
 ]
 
 # FOREIGN-SCHEME KEEP-LIST (2026-08-03, shape census over the suppress pile):

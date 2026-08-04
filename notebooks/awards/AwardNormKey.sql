@@ -10,13 +10,13 @@
 CREATE OR REPLACE FUNCTION openalex.awards.award_id_is_weak(funder_id BIGINT, award_id STRING)
 RETURNS BOOLEAN
 RETURN
-WITH _t AS (SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(award_id)), '\\\\\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n)
+WITH _t AS (SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n)
 SELECT COALESCE((funder_id = 4320334506 AND _n rlike '^[0-9]{4,6}$') OR (funder_id = 4320311904 AND _n rlike '^[0-9]{5,6}$') OR (funder_id = 4320320924 AND _n rlike '^[0-9]{4,6}$') OR (funder_id = 4320320300 AND _n rlike '^[0-9]{6}$') OR (funder_id = 4320306076 AND _n rlike '^[0-9]{7}$') OR (funder_id = 4320334593 AND _n rlike '^[0-9]{4,6}$'), FALSE) FROM _t;
 
 CREATE OR REPLACE FUNCTION openalex.awards.award_norm_key(funder_id BIGINT, award_id STRING, side STRING)
 RETURNS STRING
 RETURN
-WITH _t AS (SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(award_id)), '\\\\\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n)
+WITH _t AS (SELECT regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n)
 SELECT COALESCE(
   CASE WHEN side = 'registry' THEN
     CASE
@@ -165,7 +165,7 @@ keyed AS (
       WHEN funder_id = 4320311405 THEN ((NULLIF(regexp_extract(_n,'^(?:JP)?(\\d{2}[A-Z]{2}\\d{7})(?:H\\d{4})?$',1),'')) IS NOT NULL)
       ELSE FALSE END AS sk_fired
   FROM (SELECT funder_id, funder_award_id,
-          regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
+          regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
         FROM dep)
 ),
 scored AS (
@@ -293,7 +293,7 @@ reg_g AS (
 ),
 garbage AS (
   SELECT funder_id, funder_award_id,
-    regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
+    regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n
   FROM openalex.awards.award_id_verdicts WHERE verdict = 'garbage'
 ),
 -- S1: decorated own-id (strip applied lead-then-trail-twice: "12345 (ABC).")
@@ -577,7 +577,7 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
          OR _n rlike '[A-Z]{1,3}[ -]?[0-9]{2,4}/[0-9]{1,3}-[0-9]'
          OR _n rlike '[0-9]{2}[A-Z][0-9]{5}(?![0-9])'
          OR _n rlike '[0-9]{5,6}/[A-Z]/[0-9]{2}/[A-Z]'
-         OR _n rlike '(GR|WT)[0-9]{6}(MA|MAJ|MF|AIA)'
+         OR _n rlike '(GR|WT)[0-9]{6}(MA|MAJ|MF|AIA)?(?![0-9])'
          OR _n rlike '(?<![0-9])(19|20)[0-9]{2}/[0-9]{4,5}-[0-9](?![0-9])'
          OR _n rlike '(UIDB?|UIDP|PTDC|SFRH|CEEC(IND)?|POCI|ALT[0-9]{2}|LA/P)[/ -][A-Z0-9/. -]{3,24}[0-9]'
          OR _n rlike '(8888[0-9]|99999|23038)\\.[0-9]{6}/[0-9]{4}'
@@ -587,13 +587,19 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
          OR _n rlike 'HHSN[0-9]{9,13}[A-Z]?'
          OR _n rlike 'DE-?[A-Z]{2}[0-9]{2}-?[0-9]{2}[A-Z]{2}[0-9]{4,6}'
          OR _n rlike 'ANR-?[0-9]{2}-[A-Z0-9]{2,6}-[0-9]{1,4}'
-         OR _n rlike '[0-9]{2}[A-Z]{1,4}[0-9]{4,5}[A-Z](?![A-Z0-9])'
-         OR _n rlike '(PID|PGC|RYC|RTI|CEX)[0-9]{4}-[0-9]{5,6}'
+         OR _n rlike '[0-9]{2}[A-Z]{1,4}[0-9]{3,5}[A-Z](?![A-Z0-9])'
+         OR _n rlike '(PID|PGC|RYC|RTI|CEX|TED|PCI|PDC|EQC|CNS|PLEC|SEV|EUR|MDM)[0-9]{4}[-. ] ?[0-9]{5,6}'
          OR _n rlike '(PI|DTS|AC|ICI|COV)[0-9]{2}(CIII)?[/-][0-9]{4,5}'
          OR _n rlike 'EP/[A-Z][0-9]{5,6}[A-Z0-9]?(/[0-9])?'
-         OR _n rlike 'AHA[ -]?[0-9]{6,9}|[0-9]{2}(PRE|POST|SDG|GRNT|CDA|EIA|TPA|SFRN|IPA)[0-9]{6,8}')
+         OR _n rlike 'AHA[ -]?[0-9]{6,9}|[0-9]{2}(PRE|POST|SDG|GRNT|CDA|EIA|TPA|SFRN|IPA)[0-9]{6,8}'
+         OR _n rlike '(?<![0-9])[0-9]{3}[- ](19|20)[0-9]{2}[- ][0-9]{4,5}(?![0-9])'
+         OR _n rlike '(?<![0-9])(19|20)[0-9]{2}-[0-9]{5}(?![0-9])'
+         OR _n rlike 'PNRR[- ][A-Z]{1,4}[- ]?[A-Z0-9-]{0,10}20[0-9]{2}[- ][0-9]{6,9}'
+         OR _n rlike '(ECS|PE|CN|IR)[0-9]{8}(?![0-9])'
+         OR _n rlike '20[0-9]{2}ZD[0-9]{7}(?![0-9])'
+         OR _n rlike 'CUP[ :]{0,2}[A-Z][0-9A-Z]{10,14}')
   ) AS is_junk
-FROM (SELECT *, regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n FROM openalex.awards.award_id_verdicts) v
+FROM (SELECT *, regexp_replace(regexp_replace(regexp_replace(regexp_replace(UPPER(TRIM(funder_award_id)), '\\\\U20[0-9A-F]{2}', '-'), '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D\\uF000-\\uF8FF]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') AS _n FROM openalex.awards.award_id_verdicts) v
 LEFT JOIN (
   SELECT funder_id, funder_award_id,
          array_join(array_sort(collect_set(action)), '+') AS actions

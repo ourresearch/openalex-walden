@@ -252,10 +252,10 @@ FROM scored;
 -- ids BEFORE any suppression. Three rescue steps:
 --   decorated_own_id  generic decoration strip -> re-key -> own-registry hit
 --                     (suffix _weak when the stripped form is a bare number at
---                     a WEAK_BARE funder: minted but never merge material;
+--                     a WEAK_BARE funder: minted but never merge material --
 --                     decorated_plausible when the stripped form only passes
 --                     the funder's grammar — parity with S2 plausible parts)
---   multi_id_split    concatenated ids ("A123, B456"): split, score each part;
+--   multi_id_split    concatenated ids ("A123, B456"): split, score each part --
 --                     rescued when any part confirms or is plausible
 --   wrong_funder      DETECTION ONLY (re-link write = #624's): letter-bearing
 --                     ids that pass another funder's STRONG cross-grammar
