@@ -276,6 +276,20 @@ FUNDERS = {
          r"'((PID|PGC|RYC|RTI|CEX|TED|SEV|BES|FPU|FJC|IJC|CNS|EUR|EQC|PLEC|PDC)\\d{4}-\\d{5,6})', 1), '')",
     gram=r"regexp_replace(norm,' ','') rlike"
          r" '^(PID|PGC|RYC|RTI|CEX|TED|SEV|BES|FPU|FJC|IJC|CNS|EUR|EQC|PLEC|PDC)\\d{4}-\\d{5,6}([A-Z0-9/-]{0,12})?$'"),
+  "VR": dict(fid=4320322581,
+    # derived 2026-08-04 (overnight): registry = swecris YYYY-NNNNN
+    # (2004-00731, 23k keys). Deposits: same + VR/Dnr prefixes + 4-digit
+    # serials (2011-2988 -> LPAD5). NO XGRAM: Formas/Forte/Vinnova share the
+    # YYYY-NNNNN scheme (cross-claim would misattribute within the family).
+    # MEASURED: 999/7,311 Formas registry ids collide byte-identically with
+    # VR ids (13.7%) — same-funder merging is safe (join is per-funder) but
+    # a sibling-misattributed deposit can merge onto the wrong Swedish
+    # grant; sibling-ambiguity flag = documented follow-up.
+    rkey=r"NULLIF(regexp_extract(norm,'^((19|20)\\d{2}-\\d{5})$',1),'')",
+    xkey=r"CASE WHEN regexp_replace(norm,'^(VR|DNR|GRANT)[ .:#-]*','') rlike '^(19|20)\\d{2}[- ]\\d{4,5}$' THEN"
+         r" CONCAT(regexp_extract(regexp_replace(norm,'^(VR|DNR|GRANT)[ .:#-]*',''),'^((19|20)\\d{2})',1),'-',"
+         r"LPAD(regexp_extract(regexp_replace(norm,'^(VR|DNR|GRANT)[ .:#-]*',''),'[- ](\\d{4,5})$',1),5,'0')) END",
+    gram=r"regexp_replace(norm,'^(VR|DNR|GRANT)[ .:#-]*','') rlike '^(19|20)\\d{2}[- ]\\d{4,5}$'"),
   "DHHS": dict(fid=4320306085,
     # derived 2026-08-03 (worklist #18): registry = hhs_taggs (964 ids), two
     # shapes: 5-alnum-starting-letter + 6 digits (CPIMP151089, TP1AH000086,
@@ -320,12 +334,14 @@ DECOR_LEAD = (r"^((GRANT|GRANTS|AWARD|AWARDS|PROJECT|CONTRACT|AGREEMENT|APPLICAT
               # separator requirement so real-token prefixes survive
               r"|(GRANT|AWARD|PROJECT|CONTRACT|NUMBER|KAKENHI|REFERENCE|APPLICATION|PROCESSO|PROCESS)"
               r"|\\([A-Z0-9]{1,3}\\) ?"
-              r"|[#№(\\[/]+ ?)+")
+              r"|[A-Z] ?# ?"
+              r"|[#№(\\[/:.]+ ?)+")
 DECOR_TRAIL = (r"([ .,;:)/\\]]+|[ -]*\\(.*\\)"
                # attributions: "to S.F.", "- C.G.M.", "for K. N.",
                # "awarded to A.B. and K.Z."
                r"|[ -]+((AWARDED )?TO|FOR) [A-Z][A-Z. ]{1,20}( AND [A-Z][A-Z. ]{1,10})?"
                r"|[ -]+[A-Z]\\.( ?[A-Z]\\.?){1,3}"
+               r"|[-]{1,2}"                          # trailing lone dash(es): '360883-' 
                r")$")
 # multi-id concat detection + split (mirrors classify.py CLS 'multi_id' arm)
 MULTI_DETECT = ("((_n rlike '[,;&]') OR (_n rlike ' AND ') OR (_n rlike '[0-9A-Z]\\\\+[0-9A-Z]'))"
@@ -365,6 +381,37 @@ JUNK_POSITIVE = [
   r"[-/_.]$|^[-/_.]",                                                    # truncation fragments (leading/trailing separator: 'DE-AC02-', '/Z/15/Z', '-0001')
   r"^(ANR|MOST|NSC|NSTC|RGPIN|MOP|PJT|GA|UMO|DEC|FP[4-7]|H2020|GRANT|AWARD|PROJECT|NO|REF)[- _]?\\d{0,4}$",  # scheme prefix with no serial (ANR-10, MOST 104)
   r"^(19|20)\\d{2}[-–/](19|20)?\\d{1,2}$",                               # year-edition fragments (2014/, 2019/20)
+]
+
+# CHASSIS-ANYWHERE RESCUE (2026-08-04, non-DOE n=400 audit): nearly every
+# remaining false-suppression is a COMPLETE id inside a wrapper (prose, DOI,
+# punctuation, typo'd prefix). Per-class stripping is a losing race — so any
+# string CONTAINING one of these structural id cores can never suppress.
+# LETTERED/STRUCTURED cores only (never bare digit runs).
+CHASSIS_ANYWHERE = [
+  r"[0-9]{2,3}[- ][0-9]{4}[- ]?[A-Z][- ][A-Z0-9]{3,4}[- ][0-9]{2,3}",     # Taiwan MOST/NSTC core
+  r"(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|SAPIN|PGSD?[0-9]?)[ /=-]{1,3}[0-9]{5,6}([ -][0-9]{2,4})?",  # NSERC serial-first
+  r"(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|SAPIN)[- ]?(19|20)[0-9]{2}[- ][0-9]{4,6}",  # NSERC modern year-first
+  r"[0-9]{6}[A-Z]?_[0-9]{6}",                                            # SNSF instrument_serial
+  r"(SFB|TRR?|CRC|EXC|GRK|RTG|FOR|SPP|NFDI|KFO)[ /]?[0-9]{2,4}",         # DFG programmes (incl. TR)
+  r"[A-Z]{1,3}[ -]?[0-9]{2,4}/[0-9]{1,3}-[0-9]",                         # DFG signature X 123/4-5
+  r"[0-9]{2}[A-Z][0-9]{5}(?![0-9])",                                     # KAKEN core yyLddddd
+  r"[0-9]{5,6}/[A-Z]/[0-9]{2}/[A-Z]",                                    # Wellcome citable
+  r"(GR|WT)[0-9]{6}(MA|MAJ|MF|AIA)",                                     # Wellcome legacy lettered
+  r"(?<![0-9])(19|20)[0-9]{2}/[0-9]{4,5}-[0-9](?![0-9])",                # FAPESP full form
+  r"(UIDB?|UIDP|PTDC|SFRH|CEEC(IND)?|POCI|ALT[0-9]{2}|LA/P)[/ -][A-Z0-9/. -]{3,24}[0-9]",  # FCT families
+  r"(8888[0-9]|99999|23038)\\.[0-9]{6}/[0-9]{4}",                         # CAPES process core
+  r"BEX[ :]{0,2}[0-9]{4,5}/[0-9]{2}",                                        # CAPES BEX
+  r"20[0-9]{2}/[0-9]{2}/[A-Z]{1,2}/[A-Z]{2,3}[0-9]{1,2}/[0-9]{5}",       # NCN UMO
+  r"(MOP|PJT|FDN|FRN|ROG|CPG|IAP|HHP|IRR|OV[0-9])[ #-]{1,3}[0-9]{5,6}",  # CIHR programs
+  r"HHSN[0-9]{9,13}[A-Z]?",                                              # NIH/HHS contracts (incl. typo'd lengths)
+  r"DE-?[A-Z]{2}[0-9]{2}-?[0-9]{2}[A-Z]{2}[0-9]{4,6}",                   # DOE DE-family
+  r"ANR-?[0-9]{2}-[A-Z0-9]{2,6}-[0-9]{1,4}",                             # ANR
+  r"[0-9]{2}[A-Z]{1,4}[0-9]{4,5}[A-Z](?![A-Z0-9])",                      # BMBF FKZ lettered-suffix
+  r"(PID|PGC|RYC|RTI|CEX)[0-9]{4}-[0-9]{5,6}",                           # Spanish AEI
+  r"(PI|DTS|AC|ICI|COV)[0-9]{2}(CIII)?[/-][0-9]{4,5}",                   # ISCIII
+  r"EP/[A-Z][0-9]{5,6}[A-Z0-9]?(/[0-9])?",                               # EPSRC (incl. X-suffix)
+  r"AHA[ -]?[0-9]{6,9}|[0-9]{2}(PRE|POST|SDG|GRNT|CDA|EIA|TPA|SFRN|IPA)[0-9]{6,8}",  # AHA
 ]
 
 # FOREIGN-SCHEME KEEP-LIST (2026-08-03, shape census over the suppress pile):

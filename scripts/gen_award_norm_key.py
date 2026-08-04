@@ -24,7 +24,8 @@ try:
     from award_translation_rules import (FUNDERS, NORM, DECOR_LEAD, DECOR_TRAIL,
                                          MULTI_DETECT, MULTI_SPLIT, XGRAM,
                                          S3_NUMERIC_CHASSIS, EXTRACTIVE_FIDS,
-                                         FOREIGN_SCHEMES, JUNK_POSITIVE)
+                                         FOREIGN_SCHEMES, JUNK_POSITIVE,
+                                         CHASSIS_ANYWHERE)
 except ImportError:  # legacy dev path
     sys.path.insert(0, "/tmp"); from rules_src import FUNDERS, NORM
 
@@ -119,6 +120,8 @@ def gen(schema):
         f"_n rlike '{p}'" for p in FOREIGN_SCHEMES) + ")"
     junk_cond = "(" + "\n         OR ".join(
         f"_n rlike '{p}'" for p in JUNK_POSITIVE) + ")"
+    chassis_cond = "(" + "\n         OR ".join(
+        f"_n rlike '{p}'" for p in CHASSIS_ANYWHERE) + ")"
     foreign_cond_s = foreign_cond.replace("_n rlike", "s rlike")
     dep_union = "\n    UNION ALL\n".join(
         f"    SELECT funder_id, aid AS funder_award_id\n"
@@ -359,7 +362,9 @@ parts_keyed AS (
 s2_scored AS (
   SELECT p.funder_id, p.funder_award_id,
     COUNT(*) AS n_parts,
-    SUM(CASE WHEN COALESCE(r.nk, rg.nk_g) IS NOT NULL AND NOT p.p_weak THEN 1 ELSE 0 END) AS n_confirmed_parts,
+    -- registry-hit parts count even when weak: multi-id context corroborates --
+    -- this affects RESCUE (keep) only, never merging
+    SUM(CASE WHEN COALESCE(r.nk, rg.nk_g) IS NOT NULL THEN 1 ELSE 0 END) AS n_confirmed_parts,
     SUM(CASE WHEN COALESCE(r.nk, rg.nk_g) IS NULL AND p.p_gram AND NOT p.p_weak THEN 1 ELSE 0 END) AS n_plausible_parts
   FROM parts_keyed p
   LEFT JOIN reg r ON r.funder_id = p.funder_id AND r.nk = p.p_nk
@@ -438,8 +443,12 @@ SELECT funder_id, funder_award_id, verdict,
   current_timestamp() AS created_date
 FROM (
 SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
-  ({junk_cond}
+  (({junk_cond}
    OR (v.funder_id = 4320306084 AND _n rlike '^[0-9]{{6}}$')  -- DOE-scoped: bare-6 = facility proposal ids (auditor-endorsed junk); global bare-6 carved out for SNSF/EC GA space
+   )
+   -- chassis-anywhere rescue (non-DOE n=400 audit): a string CONTAINING a
+   -- complete structural id core can never be junk, whatever the wrapper
+   AND NOT {chassis_cond}
   ) AS is_junk
 FROM (SELECT *, {NORM.format(c='funder_award_id')} AS _n FROM {schema}.award_id_verdicts) v
 LEFT JOIN (
