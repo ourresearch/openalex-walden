@@ -47,8 +47,8 @@ FUNDERS = {
   "NSF": dict(fid=4320306076,
     rkey=ex(r"^(\\d{7})$"),
     xkey=f"COALESCE({ex(r'(?<!\\d)(\\d{7})(?!\\d)')}, "
-         "CASE WHEN norm rlike '^[A-Z]{2,5}[ -]?\\d{2}[ -]\\d{5}$' THEN "
-         "CONCAT(regexp_extract(norm,'(\\d{2})[ -]\\d{5}$',1), regexp_extract(norm,'(\\d{5})$',1)) END)",
+         r"CASE WHEN norm rlike '^[A-Z]{2,5}[ -]?\\d{2}[ -]\\d{5}$' THEN "
+         r"CONCAT(regexp_extract(norm,'(\\d{2})[ -]\\d{5}$',1), regexp_extract(norm,'(\\d{5})$',1)) END)",
     gram=r"norm rlike '^([A-Z]{2,5}[ -]?)?\\d{7}$' or norm rlike '^[A-Z]{2,5}[ -]?\\d{2}[ -]\\d{5}$'"),
   # review pass-4 F5: spaced cores ("23 K22132") get a strip-space fallback arm
   "KAKEN": dict(fid=4320334764,
@@ -447,8 +447,8 @@ CHASSIS_ANYWHERE = [
   r"436 ?[A-Z]{3} ?[0-9]{2}/[0-9]{2}/[0-9]{2}",  # DFG bilateral 436-scheme
   r"RP[A-Z]{2}[.][0-9]{2}[.][0-9]{2}[.][0-9]{2}-[0-9]{2}-[0-9]{4}/[0-9]{2}",  # Polish ROP/ERDF project ids
   r"(?<![0-9/.])[0-9]{2,4}/[0-9]{5}[- ]?[0-9]?(?![0-9])",
-  r"10[.]55776/[A-Z]{0,4}[0-9]{1,6}"  # FWF grant DOIs are the funder's own award ids,  # FAPESP year/serial(-check-digit optional)
-  r"20[0-9]{2}[MT][0-9]{6}(?![0-9])"  # China Postdoctoral Science Foundation,  # AHA
+  r"10[.]55776/[A-Z]{0,4}[0-9]{1,6}",  # FWF grant DOIs are the funder's own award ids
+  r"20[0-9]{2}[MT][0-9]{6}(?![0-9])",  # China Postdoctoral Science Foundation
 ]
 
 # FOREIGN-SCHEME KEEP-LIST (2026-08-03, shape census over the suppress pile):
@@ -469,7 +469,7 @@ FOREIGN_SCHEMES = [
   r"^(ANID|FONDECYT|FONDAP|PIA|ACT|ICN)[ /-]?[0-9]{4,8}$",               # Chilean ANID family
   r"^2[0-9]{3}[A-Z]{2,8}[0-9]{3,8}$",                                    # CN provincial year+letters+serial
   r"^(INST )?[A-Z]{1,4}[- ]?[0-9]{2,4}/[0-9]{1,3}(-[0-9]{1,2})?( FUGG)?$",  # DFG signature under non-DFG funders (round-2: hyphen sep, INST, FUGG)
-  r"^[0-9]{2}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{2,4}[0-9]{3,4}[A-Z]{0,3}$",      # BMBF FKZ chassis under any funder (01KR1304A, 031L0260B — program token may contain a digit)
+  r"^(?!0(?=.*[A-Z])[A-Z0-9]{6}[0-9]{2}$)[0-9]{2}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{2,4}[0-9]{3,4}[A-Z]{0,3}$",      # BMBF FKZ chassis under any funder (01KR1304A, 031L0260B — program token may contain a digit)
   r"^[0-9]{2}(JJ|ZR|DZ|JC|SF|SK|YF)[0-9]{4,7}$",                         # CN provincial two-letter series (Hunan 06JJ50029, Shanghai ZR/DZ)
   r"^[A-Z]{2,5}-[0-9]{7}$",                                              # NSF division form under other funders (DGE-1650116)
   r"^[0-9]{6}[A-Z]?_[0-9]{6}(/[0-9])?$",                                 # SNSF instrument-coded (200020L_175755) under any funder
@@ -660,5 +660,6 @@ FUNDER_KEEPS = [
   (4320321181, r"^(?!H ?2020[.]?$)[A-Z]{1,3} ?[0-9]{1,5}[.]?$"),          # FWF short ids (T7, F45, Z49 — all resolvable at 10.55776/<id>)
   (4320321001, r"(?<![0-9A-Z])[WT][0-9]{7,10}(?![0-9])"),  # NSFC W-/T-series
   (4320321001, r"(?<![0-9])8[0-9]{10}(?![0-9])"),
+  (4320334593, r"^(?!(19|20)[0-9]{2}[.]?$)[0-9]{4}[.]?$"),  # NSERC historic 4-digit serials (70% of native range; years excluded)
   (4320321181, r"^[1-3][0-9]{4}[.]?$"),  # FWF bare 5-digit project numbers (grader: 10000-39999 = unambiguous P-series, all resolve at 10.55776)    # NSFC 11-digit joint/major grants
 ]
