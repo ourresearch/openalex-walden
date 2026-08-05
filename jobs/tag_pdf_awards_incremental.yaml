@@ -3,7 +3,7 @@ resources:
     Tag_Pdf_Awards_Incremental:
       name: Tag Pdf Awards Incremental
       schedule:
-        quartz_cron_expression: 0 0 */3 * * ?
+        quartz_cron_expression: 0 0 6,18 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
