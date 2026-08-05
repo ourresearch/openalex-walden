@@ -27,24 +27,38 @@ src, dst = sys.argv[1], sys.argv[2]
 limit = int(sys.argv[3]) if len(sys.argv) > 3 else 10**9
 
 
-def zyte(params):
-    r = requests.post(ENDPOINT, auth=(KEY, ""), json=params, timeout=200)
-    if r.status_code != 200:
-        j = r.json() if "json" in r.headers.get("content-type", "") else {}
-        return b"", f"zyte{r.status_code}:{j.get('title','?')}"
-    j = r.json()
-    body = base64.b64decode(j["httpResponseBody"]) if j.get("httpResponseBody") else b""
-    return body, str(j.get("statusCode"))
+def zyte(params, attempts=3):
+    """Never raise — a transient reset must not kill a multi-hour labelling run."""
+    for i in range(attempts):
+        try:
+            r = requests.post(ENDPOINT, auth=(KEY, ""), json=params, timeout=200)
+            if r.status_code != 200:
+                j = r.json() if "json" in r.headers.get("content-type", "") else {}
+                return b"", f"zyte{r.status_code}:{j.get('title','?')}"
+            j = r.json()
+            body = base64.b64decode(j["httpResponseBody"]) if j.get("httpResponseBody") else b""
+            return body, str(j.get("statusCode"))
+        except Exception as e:
+            if i == attempts - 1:
+                return b"", f"exc:{type(e).__name__}"
+            time.sleep(3 * (i + 1))
+    return b"", "exc:unreachable"
 
 
 def landing_for(pdf_url, native_id):
-    """Article page for the PDF URL — the session warm-up target."""
+    """Article page for the PDF URL — the session warm-up target.
+
+    Must NEVER fall back to pdf_url: warming up on the PDF itself defeats the
+    pattern (that request is the one being blocked) and reads as a 0% host.
+    """
     if "onlinelibrary.wiley.com" in pdf_url:
         return pdf_url.replace("/doi/pdfdirect/", "/doi/")
     if "tandfonline.com" in pdf_url:
         return pdf_url.split("/doi/pdf/")[0] + "/doi/" + pdf_url.split("/doi/pdf/")[1].split("?")[0]
     if native_id.startswith("https://doi.org/"):
         return native_id
+    if native_id.startswith("10."):          # bare DOI (drip-pool rows)
+        return "https://doi.org/" + native_id
     return pdf_url
 
 
