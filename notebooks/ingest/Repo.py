@@ -1979,6 +1979,9 @@ def repo_enriched():
         )
     )
 
+    # backfill feed keeps its identity through _sequence above; the published value is always repo
+    combined_df = combined_df.withColumn("provenance", F.lit("repo"))
+
     # Apply enrichment (with fast Pandas UDFs)
     df_enriched = enrich_with_features_and_author_keys(combined_df)
 
