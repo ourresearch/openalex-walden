@@ -1969,13 +1969,16 @@ def repo_enriched():
         .drop("lookup_endpoint_id")
     )
 
-    # Tiebreaker: updated_date first, then repo over backfill, then latest ingested_at
+    # Tiebreaker: updated_date first, then repo over backfill, then latest ingested_at,
+    # then stable content hash — backfill has no ingested_at, leaving 110M rows fully
+    # tied; without a total order every full refresh picks different winners
     combined_df = combined_df.withColumn(
         "_sequence",
         F.struct(
             F.col("updated_date"),
             F.when(F.col("provenance") == "repo", F.lit(1)).otherwise(F.lit(0)),
-            F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp"))
+            F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp")),
+            F.xxhash64(F.to_json(F.struct(*[F.col(c) for c in combined_df.columns])))
         )
     )
 
