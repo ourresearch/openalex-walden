@@ -593,6 +593,11 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
    )
    -- chassis-anywhere rescue (non-DOE n=400 audit): a string CONTAINING a
    -- complete structural id core can never be junk, whatever the wrapper
+   -- DOE DEFERRED (2026-08-05, Rohan decision): OSTI registers DOE user-
+   -- facility proposal ids as Crossref grant records (dereference-verified,
+   -- 79/81 sampled) — whether they are OpenAlex awards is a Kyle taxonomy
+   -- call. Until made, DOE never suppresses; ids mint exactly as today.
+   AND v.funder_id NOT IN (4320306084, 4320332359)
    AND NOT (_n rlike '[0-9]{2,3}[- ][0-9]{4}[- ]?[A-Z][- ][A-Z0-9]{3,4}[- ]{1,3}[0-9]{2,3}'
          OR _n rlike '(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|RDCPJ|SAPIN|PGSD?[0-9]?)[ /=-]{1,3}[0-9]{5,6}([ -][0-9]{2,4})?'
          OR _n rlike '(RGPIN|RGPAS|RGPNS|DGECR|CRDPJ|SAPIN)[- ]?(19|20)[0-9]{2}[- ][0-9]{4,6}'

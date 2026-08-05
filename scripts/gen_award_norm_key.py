@@ -459,6 +459,11 @@ SELECT v.funder_id, v.funder_award_id, v.verdict, s.actions,
    )
    -- chassis-anywhere rescue (non-DOE n=400 audit): a string CONTAINING a
    -- complete structural id core can never be junk, whatever the wrapper
+   -- DOE DEFERRED (2026-08-05, Rohan decision): OSTI registers DOE user-
+   -- facility proposal ids as Crossref grant records (dereference-verified,
+   -- 79/81 sampled) — whether they are OpenAlex awards is a Kyle taxonomy
+   -- call. Until made, DOE never suppresses; ids mint exactly as today.
+   AND v.funder_id NOT IN (4320306084, 4320332359)
    AND NOT {chassis_cond}
    -- funder-scoped keeps (real id shapes AT this funder; unsafe as global chassis)
    AND NOT {keep_cond}
