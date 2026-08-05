@@ -1957,6 +1957,19 @@ def repo_enriched():
         .unionByName(df_irdb_walden_works, allowMissingColumns=True)
     )
 
+    # a record with no usable URL can never become a location (no scrape seed, no landing page)
+    combined_df = combined_df.filter(F.expr("exists(urls, x -> x.url IS NOT NULL)"))
+
+    for c in ["published_date", "updated_date", "created_date"]:
+        combined_df = combined_df.withColumn(
+            c,
+            F.when(
+                (F.col(c) < F.lit("1500-01-01").cast("date")) |
+                (F.col(c) > F.date_add(F.current_date(), 30)),
+                F.lit(None).cast("date")
+            ).otherwise(F.col(c))
+        )
+
     # Fill in endpoint_id from lookup table for records missing it
     endpoint_lookup = (
         spark.table("openalex.repo.native_id_to_endpoint_id")
@@ -1978,7 +1991,7 @@ def repo_enriched():
             F.col("updated_date"),
             F.when(F.col("provenance") == "repo", F.lit(1)).otherwise(F.lit(0)),
             F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp")),
-            F.xxhash64(F.to_json(F.struct(*[F.col(c) for c in combined_df.columns])))
+            F.xxhash64(*[F.col(c) for c in combined_df.columns])
         )
     )
 
