@@ -155,6 +155,47 @@ Before starting, gather the following information:
   5. **Only ask the user as a last resort** if you cannot find a suitable data source
 - **OpenAlex funder_id:** Look this up using Databricks MCP (see Step 0)
 
+### Registry-vs-Crossref format check (mandatory — Kyle, 2026-07-29)
+
+Before building the scraper, verify the registry you're about to ingest
+stores the **citable** award id — the string publishers actually deposit —
+not an internal row/application number. Three funders (NCN, CAPES, AEI)
+were ingested with internal ids and matched **0%** of publisher deposits
+until re-scraped; don't add a fourth.
+
+1. **Pull what publishers deposit for this funder** (2 minutes):
+
+   ```sql
+   SELECT aid, count(*) n
+   FROM openalex.awards.crossref_work_funders
+   LATERAL VIEW EXPLODE(award_ids) AS aid
+   WHERE funder_id = <F>
+   GROUP BY 1 ORDER BY n DESC LIMIT 40
+   ```
+
+   (If the funder is scored, `openalex.awards.award_id_verdicts` gives the
+   same picture pre-classified.)
+
+2. **Compare against the registry's id field.** The deposited shapes must be
+   derivable from the registry id by normalization (case/dashes/spacing) —
+   if they aren't (registry = `12345`-style internal keys, deposits =
+   `UMO-2015/19/N/NZ1/00014`), find the source that carries the citable id
+   before writing any code.
+
+3. **Record the funder's id grammar** in the recipe (regex for the citable
+   form) and **document program-code meanings where findable** (e.g. NIH
+   activity codes, FWF program letters, NCN panel codes) — one comment line
+   per code family is enough; these feed the validation layer's per-funder
+   keys.
+
+4. **Tracker row**: note the citable-id confirmation ("citable ✓, grammar:
+   `<regex>`") so the next person doesn't re-derive it.
+
+Registries that only offer internal ids are not disqualified — ingest them
+for metadata, but flag the funder as a **rescrape candidate** in the
+tracker and do not expect Crossref-side matching until a citable source is
+found.
+
 ---
 
 ## Step 0: Look Up funder_id in OpenAlex
