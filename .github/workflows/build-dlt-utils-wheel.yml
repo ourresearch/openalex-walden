@@ -1,6 +1,7 @@
 name: Build and Upload DLT Utils Package
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
