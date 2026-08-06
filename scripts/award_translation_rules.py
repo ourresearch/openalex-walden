@@ -326,6 +326,220 @@ FUNDERS = {
     gram=r"((regexp_replace(norm,'[ -]','') rlike '^([A-Z][A-Z0-9]{4}\\d{6}|\\d{2}[A-Z][A-Z0-9]\\d{4,5})$'"
          r" and not regexp_replace(norm,'[ -]','') rlike '^[A-Z]\\d{2}[A-Z]{2}\\d{5,6}$')"
          r" or regexp_replace(norm,'[ -]','') rlike '^(75[A-Z0-9]{9,13}|HHSN[A-Z0-9]{9,15})$')"),
+  # --- staged 2026-08-05/06 worklist batch 2 (12 funders) ---
+  "NHMRC": dict(fid=4320334705,
+    # derived 2026-08-05 (overnight next-batch): registry = nhmrc prio 12,
+    # bare numeric APP ID 6-7 digits, 2013+ only (pre-2013 6-digit deposits
+    # like 209057/334047 have no registry row -> grammar_pass, refresh
+    # candidate). Deposits are a tri-form of ONE number: bare (~58%),
+    # APP-prefixed (~25%), GNT-prefixed (~8%), plus 'GNT 1234567'/'App'
+    # spacing variants. Key = strip APP/GNT + spaces -> bare numeral.
+    # Bare-numeral matching is funder-gated by construction (per-funder key);
+    # foreign-numeric control run 2026-08-05 -> see res/control notes.
+    # MRFF grants share the GNT series and deposit under NHMRC's funder DOI
+    # (wrong-funder feed analog, DHHS->NIH class) — matching them to the
+    # NHMRC registry is CORRECT here (registry rows carry MREA/MRFF org
+    # in source; flag for #624-style split only if MRFF gets its own F-id).
+    rkey=r"NULLIF(regexp_extract(norm,'^(\\d{6,7})$',1),'')",
+    # arm1: APP/GNT token = strong chassis, extract ANYWHERE (wrappers like
+    # 'EARLY CAREER FELLOWSHIP (APP1110230)', 'NHMRC-APP1009338'); arm2: bare
+    # numeral only ANCHORED (never from prose), optional ID/NHMRC lead.
+    xkey=r"COALESCE(NULLIF(regexp_extract(norm,'(?<![A-Z0-9])(?:APP|GNT) ?-?(\\d{6,7})(?!\\d)',1),''),"
+         r" NULLIF(regexp_extract(regexp_replace(norm,' ',''),'^(?:ID|NHMRC)?[.:#-]*(\\d{6,7})$',1),''))",
+    gram=r"(regexp_replace(norm,' ','') rlike '^(ID|NHMRC)?[.:#-]*(APP|GNT)?\\d{6,7}$'"
+         r" or norm rlike '(?<![A-Z0-9])(APP|GNT) ?-?\\d{6,7}(?!\\d)')"),
+  "GACR": dict(fid=4320321006,
+    # derived 2026-08-05 (overnight next-batch): registry = isvavai_cep prio
+    # 34, kod_projektu with leading 2-letter G-code (GA/GB/GC/GF/GJ/GM/GP/GX
+    # = G + scheme letter): modern 'GA20-10205S', old panel-era
+    # 'GA201/98/0853' / 'GBP405/12/G148'. Deposits DROP the G-code
+    # ('22-18469S', 'P208/12/G016'; prefixed minority ~10% 'GB14-36681G');
+    # U+2010 hyphens handled by NORM; 'GACR ' lead + embedded spaces seen.
+    # Key = G-code-stripped core, suffix letter RETAINED (scheme-bearing,
+    # part of the id). Old-era serial = [A-Z]?digits{3,4} (0591, P616, G148).
+    # RVO:institutional-support ids excluded by grammar (not grants).
+    # lead decorations seen at volume: EXPRO/GACR NO./GA ČR/CSF/GRANT chains;
+    # 't' below = lead-stripped + space-stripped. Arms: (a) modern anchored,
+    # (c) old-era slash anchored, (d) old-era DASH variant 'P210-11-1431' ->
+    # slash form, (e) modern core rescued ANYWHERE (mangles '17-05409S/P301',
+    # 'P504/19-16554S' — registry-gated so safe).
+    rkey=r"COALESCE(NULLIF(regexp_extract(norm,'^G[A-Z](\\d{2}-\\d{5}[A-Z])$',1),''),"
+         r" NULLIF(regexp_extract(norm,'^G[A-Z](P?\\d{3}/\\d{2}/[A-Z]?\\d{3,4})$',1),''))",
+    xkey=r"COALESCE("
+         r"NULLIF(regexp_extract(regexp_replace(regexp_replace(norm,'^((EXPRO|GA ?[CČ]R|GACR|CSF|GRANT|NO)[ .:#-]+)+',''),' ',''),"
+         r"'^(?:G[A-Z])?(\\d{2}-\\d{5}[A-Z])$',1),''),"
+         r" NULLIF(regexp_extract(regexp_replace(regexp_replace(norm,'^((EXPRO|GA ?[CČ]R|GACR|CSF|GRANT|NO)[ .:#-]+)+',''),' ',''),"
+         r"'^(?:G[A-Z])?(P?\\d{3}/\\d{2}/[A-Z]?\\d{3,4})$',1),''),"
+         r" CASE WHEN regexp_extract(regexp_replace(norm,' ',''),'^(?:G[A-Z])?(P?\\d{3})-(\\d{2})-([A-Z]?\\d{3,4})$',1) != ''"
+         r" THEN CONCAT(regexp_extract(regexp_replace(norm,' ',''),'^(?:G[A-Z])?(P?\\d{3})-(\\d{2})-([A-Z]?\\d{3,4})$',1),'/',"
+         r"regexp_extract(regexp_replace(norm,' ',''),'^(?:G[A-Z])?(P?\\d{3})-(\\d{2})-([A-Z]?\\d{3,4})$',2),'/',"
+         r"regexp_extract(regexp_replace(norm,' ',''),'^(?:G[A-Z])?(P?\\d{3})-(\\d{2})-([A-Z]?\\d{3,4})$',3)) END,"
+         r" NULLIF(regexp_extract(regexp_replace(norm,' ',''),'(?<![0-9A-Z-])(\\d{2}-\\d{5}[A-Z])(?![0-9A-Z])',1),''))",
+    gram=r"(regexp_replace(regexp_replace(norm,'^((EXPRO|GA ?[CČ]R|GACR|CSF|GRANT|NO)[ .:#-]+)+',''),' ','')"
+         r" rlike '^(G[A-Z])?\\d{2}-\\d{5}[A-Z]$'"
+         r" or regexp_replace(regexp_replace(norm,'^((EXPRO|GA ?[CČ]R|GACR|CSF|GRANT|NO)[ .:#-]+)+',''),' ','')"
+         r" rlike '^(G[A-Z])?P?\\d{3}([/-])\\d{2}\\2[A-Z]?\\d{3,4}$'"
+         r" or regexp_replace(norm,' ','') rlike '(?<![0-9A-Z-])\\d{2}-\\d{5}[A-Z](?![0-9A-Z])')"),
+  "HUNAN": dict(fid=4320322843,
+    # derived 2026-08-05 (overnight next-batch): registry = hunan_nsf prio
+    # 453, 项目编号 byte-identical to citations, but ONLY 2025-2026 rounds
+    # (8,985 rows) -> most deposits (2013-2024) are grammar_pass by coverage,
+    # not format: extension candidate (earlier-year roster .doc/.pdf dumps
+    # exist per 2026-08-04 scout). Per-year digit-width trap: serial is
+    # 4 digits pre-~2019 ('2018JJ2533'), 5 digits after ('2023JJ30388');
+    # 2-digit-year era ('13JJ3001') normalized by prepending '20'.
+    # gram also admits sibling Hunan S&T series JC/TP/RS seen in deposits
+    # (registry is JJ-only, so they stay grammar_pass/kept, never matched).
+    # 's' = NO./GRANT lead-stripped + space-stripped ('NO. 2023JJ60146',
+    # class; '2019 J40401' typo-form NOT handled — accepted). Sibling Hunan S&T/Ed series in gram only:
+    # JC/TP/RS/SK/NK/JK (registry is JJ-only). Hunan Education Dept shapes
+    # (K1705018, 19B147) deliberately NOT in gram — different funder.
+    rkey=r"NULLIF(regexp_extract(norm,'^((?:19|20)\\d{2}JJ\\d{4,5})$',1),'')",
+    xkey=r"COALESCE(NULLIF(regexp_extract(regexp_replace(regexp_replace(norm,'^(NO|GRANT)[ .:#-]*',''),' ',''),'^((?:19|20)\\d{2}JJ\\d{4,5})$',1),''),"
+         r" CASE WHEN regexp_replace(regexp_replace(norm,'^(NO|GRANT)[ .:#-]*',''),' ','') rlike '^\\d{2}JJ\\d{4,5}$'"
+         r" THEN CONCAT('20',regexp_replace(regexp_replace(norm,'^(NO|GRANT)[ .:#-]*',''),' ','')) END)",
+    gram=r"regexp_replace(regexp_replace(norm,'^(NO|GRANT)[ .:#-]*',''),' ','')"
+         r" rlike '^((19|20)\\d{2}|\\d{2})(JJ|JC|TP|RS|SK|NK|JK)\\d{4,5}$'"),
+  "ZHEJIANG": dict(fid=4320338464,
+    # derived 2026-08-05 (overnight next-batch): registry = zhejiang_nsf prio
+    # 403, 13,268 rows. Registry ids DO carry the leading L (LQ24H030002,
+    # LZ22F010002, LKLY26H030006) — the 08-04 scout's 'registry omits the
+    # leading L' claim is WRONG against prod raw (either the ingest already
+    # prepends it or the scout misread the source); identity key, NO
+    # transform. Shape = L + 0-3 scheme letters + 2-digit year + subject
+    # letter + 6-digit serial. Known gap: 2018/2020/2021 rounds absent from
+    # registry (dead attachments per tracker) -> those years grammar_pass.
+    # Letters widened to {0,4} (LZJWY/LHDMD 4-letter series in registry).
+    # LDT-series registry rows carry a trailing serial-echo artifact
+    # ('LDT23F01011F01') -> keyless by design; flag as INGEST BUG candidate.
+    # Deposit arm2 = dropped-L fallback (scout's claim holds on the DEPOSIT
+    # side: 'Z19H100001' cites registry 'LZ19H100001'); prepend L, registry-
+    # gated. Y-era pre-2015 ids + sibling provincial key-R&D \d{4}C\d{5}
+    # in gram only (registry starts 2019).
+    rkey=r"NULLIF(regexp_extract(norm,'^(L[A-Z]{0,4}\\d{2}[A-Z]\\d{6})$',1),'')",
+    xkey=r"COALESCE(NULLIF(regexp_extract(regexp_replace(regexp_replace(norm,'^(NO|GRANT)[ .:#-]*',''),' ',''),'^(L[A-Z]{0,4}\\d{2}[A-Z]\\d{6})$',1),''),"
+         r" CASE WHEN regexp_replace(regexp_replace(norm,'^(NO|GRANT)[ .:#-]*',''),' ','') rlike '^[A-Z]{1,4}\\d{2}[A-Z]\\d{6}$'"
+         r" AND NOT regexp_replace(regexp_replace(norm,'^(NO|GRANT)[ .:#-]*',''),' ','') rlike '^L'"
+         r" THEN CONCAT('L',regexp_replace(regexp_replace(norm,'^(NO|GRANT)[ .:#-]*',''),' ','')) END)",
+    gram=r"(regexp_replace(regexp_replace(norm,'^(NO|GRANT)[ .:#-]*',''),' ','')"
+         r" rlike '^L?[A-Z]{0,4}\\d{2}[A-Z]\\d{6}$'"
+         r" or regexp_replace(norm,' ','') rlike '^Y\\d{7,9}$'"
+         r" or regexp_replace(norm,' ','') rlike '^(19|20)\\d{2}C\\d{5}$')"),
+  # ------- UK council family (staged 2026-08-06 overnight). All six GtR
+  # councils share one design: registry = gateway_to_research prio 3
+  # (legacy per-publication) + prio 30 (project awards); id core =
+  # <CC>/<serial 6-7 alnum, X check-char era>/<1-2 digit part> + bare
+  # 7-digit GtR studentships. KEYS ARE SEPARATOR-INSENSITIVE: strip
+  # [ _/.-] on BOTH sides (deposits use dash-for-slash 'MR-L012936-1',
+  # doubled slashes 'ST/V/001116/1', 'ST/G000/395/1', MC-vs-MC_ etc.).
+  # xkey arm1 = council core extracted ANYWHERE (prose wrappers
+  # 'CONSOLIDATED GRANT ST/N000609/1', 'MRC/DFID/NIHR MR/S023860/1');
+  # arm2 = lead-token-stripped whole-string identity (registry-gated,
+  # EPSRC precedent). -------
+  "MRC": dict(fid=4320334626,
+    # MC_UU/MC_PC intramural (dash/underscore variants unify under
+    # strip-all); legacy G-series in gram. Wellcome ids misfiled here ->
+    # correct fail (existing Wellcome XGRAM). Truncated bare refs
+    # (K013351) NOT reconstructed — EPSRC-truncated policy (#171 feed).
+    rkey=r"NULLIF(regexp_replace(norm,'[ _/.-]',''),'')",
+    xkey=r"COALESCE("
+         r"regexp_replace(NULLIF(regexp_extract(norm,'(?<![A-Z0-9])(MR/ ?[A-Z0-9]{6,7}(/[0-9]{1,2})?)(?![A-Z0-9])',1),''),'[ /]',''),"
+         r" NULLIF(regexp_replace(regexp_replace(norm,'^(MRC|UKRI|GRANT|NO)[ .:#-]*',''),'[ _/.-]',''),''))",
+    gram=r"(regexp_replace(regexp_replace(norm,'^(MRC|UKRI|GRANT|NO)[ .:#-]*',''),'[ _/.-]','')"
+         r" rlike '^MR[A-Z0-9]{6,7}[0-9]{0,2}$'"
+         r" or regexp_replace(norm,'[ _/.-]','') rlike '^MC(UU|PC|EX|U|G|W)[A-Z0-9]{4,12}$'"
+         r" or regexp_replace(norm,'[ _/.-]','') rlike '^G[0-9]{6,7}$'"
+         r" or norm rlike '^\\d{7}$'"
+         r" or norm rlike '(?<![A-Z0-9])MR/ ?[A-Z0-9]{6,7}(/[0-9]{1,2})?(?![A-Z0-9])')"),
+  "BBSRC": dict(fid=4320334629,
+    # BBS/E/<inst>/<serial> institute programmes carry letters in the
+    # serial (000I0320, 000PR9798).
+    rkey=r"NULLIF(regexp_replace(norm,'[ _/.-]',''),'')",
+    xkey=r"COALESCE("
+         r"regexp_replace(NULLIF(regexp_extract(norm,'(?<![A-Z0-9])(BBS?/ ?[A-Z0-9/]{6,14}?(/[0-9]{1,2})?)(?![A-Z0-9])',1),''),'[ /]',''),"
+         r" NULLIF(regexp_replace(regexp_replace(norm,'^(BBSRC|UKRI|GRANT|NO)[ .:#-]*',''),'[ _/.-]',''),''))",
+    gram=r"(regexp_replace(regexp_replace(norm,'^(BBSRC|UKRI|GRANT|NO)[ .:#-]*',''),'[ _/.-]','')"
+         r" rlike '^BB[A-Z0-9]{6,7}[0-9]{0,2}$'"
+         r" or regexp_replace(norm,'[ _/.-]','') rlike '^BBS[A-Z]{1,3}[A-Z0-9]{7,9}$'"
+         r" or norm rlike '^\\d{7}$'"
+         r" or norm rlike '(?<![A-Z0-9])BBS?/ ?[A-Z0-9/]{6,14}(?![A-Z0-9])')"),
+  "NERC": dict(fid=4320334631,
+    rkey=r"NULLIF(regexp_replace(norm,'[ _/.-]',''),'')",
+    xkey=r"COALESCE("
+         r"regexp_replace(NULLIF(regexp_extract(norm,'(?<![A-Z0-9])(NE/ ?[A-Z0-9]{6,7}(/[0-9]{1,2})?)(?![A-Z0-9])',1),''),'[ /]',''),"
+         r" NULLIF(regexp_replace(regexp_replace(norm,'^(NERC|UKRI|GRANT|NO)[ .:#-]*',''),'[ _/.-]',''),''))",
+    gram=r"(regexp_replace(regexp_replace(norm,'^(NERC|UKRI|GRANT|NO)[ .:#-]*',''),'[ _/.-]','')"
+         r" rlike '^NE[A-Z0-9]{6,7}[0-9]{0,2}$'"
+         r" or norm rlike '^\\d{7}$'"
+         r" or norm rlike '(?<![A-Z0-9])NE/ ?[A-Z0-9]{6,7}(/[0-9]{1,2})?(?![A-Z0-9])')"),
+  "STFC": dict(fid=4320334632,
+    # PP/ = legacy PPARC refs (present in GtR registry); GRIDPP-class
+    # named programmes ride the identity arm.
+    rkey=r"NULLIF(regexp_replace(norm,'[ _/.-]',''),'')",
+    xkey=r"COALESCE("
+         r"regexp_replace(NULLIF(regexp_extract(norm,'(?<![A-Z0-9])((ST|PP)/ ?[A-Z0-9/]{6,9}?(/[0-9]{1,2})?)(?![A-Z0-9])',1),''),'[ /]',''),"
+         r" NULLIF(regexp_replace(regexp_replace(norm,'^(STFC|UKRI|GRANT|NO)[ .:#-]*',''),'[ _/.-]',''),''))",
+    gram=r"(regexp_replace(regexp_replace(norm,'^(STFC|UKRI|GRANT|NO)[ .:#-]*',''),'[ _/.-]','')"
+         r" rlike '^(ST|PP)[A-Z0-9]{6,7}[0-9]{0,2}$'"
+         r" or norm rlike '^\\d{7}$'"
+         r" or norm rlike '(?<![A-Z0-9])(ST|PP)/ ?[A-Z0-9/]{6,9}(/[0-9]{1,2})?(?![A-Z0-9])')"),
+  "ESRC": dict(fid=4320334630,
+    # RES-xxx-xx-xxxx / PTA-xxx-xxxx-xxxxx = pre-2011 ESRC scheme refs,
+    # THE dominant deposit fail class; unify under strip-all (registry
+    # rows carrying them match; the rest stay grammar_pass/kept).
+    # UKRI\d{3,4} = cross-council FLF.
+    rkey=r"NULLIF(regexp_replace(norm,'[ _/.-]',''),'')",
+    xkey=r"COALESCE("
+         r"regexp_replace(NULLIF(regexp_extract(norm,'(?<![A-Z0-9])(ES/ ?[A-Z0-9]{6,7}(/[0-9]{1,2})?)(?![A-Z0-9])',1),''),'[ /]',''),"
+         r" NULLIF(regexp_replace(regexp_replace(norm,'^(ESRC|UKRI[ .:#-]|GRANT|NO)[ .:#-]*',''),'[ _/.-]',''),''))",
+    gram=r"(regexp_replace(regexp_replace(norm,'^(ESRC|GRANT|NO)[ .:#-]*',''),'[ _/.-]','')"
+         r" rlike '^ES[A-Z0-9]{6,7}[0-9]{0,2}$'"
+         r" or regexp_replace(norm,'[ _/.-]','') rlike '^(RES|PTA)[0-9]{9,12}$'"
+         r" or regexp_replace(norm,'[ _/.-]','') rlike '^UKRI[0-9]{3,4}$'"
+         r" or norm rlike '^\\d{7}$'"
+         r" or norm rlike '(?<![A-Z0-9])ES/ ?[A-Z0-9]{6,7}(/[0-9]{1,2})?(?![A-Z0-9])')"),
+  "AHRC": dict(fid=4320334609,
+    rkey=r"NULLIF(regexp_replace(norm,'[ _/.-]',''),'')",
+    xkey=r"COALESCE("
+         r"regexp_replace(NULLIF(regexp_extract(norm,'(?<![A-Z0-9])(AH/ ?[A-Z0-9]{6,7}(/[0-9]{1,2})?)(?![A-Z0-9])',1),''),'[ /]',''),"
+         r" NULLIF(regexp_replace(regexp_replace(norm,'^(AHRC|UKRI[ .:#-]|GRANT|NO)[ .:#-]*',''),'[ _/.-]',''),''))",
+    gram=r"(regexp_replace(regexp_replace(norm,'^(AHRC|GRANT|NO)[ .:#-]*',''),'[ _/.-]','')"
+         r" rlike '^AH[A-Z0-9]{6,7}[0-9]{0,2}$'"
+         r" or regexp_replace(norm,'[ _/.-]','') rlike '^UKRI[0-9]{3,4}$'"
+         r" or norm rlike '^\\d{7}$'"
+         r" or norm rlike '(?<![A-Z0-9])AH/ ?[A-Z0-9]{6,7}(/[0-9]{1,2})?(?![A-Z0-9])')"),
+  "INNOVATE_UK": dict(fid=4320335087,
+    # registry innovate_uk prio 28 (41,073): bare numerics 5-8 digit
+    # (modern 10xxxxxx, legacy 5-6 digit) + KTP\d{6}. BARE-NUMERAL DENSE
+    # funder — anchored-only arms, foreign control decides weak flag.
+    # Funder MISSING from common.funders by name (NSTC-class dim gap;
+    # fid recovered from raw prio-28 rows) — flag to Kyle/Casey.
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),'^(\\d{5,8}|KTP\\d{6})$',1),'')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),'^(?:PROJECT|GRANT|APP|NO)?[.:#-]*(\\d{5,8}|KTP\\d{6})$',1),'')",
+    gram=r"regexp_replace(norm,' ','') rlike '^(PROJECT|GRANT|APP|NO)?[.:#-]*(\\d{5,8}|KTP\\d{6})$'"),
+  "NIHR": dict(fid=4320319990,
+    # registry nihr prio 13 (10,763, ODS-refresh 07-13), citable forms
+    # stored verbatim: NIHR\d{6}, HTA slash-triplets (16/136/33),
+    # hyphenated programme refs (PB-PG-1010-23263, RP-2017-08-ST2-006,
+    # CL-2022-07-002), spaced legacy (CDRF 2009-40). Deposits add a
+    # NIHR- lead (NIHR-SRF-2015-08-001; registry stores SRF-...) and
+    # prose wraps -> n1 = global 'NIHR[- ]' strip (NIHR300437 has no
+    # separator, unaffected); arm1 slash-triplet w/ optional programme
+    # lead token (GHRU 16/136/54); arm2 year-anchored hyphen-ref
+    # extracted anywhere; arm3 space-stripped identity (registry-gated).
+    # MC_PC_* under NIHR = MRC ids, correct fail.
+    rkey=r"NULLIF(regexp_replace(norm,' ',''),'')",
+    xkey=r"COALESCE("
+         r"NULLIF(regexp_extract(regexp_replace(regexp_replace(norm,'NIHR[- ]',''),' ',''),'^(?:[A-Z]{2,6})?(\\d{2}/\\d{2,4}/\\d{2,4})$',1),''),"
+         r" NULLIF(regexp_extract(regexp_replace(norm,'NIHR[- ]',''),'(?<![A-Z0-9-])([A-Z]{1,5}(?:-[A-Z0-9]{1,4}){0,3}-(?:19|20)\\d{2}-[0-9]{2,6}(?:-[A-Z0-9]{1,6}){0,2})(?![A-Z0-9-])',1),''),"
+         r" NULLIF(regexp_replace(regexp_replace(norm,'NIHR[- ]',''),' ',''),''))",
+    gram=r"(regexp_replace(norm,' ','') rlike '^NIHR\\d{4,6}$'"
+         r" or (regexp_replace(regexp_replace(norm,'NIHR[- ]',''),' ','') rlike '^([A-Z]{2,6})?\\d{2}/\\d{2,4}/\\d{2,4}$'"
+         r" and not regexp_replace(regexp_replace(norm,'NIHR[- ]',''),' ','') rlike '^\\d{2}/(0[1-9]|1[0-2])/\\d{2,4}$')"
+         r" or (regexp_replace(regexp_replace(norm,'NIHR[- ]',''),' ','') rlike '^[A-Z][A-Z0-9]{0,5}(-[A-Z0-9]{1,6}){1,5}$'"
+         r" and not regexp_replace(norm,' ','') rlike '^(H2020|HORIZON|ORCID|DOI|ISBN)'"
+         r" and norm rlike '\\d{4}')"
+         r" or regexp_replace(norm,' ','') rlike '^[A-Z]{2,6}\\d{2,4}-\\d{2,4}$')"),
 }
 
 XREF = "('crossref_work_funders','crossref_work.grants','crossref_work')"
@@ -521,6 +735,16 @@ EXTRACTIVE_FIDS = {
   4320306084,  # DOE (chassis extractor; no cross-shape overlap — unlike DHHS)
   4320311405,  # AMED (JP-core extractor)
   4320324174,  # Shandong NSF (ZR chassis extractor)
+  4320334705,  # NHMRC (APP/GNT chassis anywhere-extractor; batch 2)
+  4320321006,  # GACR (modern-core anywhere-extractor; batch 2)
+  4320334626,  # MRC (council-core anywhere-extractor; batch 2)
+  4320334629,  # BBSRC (same)
+  4320334631,  # NERC (same)
+  4320334632,  # STFC (same)
+  4320334630,  # ESRC (same)
+  4320334609,  # AHRC (same)
+  4320319990,  # NIHR (year-anchored hyphen-ref anywhere-extractor)
+  # HUNAN/ZHEJIANG/INNOVATE_UK anchored-transform keys = NOT extractive
 }
 
 # STRONG cross-grammars for wrong-funder detection (S3) — measured lesson
