@@ -50,6 +50,19 @@ def udf_clean_abstract_text(text_series: pd.Series) -> pd.Series:
     # `abstract`/`fulltext` fields so the two stay byte-for-byte consistent.
     return text_series.apply(clean_abstract_text)
 
+# Single Arrow pass producing both abstract outputs. The cleaner is idempotent,
+# so inverting the cleaned text is byte-identical to inverting the original.
+abstract_features_struct_type = StructType([
+    StructField("abstract", StringType(), True),
+    StructField("abstract_inverted_index", StringType(), True),
+])
+
+@F.pandas_udf(abstract_features_struct_type)
+def udf_abstract_features(abstract_series: pd.Series) -> pd.DataFrame:
+    cleaned = abstract_series.apply(clean_abstract_text)
+    inverted = cleaned.apply(f_generate_inverted_index)
+    return pd.DataFrame({"abstract": cleaned, "abstract_inverted_index": inverted})
+
 def transform_struct(col_name, source_struct, target_struct):
     target_fields = {f.name: f for f in target_struct.fields}
     source_fields = {f.name: f for f in source_struct.fields}
@@ -155,18 +168,21 @@ def enrich_with_features_and_author_keys(df_input):
         "authors", udf_last_name_only(F.col("authors")) # This udf_last_name_only is a Pandas UDF
     )
     
+    df_with_enriched_authors = df_with_enriched_authors.withColumn(
+        "_abstract_features", udf_abstract_features(F.col("abstract")) # PANDAS UDF
+    )
+
     df_final_enriched = df_with_enriched_authors.withColumns({
         # oxjob 191.1: clean JATS/<p>/whitespace out of `abstract` at the same point
         # the inverted index is built, so the stored abstract and the inverted index
-        # derive from identical text. Cleaner is idempotent, so the inverted index
-        # UDF below still produces byte-identical output.
-        "abstract": udf_clean_abstract_text(F.col("abstract")), # PANDAS UDF
-        "abstract_inverted_index": udf_f_generate_inverted_index(F.col("abstract")), # PANDAS UDF
+        # derive from identical text.
+        "abstract": F.col("_abstract_features.abstract"),
+        "abstract_inverted_index": F.col("_abstract_features.abstract_inverted_index"),
         "authors_exist": F.expr("concat_ws('', authors[0].given, authors[0].family, authors[0].name) != ''"),
         "affiliations_exist": F.expr("exists(authors, author -> nvl(size(author.affiliations), 0) > 0 AND exists(author.affiliations, aff -> aff.name is not null or aff.department is not null or aff.ror_id is not null))"),
         "is_corresponding_exists": F.exists(F.col("authors"), lambda x: x.getItem("is_corresponding") == True), 
         "best_doi": F.when(F.col("native_id_namespace") == "doi", F.col("native_id")).otherwise(F.element_at(F.expr("filter(ids, id_struct -> id_struct.namespace == 'doi')"), 1).getField("id"))
-    })
+    }).drop("_abstract_features")
     return df_final_enriched
 
 

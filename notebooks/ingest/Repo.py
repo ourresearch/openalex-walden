@@ -1970,18 +1970,6 @@ def repo_enriched():
             ).otherwise(F.col(c))
         )
 
-    # Fill in endpoint_id from lookup table for records missing it
-    endpoint_lookup = (
-        spark.table("openalex.repo.native_id_to_endpoint_id")
-        .withColumnRenamed("endpoint_id", "lookup_endpoint_id")
-    )
-    combined_df = (
-        combined_df
-        .join(endpoint_lookup, "native_id", "left")
-        .withColumn("endpoint_id", F.coalesce(F.col("endpoint_id"), F.col("lookup_endpoint_id")))
-        .drop("lookup_endpoint_id")
-    )
-
     # Tiebreaker: updated_date first, then repo over backfill, then latest ingested_at,
     # then stable content hash — backfill has no ingested_at, leaving 110M rows fully
     # tied; without a total order every full refresh picks different winners

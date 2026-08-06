@@ -4,7 +4,7 @@ from nameparser import HumanName # Will be installed via pipeline libraries
 
 import re
 import unicodedata
-from functools import reduce
+from functools import reduce, lru_cache
 import pandas as pd
 
 # Walden Schema definition (as per your Locations.py)
@@ -74,16 +74,22 @@ def clean_author_name(author_name):
     if not author_name: return ""
     return re.sub(r"[ \-‐.'' ́>]", "", author_name).strip()
 
-def last_name_only(author): 
-    if not author:
-        return ["", "", ""] 
+# Pure function of the input string, so memoizable. Cached per Python worker
+# process; worker reuse keeps it warm across batches for a whole pipeline run.
+@lru_cache(maxsize=500_000)
+def _last_name_only_cached(author):
     author = remove_latin_characters(author)
     author = remove_author_prefixes(author)
-    author_name_obj = HumanName(author) 
+    author_name_obj = HumanName(author)
     first_name = clean_author_name(author_name_obj.first)
     last_name = clean_author_name(author_name_obj.last)
     first_initial = first_name[0] if first_name else ""
-    return [ f"{last_name};{first_initial}", f"{first_name}", f"{last_name}" ]
+    return ( f"{last_name};{first_initial}", f"{first_name}", f"{last_name}" )
+
+def last_name_only(author):
+    if not author:
+        return ["", "", ""]
+    return list(_last_name_only_cached(author))
 
 # Schema for the enriched author struct (output of the author processing Pandas UDF)
 # This MUST match the structure of the dictionaries returned by the Pandas UDF's internal logic
