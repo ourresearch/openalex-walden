@@ -94,6 +94,21 @@ def _toks(s):
 
 PREFIX_CANDIDATES = {
     "american heart association": 4320306230,   # AHA (F4320306230)
+    # 2026-08-06 batch-add: the 8 acronym-prefix candidates from the 07-28 diagnostic
+    # (oxjob #519 worklist), funder_ids VETTED via the OpenAlex API 2026-08-05 — each
+    # resolves to exactly one canonical funder. Two diverge from the diagnostic's
+    # auto-suggestion, which had landed on same-named stub entities:
+    # BMBF -> F4320321114 (Bundesministerium fuer Bildung und Forschung; diag stub F4320323990)
+    # "anr": 4320320883 REMOVED after the 2026-08-06 bounded run: prefix-guard REFUSED it
+    # (stub F4320338463 carries a longer name extending 'anr'). That stub looks like a dim
+    # duplicate of the real ANR -> flagged for Kyle merge; re-add once the dim is fixed.
+    "dfg": 4320320879,        # Deutsche Forschungsgemeinschaft
+    "bmbf": 4320321114,       # Bundesministerium fuer Bildung und Forschung
+    "ecdc": 4320320304,       # European Centre for Disease Prevention and Control
+    "isciii": 4320334923,     # Instituto de Salud Carlos III
+    "icrea": 4320322121,      # Institucio Catalana de Recerca i Estudis Avancats
+    "ciberned": 4320328990,   # CIBER Enfermedades Neurodegenerativas
+    "fondecyt": 4320338073,   # Fondo Nacional de Desarrollo Cientifico y Tecnologico
     # add more non-NIH funders here as they're verified; each is checked by the guard below.
 }
 _all_name_tuples = [(tuple(_toks(r["nl"])), r["funder_id"]) for r in fv.collect() if r["nl"]]
