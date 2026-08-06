@@ -26,8 +26,17 @@ resources:
       name: Union All Works
       catalog: openalex
       schema: works
-      serverless: true
+      # TEMPORARY (oxjob 733): classic photon compute for the locations_parsed full
+      # refresh (absorbs repo rewrite + dedup rekey + mag cutover). REVERT to
+      # serverless: true / photon: true (no clusters block) after the refresh
+      # verifies and the jobs are unpaused.
+      serverless: false
       photon: true
+      clusters:
+        - label: default
+          node_type_id: r5d.8xlarge
+          driver_node_type_id: r5d.8xlarge
+          num_workers: 20
       continuous: false
       development: false
       edition: ADVANCED
