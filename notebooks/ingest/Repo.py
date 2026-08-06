@@ -2002,34 +2002,16 @@ dlt.create_streaming_table(
     }
 )
 
-# Same-endpoint records exposing an identical URL set are the same location
-# (oxjob #733): keying apply_changes by content collapses OAI re-registrations
-# and dataset-record firehoses. NULL endpoint falls back to native_id so nothing
-# ever collapses across repositories. Computed in a view so repo_enriched's
-# stored data doesn't need a rebuild; a repo_works-only full refresh applies it.
-@dlt.view(name="repo_enriched_keyed")
-def repo_enriched_keyed():
-    return dlt.read_stream("repo_enriched").withColumn(
-        "dedup_key",
-        F.sha2(
-            F.concat_ws(
-                "\u0001",
-                F.coalesce(F.col("endpoint_id"), F.col("native_id")),
-                F.concat_ws(
-                    "\u0001",
-                    F.array_sort(F.array_distinct(F.expr(
-                        "transform(filter(urls, u -> u.url IS NOT NULL), u -> trim(u.url))"
-                    )))
-                ),
-            ),
-            256,
-        ),
-    )
-
+# Content-keyed dedup (same endpoint + identical URL set) was tried here and
+# REVERTED 08-06: repo_enriched streams every historical version of a record,
+# and URL-format drift between harvests (http->https, &amp; re-encoding, domain
+# moves) gives old versions their own content keys — 33M stale variants
+# resurrected. DLT cannot chain apply_changes (targets can't be streamed), so
+# same-URL dedup lives in the batch layer (CreateSuperLocations), not here.
 dlt.apply_changes(
     target="repo_works",
-    source="repo_enriched_keyed",
-    keys=["dedup_key"],
+    source="repo_enriched",
+    keys=["native_id"],
     sequence_by="_sequence",
     except_column_list=["_sequence"]
 )
