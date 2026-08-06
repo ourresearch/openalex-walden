@@ -2785,6 +2785,15 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: OSTIFacility_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateOSTIFacilityAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
             - task_key: RSCF_Awards
@@ -2839,6 +2848,7 @@ resources:
             - task_key: FCT_Awards
             - task_key: VEGA_Awards
             - task_key: DOE_OffSci_Awards
+            - task_key: OSTIFacility_Awards
             - task_key: Humboldt_Awards
             - task_key: APVV_Awards
             - task_key: CPRIT_Awards
