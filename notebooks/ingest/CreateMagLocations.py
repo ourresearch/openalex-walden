@@ -60,6 +60,30 @@ df = df.filter(F.expr("exists(urls, x -> x.url IS NOT NULL)"))
 
 # COMMAND ----------
 
+# Same-URL-set dedup (oxjob #733), MAG analog of the repo_works content key.
+# MAG has no endpoint_id, and 64% of raw URL-set collisions span different
+# titles (journal/issue-level URLs shared by distinct papers) — so the title
+# is part of the key and only same-title re-registrations collapse (~141K).
+url_set_key = F.concat_ws(
+    "\u0001",
+    F.array_sort(F.array_distinct(F.expr(
+        "transform(filter(urls, u -> u.url IS NOT NULL), u -> trim(u.url))"
+    ))),
+)
+same_location_window = Window.partitionBy(
+    url_set_key, F.col("normalized_title")
+).orderBy(
+    F.col("updated_date").desc_nulls_last(),
+    F.xxhash64(F.col("native_id")).desc(),
+)
+df = (
+    df.withColumn("_rn", F.row_number().over(same_location_window))
+    .filter(F.col("_rn") == 1)
+    .drop("_rn")
+)
+
+# COMMAND ----------
+
 df.createOrReplaceTempView("mag_locations_build")
 
 spark.sql("""
