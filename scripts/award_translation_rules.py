@@ -540,6 +540,98 @@ FUNDERS = {
          r" and not regexp_replace(norm,' ','') rlike '^(H2020|HORIZON|ORCID|DOI|ISBN)'"
          r" and norm rlike '\\d{4}')"
          r" or regexp_replace(norm,' ','') rlike '^[A-Z]{2,6}\\d{2,4}-\\d{2,4}$')"),
+  # ------- DOD family (staged 2026-08-06 batch 3). Registry landscape:
+  # ONLY the umbrella (usaspending prio 26, 77,692 FAINs FY2001-2018,
+  # stored UNHYPHENATED: W911NF1310468) and CDMRP (dimensions_cdmrp prio
+  # 237, 23,711, stored HYPHENATED: W81XWH-10-1-0213 + CDMRPL- forms;
+  # log-number shapes only 7 rows -> gram-only). Components (ARO/ONR/
+  # AFOSR/DARPA/DTRA/MRMC/MRDC/USAMRAA) have ZERO own registries ->
+  # grammar-only recipes with stripped keys that auto-light if a
+  # component registry ever lands. THE key = strip [-_ ] (NORM already
+  # folds unicode dashes to '-'): unifies unhyphenated FAINs, cited
+  # W81XWH-16-1-0123, spaced 'HDTRA 1-15-1-0028', U+2010 variants,
+  # glued 'BC132245_W81XWH-...'. FAIN shape = 6-alnum office code +
+  # 2-digit FY + alnum body (mid-body type letters C/D/G/P are real:
+  # HR001115C0084, N00173051G904). Components stay NON-extractive
+  # (DHHS precedent: W81XWH spans DOD/CDMRP/MRMC — extractive
+  # membership would hide ids from cross-funder S3 detection; see
+  # DOD-DEDUP-DESIGN.md).
+  "DOD": dict(fid=4320306078,
+    # generic-office rkey (registry census: DAAD19/DAHA46/DACA88 legacy
+    # Army, MDA904/H98230 NSA, HM#### NGA, N00173 NRL, W56HZV, OEA990,
+    # HU0001 USUHS... enumerating loses 10k+ keys). Deposit side: same
+    # generic ANCHORED w/ junk-lead stop-list (GRANT11763537-class) +
+    # enumerated-chassis ANYWHERE for suffixed forms (FA9451-15-D-0009/
+    # 0002). gram adds CDMRP log numbers (PR200793) + SERDP/ESTCP
+    # RC/ER/WP-#### (real DOD environmental programs, registry-absent).
+    # '32 CFR 168a' (NDSEG regulation) excluded by shape.
+    rkey=r"NULLIF(regexp_extract(norm,'^([A-Z][A-Z0-9]{5}[0-9]{2}[A-Z0-9]{3,11})$',1),'')",
+    xkey=r"COALESCE("
+         r"CASE WHEN NOT regexp_replace(norm,'[-_ ]','') rlike '^(GRANT|AWARD|CONTRACT|PROJECT|DODWID|H2020|HORIZON)' AND NOT regexp_replace(norm,'[-_ ]','') rlike '^[A-Z]{2}[0-9]{9}$' AND NOT regexp_replace(norm,'[-_ ]','') rlike '^[0-9]?[A-Z][0-9]{2}[A-Z]{2}[0-9]{5,6}$' THEN "
+         r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^([A-Z][A-Z0-9]{5}[0-9]{2}[A-Z0-9]{3,11})$',1),'') END,"
+         r" NULLIF(regexp_extract(regexp_replace(norm,'[- ]',''),'(?<![A-Z0-9])((?:W81XWH|W911NF|N00014|FA[0-9]{4}|HR0011|HDTRA[0-9]|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9})(?![A-Z0-9])',1),''))",
+    gram=r"((regexp_replace(norm,'[-_ ]','') rlike '^[A-Z][A-Z0-9]{5}[0-9]{2}[A-Z0-9]{3,11}$'"
+         r" and not regexp_replace(norm,'[-_ ]','') rlike '^(GRANT|AWARD|CONTRACT|PROJECT|DODWID|H2020|HORIZON)'"
+         r" and not regexp_replace(norm,'[-_ ]','') rlike '^[A-Z]{2}[0-9]{9}$'"
+         r" and not regexp_replace(norm,'[-_ ]','') rlike '^[0-9]?[A-Z][0-9]{2}[A-Z]{2}[0-9]{5,6}$')"
+         r" or regexp_replace(norm,'[-_ ]','') rlike '^(BC|PC|OC|KC|NF|PR|CA|AL|AR|DM|GW|MB|MS|TS|VR|PT|RA|SC|EP|LC|RH|IS|CO)[0-9]{6}(P[0-9])?$'"
+         r" or regexp_replace(norm,'[- ]','') rlike '^(RC|ER|WP|MR)[0-9]{4}$')"),
+  "CDMRP": dict(fid=4320338273,
+    # registry = dimensions_cdmrp, hyphenated instrument numbers
+    # (W81XWH-/DAMD17-/HT9425-) + CDMRPL-. Deposits: same + glued
+    # 'W81XWH-12-1-0159/BC112431' (anywhere-arm extracts the instrument)
+    # + bare log numbers BC112431/PR200793/OC220235P1 (gram only).
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:W81XWH|DAMD[0-9]{2}|HT[0-9]{4}|W911[A-Z0-9]{2}|CDMRPL)[0-9A-Z]{5,14})$',1),'')",
+    xkey=r"COALESCE("
+         r"NULLIF(regexp_extract(regexp_replace(norm,'[- ]',''),'(?<![A-Z0-9])((?:W81XWH|DAMD[0-9]{2}|HT[0-9]{4}|CDMRPL)[0-9]{2}[A-Z0-9]{3,11})(?![A-Z0-9])',1),''),"
+         r" NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:W911[A-Z0-9]{2})[0-9]{2}[A-Z0-9]{3,11})$',1),''))",
+    gram=r"(regexp_replace(norm,'[- ]','') rlike '(?<![A-Z0-9])(W81XWH|DAMD[0-9]{2}|HT[0-9]{4}|CDMRPL)[0-9]{2}[A-Z0-9]{3,11}(?![A-Z0-9])'"
+         r" or regexp_replace(norm,'[-_ ]','') rlike '^(BC|PC|OC|KC|NF|PR|CA|AL|AR|DM|GW|MB|MS|TS|VR|PT|RA|SC|EP|LC|RH|IS|CO)[0-9]{6}(P[0-9])?$')"),
+  "ARO": dict(fid=4320338281,
+    # grammar-only (no registry): W911NF chassis.
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^(W911NF[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^(W911NF[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    gram=r"regexp_replace(norm,'[-_ ]','') rlike '^W911NF[0-9]{2}[A-Z0-9]{3,9}$'"),
+  "ONR": dict(fid=4320337345,
+    # grammar-only: N-office codes (N00014 ONR; N62909 ONR-Global forms
+    # appear here too; mid-body letters real: N62909151N081).
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^(N[0-9]{5}[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^(N[0-9]{5}[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    gram=r"regexp_replace(norm,'[-_ ]','') rlike '^N[0-9]{5}[0-9]{2}[A-Z0-9]{3,9}$'"),
+  "AFOSR": dict(fid=4320338279,
+    # grammar-only: FA9550 modern + F49620 legacy (+FA#### family).
+    # '32 CFR 168a' junk excluded by chassis requirement.
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:FA[0-9]{4}|F49620)[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:FA[0-9]{4}|F49620)[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    gram=r"regexp_replace(norm,'[-_ ]','') rlike '^(FA9550|F49620|FA[0-9]{4})[0-9]{2}[A-Z0-9]{3,9}$'"),
+  "DARPA": dict(fid=4320332180,
+    # grammar-only: HR0011 + D##AC/AP agreements + pass-through offices
+    # (N66001 SSC-Pacific, W31P4Q AMRDEC, FA865x/875x AFRL).
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:HR0011|D[0-9]{2}A[CP]|N66001|W31P4Q|FA86[0-9]{2}|FA87[0-9]{2})[0-9A-Z]{5,12})$',1),'')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:HR0011|D[0-9]{2}A[CP]|N66001|W31P4Q|FA86[0-9]{2}|FA87[0-9]{2})[0-9A-Z]{5,12})$',1),'')",
+    gram=r"regexp_replace(norm,'[-_ ]','') rlike '^(HR0011|D[0-9]{2}A[CP]|N66001|W31P4Q|FA86[0-9]{2}|FA87[0-9]{2})[0-9A-Z]{5,12}$'"),
+  "DTRA": dict(fid=4320332186,
+    # grammar-only: HDTRA# ('HDTRA 1-15-1-0028' spaced form unifies).
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^(HDTRA[0-9][0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^(HDTRA[0-9][0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    gram=r"regexp_replace(norm,'[-_ ]','') rlike '^HDTRA[0-9][0-9]{2}[A-Z0-9]{3,9}$'"),
+  "USAMRMC": dict(fid=4320338280,
+    # grammar-only: Army-medical family (DAMD17 era -> W81XWH -> HT9425)
+    # + CDMRP log numbers in gram.
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:W81XWH|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:W81XWH|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    gram=r"(regexp_replace(norm,'[-_ ]','') rlike '^(W81XWH|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9}$'"
+         r" or regexp_replace(norm,'[-_ ]','') rlike '^(BC|PC|OC|KC|NF|PR|CA|AL|AR|DM|GW|MB|MS|TS|VR|PT|RA|SC|EP|LC|RH|IS|CO)[0-9]{6}(P[0-9])?$')"),
+  "USAMRDC": dict(fid=4320338415,
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:W81XWH|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:W81XWH|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    gram=r"(regexp_replace(norm,'[-_ ]','') rlike '^(W81XWH|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9}$'"
+         r" or regexp_replace(norm,'[-_ ]','') rlike '^(BC|PC|OC|KC|NF|PR|CA|AL|AR|DM|GW|MB|MS|TS|VR|PT|RA|SC|EP|LC|RH|IS|CO)[0-9]{6}(P[0-9])?$')"),
+  "USAMRAA": dict(fid=4320338478,
+    rkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:W81XWH|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,'[-_ ]',''),'^((?:W81XWH|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9})$',1),'')",
+    gram=r"(regexp_replace(norm,'[-_ ]','') rlike '^(W81XWH|DAMD[0-9]{2}|HT[0-9]{4})[0-9]{2}[A-Z0-9]{3,9}$'"
+         r" or regexp_replace(norm,'[-_ ]','') rlike '^(BC|PC|OC|KC|NF|PR|CA|AL|AR|DM|GW|MB|MS|TS|VR|PT|RA|SC|EP|LC|RH|IS|CO)[0-9]{6}(P[0-9])?$')"),
 }
 
 XREF = "('crossref_work_funders','crossref_work.grants','crossref_work')"
@@ -745,6 +837,11 @@ EXTRACTIVE_FIDS = {
   4320334609,  # AHRC (same)
   4320319990,  # NIHR (year-anchored hyphen-ref anywhere-extractor)
   # HUNAN/ZHEJIANG/INNOVATE_UK anchored-transform keys = NOT extractive
+  4320306078,  # DOD (enumerated-chassis anywhere-arm; batch 3 — self-ids, FY-gap misses stay plausible)
+  4320338273,  # CDMRP (instrument-chassis anywhere-arm; batch 3)
+  # DOD components (ARO/ONR/AFOSR/DARPA/DTRA/USAMR*) NOT extractive:
+  # their shapes span the umbrella registries (DHHS-class exclusion,
+  # preserves the cross-funder S3 detection feed; DOD-DEDUP-DESIGN.md)
 }
 
 # STRONG cross-grammars for wrong-funder detection (S3) — measured lesson
