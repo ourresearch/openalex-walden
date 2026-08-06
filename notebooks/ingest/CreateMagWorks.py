@@ -1,9 +1,9 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # CreateMagLocations
+# MAGIC # CreateMagWorks
 # MAGIC
-# MAGIC Batch rebuild of `openalex.mag.mag_locations` from the raw (frozen) MAG source
-# MAGIC table `openalex.mag.mag_works`. Replaces the retired Mag DLT pipeline (oxjob #733):
+# MAGIC Batch rebuild of `openalex.mag.mag_works` from the raw (frozen) MAG source
+# MAGIC table `openalex.mag.mag_works_raw`. Replaces the retired Mag DLT pipeline (oxjob #733):
 # MAGIC same walden-schema enrichment, same Deleted Journal / DOAJ exclusion, latest row
 # MAGIC per native_id (was `apply_changes` SCD1 by updated_date), plus the URL-less husk
 # MAGIC filter applied at the end.
@@ -31,7 +31,7 @@ from openalex.dlt.transform import (
     apply_final_merge_key_and_filter,
 )
 
-df = spark.table("openalex.mag.mag_works").withColumn("provenance", F.lit("mag"))
+df = spark.table("openalex.mag.mag_works_raw").withColumn("provenance", F.lit("mag"))
 
 df = apply_initial_processing(df, "mag", walden_works_schema)
 df = enrich_with_features_and_author_keys(df)
@@ -84,17 +84,17 @@ df = (
 
 # COMMAND ----------
 
-df.createOrReplaceTempView("mag_locations_build")
+df.createOrReplaceTempView("mag_works_build")
 
 spark.sql("""
-CREATE OR REPLACE TABLE openalex.mag.mag_locations
+CREATE OR REPLACE TABLE openalex.mag.mag_works
 TBLPROPERTIES (delta.enableChangeDataFeed = true)
-AS SELECT * FROM mag_locations_build
+AS SELECT * FROM mag_works_build
 """)
 
 # COMMAND ----------
 
-built = spark.table("openalex.mag.mag_locations")
+built = spark.table("openalex.mag.mag_works")
 n = built.count()
 husks = built.filter(~F.expr("exists(urls, x -> x.url IS NOT NULL)")).count()
 dup_keys = built.groupBy("native_id").count().filter("count > 1").count()
