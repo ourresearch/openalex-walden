@@ -1514,34 +1514,5 @@ THEN UPDATE SET
 
 -- COMMAND ----------
 
--- MAGIC %md ## Create `referenced_works` ids from `referenced_works` table
--- MAGIC - Data comes from an exploded table that is populated using matching and parsing of dois, titles and authors
-
--- COMMAND ----------
-
-WITH aggregated_refs AS (
-  SELECT
-    citing_work_id,
-    TRANSFORM(
-      SORT_ARRAY(COLLECT_LIST(STRUCT(ref_ind, cited_work_id))),
-      x -> x.cited_work_id
-    ) AS referenced_works
-  FROM openalex.works.work_references
-  WHERE cited_work_id IS NOT NULL
-  GROUP BY citing_work_id
-)
-MERGE INTO openalex.works.locations_mapped AS target
-USING aggregated_refs AS source
-ON target.work_id = source.citing_work_id
-WHEN MATCHED AND (
-  target.referenced_works IS DISTINCT FROM source.referenced_works OR
-  target.referenced_works_count IS DISTINCT FROM SIZE(source.referenced_works)
-)
-THEN UPDATE SET
-  target.referenced_works = source.referenced_works,
-  target.referenced_works_count = SIZE(source.referenced_works);
-
--- COMMAND ----------
-
 SELECT format_number(COUNT(*), 0) as row_count
 FROM openalex.works.locations_mapped --618,448,502 - July 16th, 618,777,313 - July 17th
