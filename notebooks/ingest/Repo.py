@@ -1983,13 +1983,18 @@ def repo_enriched():
         )
     )
 
-    # backfill feed keeps its identity through _sequence above; the published value is always repo
-    combined_df = combined_df.withColumn("provenance", F.lit("repo"))
-
     # Apply enrichment (with fast Pandas UDFs)
     df_enriched = enrich_with_features_and_author_keys(combined_df)
 
-    return apply_final_merge_key_and_filter(df_enriched)
+    df_final = apply_final_merge_key_and_filter(df_enriched)
+
+    # Publish provenance 'repo' only AFTER merge_key is computed: the short/bad-title
+    # fallback key is concat(native_id, provenance), and 14.7M works were re-minted
+    # on 08-07 when the restamp ran before keying (repo_backfill -> repo changed
+    # their identity). Keys must keep each row's original feed string forever;
+    # backfill feed identity also survives in _sequence above. The durable fix
+    # (provenance-free fallback key) is a planned identity migration, not this.
+    return df_final.withColumn("provenance", F.lit("repo"))
 
 dlt.create_streaming_table(
     name="repo_works",
