@@ -46,14 +46,14 @@ WITH curation_locations AS (
     
     NULL as key_lineage,
     'curation' as provenance,
-    SPLIT(entity_id, ':')[1] as native_id,
+    SUBSTRING(entity_id, LOCATE(':', entity_id) + 1) as native_id,
     'openalex_curation' as native_id_namespace,
     get_json_object(property_value, '$.title') as title,
     NULL as normalized_title,
     CAST(NULL AS ARRAY<STRUCT<given: STRING, family: STRING, name: STRING, orcid: STRING, affiliations: ARRAY<STRUCT<name: STRING, department: STRING, ror_id: STRING>>, is_corresponding: BOOLEAN, author_key: STRING>>) as authors,
     CAST(NULL AS ARRAY<STRUCT<id: STRING, namespace: STRING, relationship: STRING>>) as ids,
     NULL as type,
-    'submittedVersion' as version,
+    COALESCE(get_json_object(property_value, '$.version'), 'submittedVersion') as version,
     get_json_object(property_value, '$.license') as license,
     NULL as language,
     NULL as published_date,
@@ -231,7 +231,7 @@ WHEN NOT MATCHED THEN INSERT (
 -- 1) Latest approved curation per (entity_id, property)
 WITH latest_per_field AS (
   SELECT
-    split(entity_id, ':')[1] AS native_id,
+    SUBSTRING(entity_id, LOCATE(':', entity_id) + 1) AS native_id,
     split(entity_id, ':')[0] AS native_id_namespace,
     property,
     NULLIF(TRIM(property_value), 'null') AS property_value,
@@ -320,15 +320,37 @@ WHEN MATCHED AND (
 THEN UPDATE SET
   target.title            = CASE WHEN source.title_apply            = 1 THEN source.title_val            ELSE target.title            END,
   target.pdf_url          = CASE WHEN source.pdf_url_apply          = 1 THEN source.pdf_url_val          ELSE target.pdf_url          END,
-  -- when pdf_url is set to null we need to remove pdf urls from the urls array too, or they will be picked up in works. CDM
+  -- keep the urls array in sync with the scalar overrides: replaced URLs are rewritten in place,
+  -- nullified URLs are removed (pdf-null also removes by content_type), or they will be picked up in works. CDM
   target.urls = CASE
-                  WHEN source.pdf_url_apply = 1 AND source.pdf_url_val IS NULL THEN
-                    CASE WHEN target.urls IS NULL THEN NULL
-                         ELSE FILTER(
-                                target.urls,
-                                x -> lower(x.content_type) NOT IN ('pdf','application/pdf')
-                              )
-                    END
+                  WHEN (source.pdf_url_apply = 1 OR source.landing_page_url_apply = 1) AND target.urls IS NOT NULL THEN
+                    FILTER(
+                      TRANSFORM(
+                        target.urls,
+                        x -> STRUCT(
+                          CASE
+                            WHEN source.pdf_url_apply = 1 AND source.pdf_url_val IS NOT NULL AND target.pdf_url IS NOT NULL
+                                 AND REGEXP_REPLACE(LOWER(x.url), '^https?://', '') = REGEXP_REPLACE(LOWER(target.pdf_url), '^https?://', '')
+                              THEN source.pdf_url_val
+                            WHEN source.landing_page_url_apply = 1 AND source.landing_page_url_val IS NOT NULL AND target.landing_page_url IS NOT NULL
+                                 AND REGEXP_REPLACE(LOWER(x.url), '^https?://', '') = REGEXP_REPLACE(LOWER(target.landing_page_url), '^https?://', '')
+                              THEN source.landing_page_url_val
+                            ELSE x.url
+                          END AS url,
+                          x.content_type AS content_type
+                        )
+                      ),
+                      x -> NOT (
+                        (source.pdf_url_apply = 1 AND source.pdf_url_val IS NULL AND (
+                          lower(x.content_type) IN ('pdf','application/pdf') OR
+                          (target.pdf_url IS NOT NULL
+                           AND REGEXP_REPLACE(LOWER(x.url), '^https?://', '') = REGEXP_REPLACE(LOWER(target.pdf_url), '^https?://', ''))
+                        )) OR
+                        (source.landing_page_url_apply = 1 AND source.landing_page_url_val IS NULL
+                         AND target.landing_page_url IS NOT NULL
+                         AND REGEXP_REPLACE(LOWER(x.url), '^https?://', '') = REGEXP_REPLACE(LOWER(target.landing_page_url), '^https?://', ''))
+                      )
+                    )
                   ELSE target.urls
                 END,
   target.landing_page_url = CASE WHEN source.landing_page_url_apply = 1 THEN source.landing_page_url_val ELSE target.landing_page_url END,
