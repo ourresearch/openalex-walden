@@ -3,11 +3,13 @@ dbutils.widgets.text("endpoint", "sdg-classifier")
 dbutils.widgets.text("concurrency", "24")
 dbutils.widgets.text("request_batch", "25")
 dbutils.widgets.text("max_rows", "3840000")
+dbutils.widgets.text("chunk_works", "100000")
 
 ENDPOINT = dbutils.widgets.get("endpoint")
 CONCURRENCY = int(dbutils.widgets.get("concurrency"))
 REQUEST_BATCH = int(dbutils.widgets.get("request_batch"))
 MAX_ROWS = int(dbutils.widgets.get("max_rows"))
+CHUNK_WORKS = int(dbutils.widgets.get("chunk_works"))
 
 # COMMAND ----------
 
@@ -37,7 +39,8 @@ print(f"input rows: {len(pdf):,}")
 
 w = WorkspaceClient()
 records = pdf[["title", "abstract"]].where(pdf[["title", "abstract"]].notna(), None).to_dict("records")
-batches = [records[i : i + REQUEST_BATCH] for i in range(0, len(records), REQUEST_BATCH)]
+work_ids = pdf["work_id"].astype(str).tolist()
+del pdf
 
 
 def score(batch):
@@ -50,22 +53,6 @@ def score(batch):
             time.sleep(2 ** attempt)
     return None
 
-
-if batches:
-    warm = time.time()
-    score(batches[0][:1])
-    print(f"warm-up request: {time.time() - warm:.1f}s")
-
-start = time.time()
-with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
-    results = list(pool.map(score, batches))
-elapsed = time.time() - start
-
-predictions = [p for b in results for p in b]
-assert len(predictions) == len(pdf), f"got {len(predictions)} predictions for {len(pdf)} rows"
-print(f"scored {len(predictions):,} in {elapsed:.1f}s -> {len(predictions)/max(elapsed,1):.1f} rows/sec")
-
-# COMMAND ----------
 
 sdg_struct = StructType(
     [
@@ -89,39 +76,69 @@ def as_sdg(pred):
     return [(s["id"], s["display_name"], float(s["score"])) for s in sdg]
 
 
-rows = [
-    (str(pdf.iloc[i]["work_id"]), as_sdg(pred)) for i, pred in enumerate(predictions)
-]
-print(f"empty sdg: {sum(1 for r in rows if not r[1]):,} of {len(rows):,}")
-
-inferred_sdg_df = spark.createDataFrame(rows, output_schema)
-print(f"output rows: {len(rows):,}")
-
 # COMMAND ----------
 
-output_df = inferred_sdg_df.withColumn("created_timestamp", current_timestamp()).select(
-    "work_id", "sdg", "created_timestamp"
-)
+# Score -> build -> merge -> dequeue in chunks: bounds driver memory, writes
+# incrementally, and because processed work_ids leave the input table per
+# chunk, a retried run resumes where it stopped instead of re-scoring the wave.
+if records:
+    warm = time.time()
+    score(records[:1])
+    print(f"warm-up request: {time.time() - warm:.1f}s")
 
 target_table = DeltaTable.forName(spark, "openalex.works.works_sdg_frontfill")
-(
-    target_table.alias("target")
-    .merge(output_df.alias("source"), "target.work_id = source.work_id")
-    .whenMatchedUpdate(
-        set={"sdg": "source.sdg", "created_timestamp": "source.created_timestamp"}
+total_written = 0
+total_empty = 0
+overall_start = time.time()
+
+for chunk_start in range(0, len(records), CHUNK_WORKS):
+    chunk_records = records[chunk_start : chunk_start + CHUNK_WORKS]
+    batches = [
+        chunk_records[i : i + REQUEST_BATCH]
+        for i in range(0, len(chunk_records), REQUEST_BATCH)
+    ]
+    with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
+        results = list(pool.map(score, batches))
+    preds = [p for b in results for p in b]
+    assert len(preds) == len(chunk_records), (
+        f"got {len(preds)} predictions for {len(chunk_records)} rows"
     )
-    .whenNotMatchedInsertAll()
-    .execute()
-)
-print(f"merged {len(rows):,} rows to works_sdg_frontfill")
 
-# COMMAND ----------
+    rows = [
+        (work_ids[chunk_start + i], as_sdg(pred)) for i, pred in enumerate(preds)
+    ]
+    empty = sum(1 for r in rows if not r[1])
 
-inferred_sdg_df.select("work_id").createOrReplaceTempView("processed_ids")
-spark.sql(
-    """
-    DELETE FROM openalex.works.works_sdg_frontfill_input
-    WHERE CAST(work_id AS STRING) IN (SELECT work_id FROM processed_ids)
-    """
-)
-print("removed processed work_ids from works_sdg_frontfill_input")
+    inferred_sdg_df = spark.createDataFrame(rows, output_schema)
+    output_df = inferred_sdg_df.withColumn(
+        "created_timestamp", current_timestamp()
+    ).select("work_id", "sdg", "created_timestamp")
+
+    (
+        target_table.alias("target")
+        .merge(output_df.alias("source"), "target.work_id = source.work_id")
+        .whenMatchedUpdate(
+            set={"sdg": "source.sdg", "created_timestamp": "source.created_timestamp"}
+        )
+        .whenNotMatchedInsertAll()
+        .execute()
+    )
+
+    inferred_sdg_df.select("work_id").createOrReplaceTempView("processed_ids")
+    spark.sql(
+        """
+        DELETE FROM openalex.works.works_sdg_frontfill_input
+        WHERE CAST(work_id AS STRING) IN (SELECT work_id FROM processed_ids)
+        """
+    )
+
+    total_written += len(rows)
+    total_empty += empty
+    rate = total_written / max(time.time() - overall_start, 1)
+    print(
+        f"{total_written:,}/{len(records):,} merged "
+        f"(empty sdg {total_empty:,}) at {rate:.0f} rows/sec",
+        flush=True,
+    )
+
+print(f"done: {total_written:,} merged, {total_empty:,} empty sdg")
