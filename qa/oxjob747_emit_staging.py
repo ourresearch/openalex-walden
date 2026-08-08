@@ -138,6 +138,9 @@ create_new_rows AS (
       'landing_page_url', CASE WHEN NOT (LOWER(p.new_url) LIKE '%.pdf%' OR LOWER(p.new_url) LIKE '%/pdf/%') THEN p.new_url END,
       'is_oa', TRUE,
       'version', 'publishedVersion',
+      -- type on every create_new row: a type-less location that wins primary nulls
+      -- work.type/is_paratext downstream
+      'type', COALESCE(w.type, 'article'),
       -- source_id on every create_new row: source-less OA locations derive host_type NULL ->
       -- oa_status GOLD in works base (not bronze), so uniform green is the honest choice
       'source_id', CASE WHEN ws.source_id IS NOT NULL
@@ -146,6 +149,12 @@ create_new_rows AS (
     TRUE AS create_new, p.email, p.submitted_date,
     'create_new' AS qa_class, p.doi AS qa_doi, p.work_id AS qa_work_id
   FROM create_new_pairs p
+  -- strict resolution guard: the target work must itself hold the curated DOI. Stale/misbound
+  -- locations (mag ghosts, repo twins) can claim a DOI their work does not have — attaching
+  -- there puts the curated URL on the wrong paper (64 such rows purged 2026-08-08).
+  JOIN openalex.works.openalex_works w
+    ON w.id = p.work_id
+   AND LOWER(REGEXP_REPLACE(w.doi, '^https?://(dx\\\\.)?doi\\\\.org/', '')) = p.doi
   LEFT JOIN openalex.unpaywall.oxjob747_works_oa_baseline b ON b.work_id = p.work_id
   LEFT JOIN openalex.unpaywall.oxjob747_work_sources ws ON ws.work_id = p.work_id
   WHERE COALESCE(b.is_oa, TRUE) = TRUE OR b.oa_status IS NULL  -- exclude baseline-closed works (OA invariance)

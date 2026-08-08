@@ -52,7 +52,7 @@ WITH curation_locations AS (
     NULL as normalized_title,
     CAST(NULL AS ARRAY<STRUCT<given: STRING, family: STRING, name: STRING, orcid: STRING, affiliations: ARRAY<STRUCT<name: STRING, department: STRING, ror_id: STRING>>, is_corresponding: BOOLEAN, author_key: STRING>>) as authors,
     CAST(NULL AS ARRAY<STRUCT<id: STRING, namespace: STRING, relationship: STRING>>) as ids,
-    NULL as type,
+    get_json_object(property_value, '$.type') as type,
     COALESCE(get_json_object(property_value, '$.version'), 'submittedVersion') as version,
     get_json_object(property_value, '$.license') as license,
     NULL as language,
@@ -113,7 +113,8 @@ WHEN MATCHED AND (
    (source.landing_page_url IS NOT NULL AND source.landing_page_url IS DISTINCT FROM target.landing_page_url) OR
    (source.license          IS NOT NULL AND source.license          IS DISTINCT FROM target.license) OR
    (source.is_oa            IS NOT NULL AND source.is_oa            IS DISTINCT FROM target.is_oa) OR
-   (source.source_id        IS NOT NULL AND source.source_id        IS DISTINCT FROM target.source_id)
+   (source.source_id        IS NOT NULL AND source.source_id        IS DISTINCT FROM target.source_id) OR
+   (source.type             IS NOT NULL AND source.type             IS DISTINCT FROM target.type)
 )
 THEN UPDATE SET
   target.title               = COALESCE(source.title,            target.title),
@@ -122,6 +123,7 @@ THEN UPDATE SET
   target.license             = COALESCE(source.license,          target.license),
   target.is_oa               = COALESCE(source.is_oa,            target.is_oa),
   target.source_id           = COALESCE(source.source_id,        target.source_id),
+  target.type                = COALESCE(source.type,             target.type),
   target.updated_date        = CAST(source.openalex_updated_dt AS DATE),
   target.openalex_updated_dt = source.openalex_updated_dt
 
