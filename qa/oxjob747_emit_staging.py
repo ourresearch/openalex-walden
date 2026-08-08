@@ -138,7 +138,9 @@ create_new_rows AS (
       'landing_page_url', CASE WHEN NOT (LOWER(p.new_url) LIKE '%.pdf%' OR LOWER(p.new_url) LIKE '%/pdf/%') THEN p.new_url END,
       'is_oa', TRUE,
       'version', 'publishedVersion',
-      'source_id', CASE WHEN b.oa_status = 'green' AND ws.source_id IS NOT NULL
+      -- source_id on every create_new row: source-less OA locations derive host_type NULL ->
+      -- oa_status GOLD in works base (not bronze), so uniform green is the honest choice
+      'source_id', CASE WHEN ws.source_id IS NOT NULL
                         THEN CONCAT('https://openalex.org/S', ws.source_id) END
     )) AS property_value,
     TRUE AS create_new, p.email, p.submitted_date,
