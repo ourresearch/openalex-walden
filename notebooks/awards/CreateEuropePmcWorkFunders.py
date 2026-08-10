@@ -18,9 +18,9 @@
 # MAGIC 2. Award entities → `openalex.awards.openalex_awards_raw` (provenance `europepmc_work_funders`, priority 2).
 # MAGIC
 # MAGIC **Surfaces on /works via (go-live, after review):**
-# MAGIC - funder edges: `funder_reported_work_funders` UNION (Hakai notebook) → `from_funder_reported` leg.
+# MAGIC - funder edges: `funder_reported_work_funders` UNION (CreateFunderReportedWorkFunders, nightly 02:30 UTC) → `from_funder_reported` leg.
 # MAGIC - award (grant) entities: `WorkAwards` `europepmc_work_funder_awards` leg (priority 4) → `from_work_awards`.
-# MAGIC - Order: this notebook → RefreshWorkAwards (CreateAwards+WorkAwards) → Hakai → walden_end2end.
+# MAGIC - Order: this notebook → RefreshWorkAwards (CreateAwards+WorkAwards) → Funder_Reported_Work_Funders → walden_end2end.
 # MAGIC
 # MAGIC Widget `data_prefix=_bounded/` for the bounded test; empty for the full corpus.
 

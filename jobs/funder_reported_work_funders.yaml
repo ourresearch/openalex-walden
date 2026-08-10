@@ -1,0 +1,38 @@
+resources:
+  jobs:
+    Funder_Reported_Work_Funders:
+      name: Funder Reported Work Funders
+      description: |
+        oxjob #739 (Casey-approved 2026-08-10; originally assigned to Kyle) — nightly
+        additive rebuild of the shared openalex.awards.funder_reported_work_funders
+        union (the from_funder_reported leg CreateWorksEnriched reads). Unions
+        hakai_work_funders, europepmc_work_funders, datacite_work_funders,
+        kaken_work_funders, anr_work_funders via MERGE ... WHEN NOT MATCHED THEN INSERT
+        (additive only; never drops a previously served pair). Split out of
+        CreateHakaiWorkFunders so this table can stay fresh nightly without also
+        forcing Hakai_Work_Funders's PAUSED-by-design on-demand scrape steps to run.
+      schedule:
+        # 02:30 UTC — after DataCite_Work_Funders (02:00 UTC, the only input to this union
+        # with a live nightly feed; it commits in ~45 s, measured 2026-08-24), before
+        # RefreshWorkAwards (03:00 UTC) and Walden_End_2_End (05:00 UTC, which runs
+        # CreateWorksEnriched and needs this table fresh). Hakai/EuropePMC/KAKEN/ANR stay
+        # on-demand OUTPUT-LIST sources; this job re-unions them every run regardless, so
+        # a manual refresh of any one is picked up the same night for free.
+        quartz_cron_expression: 0 30 2 * * ?
+        timezone_id: UTC
+        # Deploys PAUSED: first production run is attended (run-now after the DEV gates
+        # pass and the owner's go), then flip to UNPAUSED in a follow-up commit once the
+        # first nightly cycle verifies clean.
+        pause_status: PAUSED
+      tasks:
+        - task_key: create_funder_reported_work_funders
+          notebook_task:
+            notebook_path: notebooks/awards/CreateFunderReportedWorkFunders
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true

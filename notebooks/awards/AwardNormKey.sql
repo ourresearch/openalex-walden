@@ -810,9 +810,8 @@ covered AS (
   SELECT work_id, funder_id FROM openalex.awards.crossref_work_funders
   UNION SELECT work_id, funder_id FROM openalex.awards.funder_reported_work_funders
   UNION SELECT paper_id, funder_id FROM openalex.mid.work_funder
-  UNION SELECT w.paper_id, CAST(regexp_extract(f.funder_id, '([0-9]+)$', 1) AS BIGINT)
+  UNION SELECT f.work_id, CAST(regexp_extract(f.funder_id, '([0-9]+)$', 1) AS BIGINT)
         FROM openalex.works.fulltext_work_funders f
-        JOIN openalex.mid.work w ON lower(f.doi) = w.doi_lower
 ),
 sole_path AS (
   SELECT a.work_id, a.funder_id FROM at_risk a
