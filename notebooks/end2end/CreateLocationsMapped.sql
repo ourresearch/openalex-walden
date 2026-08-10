@@ -576,7 +576,16 @@ USING (
   ) = 1
 ) AS source
 ON regexp_replace(target.doi, '[^a-zA-Z0-9\./-]', '') = cleaned_doi
-WHEN MATCHED THEN UPDATE SET
+WHEN MATCHED
+AND (
+  target.doi IS DISTINCT FROM COALESCE(source.doi, target.doi) OR
+  target.pmid IS DISTINCT FROM COALESCE(source.pmid, target.pmid) OR
+  target.arxiv IS DISTINCT FROM COALESCE(source.arxiv, target.arxiv) OR
+  target.title_author IS DISTINCT FROM COALESCE(source.title_author, target.title_author) OR
+  target.openalex_created_dt IS DISTINCT FROM LEAST(target.openalex_created_dt, source.openalex_created_dt) OR
+  target.openalex_updated_dt IS DISTINCT FROM source.openalex_updated_dt
+)
+THEN UPDATE SET
   target.doi = COALESCE(source.doi, target.doi),
   target.pmid = COALESCE(source.pmid, target.pmid),
   target.arxiv = COALESCE(source.arxiv, target.arxiv),
@@ -611,7 +620,16 @@ USING (
   ) = 1
 ) AS source
 ON target.pmid = source.pmid
-WHEN MATCHED THEN UPDATE SET
+WHEN MATCHED
+AND (
+  target.doi IS DISTINCT FROM COALESCE(source.doi, target.doi) OR
+  target.pmid IS DISTINCT FROM COALESCE(source.pmid, target.pmid) OR
+  target.arxiv IS DISTINCT FROM COALESCE(source.arxiv, target.arxiv) OR
+  target.title_author IS DISTINCT FROM COALESCE(source.title_author, target.title_author) OR
+  target.openalex_created_dt IS DISTINCT FROM LEAST(target.openalex_created_dt, source.openalex_created_dt) OR
+  target.openalex_updated_dt IS DISTINCT FROM source.openalex_updated_dt
+)
+THEN UPDATE SET
   target.doi = COALESCE(source.doi, target.doi),
   target.pmid = COALESCE(source.pmid, target.pmid),
   target.arxiv = COALESCE(source.arxiv, target.arxiv),
@@ -645,7 +663,16 @@ USING (
   ) = 1
 ) AS source
 ON target.arxiv = source.arxiv
-WHEN MATCHED THEN UPDATE SET
+WHEN MATCHED
+AND (
+  target.doi IS DISTINCT FROM COALESCE(source.doi, target.doi) OR
+  target.pmid IS DISTINCT FROM COALESCE(source.pmid, target.pmid) OR
+  target.arxiv IS DISTINCT FROM COALESCE(source.arxiv, target.arxiv) OR
+  target.title_author IS DISTINCT FROM COALESCE(source.title_author, target.title_author) OR
+  target.openalex_created_dt IS DISTINCT FROM LEAST(target.openalex_created_dt, source.openalex_created_dt) OR
+  target.openalex_updated_dt IS DISTINCT FROM source.openalex_updated_dt
+)
+THEN UPDATE SET
   target.doi = COALESCE(source.doi, target.doi),
   target.pmid = COALESCE(source.pmid, target.pmid),
   target.arxiv = COALESCE(source.arxiv, target.arxiv),
@@ -680,7 +707,16 @@ USING (
   ) = 1
 ) AS source
 ON target.title_author = source.title_author
-WHEN MATCHED THEN UPDATE SET
+WHEN MATCHED
+AND (
+  target.doi IS DISTINCT FROM COALESCE(source.doi, target.doi) OR
+  target.pmid IS DISTINCT FROM COALESCE(source.pmid, target.pmid) OR
+  target.arxiv IS DISTINCT FROM COALESCE(source.arxiv, target.arxiv) OR
+  target.title_author IS DISTINCT FROM COALESCE(source.title_author, target.title_author) OR
+  target.openalex_created_dt IS DISTINCT FROM LEAST(target.openalex_created_dt, source.openalex_created_dt) OR
+  target.openalex_updated_dt IS DISTINCT FROM source.openalex_updated_dt
+)
+THEN UPDATE SET
   target.doi = COALESCE(source.doi, target.doi),
   target.pmid = COALESCE(source.pmid, target.pmid),
   target.arxiv = COALESCE(source.arxiv, target.arxiv),
