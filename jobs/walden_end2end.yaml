@@ -131,9 +131,16 @@ resources:
           max_retries: 3
           min_retry_interval_millis: 300000
           retry_on_timeout: true
-        - task_key: Locations_Mapped
+        - task_key: Map_Work_Ids
           depends_on:
             - task_key: Locations_with_Types
+          notebook_task:
+            notebook_path: notebooks/end2end/MapWorkIds
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Locations_Mapped
+          depends_on:
+            - task_key: Map_Work_Ids
           notebook_task:
             notebook_path: notebooks/end2end/CreateLocationsMapped
             source: GIT
