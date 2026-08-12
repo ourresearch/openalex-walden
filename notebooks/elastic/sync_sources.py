@@ -103,8 +103,9 @@ client.indices.refresh(index=CONFIG["index_name"])
 # MAGIC ### Delete stale docs (merged / deleted sources)
 # MAGIC
 # MAGIC The sync above is a full-table upsert, so sources that leave `sources_api`
-# MAGIC (merge losers get `merge_into_id` set and are filtered out; deleted sources
-# MAGIC drop out entirely) would otherwise linger in the index forever and keep
+# MAGIC (merge losers are deleted from the registry — post-D1 there are no tombstone
+# MAGIC rows — and deleted sources drop out entirely) would otherwise linger in the
+# MAGIC index forever and keep
 # MAGIC resolving on the public API (oxjob #548 C1b: 3,525 cutover merge losers +
 # MAGIC 234 deleted DataCite mints). Mirror the table: delete any ES doc whose id
 # MAGIC is no longer in `sources_api`.
