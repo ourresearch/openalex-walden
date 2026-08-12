@@ -469,7 +469,11 @@ resources:
         - name: wunpaywall_safety_override
           default: "false"
         - name: guardrails_override
-          default: "false"
+          # ONE-NIGHT override (2026-08-13 run only): the #762 cutover heal wave
+          # (6.15M works, documented in oxjobs #762 evidence/cutover-night-2026-08-12.md)
+          # legitimately exceeds the 5M records-changed check while inside its 24h
+          # window. REVERT to "false" after the 08-13 05:00 UTC run.
+          default: "true"
         - name: since_date
           default: ""
       performance_target: PERFORMANCE_OPTIMIZED
