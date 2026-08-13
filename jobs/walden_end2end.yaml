@@ -472,4 +472,6 @@ resources:
           default: "false"
         - name: since_date
           default: ""
+        - name: run_date
+          default: "{{job.trigger.time.iso_date}}"
       performance_target: PERFORMANCE_OPTIMIZED
