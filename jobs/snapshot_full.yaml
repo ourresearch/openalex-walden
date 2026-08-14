@@ -113,7 +113,7 @@ resources:
           min_retry_interval_millis: 300000
           retry_on_timeout: true
           timeout_seconds: 1800
-        # oxjob #784: cumulative deleted-works ledger → full/{date}/deleted.csv.
+        # oxjob #784: cumulative deleted-works ledger → full/{date}/deleted_ids.csv.
         # update_meta depends on it so its _temp/ scratch is written before the
         # finalizer's cleanup pass.
         - task_key: export_deleted_works

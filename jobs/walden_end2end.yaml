@@ -293,7 +293,7 @@ resources:
             source: GIT
         # oxjob #784: ledger works that vanished from openalex_works. Runs after
         # Guardrails so a pathological run is stopped before it can ledger the loss.
-        # Feeds Delete_Works_from_Elasticsearch and the snapshot's deleted.csv.
+        # Feeds Delete_Works_from_Elasticsearch and the snapshot's deleted_ids.csv.
         - task_key: Track_Deleted_Works
           depends_on:
             - task_key: Guardrails
