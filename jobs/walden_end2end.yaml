@@ -374,17 +374,9 @@ resources:
             notebook_path: notebooks/end2end/CreateWunpaywall
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
-        - task_key: IS_PROD
-          depends_on:
-            - task_key: Wunpaywall
-          condition_task:
-            op: EQUAL_TO
-            left: "{{job.parameters.env}}"
-            right: prod
         - task_key: Wunpaywal_Data_Feed
           depends_on:
-            - task_key: IS_PROD
-              outcome: "true"
+            - task_key: Wunpaywall
           notebook_task:
             notebook_path: notebooks/end2end/WunpaywallDataFeed
             base_parameters:
@@ -393,16 +385,14 @@ resources:
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
         - task_key: Wunpaywall_Full_Snapshot
           depends_on:
-            - task_key: IS_PROD
-              outcome: "true"
+            - task_key: Wunpaywall
           notebook_task:
             notebook_path: notebooks/unpaywall/export_wunpaywall
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
         - task_key: Wunpaywall_to_OpenAlex_DB
           depends_on:
-            - task_key: IS_PROD
-              outcome: "true"
+            - task_key: Wunpaywall
           notebook_task:
             notebook_path: notebooks/end2end/WunpaywallToOpenAlexDB
             base_parameters:
@@ -491,8 +481,6 @@ resources:
       queue:
         enabled: true
       parameters:
-        - name: env
-          default: prod
         - name: env_suffix
           default: ""
         - name: openalex
