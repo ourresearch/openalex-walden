@@ -113,10 +113,13 @@ resources:
           min_retry_interval_millis: 300000
           retry_on_timeout: true
           timeout_seconds: 1800
-        # oxjob #784: cumulative deleted-works ledger → full/{date}/deleted_ids.csv.
-        # update_meta depends on it so its _temp/ scratch is written before the
-        # finalizer's cleanup pass.
+        # oxjob #784: cumulative deleted-works ledger → {fmt}/works/deleted_ids.csv
+        # in both format trees. Must run AFTER export_works (its export rm -r's the
+        # works directories first); update_meta depends on it so its _temp/ scratch
+        # is written before the finalizer's cleanup pass.
         - task_key: export_deleted_works
+          depends_on:
+            - task_key: export_works
           notebook_task:
             notebook_path: notebooks/snapshot/export_deleted_works
             source: GIT
