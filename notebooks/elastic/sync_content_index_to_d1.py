@@ -17,6 +17,7 @@
 # COMMAND ----------
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -140,9 +141,10 @@ print(f"Syncing changes: {sync_from} → {sync_to}")
 # COMMAND ----------
 
 # Filter uses `openalex_updated_dt` so late-arriving PDFs land in D1 even when
-# the underlying work row was created long ago. The content-presence predicate
-# (`pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL`) and a one-day window
-# keep the daily scan small (~110K distinct work_ids).
+# the underlying work row was created long ago. A normal day matches ~100-300K
+# distinct work_ids, but rebuild stamp waves can push the window to 40M+ rows
+# (2026-08-12 cutover), so the driver must never hold the full result set:
+# stream with toLocalIterator() and flush concurrently.
 df = spark.sql(f"""
     SELECT
       work_id,
@@ -161,14 +163,15 @@ total_count = 0
 total_synced = 0
 failed_batches: list = []
 
+FLUSH_WORKERS = 8
 
-def _flush(batch: list) -> None:
-    global total_synced
+
+def _flush(batch: list) -> int:
     if not batch:
-        return
+        return 0
     try:
         d1_batch_insert(batch)
-        total_synced += len(batch)
+        return len(batch)
     except Exception as e:
         failed_batches.append({
             "first_work_id": batch[0]["work_id"],
@@ -176,24 +179,41 @@ def _flush(batch: list) -> None:
             "size": len(batch),
             "error": str(e),
         })
+        return 0
 
 
-rows = df.collect()
-print(f"\nCollected {len(rows):,} rows; upserting to D1…")
-batch: list = []
-for row in rows:
-    batch.append({"work_id": row.work_id, "pdf_uuid": row.pdf_uuid, "grobid_uuid": row.grobid_uuid})
-    if len(batch) >= BATCH_SIZE:
-        total_count += len(batch)
-        _flush(batch)
-        batch = []
-        if total_count % 10_000 == 0:
+executor = ThreadPoolExecutor(max_workers=FLUSH_WORKERS)
+in_flight: list = []
+
+
+def _drain() -> None:
+    global total_synced
+    total_synced += sum(f.result() for f in in_flight)
+    in_flight.clear()
+
+
+def _submit(batch: list) -> None:
+    global total_count
+    total_count += len(batch)
+    in_flight.append(executor.submit(_flush, batch))
+    if len(in_flight) >= FLUSH_WORKERS * 4:
+        _drain()
+        if total_count % 160_000 == 0:
             elapsed = time.time() - t0
             rate = total_synced / elapsed if elapsed else 0
             print(f"  synced {total_synced:,}  ({rate:.0f} rows/s, {elapsed:.0f}s elapsed)")
+
+
+batch: list = []
+for row in df.toLocalIterator():
+    batch.append({"work_id": row.work_id, "pdf_uuid": row.pdf_uuid, "grobid_uuid": row.grobid_uuid})
+    if len(batch) >= BATCH_SIZE:
+        _submit(batch)
+        batch = []
 if batch:
-    total_count += len(batch)
-    _flush(batch)
+    _submit(batch)
+_drain()
+executor.shutdown()
 
 elapsed = time.time() - t0
 rate = total_synced / elapsed if elapsed else 0
