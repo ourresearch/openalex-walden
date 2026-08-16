@@ -43,7 +43,8 @@ fields_schema = StructType([
                     StructField("department", StringType(), True),
                     StructField("ror_id", StringType(), True)
                 ])
-            ))
+            )),
+            StructField("is_corresponding", BooleanType(), True)
         ])
     ), True),
     StructField("source_name", StringType(), True),
@@ -170,8 +171,14 @@ def extract_fields(xml_content):
                 "family": family_name.text.strip() if family_name is not None else None,
                 "name": None,
                 "orcid": orcid.text.strip() if orcid is not None else None,
-                "affiliations": affiliations
+                "affiliations": affiliations,
+                "is_corresponding": author.attrib.get("role") == "corresp"
             })
+        # corresp is a doc-level signal: True/False only when the TEI marks at
+        # least one corresponding author; otherwise unknown (None) for all
+        if not any(a["is_corresponding"] for a in authors):
+            for a in authors:
+                a["is_corresponding"] = None
         return authors
     authors = _safe_extract(_authors, default=[])
 
@@ -466,7 +473,8 @@ def pdf_parse():
                        aff.department as department,
                        aff.ror_id as ror_id
                    )
-               ) as affiliations
+               ) as affiliations,
+               a.is_corresponding as is_corresponding
            ))
        """).alias("authors"),
        col("fields.language").alias("language"),
@@ -506,6 +514,18 @@ def pdf_backfill():
             .drop("_change_type", "_commit_version", "_commit_timestamp")
             .withColumn("created_date", to_timestamp(col("created_date")))
             .withColumn("ingested_at", current_timestamp())
+            # match pdf_parse's author struct (strict unionByName in pdf_combined);
+            # backfill predates GROBID corresp capture, so the signal is unknown
+            .withColumn("authors", expr("""
+                transform(authors, a -> struct(
+                    a.given as given,
+                    a.family as family,
+                    a.name as name,
+                    a.orcid as orcid,
+                    a.affiliations as affiliations,
+                    cast(null as boolean) as is_corresponding
+                ))
+            """))
             .withColumn(
                 "_source_pdf_id_for_filter",
                 expr("regexp_replace(element_at(filter(ids, x -> x.namespace = 'docs.pdf'), 1).id, '\\\\.pdf$', '')")
