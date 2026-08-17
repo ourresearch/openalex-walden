@@ -8,26 +8,8 @@ resources:
       name: PDFWork
       catalog: openalex
       target: pdf
-      # TEMPORARY (#789 Stage 0.5 full refresh): classic r5d.8xlarge 10-30 autoscale —
-      # union-refresh runbook sizing. Photon off: the load is
-      # pandas-UDF XML extraction, which photon does not accelerate.
-      # REVERT to serverless+photon after the refresh completes.
-      serverless: false
-      photon: false
-      clusters:
-        - label: default
-          node_type_id: r5d.8xlarge
-          driver_node_type_id: r5d.8xlarge
-          # ON_DEMAND workers: the default SPOT_WITH_FALLBACK thrashed the refresh —
-          # r5d.8xlarge spot reclaimed 18->8 repeatedly (NODES_LOST storms), first
-          # microbatch never committed
-          aws_attributes:
-            availability: ON_DEMAND
-            zone_id: auto
-          autoscale:
-            min_workers: 10
-            max_workers: 30
-            mode: LEGACY
+      serverless: true
+      photon: true
       continuous: false
       development: true
       edition: ADVANCED
