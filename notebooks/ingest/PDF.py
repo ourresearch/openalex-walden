@@ -602,4 +602,7 @@ dlt.apply_changes(
     source="pdf_enriched",
     keys=["native_id"],
     sequence_by=struct("_has_parse", "updated_date"),
+    # ranking column stays in pdf_enriched only — adding it to pdf_works broke
+    # the union's CDF stream checkpoint (schema-change boundary, oxjob #789)
+    except_column_list=["_has_parse"],
 )
