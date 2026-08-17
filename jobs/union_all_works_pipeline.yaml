@@ -26,8 +26,23 @@ resources:
       name: Union All Works
       catalog: openalex
       schema: works
-      serverless: true
-      photon: true
+      # TEMPORARY (#789 union full refresh — fresh CDF checkpoint past the pdf_works
+      # schema boundary): classic per the runbook above, plus ON_DEMAND workers
+      # (r5d.8xlarge spot was reclaimed 18->8 repeatedly during the 08-17 PDFWork
+      # refresh). REVERT to serverless+photon after the refresh completes.
+      serverless: false
+      photon: false
+      clusters:
+        - label: default
+          node_type_id: r5d.8xlarge
+          driver_node_type_id: r5d.8xlarge
+          aws_attributes:
+            availability: ON_DEMAND
+            zone_id: auto
+          autoscale:
+            min_workers: 5
+            max_workers: 10
+            mode: LEGACY
       continuous: false
       development: false
       edition: ADVANCED
