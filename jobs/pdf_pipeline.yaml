@@ -8,7 +8,7 @@ resources:
       name: PDFWork
       catalog: openalex
       target: pdf
-      # TEMPORARY (#789 Stage 0.5 full refresh): classic r5d.8xlarge 5-10 autoscale —
+      # TEMPORARY (#789 Stage 0.5 full refresh): classic r5d.8xlarge 10-30 autoscale —
       # union-refresh runbook sizing. Photon off: the load is
       # pandas-UDF XML extraction, which photon does not accelerate.
       # REVERT to serverless+photon after the refresh completes.
@@ -19,8 +19,8 @@ resources:
           node_type_id: r5d.8xlarge
           driver_node_type_id: r5d.8xlarge
           autoscale:
-            min_workers: 5
-            max_workers: 10
+            min_workers: 10
+            max_workers: 30
             mode: LEGACY
       continuous: false
       development: true
