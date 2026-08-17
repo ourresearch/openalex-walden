@@ -5,6 +5,7 @@ We document notable changes to the data in this file; it's in reverse chronologi
 ## [2026-08-17]
 ### Fixed
 * Affiliations: repair double-encoded UTF-8 (mojibake) in raw affiliation strings at the `locations_mapped` rebuild ("UniversitÃ©" → "Université"; latin-1/cp1252/latin2/cp1250 reads, up to 4-deep nesting). ~179K works affected across all provenances (crossref-dominant, publisher-deposited). Repaired strings re-enter institution matching, and RAS curations are re-keyed onto their repaired form (oxjob #801). Author names are not touched.
+* Affiliations: extend the same repair to the second input path — `works_legacy.raw_affiliation_strings`, which `CreateWorksBase` concatenates into authorships and which `locations_mapped` cannot reach. Without it the legacy copy re-added the mojibake variant one step under the fix, leaving 102,495 of the 237,229 affected works still broken. Repaired at read time (the legacy table is a frozen 850M-row snapshot); 54,266 of 89,313 distinct flagged strings repair, the rest are other-encoding mojibake (Cyrillic/Greek/CJK) left deliberately untouched. Adds Guardrails check 10, which fails soft if any work still carries a repairable mojibake affiliation string (oxjob #801).
 
 ## [2025-11-02]
 ### Fixed
