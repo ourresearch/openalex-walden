@@ -2,6 +2,10 @@
 
 We document notable changes to the data in this file; it's in reverse chronological order (recent changes up top).
 
+## [2026-08-17]
+### Fixed
+* Affiliations: repair double-encoded UTF-8 (mojibake) in raw affiliation strings at the `locations_mapped` rebuild ("UniversitÃ©" → "Université"; latin-1/cp1252/latin2/cp1250 reads, up to 4-deep nesting). ~179K works affected across all provenances (crossref-dominant, publisher-deposited). Repaired strings re-enter institution matching, and RAS curations are re-keyed onto their repaired form (oxjob #801). Author names are not touched.
+
 ## [2025-11-02]
 ### Fixed
 * Citations: corrected `cited_by_percentile_year` by computing proper per-year distributions and bounds; min/max now reflect true placement across years.
