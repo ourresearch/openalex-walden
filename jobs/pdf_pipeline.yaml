@@ -18,6 +18,12 @@ resources:
         - label: default
           node_type_id: r5d.8xlarge
           driver_node_type_id: r5d.8xlarge
+          # ON_DEMAND workers: the default SPOT_WITH_FALLBACK thrashed the refresh —
+          # r5d.8xlarge spot reclaimed 18->8 repeatedly (NODES_LOST storms), first
+          # microbatch never committed
+          aws_attributes:
+            availability: ON_DEMAND
+            zone_id: auto
           autoscale:
             min_workers: 10
             max_workers: 30
