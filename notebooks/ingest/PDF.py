@@ -371,28 +371,39 @@ def _invalid_grobids_filter():
 @dlt.view
 def grobid_raw():
     invalid_grobids = _invalid_grobids_filter().withColumnRenamed("grobid_uuid", "_invalid_grobid_uuid")
-    # Structural xml_content filter: rejects the bad-cohort patterns the
-    # classifier flags (empty `<body/>` TEI + `[BAD_INPUT_DATA]`/`[NO_BLOCKS]`/
-    # `[TIMEOUT]`/`[NO_GROBID_RESPONSES]` markers + non-TEI bodies). Catches
-    # new bad XMLs in real time, before they're picked up by the next
-    # classify_grobid_xmls run that seeds openalex.pdf.invalid_grobids.
-    # Predicates mirror notebooks/scraping/classify_grobid_xmls.py (#202).
+    # Structural xml_content quality flag: the bad-cohort patterns the classifier
+    # flags (empty `<body/>` TEI + `[BAD_INPUT_DATA]`/`[NO_BLOCKS]`/`[TIMEOUT]`/
+    # `[NO_GROBID_RESPONSES]` markers + non-TEI bodies), plus grobid_uuids listed
+    # in openalex.pdf.invalid_grobids. Predicates mirror
+    # notebooks/scraping/classify_grobid_xmls.py (#202).
+    # Bad-parse rows are NOT dropped: a real fetched PDF that grobid could not
+    # parse still attests the file (pdf_url + is_oa), so it passes as a shell
+    # with xml_content nulled — empty extraction, no docs.parsed-pdf reference
+    # (#202 deleted those XMLs from R2). Only junk FILES (invalid_pdfs) and
+    # non-success rows (no proven file, e.g. 404) are excluded. Oxjob #789.
+    xml_ok = expr("""
+        xml_content IS NOT NULL
+        AND xml_content NOT LIKE '%[BAD_INPUT_DATA]%'
+        AND xml_content NOT LIKE '%[NO_BLOCKS]%'
+        AND xml_content NOT LIKE '%[TIMEOUT]%'
+        AND xml_content NOT LIKE '%[NO_GROBID_RESPONSES]%'
+        AND xml_content NOT LIKE '%<body/>%'
+        AND LOWER(SUBSTRING(xml_content, 1, 200)) LIKE '%<tei%'
+    """)
     return (
         spark.readStream
         .format("delta")
         .table("openalex.pdf.grobid_processing_results")
         .where("source_pdf_id IS NOT NULL")
-        .where("""
-            xml_content IS NOT NULL
-            AND xml_content NOT LIKE '%[BAD_INPUT_DATA]%'
-            AND xml_content NOT LIKE '%[NO_BLOCKS]%'
-            AND xml_content NOT LIKE '%[TIMEOUT]%'
-            AND xml_content NOT LIKE '%[NO_GROBID_RESPONSES]%'
-            AND xml_content NOT LIKE '%<body/>%'
-            AND LOWER(SUBSTRING(xml_content, 1, 200)) LIKE '%<tei%'
-        """)
+        .where("status LIKE 'success%'")
         .join(_invalid_pdf_filter(), on="source_pdf_id", how="left_anti")
-        .join(invalid_grobids, col("id") == col("_invalid_grobid_uuid"), how="left_anti")
+        .join(invalid_grobids, col("id") == col("_invalid_grobid_uuid"), how="left")
+        .withColumn(
+            "xml_content",
+            when(xml_ok & col("_invalid_grobid_uuid").isNull(), col("xml_content"))
+            .otherwise(lit(None).cast("string"))
+        )
+        .drop("_invalid_grobid_uuid")
         .withColumn("native_id",
             when(
                 col("native_id").startswith("https://doi.org/"),
@@ -437,28 +448,18 @@ def pdf_parse():
    return parsed_df.select(
        col("url").alias("native_id"),
        lit("url").alias("native_id_namespace"),
-       array(
-            struct(
-                col("url").alias("id"),
-                lit("url").alias("namespace"),
-                lit("self").alias("relationship")
-            ),
-            struct(
-                col("native_id").alias("id"),
-                col("native_id_namespace").alias("namespace"),
-                lit("None").alias("relationship")
-            ),
-            struct(
-                concat(col("source_pdf_id"), lit(".pdf")).alias("id"),
-                lit("docs.pdf").alias("namespace"),
-                lit(None).alias("relationship")
-            ),
-            struct(
-                concat(col("id"), lit(".xml.gz")).alias("id"),
-                lit("docs.parsed-pdf").alias("namespace"),
-                lit(None).alias("relationship")
-            )
-        ).alias("ids"),
+       expr("""
+           filter(
+               array(
+                   struct(url AS id, 'url' AS namespace, 'self' AS relationship),
+                   struct(native_id AS id, native_id_namespace AS namespace, 'None' AS relationship),
+                   struct(concat(source_pdf_id, '.pdf') AS id, 'docs.pdf' AS namespace, CAST(NULL AS STRING) AS relationship),
+                   struct(concat(id, '.xml.gz') AS id, 'docs.parsed-pdf' AS namespace, CAST(NULL AS STRING) AS relationship)
+               ),
+               -- shells (null xml) carry no parse reference
+               x -> NOT (x.namespace = 'docs.parsed-pdf' AND xml_content IS NULL)
+           )
+       """).alias("ids"),
        substring(col("fields.title"), 0, MAX_TITLE_LENGTH).alias("title"),
        expr(f"""
            transform(fields.authors, a -> struct(
@@ -539,8 +540,17 @@ def pdf_backfill():
     invalid_grobids = _invalid_grobids_filter().withColumnRenamed("grobid_uuid", "_invalid_grobid_uuid")
     return (
         base.join(invalid_pdfs, base._source_pdf_id_for_filter == invalid_pdfs._invalid_source_pdf_id, "left_anti")
-            .join(invalid_grobids, base._grobid_uuid_for_filter == invalid_grobids._invalid_grobid_uuid, "left_anti")
-            .drop("_source_pdf_id_for_filter", "_grobid_uuid_for_filter")
+            # invalid-grobid rows stay (the FILE is real) but shed the parse
+            # reference — same shell semantics as grobid_raw (oxjob #789)
+            .join(invalid_grobids, base._grobid_uuid_for_filter == invalid_grobids._invalid_grobid_uuid, "left")
+            .withColumn(
+                "ids",
+                when(
+                    col("_invalid_grobid_uuid").isNotNull(),
+                    expr("filter(ids, x -> x.namespace != 'docs.parsed-pdf')")
+                ).otherwise(col("ids"))
+            )
+            .drop("_source_pdf_id_for_filter", "_grobid_uuid_for_filter", "_invalid_grobid_uuid")
     )
 
 @dlt.table
@@ -564,7 +574,13 @@ def pdf_enriched():
 
     df_walden_works_schema = apply_initial_processing(df_parsed_input, "pdf", walden_works_schema)
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
-    return apply_final_merge_key_and_filter(df_enriched)
+    # sequencing rank for pdf_works apply_changes: a parsed row must outrank a
+    # shell for the same url regardless of processing order — full-refresh
+    # initial snapshots process in arbitrary file order with near-tied
+    # current_timestamp values, so time alone would coin-flip (oxjob #789)
+    return apply_final_merge_key_and_filter(df_enriched).withColumn(
+        "_has_parse", expr("exists(ids, x -> x.namespace = 'docs.parsed-pdf')")
+    )
 
 # @dlt.view(name="pdf_enriched_append_only")
 # def pdf_enriched_append()
@@ -585,5 +601,5 @@ dlt.apply_changes(
     target="pdf_works",
     source="pdf_enriched",
     keys=["native_id"],
-    sequence_by="updated_date",
+    sequence_by=struct("_has_parse", "updated_date"),
 )
