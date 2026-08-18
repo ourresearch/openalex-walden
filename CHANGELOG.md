@@ -2,6 +2,10 @@
 
 We document notable changes to the data in this file; it's in reverse chronological order (recent changes up top).
 
+## [2026-08-18]
+### Fixed
+* Authorships: raw affiliation strings with double-encoded UTF-8 (mojibake, e.g. `UniversitÃ©`) are now shown and indexed in their repaired form (`Université`) — ~172K distinct strings on ~189K works, mostly publisher-deposited Crossref metadata; a mojibake string and its clean twin on the same author collapse into one entry. Institution attribution is unchanged by design (institutions stay resolved on the original bytes). RAS curations submitted against either form now apply to both. (oxjob #801)
+
 ## [2025-11-02]
 ### Fixed
 * Citations: corrected `cited_by_percentile_year` by computing proper per-year distributions and bounds; min/max now reflect true placement across years.

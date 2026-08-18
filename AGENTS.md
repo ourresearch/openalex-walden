@@ -8,7 +8,7 @@ Landing page and PDF data get merged into crossref/repo records at two pipeline 
 
 See `docs/landing_page_pdf_integration.md` for field priority tables, schema details, and matching logic.
 
-## Authorship fields have TWO inputs — transform both
+## Authorship fields have TWO inputs — transform both (or transform at the output)
 
 `openalex_works_base.authorships[]` is built in `CreateWorksBase` by CONCATing the
 `locations_mapped` side with a **frozen legacy snapshot**:
@@ -18,20 +18,28 @@ See `docs/landing_page_pdf_integration.md` for field priority tables, schema det
 
 A string-level transform applied only at `locations_mapped` gets **silently half-undone**: the
 legacy copy re-adds the untransformed value one step downstream, and `ARRAY_DISTINCT` then
-leaves the work carrying *both* variants. This is how the oxjob #801 mojibake repair shipped
-covering 57% of affected works — 102,495 of 237,229 came back via the legacy table.
+leaves the work carrying *both* variants. The first cut of the oxjob #801 mojibake repair
+covered 57% of affected works this way — 102,495 of 237,229 came back via the legacy table.
+The legacy table is a frozen 850M-row / 44 GB snapshot (last write 2026-01-07), so if you must
+transform it, do it at read time.
 
-Applies to any future normalization of author names, affiliation strings, or is_corresponding
-(#809 is the near-term one). Repair the legacy side **at read time** — the table is a frozen
-850M-row / 44 GB snapshot (last write 2026-01-07), so a rewrite buys nothing.
+**Raw affiliation strings are exact-match KEYS, not just text.** `affiliation_strings_lookup` →
+`raw_affiliation_strings_institutions_mv` and `ras_curations` all key on the exact bytes, so
+changing a string upstream of `CreateWorkAuthorships` *re-keys* its institution links — a
+merged key must resolve identically for every work that carries it, which redistributes
+attribution (measured for #801: 35K–320K works move under any key-merging design). The
+FROZEN rule (Jason, 2026-08-17): an encoding/normalization fix must leave every institution's
+`works_count` exactly unchanged. Hence #801 ships as a **display-layer** transform in
+`CreateWorkAuthorships`: institutions are joined on the original bytes, and only the emitted
+`raw_affiliation_strings` / `affiliations[].raw_affiliation_string` are repaired, via the
+`openalex.institutions.affiliation_strings_repair` map (maintained in
+`PrepareAffiliationStrings`). Both inputs are already CONCATed by then, so one transform covers
+both, and the works content hash (`TO_JSON(authorships)`) propagates it to ES/Lakebase.
+Consequences to keep in mind: `SyncRasCurations` fans curations out over the mojibake
+equivalence class (works display R but are keyed on M), and users-api `ras_verifier` checks
+both the stored key and its repaired form. Any future normalization of author names or
+affiliation strings (#808/#809) should reuse this shape unless it is *deliberately* a re-keying.
 
-**Why it bites harder than a cosmetic diff:** raw affiliation strings are exact-match keys
-(`ras_curations`, `affiliation_strings_lookup` → `raw_affiliation_strings_institutions_mv`).
-A work carrying both variants gets its curation applied to only one of them, and the sync is
-insert/update-only, so the stale-key row freezes instead of erroring. Corollary: any RLIKE gate
-guarding such a transform must stay **byte-identical across every call site** — a gate that
-disagrees between two sites is what splits a work across two keys. #801 has four
-(CreateLocationsMapped, SyncRasCurations, CreateWorksBase, Guardrails).
-
-`Guardrails.ipynb` check 10 is the tripwire: it counts works whose affiliation strings
-`repair_mojibake()` would *still* change. Nonzero ⇒ some input path is bypassing the repair.
+`Guardrails.ipynb` check 10 is the tripwire: it counts works whose *displayed* affiliation
+strings are still a mojibake key of `affiliation_strings_repair`. Nonzero ⇒ some path is
+emitting strings without going through the display map.
