@@ -4,7 +4,7 @@ We document notable changes to the data in this file; it's in reverse chronologi
 
 ## [2026-08-18]
 ### Fixed
-* Authorships: raw affiliation strings with double-encoded UTF-8 (mojibake, e.g. `UniversitÃ©`) are now shown and indexed in their repaired form (`Université`) — ~172K distinct strings on ~189K works, mostly publisher-deposited Crossref metadata; a mojibake string and its clean twin on the same author collapse into one entry. Institution attribution is unchanged by design (institutions stay resolved on the original bytes). RAS curations submitted against either form now apply to both. (oxjob #801)
+* Authorships: raw affiliation strings with double-encoded UTF-8 (mojibake, e.g. `UniversitÃ©`) are repaired to their proper form (`Université`) — ~172K distinct strings on ~189K works, mostly publisher-deposited Crossref metadata; a garbled string and its clean twin on the same author collapse into one entry. Institution matching now keys on the repaired string: where the garbled form and its clean twin had been matched differently, the clean form's match stands (the garbled-text matches were systematically degraded), and garbled strings with no clean twin are re-matched on the clean text. Expect small institution works_count shifts (largest: junk institutions losing works, e.g. "Anna Needs Neuroblastoma Answers" −1K; real universities gaining, e.g. University of Concepción +1.2K). RAS curations keyed on a garbled string follow it to the repaired form. (oxjob #801)
 
 ## [2025-11-02]
 ### Fixed
