@@ -601,7 +601,10 @@ dlt.apply_changes(
     target="pdf_works",
     source="pdf_enriched",
     keys=["native_id"],
-    sequence_by=struct("_has_parse", "updated_date"),
+    # created_date = real parse time: a newer PARSE deterministically beats an
+    # older one even on a full refresh, where the initial snapshot processes in
+    # arbitrary order and updated_date (processing time) near-ties (oxjob #789)
+    sequence_by=struct("_has_parse", "created_date", "updated_date"),
     # ranking column stays in pdf_enriched only — adding it to pdf_works broke
     # the union's CDF stream checkpoint (schema-change boundary, oxjob #789)
     except_column_list=["_has_parse"],
