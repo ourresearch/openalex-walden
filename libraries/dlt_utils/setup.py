@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="openalex-dlt-utils",  # The name of your package (pip installable name)
-    version="0.3.5",            # Your package version, always increment as you make changes due to caching
+    version="0.3.6",            # Your package version, always increment as you make changes due to caching
     author="Casey Meyer",
     description="Shared utilities for OpenAlex DLT pipelines",
     packages=find_packages(),   # This will find your 'utils' package and any sub-packages

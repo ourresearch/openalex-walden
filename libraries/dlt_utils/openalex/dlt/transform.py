@@ -1,4 +1,5 @@
 from .normalize import *
+from .text_clean import clean_text, clean_title
 
 def clean_abstract_text(abstract_string_input):
     # Shared cleaner: the searched `abstract`/`fulltext` ES fields and the
@@ -11,10 +12,17 @@ def clean_abstract_text(abstract_string_input):
     if not abstract_string_input or not isinstance(abstract_string_input, str):
         return None
 
+    # oxjob #807: decode HTML entities + repair mojibake + strip ALL tags before the
+    # JATS/whitespace pass. clean_text is idempotent (this fn is applied twice on the
+    # abstract path — once here, once inside f_generate_inverted_index) and strips tags
+    # LAST so entity-encoded markup is neutralized (inert). The residual JATS/<p> regex
+    # below is now redundant with strip_tags but kept as belt-and-suspenders.
+    abstract_s = clean_text(abstract_string_input)
+
     abstract_s = re.sub(
         r"\n|\t|<jats:[^>]*?>|</jats:[^>]*?>|<p>|</p>",
         " ",
-        abstract_string_input,
+        abstract_s,
     )
 
     abstract_s = " ".join(abstract_s.split()).strip()
@@ -62,6 +70,13 @@ def udf_abstract_features(abstract_series: pd.Series) -> pd.DataFrame:
     cleaned = abstract_series.apply(clean_abstract_text)
     inverted = cleaned.apply(f_generate_inverted_index)
     return pd.DataFrame({"abstract": cleaned, "abstract_inverted_index": inverted})
+
+@F.pandas_udf(StringType())
+def udf_clean_title(title_series: pd.Series) -> pd.Series:
+    # oxjob #807: clean the DISPLAY title (HTML entities + mojibake + strip-all-tags).
+    # Applied AFTER create_merge_column so the matching key (normalized_title / merge_key)
+    # is still derived from the original title -> zero identity/matching change.
+    return title_series.apply(clean_title)
 
 def transform_struct(col_name, source_struct, target_struct):
     target_fields = {f.name: f for f in target_struct.fields}
@@ -193,11 +208,15 @@ def apply_final_merge_key_and_filter(df_enriched_input):
     Applies the create_merge_column logic and the final filtering logic.
     Assumes create_merge_column is available (e.g. imported from utils.dataframe or defined in normalize).
     """
-    df_with_merge_key = create_merge_column(df_enriched_input) 
+    df_with_merge_key = create_merge_column(df_enriched_input)
 
-    return df_with_merge_key.filter(F.expr( 
+    df_filtered = df_with_merge_key.filter(F.expr(
         f"({MERGE_COL}.doi is not null) or " +
         f"({MERGE_COL}.pmid is not null) or " +
         f"({MERGE_COL}.arxiv is not null) or " +
         f"(({MERGE_COL}.title_author is not null and {MERGE_COL}.title_author <> ''))"
     ))
+
+    # oxjob #807: clean the display title LAST — merge_key above was built from the
+    # original title, so this changes only what's shown/searched, never work identity.
+    return df_filtered.withColumn("title", udf_clean_title(F.col("title")))

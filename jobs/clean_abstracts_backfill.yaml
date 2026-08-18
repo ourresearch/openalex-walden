@@ -1,0 +1,45 @@
+resources:
+  jobs:
+    Clean_Abstracts_Backfill:
+      name: Clean Abstracts Backfill
+      description: |
+        oxjob #807: build openalex.abstracts.abstracts_backfill_repair, the overlay that
+        CreateWorksBase LEFT JOINs over the priority-997 abstract fallback.
+
+        The abstracts_backfill table is a static legacy snapshot with no producer in this
+        repo, so neither the at-ingest #807 cleaner nor a full Silver reparse ever touches
+        it — yet 104.9M works publish their abstract from it and 3.79M of those are
+        corrupted (2.79M HTML entities, 1.10M tags, 103K mojibake). This job closes that
+        gap without rewriting the 273 GB source table.
+
+        MANUAL TRIGGER ONLY — no schedule. Re-runnable: it stages the gated rows once and
+        keeps a per-chunk ledger, so a killed run resumes where it stopped. Pass
+        rebuild=true to drop the staging/ledger/target and start over (needed after any
+        change to text_clean.py, since the overlay bakes in that version's output).
+
+        Run it AFTER the dlt_utils wheel it pins has been built by CI, and BEFORE the
+        selective Silver refresh — CreateWorksBase reads the overlay on its next run.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      max_concurrent_runs: 1
+      parameters:
+        - name: env_suffix
+          default: ""
+        - name: rebuild
+          default: "false"
+      tasks:
+        - task_key: clean_abstracts_backfill
+          notebook_task:
+            notebook_path: notebooks/maintenance/CleanAbstractsBackfill
+            source: GIT
+            base_parameters:
+              env_suffix: "{{job.parameters.env_suffix}}"
+              rebuild: "{{job.parameters.rebuild}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
