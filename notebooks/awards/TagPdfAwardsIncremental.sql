@@ -46,6 +46,12 @@ recent_pdfs AS (
   SELECT g.native_id, g.native_id_namespace, g.xml_content
   FROM openalex.pdf.grobid_processing_results g
   CROSS JOIN checkpoint cp
+  -- oxjob #789: campaign RE-parses land in the window with fresh created_date
+  -- but were already award-scanned from their original parse — skip them here.
+  -- Their improved 0.9.1 sections get harvested in a deliberate batch later
+  -- (the #738 extract-then-join precondition), not through the daily window.
+  LEFT ANTI JOIN openalex.pdf.reparse_campaign_789 c
+    ON g.source_pdf_id = c.source_pdf_id
   WHERE g.created_date >= cp.window_start
     AND g.created_date < cp.run_cutoff
     AND g.xml_content IS NOT NULL
