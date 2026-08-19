@@ -248,17 +248,25 @@ _TAG_NAME_RE = re.compile(r"^</?([a-zA-Z][a-zA-Z0-9:._-]*)")
 # `abstracts_backfill_corrupt_stage` (oxjob #807, 2026-08-18), which is why odd non-standard
 # spellings like Elsevier's `<inf>` (229K occurrences, means subscript) are here.
 
-# Character-level: formatting, inline math, and formula wrappers. Removing these must close up.
+# Character-level: text formatting, and the math LEAF/GROUPING elements. Removing these must
+# close up — `<mi>x</mi><mo>+</mo>` is the single expression `x+`, not `x +`.
 _INLINE_TAGS = frozenset("""
     b i em strong u s strike small big span a code tt sub sup inf sc
     italic bold underline overline monospace roman sans-serif serif styled-content fixed-case
-    math mi mo mn ms mtext mspace mrow mfrac msqrt mroot msub msup msubsup munder mover
+    mi mo mn ms mtext mspace mrow mfrac msqrt mroot msub msup msubsup munder mover
     munderover mmultiscripts mfenced mstyle mpadded mphantom menclose mprescripts none
-    semantics annotation annotation-xml
-    inline-formula inline-graphic tex-math tex etx alternatives formula chem-struct
 """.split())
 
-# Structural: the tag IS the word boundary. Removing these must leave a space.
+# Structural: the tag IS a boundary. Removing these must leave a space.
+#
+# Note where the math wrappers sit. `math`, `semantics`, `inline-formula`, `tex-math` and
+# `annotation` are NOT character-level — they delimit a formula from the surrounding prose, or
+# one *representation* of a formula from another. MathML routinely carries the same expression
+# twice, once as presentation markup and once as a TeX `annotation`, so treating the wrapper as
+# inline welds the two copies into a single junk token (`x+y` + `x+y` -> `x+yx+y`). Most of the
+# corpus already has whitespace between these elements, which hides the problem — but ~4% does
+# not (1,027 of 25,624 annotation-bearing rows in the staged corpus). Structural is never worse
+# in the spaced case and strictly better in the unspaced one.
 _BLOCK_TAGS = frozenset("""
     p br div hr h1 h2 h3 h4 h5 h6 li ul ol dl dt dd
     table thead tbody tfoot tr td th caption blockquote pre
@@ -266,6 +274,8 @@ _BLOCK_TAGS = frozenset("""
     sec title abstract list list-item disp-formula disp-quote disp-quote-attrib
     fig graphic media label boxed-text table-wrap body front back
     ref ref-list statement verse-group speech def-list def term
+    math semantics annotation annotation-xml
+    inline-formula inline-graphic tex-math tex etx alternatives formula chem-struct
     mtable mtr mtd
     lsdexception
 """.split())

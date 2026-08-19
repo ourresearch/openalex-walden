@@ -29,12 +29,16 @@
 # MAGIC `udf_abstract_features`, so they derive from byte-identical text (oxjob #191.1 invariant),
 # MAGIC and the overlay row carries both or neither.
 # MAGIC
-# MAGIC **MANUAL TRIGGER ONLY.** Re-runnable: `rebuild=false` (default) skips work already staged
-# MAGIC / already cleaned; `rebuild=true` drops the staging + ledger + target and starts over.
+# MAGIC **MANUAL TRIGGER ONLY.** Re-runnable, with two different reasons to redo work:
+# MAGIC `rebuild=false` (default) resumes, skipping chunks the ledger already records;
+# MAGIC `rebuild=true` re-cleans every staged row but **keeps** the staging table (use after a
+# MAGIC `text_clean.py` change — the gate is unchanged, so the staged rows are still the right
+# MAGIC rows); `rescan=true` additionally drops staging and re-scans the 273 GB source (only
+# MAGIC needed if the GATE or the source table changed).
 
 # COMMAND ----------
 
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.7-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.8-py3-none-any.whl
 # MAGIC %restart_python
 
 # COMMAND ----------

@@ -94,6 +94,25 @@ def test_namespace_prefix_ignored_when_classifying():
     assert tc.clean_title("one<jats1:p>two</jats1:p>") == "one two"
     assert tc.clean_title("one<ns4:p>two</ns4:p>") == "one two"
 
+def test_mathml_leaves_close_up_but_wrappers_separate():
+    # Leaf/grouping math closes up: <mi>x</mi><mo>+</mo><mi>y</mi> is the expression "x+y".
+    assert tc.clean_title("<mml:mrow><mml:mi>x</mml:mi><mml:mo>+</mml:mo><mml:mi>y</mml:mi></mml:mrow>") == "x+y"
+
+def test_mathml_annotation_does_not_weld_duplicate_representations():
+    # MathML carries the same expression twice — presentation markup AND a TeX <annotation>.
+    # Treating the wrapper as inline welds them into one junk token ("x+yx+y"). ~4% of
+    # annotation-bearing corpus rows have no whitespace between the elements to save us.
+    s = ("<mml:math><mml:semantics><mml:mrow><mml:mi>x</mml:mi><mml:mo>+</mml:mo>"
+         "<mml:mi>y</mml:mi></mml:mrow>"
+         "<mml:annotation encoding=\"TeX\">x+y</mml:annotation></mml:semantics></mml:math>")
+    assert tc.clean_title(s) == "x+y x+y"
+
+def test_formula_wrapper_separates_from_prose():
+    # An unspaced formula wrapper must not weld the maths onto the neighbouring word.
+    assert tc.clean_title("shown<inline-formula><tex-math>$L_X$</tex-math></inline-formula>here") == (
+        "shown $L_X$ here"
+    )
+
 def test_unknown_tag_defaults_to_space():
     # Splitting leaves two real searchable words; welding creates a junk token that matches
     # nothing, so an unrecognised tag takes the recoverable failure.
