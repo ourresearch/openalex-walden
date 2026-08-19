@@ -2,6 +2,11 @@ resources:
   jobs:
     Parse_PDFs:
       name: Parse PDFs
+      # 2 slots: the 8-hourly normal-mode run and one #789 batch drain run
+      # alongside. Safe: normal mode never reads grobid_reparse_queue, and the
+      # campaign's pre-0.9.1 pdfs cannot appear in the 3-day normal window.
+      # Batch drains themselves stay serialized by the campaign runner.
+      max_concurrent_runs: 2
       email_notifications:
         on_failure:
           - casey@ourresearch.org
