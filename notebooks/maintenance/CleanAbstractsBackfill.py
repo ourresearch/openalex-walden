@@ -46,10 +46,18 @@ from pyspark.sql import functions as F
 from openalex.dlt.transform import udf_abstract_features
 
 dbutils.widgets.text("env_suffix", "", "Environment suffix (e.g. _dev)")
-dbutils.widgets.dropdown("rebuild", "false", ["false", "true"], "Drop staging/ledger/target first")
+dbutils.widgets.dropdown("rebuild", "false", ["false", "true"], "Re-clean everything (keeps staging)")
+dbutils.widgets.dropdown("rescan", "false", ["false", "true"], "Also re-scan the source (drops staging)")
 
 ENV_SUFFIX = dbutils.widgets.get("env_suffix")
 REBUILD = dbutils.widgets.get("rebuild") == "true"
+# The two reasons to re-run are different and cost wildly different amounts:
+#   text_clean.py changed  -> the GATE is unchanged, so the staged rows are still exactly the
+#                             right rows. Re-clean them. `rebuild=true`. Cheap.
+#   the GATE changed, or   -> the staged set itself is wrong. Re-scan the 273 GB source.
+#   the source changed        `rescan=true`. Expensive (~12 min of pure scan).
+# Defaulting rebuild to keep staging is what makes a cleaner-logic fix cheap to redo.
+RESCAN = dbutils.widgets.get("rescan") == "true"
 
 SOURCE_TABLE = "openalex.abstracts.abstracts_backfill"
 STAGE_TABLE = f"openalex{ENV_SUFFIX}.abstracts.abstracts_backfill_corrupt_stage"
@@ -81,16 +89,19 @@ print(f"rebuild : {REBUILD}")
 
 # COMMAND ----------
 
-if REBUILD:
+if REBUILD or RESCAN:
     # TRUNCATE, not DROP, for the target: CreateWorksBase LEFT JOINs it on every nightly run,
     # so the table must never stop existing — a dropped table turns a rebuild window into a
-    # broken end2end. Staging and ledger have no readers, so dropping those is fine.
+    # broken end2end. The ledger has no readers, so dropping it is fine.
     if spark.catalog.tableExists(TARGET_TABLE):
         spark.sql(f"TRUNCATE TABLE {TARGET_TABLE}")
         print(f"truncated {TARGET_TABLE}")
-    for t in (LEDGER_TABLE, STAGE_TABLE):
-        spark.sql(f"DROP TABLE IF EXISTS {t}")
-        print(f"dropped {t}")
+    spark.sql(f"DROP TABLE IF EXISTS {LEDGER_TABLE}")
+    print(f"dropped {LEDGER_TABLE}")
+
+if RESCAN:
+    spark.sql(f"DROP TABLE IF EXISTS {STAGE_TABLE}")
+    print(f"dropped {STAGE_TABLE} — the source will be re-scanned")
 
 # COMMAND ----------
 

@@ -13,9 +13,14 @@ resources:
         gap without rewriting the 273 GB source table.
 
         MANUAL TRIGGER ONLY — no schedule. Re-runnable: it stages the gated rows once and
-        keeps a per-chunk ledger, so a killed run resumes where it stopped. Pass
-        rebuild=true to drop the staging/ledger/target and start over (needed after any
-        change to text_clean.py, since the overlay bakes in that version's output).
+        keeps a per-chunk ledger, so a killed run resumes where it stopped.
+
+        Two ways to redo work, costing very different amounts:
+          rebuild=true  re-cleans every staged row but KEEPS the staging table. Use after a
+                        change to text_clean.py — the gate is unchanged, so the staged rows
+                        are still the right rows. Cheap.
+          rescan=true   also drops the staging table, forcing a fresh scan of the 273 GB
+                        source. Only needed if the GATE changed or the source table did.
 
         Run it AFTER the dlt_utils wheel it pins has been built by CI, and BEFORE the
         selective Silver refresh — CreateWorksBase reads the overlay on its next run.
@@ -28,6 +33,8 @@ resources:
           default: ""
         - name: rebuild
           default: "false"
+        - name: rescan
+          default: "false"
       tasks:
         - task_key: clean_abstracts_backfill
           notebook_task:
@@ -36,6 +43,7 @@ resources:
             base_parameters:
               env_suffix: "{{job.parameters.env_suffix}}"
               rebuild: "{{job.parameters.rebuild}}"
+              rescan: "{{job.parameters.rescan}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
