@@ -58,6 +58,47 @@ def test_strip_inline_tags():
 def test_strip_jats():
     assert tc.clean_title("<jats:p>Hello</jats:p> world") == "Hello world"
 
+# --- Inline tags close up; structural tags become a space ------------------- #
+# Both wrong answers are unsearchable: a space inside `CO<sub>2</sub>` splits one token in two,
+# and no space around `<h3>` welds a heading to the neighbouring sentence.
+
+def test_subscript_superscript_close_up():
+    assert tc.clean_title("Reducing CO<sub>2</sub> emissions") == "Reducing CO2 emissions"
+    assert tc.clean_title("an area of 5 m<sup>2</sup>") == "an area of 5 m2"
+    assert tc.clean_title("H<sub>2</sub>O and CH<sub>4</sub>") == "H2O and CH4"
+
+def test_elsevier_inf_is_subscript():
+    # <inf> is Elsevier's subscript spelling — 229K occurrences in the corrupted-abstract census.
+    assert tc.clean_title("minimizing CO<inf>2</inf> and other emissions") == (
+        "minimizing CO2 and other emissions"
+    )
+
+def test_inline_formatting_closes_up_midword():
+    # Real corpus row: "offshore S<span>&atilde;</span>o Tom&eacute;" must not become "S ã o".
+    assert tc.clean_title("offshore S<span>&atilde;</span>o Tom&eacute;") == "offshore São Tomé"
+    assert tc.clean_title("Na<b>N</b>oparticles") == "NaNoparticles"
+
+def test_structural_tags_still_separate_words():
+    # 2.4M <h3> occurrences are structured-abstract headings; welding them to the surrounding
+    # sentence is exactly the failure the space is there to prevent.
+    assert tc.clean_title("outcomes.<h3>SIGNIFICANCE STATEMENT</h3>Bupropion works") == (
+        "outcomes. SIGNIFICANCE STATEMENT Bupropion works"
+    )
+    assert tc.clean_title("line one<br>line two") == "line one line two"
+    assert tc.clean_title("<p>alpha</p><p>beta</p>") == "alpha beta"
+
+def test_namespace_prefix_ignored_when_classifying():
+    # The same element arrives under many prefixes: mml:mi / m:mi / mi, jats:p / jats1:p / ns4:p.
+    assert tc.clean_title("x<mml:msub><mml:mi>i</mml:mi></mml:msub>y") == "xiy"
+    assert tc.clean_title("x<m:msub><m:mi>i</m:mi></m:msub>y") == "xiy"
+    assert tc.clean_title("one<jats1:p>two</jats1:p>") == "one two"
+    assert tc.clean_title("one<ns4:p>two</ns4:p>") == "one two"
+
+def test_unknown_tag_defaults_to_space():
+    # Splitting leaves two real searchable words; welding creates a junk token that matches
+    # nothing, so an unrecognised tag takes the recoverable failure.
+    assert tc.clean_title("alpha<weirdtag>beta") == "alpha beta"
+
 def test_math_inequality_preserved():
     # "< 0.05" and "a > b" are NOT tags (space after '<') -> preserved.
     assert tc.clean_title("Effect at p < 0.05 in group A > B") == "Effect at p < 0.05 in group A > B"

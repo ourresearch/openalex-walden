@@ -232,14 +232,66 @@ def decode_entities(s):
 _TAG_RE = re.compile(r"<(?:/[a-zA-Z]|[a-zA-Z])[^>]*>")
 _TRAILING_OPEN_TAG_RE = re.compile(r"<(?:/[a-zA-Z]|[a-zA-Z])[^<>]*$")
 
+# Pull the bare element name out of a tag: `</mml:msub>` -> `msub`, `<styled-content x="y">` ->
+# `styled-content`. The namespace prefix is dropped because the corpus carries the *same* element
+# under many prefixes — `mml:mi` / `m:mi` / bare `mi`, and `jats:p` / `jats1:p` / `ns4:p` / `p`.
+_TAG_NAME_RE = re.compile(r"^</?([a-zA-Z][a-zA-Z0-9:._-]*)")
+
+# Removing a tag has to decide what the markup MEANT, because the two wrong answers fail in
+# opposite directions and both are unsearchable:
+#
+#   `CO<sub>2</sub>`                  -> "CO 2"  splits one token into two   (must NOT add a space)
+#   `outcomes.<h3>SIGNIFICANCE</h3>`  -> "…SIGNIFICANCE…" welds two words    (MUST add a space)
+#
+# So: character-level markup closes up, structural markup becomes a space. Both lists are drawn
+# from the actual corpus — a tag census over the 6.6M corrupted abstracts in
+# `abstracts_backfill_corrupt_stage` (oxjob #807, 2026-08-18), which is why odd non-standard
+# spellings like Elsevier's `<inf>` (229K occurrences, means subscript) are here.
+
+# Character-level: formatting, inline math, and formula wrappers. Removing these must close up.
+_INLINE_TAGS = frozenset("""
+    b i em strong u s strike small big span a code tt sub sup inf sc
+    italic bold underline overline monospace roman sans-serif serif styled-content fixed-case
+    math mi mo mn ms mtext mspace mrow mfrac msqrt mroot msub msup msubsup munder mover
+    munderover mmultiscripts mfenced mstyle mpadded mphantom menclose mprescripts none
+    semantics annotation annotation-xml
+    inline-formula inline-graphic tex-math tex etx alternatives formula chem-struct
+""".split())
+
+# Structural: the tag IS the word boundary. Removing these must leave a space.
+_BLOCK_TAGS = frozenset("""
+    p br div hr h1 h2 h3 h4 h5 h6 li ul ol dl dt dd
+    table thead tbody tfoot tr td th caption blockquote pre
+    section article header footer aside nav figure figcaption
+    sec title abstract list list-item disp-formula disp-quote disp-quote-attrib
+    fig graphic media label boxed-text table-wrap body front back
+    ref ref-list statement verse-group speech def-list def term
+    mtable mtr mtd
+    lsdexception
+""".split())
+
+
+def _tag_replacement(match):
+    """A space, unless the tag is character-level markup. Unknown tags default to a space:
+    splitting a token leaves two real, searchable words, whereas welding two words together
+    creates a junk token that matches nothing and is invisible in QA."""
+    name = _TAG_NAME_RE.match(match.group(0))
+    if not name:
+        return " "
+    tag = name.group(1).lower().rsplit(":", 1)[-1]  # drop any namespace prefix
+    return "" if tag in _INLINE_TAGS else " "
+
 
 def strip_tags(s):
-    """Remove all HTML/XML tags, replacing each with a space (so `word1<br>word2` becomes two
-    tokens, matching the existing JATS handling), leaving the inert text content. Also removes a
-    single unclosed tag left dangling at the end by an upstream title/abstract length truncation."""
+    """Remove all HTML/XML/JATS/MathML tags, leaving the inert text content.
+
+    Character-level tags close up (`CO<sub>2</sub>` -> `CO2`, `S<span>ã</span>o` -> `São`);
+    structural tags become a space (`a<br>b` -> `a b`, `<h3>METHODS</h3>` -> ` METHODS `), which
+    is what the pre-#807 JATS handling did for every tag. Also removes a single unclosed tag left
+    dangling at the end by an upstream title/abstract length truncation."""
     if not s:
         return s
-    s = _TAG_RE.sub(" ", s)
+    s = _TAG_RE.sub(_tag_replacement, s)
     s = _TRAILING_OPEN_TAG_RE.sub(" ", s)
     return s
 
