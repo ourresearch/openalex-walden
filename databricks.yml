@@ -76,6 +76,7 @@ include:
   - jobs/repo_pipeline.yaml
   - jobs/crossref_pipeline.yaml
   - jobs/datacite_pipeline.yaml
+  - jobs/landing_page_pipeline.yaml
   - jobs/pubmed_pipeline.yaml
   - jobs/irdb_pipeline.yaml
   - jobs/pdf_pipeline.yaml

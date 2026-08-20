@@ -1,0 +1,40 @@
+# LandingPageWork DLT pipeline (ff5e63c2-b1b8-49c2-a7c0-2ee246e89e69).
+# Bundle-managed as of oxjob #837 (2026-08-20): notebook code deploys via CI on push to
+# main — do NOT pull the /Shared/openalex-walden Git folder for this pipeline; edits made
+# in the pipeline UI (settings AND code) are reverted on the next deploy.
+resources:
+  pipelines:
+    landing_page_pipeline:
+      name: LandingPageWork
+      catalog: openalex
+      target: landing_page
+      # TEMPORARY (#837 landing_page chain full refresh): classic 10-20 for speed.
+      # REVERT to serverless+photon after the refresh completes.
+      serverless: false
+      photon: false
+      clusters:
+        - label: default
+          node_type_id: r5d.8xlarge
+          driver_node_type_id: r5d.8xlarge
+          autoscale:
+            min_workers: 10
+            max_workers: 20
+            mode: LEGACY
+      continuous: false
+      development: true
+      channel: CURRENT
+      configuration:
+        environment: prod
+        spark.sql.execution.arrow.maxRecordsPerBatch: "100"
+      tags:
+        environment: prod
+        workflow: landing_page
+      notifications:
+        - alerts:
+            - on-update-failure
+          email_recipients:
+            - casey@ourresearch.org
+            - artem@ourresearch.org
+      libraries:
+        - notebook:
+            path: ../notebooks/ingest/LandingPage.py
