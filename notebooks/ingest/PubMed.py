@@ -428,6 +428,17 @@ def pubmed_parsed():
 
 # COMMAND ----------
 
+# oxjob #837: total-order dedup sequence — ties on the lead value alone pick
+# refresh-dependent winners. PubMed's DateRevised is date-only (no finer publisher
+# timestamp exists), so updated_date stays the lead and the tiebreakers do the work.
+def _with_total_order_sequence(df, lead_col):
+    hash_cols = [c for c, t in df.dtypes if not t.startswith("map") and not c.startswith("_")]
+    return df.withColumn("_sequence", F.struct(
+        lead_col.alias("lead"),
+        F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp")).alias("harvested_at"),
+        F.xxhash64(*[F.col(f"`{c}`") for c in hash_cols]).alias("content_hash"),
+    ))
+
 @dlt.table(name="pubmed_enriched",
            comment="PubMed data after full parsing and author/feature enrichment.")
 def pubmed_enriched():
@@ -478,7 +489,9 @@ def pubmed_enriched():
     # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
     # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
-    return apply_final_merge_key_and_filter(df_enriched)
+    return _with_total_order_sequence(
+        apply_final_merge_key_and_filter(df_enriched), F.col("updated_date")
+    )
 
 dlt.create_streaming_table(
     name="pubmed_works",
@@ -496,5 +509,6 @@ dlt.apply_changes(
     target="pubmed_works",
     source="pubmed_enriched",
     keys=["native_id"],
-    sequence_by="updated_date"
+    sequence_by="_sequence",
+    except_column_list=["_sequence"]
 )
