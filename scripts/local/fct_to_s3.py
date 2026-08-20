@@ -9,13 +9,18 @@ FCT is OpenAlex funder F4320334779 (ROR 00snfqn58, DOI 10.13039/501100001871).
 
 Primary source: SciPROJ (sciproj.ptcris.pt, FCT/FCCN's national CRIS), delivered as a
     bulk ZIP dump of per-project OpenAIRE CERIF 1.1 XML records (obtained directly from
-    FCCN, 2026-08; CC BY 4.0). 106,753 records; we keep the 98,807 funded by FCT
-    (funder OrgUnit ROR 00snfqn58, or records with no funder OrgUnit — FCT's own DB
-    defaults to FCT) and drop projects funded by ANI / European Commission / EU
-    structural funds, which belong to other funder ingests. ~100% citable references
-    (SFRH/PTDC/POCTI/... families plus modern YYYY.NNNNN.SFX), 93% EUR amounts, 90% PI,
-    77% coordinator institution (RORs on ~1/3). Archived raw zip:
-    s3://openalex-ingest/awards/fct/raw/getDumpXML20260722_PRV.zip
+    FCCN, 2026-08; CC BY 4.0). 106,753 records. SciPROJ is Portugal's national project
+    registry, so it also carries projects funded by other agencies; every record gets a
+    `funder_key` (all rows keep provenance 'fct' since the source is one dump):
+      - fct  (98,807): funder OrgUnit ROR 00snfqn58, or no funder OrgUnit (FCT's own
+              DB defaults to FCT). ~100% citable references (SFRH/PTDC/POCTI/...
+              families plus modern YYYY.NNNNN.SFX), 93% EUR amounts, 90% PI.
+      - ani  (3,713): Agência Nacional de Inovação business-R&D programs.
+      - ec   (3,491): whole FP1..H2020 projects w/ Portuguese participation, EC grant
+              numbers, EU-contribution amounts. 78% duplicate our CORDIS coverage
+              (prio 27) — the notebook anti-joins those away so CORDIS keeps winning.
+      - erdf (742): PT2020/QREN FEDER operation codes (EU structural funds).
+    Archived raw zip: s3://openalex-ingest/awards/fct/raw/getDumpXML20260722_PRV.zip
 
 Legacy source (merged in): the fct.pt "Lista-Projetos-ID" XLSX (7,569 projects; the
     public URL now 404s, so we read the archived parquet built from it —
@@ -116,19 +121,33 @@ def funding_type(ref, program):
     return "grant"
 
 
+def classify_funder(proj):
+    """Map the record's Funded/By OrgUnit to a funder_key ('fct'|'ani'|'ec'|'erdf')."""
+    funder = proj.find(".//c:Funded/c:By/c:OrgUnit", NS)
+    if funder is None:
+        return "fct"               # SciPROJ is FCT's own DB; missing funder = FCT
+    ror = funder.findtext("c:RORID", default=None, namespaces=NS)
+    name = (funder.findtext("c:Name", default=None, namespaces=NS) or "")
+    acr = (funder.findtext("c:Acronym", default=None, namespaces=NS) or "")
+    if ror == FCT_ROR or (not ror and not name):
+        return "fct"
+    if ror == "https://ror.org/01mvsby80" or acr == "ANI":
+        return "ani"
+    if acr == "EC" or name == "European Commission":
+        return "ec"
+    if acr.startswith("UE -") or name.startswith("União Europeia"):
+        return "erdf"              # PT2020 / QREN FEDER operations
+    return "fct"                   # unknown variants: FCT's registry, default FCT
+
+
 def parse_cerif(xml_bytes):
-    """One SciPROJ CERIF record -> dict, or None if not FCT-funded / no reference."""
+    """One SciPROJ CERIF record -> dict, or None if no citable reference."""
     root = ET.fromstring(xml_bytes)
     proj = root.find(".//c:Project", NS)
     if proj is None:
         return None
 
-    funder = proj.find(".//c:Funded/c:By/c:OrgUnit", NS)
-    if funder is not None:
-        ror = funder.findtext("c:RORID", default=None, namespaces=NS)
-        name = funder.findtext("c:Name", default=None, namespaces=NS)
-        if ror != FCT_ROR and (ror or name):
-            return None            # ANI / EC / EU structural funds -> other ingests
+    funder_key = classify_funder(proj)
 
     ref = program = None
     for ident in proj.findall("c:Identifier", NS):
@@ -175,6 +194,7 @@ def parse_cerif(xml_bytes):
     end = end if end and re.match(r"^(19|20)\d{2}-", end) else None
 
     return {
+        "funder_key": funder_key,
         "funder_award_id": ref,
         "title": title,
         "pi_full": pf, "pi_given": pg, "pi_family": pfam,
@@ -207,10 +227,10 @@ def load_sciproj(zip_path: Path, limit=None):
             if r is None:
                 skipped += 1
                 continue
-            recs[r["funder_award_id"].lower()] = r
+            recs[(r["funder_key"], r["funder_award_id"].lower())] = r
             if i and i % 20000 == 0:
                 print(f"  ...{i}/{len(names)} parsed ({len(recs)} kept)")
-    print(f"SciPROJ parsed: kept {len(recs)}, skipped {skipped} (non-FCT/no-ref), errors {errors}")
+    print(f"SciPROJ parsed: kept {len(recs)}, skipped {skipped} (no-ref), errors {errors}")
     return recs
 
 
@@ -229,18 +249,19 @@ def load_xlsx_archive(path: Path | None):
 def merge(sciproj: dict, xlsx: pd.DataFrame):
     out, overlap = [], 0
     seen = set()
-    for _, row in xlsx.iterrows():
+    for _, row in xlsx.iterrows():           # XLSX rows are all FCT-funded
         ref = clean(row["funder_award_id"])
-        if not ref or ref.lower() in seen:
+        if not ref or ("fct", ref.lower()) in seen:
             continue
-        seen.add(ref.lower())
+        seen.add(("fct", ref.lower()))
         rec = {c: clean(row.get(c)) for c in (
             "funder_award_id", "title", "pi_full", "pi_given", "pi_family", "institution",
             "amount", "currency", "scheme", "start_date_raw", "end_date_raw",
             "description", "landing_page_url")}
+        rec["funder_key"] = "fct"
         rec.setdefault("institution_ror", None)
         rec.setdefault("institution_country", None)
-        sp = sciproj.get(ref.lower())
+        sp = sciproj.get(("fct", ref.lower()))
         if sp:
             overlap += 1
             for k, v in sp.items():           # XLSX wins; SciPROJ fills the gaps
@@ -250,10 +271,11 @@ def merge(sciproj: dict, xlsx: pd.DataFrame):
         if rec.get("institution_country") is None and rec.get("institution"):
             rec["institution_country"] = "Portugal"   # XLSX rows are host institutions in PT
         out.append(rec)
-    for ref_l, sp in sciproj.items():
-        if ref_l in seen:
+    for key, sp in sciproj.items():
+        if key in seen:
             continue
-        sp["funding_type"] = funding_type(sp["funder_award_id"], sp.get("scheme"))
+        sp["funding_type"] = (funding_type(sp["funder_award_id"], sp.get("scheme"))
+                              if sp["funder_key"] == "fct" else "grant")
         out.append(sp)
     print(f"Merged: {len(out)} rows ({overlap} XLSX∩SciPROJ, "
           f"{len(xlsx) - overlap} XLSX-only, {len(out) - len(xlsx)} SciPROJ-only)")
@@ -296,6 +318,7 @@ def main():
 
     out_df = pd.DataFrame(recs).astype("string")
     print(f"\nDataFrame: {len(out_df)} rows, {len(out_df.columns)} columns")
+    print("funder_key breakdown:", out_df["funder_key"].value_counts().to_dict())
     for c in ("title", "pi_family", "institution", "institution_ror", "amount",
               "scheme", "start_date_raw", "end_date_raw", "description", "funding_type"):
         nn = out_df[c].notna().sum()
