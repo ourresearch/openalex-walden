@@ -8,16 +8,8 @@ resources:
       name: DataCite
       catalog: openalex
       target: datacite
-      serverless: false
-      photon: false
-      clusters:
-        - label: default
-          node_type_id: r5d.8xlarge
-          driver_node_type_id: r5d.8xlarge
-          autoscale:
-            min_workers: 5
-            max_workers: 10
-            mode: LEGACY
+      serverless: true
+      photon: true
       continuous: false
       development: true
       edition: ADVANCED
