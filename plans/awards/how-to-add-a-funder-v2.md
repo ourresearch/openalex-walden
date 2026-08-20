@@ -1730,6 +1730,41 @@ becomes **Complete** in Step 9, after it's visible in the API.
 
 ---
 
+## Step 8.5: Backfill fulltext PDF award matches (REQUIRED for every new funder)
+
+The daily `TagPdfAwardsIncremental` job (06:00 UTC) regex-matches award ids against PDF
+funding/acknowledgement sections — but **only for PDFs parsed inside its checkpoint
+window**. Your funder's registry did not exist when the historical corpus was parsed, so
+without this step none of the already-parsed PDFs ever get matched against the awards you
+just ingested. (Discovered 2026-08-20 during the FCT/SciPROJ upgrade; the gap applies to
+every registry ingested since PDF parsing began.)
+
+Run the one-off backfill for your funder:
+
+1. Edit [notebooks/awards/BackfillPdfAwardMatches.sql](../../notebooks/awards/BackfillPdfAwardMatches.sql)
+   — add your numeric funder_id to the `backfill_funders` VALUES list (replace the
+   previous funder(s), or batch several if working a series). Commit and push (the job
+   runs from git main).
+2. Submit it exactly like Step 5.1, with
+   `"notebook_path": "notebooks/awards/BackfillPdfAwardMatches"`.
+3. **Pass signal:** final cell shows match_rows/works for your funder in
+   `openalex.pdf.grobid_award_matches`. Zero new rows is possible (funder has little
+   OA fulltext presence, or ids are never cited verbatim) — check the `target_works`
+   cell output to tell "no corpus" apart from "no matches".
+
+The inserted matches flow into `work_awards` via the nightly `RefreshWorkAwards`
+(Step 7) and become visible with the next ES sync (Step 9) — no extra wiring.
+
+Scope note: this backfill only re-scans works where the funder was **already detected**
+in `openalex.works.fulltext_work_funders`. If your funder's *name* was also missing from
+the funder screening list (`openalex.common.funder_names_keep`) until now, old PDFs were
+never funder-matched either; that layer needs a full checkpoint-reset re-scan of the
+incremental job — coordinate before attempting, it is a corpus-scale run.
+
+**→ Update tracker:** note "PDF backfill run: {N} match rows / {M} works" on your row.
+
+---
+
 ## Step 9: Make It Live in the API (Sync Awards to Elasticsearch)
 
 The data is in the combined table after Step 7, but it is **not visible in the

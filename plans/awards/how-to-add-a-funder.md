@@ -6,6 +6,11 @@
 **Parallelization:** Multiple Claude instances can work on different funders simultaneously.
 **Tracker:** `plans/awards/funder-ingestion-tracker.md`
 
+> **REQUIRED since 2026-08-20:** after ingesting a funder's registry, run the fulltext
+> PDF backfill for that funder — see **Step 8.5** in `how-to-add-a-funder-v2.md`
+> (`notebooks/awards/BackfillPdfAwardMatches.sql`). Without it, none of the
+> already-parsed PDF corpus is ever matched against the new award ids.
+
 ---
 
 ## Two ingest patterns: GRANT vs PRIZE
