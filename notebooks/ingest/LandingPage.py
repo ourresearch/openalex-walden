@@ -101,8 +101,11 @@ def landing_page_staged():
                 F.lower(F.col("license")).like("%cc%"),
                 F.lit(True)
             ).otherwise(F.lit(False)).alias("is_oa"),
-            F.current_timestamp().alias("updated_date"),
-            F.current_timestamp().alias("created_date"),
+            # oxjob #837: dates derive from stored parse time, never processing time —
+            # a refresh replays them instead of restamping the whole corpus
+            F.col("parsed_date").alias("updated_date"),
+            F.col("parsed_date").alias("created_date"),
+            F.col("parsed_date").alias("parsed_ts"),
             F.col("had_error"),
             F.col("ingested_at"),
         )
@@ -151,16 +154,33 @@ def landing_page_combined():
 
 # COMMAND ----------
 
+# oxjob #837: total-order dedup sequence — parsed_ts is the interim lead until #844
+# stamps harvested_at into parsed_pages (then: struct(harvested_at, parsed_ts, hash)).
+def _with_total_order_sequence(df, lead_col):
+    hash_cols = [c for c, t in df.dtypes if not t.startswith("map") and not c.startswith("_")]
+    return df.withColumn("_sequence", F.struct(
+        lead_col.alias("lead"),
+        F.xxhash64(*[F.col(f"`{c}`") for c in hash_cols]).alias("content_hash"),
+    ))
+
 @dlt.table(name="landing_page_enriched",
-           comment="DataCite data after full parsing and author/feature enrichment.")
+           comment="Landing page data after full parsing and author/feature enrichment.")
 def landing_page_enriched():
     df_parsed_input = dlt.read_stream("landing_page_combined")
-    df_walden_works_schema = apply_initial_processing(df_parsed_input, "landing_page", walden_works_schema)
+    schema_with_parsed_ts = StructType(
+        walden_works_schema.fields + [StructField("parsed_ts", TimestampType(), True)]
+    )
+    df_walden_works_schema = apply_initial_processing(df_parsed_input, "landing_page", schema_with_parsed_ts)
 
     # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
     # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
-    return apply_final_merge_key_and_filter(df_enriched)
+    return _with_total_order_sequence(
+        apply_final_merge_key_and_filter(df_enriched),
+        # backfill rows have no parsed_ts; their stored updated_date (midnight after the
+        # DATE cast) anchors them, so a same-day live parse beats its backfill twin
+        F.coalesce(F.col("parsed_ts"), F.col("updated_date").cast("timestamp")),
+    )
 
 dlt.create_streaming_table(
     name="landing_page_works",
@@ -177,6 +197,7 @@ dlt.apply_changes(
     target="landing_page_works",
     source="landing_page_enriched",
     keys=["native_id"],
-    sequence_by="updated_date",
+    sequence_by="_sequence",
+    except_column_list=["_sequence", "parsed_ts"],
     ignore_null_updates=True
 )
