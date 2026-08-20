@@ -433,7 +433,10 @@ def datacite_enriched():
     # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
     return _with_total_order_sequence(
-        apply_final_merge_key_and_filter(df_enriched), F.col("updated_ts")
+        apply_final_merge_key_and_filter(df_enriched),
+        # pre-#837 parsed rows have no updated_ts; day-granularity fallback keeps the
+        # sequence non-null without refreshing datacite_parsed
+        F.coalesce(F.col("updated_ts"), F.col("updated_date").cast("timestamp"))
     )
 
 dlt.create_streaming_table(
