@@ -230,6 +230,7 @@ def datacite_parsed():
         )
         .withColumn("created_date", F.to_date(F.col("attributes.created")))
         .withColumn("updated_date", F.to_date(F.col("attributes.updated")))
+        .withColumn("updated_ts", F.to_timestamp(F.col("attributes.updated")))
         .withColumn("issue", F.lit(None).cast("string"))
         .withColumn("volume", F.lit(None).cast("string"))
         .withColumn("first_page", F.lit(None).cast("string"))
@@ -363,11 +364,22 @@ def datacite_parsed():
         "urls",
         "mesh",
         "is_oa",
-        "ingested_at"
+        "ingested_at",
+        "updated_ts"
     )
 )
 
 # COMMAND ----------
+
+# oxjob #837: total-order dedup sequence — ties on the lead value alone pick
+# refresh-dependent winners.
+def _with_total_order_sequence(df, lead_col):
+    hash_cols = [c for c, t in df.dtypes if not t.startswith("map") and not c.startswith("_")]
+    return df.withColumn("_sequence", F.struct(
+        lead_col.alias("lead"),
+        F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp")).alias("harvested_at"),
+        F.xxhash64(*[F.col(f"`{c}`") for c in hash_cols]).alias("content_hash"),
+    ))
 
 @dlt.table(name="datacite_enriched",
            comment="DataCite data after full parsing and author/feature enrichment.")
@@ -410,7 +422,8 @@ def datacite_enriched():
             StructField("url", StringType(), True), StructField("content_type", StringType(), True)
         ])), True),
         StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
-        StructField("ingested_at", TimestampType(), True)
+        StructField("ingested_at", TimestampType(), True),
+        StructField("updated_ts", TimestampType(), True)
     ])
 
     df_parsed_input = dlt.read_stream("datacite_parsed")
@@ -419,7 +432,12 @@ def datacite_enriched():
     # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
     # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
-    return apply_final_merge_key_and_filter(df_enriched)
+    return _with_total_order_sequence(
+        apply_final_merge_key_and_filter(df_enriched),
+        # pre-#837 parsed rows have no updated_ts; day-granularity fallback keeps the
+        # sequence non-null without refreshing datacite_parsed
+        F.coalesce(F.col("updated_ts"), F.col("updated_date").cast("timestamp"))
+    )
 
 dlt.create_streaming_table(
     name="datacite_works",
@@ -436,5 +454,6 @@ dlt.apply_changes(
     target="datacite_works",
     source="datacite_enriched",
     keys=["native_id"],
-    sequence_by="updated_date"
+    sequence_by="_sequence",
+    except_column_list=["_sequence", "updated_ts"]
 )
