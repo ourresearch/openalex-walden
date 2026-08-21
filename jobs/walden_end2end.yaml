@@ -490,7 +490,7 @@ resources:
         - name: guardrails_override
           default: "false"
         - name: deleted_works_guard_override
-          default: "true"  # TEMPORARY for oxjob765 Drain 3 — revert after 2026-08-17 run
+          default: "false"
         - name: since_date
           default: ""
       performance_target: PERFORMANCE_OPTIMIZED
