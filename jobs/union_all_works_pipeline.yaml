@@ -26,22 +26,8 @@ resources:
       name: Union All Works
       catalog: openalex
       schema: works
-      # TEMPORARY (#837 Phase 3 union full refresh — new _sequence + propagate restored
-      # landing-page dates): classic per the runbook above, ON_DEMAND (spot was reclaimed
-      # repeatedly during #789's 08-17 run). REVERT to serverless+photon after.
-      serverless: false
-      photon: false
-      clusters:
-        - label: default
-          node_type_id: r5d.8xlarge
-          driver_node_type_id: r5d.8xlarge
-          aws_attributes:
-            availability: ON_DEMAND
-            zone_id: auto
-          autoscale:
-            min_workers: 5
-            max_workers: 10
-            mode: LEGACY
+      serverless: true
+      photon: true
       continuous: false
       development: false
       edition: ADVANCED
