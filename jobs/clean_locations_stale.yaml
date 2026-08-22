@@ -1,0 +1,51 @@
+resources:
+  jobs:
+    Clean_Locations_Stale:
+      name: Clean Locations Stale
+      description: |
+        oxjob #807: clean title/abstract/abstract_inverted_index IN PLACE in
+        openalex.works.locations_stale (HTML entities, tags, mojibake) through the shipped
+        openalex.dlt.transform UDFs, and MERGE the result back.
+
+        locations_stale is a frozen snapshot with no producer (only the #765 drains delete
+        from it), so neither the at-ingest #807 cleaner nor the Silver reparse ever touches
+        its text. After the 2026-08-22 publish it held ~3.9M rows (~3.2M works) of garbled
+        titles/abstracts — essentially everything an API user can still see. The nightly
+        CreateLocationsMapped picks the change up through its payload hash; nothing else
+        changes. Identity columns (normalized_title, merge_key) are never touched.
+
+        MANUAL TRIGGER ONLY — no schedule. Re-runnable and resumable (stage once, chunk
+        ledger). Reversible: the repair table keeps *_original for every changed row.
+          limit=N      smoke test on N gated rows into _smokeN tables (still MERGEs them)
+          rebuild=true drop stage/ledger/repair and redo from scratch
+          apply=false  build the repair table only, don't MERGE
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+      max_concurrent_runs: 1
+      parameters:
+        - name: env_suffix
+          default: ""
+        - name: limit
+          default: "0"
+        - name: rebuild
+          default: "false"
+        - name: apply
+          default: "true"
+      tasks:
+        - task_key: clean_locations_stale
+          notebook_task:
+            notebook_path: notebooks/maintenance/CleanLocationsStale
+            source: GIT
+            base_parameters:
+              env_suffix: "{{job.parameters.env_suffix}}"
+              limit: "{{job.parameters.limit}}"
+              rebuild: "{{job.parameters.rebuild}}"
+              apply: "{{job.parameters.apply}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
