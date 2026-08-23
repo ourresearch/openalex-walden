@@ -13,8 +13,9 @@ def name_to_keep_ind(groups):
     0: if text should be not used
     1: if text should be used
     """
-    # Groups of characters that do not perform well
-    groups_to_skip = ['HIRAGANA', 'CJK', 'KATAKANA','ARABIC', 'HANGUL', 'THAI','DEVANAGARI','BENGALI',
+    # Groups of characters that do not perform well. CJK/HIRAGANA/KATAKANA removed
+    # (oxjob #859) - mBERT reads them natively; stripping them emptied the input.
+    groups_to_skip = ['ARABIC', 'HANGUL', 'THAI','DEVANAGARI','BENGALI',
                       'THAANA','GUJARATI','CYRILLIC']
     
     if any(x in groups_to_skip for x in groups):
@@ -37,7 +38,7 @@ def remove_non_latin_characters(text):
         return None
     
     final_char = []
-    groups_to_skip = ['HIRAGANA', 'CJK', 'KATAKANA','ARABIC', 'HANGUL', 'THAI','DEVANAGARI','BENGALI',
+    groups_to_skip = ['ARABIC', 'HANGUL', 'THAI','DEVANAGARI','BENGALI',
                       'THAANA','GUJARATI','CYRILLIC']
     for char in text:
         try:
