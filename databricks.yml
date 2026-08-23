@@ -55,6 +55,7 @@ include:
   - jobs/wunpaywall_weekly_data_feed.yaml
   - jobs/snapshot_full.yaml
   - jobs/topics.yaml
+  - jobs/register_topic_classifier.yaml
   - jobs/sdg_frontfill.yaml
   - jobs/award_topics.yaml
   - jobs/tag_pdf_awards_incremental.yaml

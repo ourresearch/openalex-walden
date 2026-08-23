@@ -1,0 +1,64 @@
+resources:
+  jobs:
+    Register_Topic_Classifier:
+      name: Register Topic Classifier
+      description: |
+        oxjob #859: register a new version of openalex.works.topic_classifier from the
+        model artifacts in /Volumes/openalex/works/models/topic-classification-title-abstract.
+
+        MANUAL TRIGGER ONLY — no schedule. Run it whenever the served preprocessing changes.
+        Text cleaning is baked into the pyfunc via code_paths, so an edit to
+        notebooks/topics/topic_text_cleaning.py has NO production effect until the model is
+        re-registered and the endpoint is repointed at the new version.
+
+        This job does the FIRST half only. It creates a new model version and serves no
+        traffic; an accidental run costs one unused version plus the cluster. Promoting a
+        version to the topic-classifier endpoint is deliberately NOT part of this job —
+        that step is production-affecting and stays a separate, explicit action.
+
+        Requires an ML runtime: the notebook imports torch directly and a plain runtime
+        does not carry it.
+
+        After a run, read "registered version: N" from the task output, then promote with:
+          w.serving_endpoints.update_config(
+              name="topic-classifier",
+              served_entities=[ServedEntityInput(
+                  entity_name="openalex.works.topic_classifier",
+                  entity_version="N", workload_size="Small",
+                  workload_type=ServingModelWorkloadType.GPU_MEDIUM,
+                  scale_to_zero_enabled=True)])
+        Rollback is the same call with the previous version.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: register_topic_classifier
+          job_cluster_key: register-cpu-ml
+          notebook_task:
+            notebook_path: notebooks/topics/register_topic_classifier
+            source: GIT
+      job_clusters:
+        - job_cluster_key: register-cpu-ml
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-cpu-ml-scala2.12
+            node_type_id: m5d.2xlarge
+            data_security_mode: SINGLE_USER
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+            num_workers: 0
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
