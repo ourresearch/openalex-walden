@@ -1853,7 +1853,7 @@ Writes the junction. Two precision-ordered work-resolution paths (a third option
   junk). Salvage with `regexp_extract`/`regexp_replace`, rebuild the canonical
   `https://doi.org/…` form, join `openalex.works.openalex_works.doi`. High yield, ~96% match.
 - **Path 2 — URL → unique work location.** For non-DOI URLs, match against
-  `openalex.works.locations.urls[].url` and accept **only when the URL maps to exactly one
+  `openalex.works.locations_mapped.urls[].url` and accept **only when the URL maps to exactly one
   work** (`best_doi`). High precision, low recall.
 - **Path 3 (optional) — citation match.** Title + year, disambiguated by a funder-country
   author (`exists(authorships, a -> array_contains(a.countries, '<CC>'))`, e.g. `'NL'` for
@@ -2000,7 +2000,7 @@ before `to_parquet` and install the Windows UTF-8 shim, same as §1.2.
 Reuse §10.2's precision-ordered paths (same work-resolution problem):
 - **Path 1 — DOI.** Clean (`regexp_extract`/`regexp_replace`), rebuild canonical
   `https://doi.org/…`, join `openalex.works.openalex_works.doi`. Highest yield.
-- **Path 2 — URL → unique work location.** Match `openalex.works.locations.urls[].url`,
+- **Path 2 — URL → unique work location.** Match `openalex.works.locations_mapped.urls[].url`,
   accept only when it maps to exactly one work.
 - **Path 3 (optional) — citation match.** Title + year, disambiguated by a
   funder-country author. Precision-risky; measure before trusting.
