@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.9-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.10-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -408,6 +408,9 @@ def repo_parsed():
     # here. setSpec is populated on 84.14% of 1,136,117,802 repo_items rows, dc:format on 47.71%.
     # They are dropped again before repo_works (see except_column_list) so they never enter the
     # cross-source union, where repo_works is the canonical schema donor.
+    # oxjob #881: repo_items is not a CDF source, so every live record is an upsert. The column
+    # exists so the three-way union is uniform and apply_as_deletes has something to test.
+    .withColumn("_change_type", F.lit("upsert"))
     .withColumn("set_spec", F.col("`ns0:header`.`ns0:setSpec`"))
     .withColumn("dc_format", F.col("`ns0:metadata`.`ns1:dc`.`dc:format`"))
     # oxjob #537: choose the best element across the full dc:type array (not just the first).
@@ -596,6 +599,7 @@ def repo_parsed():
         "raw_native_type",
         "set_spec",
         "dc_format",
+        "_change_type",
         "type",
         "version",
         "license",
@@ -636,8 +640,11 @@ def repo_parsed_backfill():
             .option("readChangeFeed", "true")
             .schema(repo_schema)
             .table("openalex.repo.repo_works_backfill")
-            .filter(F.col("_change_type").isin("insert", "update_postimage"))
-            .drop("_change_type", "_commit_version", "_commit_timestamp")
+            # oxjob #881: 'delete' is now FORWARDED, not dropped. Without it a record removed
+            # from the source could never leave repo_works -- the pipeline had no delete path at
+            # all. update_preimage stays excluded (it is the stale half of an update).
+            .filter(F.col("_change_type").isin("insert", "update_postimage", "delete"))
+            .drop("_commit_version", "_commit_timestamp")
     )
 
 
@@ -653,8 +660,11 @@ def repo_parsed_irdb():
             .option("readChangeFeed", "true")
             .schema(irdb_schema)
             .table("openalex.repo.irdb_parsed")
-            .filter(F.col("_change_type").isin("insert", "update_postimage"))
-            .drop("_change_type", "_commit_version", "_commit_timestamp")
+            # oxjob #881: 'delete' is now FORWARDED, not dropped. Without it a record removed
+            # from the source could never leave repo_works -- the pipeline had no delete path at
+            # all. update_preimage stays excluded (it is the stale half of an update).
+            .filter(F.col("_change_type").isin("insert", "update_postimage", "delete"))
+            .drop("_commit_version", "_commit_timestamp")
     )
 
 
@@ -709,7 +719,9 @@ def repo_enriched():
         # apply_walden_schema (transform.py:132), so backfill and irdb need no change until
         # RepoBackfill.py is re-run.
         StructField("set_spec", ArrayType(StringType()), True),
-        StructField("dc_format", ArrayType(StringType()), True)
+        StructField("dc_format", ArrayType(StringType()), True),
+        # oxjob #881: drives apply_as_deletes below; dropped before repo_works
+        StructField("_change_type", StringType(), True)
     ])
 
     # Apply consistent schema and transformations
@@ -728,10 +740,15 @@ def repo_enriched():
     # with no filtering of their own, so 20,874,419 records reached repo_works past rules we had
     # already agreed to -- 20,872,994 of them (99.99%) from backfill. Applying it on the union
     # covers all three streams and any stream added later.
-    combined_df = apply_repo_policy_filters(combined_df)
+    # oxjob #881: _IS_DELETE bypasses every filter between here and apply_changes. A delete event
+    # carries the pre-image of a record we are removing *because* it is junk, so it fails these
+    # very rules -- filter it and the deletion silently never happens.
+    _IS_DELETE = F.col("_change_type") == "delete"
+    combined_df = apply_repo_policy_filters(combined_df, keep_when=_IS_DELETE)
 
     # a record with no usable URL can never become a location (no scrape seed, no landing page)
-    combined_df = combined_df.filter(F.expr("exists(urls, x -> x.url IS NOT NULL)"))
+    combined_df = combined_df.filter(
+        _IS_DELETE | F.expr("exists(urls, x -> x.url IS NOT NULL)"))
 
     for c in ["published_date", "updated_date", "created_date"]:
         combined_df = combined_df.withColumn(
@@ -767,7 +784,7 @@ def repo_enriched():
     # Apply enrichment (with fast Pandas UDFs)
     df_enriched = enrich_with_features_and_author_keys(combined_df)
 
-    return apply_final_merge_key_and_filter(df_enriched)
+    return apply_final_merge_key_and_filter(df_enriched, keep_when=_IS_DELETE)
 
 dlt.create_streaming_table(
     name="repo_works",
@@ -791,5 +808,8 @@ dlt.apply_changes(
     source="repo_enriched",
     keys=["native_id"],
     sequence_by="_sequence",
-    except_column_list=["_sequence", "set_spec", "dc_format"]
+    # oxjob #881: the pipeline can finally express "this record went away". Previously deletes
+    # were dropped in three separate places, so a record could never leave repo_works.
+    apply_as_deletes=F.expr("_change_type = 'delete'"),
+    except_column_list=["_sequence", "set_spec", "dc_format", "_change_type"]
 )
