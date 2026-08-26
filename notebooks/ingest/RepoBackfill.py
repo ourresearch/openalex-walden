@@ -696,10 +696,16 @@ if spark.catalog.tableExists(target_table):
             "whenNotMatchedBySourceDelete would delete the difference. Investigate the parse "
             "before re-running; do not lower the ratio to get past this."
         )
+    # NOTE: this MERGE does NOT collapse duplicate keys. whenNotMatchedBySourceDelete removes
+    # only target rows whose native_id is absent from the source; duplicate rows whose key IS
+    # present all match and are updated instead. The 82,121,583 duplicates therefore survive --
+    # they are CDF noise (82M redundant update events per run), not a correctness problem, since
+    # repo_works keys on native_id via apply_changes and collapses them anyway. Removing them
+    # needs its own pass.
     print(f"RepoBackfill: source {_src:,} rows vs {_tgt_keys:,} distinct target keys "
-          f"({_ratio:.1%}); target has {_tgt_rows:,} rows, so this run removes "
-          f"{_tgt_rows - _src:,} rows total -- {_tgt_rows - _tgt_keys:,} duplicate keys plus "
-          f"{max(_tgt_keys - _src, 0):,} filtered out")
+          f"({_ratio:.1%}). Target holds {_tgt_rows:,} rows across those keys. "
+          f"{max(_tgt_keys - _src, 0):,} keys are absent from the source and their rows will be "
+          f"DELETED; the remaining keys are updated in place, duplicates included.")
 
     (DeltaTable.forName(spark, target_table).alias("target")
         .merge(parsed_df.alias("source"), "target.native_id = source.native_id")
