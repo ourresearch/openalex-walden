@@ -672,23 +672,34 @@ from delta.tables import DeltaTable
 
 # GUARD -- whenNotMatchedBySourceDelete deletes every target row the source does not contain, so
 # a short or partial parse would silently wipe the corpus. If the source is unexpectedly small
-# relative to the target, stop rather than delete. Expected shrink on the first run with the
-# oxjob #881 filters is ~35M of 310.7M (~11%); MIN_KEEP_RATIO leaves room for that and still
-# catches a catastrophically short parse. Raise it deliberately, never to "make the run pass".
+# relative to the target, stop rather than delete.
+#
+# Compare against the target's DISTINCT native_id count, not its row count. parsed_df is already
+# deduped on native_id (dedupe_by_sequence above), while the target still carries duplicates from
+# write paths that predate that dedup -- 82,121,583 of them as of 2026-08-26. Comparing a deduped
+# source against a duplicated target understates the ratio badly and trips this guard on a
+# perfectly healthy parse: on the 2026-08-26 run it read 60.3% against rows where the real figure
+# was 81.9% against distinct ids. native_id is the MERGE key, so distinct is the honest baseline.
+# After the first successful run the target is unique and the two measures converge.
 MIN_KEEP_RATIO = 0.75
 
 if spark.catalog.tableExists(target_table):
     _src = parsed_df.count()
-    _tgt = spark.table(target_table).count()
-    if _tgt > 0 and _src < _tgt * MIN_KEEP_RATIO:
+    _tgt_rows = spark.table(target_table).count()
+    _tgt_keys = spark.table(target_table).select("native_id").distinct().count()
+    _ratio = (_src / _tgt_keys) if _tgt_keys else 1.0
+    if _tgt_keys > 0 and _ratio < MIN_KEEP_RATIO:
         raise ValueError(
-            f"RepoBackfill aborted: source has {_src:,} rows vs target {_tgt:,} "
-            f"({_src / _tgt:.1%}), below MIN_KEEP_RATIO={MIN_KEEP_RATIO:.0%}. "
+            f"RepoBackfill aborted: source has {_src:,} rows vs {_tgt_keys:,} distinct native_ids "
+            f"in the target ({_ratio:.1%}), below MIN_KEEP_RATIO={MIN_KEEP_RATIO:.0%}. "
+            f"(Target holds {_tgt_rows:,} rows, so {_tgt_rows - _tgt_keys:,} are duplicate keys.) "
             "whenNotMatchedBySourceDelete would delete the difference. Investigate the parse "
             "before re-running; do not lower the ratio to get past this."
         )
-    print(f"RepoBackfill: source {_src:,} rows vs target {_tgt:,} "
-          f"({_src / _tgt:.1%}) -- proceeding, {_tgt - _src:,} rows will be deleted")
+    print(f"RepoBackfill: source {_src:,} rows vs {_tgt_keys:,} distinct target keys "
+          f"({_ratio:.1%}); target has {_tgt_rows:,} rows, so this run removes "
+          f"{_tgt_rows - _src:,} rows total -- {_tgt_rows - _tgt_keys:,} duplicate keys plus "
+          f"{max(_tgt_keys - _src, 0):,} filtered out")
 
     (DeltaTable.forName(spark, target_table).alias("target")
         .merge(parsed_df.alias("source"), "target.native_id = source.native_id")
