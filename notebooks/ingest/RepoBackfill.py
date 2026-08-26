@@ -17,6 +17,31 @@ from openalex.dlt.sequencing import dedupe_by_sequence
 
 # COMMAND ----------
 
+# oxjob #881 -- ONE-TIME REBUILD SWITCH. Default false; leave it false.
+#
+# false (normal): MERGE with whenNotMatchedBySourceDelete. Incremental, deletes flow through CDF
+#   to repo_works, no DLT refresh needed. This is the steady state.
+#
+# true (exceptional): overwrite the table outright. Needed once, to clear damage the MERGE cannot
+#   reach -- as of 2026-08-26 that is 82,121,583 duplicate native_ids left by write paths that
+#   predate dedupe_by_sequence. The MERGE cannot remove them: whenNotMatchedBySourceDelete only
+#   deletes rows whose key is ABSENT from the source, and a duplicate's key is present, so every
+#   copy matches and is updated in place.
+#
+#   Deleting them by hand is NOT a safe alternative now that the delete path is live: a DELETE of
+#   duplicate rows emits delete CDF for keys that should REMAIN, and apply_changes would take the
+#   last event per key and drop the record from repo_works entirely.
+#
+#   AFTER a rebuild run you MUST full-refresh the Repo DLT pipeline. An overwrite is not a
+#   row-level change feed, so repo_parsed_backfill's readChangeFeed stream fails with "Detected a
+#   data update/delete in the source table" until it is refreshed. Set the widget back to false
+#   immediately afterwards.
+dbutils.widgets.dropdown("rebuild", "false", ["false", "true"], "Full rebuild (overwrite)")
+REBUILD = dbutils.widgets.get("rebuild").lower() == "true"
+print(f"RepoBackfill mode: {'REBUILD (overwrite)' if REBUILD else 'MERGE (incremental)'}")
+
+# COMMAND ----------
+
 # first run
 # df = (
 #     spark.read
@@ -683,6 +708,8 @@ from delta.tables import DeltaTable
 # After the first successful run the target is unique and the two measures converge.
 MIN_KEEP_RATIO = 0.75
 
+# The guard applies to BOTH modes -- an overwrite with a short parse destroys just as much as a
+# delete-by-absence does.
 if spark.catalog.tableExists(target_table):
     _src = parsed_df.count()
     _tgt_rows = spark.table(target_table).count()
@@ -693,20 +720,42 @@ if spark.catalog.tableExists(target_table):
             f"RepoBackfill aborted: source has {_src:,} rows vs {_tgt_keys:,} distinct native_ids "
             f"in the target ({_ratio:.1%}), below MIN_KEEP_RATIO={MIN_KEEP_RATIO:.0%}. "
             f"(Target holds {_tgt_rows:,} rows, so {_tgt_rows - _tgt_keys:,} are duplicate keys.) "
-            "whenNotMatchedBySourceDelete would delete the difference. Investigate the parse "
-            "before re-running; do not lower the ratio to get past this."
+            "The difference would be destroyed -- deleted by whenNotMatchedBySourceDelete in "
+            "MERGE mode, or simply not written in REBUILD mode. Investigate the parse before "
+            "re-running; do not lower the ratio to get past this."
         )
-    # NOTE: this MERGE does NOT collapse duplicate keys. whenNotMatchedBySourceDelete removes
-    # only target rows whose native_id is absent from the source; duplicate rows whose key IS
-    # present all match and are updated instead. The 82,121,583 duplicates therefore survive --
-    # they are CDF noise (82M redundant update events per run), not a correctness problem, since
-    # repo_works keys on native_id via apply_changes and collapses them anyway. Removing them
-    # needs its own pass.
+    _dropped_keys = max(_tgt_keys - _src, 0)
     print(f"RepoBackfill: source {_src:,} rows vs {_tgt_keys:,} distinct target keys "
-          f"({_ratio:.1%}). Target holds {_tgt_rows:,} rows across those keys. "
-          f"{max(_tgt_keys - _src, 0):,} keys are absent from the source and their rows will be "
-          f"DELETED; the remaining keys are updated in place, duplicates included.")
+          f"({_ratio:.1%}); target holds {_tgt_rows:,} rows across those keys.")
+    if REBUILD:
+        # the overwrite is the only path that collapses duplicates -- see the switch comment
+        print(f"  REBUILD: table becomes exactly the {_src:,} parsed rows. "
+              f"{_tgt_rows - _src:,} rows go away: {_tgt_rows - _tgt_keys:,} duplicate keys "
+              f"collapsed plus {_dropped_keys:,} keys filtered out.")
+    else:
+        # MERGE does NOT collapse duplicate keys: whenNotMatchedBySourceDelete removes only rows
+        # whose native_id is ABSENT from the source, and a duplicate's key is present, so every
+        # copy matches and is updated in place. They stay as CDF noise (~82M redundant update
+        # events per run) -- not a correctness problem, since repo_works keys on native_id via
+        # apply_changes and collapses them anyway.
+        print(f"  MERGE: {_dropped_keys:,} keys are absent from the source and their rows will "
+              f"be DELETED. Remaining keys are updated in place, duplicates included -- "
+              f"{_tgt_rows - _tgt_keys:,} duplicate rows survive (use REBUILD to clear them).")
 
+if not spark.catalog.tableExists(target_table):
+    (parsed_df.write.format("delta")
+        .option("mergeSchema", "true").mode("overwrite").saveAsTable(target_table))
+
+elif REBUILD:
+    print(f"REBUILD: overwriting {target_table} -- collapsing duplicate keys and applying "
+          f"filters in one pass. FULL-REFRESH the Repo DLT pipeline afterwards, then set the "
+          f"rebuild widget back to false.")
+    (parsed_df.write.format("delta")
+        .mode("overwrite")
+        .option("overwriteSchema", "true")
+        .saveAsTable(target_table))
+
+else:
     (DeltaTable.forName(spark, target_table).alias("target")
         .merge(parsed_df.alias("source"), "target.native_id = source.native_id")
         # NULL-safe: 3,932,463 rows carry a NULL updated_date and NULL >= NULL is NULL, which
@@ -719,6 +768,3 @@ if spark.catalog.tableExists(target_table):
         # the whole point: rows the parse no longer produces are removed, not stranded
         .whenNotMatchedBySourceDelete()
         .execute())
-else:
-    (parsed_df.write.format("delta")
-        .option("mergeSchema", "true").mode("overwrite").saveAsTable(target_table))
