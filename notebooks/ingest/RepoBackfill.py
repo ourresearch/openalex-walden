@@ -726,7 +726,7 @@ if spark.catalog.tableExists(target_table):
             "MERGE mode, or simply not written in REBUILD mode. Investigate the parse before "
             "re-running; do not lower the ratio to get past this."
         )
-    _dropped_keys = max(_tgt_keys - _src, 0)
+    _dropped_keys = _tgt_keys - _src if _tgt_keys > _src else 0
     print(f"RepoBackfill: source {_src:,} rows vs {_tgt_keys:,} distinct target keys "
           f"({_ratio:.1%}); target holds {_tgt_rows:,} rows across those keys.")
     if REBUILD:
