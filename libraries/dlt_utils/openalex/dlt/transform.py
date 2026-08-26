@@ -201,7 +201,7 @@ def enrich_with_features_and_author_keys(df_input):
     return df_final_enriched
 
 
-def apply_final_merge_key_and_filter(df_enriched_input):
+def apply_final_merge_key_and_filter(df_enriched_input, keep_when=None):
     MERGE_COL = "merge_key"
 
     """
@@ -210,12 +210,17 @@ def apply_final_merge_key_and_filter(df_enriched_input):
     """
     df_with_merge_key = create_merge_column(df_enriched_input)
 
-    df_filtered = df_with_merge_key.filter(F.expr(
+    _has_key = F.expr(
         f"({MERGE_COL}.doi is not null) or " +
         f"({MERGE_COL}.pmid is not null) or " +
         f"({MERGE_COL}.arxiv is not null) or " +
         f"(({MERGE_COL}.title_author is not null and {MERGE_COL}.title_author <> ''))"
-    ))
+    )
+    # oxjob #881: keep_when lets CDF delete events through. A delete carries the pre-image of a
+    # record we are removing precisely because it is junk, so it fails this filter and the
+    # deletion would silently never reach apply_changes. Default None = unchanged behaviour for
+    # every other ingest.
+    df_filtered = df_with_merge_key.filter(_has_key if keep_when is None else (keep_when | _has_key))
 
     # oxjob #807: clean the display title LAST — merge_key above was built from the
     # original title, so this changes only what's shown/searched, never work identity.

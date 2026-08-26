@@ -19,7 +19,7 @@ MIN_TITLE_LENGTH = 5
 
 
 def apply_repo_policy_filters(df, title_col="title", type_col="raw_native_type",
-                              native_id_col="native_id"):
+                              native_id_col="native_id", keep_when=None):
     """Drop records that must never become works, for EVERY repo stream.
 
     Three rules, previously implemented only inside Repo.py's repo_parsed() and therefore
@@ -33,8 +33,14 @@ def apply_repo_policy_filters(df, title_col="title", type_col="raw_native_type",
     Idempotent, so it is safe to call early (per stream, to keep intermediate tables lean) and
     again on the union (to catch every stream). Call it on the union at minimum -- that is the
     only place all three streams are covered.
+
+    keep_when: a Column that forces a row to be RETAINED regardless of the rules. This exists for
+    delete events (oxjob #881): a CDF delete carries the pre-image of the row being removed, so a
+    junk record's delete event fails these very rules and would be dropped -- meaning the deletion
+    silently never propagates. Deletes must bypass every filter between the source and
+    apply_changes, or they do nothing.
     """
-    return df.filter(
+    passes_policy = (
         (
             (~F.col(type_col).isNull() & ~F.lower(F.col(type_col)).isin(TYPES_TO_DELETE))
             |
@@ -43,3 +49,6 @@ def apply_repo_policy_filters(df, title_col="title", type_col="raw_native_type",
         & F.col(title_col).isNotNull()
         & (F.length(F.trim(F.col(title_col))) >= MIN_TITLE_LENGTH)
     )
+    if keep_when is not None:
+        passes_policy = keep_when | passes_policy
+    return df.filter(passes_policy)
