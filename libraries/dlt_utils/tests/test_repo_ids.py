@@ -53,3 +53,20 @@ def test_pmid_and_pmcid_patterns_present():
 def test_null_inputs_are_safe():
     assert extract_ids(None, None) == []
     assert extract_ids([], None) == [] or extract_ids([], None)[0]["namespace"] == "pmh"
+
+
+def test_none_identifiers_still_yields_native_id_and_doi():
+    """The Open MIND shape exactly: NO dc:identifier at all (None, not []).
+
+    The original code returned [] here before reaching the native_id handling -- which is why
+    Open MIND records published ids: [] and why the first P3 deployment extracted zero DOIs
+    (caught live on refresh 8223b9d2, 2026-08-26)."""
+    r = extract_ids(None, "doi:10.57451/lhd.a.ti_crystal.129521.1")
+    assert _ids(r, "doi") == ["10.57451/lhd.a.ti_crystal.129521.1"]
+    assert _ids(r, "pmh") == ["doi:10.57451/lhd.a.ti_crystal.129521.1"]
+
+
+def test_none_identifiers_plain_oai_native_gets_pmh():
+    r = extract_ids(None, "oai:example.org:123")
+    assert _ids(r, "pmh") == ["oai:example.org:123"]
+    assert _ids(r, "doi") == []

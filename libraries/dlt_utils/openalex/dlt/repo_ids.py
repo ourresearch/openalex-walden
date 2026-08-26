@@ -22,8 +22,12 @@ id_struct_type = StructType([
 
 def extract_ids(identifiers, native_id):
    try:
+       # A record with NO dc:identifier must still yield its native_id (pmh) and, since oxjob
+       # #880 P3, any DOI carried in the OAI identifier itself. The old `return []` here is why
+       # Open MIND records published ids: [] -- they carry no dc:identifier, so extract_ids
+       # exited before the native_id handling and #880's evidence showed empty ids arrays.
        if identifiers is None:
-           return []
+           identifiers = []
        if not isinstance(identifiers, list):
            identifiers = [identifiers]
        if native_id is None:
