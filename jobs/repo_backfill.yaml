@@ -6,6 +6,12 @@ resources:
         on_failure:
           - casey@ourresearch.org
       max_concurrent_runs: 1
+      parameters:
+        # oxjob #881 one-time rebuild switch -- see base_parameters below for what it does.
+        # Job-level so it appears at the top of the Run-now dialog; the task must still plumb it
+        # into the widget explicitly (see clean_locations_stale.yaml for the same pattern).
+        - name: rebuild
+          default: "false"
       queue:
         enabled: false
       tasks:
@@ -28,7 +34,7 @@ resources:
               #   A rebuild run REQUIRES a Repo DLT full refresh afterwards: an overwrite is not
               #   a row-level change feed, so repo_parsed_backfill's readChangeFeed stream fails
               #   until refreshed.
-              rebuild: "false"
+              rebuild: "{{job.parameters.rebuild}}"
           job_cluster_key: repo_backfill_cluster
       job_clusters:
         - job_cluster_key: repo_backfill_cluster
