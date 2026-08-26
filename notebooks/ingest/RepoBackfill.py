@@ -712,6 +712,12 @@ MIN_KEEP_RATIO = 0.75
 
 # The guard applies to BOTH modes -- an overwrite with a short parse destroys just as much as a
 # delete-by-absence does.
+# Persist before the guard: its count() materializes the full parse, and without a cache Spark
+# recomputes the entire 310M-row regex parse a second time for the write. On the 4-worker run the
+# parse dominates wall-clock, so this is close to a 2x on the whole job.
+from pyspark import StorageLevel
+parsed_df = parsed_df.persist(StorageLevel.MEMORY_AND_DISK)
+
 if spark.catalog.tableExists(target_table):
     _src = parsed_df.count()
     _tgt_rows = spark.table(target_table).count()
