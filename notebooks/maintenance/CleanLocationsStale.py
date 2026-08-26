@@ -29,7 +29,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.10-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.11-py3-none-any.whl
 # MAGIC %restart_python
 
 # COMMAND ----------

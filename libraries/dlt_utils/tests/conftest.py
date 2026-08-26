@@ -80,6 +80,7 @@ def _install():
     fn.trim = lambda c: FakeCol(f"trim({c.name})")
     fn.length = lambda c: FakeCol(f"length({c.name})")
     fn.pandas_udf = lambda *a, **k: (lambda f: f)
+    fn.udf = lambda f, *a, **k: f
     for n in ("StringType", "StructField", "StructType", "ArrayType", "BooleanType",
               "TimestampType", "DateType"):
         setattr(ty, n, type(n, (), {"__init__": lambda self, *a, **k: None}))

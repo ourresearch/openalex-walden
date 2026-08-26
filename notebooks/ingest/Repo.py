@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.10-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.11-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -18,6 +18,7 @@ from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, w
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 from openalex.dlt.repo_types import best_type_udf
 from openalex.dlt.repo_filters import apply_repo_policy_filters
+from openalex.dlt.repo_ids import extract_ids_udf
 
 
 
@@ -188,115 +189,6 @@ detect_version_udf = F.udf(detect_version_from_metadata, StringType())
 
 url_pattern = r"(https?://\S+|www\.\S+)"
 
-id_struct_type = StructType([
-    StructField("id", StringType(), True),
-    StructField("namespace", StringType(), True),
-    StructField("relationship", StringType(), True)
-])
-
-def extract_ids(identifiers, native_id):
-   try:
-       if identifiers is None:
-           return []
-       if not isinstance(identifiers, list):
-           identifiers = [identifiers]
-       if native_id is None:
-           native_id = ""
-           
-       patterns = {
-           'arxiv': (r"https?://arxiv\.org/abs/([0-9]{4}\.[0-9]{4,5}|[a-z\-]+/\d+)", 1),
-           'arxiv_native': (r"oai:arXiv\.org:([^/\s]+/\d+|\d+\.\d+)", 1),
-           'doi': (r"\b10\.\d{4,9}/\S+\b", 0),
-           'issn': (r"\b\d{4}-\d{3}[0-9X]\b", 0),
-           'hal': (r"\bhal-\d+\b", 0),
-           'handle': (r"https?://hdl\.handle\.net/([^/\s]+/[^/\s]+)", 1),
-           'pmid': (r"/pubmed/(\d+)", 1),
-           'pmcid': (r"/pmc/articles/(PMC\d+)", 1)
-       }
-       
-       results = []
-       arxiv_id_from_native = None
-       
-       # extract arxiv ID from native_id and normalize it
-       try:
-           if isinstance(native_id, str):
-               match = re.search(patterns['arxiv_native'][0], native_id)
-               if match:
-                   arxiv_id_from_native = match.group(1)
-       except Exception:
-           pass
-       
-       # process each identifier
-       for identifier in identifiers:
-           if not identifier or not isinstance(identifier, str):
-               continue
-               
-           try:
-               for namespace, (pattern, group) in patterns.items():
-                   match = re.search(pattern, identifier)
-                   if match:
-                       try:
-                           relationship = None
-                           
-                           if namespace.startswith('arxiv'):
-                               id_value = "arXiv:" + match.group(group)  # prepend arXiv:
-                               
-                               # check if this is an arxiv ID and compare with native_id
-                               if arxiv_id_from_native:
-                                   if id_value == f"arXiv:{arxiv_id_from_native}" or f"oai:arXiv.org:{match.group(group)}" == native_id:
-                                       relationship = 'self'
-                           else:
-                               id_value = match.group(group)
-                           
-                           results.append({
-                               "id": id_value,
-                               "namespace": namespace.split('_')[0],
-                               "relationship": relationship
-                           })
-                           break
-                       except Exception:
-                           continue
-           except Exception:
-               continue
-       
-       # add native_id
-       if native_id:
-           results.append({
-               "id": native_id,
-               "namespace": "pmh",
-               "relationship": "self"
-           })
-
-    # removed 4/23/2025 causing matching issues with arxiv due to doi
-       # add doi if available
-    #    if "doi" not in identifiers and native_id.lower().startswith("oai:arxiv.org:"):
-    #        doi = native_id.lower().replace("oai:arxiv.org:", "10.48550/arxiv.")
-    #        results.append({
-    #            "id": doi,
-    #            "namespace": "doi",
-    #            "relationship": "self"
-    #        })
-       
-       # deduplicate
-       seen = set()
-       unique_results = []
-       for r in results:
-           try:
-               key = (r['id'], r['namespace'], r['relationship'])
-               if key not in seen:
-                   seen.add(key)
-                   unique_results.append(r)
-           except Exception:
-               continue
-       
-       return unique_results
-       
-   except Exception as e:
-       print(f"Error in extract_ids: {str(e)}")
-       return []
-
-# @TODO Convert to Pandas UDF - repo_parsed is slow
-extract_ids_udf = F.udf(extract_ids, ArrayType(id_struct_type))
 
 # COMMAND ----------
 
