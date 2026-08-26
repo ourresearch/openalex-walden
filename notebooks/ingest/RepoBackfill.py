@@ -443,10 +443,6 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
 # COMMAND ----------
 
 spark.conf.set("spark.sql.ansi.enabled", "false")
-# oxjob #881: whenMatchedUpdateAll/whenNotMatchedInsertAll do NOT evolve the target schema, and
-# the mergeSchema option below only applies to the first-run write branch. Without this, the new
-# set_spec/dc_format columns are silently dropped on every MERGE and the re-parse is wasted.
-spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
 
 # oxjob #881: set_spec / dc_format below are the repository's OWN classification of the record
 # ("photographs", "theses", "datasets") and its MIME type. Repo.py reads them from its parsed
@@ -651,25 +647,32 @@ parsed_df = dedupe_by_sequence(
     order_by=[col("updated_date").desc_nulls_last()],
 )
 
-# Use MERGE instead of overwrite to avoid reprocessing all records in CDF stream
+# oxjob #881: FULL REBUILD, not a MERGE (Casey, 2026-08-26).
+#
+# This used to MERGE on native_id with whenMatchedUpdateAll/whenNotMatchedInsertAll and no
+# whenNotMatchedBySourceDelete -- so a record that the parse stopped producing was never removed
+# from the target. Records could only ever be added or updated, never dropped. That is why
+# tightening the filters upstream did nothing to the 310,686,038 rows already here: 14,945,709
+# untyped archive.org rows, ~16.4M denylisted types, ~11.5M short titles and 3,932,145 rows with
+# no usable URL all survived filters that were supposed to exclude them, and 82,121,583 duplicate
+# native_ids accumulated from write paths that predate the current dedup.
+#
+# The table is now whatever the parse produces, full stop. Anything the filters exclude is simply
+# absent from the rebuild.
+#
+# CONSEQUENCE -- READ BEFORE RUNNING:
+#   repo_parsed_backfill in Repo.py does spark.readStream(readChangeFeed=true) on this table.
+#   An overwrite is not a row-level change feed, so that stream will fail with
+#   "Detected a data update/delete in the source table" on its next update. The Repo DLT pipeline
+#   needs a FULL REFRESH after this notebook runs -- it is not optional, and it is the point:
+#   the refresh is what carries the removals through to repo_works.
+#   See oxjob #881 SEQUENCE.md; expect ~20.87M records and ~13.07M works to drop out, which is
+#   far past the 7.5M Guardrails records-changed cap, and it bypasses #784's ledger so ES deletes
+#   and deleted_ids.csv do NOT happen automatically.
 target_table = "openalex.repo.repo_works_backfill"
-parsed_df.createOrReplaceTempView("repo_works_backfill_updates")
 
-# Check if table exists
-table_exists = spark.catalog.tableExists(target_table)
-
-if table_exists:
-    # Table exists, use MERGE to only update changed/new records
-    # This prevents CDF from seeing all records as new inserts
-    from delta.tables import DeltaTable
-    delta_table = DeltaTable.forName(spark, target_table)
-    delta_table.alias("target").merge(
-        parsed_df.alias("source"),
-        "target.native_id = source.native_id"
-    ).whenMatchedUpdateAll(
-        condition="source.updated_date >= target.updated_date"  # update ALL columns from source
-    ).whenNotMatchedInsertAll(  # insert ALL columns from source
-    ).execute()
-else:
-    # Table doesn't exist yet, create it (first run only)
-    parsed_df.write.format("delta").option("mergeSchema", "true").mode("overwrite").saveAsTable(target_table)
+(parsed_df.write
+    .format("delta")
+    .mode("overwrite")
+    .option("overwriteSchema", "true")   # set_spec / dc_format are new columns
+    .saveAsTable(target_table))
