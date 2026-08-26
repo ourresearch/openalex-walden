@@ -13,8 +13,28 @@ resources:
       name: Repo
       catalog: openalex
       target: repo
-      # For full refreshes, swap to classic photon + fixed 20x r5d.8xlarge for the
-      # window (3h22m -> 1h04m on 08-06), then revert to serverless.
+      # FULL-REFRESH PROFILE -- swap `serverless: true` for the block below, deploy, run the
+      # refresh, then revert and deploy again. Measured 3h22m -> 1h04m on 08-06 from the
+      # cluster change ALONE (maxRecordsPerBatch was left at 500 for that run):
+      #
+      #   serverless: false
+      #   photon: true
+      #   clusters:
+      #     - label: default
+      #       node_type_id: r5d.8xlarge
+      #       driver_node_type_id: r5d.8xlarge
+      #       num_workers: 20
+      #
+      # ...and raise arrow.maxRecordsPerBatch in `configuration` below at the same time.
+      # 500 is a serverless-era memory guard, never chosen for Repo deliberately -- it was
+      # inherited from the pre-bundle live pipeline (see 1fd4c45e on the sibling DataCite
+      # Awards pipeline: "likely set during initial tuning to limit memory under PyArrow
+      # conversion (default is 10000)"). r5d.8xlarge has 256 GiB a node, so 500 throttles
+      # every Pandas UDF in repo_enriched -- author last-name parsing, abstract cleaning +
+      # inverted index, title cleaning, best_type_udf -- for little benefit on that hardware.
+      # UNTESTED: step it up (2000 -> 4000), do not jump straight to the 10000 default. The
+      # known OOM in this path was the whole-authors-array JSON round-trip on hyperauthorship
+      # works; that specific bug is fixed, but it is the reason to be incremental.
       serverless: true
       continuous: false
       development: false
@@ -24,6 +44,7 @@ resources:
         environment: prod
         pipelines.clusterShutdown.delay: 300s
         spark.sql.legacy.timeParserPolicy: CORRECTED
+        # 500 for serverless steady state; raise with the full-refresh profile above
         spark.sql.execution.arrow.maxRecordsPerBatch: "500"
       tags:
         environment: prod
