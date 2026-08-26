@@ -36,8 +36,10 @@ from openalex.dlt.sequencing import dedupe_by_sequence
 #   row-level change feed, so repo_parsed_backfill's readChangeFeed stream fails with "Detected a
 #   data update/delete in the source table" until it is refreshed. Set the widget back to false
 #   immediately afterwards.
-dbutils.widgets.dropdown("rebuild", "false", ["false", "true"], "Full rebuild (overwrite)")
-REBUILD = dbutils.widgets.get("rebuild").lower() == "true"
+# Text, not dropdown: a dropdown widget raises if a job supplies a value outside its choice list,
+# and this is driven by the job's base_parameters (jobs/repo_backfill.yaml).
+dbutils.widgets.text("rebuild", "false", "Full rebuild (overwrite)")
+REBUILD = dbutils.widgets.get("rebuild").strip().lower() in ("true", "1", "yes")
 print(f"RepoBackfill mode: {'REBUILD (overwrite)' if REBUILD else 'MERGE (incremental)'}")
 
 # COMMAND ----------

@@ -13,6 +13,22 @@ resources:
           notebook_task:
             notebook_path: notebooks/ingest/RepoBackfill
             source: GIT
+            base_parameters:
+              # oxjob #881 one-time rebuild switch. MUST stay "false" here.
+              #
+              # "false" -> MERGE with whenNotMatchedBySourceDelete. Incremental; deletes flow
+              #   through CDF to repo_works and no DLT refresh is needed. Steady state.
+              #
+              # "true"  -> overwrite repo_works_backfill outright. Only needed to clear damage
+              #   the MERGE cannot reach (82,121,583 duplicate native_ids as of 2026-08-26 --
+              #   whenNotMatchedBySourceDelete deletes only keys ABSENT from the source, and a
+              #   duplicate's key is present, so every copy is updated in place instead).
+              #   Set it per-run via "Run now with different parameters", NOT by editing this
+              #   file, so the default cannot be left switched on by accident.
+              #   A rebuild run REQUIRES a Repo DLT full refresh afterwards: an overwrite is not
+              #   a row-level change feed, so repo_parsed_backfill's readChangeFeed stream fails
+              #   until refreshed.
+              rebuild: "false"
           job_cluster_key: repo_backfill_cluster
       job_clusters:
         - job_cluster_key: repo_backfill_cluster
