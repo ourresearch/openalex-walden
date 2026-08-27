@@ -31,6 +31,11 @@ TYPES_TO_DELETE = [
     "gazeta", "czasopisma", "physical object", "periodical", "e-czasopismo",
     "postcard", "periodicalpart", "periódicos y revistas", "specimen", "postcards",
     "zeitung", "dodatek do czasopisma", "doc-type:periodicalpart",
+    # oxjob #881 round 2 tail sweep (sampled 2026-08-27). "volume de pã©riodique" is stored
+    # mojibake -- match the bytes as they are. post = OpenEdition/hypotheses.org event and blog
+    # notices (91K works, 12 cited). Held for policy review, NOT here: patent, project.
+    "imatge", "exam", "still image;", "gazety", "volume de pã©riodique",
+    "world atlas", "black-and-white photographs", "syllabus", "cutting", "post",
 ]
 
 # RAW-TYPE RANKING MAP (renamed from RAW_TYPE_RANKING_MAP, 2026-07-17 per Casey).
