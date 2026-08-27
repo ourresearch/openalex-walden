@@ -22,7 +22,7 @@ resources:
               endpoint: sdg-classifier
               concurrency: "24"
               request_batch: "25"
-              max_rows: "500000"
+              max_rows: "2000000"
           environment_key: Default
           max_retries: 3
           min_retry_interval_millis: 300000
