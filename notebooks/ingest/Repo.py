@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.13-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.14-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -17,7 +17,7 @@ from openalex.utils.environment import *
 from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 from openalex.dlt.repo_types import best_type_udf
-from openalex.dlt.repo_filters import apply_repo_policy_filters
+from openalex.dlt.repo_filters import apply_repo_policy_filters, apply_endpoint_filters
 from openalex.dlt.repo_ids import extract_ids_udf
 
 
@@ -637,6 +637,9 @@ def repo_enriched():
     # very rules -- filter it and the deletion silently never happens.
     _IS_DELETE = F.col("_change_type") == "delete"
     combined_df = apply_repo_policy_filters(combined_df, keep_when=_IS_DELETE)
+    # oxjob #881 round 2: endpoint denylist + setSpec carves. Union-only -- this is the one
+    # place every stream carries endpoint_id and set_spec.
+    combined_df = apply_endpoint_filters(combined_df, keep_when=_IS_DELETE)
 
     # a record with no usable URL can never become a location (no scrape seed, no landing page)
     combined_df = combined_df.filter(
