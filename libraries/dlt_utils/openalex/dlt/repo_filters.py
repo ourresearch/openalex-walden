@@ -9,8 +9,6 @@ repo_parsed_irdb() -- raw CDF passthroughs -- bypassed them entirely: 20,874,419
 repo_works past rules we had already agreed to, 20,872,994 of them (99.99%) from backfill.
 """
 
-from functools import reduce
-
 import pyspark.sql.functions as F
 
 from .repo_types import TYPES_TO_DELETE
@@ -122,13 +120,13 @@ def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spe
     """
     denylisted = F.col(endpoint_col).isin(*sorted(ENDPOINTS_TO_DELETE))
 
+    # SQL-side lambda (the Repo.py filter idiom) -- a pyspark-side lambda with extra bound
+    # params fails DLT analysis (2026-08-27, update e0fd1ae6).
     carved = F.lit(False)
     for endpoint_id, prefixes in ENDPOINT_SETSPEC_DELETE.items():
-        in_carved_class = F.exists(
-            F.coalesce(F.col(set_spec_col), F.array()),
-            lambda s, _prefixes=prefixes: reduce(
-                lambda acc, p: acc | s.startswith(p), _prefixes, F.lit(False)),
-        )
+        likes = " OR ".join(f"s LIKE '{p}%'" for p in prefixes)
+        in_carved_class = F.expr(
+            f"exists(coalesce({set_spec_col}, array()), s -> {likes})")
         carved = carved | ((F.col(endpoint_col) == endpoint_id) & in_carved_class)
 
     passes_policy = ~(F.coalesce(denylisted, F.lit(False)) | carved)
