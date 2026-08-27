@@ -192,44 +192,9 @@ def _fix_bare_c1(s):
     return "".join(out)
 
 
-# --------------------------------------------------------------------------- #
-# Necessary-condition gate for repair_mojibake (oxjob #881 perf).
-#
-# Every path that can change a string requires a TRIGGER LEAD character:
-#   - _detect: a core lead (_CORE_LEADS_2), "â", a 3-byte lead U+00E0-U+00EF (except â),
-#     or a 4-byte lead U+00F0-U+00F4 -- all >= U+00A0;
-#   - _fallback_signature: a char that encodes to 0xC2-0xDF under iso-8859-2/cp1250 with a
-#     byte DIFFERENT from its own codepoint (the "distinctive" rule) -- e.g. latin2's C4/C5
-#     reads;
-#   - _fix_bare_c1 runs only after a repair happened.
-# A string containing none of these characters cannot be modified, so skipping it is EXACT,
-# not heuristic. The set is built from the same primitives the detectors use, so it cannot
-# drift from them. Measured: the per-char Python detectors were ~50% of ALL enrichment UDF
-# time corpus-wide; this gate removes them for the clean majority at C speed.
-def _build_trigger_lead_re():
-    chars = set(_CORE_LEADS_2) | {"\u00e2"}
-    chars |= {chr(c) for c in range(0xE0, 0xF0) if c != 0xE2}
-    chars |= {chr(c) for c in range(0xF0, 0xF5)}
-    for codec in ("iso-8859-2", "cp1250"):
-        for b in range(0xC2, 0xE0):
-            try:
-                ch = bytes([b]).decode(codec)
-            except UnicodeDecodeError:
-                continue
-            if ord(ch) != b:
-                chars.add(ch)
-    return re.compile("[" + "".join(re.escape(c) for c in sorted(chars)) + "]")
-
-
-_TRIGGER_LEAD_RE = _build_trigger_lead_re()
-
-
 def repair_mojibake(s):
     """Repair mojibake in s; returns s unchanged if not confidently repairable."""
     if not s:
-        return s
-    # exact no-op fast path -- see _build_trigger_lead_re above
-    if s.isascii() or not _TRIGGER_LEAD_RE.search(s):
         return s
     cur = s
     for _ in range(_MAX_ROUNDS):

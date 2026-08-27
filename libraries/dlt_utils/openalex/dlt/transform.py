@@ -29,12 +29,11 @@ def clean_abstract_text(abstract_string_input):
 
     return abstract_s if abstract_s else None
 
-def _inverted_index_from_cleaned(abstract_s):
-    """Index builder over ALREADY-CLEANED text. Split out (oxjob #881) so the main UDF does not
-    pay a redundant second cleaning pass per abstract -- the cleaner's cost is its mojibake
-    detector scan, which used to run twice on every abstract corpus-wide."""
+def f_generate_inverted_index(abstract_string_input):
     import json
     from collections import OrderedDict
+
+    abstract_s = clean_abstract_text(abstract_string_input)
 
     if not abstract_s:
         return None
@@ -48,13 +47,6 @@ def _inverted_index_from_cleaned(abstract_s):
 
     return json.dumps(invertedIndex, ensure_ascii=False) if invertedIndex else None
 
-
-def f_generate_inverted_index(abstract_string_input):
-    # public signature unchanged: raw text in, cleans then inverts (used standalone by the
-    # maintenance notebooks). The enrichment UDF below calls the builder directly on its
-    # already-cleaned series instead.
-    return _inverted_index_from_cleaned(clean_abstract_text(abstract_string_input))
-
 @F.pandas_udf(StringType())
 def udf_f_generate_inverted_index(abstract_series: pd.Series) -> pd.Series: # Name matches your original UDF variable
     # This Pandas UDF calls your 'f_generate_inverted_index' Python function
@@ -66,8 +58,8 @@ def udf_clean_abstract_text(text_series: pd.Series) -> pd.Series:
     # `abstract`/`fulltext` fields so the two stay byte-for-byte consistent.
     return text_series.apply(clean_abstract_text)
 
-# Single Arrow pass producing both abstract outputs; the index is built directly on the
-# cleaned text (identical text by construction -- no second cleaning pass, oxjob #881).
+# Single Arrow pass producing both abstract outputs. The cleaner is idempotent,
+# so inverting the cleaned text is byte-identical to inverting the original.
 abstract_features_struct_type = StructType([
     StructField("abstract", StringType(), True),
     StructField("abstract_inverted_index", StringType(), True),
@@ -76,7 +68,7 @@ abstract_features_struct_type = StructType([
 @F.pandas_udf(abstract_features_struct_type)
 def udf_abstract_features(abstract_series: pd.Series) -> pd.DataFrame:
     cleaned = abstract_series.apply(clean_abstract_text)
-    inverted = cleaned.apply(_inverted_index_from_cleaned)
+    inverted = cleaned.apply(f_generate_inverted_index)
     return pd.DataFrame({"abstract": cleaned, "abstract_inverted_index": inverted})
 
 @F.pandas_udf(StringType())
