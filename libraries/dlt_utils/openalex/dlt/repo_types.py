@@ -23,7 +23,14 @@ TYPES_TO_DELETE = [
     "bildband", "dvd-video", "video", "fotografia", "cd", "sound recording",
     "text and image", "moving image", "photographs", "cd-rom",
     "blu-ray-disc", "stillimage", "image; text", "image;stillimage", "still image",
-    "image;", "ilustraciones y fotos", "fotografie", "fotografía"
+    "image;", "ilustraciones y fotos", "fotografie", "fotografía",
+    # oxjob #881 Tier-1a: multilingual junk types, every one sampled before listing
+    # (TIER1A_TYPE_DOCKET.md; near-misses like contributiontoperiodical = article are NOT here).
+    # Exact match only -- 'czasopismo' is a newspaper ISSUE, 'artículo de revista' is an article.
+    "czasopismo", "números", "image fixe", "physicalobject", "sound",
+    "gazeta", "czasopisma", "physical object", "periodical", "e-czasopismo",
+    "postcard", "periodicalpart", "periódicos y revistas", "specimen", "postcards",
+    "zeitung", "dodatek do czasopisma", "doc-type:periodicalpart",
 ]
 
 # RAW-TYPE RANKING MAP (renamed from RAW_TYPE_RANKING_MAP, 2026-07-17 per Casey).
