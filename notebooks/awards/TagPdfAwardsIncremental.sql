@@ -108,11 +108,38 @@ WITH funder_regexes AS (
     fa.display_name AS funder_display_name,
     fa.ids.ror AS ror_id,
     fa.ids.doi AS doi,
-    CASE
-      WHEN fnk.name RLIKE '^[A-Z0-9\\.\\-\\s]+$' AND LENGTH(fnk.name) <= 10
-      THEN CONCAT('\\b', regexp_replace(fnk.name, '([\\[\\](){}+*?^$.|\\\\])', '\\\\$1'), '\\b')
-      ELSE CONCAT('(?i)\\b', regexp_replace(fnk.name, '([\\[\\](){}+*?^$.|\\\\])', '\\\\$1'), '\\b')
-    END AS match_regex
+    CONCAT(
+      CASE
+        WHEN fnk.id = 'https://openalex.org/F4320306076'
+          AND LOWER(TRIM(fnk.name)) = 'national science foundation'
+        THEN '(?i)(?<!\\bchinese\\s+)'
+        WHEN fnk.id = 'https://openalex.org/F4320306076'
+          AND LOWER(TRIM(fnk.name)) = 'nsf'
+        THEN '(?<!(?i:\\bchinese)\\s+)'
+        ELSE ''
+      END,
+      CASE
+        WHEN fnk.name RLIKE '^[A-Z0-9\\.\\-\\s]+$' AND LENGTH(fnk.name) <= 10
+        THEN CONCAT('\\b', regexp_replace(fnk.name, '([\\[\\](){}+*?^$.|\\\\])', '\\\\$1'), '\\b')
+        ELSE CONCAT('(?i)\\b', regexp_replace(fnk.name, '([\\[\\](){}+*?^$.|\\\\])', '\\\\$1'), '\\b')
+      END,
+      CASE
+        -- oxjob #874: these aliases prefix distinct funder names.
+        WHEN fnk.id = 'https://openalex.org/F4320324089'
+          AND LOWER(TRIM(fnk.name)) IN (
+            'centre for quantum technologies',
+            'center for quantum technologies'
+          )
+        THEN '(?i)(?!\\s*(?:,\\s*)?(?:and|&)\\s+applications\\b)'
+        WHEN fnk.id = 'https://openalex.org/F4320306076'
+          AND LOWER(TRIM(fnk.name)) IN (
+            'national science foundation',
+            'nsf'
+          )
+        THEN '(?i)(?!\\s*(?:,\\s*)?(?:\\(\\s*NSFC?\\s*\\)\\s*(?:,\\s*)?)?of\\s+china\\b)'
+        ELSE ''
+      END
+    ) AS match_regex
   FROM openalex.common.funder_names_keep fnk
   JOIN openalex.funders.funders_api fa
     ON CAST(regexp_extract(fnk.id, 'F(\\d+)', 1) AS BIGINT) = fa.id
