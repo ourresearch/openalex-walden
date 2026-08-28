@@ -322,6 +322,17 @@ resources:
               is_full_sync: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
+        # oxjob #915: nightly incremental locations sync (openalex_updated_dt
+        # >= now-2d). Serialized after the works sync on the shared cluster.
+        - task_key: Sync_Locations_to_Elasticsearch
+          depends_on:
+            - task_key: Sync_to_Elasticsearch
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_locations
+            base_parameters:
+              is_full_sync: "false"
+            source: GIT
+          job_cluster_key: es_sync_cluster
         # oxjob #784: the ES delete path sync_works lacks — consumes the
         # deleted_works ledger and removes the stale docs from works-v34.
         - task_key: Delete_Works_from_Elasticsearch
