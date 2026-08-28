@@ -15,7 +15,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
     "table_name": "openalex.works.locations_mapped",
-    "index_name": "locations-v1"
+    "index_name": "locations-v2"
 }
 
 dbutils.widgets.text("is_full_sync", "false")
@@ -74,6 +74,96 @@ def send_partition_to_elastic(partition, index_name):
 
 # COMMAND ----------
 
+# Explicit mapping: locations-v1's live mapping, minus the urls.conent_type typo field,
+# plus endpoint_id, with updated_date as a real date (was keyword in v1).
+INDEX_MAPPING = {
+    "dynamic": "strict",
+    "properties": {
+        "abstract": {"type": "keyword", "ignore_above": 8191},
+        "authors": {
+            "properties": {
+                "affiliations": {
+                    "properties": {
+                        "department": {"type": "keyword"},
+                        "name": {"type": "keyword"},
+                        "ror_id": {"type": "keyword"},
+                    }
+                },
+                "author_key": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "family": {"type": "keyword"},
+                "given": {"type": "keyword"},
+                "is_corresponding": {"type": "boolean"},
+                "name": {"type": "keyword"},
+                "orcid": {"type": "keyword"},
+            }
+        },
+        "created_date": {"type": "keyword"},
+        "endpoint_id": {"type": "keyword"},
+        "first_page": {"type": "keyword"},
+        "grobid_s3_id": {"type": "keyword"},
+        "id": {"type": "keyword"},
+        "ids": {
+            "properties": {
+                "id": {"type": "keyword"},
+                "namespace": {"type": "keyword"},
+                "relationship": {"type": "keyword"},
+            }
+        },
+        "ingested_at": {"type": "keyword"},
+        "is_oa": {"type": "boolean"},
+        "is_oa_source": {"type": "boolean"},
+        "is_retracted": {"type": "boolean"},
+        "issue": {"type": "keyword"},
+        "landing_page_url": {"type": "keyword", "ignore_above": 8191},
+        "language": {"type": "keyword"},
+        "last_page": {"type": "keyword"},
+        "license": {"type": "keyword"},
+        "merge_key": {
+            "properties": {
+                "arxiv": {"type": "keyword"},
+                "doi": {"type": "keyword"},
+                "pmid": {"type": "keyword"},
+                "title_author": {"type": "keyword"},
+            }
+        },
+        "native_id": {"type": "keyword", "ignore_above": 8191},
+        "native_id_namespace": {"type": "keyword"},
+        "openalex_created_dt": {"type": "keyword"},
+        "openalex_updated_dt": {"type": "keyword"},
+        "pdf_s3_id": {"type": "keyword"},
+        "pdf_url": {"type": "keyword", "ignore_above": 8191},
+        "provenance": {"type": "keyword"},
+        "published_date": {"type": "keyword"},
+        "publisher": {"type": "keyword", "ignore_above": 8191},
+        "raw_type": {"type": "keyword"},
+        "references": {
+            "properties": {
+                "arxiv": {"type": "keyword"},
+                "authors": {"type": "keyword"},
+                "doi": {"type": "keyword"},
+                "pmid": {"type": "keyword"},
+                "raw": {"type": "keyword"},
+                "title": {"type": "keyword"},
+                "year": {"type": "keyword"},
+            }
+        },
+        "source_id": {"type": "keyword"},
+        "source_name": {"type": "keyword", "ignore_above": 8191},
+        "title": {"type": "keyword", "ignore_above": 8191},
+        "type": {"type": "keyword"},
+        "updated_date": {"type": "date", "format": "yyyy-MM-dd"},
+        "urls": {
+            "properties": {
+                "content_type": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
+                "url": {"type": "keyword"},
+            }
+        },
+        "version": {"type": "keyword"},
+        "volume": {"type": "keyword"},
+        "work_id": {"type": "keyword"},
+    },
+}
+
 if IS_FULL_SYNC:
     try:
         client = Elasticsearch(
@@ -84,11 +174,24 @@ if IS_FULL_SYNC:
         )
         if client.indices.exists(index=CONFIG["index_name"]):
             client.indices.put_settings(index=CONFIG["index_name"], body={
-                "index": {"number_of_replicas": 0}
+                "index": {"number_of_replicas": 0, "refresh_interval": "-1"}
             })
-            print(f"Set replicas to 0 on {CONFIG['index_name']} for full sync")
+            print(f"Set replicas to 0 and refresh_interval to -1 on {CONFIG['index_name']} for full sync")
         else:
-            print(f"Index {CONFIG['index_name']} does not exist yet - will create with default settings")
+            client.indices.create(
+                index=CONFIG["index_name"],
+                body={
+                    "settings": {
+                        "index": {
+                            "number_of_shards": 12,
+                            "number_of_replicas": 0,
+                            "refresh_interval": "-1",
+                        }
+                    },
+                    "mappings": INDEX_MAPPING,
+                },
+            )
+            print(f"Created index {CONFIG['index_name']} with explicit mapping, replicas=0, refresh_interval=-1")
     finally:
         client.close()
 
@@ -110,7 +213,7 @@ doc_columns = [
     "abstract", "authors", "ids", "urls", "references",
     "source_name", "publisher", "source_id",
     "pdf_url", "landing_page_url", "pdf_s3_id", "grobid_s3_id",
-    "ingested_at",
+    "endpoint_id", "ingested_at",
     "openalex_created_dt", "openalex_updated_dt",
 ]
 
@@ -125,8 +228,9 @@ for c in ["published_date", "created_date", "updated_date", "ingested_at", "open
 
 df = (df
     .filter(F.col("native_id").isNotNull() & F.col("native_id_namespace").isNotNull())
+    .filter(F.col("work_id").isNotNull() & (F.col("work_id") > 0))
     .withColumn("id", F.concat(F.col("native_id_namespace"), F.lit(":"), F.col("native_id")))
-    .withColumn("work_id", F.concat(F.lit("https://openalex.org/W"), F.coalesce(F.col("work_id"), F.lit(-1)).cast("string")))
+    .withColumn("work_id", F.concat(F.lit("https://openalex.org/W"), F.col("work_id").cast("string")))
     .withColumn("source_id", F.when(F.col("source_id").isNotNull(),
         F.concat(F.lit("https://openalex.org/S"), F.col("source_id").cast("string"))))
     .select("id", F.struct(F.col("id"), *[F.col(c) for c in doc_columns]).alias("_source"))
@@ -156,8 +260,8 @@ print(f"{client.count(index=CONFIG['index_name'])['count']} documents in {CONFIG
 
 if IS_FULL_SYNC:
     client.indices.put_settings(index=CONFIG["index_name"], body={
-        "index": {"number_of_replicas": 1}
+        "index": {"number_of_replicas": 1, "refresh_interval": "30s"}
     })
-    print(f"Restored replicas to 1 on {CONFIG['index_name']}")
+    print(f"Restored replicas to 1 and refresh_interval to 30s on {CONFIG['index_name']}")
 
 client.close()
