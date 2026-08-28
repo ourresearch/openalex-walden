@@ -29,11 +29,11 @@ def clean_abstract_text(abstract_string_input):
 
     return abstract_s if abstract_s else None
 
-def f_generate_inverted_index(abstract_string_input):
+def _inverted_index_from_cleaned(abstract_s):
+    """Index builder over ALREADY-CLEANED text. Split out (oxjob #881) so the main UDF does not
+    pay a redundant second cleaning pass per abstract."""
     import json
     from collections import OrderedDict
-
-    abstract_s = clean_abstract_text(abstract_string_input)
 
     if not abstract_s:
         return None
@@ -46,6 +46,13 @@ def f_generate_inverted_index(abstract_string_input):
         invertedIndex[word].append(i)
 
     return json.dumps(invertedIndex, ensure_ascii=False) if invertedIndex else None
+
+
+def f_generate_inverted_index(abstract_string_input):
+    # public signature unchanged: raw text in, cleans then inverts (used standalone by the
+    # maintenance notebooks). The enrichment UDF below calls the builder directly on its
+    # already-cleaned series instead.
+    return _inverted_index_from_cleaned(clean_abstract_text(abstract_string_input))
 
 @F.pandas_udf(StringType())
 def udf_f_generate_inverted_index(abstract_series: pd.Series) -> pd.Series: # Name matches your original UDF variable
@@ -68,7 +75,7 @@ abstract_features_struct_type = StructType([
 @F.pandas_udf(abstract_features_struct_type)
 def udf_abstract_features(abstract_series: pd.Series) -> pd.DataFrame:
     cleaned = abstract_series.apply(clean_abstract_text)
-    inverted = cleaned.apply(f_generate_inverted_index)
+    inverted = cleaned.apply(_inverted_index_from_cleaned)
     return pd.DataFrame({"abstract": cleaned, "abstract_inverted_index": inverted})
 
 @F.pandas_udf(StringType())

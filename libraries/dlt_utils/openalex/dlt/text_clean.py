@@ -196,6 +196,11 @@ def repair_mojibake(s):
     """Repair mojibake in s; returns s unchanged if not confidently repairable."""
     if not s:
         return s
+    # oxjob #881: pure-ASCII text cannot contain mojibake -- skip the per-character detectors
+    # (single C-level check; ~50% of abstracts, ~68% of titles). The broader trigger-lead regex
+    # gate from b81da17e stays OUT pending a repro of the at-scale worker crash it shipped with.
+    if s.isascii():
+        return s
     cur = s
     for _ in range(_MAX_ROUNDS):
         nxt = _repair_once(cur)
