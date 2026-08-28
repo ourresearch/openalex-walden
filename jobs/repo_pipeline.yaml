@@ -54,9 +54,13 @@ resources:
         environment: prod
         pipelines.clusterShutdown.delay: 300s
         spark.sql.legacy.timeParserPolicy: CORRECTED
-        # 500 for serverless steady state; raise with the full-refresh profile above.
-        # (2000 ran clean through the 2026-08-26 and 08-28 refreshes -- first rung proven.)
-        spark.sql.execution.arrow.maxRecordsPerBatch: "500"
+        # oxjob #911 (2026-08-28): 500 -> 125 for serverless. The harvester's return
+        # brought hyperauthorship-scale rows (max 5,718 authors, 1.37MB metadata in one
+        # record) that overflow the serverless Python sandbox mid-batch -- repo_enriched
+        # died twice at ~12min ("Python worker exited unexpectedly"). The same rows fit
+        # on classic r5d.8xlarge photon-off. 125 quarters the per-batch spike; raise to
+        # 2000 with the classic full-refresh profile above (proven 08-26/08-28).
+        spark.sql.execution.arrow.maxRecordsPerBatch: "125"
       tags:
         environment: prod
         workflow: repo
