@@ -570,6 +570,14 @@ parsed_df = parsed_df.select(
     "dc_format"
 )
 
+# oxjob #911: the whole backfill corpus arrived in S3 as one parquet_output export
+# (607 chunks, all mtime 2025-01-16 -- verified via s3 ls). ingested_at means "when the
+# source file arrived in our S3", so every backfill row carries that batch timestamp;
+# stamped physically on the table 2026-08-28, re-stamped here so MERGE/rebuild runs
+# keep the column populated.
+parsed_df = parsed_df.withColumn(
+    "ingested_at", lit("2025-01-16 15:52:00").cast("timestamp"))
+
 # Keep the newest record per native_id. oxjob #837/#881: this WAS
 #   parsed_df.sort(col("updated_date").desc()).dropDuplicates(["native_id"])
 # which only looks deterministic -- dropDuplicates does not promise to keep the first row of a
