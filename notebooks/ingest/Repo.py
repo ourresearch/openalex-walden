@@ -246,6 +246,12 @@ def repo_items():
       # Discovery via UC managed file events on the openalex-ingest external location
       # (millions of tiny per-record gzips make directory listing take hours).
       .option("cloudFiles.useManagedFileEvents", "true")
+      # oxjob #911: the default rate limit (maxFilesPerTrigger=1000) caps ingest at
+      # ~600 files/s regardless of cluster size -- micro-batches complete every ~1.5-2s,
+      # so 1000-file batches leave the executors idle (measured: identical ~12K rows/s
+      # on 20 and 60 nodes). 50K-file batches amortize the per-batch overhead; steady
+      # state nightly volume never approaches this, so it only matters for refreshes.
+      .option("cloudFiles.maxFilesPerTrigger", "50000")
       .load("s3a://openalex-ingest/repositories/")
       # Named repository_id historically; renamed to endpoint_id in repo_parsed.
       # Kept here to avoid re-ingesting the entire streaming table.
