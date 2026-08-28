@@ -110,6 +110,7 @@ doc_columns = [
     "abstract", "authors", "ids", "urls", "references",
     "source_name", "publisher", "source_id",
     "pdf_url", "landing_page_url", "pdf_s3_id", "grobid_s3_id",
+    "ingested_at",
     "openalex_created_dt", "openalex_updated_dt",
 ]
 
@@ -119,7 +120,7 @@ if not IS_FULL_SYNC:
     two_days_ago = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
     df = df.filter(F.col("openalex_updated_dt") >= two_days_ago)
 
-for c in ["published_date", "created_date", "updated_date", "openalex_created_dt", "openalex_updated_dt"]:
+for c in ["published_date", "created_date", "updated_date", "ingested_at", "openalex_created_dt", "openalex_updated_dt"]:
     df = df.withColumn(c, F.col(c).cast("string"))
 
 df = (df
