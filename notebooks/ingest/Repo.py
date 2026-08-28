@@ -251,7 +251,10 @@ def repo_items():
       # Kept here to avoid re-ingesting the entire streaming table.
       .withColumn("repository_id",
           F.regexp_extract(F.col("_metadata.file_path"), r"repositories/([^/]+)/", 1))
-      .withColumn("ingested_at", F.current_timestamp())
+      # oxjob #911: S3 object mtime = when the harvester delivered the file, not when this
+      # stream read it. Stable across re-reads, so a full refresh no longer restamps the
+      # corpus (the #542 taxicab hazard). Rows before the cutover carry pipeline-read times.
+      .withColumn("ingested_at", F.col("_metadata.file_modification_time"))
   )
 
 # COMMAND ----------

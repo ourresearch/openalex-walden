@@ -351,7 +351,8 @@ def irdb_items():
         # Discovery via UC managed file events on the openalex-ingest external location (oxjob #585)
         .option("cloudFiles.useManagedFileEvents", "true")
         .load("s3a://openalex-ingest/irdb/")
-        .withColumn("ingested_at", F.current_timestamp())
+        # oxjob #911: S3 object mtime, same semantics as repo_items (arrival, not read time)
+        .withColumn("ingested_at", F.col("_metadata.file_modification_time"))
     )
 
 # COMMAND ----------

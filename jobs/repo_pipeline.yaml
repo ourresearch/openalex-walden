@@ -5,8 +5,11 @@
 #
 # FULL REFRESH cautions:
 #   - repo full refreshes are S3-listing-bound and can take DAYS (oxjob #546 small-files).
-#   - a full refresh of repo_items re-stamps ingested_at; TaxiCab Repos reads it as a
-#     watermark — set its ingested_after cutoff first (oxjob #542).
+#   - ingested_at is the S3 object mtime as of oxjob #911 (arrival time, stable across
+#     re-reads), so a full refresh no longer restamps the corpus to now() — it backfills
+#     pre-#911 rows to their true mtimes, which sit OUTSIDE TaxiCab's lookback window.
+#     The #542 ingested_after guard is therefore legacy; keep it until the first
+#     post-#911 full refresh verifies no flood.
 resources:
   pipelines:
     repo_pipeline:
