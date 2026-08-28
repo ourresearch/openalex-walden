@@ -38,24 +38,14 @@ resources:
       # UNTESTED: step it up (2000 -> 4000), do not jump straight to the 10000 default. The
       # known OOM in this path was the whole-authors-array JSON round-trip on hyperauthorship
       # works; that specific bug is fixed, but it is the reason to be incremental.
-      # TEMPORARY (oxjob #911): full-refresh profile ACTIVE for the repo_items full refresh
-      # (ingested_at backfill to S3 mtimes). REVERT to `serverless: true` (and
-      # maxRecordsPerBatch to "500") when the refresh completes and row counts verify.
-      # Stage 1 (repo_items S3 re-ingest, photon off, 60 workers) COMPLETED 2026-08-28
-      # 10:21 UTC in ~6h -- the binding constraint was cloudFiles.maxFilesPerTrigger
-      # (see Repo.py), not cores or photon. Back to 20 workers for the remaining stages
-      # (backfill-stamp incremental + repo_works rebuild -- the latter measured ~1h at
-      # this size on 08-06). Photon OFF: with photon on, repo_enriched's Pandas-UDF
-      # stage crashed ("Python worker exited unexpectedly", 12:51 UTC) -- photon's
-      # off-heap reservation squeezes the Python sandbox, and the same wave ran clean
-      # photon-off at 60w. Keep off while UDF stages run.
-      serverless: false
-      photon: false
-      clusters:
-        - label: default
-          node_type_id: r5d.8xlarge
-          driver_node_type_id: r5d.8xlarge
-          num_workers: 20
+      # oxjob #911 refresh notes (2026-08-28, for the next refresh window):
+      #   - repo_items re-ingest ran ~6h at 60x r5d.8xlarge photon-off; the binding
+      #     constraint was cloudFiles.maxFilesPerTrigger (fixed in Repo.py at 50000),
+      #     not cores or photon. 20 workers suffice for Delta-side stages.
+      #   - photon ON crashed repo_enriched's Pandas-UDF stage ("Python worker exited
+      #     unexpectedly") -- its off-heap reservation squeezes the Python sandbox.
+      #     Keep photon OFF whenever the UDF stages run.
+      serverless: true
       continuous: false
       development: false
       edition: ADVANCED
@@ -65,9 +55,8 @@ resources:
         pipelines.clusterShutdown.delay: 300s
         spark.sql.legacy.timeParserPolicy: CORRECTED
         # 500 for serverless steady state; raise with the full-refresh profile above.
-        # (2000 ran clean through the 2026-08-26 refreshes -- the ladder's first rung is proven.)
-        # TEMPORARY (oxjob #911): 2000 for the refresh window, same as the #881 runs.
-        spark.sql.execution.arrow.maxRecordsPerBatch: "2000"
+        # (2000 ran clean through the 2026-08-26 and 08-28 refreshes -- first rung proven.)
+        spark.sql.execution.arrow.maxRecordsPerBatch: "500"
       tags:
         environment: prod
         workflow: repo
