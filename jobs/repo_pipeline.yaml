@@ -45,9 +45,12 @@ resources:
       # 10:21 UTC in ~6h -- the binding constraint was cloudFiles.maxFilesPerTrigger
       # (see Repo.py), not cores or photon. Back to 20 workers for the remaining stages
       # (backfill-stamp incremental + repo_works rebuild -- the latter measured ~1h at
-      # this size on 08-06). Photon ON: the rebuild is Delta scan/merge/write.
+      # this size on 08-06). Photon OFF: with photon on, repo_enriched's Pandas-UDF
+      # stage crashed ("Python worker exited unexpectedly", 12:51 UTC) -- photon's
+      # off-heap reservation squeezes the Python sandbox, and the same wave ran clean
+      # photon-off at 60w. Keep off while UDF stages run.
       serverless: false
-      photon: true
+      photon: false
       clusters:
         - label: default
           node_type_id: r5d.8xlarge
