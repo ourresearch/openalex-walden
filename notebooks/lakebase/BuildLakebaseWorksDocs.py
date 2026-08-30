@@ -59,12 +59,15 @@ print(f"IS_FULL_BUILD: {IS_FULL_BUILD}")
 
 # COMMAND ----------
 
-# Guardrails: never build/merge from a broken upstream
+# Guardrails: never build/merge from a broken upstream.
+# Loose sanity floor only — catches an empty/partially-written table on standalone runs.
+# The precise count check (maintained baseline ±2M) is Guardrails.ipynb check 8, which
+# gates this task in end2end; don't tighten this one, it goes stale on planned deletions.
 total_works = spark.sql(f"SELECT COUNT(*) AS cnt FROM {WORKS_TABLE}").collect()[0].cnt
 print(f"{WORKS_TABLE}: {total_works:,} rows")
-if total_works < 500_000_000 and not GUARDRAILS_OVERRIDE:
+if total_works < 400_000_000 and not GUARDRAILS_OVERRIDE:
     raise Exception(
-        f"GUARDRAIL: {WORKS_TABLE} has {total_works:,} rows (< 500M) — upstream looks broken. "
+        f"GUARDRAIL: {WORKS_TABLE} has {total_works:,} rows (< 400M) — upstream looks broken. "
         "Pass guardrails_override=true to proceed anyway."
     )
 
