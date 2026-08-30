@@ -15,7 +15,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
     "table_name": "openalex.works.locations_mapped",
-    "index_name": "locations-v2"
+    "index_name": "locations-v3"
 }
 
 dbutils.widgets.text("is_full_sync", "false")
@@ -76,6 +76,20 @@ def send_partition_to_elastic(partition, index_name):
 
 # Explicit mapping: locations-v1's live mapping, minus the urls.conent_type typo field,
 # plus endpoint_id, with updated_date as a real date (was keyword in v1).
+# v3 (oxjobs #915/#850/#851, 2026-08-30): date-type ingested_at, published_date,
+# created_date, openalex_created_dt, openalex_updated_dt (were keyword in v2 — range
+# filters silently matched nothing), and add an analyzed `title.text` subfield so
+# /locations search can work (#850). Values arrive as Spark string-cast timestamps
+# ("2026-08-29 11:00:05.521", 0-6 fractional digits, space separator) or bare dates,
+# hence the explicit format list; ignore_malformed guards feed garbage.
+# NOTE (fire-time): delete the stale composable template `locations` (index_patterns
+# ["locations-*"], v1-era mapping) BEFORE the create, or it merges into v3:
+#   DELETE $ES/_index_template/locations
+TS_FORMATS = (
+    "yyyy-MM-dd HH:mm:ss.SSSSSS||yyyy-MM-dd HH:mm:ss.SSSSS||yyyy-MM-dd HH:mm:ss.SSSS||"
+    "yyyy-MM-dd HH:mm:ss.SSS||yyyy-MM-dd HH:mm:ss.SS||yyyy-MM-dd HH:mm:ss.S||"
+    "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||strict_date_optional_time"
+)
 INDEX_MAPPING = {
     "dynamic": "strict",
     "properties": {
@@ -97,7 +111,7 @@ INDEX_MAPPING = {
                 "orcid": {"type": "keyword"},
             }
         },
-        "created_date": {"type": "keyword"},
+        "created_date": {"type": "date", "format": TS_FORMATS, "ignore_malformed": True},
         "endpoint_id": {"type": "keyword"},
         "first_page": {"type": "keyword"},
         "grobid_s3_id": {"type": "keyword"},
@@ -109,7 +123,7 @@ INDEX_MAPPING = {
                 "relationship": {"type": "keyword"},
             }
         },
-        "ingested_at": {"type": "keyword"},
+        "ingested_at": {"type": "date", "format": TS_FORMATS, "ignore_malformed": True},
         "is_oa": {"type": "boolean"},
         "is_oa_source": {"type": "boolean"},
         "is_retracted": {"type": "boolean"},
@@ -128,12 +142,12 @@ INDEX_MAPPING = {
         },
         "native_id": {"type": "keyword", "ignore_above": 8191},
         "native_id_namespace": {"type": "keyword"},
-        "openalex_created_dt": {"type": "keyword"},
-        "openalex_updated_dt": {"type": "keyword"},
+        "openalex_created_dt": {"type": "date", "format": TS_FORMATS, "ignore_malformed": True},
+        "openalex_updated_dt": {"type": "date", "format": TS_FORMATS, "ignore_malformed": True},
         "pdf_s3_id": {"type": "keyword"},
         "pdf_url": {"type": "keyword", "ignore_above": 8191},
         "provenance": {"type": "keyword"},
-        "published_date": {"type": "keyword"},
+        "published_date": {"type": "date", "format": TS_FORMATS, "ignore_malformed": True},
         "publisher": {"type": "keyword", "ignore_above": 8191},
         "raw_type": {"type": "keyword"},
         "references": {
@@ -149,7 +163,7 @@ INDEX_MAPPING = {
         },
         "source_id": {"type": "keyword"},
         "source_name": {"type": "keyword", "ignore_above": 8191},
-        "title": {"type": "keyword", "ignore_above": 8191},
+        "title": {"type": "keyword", "ignore_above": 8191, "fields": {"text": {"type": "text"}}},
         "type": {"type": "keyword"},
         "updated_date": {"type": "date", "format": "yyyy-MM-dd"},
         "urls": {
