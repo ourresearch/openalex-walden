@@ -305,6 +305,21 @@ resources:
             source: GIT
           max_retries: 2
           min_retry_interval_millis: 300000
+        # oxjob #850: ledger location ES ids that vanished from locations_mapped
+        # (a nightly full rebuild — deleted rows just stop appearing, so ES needs
+        # an explicit delete feed). Runs after Guardrails for the same reason as
+        # Track_Deleted_Works. Feeds Delete_Locations_from_Elasticsearch.
+        - task_key: Track_Deleted_Locations
+          depends_on:
+            - task_key: Guardrails
+          notebook_task:
+            notebook_path: notebooks/end2end/TrackDeletedLocations
+            base_parameters:
+              guard_override: "{{job.parameters.deleted_locations_guard_override}}"
+              env_suffix: "{{job.parameters.env_suffix}}"
+            source: GIT
+          max_retries: 2
+          min_retry_interval_millis: 300000
         - task_key: Full_Snapshot
           depends_on:
             - task_key: Guardrails
@@ -322,8 +337,9 @@ resources:
               is_full_sync: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
-        # oxjob #915: nightly incremental locations sync (openalex_updated_dt
-        # >= now-2d). Serialized after the works sync on the shared cluster.
+        # oxjob #915: nightly incremental locations sync; #850 made it
+        # watermark-driven (elastic_sync_state, keyed locations-v3).
+        # Serialized after the works sync on the shared cluster.
         - task_key: Sync_Locations_to_Elasticsearch
           depends_on:
             - task_key: Sync_to_Elasticsearch
@@ -333,6 +349,22 @@ resources:
               is_full_sync: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
+        # oxjob #850: the ES delete path sync_locations lacks — consumes the
+        # deleted_locations ledger and removes the stale docs from locations-v3.
+        - task_key: Delete_Locations_from_Elasticsearch
+          depends_on:
+            - task_key: Sync_Locations_to_Elasticsearch
+            - task_key: Track_Deleted_Locations
+          notebook_task:
+            notebook_path: notebooks/elastic/delete_locations
+            base_parameters:
+              guard_override: "{{job.parameters.deleted_locations_guard_override}}"
+              is_full_reconcile: "false"
+              env_suffix: "{{job.parameters.env_suffix}}"
+            source: GIT
+          job_cluster_key: es_sync_cluster
+          max_retries: 2
+          min_retry_interval_millis: 300000
         # oxjob #784: the ES delete path sync_works lacks — consumes the
         # deleted_works ledger and removes the stale docs from works-v34.
         - task_key: Delete_Works_from_Elasticsearch
@@ -501,6 +533,8 @@ resources:
         - name: guardrails_override
           default: "false"
         - name: deleted_works_guard_override
+          default: "false"
+        - name: deleted_locations_guard_override
           default: "false"
         - name: since_date
           default: ""
