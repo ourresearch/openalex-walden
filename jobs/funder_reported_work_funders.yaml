@@ -20,10 +20,11 @@ resources:
         # a manual refresh of any one is picked up the same night for free.
         quartz_cron_expression: 0 30 2 * * ?
         timezone_id: UTC
-        # Deploys PAUSED: first production run is attended (run-now after the DEV gates
-        # pass and the owner's go), then flip to UNPAUSED in a follow-up commit once the
-        # first nightly cycle verifies clean.
-        pause_status: PAUSED
+        # UNPAUSED 2026-08-31 (owner's go): attended first runs landed 08-28 (both
+        # SUCCESS; +3,261,084 inserted, second run 0-row idempotent) and three
+        # downstream E2E cycles (08-29/30/31 05:00Z) consumed the union clean.
+        # Audit + verification: grants-work/routing-audit-20260831 (local).
+        pause_status: UNPAUSED
       tasks:
         - task_key: create_funder_reported_work_funders
           notebook_task:
