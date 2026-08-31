@@ -316,7 +316,6 @@ resources:
             notebook_path: notebooks/end2end/TrackDeletedLocations
             base_parameters:
               guard_override: "{{job.parameters.deleted_locations_guard_override}}"
-              env_suffix: "{{job.parameters.env_suffix}}"
             source: GIT
           max_retries: 2
           min_retry_interval_millis: 300000
@@ -360,7 +359,6 @@ resources:
             base_parameters:
               guard_override: "{{job.parameters.deleted_locations_guard_override}}"
               is_full_reconcile: "false"
-              env_suffix: "{{job.parameters.env_suffix}}"
             source: GIT
           job_cluster_key: es_sync_cluster
           max_retries: 2
