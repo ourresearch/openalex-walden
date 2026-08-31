@@ -34,6 +34,11 @@ from openalex.dlt.transform import (
 df = spark.table("openalex.mag.mag_works_raw").withColumn("provenance", F.lit("mag"))
 
 df = apply_initial_processing(df, "mag", walden_works_schema)
+# oxjob #911: ingested_at = when the corpus arrived on the platform. MAG is frozen, so
+# every row carries mag_works_raw's createdAt (2025-02-28T17:09:35Z) — same convention
+# as repo_works_backfill's parquet-export batch stamp. Stamped physically 2026-08-31;
+# set here so rebuilds keep it (the schema pads it to NULL otherwise).
+df = df.withColumn("ingested_at", F.lit("2025-02-28 17:09:35").cast("timestamp"))
 df = enrich_with_features_and_author_keys(df)
 df = apply_final_merge_key_and_filter(df)
 
