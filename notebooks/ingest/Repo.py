@@ -416,6 +416,10 @@ def repo_parsed():
         "pmcid",
         F.expr("filter(ids, id -> id.namespace = 'pmcid')[0].id")
     )
+    # oxjob #945: the two halves of the OAI identifier, used to test whether a dc:relation
+    # URL is this record's own page. oai:eprints.lancs.ac.uk:11007 -> host, local id.
+    .withColumn("_oai_host", F.regexp_extract(F.col("native_id"), r"^oai:([^:]+):", 1))
+    .withColumn("_oai_local", F.regexp_extract(F.col("native_id"), r"([^:]+)$", 1))
     .withColumn(
         "_identifier_urls",
         F.filter(
@@ -449,7 +453,21 @@ def repo_parsed():
                     .alias("content_type"),
                 ),
             ),
-            lambda x: x["url"] != "",
+            # oxjob #945: dc:relation is Dublin Core for a *related* resource -- cited
+            # references, project pages, instrument manuals -- so it is only this record's
+            # landing page when it identifies this record. EPrints-family repos legitimately
+            # put the item URL here (4.5M records), so the field is not banned; the URL has to
+            # carry the OAI local id or the OAI host. doi.org is excluded outright: those
+            # landing pages are the crossref/datacite lane's job (100% of both, vs 2.4% of
+            # repo). The length guards matter -- contains("") is true for every string.
+            lambda x: (x["url"] != "")
+            & (~F.lower(x["url"]).contains("doi.org/"))
+            & (
+                ((F.length("_oai_local") > 0)
+                 & F.lower(x["url"]).contains(F.lower(F.col("_oai_local"))))
+                | ((F.length("_oai_host") > 0)
+                   & F.lower(x["url"]).contains(F.lower(F.col("_oai_host"))))
+            ),
         )
     )
     .withColumn(
@@ -472,7 +490,7 @@ def repo_parsed():
             ).otherwise(F.col("_relation_urls"))
         )
     )
-    .drop("has_pmcid", "pmcid", "_identifier_urls", "_relation_urls")
+    .drop("has_pmcid", "pmcid", "_identifier_urls", "_relation_urls", "_oai_host", "_oai_local")
     .filter(F.size(F.col("urls")) > 0)
     .filter(F.size(F.filter(F.col("urls"), lambda x: ~x.url.contains("doi.org"))) > 0)
     .withColumn("mesh", F.lit(None).cast("string"))
