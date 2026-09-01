@@ -258,7 +258,31 @@ def datacite_parsed():
                         ).alias(
                             "doi"
                         ),  # Parse the doi from the doi url
-                        F.lit(None).cast("string").alias("ror"),
+                        # oxjobs #181 (2026-08-28): keep ROR-typed funder ids
+                        # (~1.35% of items with fundingReferences carry one;
+                        # previously hard-coded NULL). Normalized to the
+                        # canonical https://ror.org/<id> form.
+                        F.when(
+                            (F.upper(F.trim(fun["funderIdentifierType"])) == "ROR")
+                            & (
+                                F.regexp_extract(
+                                    F.trim(fun["funderIdentifier"]),
+                                    r"(?i)^(?:https?://ror\.org/)?([0-9a-z]{9})/?$",
+                                    1,
+                                )
+                                != ""
+                            ),
+                            F.concat(
+                                F.lit("https://ror.org/"),
+                                F.lower(
+                                    F.regexp_extract(
+                                        F.trim(fun["funderIdentifier"]),
+                                        r"(?i)^(?:https?://ror\.org/)?([0-9a-z]{9})/?$",
+                                        1,
+                                    )
+                                ),
+                            ),
+                        ).alias("ror"),
                         fun["funderName"].alias("name"),
                         F.array(fun["awardNumber"]).alias("awards"),
                     ),
