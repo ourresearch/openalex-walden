@@ -16,17 +16,18 @@ resources:
       name: Repo
       catalog: openalex
       target: repo
-      # FULL-REFRESH PROFILE -- swap `serverless: true` for the block below, deploy, run the
-      # refresh, then revert and deploy again. Measured 3h22m -> 1h04m on 08-06 from the
-      # cluster change ALONE (maxRecordsPerBatch was left at 500 for that run):
+      # SERVERLESS PROFILE -- the steady-state config. Restore this block (and
+      # maxRecordsPerBatch: "125") after the oxjob #945 full refresh, then deploy again:
       #
-      #   serverless: false
-      #   photon: true
-      #   clusters:
-      #     - label: default
-      #       node_type_id: r5d.8xlarge
-      #       driver_node_type_id: r5d.8xlarge
-      #       num_workers: 20
+      #   serverless: true
+      #
+      # FULL-REFRESH PROFILE (ACTIVE, oxjob #945) -- measured 3h22m -> 1h04m on 08-06 from
+      # the cluster change ALONE (maxRecordsPerBatch was left at 500 for that run).
+      # photon is OFF deliberately: it crashed repo_enriched's Pandas-UDF stage on 08-28
+      # ("Python worker exited unexpectedly") because its off-heap reservation squeezes the
+      # Python sandbox. This profile runs those UDF stages, so photon must stay off -- the
+      # earlier version of this comment said `photon: true` and contradicted the #911 note
+      # below it.
       #
       # ...and raise arrow.maxRecordsPerBatch in `configuration` below at the same time.
       # 500 is a serverless-era memory guard, never chosen for Repo deliberately -- it was
@@ -45,7 +46,13 @@ resources:
       #   - photon ON crashed repo_enriched's Pandas-UDF stage ("Python worker exited
       #     unexpectedly") -- its off-heap reservation squeezes the Python sandbox.
       #     Keep photon OFF whenever the UDF stages run.
-      serverless: true
+      serverless: false
+      photon: false
+      clusters:
+        - label: default
+          node_type_id: r5d.8xlarge
+          driver_node_type_id: r5d.8xlarge
+          num_workers: 20
       continuous: false
       development: false
       edition: ADVANCED
@@ -60,7 +67,10 @@ resources:
         # died twice at ~12min ("Python worker exited unexpectedly"). The same rows fit
         # on classic r5d.8xlarge photon-off. 125 quarters the per-batch spike; raise to
         # 2000 with the classic full-refresh profile above (proven 08-26/08-28).
-        spark.sql.execution.arrow.maxRecordsPerBatch: "125"
+        # oxjob #945: 125 -> 2000 to match the ACTIVE classic profile. 125 is a serverless
+        # sandbox guard and would throttle every Pandas UDF in repo_enriched on 256 GiB
+        # nodes. Restore "125" when reverting to serverless.
+        spark.sql.execution.arrow.maxRecordsPerBatch: "2000"
       tags:
         environment: prod
         workflow: repo
