@@ -70,8 +70,11 @@ if MODE == "stage":
                .agg(F.countDistinct("new_key").alias("n_new"),
                     F.countDistinct("work_id").alias("n_works"),
                     F.count("*").alias("n_rows")))
+    # #807 cleans the display title AFTER the key is built, so normalize(current title) can differ
+    # from the stored key for reasons other than digits; keep only rows whose sole change is digits
     stage = (keyed.join(per_old, "old_key")
              .filter("n_new = 1 AND n_works = 1 AND new_key <> old_key")
+             .filter("regexp_replace(new_key, '[0-9]', '') = old_key")
              .groupBy("old_key", "new_key", "work_id").agg(F.count("*").alias("n_rows"))
              .withColumn("created_date", F.current_date()))
     stage.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(STAGE)
@@ -81,7 +84,8 @@ if MODE == "stage":
         F.sum(F.when(F.col("n_new") == 1, 1).otherwise(0)).alias("one_to_one"),
         F.sum(F.when(F.col("n_new") > 1, 1).otherwise(0)).alias("one_to_many"),
         F.sum(F.when(F.col("n_works") > 1, 1).otherwise(0)).alias("multi_work_keys")).collect()[0]
-    print(f"stage rows: {spark.table(STAGE).count():,}  |  {summary.asDict()}  |  {time.time()-t0:,.0f}s")
+    out = {"stage_rows": spark.table(STAGE).count(), **summary.asDict(), "seconds": int(time.time()-t0)}
+    print(out); dbutils.notebook.exit(str(out))
 
 # COMMAND ----------
 
@@ -92,9 +96,11 @@ if MODE == "insert":
       SELECT s.work_id, NULL, NULL, NULL, s.new_key, current_date(), current_timestamp()
       FROM {STAGE} s
       LEFT ANTI JOIN openalex.works.work_id_map m ON m.title_author = s.new_key
+      WHERE regexp_replace(s.new_key, '[0-9]', '') = s.old_key
     """)
     after = spark.sql("SELECT COUNT(*) AS n FROM openalex.works.work_id_map").collect()[0].n
-    print(f"work_id_map {before:,} -> {after:,}  (+{after-before:,})")
+    out = {"work_id_map_before": before, "work_id_map_after": after, "inserted": after - before}
+    print(out); dbutils.notebook.exit(str(out))
 
 # COMMAND ----------
 
@@ -117,7 +123,7 @@ if MODE == "verify":
         F.count("*").alias("probed"),
         F.sum(F.when(F.col("map_id") == F.col("work_id"), 1).otherwise(0)).alias("alias_ok"),
         F.sum(F.when(F.col("map_id").isNull(), 1).otherwise(0)).alias("would_fork")).collect()[0]
-    print(res.asDict())
+    print(res.asDict()); dbutils.notebook.exit(str(res.asDict()))
 
 # COMMAND ----------
 
