@@ -15,6 +15,8 @@ from openalex.dlt.repo_types import best_type_udf
 from openalex.dlt.repo_filters import apply_repo_policy_filters
 from openalex.dlt.sequencing import dedupe_by_sequence
 from openalex.dlt.repo_ids import extract_ids_udf
+# oxjob #880: the title normalizer had drifted into a local copy here; one definition, in the wheel.
+from openalex.dlt.normalize import normalize_title_udf
 
 # COMMAND ----------
 
@@ -79,46 +81,6 @@ clean_df = df.withColumn("cleaned_xml",
 # COMMAND ----------
 
 # udfs
-def clean_html(raw_html):
-    cleanr = re.compile(r'<\w+.*?>')
-    cleantext = re.sub(cleanr, '', raw_html)
-    return cleantext
-
-def remove_everything_but_alphas(input_string):
-    if input_string:
-        return "".join(e for e in input_string if e.isalpha())
-    return ""
-
-def remove_accents(text):
-    normalized = unicodedata.normalize('NFD', text)
-    return ''.join(char for char in normalized if unicodedata.category(char) != 'Mn')
-
-def normalize_title(title):
-    if not title:
-        return ""
-
-    if isinstance(title, bytes):
-        title = str(title, 'ascii')
-
-    text = title[0:500]
-
-    text = text.lower()
-
-    # handle unicode characters
-    text = remove_accents(text)
-
-    # remove HTML tags
-    text = clean_html(text)
-
-    # remove articles and common prepositions
-    text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from)\b", "", text)
-
-    # remove everything except alphabetic characters
-    text = remove_everything_but_alphas(text)
-
-    return text.strip()
-
-
 def normalize_language_code(lang_code):
     """
     Normalize language codes to ISO 639-1 two-letter lowercase format.
@@ -343,11 +305,6 @@ def detect_version_from_xml(cleaned_xml, native_id):
 @pandas_udf(StringType())
 def normalize_license_udf(license_series: pd.Series) -> pd.Series:
     return license_series.apply(normalize_license)
-
-@pandas_udf(StringType())
-def normalize_title_udf(title_series: pd.Series) -> pd.Series:
-    return title_series.apply(normalize_title)
-
 
 @pandas_udf(StringType())
 def normalize_language_code_udf(language_code_series: pd.Series) -> pd.Series:

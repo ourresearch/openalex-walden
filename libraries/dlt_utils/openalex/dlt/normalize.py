@@ -144,9 +144,11 @@ def clean_html(raw_html):
     cleantext = re.sub(cleanr, '', raw_html)
     return cleantext
 
-def remove_everything_but_alphas(input_string):
+# oxjob #880: digits are identity (`Folder 1983: Scan 29`, `Graduate Catalog 2009-2011`,
+# `HII 2927`) -- stripping them collapsed thousands of distinct records onto one work.
+def remove_everything_but_alphanumerics(input_string):
     if input_string:
-        return "".join(e for e in input_string if e.isalpha())
+        return "".join(e for e in input_string if e.isalpha() or e.isdigit())
     return ""
 
 def remove_accents(text):
@@ -173,8 +175,8 @@ def normalize_title(title):
     # remove articles and common prepositions
     text = re.sub(r"\b(the|a|an|of|to|in|for|on|by|with|at|from|\n)\b", "", text)
 
-    # remove everything except alphabetic characters
-    text = remove_everything_but_alphas(text)
+    # remove everything except letters and digits
+    text = remove_everything_but_alphanumerics(text)
 
     return text.strip()
 
