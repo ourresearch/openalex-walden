@@ -49,7 +49,7 @@ if MODE == "stage":
          .filter("merge_key.title_author IS NOT NULL AND merge_key.title_author <> ''")
          .filter("merge_key.title_author <> concat(native_id, provenance)")
          .select("provenance", "native_id_namespace", "native_id", "title", "authors_exist",
-                 F.col("authors")[0]["author_key"].alias("author_key"),
+                 F.expr("get(authors, 0).author_key").alias("author_key"),  # get(): NULL on empty, ANSI-safe
                  F.col("merge_key.title_author").alias("old_key")))
     r = spark.table("openalex.works.location_work_ids").filter("work_id IS NOT NULL") \
              .select("provenance", "native_id_namespace", "native_id", "work_id")
@@ -102,7 +102,7 @@ if MODE == "verify":
     # the fork probe (#880 q58): recent digit-titled title-tier joins must resolve, on their NEW
     # key, to the id they already have -- i.e. the alias exists and points at the right work
     probe = spark.sql("""
-      SELECT r.work_id, t.title, t.authors_exist, t.authors[0].author_key AS author_key
+      SELECT r.work_id, t.title, t.authors_exist, get(t.authors, 0).author_key AS author_key
       FROM openalex.works.location_work_ids r
       JOIN openalex.works.locations_w_types t
         ON t.provenance = r.provenance AND t.native_id_namespace = r.native_id_namespace
