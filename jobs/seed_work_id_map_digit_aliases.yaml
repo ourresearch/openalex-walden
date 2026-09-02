@@ -1,0 +1,43 @@
+resources:
+  jobs:
+    Seed_Work_Id_Map_Digit_Aliases:
+      name: Seed Work Id Map Digit Aliases
+      description: |
+        oxjob #880 problem 1: normalize_title keeps digits from dlt_utils 0.3.20, but
+        work_id_map.title_author holds the old digit-stripped form. Seeds the new-form key as
+        an alias row (explicit existing id) for every old key that maps to exactly one new key
+        and one work, so re-deposits keep joining their work instead of minting a duplicate.
+        Fan-out keys (the mega-works) get no alias.
+
+        MANUAL TRIGGER ONLY. Run `insert` outside 05:00-07:00 UTC (MapWorkIds writes the table).
+          mode=stage    compute into the stage table (limit=N old keys for a timing trial)
+          mode=insert   append stage rows to work_id_map (idempotent)
+          mode=verify   fork probe: recent digit-titled title-tier joins resolve on their new key
+          mode=prune    post-refresh cleanup of old-form rows (dry-run unless confirm=yes)
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode
+          default: "stage"
+        - name: limit
+          default: "0"
+        - name: stage_table
+          default: "openalex.works.work_id_map_digit_aliases_stage"
+        - name: confirm
+          default: "no"
+      tasks:
+        - task_key: seed_work_id_map_digit_aliases
+          notebook_task:
+            notebook_path: notebooks/maintenance/SeedWorkIdMapDigitAliases
+            source: GIT
+            base_parameters:
+              mode: "{{job.parameters.mode}}"
+              limit: "{{job.parameters.limit}}"
+              stage_table: "{{job.parameters.stage_table}}"
+              confirm: "{{job.parameters.confirm}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
