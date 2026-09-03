@@ -667,13 +667,24 @@ def crossref_features_and_authors():
     # enrich_with_features_and_author_keys is the expensive operation
     return enrich_with_features_and_author_keys(df_processed)
 
+# oxjob #837: total-order dedup sequence — ties on the lead value alone pick
+# refresh-dependent winners. Same shape as DataCite/PubMed.
+def _with_total_order_sequence(df, lead_col):
+    hash_cols = [c for c, t in df.dtypes if not t.startswith("map") and not c.startswith("_")]
+    return df.withColumn("_sequence", F.struct(
+        lead_col.alias("lead"),
+        F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp")).alias("harvested_at"),
+        F.xxhash64(*[F.col(f"`{c}`") for c in hash_cols]).alias("content_hash"),
+    ))
+
 # Step 3: The final, quick step.
 @dlt.view(name="crossref_works_source",
            comment="Applies merge_key and final filtering")
 def crossref_works_source():
     df_processed = dlt.read_stream("crossref_features_and_authors")
-    # enrich_with_features_and_author_keys is the expensive operation
-    return apply_final_merge_key_and_filter(df_processed)
+    return _with_total_order_sequence(
+        apply_final_merge_key_and_filter(df_processed),
+        F.col("updated_date").cast("timestamp"))
 
 dlt.create_streaming_table(
     name = "crossref_works", # Final PUBLISHED table name
@@ -694,5 +705,6 @@ dlt.create_auto_cdc_flow(
     target="crossref_works",
     source="crossref_works_source", # Use the name of the new table
     keys=["native_id"],
-    sequence_by="updated_date"
+    sequence_by="_sequence",
+    except_column_list=["_sequence"]
 )
