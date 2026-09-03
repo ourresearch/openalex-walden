@@ -563,7 +563,7 @@ def repo_parsed_backfill():
             # from the source could never leave repo_works -- the pipeline had no delete path at
             # all. update_preimage stays excluded (it is the stale half of an update).
             .filter(F.col("_change_type").isin("insert", "update_postimage", "delete"))
-            .drop("_commit_version", "_commit_timestamp")
+            .drop("_commit_timestamp")  # _commit_version feeds _sequence (oxjob #837/#880)
     )
 
 
@@ -583,7 +583,7 @@ def repo_parsed_irdb():
             # from the source could never leave repo_works -- the pipeline had no delete path at
             # all. update_preimage stays excluded (it is the stale half of an update).
             .filter(F.col("_change_type").isin("insert", "update_postimage", "delete"))
-            .drop("_commit_version", "_commit_timestamp")
+            .drop("_commit_timestamp")  # _commit_version feeds _sequence (oxjob #837/#880)
     )
 
 
@@ -640,7 +640,10 @@ def repo_enriched():
         StructField("set_spec", ArrayType(StringType()), True),
         StructField("dc_format", ArrayType(StringType()), True),
         # oxjob #881: drives apply_as_deletes below; dropped before repo_works
-        StructField("_change_type", StringType(), True)
+        StructField("_change_type", StringType(), True),
+        # oxjob #837/#880: CDF commit version of the backfill/IRDB source row (NULL -> 0 for
+        # repo_parsed); a re-emitted row must outrank the stored one. Dropped before repo_works.
+        StructField("_commit_version", LongType(), True)
     ])
 
     # Apply consistent schema and transformations
@@ -685,13 +688,20 @@ def repo_enriched():
     # Tiebreaker: updated_date first, then repo over backfill, then latest ingested_at,
     # then stable content hash — backfill has no ingested_at, leaving 110M rows fully
     # tied; without a total order every full refresh picks different winners
+    # oxjob #880: a backfill/IRDB row re-emitted through CDF with only derived columns changed
+    # (normalized_title, merge_key) used to tie on the first three terms and win or lose on the
+    # content hash -- ~50% of re-keys were silently rejected by apply_changes. The source commit
+    # version now ranks ahead of the hash, so a re-emit always outranks its stored version; the
+    # hash stays the tiebreak for genuine duplicates. Same design as locations_parsed (#837 Phase 3).
+    _hash_cols = [c for c in combined_df.columns if c != "_commit_version"]
     combined_df = combined_df.withColumn(
         "_sequence",
         F.struct(
             F.col("updated_date"),
             F.when(F.col("provenance") == "repo", F.lit(1)).otherwise(F.lit(0)),
             F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp")),
-            F.xxhash64(*[F.col(c) for c in combined_df.columns])
+            F.coalesce(F.col("_commit_version"), F.lit(0)).cast("long"),
+            F.xxhash64(*[F.col(c) for c in _hash_cols])
         )
     )
 
@@ -733,5 +743,5 @@ dlt.apply_changes(
     # oxjob #881: the pipeline can finally express "this record went away". Previously deletes
     # were dropped in three separate places, so a record could never leave repo_works.
     apply_as_deletes=F.expr("_change_type = 'delete'"),
-    except_column_list=["_sequence", "set_spec", "dc_format", "_change_type"]
+    except_column_list=["_sequence", "set_spec", "dc_format", "_change_type", "_commit_version"]
 )
