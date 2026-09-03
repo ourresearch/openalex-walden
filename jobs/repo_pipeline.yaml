@@ -16,29 +16,38 @@ resources:
       name: Repo
       catalog: openalex
       target: repo
-      # SERVERLESS PROFILE -- the steady-state config. Restore this block (and
-      # maxRecordsPerBatch: "125") after the oxjob #945 full refresh, then deploy again:
-      #
-      #   serverless: true
-      #
-      # FULL-REFRESH PROFILE (ACTIVE, oxjob #945) -- measured 3h22m -> 1h04m on 08-06 from
-      # the cluster change ALONE (maxRecordsPerBatch was left at 500 for that run).
-      # photon is OFF deliberately: it crashed repo_enriched's Pandas-UDF stage on 08-28
+      # FULL-REFRESH PROFILE -- swap `serverless: true` for the block below AND set
+      # maxRecordsPerBatch to "2000", deploy, run the refresh, then revert both and deploy
+      # again. photon stays OFF: it crashed repo_enriched's Pandas-UDF stage on 08-28
       # ("Python worker exited unexpectedly") because its off-heap reservation squeezes the
-      # Python sandbox. This profile runs those UDF stages, so photon must stay off -- the
-      # earlier version of this comment said `photon: true` and contradicted the #911 note
-      # below it.
+      # Python sandbox, and a refresh runs those stages. (An older version of this comment
+      # said `photon: true`, contradicting the #911 note below it -- corrected on #945.)
       #
-      # ...and raise arrow.maxRecordsPerBatch in `configuration` below at the same time.
-      # 500 is a serverless-era memory guard, never chosen for Repo deliberately -- it was
-      # inherited from the pre-bundle live pipeline (see 1fd4c45e on the sibling DataCite
-      # Awards pipeline: "likely set during initial tuning to limit memory under PyArrow
-      # conversion (default is 10000)"). r5d.8xlarge has 256 GiB a node, so 500 throttles
-      # every Pandas UDF in repo_enriched -- author last-name parsing, abstract cleaning +
-      # inverted index, title cleaning, best_type_udf -- for little benefit on that hardware.
+      #   serverless: false
+      #   photon: false
+      #   clusters:
+      #     - label: default
+      #       node_type_id: r5d.8xlarge
+      #       driver_node_type_id: r5d.8xlarge
+      #       num_workers: 20
+      #
+      # oxjob #945 (2026-09-01), measured on this profile: repo_parsed read 1,148,681,383
+      # repo_items rows and emitted 219,866,634 in ~14 min; repo_enriched then processed
+      # 536,529,095 rows (219.9M from repo_parsed, ~316.6M from the backfill/IRDB CDF
+      # passthroughs) in 3h29m. The cluster+batch-size levers are therefore SPENT --
+      # repo_enriched is UDF-bound, and the remaining headroom is text_clean's
+      # _fallback_signature regex (86%+ of abstract-path tottime, still unshipped).
+      #
+      # On maxRecordsPerBatch: the serverless-era values (500, now 125) were never chosen for
+      # Repo deliberately -- inherited from the pre-bundle live pipeline (see 1fd4c45e on the
+      # sibling DataCite Awards pipeline: "likely set during initial tuning to limit memory
+      # under PyArrow conversion (default is 10000)"). r5d.8xlarge has 256 GiB a node, so a
+      # small batch throttles every Pandas UDF in repo_enriched -- author last-name parsing,
+      # abstract cleaning + inverted index, title cleaning, best_type_udf.
       # UNTESTED: step it up (2000 -> 4000), do not jump straight to the 10000 default. The
       # known OOM in this path was the whole-authors-array JSON round-trip on hyperauthorship
-      # works; that specific bug is fixed, but it is the reason to be incremental.
+      # works; that specific bug is fixed, but it is the reason to be incremental. Note #945
+      # ran at 2000 and repo_enriched still took 3h29m, so expect little from 4000.
       # oxjob #911 refresh notes (2026-08-28, for the next refresh window):
       #   - repo_items re-ingest ran ~6h at 60x r5d.8xlarge photon-off; the binding
       #     constraint was cloudFiles.maxFilesPerTrigger (fixed in Repo.py at 50000),
@@ -46,13 +55,7 @@ resources:
       #   - photon ON crashed repo_enriched's Pandas-UDF stage ("Python worker exited
       #     unexpectedly") -- its off-heap reservation squeezes the Python sandbox.
       #     Keep photon OFF whenever the UDF stages run.
-      serverless: false
-      photon: false
-      clusters:
-        - label: default
-          node_type_id: r5d.8xlarge
-          driver_node_type_id: r5d.8xlarge
-          num_workers: 20
+      serverless: true
       continuous: false
       development: false
       edition: ADVANCED
@@ -67,10 +70,8 @@ resources:
         # died twice at ~12min ("Python worker exited unexpectedly"). The same rows fit
         # on classic r5d.8xlarge photon-off. 125 quarters the per-batch spike; raise to
         # 2000 with the classic full-refresh profile above (proven 08-26/08-28).
-        # oxjob #945: 125 -> 2000 to match the ACTIVE classic profile. 125 is a serverless
-        # sandbox guard and would throttle every Pandas UDF in repo_enriched on 256 GiB
-        # nodes. Restore "125" when reverting to serverless.
-        spark.sql.execution.arrow.maxRecordsPerBatch: "2000"
+        # oxjob #945: raised to "2000" for the 09-01 classic-profile refresh, reverted here.
+        spark.sql.execution.arrow.maxRecordsPerBatch: "125"
       tags:
         environment: prod
         workflow: repo

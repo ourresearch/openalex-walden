@@ -8,7 +8,7 @@ resources:
       schedule:
         quartz_cron_expression: 20 0 10/8 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: Repo
           pipeline_task:
