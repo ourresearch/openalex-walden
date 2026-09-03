@@ -113,9 +113,6 @@ def clean_native_id(df, column_name="native_id"): # NOT USED by Crossref or Data
             .withColumn(column_name, F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./:-]", ""))
     )
 
-# Keys of this length or shorter never mint via the title tier (MapWorkIds guard); keep in step.
-MIN_TITLE_KEY_LENGTH_EXCLUSIVE = 20
-
 def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
     return (
         df
@@ -132,15 +129,10 @@ def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
                     F.element_at(F.expr("filter(ids, x -> x.namespace = 'doi' and x.id is not null)"), 1).getField("id").alias("doi"),
                     F.element_at(F.expr("filter(ids, x -> x.namespace = 'pmid' and x.id is not null)"), 1).getField("id").alias("pmid"),
                     F.element_at(F.expr("filter(ids, x -> x.namespace = 'arxiv' and x.id is not null)"), 1).getField("id").alias("arxiv"),
-                    # A title too short to trust as a merge key still gets a work of its own: the
-                    # record self-keys (native_id + provenance) instead of being parked unminted by
-                    # MapWorkIds' LENGTH > 20 guard (oxjob #880). Same threshold, so that guard
-                    # sees only discriminating title keys or long self-keys.
                     F.when(
                         (F.expr(f"title_cleaned_newline in (select trim(title) from openalex.system.bad_titles)")) |
                         (F.length(F.col("title_cleaned_newline")) < 19) |
-                        (F.col("title_cleaned_newline").isNull()) |
-                        (F.length(F.col("_title_key")) <= MIN_TITLE_KEY_LENGTH_EXCLUSIVE),
+                        (F.col("title_cleaned_newline").isNull()),
                         F.concat(F.col("native_id"), F.col("provenance"))
                     ).otherwise(F.col("_title_key")
                     ).alias("title_author")
