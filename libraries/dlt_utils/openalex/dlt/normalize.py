@@ -114,13 +114,17 @@ def clean_native_id(df, column_name="native_id"): # NOT USED by Crossref or Data
     )
 
 def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
+    # oxjob #880 (Casey 2026-09-03): title_author is a title-derived key or NULL, nothing else.
+    # The old first branch wrote native_id + provenance for bad/short/NULL titles so those
+    # records would mint without merging; that decision now belongs to MapWorkIds (the
+    # LENGTH > 20 guard parks short keys, bad_titles is checked there). A title that
+    # normalizes to nothing gives no key, and has_key drops the record like an untitled one.
     return (
         df
             # decided together with Casey to keep only one native_id
             # can apply more deduplication cleaning if needed in later steps
             # removed lower() - it lowercases URLs from PDF and causes a JSON discrepancy + other ids may be case-sensitive
             .withColumn("native_id", F.trim(F.col("native_id")))
-            .withColumn("title_cleaned_newline", F.trim(F.regexp_replace(F.col("title"), "\n", " ")))
             .withColumn("_title_key",
                 F.when(F.col("authors_exist") == False, F.col("normalized_title"))
                  .otherwise(F.concat_ws("_", F.col("normalized_title"), F.col("authors").getItem(0).getField("author_key"))))
@@ -129,15 +133,11 @@ def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
                     F.element_at(F.expr("filter(ids, x -> x.namespace = 'doi' and x.id is not null)"), 1).getField("id").alias("doi"),
                     F.element_at(F.expr("filter(ids, x -> x.namespace = 'pmid' and x.id is not null)"), 1).getField("id").alias("pmid"),
                     F.element_at(F.expr("filter(ids, x -> x.namespace = 'arxiv' and x.id is not null)"), 1).getField("id").alias("arxiv"),
-                    F.when(
-                        (F.expr(f"title_cleaned_newline in (select trim(title) from openalex.system.bad_titles)")) |
-                        (F.length(F.col("title_cleaned_newline")) < 19) |
-                        (F.col("title_cleaned_newline").isNull()),
-                        F.concat(F.col("native_id"), F.col("provenance"))
-                    ).otherwise(F.col("_title_key")
-                    ).alias("title_author")
+                    F.when(F.coalesce(F.col("normalized_title"), F.lit("")) == "", F.lit(None).cast("string"))
+                     .otherwise(F.col("_title_key"))
+                     .alias("title_author")
                 )
-            ).drop("title_cleaned_newline", "_title_key")
+            ).drop("_title_key")
     )
 # normalize title and types UDFs
 
