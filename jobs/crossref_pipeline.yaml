@@ -21,7 +21,7 @@ resources:
       configuration:
         environment: prod
         pipelines.clusterShutdown.delay: 300s
-        spark.sql.execution.arrow.maxRecordsPerBatch: "2000"
+        spark.sql.execution.arrow.maxRecordsPerBatch: "100"
       tags:
         environment: prod
         workflow: crossref
