@@ -24,7 +24,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
 
-from openalex.dlt.normalize import walden_works_schema
+from openalex.dlt.normalize import walden_works_schema, normalize_title_udf
 from openalex.dlt.transform import (
     apply_initial_processing,
     enrich_with_features_and_author_keys,
@@ -34,6 +34,9 @@ from openalex.dlt.transform import (
 df = spark.table("openalex.mag.mag_works_raw").withColumn("provenance", F.lit("mag"))
 
 df = apply_initial_processing(df, "mag", walden_works_schema)
+# mag_works_raw carries a frozen normalized_title from the digit-stripping normalizer and the
+# schema alignment passes it through; re-derive it so merge_key follows the CURRENT rule (#880).
+df = df.withColumn("normalized_title", normalize_title_udf(F.col("title")))
 # oxjob #911: ingested_at = when the corpus arrived on the platform. MAG is frozen, so
 # every row carries mag_works_raw's createdAt (2025-02-28T17:09:35Z) — same convention
 # as repo_works_backfill's parquet-export batch stamp. Stamped physically 2026-08-31;
