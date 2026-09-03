@@ -8,13 +8,8 @@ resources:
       name: PubMed
       catalog: openalex
       target: pubmed
-      serverless: false
-      photon: false
-      clusters:
-        - label: default
-          node_type_id: r5d.8xlarge
-          driver_node_type_id: r5d.8xlarge
-          num_workers: 20
+      serverless: true
+      photon: true
       continuous: false
       development: true
       channel: CURRENT
