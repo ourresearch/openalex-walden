@@ -5,9 +5,11 @@ resources:
       description: |
         oxjob #880 problem 1: normalize_title keeps digits from dlt_utils 0.3.20, but
         work_id_map.title_author holds the old digit-stripped form. Seeds the new-form key as
-        an alias row (explicit existing id) for every old key that maps to exactly one new key
-        and one work, so re-deposits keep joining their work instead of minting a duplicate.
-        Fan-out keys (the mega-works) get no alias.
+        an alias row (explicit existing id) per (old key, new key, work) pair, so re-deposits
+        keep joining their work instead of minting a duplicate. insert admits a pair when the new
+        key sits on <= max_works_per_key works (MapWorkIds' own <= 3 guard) and the work holds
+        <= max_keys_per_work new keys under that old key; a work holding many new keys is a
+        mega-work and gets no alias so the sweep can split it.
 
         MANUAL TRIGGER ONLY. Run `insert` outside 05:00-07:00 UTC (MapWorkIds writes the table).
           mode=stage    compute into the stage table (limit=N old keys for a timing trial)
@@ -24,6 +26,10 @@ resources:
           default: "openalex.works.work_id_map_digit_aliases_stage"
         - name: confirm
           default: "no"
+        - name: max_works_per_key
+          default: "3"
+        - name: max_keys_per_work
+          default: "3"
       tasks:
         - task_key: seed_work_id_map_digit_aliases
           notebook_task:
@@ -34,6 +40,8 @@ resources:
               limit: "{{job.parameters.limit}}"
               stage_table: "{{job.parameters.stage_table}}"
               confirm: "{{job.parameters.confirm}}"
+              max_works_per_key: "{{job.parameters.max_works_per_key}}"
+              max_keys_per_work: "{{job.parameters.max_keys_per_work}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
