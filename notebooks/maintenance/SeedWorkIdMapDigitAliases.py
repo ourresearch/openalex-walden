@@ -25,7 +25,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "insert", "verify", "prune"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "stage_stored", "insert", "verify", "prune"])
 dbutils.widgets.text("limit", "0")
 dbutils.widgets.text("stage_table", "openalex.works.work_id_map_digit_aliases_stage")
 dbutils.widgets.text("confirm", "no")
@@ -90,6 +90,50 @@ if MODE == "stage":
         F.count("*").alias("pairs"),
         F.countDistinct("old_key").alias("old_keys"),
         F.sum(F.when((F.col("n_works_on_new") == 1) & (F.col("n_new_on_work") == 1), 1).otherwise(0)).alias("one_to_one"),
+        F.sum(F.when((F.col("n_works_on_new") <= MAX_WORKS_PER_KEY) & (F.col("n_new_on_work") <= MAX_KEYS_PER_WORK), 1).otherwise(0)).alias("admitted"),
+        F.sum(F.when(F.col("n_works_on_new") > MAX_WORKS_PER_KEY, 1).otherwise(0)).alias("skipped_key_on_too_many_works"),
+        F.sum(F.when(F.col("n_new_on_work") > MAX_KEYS_PER_WORK, 1).otherwise(0)).alias("skipped_mega_shape")).collect()[0]
+    out = {**summary.asDict(), "seconds": int(time.time()-t0)}
+    print(out); dbutils.notebook.exit(str(out))
+
+# COMMAND ----------
+
+if MODE == "stage_stored":
+    # After a source refresh the pinned row's STORED key is already the new form and `stage`
+    # (which recomputes from the title) sees no change. Pair the stored key with the row's work
+    # wherever the map lacks that pair but holds the digit-stripped form -- i.e. a re-keyed row
+    # (#880 q71 v6: 2.38M unambiguous repo pairs after the 09-03 repo refresh). Same stage schema,
+    # so `insert` works unchanged; point `stage_table` at a separate table to keep the `stage` rows.
+    t0 = time.time()
+    t = (spark.table("openalex.works.locations_w_types")
+         .withColumn("rwcnt", F.row_number().over(
+             __import__("pyspark.sql.window", fromlist=["Window"]).Window
+             .partitionBy("provenance", "native_id_namespace", "native_id")
+             .orderBy(F.col("updated_date").desc())))
+         .filter("rwcnt = 1")
+         .filter("merge_key.title_author RLIKE '[0-9]' AND LENGTH(merge_key.title_author) > 20")
+         .select("provenance", "native_id_namespace", "native_id", F.col("merge_key.title_author").alias("new_key")))
+    r = spark.table("openalex.works.location_work_ids").filter("work_id IS NOT NULL") \
+             .select("provenance", "native_id_namespace", "native_id", "work_id")
+    pairs = (t.join(r, ["provenance", "native_id_namespace", "native_id"])
+              .groupBy("new_key", "work_id").agg(F.count("*").alias("n_rows"))
+              .withColumn("old_key", F.regexp_replace("new_key", "[0-9]", "")))
+    m = spark.table("openalex.works.work_id_map").select(F.col("title_author").alias("k"), F.col("id").alias("mid"))
+    gap = pairs.join(m, (m.k == pairs.new_key) & (m.mid == pairs.work_id), "left_anti")
+    rekey = gap.join(m, (m.k == gap.old_key) & (m.mid == gap.work_id), "left_semi")
+    # works on the new key = pinned works plus whatever the map already holds under it (post-flip mints)
+    ids = pairs.select("new_key", "work_id").union(m.select(F.col("k").alias("new_key"), F.col("mid").alias("work_id")))
+    per_new = ids.groupBy("new_key").agg(F.countDistinct("work_id").alias("n_works_on_new"))
+    per_work = pairs.groupBy("old_key", "work_id").agg(F.countDistinct("new_key").alias("n_new_on_work"))
+    stage = (rekey.join(per_new, "new_key").join(per_work, ["old_key", "work_id"])
+             .select("old_key", "new_key", "work_id", "n_rows", "n_works_on_new", "n_new_on_work")
+             .withColumn("created_date", F.current_date()))
+    stage.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(STAGE)
+
+    st = spark.table(STAGE)
+    summary = st.agg(
+        F.count("*").alias("pairs"),
+        F.countDistinct("old_key").alias("old_keys"),
         F.sum(F.when((F.col("n_works_on_new") <= MAX_WORKS_PER_KEY) & (F.col("n_new_on_work") <= MAX_KEYS_PER_WORK), 1).otherwise(0)).alias("admitted"),
         F.sum(F.when(F.col("n_works_on_new") > MAX_WORKS_PER_KEY, 1).otherwise(0)).alias("skipped_key_on_too_many_works"),
         F.sum(F.when(F.col("n_new_on_work") > MAX_KEYS_PER_WORK, 1).otherwise(0)).alias("skipped_mega_shape")).collect()[0]

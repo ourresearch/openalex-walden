@@ -13,6 +13,9 @@ resources:
 
         MANUAL TRIGGER ONLY. Run `insert` outside 05:00-07:00 UTC (MapWorkIds writes the table).
           mode=stage    compute into the stage table (limit=N old keys for a timing trial)
+          mode=stage_stored  after a source refresh: pair each pinned row's STORED key with its
+                        work where the map lacks the pair but holds the digit-stripped form;
+                        point stage_table at a separate table, then insert from it
           mode=insert   append stage rows to work_id_map (idempotent)
           mode=verify   fork probe: recent digit-titled title-tier joins resolve on their new key
           mode=prune    post-refresh cleanup of old-form rows (dry-run unless confirm=yes)
