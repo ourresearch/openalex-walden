@@ -68,3 +68,15 @@ def test_endpoint_filter_is_exported():
     assert callable(rf.apply_endpoint_filters)
     params = inspect.signature(rf.apply_endpoint_filters).parameters
     assert {"endpoint_col", "set_spec_col", "keep_when"} <= set(params)
+
+
+def test_hispana_is_carved_not_denylisted():
+    # oxjob #880/#881: heritage collections go, university-IR sets and the no-setSpec bucket stay
+    import openalex.dlt.repo_filters as rf
+    assert "0ef9aa4cd18142685bb" in rf.ENDPOINT_SETSPEC_DELETE
+    assert "0ef9aa4cd18142685bb" not in rf.ENDPOINTS_TO_DELETE
+    prefixes = rf.ENDPOINT_SETSPEC_DELETE["0ef9aa4cd18142685bb"]
+    for heritage in ("eseceres", "bdmmadrid", "gal2", "hdmurcia", "historico_valencia"):
+        assert any(heritage.startswith(p) for p in prefixes)
+    for keep in ("gredos", "riunet", "idus", "uji", "bvandalucia", "historico_castellon"):
+        assert not any(keep.startswith(p) for p in prefixes)

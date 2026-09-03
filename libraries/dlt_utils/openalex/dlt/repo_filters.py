@@ -56,6 +56,15 @@ ENDPOINTS_TO_DELETE = frozenset({
 # museum objects, images, sheet music, A/V and maps are removed; monographies (digitized books,
 # 84% authored), manuscrits and periodiques:titres are kept.
 ENDPOINT_SETSPEC_DELETE = {
+    # Hispana (oai:hispana.mcu.es, Spanish heritage aggregator; oxjob #880/#881, 2026-09-03):
+    # the heritage collections go -- coins, prints, manuscripts, newspaper issues, civil
+    # registries (0-5% scholarly dc:type, no DOIs, uncited). The university-IR sets (gredos,
+    # riunet, idus, uji, ...) and the no-setSpec bucket (carries the DOI copies) are kept.
+    "0ef9aa4cd18142685bb": (
+        "eseceres", "bdmmadrid", "gal2", "iaph", "laguna", "hdmurcia", "bvdefensa", "simurg",
+        "bancoespana", "digicarmel", "jable", "bdcomunidadmadrid", "ciconia", "ccbae",
+        "historico_valencia",
+    ),
     "b6f3a90f96528af2baa": (
         "gallica:typedoc:periodiques:fascicules",
         "gallica:typedoc:objets",
