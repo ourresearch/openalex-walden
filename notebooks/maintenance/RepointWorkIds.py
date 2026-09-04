@@ -14,7 +14,9 @@
 # MAGIC largest, else the earliest pinned. Its anchors and map rows are never touched, so the id,
 # MAGIC its citations and its ES doc survive. Works are **held** (never executed) when a non-primary
 # MAGIC group carries an identifier (that split needs DOI-row deletes + a citation repoint — wave E)
-# MAGIC or when the work is cited >= `hold_cited_over` times (individual sign-off).
+# MAGIC or when the work is cited >= `hold_cited_over` times (individual sign-off). A non-primary title whose
+# MAGIC digit runs are a subset of the primary's (list number, footnote, isotope: a digit INSERTION) is the same
+# MAGIC work and stays put; only digit SUBSTITUTIONS (year, part, volume, number) move (`q75 a8/a9`).
 # MAGIC
 # MAGIC Modes (all keyed on `target_table`, one row per anchor that should leave its work):
 # MAGIC - `stage`    build the target from live data for works holding `min_keys`..`max_keys` distinct
@@ -104,7 +106,8 @@ if MODE == "stage":
     rank = Window.partitionBy("old_work_id", "stripped").orderBy(
         F.col("g_with_id").desc(), F.col("g_anchors").desc(), F.col("g_first_pinned").asc(), F.col("title_part"))
     g2 = g.join(w, ["old_work_id", "stripped"]).withColumn("group_rank", F.row_number().over(rank))
-    primary = g2.filter("group_rank = 1").select("old_work_id", "stripped", F.col("g_title").alias("primary_title"))
+    primary = g2.filter("group_rank = 1").select("old_work_id", "stripped", F.col("g_title").alias("primary_title"),
+                                                 F.col("title_part").alias("primary_title_part"))
     held_id = (g2.filter("group_rank > 1 AND g_with_id > 0").select("old_work_id", "stripped").distinct()
                .withColumn("hold_id", F.lit(True)))
     cited = spark.table(WORKS).select(F.col("id").alias("old_work_id"), "cited_by_count")
@@ -116,6 +119,8 @@ if MODE == "stage":
                  .withColumn("hold_reason", F.when(F.col("hold_id"), F.lit("non_primary_group_has_identifier"))
                              .when(F.col("cited_by_count") >= HOLD_CITED_OVER, F.lit("cited_over_threshold")))
                  .withColumn("keys_to_move", F.col("n_titles") - 1))
+    # keys_to_move counts every non-primary title; insertion groups (kept) are removed from the target below,
+    # so wave sizes are an upper bound (exact for min_keys >= 4, where insertions are rare)
     # waves: smallest works first, so the low tiers fill wave 1 whatever max_keys is
     order = Window.orderBy(F.col("n_titles").asc(), F.col("old_work_id").asc(), F.col("stripped"))
     per_work = (per_work.withColumn("cum_keys", F.when(F.col("hold_reason").isNull(),
@@ -123,7 +128,17 @@ if MODE == "stage":
                         .withColumn("wave", F.when(F.col("hold_reason").isNull(), F.ceil(F.col("cum_keys") / F.lit(WAVE_SIZE)).cast("int")))
                         .drop("hold_id", "cum_keys"))
 
-    moved_groups = g2.filter("group_rank > 1").select("old_work_id", "stripped", "title_part", "group_rank", "g_anchors", "g_title")
+    # a non-primary title whose digit runs are a subset of the primary's (or vice versa) is a digit INSERTION --
+    # a list number, footnote digit, isotope notation -- the same work, not a distinct one (q75 a8/a9: 18/20 same);
+    # a digit SUBSTITUTION (year, part, volume, bill number) is a distinct object (19/20). Insertions stay put.
+    digits = lambda c: F.expr(f"regexp_extract_all({c}, '([0-9]+)', 1)")
+    moved_groups = (g2.filter("group_rank > 1")
+                      .join(primary.select("old_work_id", "stripped", "primary_title_part"), ["old_work_id", "stripped"])
+                      .withColumn("digit_insertion",
+                                  (F.size(F.array_except(digits("title_part"), digits("primary_title_part"))) == 0) |
+                                  (F.size(F.array_except(digits("primary_title_part"), digits("title_part"))) == 0))
+                      .filter("NOT digit_insertion")
+                      .select("old_work_id", "stripped", "title_part", "group_rank", "g_anchors", "g_title"))
     other = (spark.table(MAP).filter("title_author IS NOT NULL")
              .select(F.col("title_author").alias("new_key"), F.col("id").alias("map_id")))
     target = (a.join(moved_groups, ["old_work_id", "stripped", "title_part"])
