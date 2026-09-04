@@ -1,0 +1,57 @@
+resources:
+  jobs:
+    Repoint_Work_Ids:
+      name: Repoint Work Ids
+      description: |
+        oxjob #880: audited fan-out of works that merged only because normalize_title used to
+        strip digits. Pins never re-resolve, so the split is the registries' correction path:
+        delete the pins of the anchors that should leave the work and the alias rows that would
+        pull them back; the nightly MapWorkIds re-resolves them, one fresh mint per digit title.
+        The primary group (identifier-bearing, else largest, else earliest) keeps the work id.
+        Works with an identifier on a non-primary group, or cited >= hold_cited_over, are held.
+
+        MANUAL TRIGGER ONLY.
+          mode=stage    build the target for works holding min_keys..max_keys distinct digit titles
+                        (max_keys=0 = no cap); waves of wave_size keys, smallest works first
+          mode=dry_run  what execute would do for `wave`
+          mode=execute  confirm=yes, outside 04:00-08:00 UTC; freezes <target>_wave<N>_audit first
+          mode=verify   the morning after: re-pins, none back on the old work, fan-in
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode
+          default: "stage"
+        - name: min_keys
+          default: "4"
+        - name: max_keys
+          default: "0"
+        - name: wave_size
+          default: "3000000"
+        - name: wave
+          default: "1"
+        - name: hold_cited_over
+          default: "100"
+        - name: target_table
+          default: "openalex.works.oxjob880_fanout_target"
+        - name: confirm
+          default: "no"
+      tasks:
+        - task_key: repoint_work_ids
+          notebook_task:
+            notebook_path: notebooks/maintenance/RepointWorkIds
+            source: GIT
+            base_parameters:
+              mode: "{{job.parameters.mode}}"
+              min_keys: "{{job.parameters.min_keys}}"
+              max_keys: "{{job.parameters.max_keys}}"
+              wave_size: "{{job.parameters.wave_size}}"
+              wave: "{{job.parameters.wave}}"
+              hold_cited_over: "{{job.parameters.hold_cited_over}}"
+              target_table: "{{job.parameters.target_table}}"
+              confirm: "{{job.parameters.confirm}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
