@@ -48,6 +48,20 @@ ENDPOINTS_TO_DELETE = frozenset({
     "f636af0063b01d813c2", "f7339d14c2862b00456", "f7f46bc748b76f00e5d",
     "f9aaacddd8597430f3c", "fb5960cc394837b481e", "fbee8323c69f9efc06c",
     "fc368edc6e0086c0c48", "ff62abe687c515a86f7",
+    # oxjob #880 round 3 (2026-09-04, Casey): item-level digitization and periodical-issue
+    # endpoints found by profiling the digit-key fan-out batch (KEY_LEDGER_PLAN.md s 9, q77/q78):
+    # 86-97% of their records are folder/box scan pages, permit cards, per-sherd excavation
+    # context records, pamphlet pages, newspaper and official-bulletin issues.
+    "7ccc21dda876bd4e680",  # UNC Wilson Library finding aids (dc.lib.unc.edu): 1.38M folder/box scans
+    "3e821e5524e99c846c7",  # Open Context (opencontext.org/oai/request): per-sherd context records
+    "4cf3b25bdbf192a382e",  # Open Context duplicate endpoint (retired in the registry 2026-08-31)
+    "424791a2d217cbac04a",  # Open Context (opencontext.org/oai/oai2.php)
+    "33c353ac55f2fe86ca4",  # Hennepin County Library ContentDM: permit cards, yearbook pages, property records
+    "56a335c85759891850c",  # Plano Public Library ContentDM (cdm15915): minutes/diary/program pages
+    "2464b7588f6c599ab7c",  # Biblioteca Virtual de Andalucia: newspaper issues, graphic material, video
+    "e11d60e7cd398991490",  # Biblioteca Virtual de Madrid: Boletin oficial de la provincia issues
+    "d81af6bd4b339ff4510",  # Wroclaw University digital library (bibliotekacyfrowa.pl): newspaper issues, index pages, weather sheets
+    "4c6759f5f7aa2e0f771",  # Baltycka Biblioteka Cyfrowa (bibliotekacyfrowa.eu): newspaper issues, museum objects, house files
 })
 
 # oxjob #881 round 2: sub-endpoint carves -- the endpoint stays, records in these setSpec
@@ -74,6 +88,21 @@ ENDPOINT_SETSPEC_DELETE = {
         "gallica:typedoc:videos",
         "gallica:typedoc:cartes",
     ),
+    # oxjob #880 round 3 (2026-09-04): newspaper-issue and image sets on otherwise-kept endpoints.
+    # Galiciana: the hemeroteca (newspaper issues; 'hemeroteca' also covers 'hemeroteca_1') and
+    # the objdigitales set go; the 'duplicados' set (digitized books, bookParts) stays.
+    "82fda151e563b16f718": ("hemeroteca", "objdigitales"),
+    # University of Hawaii eVols: Austin's Hawaiian Weekly, Marianas Variety, Honolulu Weekly issues.
+    "00eb30b3c421604fb0a": ("com_10524_22", "com_10524_48717", "com_10524_55438"),
+    # Murray State Digital Commons: four newspaper title sets + the image collection.
+    "257ceb94a3e9008c0fd": ("publication:mlt", "publication:dm", "publication:tn", "publication:tml",
+                            "publication:digital_coll"),
+    # Ball State: student and local newspaper issues.
+    "1d1d13c412643d1f98b": ("BSUDlyNws", "PostDemNews", "GrnRchOrNgh"),
+    # UNH Scholars: The New Hampshire student paper issues + aerial photograph frames.
+    "7bc56f87fb0e7f4ae9b": ("publication:tnh_archive", "publication:aerial"),
+    # Portal to Texas History: the CAH map-sheet partner set.
+    "4c3c0d4c422b7f8c3fc": ("partner:CAH",),
 }
 
 

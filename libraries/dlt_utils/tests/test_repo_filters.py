@@ -33,9 +33,10 @@ def test_filter_signature_allows_column_overrides():
 
 
 def test_endpoint_denylist_shape():
-    # oxjob #881 round 2: 67 tier-A endpoints + pt.cision.com. Every id is a non-empty string;
-    # the count is asserted so an accidental paste-truncation fails loudly.
-    assert len(rf.ENDPOINTS_TO_DELETE) == 68
+    # oxjob #881 round 2: 67 tier-A endpoints + pt.cision.com; oxjob #880 round 3: +10 item-level
+    # digitization / periodical-issue endpoints. Every id is a non-empty string; the count is
+    # asserted so an accidental paste-truncation fails loudly.
+    assert len(rf.ENDPOINTS_TO_DELETE) == 78
     assert all(isinstance(e, str) and e for e in rf.ENDPOINTS_TO_DELETE)
     # the four individually-adjudicated verdicts (ENDPOINT_VERDICTS.md) are present
     assert {
@@ -80,3 +81,16 @@ def test_hispana_is_carved_not_denylisted():
         assert any(heritage.startswith(p) for p in prefixes)
     for keep in ("gredos", "riunet", "idus", "uji", "bvandalucia", "historico_castellon"):
         assert not any(keep.startswith(p) for p in prefixes)
+
+
+def test_round3_fanout_carves():
+    # oxjob #880 round 3 (KEY_LEDGER_PLAN.md s 9): the ten whole endpoints and the set carves on
+    # endpoints that stay harvested. Galiciana's 'duplicados' (digitized books) must survive.
+    for whole in ("7ccc21dda876bd4e680", "3e821e5524e99c846c7", "424791a2d217cbac04a",
+                  "33c353ac55f2fe86ca4", "2464b7588f6c599ab7c", "e11d60e7cd398991490"):
+        assert whole in rf.ENDPOINTS_TO_DELETE
+        assert whole not in rf.ENDPOINT_SETSPEC_DELETE
+    gal = rf.ENDPOINT_SETSPEC_DELETE["82fda151e563b16f718"]
+    assert any("hemeroteca_1".startswith(p) for p in gal)
+    assert not any("duplicados".startswith(p) for p in gal)
+    assert "partner:CAH" in rf.ENDPOINT_SETSPEC_DELETE["4c3c0d4c422b7f8c3fc"]
