@@ -55,7 +55,15 @@ resources:
       #   - photon ON crashed repo_enriched's Pandas-UDF stage ("Python worker exited
       #     unexpectedly") -- its off-heap reservation squeezes the Python sandbox.
       #     Keep photon OFF whenever the UDF stages run.
-      serverless: true
+      # oxjob #880 round 3b (2026-09-05): TEMPORARY classic profile for the repo_enriched+repo_works
+      # (+ passthrough flows) refresh that restores the UNC keep-list sets; revert to serverless after.
+      serverless: false
+      photon: false
+      clusters:
+        - label: default
+          node_type_id: r5d.8xlarge
+          driver_node_type_id: r5d.8xlarge
+          num_workers: 60
       continuous: false
       development: false
       edition: ADVANCED
@@ -71,7 +79,7 @@ resources:
         # on classic r5d.8xlarge photon-off. 125 quarters the per-batch spike; raise to
         # 2000 with the classic full-refresh profile above (proven 08-26/08-28).
         # oxjob #945: raised to "2000" for the 09-01 classic-profile refresh, reverted here.
-        spark.sql.execution.arrow.maxRecordsPerBatch: "125"
+        spark.sql.execution.arrow.maxRecordsPerBatch: "2000"
       tags:
         environment: prod
         workflow: repo
