@@ -52,7 +52,6 @@ ENDPOINTS_TO_DELETE = frozenset({
     # endpoints found by profiling the digit-key fan-out batch (KEY_LEDGER_PLAN.md s 9, q77/q78):
     # 86-97% of their records are folder/box scan pages, permit cards, per-sherd excavation
     # context records, pamphlet pages, newspaper and official-bulletin issues.
-    "7ccc21dda876bd4e680",  # UNC Wilson Library finding aids (dc.lib.unc.edu): 1.38M folder/box scans
     "3e821e5524e99c846c7",  # Open Context (opencontext.org/oai/request): per-sherd context records
     "4cf3b25bdbf192a382e",  # Open Context duplicate endpoint (retired in the registry 2026-08-31)
     "424791a2d217cbac04a",  # Open Context (opencontext.org/oai/oai2.php)
@@ -106,6 +105,30 @@ ENDPOINT_SETSPEC_DELETE = {
 }
 
 
+# oxjob #880 round 3b (2026-09-05): the INVERSE of ENDPOINT_SETSPEC_DELETE -- for these endpoints a
+# record is removed UNLESS its setSpec is on the keep list. Use it when an endpoint is a digitization
+# platform with a thin scholarly tail: listing the junk sets would mean any set the repository adds
+# later defaults to "keep", which is the wrong prior here.
+#
+# A record with NO setSpec is REMOVED on a keep-list endpoint (the opposite of the delete list, where
+# a missing setSpec is kept). Safe for UNC: all 1,381,527 records carry exactly one setSpec.
+#
+# UNC Wilson Library (dc.lib.unc.edu) was a whole-endpoint denial on 2026-09-04 and that was too broad:
+# 71 of the 102 cited works deleted that night were the *Journal of the North Carolina Academy of
+# Science* (`jncas`, 208 citations), hosted on the same OAI endpoint as 1.38M folder/box/audiocassette
+# scans. 64 of its 72 sets are 90-100% item-level with no authors; the keep list is the bibliographic
+# tail (9,076 records, 0.66%): the journal, the health-history monographs, the Rare Book Room, the
+# Minipage news articles, Vesalius, the Bunker manuscripts, the Attic vase corpus.
+# NOT kept, deliberately: `sohp` (7,918 Southern Oral History Program interviews titled `A-0001` --
+# authored but degenerate-titled), `powell`/`unctshirts`/`vir_museum`/`keepsakes` (advertisements,
+# t-shirts, museum objects).
+ENDPOINT_SETSPEC_KEEP = {
+    "7ccc21dda876bd4e680": (
+        "jncas", "nchh", "dmisc", "rbr", "vesalius", "minipage", "bunkers", "attic",
+    ),
+}
+
+
 def apply_repo_policy_filters(df, title_col="title", type_col="raw_native_type",
                               native_id_col="native_id", keep_when=None):
     """Drop records that must never become works, for EVERY repo stream.
@@ -153,6 +176,9 @@ def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spe
     A NULL endpoint_id is kept (nothing to match). A carve removes a record when any set_spec
     element starts with one of that endpoint's prefixes; NULL/empty set_spec is kept.
 
+    ENDPOINT_SETSPEC_KEEP inverts that for endpoints that are junk by default: a record survives
+    only if its set_spec matches a keep prefix, so a NULL/empty set_spec is REMOVED there.
+
     keep_when: same contract as apply_repo_policy_filters -- delete events carry the pre-image
     of the row being removed and must bypass every filter or the deletion never propagates.
     """
@@ -166,6 +192,13 @@ def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spe
         in_carved_class = F.expr(
             f"exists(coalesce({set_spec_col}, array()), s -> {likes})")
         carved = carved | ((F.col(endpoint_col) == endpoint_id) & in_carved_class)
+
+    # keep-list endpoints: everything EXCEPT the listed sets goes (oxjob #880 round 3b)
+    for endpoint_id, prefixes in ENDPOINT_SETSPEC_KEEP.items():
+        likes = " OR ".join(f"s LIKE '{p}%'" for p in prefixes)
+        in_kept_class = F.expr(
+            f"exists(coalesce({set_spec_col}, array()), s -> {likes})")
+        carved = carved | ((F.col(endpoint_col) == endpoint_id) & ~in_kept_class)
 
     passes_policy = ~(F.coalesce(denylisted, F.lit(False)) | carved)
     if keep_when is not None:
