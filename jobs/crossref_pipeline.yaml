@@ -8,15 +8,36 @@ resources:
       name: Crossref
       catalog: openalex
       target: crossref
-      serverless: true
-      photon: true
+      # FULL-REFRESH PROFILE (oxjob #314, 2026-09-08) -- TEMPORARY. Revert to
+      # `serverless: true` / `photon: true` / `development: true` / arrow "100" and
+      # UNPAUSE jobs/crossref.yaml once the refresh lands.
+      #
+      # photon OFF is not optional here: this refresh runs the Pandas-UDF stages
+      # (normalize_license_udf, normalize_title_udf, enrich_with_features_and_author_keys)
+      # and photon's off-heap reservation squeezes the Python sandbox -- it is what
+      # crashed repo_enriched's UDF stage on 08-28 ("Python worker exited unexpectedly").
+      #
+      # arrow 100 is a serverless-sandbox throttle inherited from the pre-bundle pipeline,
+      # not a tuned value; r5d.8xlarge has 256 GiB a node. 2000 is proven on Repo's
+      # identical profile (oxjob #945). Do not jump to the 10000 default.
+      #
+      # Starting at 20 workers deliberately -- Repo's 20 -> 60 step exists if the
+      # crossref_works UDF stage proves too slow; loosen one knob at a time.
+      serverless: false
+      photon: false
+      clusters:
+        - label: default
+          node_type_id: r5d.8xlarge
+          driver_node_type_id: r5d.8xlarge
+          num_workers: 20
       continuous: false
-      development: true
+      development: false
+      edition: ADVANCED
       channel: CURRENT
       configuration:
         environment: prod
         pipelines.clusterShutdown.delay: 300s
-        spark.sql.execution.arrow.maxRecordsPerBatch: "100"
+        spark.sql.execution.arrow.maxRecordsPerBatch: "2000"
       tags:
         environment: prod
         workflow: crossref
