@@ -196,13 +196,28 @@ def normalize_license(text):
         ("arxiv.orgnonexclusive", "other-oa"),
         
         # creative Commons licenses
+        # Text form ("CC BY-NC-ND 4.0") and URL form
+        # ("creativecommons.org/licenses/by-nc-nd/4.0") differ once hyphens are
+        # stripped, so each flavor needs both keys. Longest-first.
         ("ccbyncnd", "cc-by-nc-nd"),
+        ("licenses/byncnd", "cc-by-nc-nd"),
         ("ccbyncsa", "cc-by-nc-sa"),
+        ("licenses/byncsa", "cc-by-nc-sa"),
         ("ccbynd", "cc-by-nd"),
+        ("licenses/bynd", "cc-by-nd"),
         ("ccbysa", "cc-by-sa"),
+        ("licenses/bysa", "cc-by-sa"),
         ("ccbync", "cc-by-nc"),
+        ("licenses/bync", "cc-by-nc"),
         ("ccby", "cc-by"),
+        # plain BY needs a trailing boundary, or a malformed flavor
+        # (licenses/by-n345667c-nd) resolves to the most permissive answer.
         ("creativecommons.org/licenses/by/", "cc-by"),
+        ("licenses/by/", "cc-by"),
+        ("licenses/by4", "cc-by"),
+        ("licenses/by3", "cc-by"),
+        ("licenses/by2", "cc-by"),
+        ("licenses/by1", "cc-by"),
         
         # public domain
         ("publicdomain", "public-domain"),
