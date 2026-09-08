@@ -33,7 +33,8 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "revert_cited"])
+dbutils.widgets.text("cited_min", "1")
 dbutils.widgets.text("min_keys", "4")
 dbutils.widgets.text("max_keys", "0")
 dbutils.widgets.text("wave_size", "3000000")
@@ -43,6 +44,7 @@ dbutils.widgets.text("target_table", "openalex.works.oxjob880_fanout_target")
 dbutils.widgets.text("confirm", "no")
 
 MODE = dbutils.widgets.get("mode")
+CITED_MIN = int(dbutils.widgets.get("cited_min"))
 MIN_KEYS = int(dbutils.widgets.get("min_keys"))
 MAX_KEYS = int(dbutils.widgets.get("max_keys"))
 WAVE_SIZE = int(dbutils.widgets.get("wave_size"))
@@ -52,6 +54,7 @@ TARGET = dbutils.widgets.get("target_table")
 CONFIRM = dbutils.widgets.get("confirm") == "yes"
 REVIEW = f"{TARGET}_cited_review"
 AUDIT = f"{TARGET}_wave{WAVE}_audit"
+REVERT_AUDIT = f"{TARGET}_revert_cited{CITED_MIN}_audit"
 
 REGISTRY = "openalex.works.location_work_ids"
 MAP = "openalex.works.work_id_map"
@@ -260,5 +263,82 @@ if MODE == "verify":
           JOIN (SELECT DISTINCT new_key FROM {AUDIT}) k ON k.new_key = m.title_author
           GROUP BY 1 HAVING COUNT(DISTINCT m.id) > 1)""")
     out = {**res, **fanin, **multi}
+    print(out)
+    dbutils.notebook.exit(str(out))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## revert_cited — undo the split for works that carry citations (#880 KEY_LEDGER_PLAN § 14)
+# MAGIC
+# MAGIC The insertion-vs-substitution rule was validated on the general population (`q75 a9`, 19/20
+# MAGIC distinct), which is overwhelmingly uncited serials. On CITED works it inverts: the spot-check
+# MAGIC (`q98`, 100 works cited >= 10) found ~44% are the SAME work split into a duplicate, because their
+# MAGIC digit delta is typographic (`Ca2+` OCR'd as `Ca21`, `3'` as `30`, `1919-39` vs `1919-1939`,
+# MAGIC leading list numbers, footnote markers) rather than a year/volume/edition. `q75 a4` predicted
+# MAGIC exactly this (29/30 same paper).
+# MAGIC
+# MAGIC Undo is the inverse of `execute`, and it is durable rather than a re-pin: **restore the alias row**
+# MAGIC `(old_work_id, new_key)` in `work_id_map` and delete the anchor's current pin. The nightly then
+# MAGIC re-resolves the anchor onto the old work through the alias, the duplicate work empties and
+# MAGIC self-ledgers, and every FUTURE re-deposit of the variant key resolves correctly too.
+
+# COMMAND ----------
+
+if MODE == "revert_cited":
+    hour = datetime.datetime.utcnow().hour
+    if 4 <= hour < 8:
+        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run outside 04:00-08:00 UTC")
+
+    scope = f"""
+      SELECT x.provenance, x.native_id_namespace, x.native_id, x.old_work_id, x.new_key,
+             x.title_part, x.cited_by_count, x.wave, r.work_id AS current_work_id
+      FROM {TARGET} x
+      LEFT JOIN {REGISTRY} r
+        ON r.provenance = x.provenance AND r.native_id_namespace = x.native_id_namespace
+       AND r.native_id = x.native_id
+      WHERE x.hold_reason IS NULL AND x.executed_at IS NOT NULL AND x.cited_by_count >= {CITED_MIN}
+    """
+    plan = one(f"""
+      SELECT COUNT(*) AS anchors, COUNT(DISTINCT old_work_id) AS works,
+             COUNT(DISTINCT old_work_id, title_part) AS keys,
+             SUM(CASE WHEN current_work_id IS NULL THEN 1 ELSE 0 END) AS unpinned_nothing_to_delete,
+             SUM(CASE WHEN current_work_id = old_work_id THEN 1 ELSE 0 END) AS already_home,
+             SUM(CASE WHEN current_work_id IS NOT NULL AND current_work_id <> old_work_id THEN 1 ELSE 0 END) AS pins_to_delete,
+             COUNT(DISTINCT CASE WHEN current_work_id IS NOT NULL AND current_work_id <> old_work_id
+                                 THEN current_work_id END) AS works_that_may_empty
+      FROM ({scope})""")
+    aliases = one(f"""
+      SELECT COUNT(DISTINCT s.old_work_id, s.new_key) AS alias_rows_to_insert
+      FROM ({scope}) s
+      LEFT ANTI JOIN {MAP} m ON m.title_author = s.new_key AND m.id = s.old_work_id""")
+    print({**plan, **aliases})
+    if plan["anchors"] == 0:
+        dbutils.notebook.exit(f"nothing to revert at cited_min={CITED_MIN}")
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to revert")
+    if spark.catalog.tableExists(REVERT_AUDIT):
+        raise Exception(f"{REVERT_AUDIT} exists: this revert already ran (or clean it up first)")
+
+    spark.sql(f"CREATE TABLE {REVERT_AUDIT} AS SELECT *, current_timestamp() AS reverted_at FROM ({scope})")
+    n_audit = one(f"SELECT COUNT(*) AS n FROM {REVERT_AUDIT}")["n"]
+    assert n_audit == plan["anchors"], f"audit {n_audit} != planned {plan['anchors']}"
+
+    ins = spark.sql(f"""
+      INSERT INTO {MAP} (id, doi, pmid, arxiv, title_author, created_date, updated_date)
+      SELECT DISTINCT a.old_work_id, NULL, NULL, NULL, a.new_key, current_date(), current_timestamp()
+      FROM {REVERT_AUDIT} a
+      LEFT ANTI JOIN {MAP} m ON m.title_author = a.new_key AND m.id = a.old_work_id
+    """).collect()[0].num_affected_rows
+
+    dels = spark.sql(f"""
+      DELETE FROM {REGISTRY} r
+      WHERE EXISTS (SELECT 1 FROM {REVERT_AUDIT} a
+                    WHERE a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace
+                      AND a.native_id = r.native_id AND r.work_id <> a.old_work_id)
+    """).collect()[0].num_affected_rows
+
+    out = dict(cited_min=CITED_MIN, audit_table=REVERT_AUDIT, audited=n_audit,
+               alias_rows_inserted=ins, pins_deleted=dels)
     print(out)
     dbutils.notebook.exit(str(out))

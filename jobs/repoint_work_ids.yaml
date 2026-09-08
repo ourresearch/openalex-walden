@@ -29,7 +29,9 @@ resources:
         - name: wave
           default: "1"
         - name: hold_cited_over
-          default: "100"
+          default: "1"
+        - name: cited_min
+          default: "1"
         - name: target_table
           default: "openalex.works.oxjob880_fanout_target"
         - name: confirm
@@ -46,6 +48,7 @@ resources:
               wave_size: "{{job.parameters.wave_size}}"
               wave: "{{job.parameters.wave}}"
               hold_cited_over: "{{job.parameters.hold_cited_over}}"
+              cited_min: "{{job.parameters.cited_min}}"
               target_table: "{{job.parameters.target_table}}"
               confirm: "{{job.parameters.confirm}}"
       git_source:
