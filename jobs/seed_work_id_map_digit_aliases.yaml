@@ -33,6 +33,10 @@ resources:
           default: "3"
         - name: max_keys_per_work
           default: "3"
+        - name: max_stale
+          default: "1000"
+        - name: exclude_contentious
+          default: "yes"
       tasks:
         - task_key: seed_work_id_map_digit_aliases
           notebook_task:
@@ -45,6 +49,8 @@ resources:
               confirm: "{{job.parameters.confirm}}"
               max_works_per_key: "{{job.parameters.max_works_per_key}}"
               max_keys_per_work: "{{job.parameters.max_keys_per_work}}"
+              max_stale: "{{job.parameters.max_stale}}"
+              exclude_contentious: "{{job.parameters.exclude_contentious}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub

@@ -31,6 +31,8 @@ dbutils.widgets.text("stage_table", "openalex.works.work_id_map_digit_aliases_st
 dbutils.widgets.text("confirm", "no")
 dbutils.widgets.text("max_works_per_key", "3")
 dbutils.widgets.text("max_keys_per_work", "3")
+dbutils.widgets.text("max_stale", "1000")
+dbutils.widgets.dropdown("exclude_contentious", "yes", ["yes", "no"])
 
 MODE = dbutils.widgets.get("mode")
 LIMIT = int(dbutils.widgets.get("limit"))
@@ -38,6 +40,8 @@ STAGE = dbutils.widgets.get("stage_table")
 CONFIRM = dbutils.widgets.get("confirm") == "yes"
 MAX_WORKS_PER_KEY = int(dbutils.widgets.get("max_works_per_key"))
 MAX_KEYS_PER_WORK = int(dbutils.widgets.get("max_keys_per_work"))
+MAX_STALE = int(dbutils.widgets.get("max_stale"))
+EXCLUDE_CONTENTIOUS = dbutils.widgets.get("exclude_contentious") == "yes"
 
 import time
 from pyspark.sql import functions as F
@@ -198,21 +202,62 @@ if MODE == "verify":
 # COMMAND ----------
 
 if MODE == "prune":
-    # post-refresh only: once no pinned row still carries an old-form key, the old rows are dead weight
-    still_old = spark.sql(f"""
-      SELECT COUNT(*) AS n FROM openalex.works.locations_w_types t
-      JOIN {STAGE} s ON s.old_key = t.merge_key.title_author
+    # The old gate refused unless "any live anchor whose key is also a stage old_key" was 0. That
+    # conflates two populations (#880 KEY_LEDGER_PLAN section 13): anchors still carrying a PRE-FLIP key
+    # (the real test, 241 today) and digit-FREE records whose legitimate key happens to equal the
+    # stripped form of some digit title (6.88M on 594K keys). A digit-free title normalizes identically
+    # before and after the flip, so that second class is permanent and the gate could never pass.
+    spark.sql("""
+      SELECT title, merge_key.title_author AS k
+      FROM openalex.works.locations_w_types
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY provenance, native_id_namespace, native_id
+                                 ORDER BY updated_date DESC) = 1
+    """).createOrReplaceTempView("prune_live")
+    spark.sql(f"SELECT DISTINCT old_key FROM {STAGE}").createOrReplaceTempView("prune_old_keys")
+
+    stale = spark.sql("""
+      SELECT COUNT(*) AS n FROM prune_live t JOIN prune_old_keys s ON s.old_key = t.k
+      WHERE t.title RLIKE '[0-9]'
     """).collect()[0].n
+    coll = spark.sql("""
+      SELECT COUNT(*) AS anchors, COUNT(DISTINCT t.k) AS keys
+      FROM prune_live t JOIN prune_old_keys s ON s.old_key = t.k
+      WHERE NOT t.title RLIKE '[0-9]'
+    """).collect()[0].asDict()
+
+    PRUNABLE = f"{STAGE}_prunable"
+    anti = ("LEFT ANTI JOIN (SELECT DISTINCT k FROM prune_live WHERE NOT title RLIKE '[0-9]') c "
+            "ON c.k = s.old_key") if EXCLUDE_CONTENTIOUS else ""
+    spark.sql(f"""
+      CREATE OR REPLACE TABLE {PRUNABLE} AS
+      SELECT DISTINCT s.old_key, s.work_id FROM {STAGE} s {anti}
+    """)
     dead = spark.sql(f"""
-      SELECT COUNT(*) AS n FROM openalex.works.work_id_map m JOIN {STAGE} s
-        ON m.title_author = s.old_key AND m.id = s.work_id
+      SELECT COUNT(*) AS n FROM openalex.works.work_id_map m
+      JOIN {PRUNABLE} p ON m.title_author = p.old_key AND m.id = p.work_id
     """).collect()[0].n
-    print(f"rows still carrying an old-form key: {still_old:,}  |  prunable map rows: {dead:,}")
-    if CONFIRM and still_old == 0:
-        spark.sql(f"""
-          DELETE FROM openalex.works.work_id_map m
-          WHERE EXISTS (SELECT 1 FROM {STAGE} s WHERE m.title_author = s.old_key AND m.id = s.work_id)
-        """)
-        print("pruned")
-    elif CONFIRM:
-        print("NOT pruned: old-form keys are still live in locations_w_types")
+    total = spark.sql(f"""
+      SELECT COUNT(*) AS n FROM openalex.works.work_id_map m
+      JOIN {STAGE} s ON m.title_author = s.old_key AND m.id = s.work_id
+    """).collect()[0].n
+
+    print({"genuinely_stale_preflip_anchors": stale, "max_stale_allowed": MAX_STALE,
+           "digit_free_colliding_anchors": coll["anchors"], "colliding_keys": coll["keys"],
+           "exclude_contentious": EXCLUDE_CONTENTIOUS, "prunable_rows": dead,
+           "all_old_form_rows": total, "held_as_contentious": total - dead})
+
+    if stale > MAX_STALE:
+        raise Exception(f"{stale:,} anchors still carry a PRE-FLIP key (> max_stale {MAX_STALE:,}); re-key them first")
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to prune")
+
+    before = spark.sql("SELECT COUNT(*) AS n FROM openalex.works.work_id_map").collect()[0].n
+    spark.sql(f"""
+      DELETE FROM openalex.works.work_id_map m
+      WHERE EXISTS (SELECT 1 FROM {PRUNABLE} p WHERE m.title_author = p.old_key AND m.id = p.work_id)
+    """)
+    after = spark.sql("SELECT COUNT(*) AS n FROM openalex.works.work_id_map").collect()[0].n
+    out = {"work_id_map_before": before, "work_id_map_after": after, "deleted": before - after,
+           "planned": dead, "held_as_contentious": total - dead, "prunable_table": PRUNABLE}
+    print(out)
+    dbutils.notebook.exit(str(out))
