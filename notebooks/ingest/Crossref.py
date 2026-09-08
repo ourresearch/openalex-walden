@@ -325,7 +325,7 @@ def crossref_parsed():
         # dlt.read("crossref_deduplicated")
         spark.readStream
             .option("readChangeFeed", "true")
-            .table("crossref_deduplicated")
+            .table("LIVE.crossref_deduplicated")
         .filter(F.col("_change_type").isin("insert", "update_postimage", "delete"))        
         .filter(~F.col("type").isin(unallowed_types))
         .withColumn("native_id_namespace", F.lit("doi"))
@@ -654,7 +654,7 @@ def crossref_processed():
     ])
 
     df_parsed_input = (spark.readStream
-        .option("readChangeFeed", "true").table("crossref_parsed")
+        .option("readChangeFeed", "true").table("LIVE.crossref_parsed")
         .filter(F.col("_change_type").isin("insert", "update_postimage", "delete"))
     )
     return apply_initial_processing(df_parsed_input, "crossref", walden_works_with_raw_type_schema)
