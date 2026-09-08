@@ -2,9 +2,10 @@ resources:
   jobs:
     Reparse_Campaign_Stager:
       name: Reparse Campaign Stager
-      # oxjob #984: stateless 20-min tick that chains the legacy-backfill re-parse
-      # batches (stage → launch Parse PDFs in reparse mode → next tick). Pause it
-      # when a tick prints "campaign complete".
+      # oxjob #984: stateless 20-min tick that chains a re-parse campaign (stage →
+      # launch Parse PDFs in reparse mode → next tick). PAUSED 2026-09-08: the
+      # legacy-backfill population is exhausted. To run another campaign, point
+      # REMAINDER_SELECT at the new population and unpause.
       email_notifications:
         on_failure:
           - casey@ourresearch.org
@@ -12,7 +13,7 @@ resources:
       schedule:
         quartz_cron_expression: 0 5/20 * * * ?
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       max_concurrent_runs: 1
       queue:
         enabled: true
