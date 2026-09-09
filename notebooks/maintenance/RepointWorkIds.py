@@ -33,7 +33,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "revert_cited"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "revert_cited", "wave_e", "repoint_citations"])
 dbutils.widgets.text("cited_min", "1")
 dbutils.widgets.text("min_keys", "4")
 dbutils.widgets.text("max_keys", "0")
@@ -342,3 +342,119 @@ if MODE == "revert_cited":
                alias_rows_inserted=ins, pins_deleted=dels)
     print(out)
     dbutils.notebook.exit(str(out))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## wave_e — split the identifier-bearing groups (#880 KEY_LEDGER_PLAN § 6 wave E)
+# MAGIC
+# MAGIC `stage` holds these back as `non_primary_group_has_identifier` because deleting the pin alone is a
+# MAGIC **no-op**: the anchor carries a DOI/PMID/arXiv, so it re-resolves at the id tier onto the same work
+# MAGIC the next morning (§ 4). Splitting them means deleting the anchor's **id map rows** as well, and then
+# MAGIC repointing `work_references` by DOI the following morning — citations are sticky
+# MAGIC (`cited_work_id` is set once and never re-resolved).
+# MAGIC
+# MAGIC `wave_e`      freeze `<target>_wave_e_audit` (anchors + their ids from `locations_w_types`), then
+# MAGIC               DELETE pins, title aliases and id map rows. `confirm = yes`, outside 04:00-08:00 UTC.
+# MAGIC `repoint_citations`  the morning after: re-point `work_references.cited_work_id` by DOI to wherever
+# MAGIC               that DOI now resolves. Monotone — a row moves only when the DOI resolves elsewhere.
+
+# COMMAND ----------
+
+if MODE in ("wave_e", "repoint_citations"):
+    WAVE_E_AUDIT = f"{TARGET}_wave_e_audit"
+
+if MODE == "wave_e":
+    hour = datetime.datetime.utcnow().hour
+    if 4 <= hour < 8:
+        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run outside 04:00-08:00 UTC")
+
+    scope = f"""
+      SELECT x.provenance, x.native_id_namespace, x.native_id, x.old_work_id, x.new_key, x.title_part,
+             x.cited_by_count, lower(NULLIF(t.merge_key.doi, '')) AS anchor_doi,
+             NULLIF(t.merge_key.pmid, '') AS anchor_pmid, NULLIF(t.merge_key.arxiv, '') AS anchor_arxiv
+      FROM {TARGET} x
+      JOIN {LWT} t ON t.provenance = x.provenance AND t.native_id_namespace = x.native_id_namespace
+                  AND t.native_id = x.native_id
+      WHERE x.hold_reason = 'non_primary_group_has_identifier'
+        AND x.executed_at IS NULL AND x.cited_by_count < {HOLD_CITED_OVER}
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY x.provenance, x.native_id_namespace, x.native_id
+                                 ORDER BY t.updated_date DESC) = 1
+    """
+    plan = one(f"""
+      SELECT COUNT(*) AS anchors, COUNT(DISTINCT old_work_id) AS works,
+             COUNT(DISTINCT old_work_id, title_part) AS keys,
+             SUM(CASE WHEN anchor_doi IS NOT NULL THEN 1 ELSE 0 END) AS with_doi,
+             COUNT(DISTINCT CASE WHEN cited_by_count > 0 THEN old_work_id END) AS cited_works,
+             MAX(cited_by_count) AS max_cited
+      FROM ({scope})""")
+    idrows = one(f"""
+      SELECT COUNT(*) AS id_map_rows_to_delete FROM {MAP} m
+      WHERE EXISTS (SELECT 1 FROM ({scope}) s WHERE s.old_work_id = m.id
+                    AND (lower(m.doi) = s.anchor_doi OR m.pmid = s.anchor_pmid OR m.arxiv = s.anchor_arxiv))""")
+    print({**plan, **idrows})
+    if plan["anchors"] == 0:
+        dbutils.notebook.exit("nothing to do for wave E")
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to execute wave E")
+    if spark.catalog.tableExists(WAVE_E_AUDIT):
+        raise Exception(f"{WAVE_E_AUDIT} exists: wave E already ran (or clean it up first)")
+
+    spark.sql(f"""CREATE TABLE {WAVE_E_AUDIT} AS
+                  SELECT *, current_timestamp() AS audited_at,
+                         (SELECT MAX(id) FROM {MAP}) AS max_map_id_at_execute
+                  FROM ({scope})""")
+    n = one(f"SELECT COUNT(*) AS n FROM {WAVE_E_AUDIT}")["n"]
+    assert n == plan["anchors"], f"audit {n} != planned {plan['anchors']}"
+
+    pins = spark.sql(f"""DELETE FROM {REGISTRY} r
+                         WHERE EXISTS (SELECT 1 FROM {WAVE_E_AUDIT} x
+                                       WHERE x.provenance = r.provenance
+                                         AND x.native_id_namespace = r.native_id_namespace
+                                         AND x.native_id = r.native_id)""").collect()[0].num_affected_rows
+    ali = spark.sql(f"""DELETE FROM {MAP} m
+                        WHERE EXISTS (SELECT 1 FROM {WAVE_E_AUDIT} x
+                                      WHERE x.old_work_id = m.id AND x.new_key = m.title_author)""").collect()[0].num_affected_rows
+    ids = spark.sql(f"""DELETE FROM {MAP} m
+                        WHERE EXISTS (SELECT 1 FROM {WAVE_E_AUDIT} x WHERE x.old_work_id = m.id
+                                      AND (lower(m.doi) = x.anchor_doi OR m.pmid = x.anchor_pmid
+                                           OR m.arxiv = x.anchor_arxiv))""").collect()[0].num_affected_rows
+    spark.sql(f"""UPDATE {TARGET} SET executed_at = current_timestamp()
+                  WHERE hold_reason = 'non_primary_group_has_identifier' AND executed_at IS NULL
+                    AND cited_by_count < {HOLD_CITED_OVER}""")
+    out = dict(audit_table=WAVE_E_AUDIT, audited=n, pins_deleted=pins,
+               title_alias_rows_deleted=ali, id_map_rows_deleted=ids)
+    assert pins == n, f"pins {pins} != audited {n}"
+    print(out)
+    dbutils.notebook.exit(str(out))
+
+# COMMAND ----------
+
+if MODE == "repoint_citations":
+    if not spark.catalog.tableExists(WAVE_E_AUDIT):
+        raise Exception(f"{WAVE_E_AUDIT} does not exist: run wave_e first")
+    moved = f"""
+      SELECT DISTINCT x.old_work_id, x.anchor_doi, m.id AS new_work_id
+      FROM {WAVE_E_AUDIT} x
+      JOIN {MAP} m ON lower(m.doi) = x.anchor_doi
+      WHERE x.anchor_doi IS NOT NULL AND m.id <> x.old_work_id
+    """
+    plan = one(f"""
+      SELECT COUNT(*) AS dois_that_moved, COUNT(DISTINCT old_work_id) AS old_works,
+             COUNT(DISTINCT new_work_id) AS new_works FROM ({moved})""")
+    edges = one(f"""
+      SELECT COUNT(*) AS citation_edges_to_repoint
+      FROM openalex.works.work_references r
+      JOIN ({moved}) v ON lower(r.doi) = v.anchor_doi AND r.cited_work_id = v.old_work_id""")
+    print({**plan, **edges})
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to repoint citations")
+    n = spark.sql(f"""
+      MERGE INTO openalex.works.work_references r
+      USING ({moved}) v
+        ON lower(r.doi) = v.anchor_doi AND r.cited_work_id = v.old_work_id
+      WHEN MATCHED THEN UPDATE SET r.cited_work_id = v.new_work_id,
+                                   r.updated_timestamp = current_timestamp()
+    """).collect()[0].num_affected_rows
+    print({"edges_repointed": n})
+    dbutils.notebook.exit(str({"edges_repointed": n}))
