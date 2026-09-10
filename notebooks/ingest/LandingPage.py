@@ -187,7 +187,14 @@ def landing_page_enriched():
     # It applies udf_last_name_only (Pandas UDF) and udf_f_generate_inverted_index (Pandas UDF)
     df_enriched = enrich_with_features_and_author_keys(df_walden_works_schema)
     return _with_total_order_sequence(
-        apply_final_merge_key_and_filter(df_enriched),
+        # Landing pages carry no title, so a page whose only identifier is a PMH id has no
+        # merge key (oxjob #880 removed the native_id fallback) and has_key would drop it --
+        # every repository landing page, 238M rows. It attaches to its repository record
+        # downstream by that id, so keep it with title_author NULL.
+        apply_final_merge_key_and_filter(
+            df_enriched,
+            keep_when=F.expr("exists(ids, x -> x.namespace = 'pmh')"),
+        ),
         # backfill rows have no parsed_ts; their stored updated_date (midnight after the
         # DATE cast) anchors them, so a same-day live parse beats its backfill twin
         F.coalesce(F.col("parsed_ts"), F.col("updated_date").cast("timestamp")),
