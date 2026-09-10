@@ -604,7 +604,13 @@ def pdf_enriched():
     # shell for the same url regardless of processing order — full-refresh
     # initial snapshots process in arbitrary file order with near-tied
     # current_timestamp values, so time alone would coin-flip (oxjob #789)
-    return apply_final_merge_key_and_filter(df_enriched).withColumn(
+    # GROBID gives PMH-keyed PDFs no usable title, so under oxjob #880's key rule (title-derived
+    # or NULL) has_key would drop every one of them -- 33.1M rows, and ~14M/week of new ones
+    # since 09-03. They attach to their repository record by the PMH id downstream.
+    return apply_final_merge_key_and_filter(
+        df_enriched,
+        keep_when=expr("exists(ids, x -> x.namespace = 'pmh')"),
+    ).withColumn(
         "_has_parse", expr("exists(ids, x -> x.namespace = 'docs.parsed-pdf')")
     )
 
