@@ -49,7 +49,9 @@ HTML scraping via Parseland. Key columns:
 - `ids` — array of `{namespace, value}` (doi, pmh, etc.)
 - `updated_date`, `provenance` ("landing_page")
 
-Only rows where `error_had=False` AND (has authors OR abstract OR license) are kept.
+Rows are kept when `had_error=False` and the fetch was clean (taxicab `status_code=200` and not a soft block, or no taxicab row — backfill html.gz reparses). An empty clean parse is kept on purpose so it clears the stored values; parser errors, non-200 fetches and soft blocks are dropped so a bot block never overwrites good data.
+
+The newest parse **replaces the whole row** (`apply_changes(..., ignore_null_updates=False)`). A field the new parse did not find becomes NULL; nothing from the previous parse is carried forward.
 
 ### `pdf_works` (from `notebooks/ingest/PDF.py`)
 GROBID TEI-XML parsing. Key columns:

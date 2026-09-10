@@ -45,8 +45,19 @@ def landing_page_parsed():
     temporary=True
 )
 def landing_page_staged():
+    # Fetch outcome for the page this parse came from, aggregated per taxicab_id (~0.6% of
+    # ids repeat). Backfill html.gz reparses have no taxicab row; those count as clean.
+    fetch_status = (
+        spark.read.table("openalex.taxicab.taxicab_results")
+        .groupBy("taxicab_id")
+        .agg(F.max(
+            F.when((F.col("status_code") == 200) & ~F.coalesce(F.col("is_soft_block"), F.lit(False)), 1)
+             .otherwise(0)
+        ).alias("fetch_ok"))
+    )
     return (
         dlt.read_stream("landing_page_parsed")
+        .join(fetch_status, "taxicab_id", "left")
         .select(
             F.col("url").alias("native_id"),
             F.lit("url").alias("native_id_namespace"),
@@ -102,24 +113,24 @@ def landing_page_staged():
                 F.lit(True)
             ).otherwise(F.lit(False)).alias("is_oa"),
             # oxjob #837: dates derive from stored parse time, never processing time —
-            # a refresh replays them instead of restamping the whole corpus
-            F.col("parsed_date").alias("updated_date"),
-            F.col("parsed_date").alias("created_date"),
-            F.col("parsed_date").alias("parsed_ts"),
+            # a refresh replays them instead of restamping the whole corpus. Capped at
+            # ingest time: a future-dated parse could never be superseded.
+            F.least(F.col("parsed_date"), F.col("ingested_at")).alias("updated_date"),
+            F.least(F.col("parsed_date"), F.col("ingested_at")).alias("created_date"),
+            F.least(F.col("parsed_date"), F.col("ingested_at")).alias("parsed_ts"),
             F.col("had_error"),
             F.col("ingested_at"),
+            F.col("fetch_ok"),
         )
         .filter(
-            # Drop records where parsing returned nothing useful.
-            # Prevents bad re-scrapes (bot blocks, Cloudflare) from overwriting
-            # existing good data via apply_changes(sequence_by="updated_date").
+            # Keep every clean parse, including an empty one: a page that no longer exposes
+            # authors, abstract or licence must be able to clear the stored values. Only a
+            # fetch that proved nothing is dropped (parser error, non-200, soft block), so a
+            # bot block still cannot overwrite good data.
             (F.col("had_error") == False) &
-            (
-                (F.size(F.col("authors")) > 0) |
-                (F.col("abstract").isNotNull() & (F.length(F.col("abstract")) > 0)) |
-                (F.col("license").isNotNull() & (F.length(F.col("license")) > 0))
-            )
+            (F.col("fetch_ok").isNull() | (F.col("fetch_ok") == 1))
         )
+        .drop("fetch_ok")
     )
 
 # COMMAND ----------
@@ -199,5 +210,7 @@ dlt.apply_changes(
     keys=["native_id"],
     sequence_by="_sequence",
     except_column_list=["_sequence", "parsed_ts"],
-    ignore_null_updates=True
+    # The newest parse replaces the whole row, NULLs included. ignore_null_updates=True kept
+    # old abstracts/licences alive under a re-parse that no longer found them.
+    ignore_null_updates=False
 )
