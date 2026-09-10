@@ -62,7 +62,7 @@ import requests
 # Constants
 # =============================================================================
 WS_URL = "https://frisr4.researchportal.be/ws/ProjectServiceFRIS"
-FUNDER_ID = 4320321730            # Research Foundation - Flanders (FWO), in openalex.common.funder
+FUNDER_ID = 4320321730            # Research Foundation - Flanders (FWO), in openalex.funders.funders
 PROVENANCE = "fwo_fris"
 FWO_FUNDER_NAME = "research foundation flanders"   # the FRIS Funding-Party org name (lower-cased)
 COUNTRY = "BE"

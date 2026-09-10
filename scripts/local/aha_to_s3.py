@@ -134,7 +134,7 @@ if _sys_utf8.platform == "win32":
 
 # Awarding body — American Heart Association. Verified F4320306230, country US,
 # ROR https://ror.org/013kjyp64, DOI 10.13039/100000968. Path A (F4320*
-# Crossref-registered funder, present in openalex.common.funder).
+# Crossref-registered funder, present in openalex.funders.funders).
 FUNDER_ID = 4320306230
 FUNDER_DISPLAY_NAME = "American Heart Association"
 

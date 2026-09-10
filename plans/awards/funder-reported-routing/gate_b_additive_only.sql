@@ -36,7 +36,7 @@ WITH unchanged_leg_pairs AS (
   -- Leg 4: Crossref, including CreateWorksEnriched's known-funder join.
   SELECT cwf.work_id, cwf.funder_id
   FROM openalex.awards.crossref_work_funders cwf
-  JOIN openalex.mid.funder f
+  JOIN openalex.funders.funders f
     ON f.funder_id = cwf.funder_id
 
   UNION
@@ -56,7 +56,7 @@ old_enriched_pairs AS (
   -- Current leg 5.
   SELECT fr.work_id, fr.funder_id
   FROM openalex.awards.funder_reported_work_funders fr
-  JOIN openalex.mid.funder f
+  JOIN openalex.funders.funders f
     ON f.funder_id = fr.funder_id
 ),
 candidate_enriched_pairs AS (
@@ -67,7 +67,7 @@ candidate_enriched_pairs AS (
   -- Proposed leg 5.
   SELECT fr.work_id, fr.funder_id
   FROM openalex_dev.rohan_lab.funder_reported_work_funders_enrichment_candidate fr
-  JOIN openalex.mid.funder f
+  JOIN openalex.funders.funders f
     ON f.funder_id = fr.funder_id
 ),
 old_missing AS (

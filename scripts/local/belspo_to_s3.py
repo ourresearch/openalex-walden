@@ -62,7 +62,7 @@ import requests
 # Constants
 # =============================================================================
 WS_URL = "https://frisr4.researchportal.be/ws/ProjectServiceFRIS"
-FUNDER_ID = 4320321454            # Belgian Federal Science Policy Office (BELSPO), in openalex.common.funder
+FUNDER_ID = 4320321454            # Belgian Federal Science Policy Office (BELSPO), in openalex.funders.funders
 # BELSPO grants in FRIS use FED Contract Id primarily; some legacy IDs use AIO Contract Id or other authorities.
 # Authority preference (case-insensitive substring match). First match wins; falls back to any non-empty id.
 PREFERRED_AUTHORITIES = ["FED", "AIO", "VO", "BOF"]

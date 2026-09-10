@@ -47,7 +47,7 @@ from typing import Optional
 import pandas as pd
 
 CSV_URL = "https://www.sfi.ie/about-us/governance/open-data/Open-Data-2024-07-31.csv"
-FUNDER_ID = 4320320847          # Science Foundation Ireland, in openalex.common.funder
+FUNDER_ID = 4320320847          # Science Foundation Ireland, in openalex.funders.funders
 PROVENANCE = "sfi_open_data"
 FUNDER_NAME_FILTER = "science foundation ireland"
 COUNTRY = "IE"

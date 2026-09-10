@@ -1,12 +1,12 @@
 -- Gate A v3: label-faithful coverage model. Supersedes v2 after the 2026-08-14 Codex
 -- adversarial pass REFUTED v2's fidelity: v2 accepted coverage from raw source pairs,
 -- but CreateWorksEnriched only PUBLISHES funder_reported and crossref pairs whose
--- funder_id resolves in openalex.mid.funder (inner joins), and its fulltext leg is
+-- funder_id resolves in openalex.funders.funders (inner joins), and its fulltext leg is
 -- keep-list gated. v3 reproduces the exact label-producing legs:
 --   backfill (mid.work_funder, no dim join — matches notebook)
 --   fulltext JOIN funder_names_keep (matches notebook)
---   crossref JOIN mid.funder (matches notebook)
---   funder_reported(post-merge = current ∪ candidate) JOIN mid.funder (matches notebook)
+--   crossref JOIN openalex.funders.funders (matches notebook)
+--   funder_reported(post-merge = current ∪ candidate) JOIN openalex.funders.funders (matches notebook)
 -- PASS = zero at-risk pairs uncovered under this faithful model.
 -- Companion diagnostics (parse failures, orphan funder ids) in gate_a_v3_diagnostics.sql.
 -- Operational requirement unchanged: run in the SAME attended session as the prod MERGE
@@ -36,16 +36,16 @@ at_risk AS (
 post_patch_funder_reported AS (
   SELECT fr.work_id, fr.funder_id
   FROM openalex.awards.funder_reported_work_funders fr
-  JOIN openalex.mid.funder f ON f.funder_id = fr.funder_id
+  JOIN openalex.funders.funders f ON f.funder_id = fr.funder_id
   UNION
   SELECT c.work_id, c.funder_id
   FROM openalex_dev.rohan_lab.funder_reported_work_funders_enrichment_candidate c
-  JOIN openalex.mid.funder f ON f.funder_id = c.funder_id
+  JOIN openalex.funders.funders f ON f.funder_id = c.funder_id
 ),
 covered_faithful AS (
   SELECT cwf.work_id, cwf.funder_id
   FROM openalex.awards.crossref_work_funders cwf
-  JOIN openalex.mid.funder f ON f.funder_id = cwf.funder_id
+  JOIN openalex.funders.funders f ON f.funder_id = cwf.funder_id
   UNION
   SELECT work_id, funder_id FROM post_patch_funder_reported
   UNION

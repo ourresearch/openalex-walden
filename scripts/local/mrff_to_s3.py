@@ -20,7 +20,7 @@ Data source: health.gov.au "MRFF grant recipients" Excel — one "Grants List"
     and placed at --input (default: ~/Downloads/…recipients.xlsx). Per Kyle's
     bulk-export-first rule, a real browser fetch is the sanctioned path here.
 
-    funder_id F4906014721 (Path B, non-F4320) — MISSING from openalex.common.funder
+    funder_id F4906014721 (Path B, non-F4320) — historically missing from the retired compatibility dimension
     (registry gap; the notebook hardcodes the funder struct — display_name from the
     live funder API, DOI from Crossref/existing award rows since the funder endpoint
     itself returns doi=null. Confirmed safe downstream: CreateAwards keeps the struct).

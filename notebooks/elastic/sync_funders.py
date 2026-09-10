@@ -104,7 +104,7 @@ client.indices.refresh(index=CONFIG['index_name'])
 # MAGIC ### Delete stale docs (merged funders)
 # MAGIC
 # MAGIC The sync above is a full-table upsert, so funders that leave `funders_api`
-# MAGIC (merge losers get `mid.funder.merge_into_id` set and are filtered out by
+# MAGIC (merge losers get `openalex.funders.funders.merge_into_id` set and are filtered out by
 # MAGIC CreateFundersAPI) would otherwise linger in the index forever and keep
 # MAGIC resolving on the public API. Mirrors the sources pattern (oxjob #548 C1b):
 # MAGIC delete any ES doc whose id is no longer in `funders_api`.

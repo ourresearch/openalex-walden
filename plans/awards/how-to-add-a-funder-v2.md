@@ -221,8 +221,11 @@ Before starting, gather the following information:
 Use the Databricks MCP to find the funder in OpenAlex:
 
 ```sql
-SELECT funder_id, display_name, ror_id, doi
-FROM openalex.common.funder
+SELECT f.funder_id, f.display_name, f.ror_id, f.doi
+FROM openalex.funders.funders f
+JOIN openalex.funders.funder_match_policy p
+  ON p.funder_id = f.funder_id
+ AND p.matcher = 'datacite_name_v1' AND p.eligible
 WHERE LOWER(display_name) LIKE '%{funder_name}%'
    OR LOWER(alternate_titles) LIKE '%{funder_name}%';
 ```
@@ -233,13 +236,7 @@ Record these values - you'll need them for the notebook:
 - `ror_id`: (e.g., "https://ror.org/01cwqze88")
 - `doi`: (e.g., "10.13039/100000002")
 
-If the lookup returns 0 rows, **do not stop yet** — `openalex.common.funder` is a Databricks mirror of F4320\* Crossref-registered funders only. Non-F4320\* OpenAlex funders (e.g., Abel Prize `F8651541334`, MinCiencias `F3277441329`, Schmidt Futures `F4026159580`) exist in OpenAlex but are not in this dim. For those, look up canonical values from the OpenAlex public API:
-
-```
-https://api.openalex.org/funders/F{funder_id}
-```
-
-Record `id` (strip the `F` prefix to get the numeric `funder_id`), `display_name`, `ror` (may be null), `doi`, and `country_code`. You'll use these as inline constants in §1.6 + Step 2 (see the non-F4320\* path below). If the funder doesn't exist in OpenAlex at all (no API record either), STOP and tell the user.
+The policy limits name discovery. Once the funder ID is known, read canonical metadata from `openalex.funders.funders` by ID and require exactly one row. If absent, flag the missing canonical row; do not inline metadata.
 
 **→ Update tracker:** Change status to "Step 1" with funder_id in notes.
 
@@ -689,79 +686,19 @@ Crossref funding metadata. When a source exposes several identifiers:
 
    **Watch for unit encoding.** Some sources store amounts in minor units (GBP pence ×100, USD cents ×100). JPY/KRW use no minor unit. Convert to whole currency units before storing and document the conversion in the notebook header.
 
-4. **Step 1.6: Funder existence check** (CRITICAL — but interpretation depends on funder_id prefix)
+4. **Step 1.6: Funder existence check**
 
-   The Step 2 transform joins your raw rows against a `funder` source CTE
-   to populate the `funder` struct. If that CTE emits zero rows, the
-   `CROSS JOIN` silently produces an empty table and the Step 3 INSERT
-   looks like it succeeded — you'll discover the gap only when downstream
-   queries return empty results. Always run the lookup, but **how you
-   interpret a 0-row result depends on the funder_id prefix**:
+   Require exactly one canonical row per funder ID, regardless of ID prefix.
+   If absent or duplicated, STOP and flag it before transforming awards.
 
    ```sql
    SELECT funder_id, display_name, ror_id, doi, country_code
-   FROM openalex.common.funder
+   FROM openalex.funders.funders
    WHERE funder_id = {funder_id};
    ```
 
-   **Path A — `F4320*` Crossref-registered funders (the common case):**
-   The Databricks `openalex.common.funder` dim mirrors F4320\* funders, so
-   the lookup **must return exactly 1 row**. If 0 rows, STOP — the funder
-   is unexpectedly missing from the dim. Flag back to the user; do not
-   proceed. Step 2 selects from the dim as usual.
-
-   **Path B — non-F4320\* funders (e.g., `F8651541334`, `F3277441329`, `F4026159580`):**
-   The dim does **not** cover non-F4320\* funders, so 0 rows is **expected**
-   and **not** an error. Treat the lookup as informational only. In Step 2,
-   replace the dim-selecting CTE with an **inline `SELECT`-of-constants**
-   carrying the canonical values you recorded from the OpenAlex API in
-   Step 0:
-
-   ```sql
-   WITH funder_resolved AS (
-       -- INLINED canonical funder row (non-F4320*, not in openalex.common.funder).
-       -- Values from https://api.openalex.org/funders/F{funder_id} per Step 0.
-       SELECT
-           {funder_id} AS funder_id,
-           '{display_name}' AS display_name,
-           {ror_id_or_NULL} AS ror_id,    -- 'https://ror.org/...' or CAST(NULL AS STRING)
-           '{doi}' AS doi,                 -- '10.13039/...'
-           '{country_code}' AS country_code
-   ),
-   ...
-   ```
-
-   Precedents (all FIXED + CONFIRMED in the 2026-05-26/27 sweep): Abel Prize
-   (`F8651541334`, `CreateAbelPrizeAwards.ipynb`), MinCiencias
-   (`F3277441329`, `CreateMinCienciasAwards.ipynb`), Schmidt Sciences
-   (`F4026159580`, `CreateSchmidtSciencesAwards.ipynb`), Smithsonian SARF
-   (`F7230414656`, `CreateSmithsonianSARFAwards.ipynb` — PR #167, caught
-   pre-merge in the 2026-05-27 batch review). All four originally shipped
-   with the dim-select pattern, would have silently emitted 0 rows, and
-   were patched with this inline-constants shape.
-
-   **Failure signature to watch for:** scraper uploads the expected row
-   count to S3, raw table loads cleanly with the right `COUNT(*)`, but
-   `openalex.awards.{funder}_awards` has 0 rows after Step 2. That's almost
-   always a Path B funder using a Path A CTE.
-
-   This check is mandatory for every ingest, not just the prize pattern.
-
-   **Forking guard rule.** When forking an existing notebook as a template,
-   the most common mistake is keeping the Path A `assert_true(COUNT(*) = 1)`
-   cell and the dim-selecting CTE while only changing the literal
-   `funder_id`. That fails closed for Path B funders (the assert raises),
-   but if the assert is silently removed during cleanup, the CTE then
-   silently emits 0 rows. Before forking, **grep your new notebook**:
-
-   ```bash
-   # Both should return 0 hits for Path B funders.
-   grep -E "FROM openalex.common.funder.*WHERE funder_id = {non_F4320_id}" notebooks/awards/Create{X}Awards.ipynb
-   grep "assert_true.*funder_id = {non_F4320_id}" notebooks/awards/Create{X}Awards.ipynb
-   ```
-
-   If either hits, your funder is Path B but your notebook is Path A —
-   replace with the inline-constants pattern above.
+   Step 2 reads these fields from the same table by ID. Do not add inline
+   metadata or UNION ALL fallbacks. Name matching must use the policy join above.
 
 5. **Step 2: Transform to award schema** (see Step 5 for details)
    - Map native fields to OpenAlex schema
@@ -952,7 +889,7 @@ parsed AS (
 
 Notes that generalize to any shared-reporting source:
 - **All target funders must already exist as OpenAlex funders** (here all F4320*,
-  so they're in `openalex.common.funder` — see the [common.funder F4320 gap]
+  so they're in `openalex.funders.funders` — see the [openalex.funders.funders F4320 gap]
   caveat for non-F4320 IDs). Look each one up in Step 0 before mapping.
 - **Map at the right altitude.** Roll obscure sub-codes up to the parent agency
   (CDC's many center codes → CDC) unless a sub-unit has its own clean funder
@@ -2019,7 +1956,7 @@ is never 100% — don't gate on a round number;** report what you landed and mov
 ### 11.3 Build the junction `openalex.awards.{funder}_work_funders`
 Schema `(work_id BIGINT, funder_id BIGINT, provenance STRING)` — one row per
 `(work_id, funder_id)`. `funder_id` is the bare numeric id (no `F` prefix), to match
-`openalex.mid.funder.funder_id`. Mirror `crossref_work_funders` but with no `award_ids`
+`openalex.funders.funders.funder_id`. Mirror `crossref_work_funders` but with no `award_ids`
 column. Keep `provenance` (e.g. `'hakai_publications'`) for auditing.
 
 ### 11.4 One-time infra: add a `from_funder_reported` leg to "Merge funders"
@@ -2035,7 +1972,7 @@ from_funder_reported AS (
     f.ror_id       AS ror,
     f.display_name AS display_name
   FROM openalex.awards.funder_reported_work_funders fr   -- UNION ALL of per-funder junctions
-  JOIN openalex.mid.funder f ON f.funder_id = fr.funder_id
+  JOIN openalex.funders.funders f ON f.funder_id = fr.funder_id
 )
 ```
 Prefer a single shared `funder_reported_work_funders` table (a thin view that
@@ -2198,4 +2135,4 @@ Key choices that made it work (see oxjob #477 + the `reference_walden_ingest_gol
 - Raw staging: `openalex.awards.{funder}_raw`
 - Transformed: `openalex.awards.{funder}_awards`
 - Combined: `openalex.awards.openalex_awards`
-- Funder lookup: `openalex.common.funder`
+- Funder lookup: `openalex.funders.funders`

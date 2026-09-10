@@ -62,7 +62,7 @@ import requests
 # Constants
 # =============================================================================
 WS_URL = "https://frisr4.researchportal.be/ws/ProjectServiceFRIS"
-FUNDER_ID = 4320321732            # Agentschap voor Innovatie door Wetenschap en Technologie (IWT/VLAIO), in openalex.common.funder
+FUNDER_ID = 4320321732            # Agentschap voor Innovatie door Wetenschap en Technologie (IWT/VLAIO), in openalex.funders.funders
 # VLAIO grants in FRIS use IWT Contract Id primarily; some routed via universities also surface VO/BOF Contract Id.
 # Authority preference (case-insensitive substring match). First match wins; falls back to any non-empty id.
 PREFERRED_AUTHORITIES = ["IWT", "VO", "BOF", "FWO"]

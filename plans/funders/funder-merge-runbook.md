@@ -7,7 +7,7 @@ Found during Year 1 funder report prep (`funder year 1 report/analyses/stat-fill
 
 ## Why an alias row, not a delete
 
-Aggregator matching resolves funders against `openalex.mid.funder` by **DOI**
+Aggregator matching resolves funders against `openalex.funders.funders` by **DOI**
 (`CreateCrossrefWorkFunders`, `CreateDataCiteWorkFunders`) or **name**
 (`CreateEuropePmcWorkFunders`, DataCite name-fallback). Publishers deposit the loser's
 funder DOI indefinitely, so deleting the row would silently drop every future work-funder
@@ -21,7 +21,7 @@ the sources registry, oxjob #548).
 ## Order of operations
 
 1. **Run `notebooks/maintenance/MergeFunders.ipynb`** (one-off job submit, params
-   `merge_from_id` / `merge_into_id`, bare numeric ids). It ALTERs `mid.funder`
+   `merge_from_id` / `merge_into_id`, bare numeric ids). It ALTERs `openalex.funders.funders`
    (adds `merge_into_id`/`merge_into_date`), absorbs names, tombstones the loser,
    remaps stored edges (`mid.work_funder`, the three `*_work_funders` junctions,
    `fulltext_work_funders`), remaps `openalex_awards_raw` with **recomputed award ids**
@@ -60,12 +60,10 @@ the sources registry, oxjob #548).
 - **Keep-separate list for Wellcome** (stat-fill.md table): Burroughs Wellcome Fund
   (F4320306133), Wellcome Leap (F6625209195), DBT India Alliance (F4320325580), and the
   Wellcome centres are distinct legal entities — do not merge.
-- `openalex.common.funder` is a mirror maintained outside walden; the notebook applies
-  the same tombstone/absorb best-effort, but its refresher may rebuild the table —
-  confirm with Casey that the mirror preserves (or re-derives) `merge_into_id`.
-  `CreateDataCiteAwards` (DLT) matches DataCite *grant records* against `common.funder`
-  by ROR/DOI/name; funder-DOI aliasing is not wired there (no Wellcome impact — Wellcome
-  registers no DataCite grants). Revisit if a merged funder does.
+- All funder metadata and merge state live in `openalex.funders.funders`.
+  DataCite award name candidates use `openalex.funders.funder_match_policy`
+  (`matcher='datacite_name_v1' AND eligible); DOI/ROR ownership uses the full table.
+  There is no compatibility-table write branch.
 - Award IDs churn by design: loser-attributed award ids (hash of loser funder_id) are
   replaced by winner-hashed ids. Anything caching `G...` ids for the loser's awards will
   see new ids.

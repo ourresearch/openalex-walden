@@ -107,8 +107,11 @@ prefix_to_council AS (
 ),
 -- Get OpenAlex funder records for UK councils
 funders AS (
-    SELECT DISTINCT funder_id, alternate_title, display_name, ror_id, doi
-    FROM openalex.common.funder
+    SELECT DISTINCT f.funder_id, alternate_title, f.display_name, f.ror_id, f.doi
+    FROM openalex.funders.funders f
+    JOIN openalex.funders.funder_match_policy p
+      ON p.funder_id = f.funder_id
+     AND p.matcher = 'datacite_name_v1' AND p.eligible
     LATERAL VIEW explode(from_json(alternate_titles, 'array<string>')) as alternate_title
     WHERE location = 'United Kingdom'
       AND alternate_title IN ('AHRC','BBSRC','EPSRC','ESRC','MRC','NERC','STFC','Innovate UK')

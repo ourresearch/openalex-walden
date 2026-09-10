@@ -54,7 +54,7 @@ print("staged works:", raw.count())
 # COMMAND ----------
 
 # 2a. unambiguous registry names (display_name ∪ alternate_titles), DataCite #268 pattern
-fv = (spark.table("openalex.mid.funder")
+fv = (spark.table("openalex.funders.funders")
       .where(F.col("display_name").isNotNull())
       # resolve merged funders (merge_into_id alias rows) to the canonical id
       .withColumn("funder_id", F.coalesce(F.col("merge_into_id"), F.col("funder_id")))
@@ -188,7 +188,7 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC     ON g.funder_id = e.funder_id AND g.funder_award_id = e.funder_award_id
 # MAGIC   WHERE COALESCE(g.decision, 'mint') <> 'suppress'
 # MAGIC ),
-# MAGIC funders AS (SELECT funder_id, display_name, ror_id, doi FROM openalex.mid.funder)
+# MAGIC funders AS (SELECT funder_id, display_name, ror_id, doi FROM openalex.funders.funders)
 # MAGIC SELECT
 # MAGIC   ABS(XXHASH64(CONCAT(f.funder_id, ':', e.normalized_award_id))) % 9000000000 AS id,
 # MAGIC   CAST(NULL AS STRING) AS display_name, CAST(NULL AS STRING) AS description,
@@ -257,7 +257,7 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC -- top resolved funders by edge count (eyeball: NIH institutes, NSFC, Wellcome, ...)
 # MAGIC SELECT f.display_name, COUNT(*) AS edges, SUM(SIZE(e.award_ids)) AS grant_links
 # MAGIC FROM openalex.awards.europepmc_work_funders e
-# MAGIC JOIN openalex.mid.funder f ON f.funder_id = e.funder_id
+# MAGIC JOIN openalex.funders.funders f ON f.funder_id = e.funder_id
 # MAGIC GROUP BY f.display_name ORDER BY edges DESC LIMIT 20;
 
 # COMMAND ----------
@@ -266,6 +266,6 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC -- sample edges WITH a grant id, to spot-check the award linkages
 # MAGIC SELECT w.doi, f.display_name, e.award_ids
 # MAGIC FROM openalex.awards.europepmc_work_funders e
-# MAGIC JOIN openalex.mid.funder f ON f.funder_id = e.funder_id
+# MAGIC JOIN openalex.funders.funders f ON f.funder_id = e.funder_id
 # MAGIC JOIN openalex.works.openalex_works w ON w.id = e.work_id
 # MAGIC WHERE SIZE(e.award_ids) > 0 LIMIT 25;

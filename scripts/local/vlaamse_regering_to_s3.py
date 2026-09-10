@@ -62,7 +62,7 @@ import requests
 # Constants
 # =============================================================================
 WS_URL = "https://frisr4.researchportal.be/ws/ProjectServiceFRIS"
-FUNDER_ID = 4320327336            # Vlaamse Regering / Flemish Government, in openalex.common.funder
+FUNDER_ID = 4320327336            # Vlaamse Regering / Flemish Government, in openalex.funders.funders
 # Vlaamse Regering grants in FRIS use VO Contract Id primarily; some routed via universities surface BOF contract id.
 # Authority preference (case-insensitive substring match). First match wins; falls back to any non-empty id.
 PREFERRED_AUTHORITIES = ["VO", "BOF", "FWO"]

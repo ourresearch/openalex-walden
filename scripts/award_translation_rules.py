@@ -136,7 +136,7 @@ FUNDERS = {
     gram=r"regexp_replace(norm,' ','') rlike '^EP/[A-Z0-9]{6,7}(/[0-9])?$' or norm rlike '^\\d{7}$'"),
   "NSTC_TW": dict(fid=2461203286,
     # 2026-08-03: Taiwan NSTC = MOST's 2022 rename (the "mystery funder" — in
-    # mid.funder but absent from common.funders, curation gap flagged). Same
+    # openalex.funders.funders but absent from common.funders, curation gap flagged). Same
     # grammar as MOST_TW; registry = grb_nstc_projects.
     rkey="NULLIF(regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),'')",
     xkey="NULLIF(regexp_replace(regexp_replace(norm,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),'')",

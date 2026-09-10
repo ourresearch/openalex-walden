@@ -34,7 +34,7 @@ coordinator org fills lead_investigator.affiliation).
 Output: s3://openalex-ingest/awards/erasmus_plus/erasmus_plus_projects.parquet
 
 Funder: Erasmus+, OpenAlex funder_id 4320335551 (F4320* — in the Databricks
-common.funder dim). Currency: EUR (implicit; EU programme).
+openalex.funders.funders dim). Currency: EUR (implicit; EU programme).
 
 Usage
 -----
