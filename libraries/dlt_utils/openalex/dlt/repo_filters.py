@@ -129,6 +129,21 @@ ENDPOINT_SETSPEC_KEEP = {
 }
 
 
+# oxjob #1000: figshare mirrors publishers' supplementary material -- tables (.t001), figures
+# (.g001) and supporting-information files (.s001) -- under the PUBLISHER's component DOI
+# (10.1371/journal.pone.0274801.s001). Crossref deliberately excludes type=component
+# (Crossref.py unallowed_types) and the repo pipeline re-minted 2.7M of them as works, every one
+# carrying an OA colour. Scoped to the figshare OAI endpoint on purpose: the suffix alone matches
+# 25,612 real works elsewhere (10.1198/tech.2005.s303, Technometrics, 18K cites; OJS galley DOIs
+# ...1385.g599), while figshare's own DOIs (10.6084/m9.figshare.*) never have this shape, so the
+# rule cannot touch figshare's native deposits. Where the suffix DOI belongs to a real
+# Crossref-located work (24 cases) only the figshare LOCATION is lost; the work survives.
+# Written as a bracket class, not a backslash escape: this regex is interpolated into a SQL
+# string literal, where '\.' would be unescaped to a bare '.' and match any character.
+COMPONENT_DOI_SUFFIX = "[.](s|t|g)[0-9]{3}$"
+COMPONENT_CARVE_NATIVE_ID_PREFIXES = ("oai:figshare.com",)
+
+
 def apply_repo_policy_filters(df, title_col="title", type_col="raw_native_type",
                               native_id_col="native_id", keep_when=None):
     """Drop records that must never become works, for EVERY repo stream.
@@ -166,7 +181,7 @@ def apply_repo_policy_filters(df, title_col="title", type_col="raw_native_type",
 
 
 def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spec",
-                           keep_when=None):
+                           native_id_col="native_id", ids_col="ids", keep_when=None):
     """Drop records from denylisted endpoints and carved setSpec classes (oxjob #881 round 2).
 
     Call on the union in repo_enriched(), where every stream carries endpoint_id and set_spec.
@@ -178,6 +193,11 @@ def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spe
 
     ENDPOINT_SETSPEC_KEEP inverts that for endpoints that are junk by default: a record survives
     only if its set_spec matches a keep prefix, so a NULL/empty set_spec is REMOVED there.
+
+    oxjob #1000: a record from a COMPONENT_CARVE_NATIVE_ID_PREFIXES endpoint (figshare) whose
+    extracted DOI ends in a component suffix (COMPONENT_DOI_SUFFIX) is removed -- a publisher's
+    supplementary table/figure/SI file mirrored under the publisher's component DOI, which
+    Crossref itself never mints. NULL ids or no doi entry is kept.
 
     keep_when: same contract as apply_repo_policy_filters -- delete events carry the pre-image
     of the row being removed and must bypass every filter or the deletion never propagates.
@@ -200,7 +220,21 @@ def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spe
             f"exists(coalesce({set_spec_col}, array()), s -> {likes})")
         carved = carved | ((F.col(endpoint_col) == endpoint_id) & ~in_kept_class)
 
-    passes_policy = ~(F.coalesce(denylisted, F.lit(False)) | carved)
+    # oxjob #1000: figshare-hosted publisher components, keyed on the OAI identifier prefix and the
+    # DOI suffix. Same SQL-side lambda idiom as the setSpec carves.
+    from_component_mirror = F.lit(False)
+    for prefix in COMPONENT_CARVE_NATIVE_ID_PREFIXES:
+        from_component_mirror = from_component_mirror | F.col(native_id_col).startswith(prefix)
+    has_component_doi = F.expr(
+        f"exists(coalesce({ids_col}, array()), "
+        f"i -> i.namespace = 'doi' AND lower(i.id) RLIKE '{COMPONENT_DOI_SUFFIX}')")
+    carved = carved | (from_component_mirror & has_component_doi)
+
+    # oxjob #1000: NULL-safe. (NULL == endpoint_id) & ~in_kept_class is NULL, and ~(False | NULL)
+    # is NULL, which filter() drops -- so the keep-list term (0.3.26) silently removed any record
+    # with a NULL endpoint_id or native_id, contrary to the contract above. No production row has
+    # ever had one (repo_works: 0 of 208.8M), but the contract should be true, not lucky.
+    passes_policy = ~(F.coalesce(denylisted, F.lit(False)) | F.coalesce(carved, F.lit(False)))
     if keep_when is not None:
         passes_policy = keep_when | passes_policy
     return df.filter(passes_policy)

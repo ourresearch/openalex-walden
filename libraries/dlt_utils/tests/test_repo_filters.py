@@ -114,3 +114,32 @@ def test_keep_and_delete_structures_are_disjoint():
     # an endpoint must be governed by exactly one rule, or the filters contradict each other
     assert not set(rf.ENDPOINT_SETSPEC_KEEP) & set(rf.ENDPOINT_SETSPEC_DELETE)
     assert not set(rf.ENDPOINT_SETSPEC_KEEP) & rf.ENDPOINTS_TO_DELETE
+
+
+def test_component_carve_is_scoped_to_figshare():
+    # oxjob #1000: the suffix alone matches 25,612 real works (Technometrics' 18K-cite
+    # 10.1198/tech.2005.s303, OJS galley DOIs). Only the figshare endpoint is carved.
+    assert rf.COMPONENT_CARVE_NATIVE_ID_PREFIXES == ("oai:figshare.com",)
+    import inspect
+    params = inspect.signature(rf.apply_endpoint_filters).parameters
+    assert {"native_id_col", "ids_col"} <= set(params)
+
+
+def test_component_doi_suffix_regex():
+    # The regex is interpolated into a Spark SQL string literal, so it must carry no backslash
+    # escapes (a '\.' would be unescaped to a bare '.'); it must match the three component
+    # classes and never a figshare-native DOI.
+    import re
+    assert "\\" not in rf.COMPONENT_DOI_SUFFIX
+    rx = re.compile(rf.COMPONENT_DOI_SUFFIX)
+    for component in ("10.1371/journal.pone.0274801.s001",
+                      "10.1371/journal.ppat.1001173.t003",
+                      "10.1371/journal.pgen.1011542.g001",
+                      "10.1021/acsabm.0c01427.s001"):
+        assert rx.search(component), component
+    for real_work in ("10.6084/m9.figshare.12345678",
+                      "10.6084/m9.figshare.12345678.v2",
+                      "10.1371/journal.pone.0274801",
+                      "10.4067/s0718-07642015000400001",
+                      "10.1080/00131881.2024.2347977"):
+        assert not rx.search(real_work), real_work
