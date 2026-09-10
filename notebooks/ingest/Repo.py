@@ -502,7 +502,7 @@ def repo_parsed():
             F.lower(F.col("license")).contains("public-domain") |
             (
                 (F.size(F.split(F.col("native_id"), ":")) >= 2) &
-                F.lower(F.split(F.col("native_id"), ":")[1]).rlike("arxiv|osti|pubmedcentral|biorxiv|medrxiv|zenodo|figshare|open-science\\.canada")
+                F.lower(F.split(F.col("native_id"), ":")[1]).rlike("arxiv|osti|pubmedcentral|biorxiv|medrxiv|zenodo|open-science\\.canada")
             ),
             F.lit(True)
         ).otherwise(F.lit(False))
