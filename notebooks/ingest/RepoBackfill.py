@@ -15,6 +15,19 @@ from openalex.dlt.repo_types import best_type_udf
 from openalex.dlt.repo_filters import apply_repo_policy_filters
 from openalex.dlt.sequencing import dedupe_by_sequence
 from openalex.dlt.repo_ids import extract_ids_udf
+
+# oxjob #933: same trusted-host rule as notebooks/ingest/Repo.py -- keep byte-identical.
+OSTI_ORIGIN_DOI_PREFIXES = "2172|25582|17188|11578|5439|18429|15121|21947|25585|17190|17182|15485|18141|15473|34664|7910"
+TRUSTED_HOST_IS_OA_EXPR = f"""
+    size(split(native_id, ':')) >= 2 AND (
+      lower(split(native_id, ':')[1]) RLIKE 'arxiv|pubmedcentral|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
+      OR (
+        lower(split(native_id, ':')[1]) RLIKE 'osti'
+        AND NOT exists(ids, x -> x.namespace = 'doi'
+                             AND NOT lower(x.id) RLIKE '(^|doi\\\\.org/)10\\\\.({OSTI_ORIGIN_DOI_PREFIXES})/')
+      )
+    )
+"""
 # oxjob #880: the title normalizer had drifted into a local copy here; one definition, in the wheel.
 from openalex.dlt.normalize import normalize_title_udf
 
@@ -241,19 +254,6 @@ def normalize_license(text):
 
     return None
 
-def has_oa_domain(native_id):
-    oa_domains = ["arxiv", "osti", "pubmedcentral", "biorxiv", "medrxiv", "zenodo", "open-science.canada"]
-    if native_id is None:
-        return False
-    
-    parts = native_id.lower().split(":")
-    if len(parts) >= 2:
-        domain_part = parts[1]
-        for domain in oa_domains:
-            if domain in domain_part:
-                return True
-    return False
-
 def detect_version_from_xml(cleaned_xml, native_id):
     """
     Detect version from XML content and native_id based on regex patterns
@@ -324,10 +324,6 @@ def normalize_license_udf(license_series: pd.Series) -> pd.Series:
 @pandas_udf(StringType())
 def normalize_language_code_udf(language_code_series: pd.Series) -> pd.Series:
     return language_code_series.apply(normalize_language_code)
-
-@pandas_udf(BooleanType())
-def has_oa_domain_udf(url_series: pd.Series) -> pd.Series:
-    return url_series.apply(has_oa_domain)
 
 @pandas_udf(StringType())
 def detect_version_udf(metadata_series: pd.Series, native_id_series: pd.Series) -> pd.Series:
@@ -500,7 +496,7 @@ parsed_df = clean_df \
             lower(col("license")).startswith("cc") |
             lower(col("license")).contains("other-oa") |
             lower(col("license")).contains("public-domain") |
-            has_oa_domain_udf(col("native_id")),
+            expr(TRUSTED_HOST_IS_OA_EXPR),
             lit(True)
         ).otherwise(lit(False))
     ) \

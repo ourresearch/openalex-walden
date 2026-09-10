@@ -20,6 +20,22 @@ from openalex.dlt.repo_types import best_type_udf
 from openalex.dlt.repo_filters import apply_repo_policy_filters, apply_endpoint_filters
 from openalex.dlt.repo_ids import extract_ids_udf
 
+# oxjob #933: repositories that host only open content attest OA on their own. OSTI is
+# the origin of its reports (10.2172) and DOE data-centre DOIs, but a record carrying a
+# publisher's DOI is a pointer at a paywalled article; those get OA only from a PDF the
+# PDF pipeline actually fetched (composed in CreateSuperLocations).
+OSTI_ORIGIN_DOI_PREFIXES = "2172|25582|17188|11578|5439|18429|15121|21947|25585|17190|17182|15485|18141|15473|34664|7910"
+TRUSTED_HOST_IS_OA_EXPR = f"""
+    size(split(native_id, ':')) >= 2 AND (
+      lower(split(native_id, ':')[1]) RLIKE 'arxiv|pubmedcentral|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
+      OR (
+        lower(split(native_id, ':')[1]) RLIKE 'osti'
+        AND NOT exists(ids, x -> x.namespace = 'doi'
+                             AND NOT lower(x.id) RLIKE '(^|doi\\\\.org/)10\\\\.({OSTI_ORIGIN_DOI_PREFIXES})/')
+      )
+    )
+"""
+
 
 
 def normalize_language_code(lang_code):
@@ -500,10 +516,7 @@ def repo_parsed():
             F.lower(F.col("license")).startswith("cc") | 
             F.lower(F.col("license")).contains("other-oa") |
             F.lower(F.col("license")).contains("public-domain") |
-            (
-                (F.size(F.split(F.col("native_id"), ":")) >= 2) &
-                F.lower(F.split(F.col("native_id"), ":")[1]).rlike("arxiv|osti|pubmedcentral|biorxiv|medrxiv|zenodo|open-science\\.canada")
-            ),
+            F.expr(TRUSTED_HOST_IS_OA_EXPR),
             F.lit(True)
         ).otherwise(F.lit(False))
     )
