@@ -383,6 +383,14 @@ def _invalid_grobids_filter():
         return spark.createDataFrame([], "grobid_uuid STRING")
 
 
+def _front_matter_url(column):
+    # A real file that is not the work: Springer's bfm: endpoint serves a book's
+    # table of contents / preface. Such rows pass as shells (no extraction) and
+    # do NOT attest OA. Keep byte-identical with the mirror in
+    # CreateSuperLocations (pdf_url selection requires is_oa). Oxjob #757.
+    return expr(f"lower({column}) LIKE '%link.springer.com/content/pdf/bfm%'")
+
+
 @dlt.view
 def grobid_raw():
     invalid_grobids = _invalid_grobids_filter().withColumnRenamed("grobid_uuid", "_invalid_grobid_uuid")
@@ -415,7 +423,7 @@ def grobid_raw():
         .join(invalid_grobids, col("id") == col("_invalid_grobid_uuid"), how="left")
         .withColumn(
             "xml_content",
-            when(xml_ok & col("_invalid_grobid_uuid").isNull(), col("xml_content"))
+            when(xml_ok & col("_invalid_grobid_uuid").isNull() & ~_front_matter_url("url"), col("xml_content"))
             .otherwise(lit(None).cast("string"))
         )
         .drop("_invalid_grobid_uuid")
@@ -570,7 +578,10 @@ def pdf_backfill():
 
 @dlt.table
 def pdf_combined():
-    return dlt.read_stream("pdf_parse").unionByName(dlt.read_stream("pdf_backfill"))
+    return (
+        dlt.read_stream("pdf_parse").unionByName(dlt.read_stream("pdf_backfill"))
+        .withColumn("is_oa", col("is_oa") & ~_front_matter_url("native_id"))
+    )
 
 # COMMAND ----------
 
