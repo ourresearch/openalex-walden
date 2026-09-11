@@ -287,8 +287,6 @@ resources:
             - task_key: Optimize_Works_Enriched
           notebook_task:
             notebook_path: notebooks/end2end/Guardrails
-            base_parameters:
-              guardrails_override: "{{job.parameters.guardrails_override}}"
             source: GIT
         # oxjob #784: ledger works that vanished from openalex_works. Runs after
         # Guardrails so a pathological run is stopped before it can ledger the loss.
@@ -298,8 +296,6 @@ resources:
             - task_key: Guardrails
           notebook_task:
             notebook_path: notebooks/end2end/TrackDeletedWorks
-            base_parameters:
-              guard_override: "{{job.parameters.deleted_works_guard_override}}"
             source: GIT
           max_retries: 2
           min_retry_interval_millis: 300000
@@ -312,8 +308,6 @@ resources:
             - task_key: Guardrails
           notebook_task:
             notebook_path: notebooks/end2end/TrackDeletedLocations
-            base_parameters:
-              guard_override: "{{job.parameters.deleted_locations_guard_override}}"
             source: GIT
           max_retries: 2
           min_retry_interval_millis: 300000
@@ -355,7 +349,6 @@ resources:
           notebook_task:
             notebook_path: notebooks/elastic/delete_locations
             base_parameters:
-              guard_override: "{{job.parameters.deleted_locations_guard_override}}"
               is_full_reconcile: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
@@ -370,7 +363,6 @@ resources:
           notebook_task:
             notebook_path: notebooks/elastic/delete_works
             base_parameters:
-              guard_override: "{{job.parameters.deleted_works_guard_override}}"
               is_full_reconcile: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
@@ -417,8 +409,6 @@ resources:
             - task_key: Wunpaywall
           notebook_task:
             notebook_path: notebooks/end2end/WunpaywallDataFeed
-            base_parameters:
-              wunpaywall_safety_override: "{{job.parameters.wunpaywall_safety_override}}"
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
         - task_key: Wunpaywall_Full_Snapshot
@@ -433,9 +423,6 @@ resources:
             - task_key: Wunpaywall
           notebook_task:
             notebook_path: notebooks/end2end/WunpaywallToOpenAlexDB
-            base_parameters:
-              wunpaywall_safety_override: "{{job.parameters.wunpaywall_safety_override}}"
-              since_date: "{{job.parameters.since_date}}"
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
           max_retries: 3
@@ -518,15 +505,27 @@ resources:
         git_branch: main
       queue:
         enabled: true
+      # Every parameter here is a circuit-breaker bypass. Job parameters propagate to
+      # every notebook task automatically, so no task re-declares them; each notebook
+      # reads the widget under exactly this name. One switch per consequence class —
+      # bypassing a quality gate must never authorize a mass delete or an oversized feed.
+      #
+      #   guardrails_override               Guardrails (all checks), the curation-count
+      #                                     decline gate in SyncWorkAuthorCurations, the
+      #                                     row-count / zero-churn gate in BuildLakebaseWorksDocs
+      #   deleted_works_guard_override      works gone > guard_fraction of live:
+      #                                     TrackDeletedWorks, delete_works
+      #   deleted_locations_guard_override  same rule for locations:
+      #                                     TrackDeletedLocations, delete_locations
+      #   wunpaywall_guard_override         export-volume caps: WunpaywallDataFeed,
+      #                                     WunpaywallToOpenAlexDB
       parameters:
-        - name: wunpaywall_safety_override
-          default: "false"
         - name: guardrails_override
           default: "false"
         - name: deleted_works_guard_override
           default: "false"
         - name: deleted_locations_guard_override
           default: "false"
-        - name: since_date
-          default: ""
+        - name: wunpaywall_guard_override
+          default: "false"
       performance_target: PERFORMANCE_OPTIMIZED

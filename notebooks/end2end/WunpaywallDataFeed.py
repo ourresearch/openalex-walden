@@ -16,8 +16,8 @@ print(f"mode is {mode}")
 DAILY_LARGE_RECORD_COUNT = 1500000
 WEEKLY_LARGE_RECORD_COUNT = DAILY_LARGE_RECORD_COUNT * 7
 LARGE_RECORD_COUNT = WEEKLY_LARGE_RECORD_COUNT if mode == "weekly" else DAILY_LARGE_RECORD_COUNT
-dbutils.widgets.dropdown("wunpaywall_safety_override", "false", ["false", "true"], "Wunpaywall Safety Override")
-wunpaywall_safety_override = dbutils.widgets.get("wunpaywall_safety_override").lower() == "true"
+dbutils.widgets.dropdown("wunpaywall_guard_override", "false", ["false", "true"], "Wunpaywall Guard Override")
+wunpaywall_guard_override = dbutils.widgets.get("wunpaywall_guard_override").lower() == "true"
 
 # other variables
 last_export_table = f"openalex.unpaywall.last_{mode}_export_timestamp"
@@ -124,11 +124,11 @@ record_count = df.count()
 print(f"Found {record_count} records updated since {last_run_timestamp}")
 
 # safety measure
-if record_count > LARGE_RECORD_COUNT and not wunpaywall_safety_override:
-    error_msg = f"Too many records found to export ({record_count:,}). Set 'Wunpaywall Safety Override' to 'true' to proceed anyway, or run manually"
+if record_count > LARGE_RECORD_COUNT and not wunpaywall_guard_override:
+    error_msg = f"Too many records found to export ({record_count:,}). Set wunpaywall_guard_override=true to proceed anyway, or run manually"
     print(error_msg)
     raise Exception(error_msg)
-elif record_count > LARGE_RECORD_COUNT and wunpaywall_safety_override:
+elif record_count > LARGE_RECORD_COUNT and wunpaywall_guard_override:
     print(f"WARNING: Processing large dataset ({record_count:,} records) due to override being enabled")
 
 # COMMAND ----------
