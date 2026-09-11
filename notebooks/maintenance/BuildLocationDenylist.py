@@ -27,7 +27,7 @@
 # MAGIC `mode=report` (the default) writes nothing and prints what a rebuild WOULD add — run it
 # MAGIC quarterly, read the diff, then run `mode=build` if the additions look right.
 # MAGIC
-# MAGIC Counted from the **pre-filter** sources (`locations_w_types` + `locations_stale`), never from
+# MAGIC Counted from the **pre-filter** source (`locations_w_types`), never from
 # MAGIC `locations_mapped` — otherwise the filter hides its own input, groups fall back under the
 # MAGIC threshold, and the list oscillates.
 
@@ -48,9 +48,9 @@ print(f"mode:      {MODE}")
 
 # COMMAND ----------
 
-# The pre-filter population: live rows carrying the work_id the registry assigns them, plus the
-# stale sidecar (which already carries its own work_id). Mirrors the `live`/`stale` CTEs in
-# CreateLocationsMapped, including its (provenance, namespace, native_id) dedup.
+# The pre-filter population: live rows carrying the work_id the registry assigns them. Mirrors
+# the `live` CTE in CreateLocationsMapped, including its (provenance, namespace, native_id) dedup.
+# (The locations_stale sidecar was detached from the rebuild on 2026-09-11, oxjob #765.)
 spark.sql(f"""
 CREATE OR REPLACE TEMP VIEW denylist_candidates AS
 WITH t AS (
@@ -69,18 +69,7 @@ live_anchor AS (
     AND t.native_id_namespace = r.native_id_namespace
     AND t.native_id           = r.native_id
 ),
--- locations_stale carries no endpoint_id (NULLed in the union) and is only consulted where no
--- live row holds the same anchor -- both mirrored from CreateLocationsMapped's `stale` CTE.
-stale_anchor AS (
-  SELECT s.work_id, s.provenance, s.native_id_namespace, s.native_id, s.provenance AS src
-  FROM {CATALOG}.works.locations_stale s
-  LEFT ANTI JOIN live_anchor l
-    ON  s.provenance          = l.provenance
-    AND s.native_id_namespace = l.native_id_namespace
-    AND s.native_id           = l.native_id
-    AND s.work_id <=> l.work_id
-),
-src AS (SELECT * FROM live_anchor UNION ALL SELECT * FROM stale_anchor),
+src AS (SELECT * FROM live_anchor),
 grp AS (
   SELECT work_id, src, COUNT(*) AS group_n
   FROM src
