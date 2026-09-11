@@ -29,8 +29,6 @@ resources:
           - casey@ourresearch.org
       max_concurrent_runs: 1
       parameters:
-        - name: env_suffix
-          default: ""
         - name: rebuild
           default: "false"
         - name: rescan
@@ -41,7 +39,6 @@ resources:
             notebook_path: notebooks/maintenance/CleanAbstractsBackfill
             source: GIT
             base_parameters:
-              env_suffix: "{{job.parameters.env_suffix}}"
               rebuild: "{{job.parameters.rebuild}}"
               rescan: "{{job.parameters.rescan}}"
       git_source:

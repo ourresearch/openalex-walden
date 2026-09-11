@@ -22,8 +22,6 @@ resources:
         - task_key: create_sources
           notebook_task:
             notebook_path: notebooks/sources/CreateSources
-            base_parameters:
-              env_suffix: "{{job.parameters.env_suffix}}"
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
       git_source:
@@ -32,8 +30,5 @@ resources:
         git_branch: main
       queue:
         enabled: true
-      parameters:
-        - name: env_suffix
-          default: ""
       tags:
         environment: prod

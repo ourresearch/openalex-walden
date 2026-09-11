@@ -13,7 +13,6 @@ import re
 import unicodedata
 from functools import reduce
 
-from openalex.utils.environment import *
 from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 from openalex.dlt.repo_types import best_type_udf

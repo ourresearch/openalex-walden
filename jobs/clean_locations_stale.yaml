@@ -24,8 +24,6 @@ resources:
           - jason@ourresearch.org
       max_concurrent_runs: 1
       parameters:
-        - name: env_suffix
-          default: ""
         - name: limit
           default: "0"
         - name: rebuild
@@ -38,7 +36,6 @@ resources:
             notebook_path: notebooks/maintenance/CleanLocationsStale
             source: GIT
             base_parameters:
-              env_suffix: "{{job.parameters.env_suffix}}"
               limit: "{{job.parameters.limit}}"
               rebuild: "{{job.parameters.rebuild}}"
               apply: "{{job.parameters.apply}}"

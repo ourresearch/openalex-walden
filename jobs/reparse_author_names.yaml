@@ -16,10 +16,6 @@ resources:
           - casey@ourresearch.org
       max_concurrent_runs: 1
       parameters:
-        # env_suffix must exist as a job parameter: the notebook's %sql DDL cell
-        # binds :env_suffix before the widget-declaring python cell runs.
-        - name: env_suffix
-          default: ""
         - name: full_reparse
           default: "true"
       tasks:
@@ -28,7 +24,6 @@ resources:
             notebook_path: notebooks/end2end/CreateAuthorNames
             source: GIT
             base_parameters:
-              env_suffix: "{{job.parameters.env_suffix}}"
               full_reparse: "{{job.parameters.full_reparse}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git

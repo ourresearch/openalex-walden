@@ -49,11 +49,9 @@ from pyspark.sql import functions as F
 
 from openalex.dlt.transform import udf_abstract_features
 
-dbutils.widgets.text("env_suffix", "", "Environment suffix (e.g. _dev)")
 dbutils.widgets.dropdown("rebuild", "false", ["false", "true"], "Re-clean everything (keeps staging)")
 dbutils.widgets.dropdown("rescan", "false", ["false", "true"], "Also re-scan the source (drops staging)")
 
-ENV_SUFFIX = dbutils.widgets.get("env_suffix")
 REBUILD = dbutils.widgets.get("rebuild") == "true"
 # The two reasons to re-run are different and cost wildly different amounts:
 #   text_clean.py changed  -> the GATE is unchanged, so the staged rows are still exactly the
@@ -64,9 +62,9 @@ REBUILD = dbutils.widgets.get("rebuild") == "true"
 RESCAN = dbutils.widgets.get("rescan") == "true"
 
 SOURCE_TABLE = "openalex.abstracts.abstracts_backfill"
-STAGE_TABLE = f"openalex{ENV_SUFFIX}.abstracts.abstracts_backfill_corrupt_stage"
-LEDGER_TABLE = f"openalex{ENV_SUFFIX}.abstracts.abstracts_backfill_repair_chunks"
-TARGET_TABLE = f"openalex{ENV_SUFFIX}.abstracts.abstracts_backfill_repair"
+STAGE_TABLE = "openalex.abstracts.abstracts_backfill_corrupt_stage"
+LEDGER_TABLE = "openalex.abstracts.abstracts_backfill_repair_chunks"
+TARGET_TABLE = "openalex.abstracts.abstracts_backfill_repair"
 
 # Number of work_id-modulo chunks. Each is an independent clean+append with a ledger row,
 # so a killed run resumes without redoing finished chunks (workspace batch-job rule 2).

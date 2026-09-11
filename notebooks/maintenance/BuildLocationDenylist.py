@@ -33,15 +33,13 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("env_suffix", "", "Environment suffix (e.g. _dev)")
 dbutils.widgets.text("threshold", "100", "Locations from one endpoint that make a group junk")
 dbutils.widgets.dropdown("mode", "report", ["report", "build"], "report = print the diff only")
 
-ENV_SUFFIX = dbutils.widgets.get("env_suffix")
 THRESHOLD = int(dbutils.widgets.get("threshold"))
 MODE = dbutils.widgets.get("mode")
 
-CATALOG = f"openalex{ENV_SUFFIX}"
+CATALOG = "openalex"
 DENYLIST = f"{CATALOG}.works.location_denylist"
 
 print(f"catalog:   {CATALOG}")

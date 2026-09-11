@@ -289,7 +289,6 @@ resources:
             notebook_path: notebooks/end2end/Guardrails
             base_parameters:
               guardrails_override: "{{job.parameters.guardrails_override}}"
-              env_suffix: "{{job.parameters.env_suffix}}"
             source: GIT
         # oxjob #784: ledger works that vanished from openalex_works. Runs after
         # Guardrails so a pathological run is stopped before it can ledger the loss.
@@ -301,7 +300,6 @@ resources:
             notebook_path: notebooks/end2end/TrackDeletedWorks
             base_parameters:
               guard_override: "{{job.parameters.deleted_works_guard_override}}"
-              env_suffix: "{{job.parameters.env_suffix}}"
             source: GIT
           max_retries: 2
           min_retry_interval_millis: 300000
@@ -374,7 +372,6 @@ resources:
             base_parameters:
               guard_override: "{{job.parameters.deleted_works_guard_override}}"
               is_full_reconcile: "false"
-              env_suffix: "{{job.parameters.env_suffix}}"
             source: GIT
           job_cluster_key: es_sync_cluster
           max_retries: 2
@@ -522,10 +519,6 @@ resources:
       queue:
         enabled: true
       parameters:
-        - name: env_suffix
-          default: ""
-        - name: openalex
-          default: openalex
         - name: wunpaywall_safety_override
           default: "false"
         - name: guardrails_override

@@ -13,7 +13,6 @@ import unicodedata
 from functools import reduce
 import pandas as pd
 
-from openalex.utils.environment import *
 from openalex.dlt.normalize import normalize_title_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
@@ -495,7 +494,7 @@ def pubmed_enriched():
 
 dlt.create_streaming_table(
     name="pubmed_works",
-    comment=f"Final pubmed works table with unique identifiers in {ENV.upper()} environment",
+    comment="Final pubmed works table with unique identifiers",
     table_properties={
         "delta.enableChangeDataFeed": "true",
         "delta.autoOptimize.optimizeWrite": "true",

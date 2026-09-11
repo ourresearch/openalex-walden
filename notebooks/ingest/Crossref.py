@@ -10,7 +10,6 @@ from pyspark.sql.types import *
 import pyspark.sql.functions as F
 import pandas as pd
 
-from openalex.utils.environment import *
 from openalex.dlt.normalize import normalize_title, normalize_license, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
@@ -219,7 +218,7 @@ def is_valid_author(author):
 # Raw data in single column as items table
 @dlt.table(
   name="crossref_items",
-  comment = f"Reading in files from s3://openalex-ingest/crossref/ in {ENV.upper()}",
+  comment = "Reading in files from s3://openalex-ingest/crossref/",
   table_properties={'quality': 'bronze'}
 )
 @dlt.expect("rescued_data_null", "_rescued_data IS NULL")

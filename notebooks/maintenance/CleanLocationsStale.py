@@ -41,21 +41,19 @@ from pyspark.sql.window import Window
 
 from openalex.dlt.transform import udf_abstract_features, udf_clean_title
 
-dbutils.widgets.text("env_suffix", "", "Environment suffix (e.g. _dev)")
 dbutils.widgets.text("limit", "0", "Smoke test: stage only N gated rows (0 = all)")
 dbutils.widgets.dropdown("rebuild", "false", ["false", "true"], "Drop stage/ledger/repair and redo")
 dbutils.widgets.dropdown("apply", "true", ["false", "true"], "MERGE the repair into locations_stale")
 
-ENV_SUFFIX = dbutils.widgets.get("env_suffix")
 LIMIT = int(dbutils.widgets.get("limit") or "0")
 REBUILD = dbutils.widgets.get("rebuild") == "true"
 APPLY = dbutils.widgets.get("apply") == "true"
 
 SUFFIX = f"_smoke{LIMIT}" if LIMIT > 0 else ""
-TARGET_TABLE = f"openalex{ENV_SUFFIX}.works.locations_stale"
-STAGE_TABLE = f"openalex{ENV_SUFFIX}.works.locations_stale_dirty_stage{SUFFIX}"
-LEDGER_TABLE = f"openalex{ENV_SUFFIX}.works.locations_stale_repair_chunks{SUFFIX}"
-REPAIR_TABLE = f"openalex{ENV_SUFFIX}.works.locations_stale_repair{SUFFIX}"
+TARGET_TABLE = "openalex.works.locations_stale"
+STAGE_TABLE = f"openalex.works.locations_stale_dirty_stage{SUFFIX}"
+LEDGER_TABLE = f"openalex.works.locations_stale_repair_chunks{SUFFIX}"
+REPAIR_TABLE = f"openalex.works.locations_stale_repair{SUFFIX}"
 
 N_CHUNKS = 8 if LIMIT == 0 else 1
 

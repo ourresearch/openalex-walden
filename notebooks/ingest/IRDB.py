@@ -9,7 +9,6 @@ from pyspark.sql.types import *
 
 import re
 
-from openalex.utils.environment import *
 from openalex.dlt.normalize import normalize_title_udf, normalize_license_udf
 
 # Language normalization (not in shared lib — copied from Repo.py)
