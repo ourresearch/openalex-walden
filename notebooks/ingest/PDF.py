@@ -385,10 +385,11 @@ def _invalid_grobids_filter():
 
 def _front_matter_url(column):
     # A real file that is not the work: Springer's bfm: endpoint serves a book's
-    # table of contents / preface. Such rows pass as shells (no extraction) and
-    # do NOT attest OA. Keep byte-identical with the mirror in
-    # CreateSuperLocations (pdf_url selection requires is_oa). Oxjob #757.
-    return expr(f"lower({column}) LIKE '%link.springer.com/content/pdf/bfm%'")
+    # table of contents / preface (link.springer.com, springerprofessional.de,
+    # morganclaypool.com, ...). Such rows pass as shells (no extraction) and
+    # do NOT attest OA; CreateSuperLocations' pdf_url pickers require is_oa.
+    # Oxjob #757.
+    return expr(f"lower({column}) LIKE '%/content/pdf/bfm%'")
 
 
 @dlt.view
