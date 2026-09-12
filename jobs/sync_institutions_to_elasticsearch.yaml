@@ -14,6 +14,11 @@ resources:
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
           timeout_seconds: 3600
+          # The institutions_api rebuild is one statement at the DEV-WH heap ceiling
+          # ("Java heap space" on 5 of 11 days to 2026-09-12, no concurrent load);
+          # retries carry it until the works scan is split out into its own table.
+          max_retries: 2
+          min_retry_interval_millis: 600000
         - task_key: sync_institutions_to_elasticsearch
           depends_on:
             - task_key: create_institutions_api
