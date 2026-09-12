@@ -16,6 +16,7 @@
 
 # COMMAND ----------
 
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -32,6 +33,8 @@ CF_API_TOKEN = dbutils.secrets.get(scope="cloudflare", key="d1_api_token")
 # per-statement length cap. The Track 0 local scripts validated up to 800;
 # this leaves extra headroom for occasional longer UUIDs / edge rows.
 BATCH_SIZE = 500
+D1_MAX_RETRIES = 8
+D1_RETRY_STATUSES = {429, 500, 502, 503, 504}
 SYNC_LOOKBACK_DAYS = 2  # Fallback lookback when D1 has no last_sync_timestamp
 
 # Widgets — leave blank for the standard nightly behavior.
@@ -63,9 +66,14 @@ def d1_execute(sql_text: str, params: list = None) -> dict:
     payload = {"sql": sql_text}
     if params:
         payload["params"] = params
-    response = requests.post(url, headers=headers, json=payload, timeout=120)
-    response.raise_for_status()
-    return response.json()
+    for attempt in range(D1_MAX_RETRIES + 1):
+        response = requests.post(url, headers=headers, json=payload, timeout=120)
+        if response.status_code not in D1_RETRY_STATUSES or attempt == D1_MAX_RETRIES:
+            response.raise_for_status()
+            return response.json()
+        retry_after = response.headers.get("Retry-After")
+        delay = float(retry_after) if retry_after and retry_after.isdigit() else min(60.0, 2.0 ** attempt)
+        time.sleep(delay + random.uniform(0, 1))
 
 
 def d1_batch_insert(rows: list) -> int:
@@ -230,17 +238,18 @@ if failed_batches:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Update Stats and Last Sync Timestamp
+# MAGIC ## Update Last Sync Timestamp, then Stats
 
 # COMMAND ----------
 
-update_content_stats()
 sync_timestamp = sync_to.isoformat() + "Z"
 d1_execute(
     "INSERT OR REPLACE INTO content_stats (stat_key, stat_value, updated_at) VALUES (?, ?, datetime('now'))",
     ["last_sync_timestamp", sync_timestamp],
 )
 print(f"Updated last_sync_timestamp to {sync_timestamp}")
+
+update_content_stats()
 
 
 # COMMAND ----------
