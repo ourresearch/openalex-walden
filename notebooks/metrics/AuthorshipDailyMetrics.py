@@ -20,6 +20,18 @@
 # MAGIC    `incompatible_positions` judging name changes via the #608
 # MAGIC    `names_compatible` comparator (cosmetic drift vs different person).
 # MAGIC    This is the observed workload for a future rematch-on-change trigger.
+# MAGIC 4. **`openalex.authors.author_assignment_log`** — one row per seat decided
+# MAGIC    by today's MatchAuthors run (outcome, tier, author, block size) with the
+# MAGIC    attribution the ephemeral table lacks: primary source, provenance, origin
+# MAGIC    (new work / rematch / restamped). Delete-then-append per `run_date`,
+# MAGIC    120-day retention. Source-, provenance- and skew-level metrics are
+# MAGIC    computed from it, and it is the table to query when a past night's
+# MAGIC    decisions need re-scoring.
+# MAGIC
+# MAGIC Stage wall time and SQL cost for the authorship tasks of the day's end2end
+# MAGIC run come from the Jobs API and the warehouse query history (the job's
+# MAGIC service principal owns both), so runtime regressions land in the same
+# MAGIC tall table as the quality metrics.
 # MAGIC
 # MAGIC **Timing**: runs standalone at 22:30 UTC, after end2end (05:00 start) has
 # MAGIC finished, so the run-state tables MatchAuthors/UpdateWorkAuthors
@@ -58,12 +70,19 @@ MINT_QUEUE_TABLE = "openalex.authors.author_matching_new_author_queue"
 AFFIL_BATCH_TABLE = "openalex.authors.affiliation_update_batch"
 DRIFT_TABLE = "openalex.authors.work_authors_string_drift"
 GUARD_TELEMETRY_TABLE = "openalex.authors.author_guard_telemetry"
+REMATCH_APPLIED_TABLE = "openalex.authors.author_rematch_applied"  # oxjob #649 worklist admissions
+
+E2E_JOB_NAME = "Walden End 2 End"
+AUTHORSHIP_STAGES = ["Parsed_Author_Names", "Sync_Work_Author_Curations", "Author_Affiliations",
+                     "Author_Matching", "Apply_Work_Author_Curations", "Authorships"]
 
 # Monitor-owned tables (the only tables this notebook writes).
 DST_TABLE = "openalex.authors.authorship_daily_metrics"
 FINGERPRINT_TABLE = "openalex.authors.work_author_list_fingerprint"
 EVENTS_TABLE = "openalex.authors.work_author_change_events"
 CAND_TABLE = "openalex.authors.authorship_monitor_candidates"  # per-run scratch, kept for forensics
+ASSIGN_LOG_TABLE = "openalex.authors.author_assignment_log"
+ASSIGN_LOG_RETENTION_DAYS = 120
 
 # COMMAND ----------
 
@@ -121,6 +140,31 @@ CREATE TABLE IF NOT EXISTS {EVENTS_TABLE} (
   orcids_changed  BOOLEAN,
   incompatible_positions INT  -- seats whose occupant name change fails names_compatible; NULL = not judged
 )
+""")
+
+spark.sql(f"""
+CREATE TABLE IF NOT EXISTS {ASSIGN_LOG_TABLE} (
+  run_date            DATE,
+  work_id             BIGINT,
+  author_sequence     INT,
+  raw_author_name     STRING,
+  block_key           STRING,
+  block_size          INT,       -- authors_for_matching rows sharing block_key at run time
+  match_outcome       STRING,
+  match_method        STRING,
+  name_match_tier     STRING,
+  existing_author_id  BIGINT,
+  orcid_author_id     BIGINT,
+  orcid_match_count   INT,
+  institution_ids     ARRAY<STRING>,
+  work_source_ids     ARRAY<STRING>,
+  primary_source_id   STRING,
+  primary_source_name STRING,
+  provenance          STRING,
+  work_created_date   DATE,
+  origin              STRING,    -- new_work | rematch | restamped
+  logged_at           TIMESTAMP
+) PARTITIONED BY (run_date)
 """)
 
 # Schema migration for tables created before these columns existed (idempotent).
@@ -556,6 +600,120 @@ if ephemeral_present[DRIFT_TABLE]:
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Assignment log — durable per-seat copy of today's run
+
+# COMMAND ----------
+
+# origin: 'rematch' = admitted by the #649 worklist; 'new_work' = work created for this run;
+# 'restamped' = an older work whose updated_date bump pulled its unbound seats back in.
+ASSIGN_LOG_SQL = f"""
+WITH block_sizes AS (
+    SELECT block_key, COUNT(*) AS block_size
+    FROM {AFM_TABLE}
+    WHERE block_key IN (SELECT DISTINCT block_key FROM {PENDING_TABLE} WHERE block_key IS NOT NULL)
+    GROUP BY block_key
+),
+worklist AS (
+    SELECT DISTINCT work_id FROM {REMATCH_APPLIED_TABLE} WHERE run_date = DATE'{RUN_DATE}'
+)
+SELECT DATE'{RUN_DATE}' AS run_date,
+       p.work_id,
+       CAST(p.author_sequence AS INT) AS author_sequence,
+       p.raw_author_name,
+       p.block_key,
+       CAST(COALESCE(b.block_size, 0) AS INT) AS block_size,
+       p.match_outcome,
+       p.match_method,
+       p.name_match_tier,
+       p.existing_author_id,
+       p.orcid_author_id,
+       CAST(p.orcid_match_count AS INT) AS orcid_match_count,
+       CAST(mb.all_institution_ids AS ARRAY<STRING>) AS institution_ids,
+       CAST(p.work_source_ids AS ARRAY<STRING>) AS work_source_ids,
+       w.primary_location.source.id AS primary_source_id,
+       w.primary_location.source.display_name AS primary_source_name,
+       w.primary_location.provenance AS provenance,
+       w.created_date AS work_created_date,
+       CASE WHEN wl.work_id IS NOT NULL THEN 'rematch'
+            WHEN w.created_date >= DATE'{RUN_DATE}' - INTERVAL 1 DAY THEN 'new_work'
+            ELSE 'restamped' END AS origin,
+       current_timestamp() AS logged_at
+FROM {PENDING_TABLE} p
+LEFT JOIN block_sizes b ON p.block_key = b.block_key
+LEFT JOIN {MATCH_BATCH_TABLE} mb ON p.work_id = mb.work_id AND p.author_sequence = mb.author_sequence
+LEFT JOIN {BASE_TABLE} w ON p.work_id = w.id
+LEFT JOIN worklist wl ON p.work_id = wl.work_id
+"""
+
+ASSIGN_LOGGED = False
+if ephemeral_present[PENDING_TABLE] and ephemeral_present[MATCH_BATCH_TABLE]:
+    spark.sql(f"DELETE FROM {ASSIGN_LOG_TABLE} WHERE run_date = DATE'{RUN_DATE}'")
+    spark.sql(ASSIGN_LOG_SQL).write.format("delta").mode("append").saveAsTable(ASSIGN_LOG_TABLE)
+    spark.sql(f"DELETE FROM {ASSIGN_LOG_TABLE} WHERE run_date < DATE'{RUN_DATE}' - INTERVAL {ASSIGN_LOG_RETENTION_DAYS} DAYS")
+    spark.table(ASSIGN_LOG_TABLE).where(f"run_date = DATE'{RUN_DATE}'").createOrReplaceTempView("assign_today")
+    ASSIGN_LOGGED = True
+    add("assignment_log_rows", None, spark.table("assign_today").count())
+
+# COMMAND ----------
+
+# --- Outcomes by source / provenance / origin (from the assignment log) -----
+if ASSIGN_LOGGED:
+    for r in spark.sql("""
+        SELECT CONCAT(regexp_replace(primary_source_id, '.*/', ''), ' · ',
+                      LEFT(COALESCE(primary_source_name, ''), 80)) AS d,
+               COUNT(*) AS seats,
+               COUNT_IF(match_outcome = 'MATCHED') AS matched
+        FROM assign_today
+        WHERE primary_source_id IS NOT NULL
+        GROUP BY 1 ORDER BY seats DESC LIMIT 20
+    """).collect():
+        add("seats_by_source", r["d"], r["seats"])
+        add("matched_by_source", r["d"], r["matched"])
+
+    for dim in ["provenance", "origin"]:
+        for r in spark.sql(f"""
+            SELECT COALESCE({dim}, '(null)') AS d, COUNT(*) AS seats,
+                   COUNT_IF(match_outcome = 'MATCHED') AS matched
+            FROM assign_today GROUP BY 1
+        """).collect():
+            add(f"seats_by_{dim}", r["d"], r["seats"])
+            add(f"matched_by_{dim}", r["d"], r["matched"])
+
+# COMMAND ----------
+
+# --- Block-join skew ---------------------------------------------------------
+# The candidate join costs SUM(block_size) over the DISTINCT signal tuples MatchAuthors
+# dedupes to (name, institutions, sources; topics omitted here), and its wall time is set
+# by the largest single block_key partition. Seat-level rows are kept for comparison.
+if ASSIGN_LOGGED:
+    spark.sql("""
+        SELECT block_key, MAX(block_size) AS block_size, COUNT(*) AS seats
+        FROM assign_today
+        WHERE block_key IS NOT NULL AND block_key <> ''
+        GROUP BY block_key, raw_author_name, institution_ids, work_source_ids
+    """).createOrReplaceTempView("assign_tuples")
+    sk = spark.sql("""
+        WITH per_block AS (
+            SELECT block_key, SUM(block_size) AS tuple_rows, SUM(seats * block_size) AS seat_rows,
+                   SUM(CASE WHEN block_size > 100000 THEN seats ELSE 0 END) AS seats_gt100k
+            FROM assign_tuples GROUP BY block_key
+        )
+        SELECT SUM(tuple_rows) AS join_rows_tuples, SUM(seat_rows) AS join_rows_seats,
+               MAX(tuple_rows) AS max_block_rows_tuples, MAX(seat_rows) AS max_block_rows_seats,
+               SUM(seats_gt100k) AS seats_in_blocks_gt100k
+        FROM per_block
+    """).collect()[0]
+    for k in ["join_rows_tuples", "join_rows_seats", "max_block_rows_tuples",
+              "max_block_rows_seats", "seats_in_blocks_gt100k"]:
+        add("block_skew", k, sk[k])
+    add_query("""
+        SELECT block_key AS d, SUM(block_size) AS c
+        FROM assign_tuples GROUP BY block_key ORDER BY c DESC LIMIT 15
+    """, "block_skew_top", "d", "c")
+
+# COMMAND ----------
+
 # --- Name-concentration wave detector -------------------------------------
 # One raw_author_name flooding the day's batch = a wave: org pseudo-authors
 # (dataset/instrument repos), or a parser bug emitting identical names. Source-
@@ -684,6 +842,64 @@ add("works_authorships_updated_on_date", None, spark.sql(f"""
     SELECT COUNT(*) AS c FROM {AUTHORSHIPS_TABLE}
     WHERE DATE(updated_datetime) = DATE'{RUN_DATE}'
 """).collect()[0]["c"])
+
+# COMMAND ----------
+
+# --- Stage runtime + SQL cost of the day's end2end run ----------------------
+# Jobs API + warehouse query history, both owned by this job's service principal (the
+# system.query / system.lakeflow tables are admin-only). Observation-only: never fails the run.
+try:
+    from databricks.sdk import WorkspaceClient
+    from databricks.sdk.service.sql import QueryFilter, TimeRange
+
+    _w = WorkspaceClient()
+    _day0 = int(datetime(RUN_DATE.year, RUN_DATE.month, RUN_DATE.day, tzinfo=timezone.utc).timestamp() * 1000)
+    _jid = next(j.job_id for j in _w.jobs.list(name=E2E_JOB_NAME))
+    _runs = list(_w.jobs.list_runs(job_id=_jid, start_time_from=_day0,
+                                   start_time_to=_day0 + 86_400_000, expand_tasks=True))
+    add("e2e_runs_on_date", None, len(_runs))
+
+    def _ok(t):
+        return bool(t and t.state and t.state.result_state and t.state.result_state.value == "SUCCESS")
+
+    # The latest run of the day whose Author_Matching succeeded (repairs re-run subsets).
+    _run = max((r for r in _runs
+                if _ok({t.task_key: t for t in (r.tasks or [])}.get("Author_Matching"))),
+               key=lambda r: r.start_time, default=None)
+    if _run is not None:
+        _tasks = {t.task_key: t for t in _run.tasks}
+        for s in AUTHORSHIP_STAGES:
+            t = _tasks.get(s)
+            if t and t.start_time and t.end_time:
+                add("stage_wall_sec", s, (t.end_time - t.start_time) // 1000)
+                add("stage_success", s, 1 if _ok(t) else 0)
+
+        am = _tasks["Author_Matching"]
+        _f = QueryFilter(warehouse_ids=[am.notebook_task.warehouse_id],
+                         query_start_time_range=TimeRange(start_time_ms=am.start_time, end_time_ms=am.end_time))
+        _qs, _resp = [], None
+        while True:
+            _resp = _w.query_history.list(filter_by=_f, include_metrics=True, max_results=100,
+                                          page_token=_resp.next_page_token if _resp else None)
+            _qs += list(_resp.res or [])
+            if not _resp.has_next_page:
+                break
+
+        def _m(q, k):
+            return int(getattr(q.metrics, k, 0) or 0) if q.metrics else 0
+
+        add("author_matching_sql", "statements", len(_qs))
+        add("author_matching_sql", "wall_sec", sum((q.duration or 0) for q in _qs) // 1000)
+        add("author_matching_sql", "task_sec", sum(_m(q, "task_total_time_ms") for q in _qs) // 1000)
+        add("author_matching_sql", "read_gb", sum(_m(q, "read_bytes") for q in _qs) // 10**9)
+        add("author_matching_sql", "spill_gb", sum(_m(q, "spill_to_disk_bytes") for q in _qs) // 10**9)
+        if _qs:
+            _top = max(_qs, key=lambda q: q.duration or 0)
+            add("author_matching_sql", "longest_statement_wall_sec", (_top.duration or 0) // 1000)
+            add("author_matching_sql", "longest_statement_task_sec", _m(_top, "task_total_time_ms") // 1000)
+            add("author_matching_sql", "longest_statement_spill_gb", _m(_top, "spill_to_disk_bytes") // 10**9)
+except Exception as e:
+    print(f"stage runtime collection skipped: {e!r}")
 
 # COMMAND ----------
 
