@@ -9,7 +9,7 @@ resources:
       parameters:
         # oxjob #881 one-time rebuild switch -- see base_parameters below for what it does.
         # Job-level so it appears at the top of the Run-now dialog; the task must still plumb it
-        # into the widget explicitly (see clean_locations_stale.yaml for the same pattern).
+        # into the widget explicitly.
         - name: rebuild
           default: "false"
       queue:

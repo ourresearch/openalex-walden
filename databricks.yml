@@ -75,7 +75,6 @@ include:
   - jobs/authorship_daily_metrics.yaml
   - jobs/reparse_author_names.yaml
   - jobs/clean_abstracts_backfill.yaml
-  - jobs/clean_locations_stale.yaml
   - jobs/seed_work_id_map_digit_aliases.yaml
   - jobs/repoint_work_ids.yaml
   - jobs/sources.yaml
