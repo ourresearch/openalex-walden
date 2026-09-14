@@ -378,6 +378,26 @@ if MODE == "wave_e":
                   AND t.native_id = x.native_id
       WHERE x.hold_reason = 'non_primary_group_has_identifier'
         AND x.executed_at IS NULL AND x.cited_by_count < {HOLD_CITED_OVER}
+        -- section 2's precedence rule: SAME DOI on 2+ groups -> RETAIN. `stage` only asked whether a
+        -- non-primary group carries an identifier, never whether it is the SAME one, so the hold mixes
+        -- 25,802 works that are genuinely distinct objects with 13,473 that are one object whose title
+        -- was mangled (OCR primes, LaTeX, HTML entities) -- and the cited works concentrate in the
+        -- latter. Splitting those would duplicate a real paper, so exclude any anchor sharing a DOI
+        -- with the primary group.
+        AND NOT EXISTS (
+          SELECT 1 FROM {REGISTRY} pr
+          JOIN {LWT} pt ON pt.provenance = pr.provenance
+                       AND pt.native_id_namespace = pr.native_id_namespace
+                       AND pt.native_id = pr.native_id
+          WHERE pr.work_id = x.old_work_id
+            AND lower(NULLIF(pt.merge_key.doi, '')) = lower(NULLIF(t.merge_key.doi, ''))
+            AND NOT (pr.provenance = x.provenance AND pr.native_id_namespace = x.native_id_namespace
+                     AND pr.native_id = x.native_id)
+            AND NOT EXISTS (SELECT 1 FROM {TARGET} h
+                            WHERE h.hold_reason = 'non_primary_group_has_identifier'
+                              AND h.provenance = pr.provenance
+                              AND h.native_id_namespace = pr.native_id_namespace
+                              AND h.native_id = pr.native_id))
       QUALIFY ROW_NUMBER() OVER (PARTITION BY x.provenance, x.native_id_namespace, x.native_id
                                  ORDER BY t.updated_date DESC) = 1
     """
