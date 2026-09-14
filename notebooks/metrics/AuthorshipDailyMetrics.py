@@ -877,13 +877,17 @@ try:
         am = _tasks["Author_Matching"]
         _f = QueryFilter(warehouse_ids=[am.notebook_task.warehouse_id],
                          query_start_time_range=TimeRange(start_time_ms=am.start_time, end_time_ms=am.end_time))
-        _qs, _resp = [], None
-        while True:
-            _resp = _w.query_history.list(filter_by=_f, include_metrics=True, max_results=100,
-                                          page_token=_resp.next_page_token if _resp else None)
-            _qs += list(_resp.res or [])
-            if not _resp.has_next_page:
-                break
+        # SDK >= ~0.30 returns a ListQueriesResponse page; older cluster-bundled SDKs return
+        # an auto-paginating iterator of QueryInfo.
+        _resp = _w.query_history.list(filter_by=_f, include_metrics=True, max_results=100)
+        if hasattr(_resp, "res"):
+            _qs = list(_resp.res or [])
+            while _resp.has_next_page:
+                _resp = _w.query_history.list(filter_by=_f, include_metrics=True, max_results=100,
+                                              page_token=_resp.next_page_token)
+                _qs += list(_resp.res or [])
+        else:
+            _qs = list(_resp)
 
         def _m(q, k):
             return int(getattr(q.metrics, k, 0) or 0) if q.metrics else 0
