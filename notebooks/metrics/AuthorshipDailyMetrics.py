@@ -899,6 +899,8 @@ try:
             add("author_matching_sql", "longest_statement_task_sec", _m(_top, "task_total_time_ms") // 1000)
             add("author_matching_sql", "longest_statement_spill_gb", _m(_top, "spill_to_disk_bytes") // 10**9)
 except Exception as e:
+    # surfaced in the tall table: notebook stdout is not reachable from the Jobs API
+    add("collector_error", f"stage_runtime: {type(e).__name__}: {str(e)[:100]}", 1)
     print(f"stage runtime collection skipped: {e!r}")
 
 # COMMAND ----------
