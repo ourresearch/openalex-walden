@@ -237,15 +237,29 @@ def extract_fields(xml_content):
     # funders
     def _funders():
         funders = []
+        # GROBID links header funders to separate funding records by xml:id.
+        funding_by_id = {
+            org.get("{http://www.w3.org/XML/1998/namespace}id"): org
+            for org in root.findall(
+                ".//tei:listOrg[@type='funding']/tei:org[@type='funding']", namespaces=ns
+            )
+            if org.get("{http://www.w3.org/XML/1998/namespace}id")
+        }
         funder_elements = root.findall(".//tei:funder", namespaces=ns)
         for funder in funder_elements:
             org_name = funder.find(".//tei:orgName", namespaces=ns)
 
             awards = []
             award_elements = funder.findall(".//tei:idno[@type='award']", namespaces=ns)
+            award_elements += funder.findall(".//tei:idno[@type='grant-number']", namespaces=ns)
+            for ref in funder.get("ref", "").split():
+                funding = funding_by_id.get(ref[1:]) if ref.startswith("#") else None
+                if funding is not None:
+                    award_elements += funding.findall("./tei:idno[@type='grant-number']", namespaces=ns)
             for award in award_elements:
-                if award.text:
-                    awards.append(award.text.strip())
+                value = ''.join(award.itertext()).strip()
+                if value and value not in awards:
+                    awards.append(value)
 
             funders.append({
                 "doi": None,
