@@ -5,7 +5,7 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
-      max_concurrent_runs: 4
+      max_concurrent_runs: 5
       queue:
         enabled: false
       tasks:
