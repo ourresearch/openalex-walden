@@ -317,6 +317,20 @@ def crossref_parsed():
             f"filter(link, x -> !contains(x.`content-type`, 'plain') and !contains(x.`content-type`, 'xml'))"
         )
 
+    def elsevier_oa_started(content_version):
+        # Elsevier's Open Archive (vor) and Open Manuscript (am) programmes are
+        # registered as elsevier.com/open-access/userlicense with a start date;
+        # the file is free from that date. normalize_license maps the URL to None
+        # (no reuse rights), so OA comes from the element itself. The host gate
+        # drops journals that left Elsevier with the element still registered.
+        # Oxjob #1118.
+        return F.expr(
+            "coalesce(resource.primary.URL like '%linkinghub.elsevier.com/%'"
+            " and exists(license, x -> x.URL like '%elsevier.com/open-access/userlicense%'"
+            f" and x.`content-version` = '{content_version}'"
+            " and to_timestamp(x.start.`date-time`) <= current_timestamp()), false)"
+        )
+
     return (
         # spark.readStream
         # .option("skipChangeCommits", "true") 
@@ -388,8 +402,17 @@ def crossref_parsed():
                 lambda x: x.id != ""
             )  # Filter out empty ids
         )
+        .withColumn("elsevier_open_archive", elsevier_oa_started("vor"))
+        .withColumn("elsevier_open_manuscript", elsevier_oa_started("am"))
         .withColumn("version", 
             F.when(F.col("type") == "posted-content", F.lit("acceptedVersion"))
+            # only the accepted manuscript is free (Open Manuscript)
+            .when(
+                F.col("elsevier_open_manuscript")
+                & ~F.col("elsevier_open_archive")
+                & ~F.expr("exists(license, x -> x.URL like '%creativecommons.org%')"),
+                F.lit("acceptedVersion"),
+            )
             .otherwise(F.lit("publishedVersion"))
         )
         .withColumn("raw_type", F.col("type"))
@@ -534,7 +557,9 @@ def crossref_parsed():
                 F.lower(F.col("license")).startswith("cc")
                 | F.lower(F.col("license")).contains("other-oa")
                 | F.lower(F.col("license")).contains("public-domain")
-                | (F.lower(F.col("publisher")) == "iucn"),
+                | (F.lower(F.col("publisher")) == "iucn")
+                | F.col("elsevier_open_archive")
+                | F.col("elsevier_open_manuscript"),
                 F.lit(True),
             ).otherwise(F.lit(False))
         )

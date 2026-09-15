@@ -8,8 +8,18 @@ resources:
       name: Crossref
       catalog: openalex
       target: crossref
-      serverless: true
-      photon: true
+      # REFRESH PROFILE (oxjob #1118, 2026-09-15) -- TEMPORARY. Revert to
+      # `serverless: true` / `photon: true` and UNPAUSE jobs/crossref.yaml once the
+      # selective refresh of crossref_parsed + crossref_works lands. photon OFF because
+      # the refresh runs the Pandas-UDF stages (see oxjob #314); arrow stays 100 because
+      # 2000 crashed the author/feature UDF stage on hyperauthorship rows (oxjob #880).
+      serverless: false
+      photon: false
+      clusters:
+        - label: default
+          node_type_id: r5d.8xlarge
+          driver_node_type_id: r5d.8xlarge
+          num_workers: 20
       continuous: false
       development: true
       channel: CURRENT
