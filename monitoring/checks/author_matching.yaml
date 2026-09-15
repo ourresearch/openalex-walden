@@ -3,12 +3,15 @@
 # This file IS the checklist. The engine (utils/monitoring_engine.py) evaluates it nightly;
 # docs/monitoring/author_matching.md is RENDERED from it (scripts/monitoring_render_docs.py).
 #
+# Kept deliberately small (Casey, 2026-09-15): every check answers one of the seven questions
+# below, pages are absolute lines only, and a check nobody would act on is not here.
+#
 # Expression grammar (deliberately tiny — anything richer becomes its own metric):
 #   metric                 value with NULL dimension
 #   metric[dim]            value for one dimension            (`|` is literal)
 #   metric[pat*tern]       one finding per dimension matching; `*` is the capture, shared by
-#                          every wildcard term in the expression
-#   sum(metric[pat*tern])  sum over matching dimensions (no capture)
+#                          every non-sum wildcard term in the expression
+#   sum(metric[pat*tern])  sum over ALL matching dimensions (never narrowed by a capture)
 #   + - * / ( )            arithmetic over terms
 # Per-check fields:
 #   rule: absolute | relative | both       relative = today vs trailing median ± MAD
@@ -22,9 +25,7 @@
 #   watch_below/above, critical_below/above    absolute thresholds
 #   mad_watch (4), mad_critical (8), confirm_days (2), direction (both|up|down),
 #   window_days (21), min_history (7)      relative-rule tuning; critical = ≥8 MAD once, or
-#                                          ≥4 MAD two nights running. Tuned on the 56-night replay
-#                                          (scripts/monitoring_dryrun.py): 3/6 over 14d fired ~15
-#                                          criticals a night on raw counts.
+#                                          ≥4 MAD two nights running. Tuned on the 56-night replay.
 #   max_status: watch                      never escalate past watch (informational)
 #   page: true                             critical → notify, not just digest
 #   enabled: false                         listed in the doc, not evaluated (proposed check)
@@ -33,28 +34,28 @@ component: author_matching
 title: Author matching
 owner: casey
 history_note: >
-  Every writer (MatchAuthors, UpdateWorkAuthors, AuthorshipDailyMetrics, the judge) emits to
+  Every writer (MatchAuthors, AuthorshipDailyMetrics, the judge) emits to
   openalex.monitoring.metrics; history before 2026-09-15 was copied in from the retired
-  openalex.authors.authorship_daily_metrics (oxjob 640).
-  Metrics born 2026-09-13 (stage_*, e2e_runs_on_date, block_skew, seats_by_*, assignment_log_rows)
-  have absolute rules only until ~2026-09-27 (min_history). author_matching_sql did not land on
-  09-13 and wrote no collector_error — fix before its checks mean anything.
+  openalex.authors.authorship_daily_metrics (oxjob 640). Metrics born 2026-09-13..16 (stage_*,
+  e2e_runs_on_date, block_skew, seats_by_source, batch_seats, author_gain_top, new_works_seats)
+  have absolute rules only until they carry 7 nights of history.
 known_states:
   - The n3 / n4 / n5 tier families have never fired in ~6.3M tier-attributed matches. Unreachable
     or a bug — separate job. Not a Monitoring finding.
   - s5_n2 precision collapses on dataset-wave nights (IGSN / Geoscience Australia). The tier is
     healthy on human names; the wave is the problem. See section 5.
 open_decisions:
-  - precision_wave_excluded needs a rollup joining authorship_daily_quality_sample to the hot-name
-    list (judge_arm_a_clean). Until then, precision_by_tier will flag s5_n2 on every wave night.
   - >
-    Precision thresholds (80/70, 90 for ORCID) come from the healthy-tier band in the oxjob 640
+    Precision thresholds (80/70; 90/80 for ORCID) come from the healthy-tier band in the oxjob 640
     history, not from a product target. Replace with the stated author-precision goal if one exists.
-  - Which items page. Draft — sections run, correctness (impossible names), waves, plus the
-    reservoir/stale/fingerprint absolutes. Everything else is digest-only until the false-positive
-    rate is known (14 nights observation-only).
-  - assign_name_check ships in the MatchAuthors tail with the oxjob 608 predicate inlined; lifting it
-    into a shared SQL UDF is a follow-up once it has a second caller.
+  - >
+    Precision against a reference: the AER gold set (oxjobs/archived/aer-gold-standard) is
+    author-level JSONL, not a seat-level table, so a "rebound gold seats scored correct" check
+    needs that table built first. Until then precision is judge-only (±3pp on a 7-day window).
+  - >
+    Which items page — draft: the run section, precision, impossible names, the absorber and
+    author-gain lines, waves, the reservoir/stale/fingerprint absolutes. Observation-only for the
+    first 14 nights.
 
 sections:
 
@@ -84,30 +85,25 @@ sections:
         critical_above: 10800
         page: true
         failure_modes: PNNL/EMSL block skew put MatchAuthors at 2h (dedupe shipped 09-13)
-      - id: stage_wall
-        title: wall time per authorship stage
-        expr: stage_wall_sec[*]
-        rule: relative
-        max_status: watch
-        direction: up
-      - id: sql_cost
-        title: SQL cost of the matching pass
-        expr: author_matching_sql[*]
-        rule: relative
-        max_status: watch
-        direction: up
-        failure_modes: one hot block → one task with 2.5B rows; metric MISSING on 09-13, collector needs a fix
-      - id: collector_errors
-        title: monitor collected everything
-        expr: sum(collector_error[*])
+      - id: matcher_emitted
+        title: MatchAuthors emitted its run metrics tonight
+        expr: batch_seats
         rule: absolute
         missing_as_zero: true
-        watch_above: 0
-        failure_modes: Jobs API / query-history permission changes; ephemeral tables missing at read time
+        critical_below: 1
+        page: true
+        failure_modes: the metric cells at the end of MatchAuthors did not run (task failed before them, or the monitoring schema is missing)
 
   - id: matching
     question: Are we matching the seats we should be matching?
     checks:
+      - id: bound_share_new_works
+        title: share of seats bound on works created 8..1 days ago (the user-visible outcome)
+        expr: new_works_seats[bound] / new_works_seats[total]
+        rule: relative
+        direction: down
+        min_denominator: 1000
+        failure_modes: matcher skipping new works; eligibility gate (work_id > 7e9 / created ≥ 2025-12-20) drift; a source flooding with unmatched org names
       - id: match_rate
         title: matched share of the batch
         expr: match_outcome[MATCHED] / sum(match_outcome[*])
@@ -129,14 +125,6 @@ sections:
         rule: relative
         max_status: watch
         failure_modes: a tier that jumps is usually a wave landing in it (s5_n2, 07-29)
-      - id: tier_volume
-        title: matches per tier (catches a tier going silent)
-        expr: match_tier[*]
-        rule: relative
-        max_status: watch
-        capture_from: window
-        missing_as_zero: true
-        failure_modes: n3/n4/n5 never fire — known state, not this check
       - id: orcid_tier
         title: ORCID tier still firing
         expr: match_tier[orcid]
@@ -152,12 +140,6 @@ sections:
         critical_above: 500000
         page: true
         failure_modes: 07-22 +185K watch item; reservoir should trend flat-to-down
-      - id: reservoir_draining
-        title: reservoir filled vs added (eligible)
-        expr: (null_reservoir_flow[eligible_added_existing] + null_reservoir_flow[eligible_added_new_works]) / null_reservoir_flow[eligible_filled]
-        rule: relative
-        direction: up
-        failure_modes: matcher skipping the reservoir; eligibility gate (work_id > 7e9 / created ≥ 2025-12-20) drift
 
   - id: correctness
     question: Are the matches we make correct?
@@ -171,23 +153,16 @@ sections:
         watch_below: 0.80
         critical_below: 0.70
         page: true
-        failure_modes: n8 tiers at 6–26% (cut 07-28); s5_n2 at 28–33% on wave nights = contamination, not the tier — see precision_wave_excluded
-      - id: precision_wave_excluded
-        title: judged precision by tier, excluding hot-name seats
-        enabled: false
-        expr: judge_arm_a_clean[*|same_person] / (judge_arm_a_clean[*|same_person] + judge_arm_a_clean[*|different_person])
-        rolling: 7
-        rule: absolute
-        watch_below: 0.80
-        critical_below: 0.70
-        note: needs a rollup joining authorship_daily_quality_sample to name_concentration_top (open decision 1 in the oxjob)
+        failure_modes: n8 tiers at 6–26% (cut 07-28); s5_n2 at 28–33% on wave nights = contamination, not the tier
       - id: precision_orcid
-        title: ORCID-tier judged precision (7-day rolling)
+        title: ORCID-tier judged precision (7-day rolling) — 63% of all matches
         expr: judge_arm_a[orcid|same_person] / (judge_arm_a[orcid|same_person] + judge_arm_a[orcid|different_person])
         rolling: 7
         min_denominator: 30
         rule: absolute
         watch_below: 0.90
+        critical_below: 0.80
+        page: true
         failure_modes: PNNL staff ORCIDs on data-deposit records (36/78 all-time FPs from S7407051155) — exclude that source before trusting a dip
       - id: orcid_qa
         title: ORCID sanity counters
@@ -202,38 +177,23 @@ sections:
         watch_above: 100
         critical_above: 500
         failure_modes: two profiles minted for one ORCID in one night
-      - id: guard_verdicts
-        title: name-change guard verdicts
-        expr: guard_telemetry[*]
-        rule: relative
-        max_status: watch
-        failure_modes: "oxjob 608 misbinding class; guard blocking everything is its own regression"
       - id: name_change_incompatible
         title: incompatible name changes on bound seats
         expr: name_change_quality[works_incompatible] / name_change_quality[works_judged]
         rule: relative
         direction: up
         failure_modes: 07-21 — 1,250 incompatible vs 3,018 cosmetic; the real rematch workload
-      - id: impossible_name
-        title: impossible name on a new assignment (seat name cannot be the profile it was bound to)
-        expr: assign_name_check[*]
-        rule: relative
-        direction: up
-        missing_as_zero: true
-        page: true
-        failure_modes: >
-          09-13 over 509K judged seats — foreign_family 454 (26 name-tier / 428 ORCID), first_initial_clash
-          358 (74 / 284). ORCID matches have NO name gate; this is their only one. A name-tier hit means the
-          profile's display name drifted since the match. Most first-initial clashes are parser noise
-          (middle-name-as-first: "Washington, Todd" → "M. Todd Washington"); the metric already requires
-          the seat's given name to be absent from the profile name.
       - id: impossible_name_total
-        title: foreign-family assignments, all tiers
+        title: foreign-family assignments tonight, all tiers (seat name cannot be the profile it was bound to)
         expr: sum(assign_name_check[foreign_family|*])
         rule: absolute
         missing_as_zero: true
+        watch_above: 500
         critical_above: 1000
         page: true
+        failure_modes: >
+          09-13 — 454 over 509K judged seats (26 name-tier / 428 ORCID). ORCID matches have NO name gate;
+          this is their only one. A name-tier hit means the profile's display name drifted since the match.
       - id: absorber
         title: one profile absorbing many impossible names
         expr: assign_name_check_top[*]
@@ -243,6 +203,14 @@ sections:
         failure_modes: >
           09-13 — "Naruki Hiranuma" (A5005965575) absorbed every "Moon, Seong-gi" seat from PNNL via a shared
           ORCID: one collision, dozens of seats. The absorber pattern built #608's 9.9M misbound rows.
+      - id: author_gain_max
+        title: most seats bound to one existing author tonight (absorber or hyperauthor, name-agnostic)
+        expr: author_gain_top[*]
+        rule: absolute
+        watch_above: 5000
+        critical_above: 25000
+        page: true
+        failure_modes: an org pseudo-author or a shared ORCID absorbing a roster; a hyperauthorship paper adds 1 seat per author, not thousands to one
 
   - id: minting
     question: Are we minting new authors only when we should?
@@ -252,12 +220,6 @@ sections:
         expr: new_authors_minted / sum(match_outcome[*])
         rule: relative
         failure_modes: "raw mint count spikes with batch size (oxjob 682 reparse, oxjob 649 admissions); ratio stable 21–29% even on 235K-mint days"
-      - id: mint_volume
-        title: mint volume (informational)
-        expr: new_authors_minted
-        rule: relative
-        max_status: watch
-        failure_modes: baseline 30–70K; 90–120K on big-batch days
       - id: mint_with_orcid
         title: share of mints carrying an ORCID
         expr: new_authors_minted[with_orcid] / new_authors_minted
@@ -280,20 +242,14 @@ sections:
   - id: waves
     question: Are we being flooded by non-human or organisational "authors"?
     checks:
-      - id: hot_names
-        title: hot names (>1K seats/batch) and seats in them
-        expr: name_concentration[*]
-        rule: relative
-        max_status: watch
-        direction: up
-        failure_modes: Geoscience Australia 43K/night, Scan-the-World, GBIF.org User, Atlas of Living Australia ×5
       - id: hot_name_max
-        title: single name over the wave line
+        title: single raw name over the wave line (named)
         expr: name_concentration_top[*]
         rule: absolute
         watch_above: 25000
         critical_above: 100000
         page: true
+        failure_modes: Geoscience Australia 43K/night, Scan-the-World, GBIF.org User, Atlas of Living Australia ×5
       - id: block_skew
         title: largest block, in join rows
         expr: block_skew[max_block_rows_seats]
@@ -302,26 +258,12 @@ sections:
         critical_above: 1000000000
         page: true
         failure_modes: "`y wang` block 2.5B rows on one task; PNNL/EMSL staff roster"
-      - id: seats_in_huge_blocks
-        title: seats in blocks over 100K
-        expr: block_skew[seats_in_blocks_gt100k]
-        rule: relative
-        max_status: watch
-        direction: up
       - id: source_share
-        title: one source's share of the batch (top 20)
+        title: one source's share of the batch (top 5, named)
         expr: seats_by_source[*] / sum(match_outcome[*])
-        rule: both
-        direction: up
+        rule: absolute
         watch_above: 0.30
         failure_modes: S7407051155 (DOE PNNL) mints 20–24K dataset works/day; S7407053303 IGSN samples
-      - id: hot_source_matched_share
-        title: matched share within a hot source (bulk-binding an org roster)
-        expr: matched_by_source[*] / seats_by_source[*]
-        rule: absolute
-        watch_above: 0.90
-        max_status: watch
-        failure_modes: staff ORCIDs on deposit records bulk-bind to publication profiles
 
   - id: stability
     question: Are existing authorships stable?
@@ -334,16 +276,6 @@ sections:
         failure_modes: >
           baselines — grows 150–9K/day, shrinks 250–3.6K, name changes 2K–12K; a source reparse (T&F, #682)
           is a NAMES_CHANGED step; mass-touch days hit 30M+ works on updated_date but the content diff stays small
-      - id: seats_added
-        title: seats added to existing works
-        expr: author_list_seats_added
-        rule: relative
-        max_status: watch
-      - id: seats_removed
-        title: seats removed from existing works
-        expr: author_list_seats_removed
-        rule: relative
-        max_status: watch
       - id: stale_backlog_delta
         title: stale-seat backlog, day-over-day
         expr: stale_seats[rows]
@@ -353,17 +285,6 @@ sections:
         critical_above: 1000000
         page: true
         failure_modes: no MERGE deletes seats — the backlog only shrinks via explicit work (baseline 5.29M rows / 1.79M works)
-      - id: stale_backlog
-        title: stale-seat backlog and works missing seats
-        expr: stale_seats[*]
-        rule: relative
-        max_status: watch
-        direction: up
-      - id: string_drift
-        title: name-string drift works (#608 guard staging)
-        expr: string_drift_works
-        rule: relative
-        max_status: watch
       - id: fingerprint_coverage
         title: fingerprint never shrinks
         expr: fingerprint_works_tracked
@@ -389,15 +310,14 @@ sections:
         rule: absolute
         watch_above: 1000
         critical_above: 5000
-        failure_modes: double pass (07-26/27); arm A 25→50 = +$1.50; baseline ~320
-      - id: matcher_emitted
-        title: MatchAuthors emitted its run metrics tonight
-        expr: batch_seats
+        failure_modes: double pass (07-26/27); ORCID arms at 100/night ≈ +$1; baseline ~320
+      - id: collector_errors
+        title: observer collected everything
+        expr: sum(collector_error[*])
         rule: absolute
         missing_as_zero: true
-        critical_below: 1
-        page: true
-        failure_modes: the metric cells at the end of MatchAuthors did not run (task failed before them, or the monitoring schema is missing)
+        watch_above: 0
+        failure_modes: Jobs API / query-history permission changes
       - id: assignment_log_complete
         title: assignment log rows ≈ batch seats
         expr: assignment_log_rows / sum(match_outcome[*])

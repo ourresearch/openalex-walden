@@ -109,7 +109,9 @@ def _lookup(store: MetricStore, day: date, term: Term, capture: str | None) -> f
     if not dims:
         return None
     if term.is_sum:
-        rx = term.regex(capture) if (capture is not None and "*" in (term.pattern or "")) else term.regex()
+        # a sum never takes the capture: sum(x[*]) is the total over every dimension even
+        # when another term in the expression captured one (seats_by_source[*] / sum(match_outcome[*]))
+        rx = term.regex()
         if rx is None:
             v = dims.get(term.pattern)
         else:

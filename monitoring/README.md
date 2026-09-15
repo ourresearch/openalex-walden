@@ -34,6 +34,11 @@ metrics writer and a checks file, and nothing else changes.
    Shape: `snapshot_date / metric / dimension / value`. Keep a metric a plain count or
    level. Ratios and shares are computed by the checks, not the writer.
 
+   **Emit only what a check reads.** A metric with no check is a cell on a pipeline's
+   critical path that nobody looks at. Name the offender instead of counting offenders:
+   `name_concentration_top[<name>]` (top 15) beats `hot_names` (a count), because the
+   finding then says *which*. Top-N emissions stay small (5 for sources, 15 for names).
+
    **Where the self-report lives.** When the job is a notebook, the metric cells are the
    last cells of that notebook, after its final write. When the job is a pipeline (the DLT
    ingest pipelines have no "last cell"), the writer is a final task in the wrapper job
@@ -54,8 +59,12 @@ metrics writer and a checks file, and nothing else changes.
    `monitoring/checks/author_matching.yaml`. Rules of thumb learned on the prototype:
    - Ratios against batch size, not raw counts, for anything that scales with volume.
    - Pure-volume checks get `max_status: watch`. They are context, not alarms.
-   - Absolute lines for the things that page. Relative (median ± MAD) for drift.
+   - Absolute lines for the things that page. Relative (median ± MAD) only for shares
+     and ratios; raw counts get an absolute line or no check at all.
    - Day-over-day deltas want absolute thresholds; a MAD baseline on a delta is noise.
+   - One check per question. A check that duplicates a paging one, or fans out to a row
+     per dimension nobody reads, gets cut. Author matching went 46 → 33 checks and
+     162 → ~80 findings a night this way (Casey, 2026-09-15: "don't overdo it").
 
 3. **Replay before you deploy.** `.venv/bin/python scripts/monitoring_dryrun.py <component>`
    runs the engine over the component's history read-only and prints what would have fired.

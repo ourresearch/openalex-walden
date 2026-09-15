@@ -59,14 +59,16 @@ PROMPTS_B = "openalex.authors.judge_prompts_arm_b"  # per-run scratch
 
 dbutils.widgets.text("snapshot_date", "", "Snapshot date (YYYY-MM-DD, blank = today UTC)")
 dbutils.widgets.text("arm_a_per_tier", "50", "Arm A samples per match_tier")
+dbutils.widgets.text("arm_a_orcid_per_tier", "100", "Arm A samples for the orcid / orcid_blind strata (63% of matches)")
 dbutils.widgets.text("arm_b_seats", "150", "Arm B ambiguous seats to judge")
 
 _sd = dbutils.widgets.get("snapshot_date").strip()
 RUN_DATE = (datetime.strptime(_sd, "%Y-%m-%d").date()
             if _sd else datetime.now(timezone.utc).date())
 A_PER_TIER = int(dbutils.widgets.get("arm_a_per_tier"))
+A_ORCID_PER_TIER = int(dbutils.widgets.get("arm_a_orcid_per_tier"))
 B_SEATS = int(dbutils.widgets.get("arm_b_seats"))
-print(f"RUN_DATE={RUN_DATE} arm_a_per_tier={A_PER_TIER} arm_b_seats={B_SEATS}")
+print(f"RUN_DATE={RUN_DATE} arm_a_per_tier={A_PER_TIER} arm_a_orcid_per_tier={A_ORCID_PER_TIER} arm_b_seats={B_SEATS}")
 
 # COMMAND ----------
 
@@ -183,7 +185,7 @@ WITH sample AS (
                       WHEN p.match_method = 'orcid' THEN 'orcid'
                       ELSE p.name_match_tier END
     ORDER BY xxhash64(CONCAT(CAST(p.work_id AS STRING), ':', CAST(p.author_sequence AS STRING)))
-  ) <= {A_PER_TIER}
+  ) <= CASE WHEN p.match_method = 'orcid' THEN {A_ORCID_PER_TIER} ELSE {A_PER_TIER} END
 ),
 cand_ids AS (SELECT DISTINCT existing_author_id AS author_id FROM sample),
 {INCOMING_CTES},

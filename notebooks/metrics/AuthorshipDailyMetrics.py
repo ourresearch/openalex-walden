@@ -26,11 +26,11 @@
 # MAGIC **Since oxjob #1116 the run-outcome metrics (match outcomes, tiers, mints,
 # MAGIC ORCID sanity, block skew, name concentration, the impossible-name check, the
 # MAGIC assignment log, author counts) are written by the notebook that does the job:**
-# MAGIC the last cells of `notebooks/end2end/MatchAuthors` (and the guard counts by
-# MAGIC `UpdateWorkAuthors`) into `openalex.monitoring.metrics`. This observer keeps
-# MAGIC only what an observer can see: the fingerprint diff and its change events,
-# MAGIC the reservoir/stale-seat state, name-change quality, daily seat activity, and
-# MAGIC the end2end stage runtimes from the Jobs API.
+# MAGIC the last cells of `notebooks/end2end/MatchAuthors` into `openalex.monitoring.metrics`.
+# MAGIC This observer keeps only what an observer can see: the fingerprint diff and its
+# MAGIC change events, the reservoir/stale-seat state, name-change quality, the bound share
+# MAGIC of seats on recently created works, and the end2end stage runtimes from the Jobs
+# MAGIC API. Only metrics a check reads are emitted (keep it small).
 # MAGIC
 # MAGIC Stage wall time and SQL cost for the authorship tasks of the day's end2end
 # MAGIC run come from the Jobs API and the warehouse query history (the job's
@@ -66,7 +66,6 @@ SOURCE = "AuthorshipDailyMetrics"
 
 BASE_TABLE = "openalex.works.openalex_works_base"
 SEATS_TABLE = "openalex.works.work_authors"
-AUTHORSHIPS_TABLE = "openalex.works.work_authorships"
 
 # Ephemeral run-state tables (CREATE OR REPLACE'd by each end2end run) — read-only here,
 # used only to bound the fingerprint candidate set.
@@ -445,14 +444,6 @@ if not BOOTSTRAP:
         WHERE event_date = DATE'{RUN_DATE}' GROUP BY 1
     """, "author_list_changes", "d", "c")
 
-    ev = spark.sql(f"""
-        SELECT SUM(GREATEST(new_base_n - prev_base_n, 0)) AS seats_added,
-               SUM(GREATEST(prev_base_n - new_base_n, 0)) AS seats_removed
-        FROM {EVENTS_TABLE} WHERE event_date = DATE'{RUN_DATE}'
-    """).collect()[0]
-    add("author_list_seats_added", None, ev["seats_added"])
-    add("author_list_seats_removed", None, ev["seats_removed"])
-
     if FLOW is not None:
         for k in ["filled", "added_existing", "added_new_works",
                   "eligible_filled", "eligible_added_existing", "eligible_added_new_works"]:
@@ -558,21 +549,21 @@ except Exception as e:
 
 # COMMAND ----------
 
-# --- Daily seat activity on the durable tables (observer-side: no single
-# --- notebook owns these — MatchAuthors, UpdateWorkAuthors and the curation
-# --- apply all write work_authors) ------------------------------------------
-wa = spark.sql(f"""
-    SELECT SUM(CASE WHEN DATE(created_at) = DATE'{RUN_DATE}' THEN 1 ELSE 0 END) AS seats_created,
-           SUM(CASE WHEN DATE(updated_at) = DATE'{RUN_DATE}' THEN 1 ELSE 0 END) AS seats_updated
-    FROM {SEATS_TABLE}
+# --- Bound share of seats on recently created works: the user-visible outcome of
+# --- matching. Works created 8..1 days ago — today's creations may not have been
+# --- through MatchAuthors yet. Seat counts come from the fingerprint (already refreshed).
+nw = spark.sql(f"""
+    SELECT COUNT(*) AS works,
+           SUM(f.seat_n) AS total,
+           SUM(f.seat_n - f.null_seat_n) AS bound
+    FROM {FINGERPRINT_TABLE} f
+    JOIN (SELECT id FROM {BASE_TABLE}
+          WHERE created_date >= DATE'{RUN_DATE}' - INTERVAL 8 DAYS
+            AND created_date <  DATE'{RUN_DATE}' - INTERVAL 1 DAY) b ON b.id = f.work_id
 """).collect()[0]
-add("seats_created_on_date", None, wa["seats_created"])
-add("seats_updated_on_date", None, wa["seats_updated"])
-
-add("works_authorships_updated_on_date", None, spark.sql(f"""
-    SELECT COUNT(*) AS c FROM {AUTHORSHIPS_TABLE}
-    WHERE DATE(updated_datetime) = DATE'{RUN_DATE}'
-""").collect()[0]["c"])
+add("new_works_seats", "works", nw["works"] or 0)
+add("new_works_seats", "total", nw["total"] or 0)
+add("new_works_seats", "bound", nw["bound"] or 0)
 
 # COMMAND ----------
 
