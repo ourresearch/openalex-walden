@@ -85,48 +85,47 @@ WHERE DATE(minted.created_date) = current_date()
 
 -- COMMAND ----------
 
-DELETE FROM openalex.authors.authorship_daily_metrics
-WHERE snapshot_date = current_date()
-  AND metric IN ('judge_arm_a', 'judge_arm_b', 'orcid_mint_collisions', 'judge_cost_cents')
+DELETE FROM openalex.monitoring.metrics
+WHERE snapshot_date = current_date() AND component = 'author_matching' AND source = 'AuthorshipQualityJudge'
 
 -- COMMAND ----------
 
-INSERT INTO openalex.authors.authorship_daily_metrics
-  (snapshot_date, snapshot_version, metric, dimension, value, computed_at)
-SELECT current_date(), NULL, 'judge_arm_a', CONCAT(match_tier, '|', verdict), COUNT(*), current_timestamp()
+INSERT INTO openalex.monitoring.metrics
+  (snapshot_date, component, metric, dimension, value, source, computed_at)
+SELECT current_date(), 'author_matching', 'judge_arm_a', CONCAT(match_tier, '|', verdict), CAST(COUNT(*) AS DOUBLE), 'AuthorshipQualityJudge', current_timestamp()
 FROM openalex.authors.authorship_daily_quality_sample
 WHERE sample_date = current_date() AND arm = 'armA'
 GROUP BY match_tier, verdict
 
 -- COMMAND ----------
 
-INSERT INTO openalex.authors.authorship_daily_metrics
-  (snapshot_date, snapshot_version, metric, dimension, value, computed_at)
-SELECT current_date(), NULL, 'judge_arm_b',
+INSERT INTO openalex.monitoring.metrics
+  (snapshot_date, component, metric, dimension, value, source, computed_at)
+SELECT current_date(), 'author_matching', 'judge_arm_b',
        CASE WHEN verdict LIKE 'candidate%' THEN 'candidate_pick' ELSE verdict END,
-       COUNT(*), current_timestamp()
+       CAST(COUNT(*) AS DOUBLE), 'AuthorshipQualityJudge', current_timestamp()
 FROM openalex.authors.authorship_daily_quality_sample
 WHERE sample_date = current_date() AND arm = 'armB'
 GROUP BY CASE WHEN verdict LIKE 'candidate%' THEN 'candidate_pick' ELSE verdict END
 
 -- COMMAND ----------
 
-INSERT INTO openalex.authors.authorship_daily_metrics
-  (snapshot_date, snapshot_version, metric, dimension, value, computed_at)
-SELECT current_date(), NULL, 'orcid_mint_collisions', NULL,
-       COUNT(DISTINCT assigned_author_id), current_timestamp()
+INSERT INTO openalex.monitoring.metrics
+  (snapshot_date, component, metric, dimension, value, source, computed_at)
+SELECT current_date(), 'author_matching', 'orcid_mint_collisions', NULL,
+       CAST(COUNT(DISTINCT assigned_author_id) AS DOUBLE), 'AuthorshipQualityJudge', current_timestamp()
 FROM openalex.authors.authorship_daily_quality_sample
 WHERE sample_date = current_date() AND arm = 'orcid_collision'
 
 -- COMMAND ----------
 
-INSERT INTO openalex.authors.authorship_daily_metrics
-  (snapshot_date, snapshot_version, metric, dimension, value, computed_at)
-SELECT current_date(), NULL, 'judge_cost_cents', NULL,
+INSERT INTO openalex.monitoring.metrics
+  (snapshot_date, component, metric, dimension, value, source, computed_at)
+SELECT current_date(), 'author_matching', 'judge_cost_cents', NULL,
        CAST((
          ((SELECT COALESCE(SUM(LENGTH(prompt)), 0) FROM openalex.authors.judge_prompts_arm_a)
           + (SELECT COALESCE(SUM(LENGTH(prompt)), 0) FROM openalex.authors.judge_prompts_arm_b)) / 4.0 * 15.0
          + ((SELECT COUNT(*) FROM openalex.authors.judge_prompts_arm_a)
             + (SELECT COUNT(*) FROM openalex.authors.judge_prompts_arm_b)) * 20.0 * 75.0
-       ) / 1e6 * 100 AS BIGINT),
-       current_timestamp()
+       ) / 1e6 * 100 AS DOUBLE),
+       'AuthorshipQualityJudge', current_timestamp()

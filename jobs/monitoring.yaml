@@ -1,0 +1,56 @@
+resources:
+  jobs:
+    Monitoring:
+      name: Monitoring
+      description: |
+        Walden system monitor (oxjob #1116). One job for every component:
+        task 1 evaluates each monitoring/checks/<component>.yaml against that
+        component's metrics and writes openalex.monitoring.findings (deterministic
+        status); task 2 has the LLM write the morning report from the findings
+        (openalex.monitoring.reports). Adding a component = a metrics writer +
+        a checks YAML; nothing here changes.
+        Observation-only: writes ONLY openalex.monitoring.* tables.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        # 23:30 UTC — after Works Daily Metrics (22:00) and Authorship Daily
+        # Metrics (22:30, ~10 min + judge ~15 min) have landed today's rows.
+        # Component metrics jobs must finish before this; a component whose
+        # metrics are late simply reads as no_data for the night.
+        quartz_cron_expression: 0 30 23 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED   # unpause after the first manual backfill run is reviewed
+      parameters:
+        - name: snapshot_date
+          default: "{{job.start_time.iso_date}}"
+        - name: component
+          default: ""
+        - name: backfill_days
+          default: "0"
+      tasks:
+        - task_key: monitoring_findings
+          notebook_task:
+            notebook_path: notebooks/monitoring/MonitoringFindings
+            source: GIT
+          environment_key: Default
+        # ai_query runs on a WAREHOUSE (cluster-side ai_query on DBR 16.4 sends a
+        # temperature param the opus-4-8 endpoint rejects).
+        - task_key: monitoring_report
+          depends_on:
+            - task_key: monitoring_findings
+          notebook_task:
+            notebook_path: notebooks/monitoring/MonitoringReport
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD

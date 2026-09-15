@@ -49,7 +49,6 @@ SEATS = "openalex.works.work_authors"
 AUTHORS = "openalex.authors.authors"
 
 DST_SAMPLE = "openalex.authors.authorship_daily_quality_sample"
-DST_METRICS = "openalex.authors.authorship_daily_metrics"
 PROMPTS_A = "openalex.authors.judge_prompts_arm_a"  # per-run scratch
 PROMPTS_B = "openalex.authors.judge_prompts_arm_b"  # per-run scratch
 

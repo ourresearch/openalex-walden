@@ -5,9 +5,11 @@
 # MAGIC Daily observation-only monitor for the author-matching pipeline. Reads
 # MAGIC pipeline tables (never writes them) and persists three things:
 # MAGIC
-# MAGIC 1. **`openalex.authors.authorship_daily_metrics`** — tall metrics table,
-# MAGIC    same shape as `openalex.works.works_daily_metrics`: one row per
-# MAGIC    `snapshot_date` x `metric` x `dimension`, delete-then-append per date.
+# MAGIC 1. **`openalex.monitoring.metrics`** — the shared monitoring sink (oxjob #1116):
+# MAGIC    one row per `snapshot_date` x `metric` x `dimension`, under
+# MAGIC    `component = 'author_matching'`, `source = 'AuthorshipDailyMetrics'`,
+# MAGIC    delete-then-append per (date, component, source). History before
+# MAGIC    2026-09-15 was copied in from the retired `authorship_daily_metrics`.
 # MAGIC 2. **`openalex.authors.work_author_list_fingerprint`** — one compact row per
 # MAGIC    work: author-list size, name-list hash, content hash (mirrors the
 # MAGIC    oxjob 401-WB diff struct), seat counts from `work_authors`. Diffing
@@ -20,13 +22,15 @@
 # MAGIC    `incompatible_positions` judging name changes via the #608
 # MAGIC    `names_compatible` comparator (cosmetic drift vs different person).
 # MAGIC    This is the observed workload for a future rematch-on-change trigger.
-# MAGIC 4. **`openalex.authors.author_assignment_log`** — one row per seat decided
-# MAGIC    by today's MatchAuthors run (outcome, tier, author, block size) with the
-# MAGIC    attribution the ephemeral table lacks: primary source, provenance, origin
-# MAGIC    (new work / rematch / restamped). Delete-then-append per `run_date`,
-# MAGIC    120-day retention. Source-, provenance- and skew-level metrics are
-# MAGIC    computed from it, and it is the table to query when a past night's
-# MAGIC    decisions need re-scoring.
+# MAGIC
+# MAGIC **Since oxjob #1116 the run-outcome metrics (match outcomes, tiers, mints,
+# MAGIC ORCID sanity, block skew, name concentration, the impossible-name check, the
+# MAGIC assignment log, author counts) are written by the notebook that does the job:**
+# MAGIC the last cells of `notebooks/end2end/MatchAuthors` (and the guard counts by
+# MAGIC `UpdateWorkAuthors`) into `openalex.monitoring.metrics`. This observer keeps
+# MAGIC only what an observer can see: the fingerprint diff and its change events,
+# MAGIC the reservoir/stale-seat state, name-change quality, daily seat activity, and
+# MAGIC the end2end stage runtimes from the Jobs API.
 # MAGIC
 # MAGIC Stage wall time and SQL cost for the authorship tasks of the day's end2end
 # MAGIC run come from the Jobs API and the warehouse query history (the job's
@@ -50,39 +54,34 @@
 
 # COMMAND ----------
 
+import os
+import sys
 from datetime import datetime, timezone
 
-from pyspark.sql import functions as F
-from pyspark.sql.types import (
-    StructType, StructField, StringType, LongType, DateType,
-)
+sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "..", "..")))
+from utils.monitoring_metrics import METRICS_TABLE, emit  # noqa: E402
+
+COMPONENT = "author_matching"
+SOURCE = "AuthorshipDailyMetrics"
 
 BASE_TABLE = "openalex.works.openalex_works_base"
 SEATS_TABLE = "openalex.works.work_authors"
 AUTHORSHIPS_TABLE = "openalex.works.work_authorships"
-AUTHORS_TABLE = "openalex.authors.authors"
-AFM_TABLE = "openalex.authors.authors_for_matching"
 
-# Ephemeral run-state tables (CREATE OR REPLACE'd by each end2end run) — read-only here.
-PENDING_TABLE = "openalex.authors.pending_author_assignments"
+# Ephemeral run-state tables (CREATE OR REPLACE'd by each end2end run) — read-only here,
+# used only to bound the fingerprint candidate set.
 MATCH_BATCH_TABLE = "openalex.authors.author_matching_batch"
-MINT_QUEUE_TABLE = "openalex.authors.author_matching_new_author_queue"
 AFFIL_BATCH_TABLE = "openalex.authors.affiliation_update_batch"
 DRIFT_TABLE = "openalex.authors.work_authors_string_drift"
-GUARD_TELEMETRY_TABLE = "openalex.authors.author_guard_telemetry"
-REMATCH_APPLIED_TABLE = "openalex.authors.author_rematch_applied"  # oxjob #649 worklist admissions
 
 E2E_JOB_NAME = "Walden End 2 End"
 AUTHORSHIP_STAGES = ["Parsed_Author_Names", "Sync_Work_Author_Curations", "Author_Affiliations",
                      "Author_Matching", "Apply_Work_Author_Curations", "Authorships"]
 
-# Monitor-owned tables (the only tables this notebook writes).
-DST_TABLE = "openalex.authors.authorship_daily_metrics"
+# Monitor-owned tables (the only tables this notebook writes, plus the shared sink).
 FINGERPRINT_TABLE = "openalex.authors.work_author_list_fingerprint"
 EVENTS_TABLE = "openalex.authors.work_author_change_events"
 CAND_TABLE = "openalex.authors.authorship_monitor_candidates"  # per-run scratch, kept for forensics
-ASSIGN_LOG_TABLE = "openalex.authors.author_assignment_log"
-ASSIGN_LOG_RETENTION_DAYS = 120
 
 # COMMAND ----------
 
@@ -97,17 +96,6 @@ RUN_DATE = (
 print(f"RUN_DATE={RUN_DATE}")
 
 # COMMAND ----------
-
-spark.sql(f"""
-CREATE TABLE IF NOT EXISTS {DST_TABLE} (
-  snapshot_date    DATE,
-  snapshot_version BIGINT,   -- Delta version of work_authors at compute time
-  metric           STRING,
-  dimension        STRING,
-  value            BIGINT,
-  computed_at      TIMESTAMP
-)
-""")
 
 spark.sql(f"""
 CREATE TABLE IF NOT EXISTS {FINGERPRINT_TABLE} (
@@ -142,31 +130,6 @@ CREATE TABLE IF NOT EXISTS {EVENTS_TABLE} (
 )
 """)
 
-spark.sql(f"""
-CREATE TABLE IF NOT EXISTS {ASSIGN_LOG_TABLE} (
-  run_date            DATE,
-  work_id             BIGINT,
-  author_sequence     INT,
-  raw_author_name     STRING,
-  block_key           STRING,
-  block_size          INT,       -- authors_for_matching rows sharing block_key at run time
-  match_outcome       STRING,
-  match_method        STRING,
-  name_match_tier     STRING,
-  existing_author_id  BIGINT,
-  orcid_author_id     BIGINT,
-  orcid_match_count   INT,
-  institution_ids     ARRAY<STRING>,
-  work_source_ids     ARRAY<STRING>,
-  primary_source_id   STRING,
-  primary_source_name STRING,
-  provenance          STRING,
-  work_created_date   DATE,
-  origin              STRING,    -- new_work | rematch | restamped
-  logged_at           TIMESTAMP
-) PARTITIONED BY (run_date)
-""")
-
 # Schema migration for tables created before these columns existed (idempotent).
 for _tbl, _cols in [(FINGERPRINT_TABLE, {"orcids_hash": "BIGINT"}),
                     (EVENTS_TABLE, {"orcids_changed": "BOOLEAN",
@@ -188,8 +151,7 @@ WATERMARK = "1900-01-01 00:00:00" if BOOTSTRAP else (
 
 ephemeral_present = {
     t: spark.catalog.tableExists(t)
-    for t in [PENDING_TABLE, MATCH_BATCH_TABLE, MINT_QUEUE_TABLE,
-              AFFIL_BATCH_TABLE, DRIFT_TABLE]
+    for t in [MATCH_BATCH_TABLE, AFFIL_BATCH_TABLE, DRIFT_TABLE]
 }
 print(f"BOOTSTRAP={BOOTSTRAP}  WATERMARK={WATERMARK}")
 print(f"ephemeral tables present: {ephemeral_present}")
@@ -474,293 +436,6 @@ def add_query(sql, metric, dim_col, val_col):
 
 # COMMAND ----------
 
-# --- MatchAuthors run-state (today's ephemeral tables) --------------------
-for t, name in [(PENDING_TABLE, "pending_author_assignments"),
-                (MATCH_BATCH_TABLE, "author_matching_batch"),
-                (MINT_QUEUE_TABLE, "author_matching_new_author_queue"),
-                (DRIFT_TABLE, "work_authors_string_drift")]:
-    add("ephemeral_table_rows", name,
-        spark.table(t).count() if ephemeral_present.get(t, spark.catalog.tableExists(t)) else -1)
-
-if ephemeral_present[PENDING_TABLE]:
-    add_query(f"SELECT match_outcome AS d, COUNT(*) AS c FROM {PENDING_TABLE} GROUP BY 1",
-              "match_outcome", "d", "c")
-    add_query(f"SELECT COALESCE(match_method, '(none)') AS d, COUNT(*) AS c FROM {PENDING_TABLE} GROUP BY 1",
-              "match_method", "d", "c")
-
-    # name_match_tier: which cascade tier fired (added to MatchAuthors 2026-07-20,
-    # oxjob #640). Guarded so the monitor still runs against a pre-change batch.
-    if "name_match_tier" in [f.name for f in spark.table(PENDING_TABLE).schema]:
-        add_query(f"""
-            SELECT CASE WHEN match_method = 'orcid' THEN 'orcid'
-                        ELSE COALESCE(name_match_tier, '(none)') END AS d,
-                   COUNT(*) AS c
-            FROM {PENDING_TABLE} GROUP BY 1
-        """, "match_tier", "d", "c")
-
-    qa = spark.sql(f"""
-        SELECT SUM(CASE WHEN orcid_name_conflict THEN 1 ELSE 0 END) AS name_conflict,
-               SUM(CASE WHEN orcid_blind_match THEN 1 ELSE 0 END) AS blind_match,
-               SUM(CASE WHEN orcid_match_count > 1 THEN 1 ELSE 0 END) AS splinter_orcid
-        FROM {PENDING_TABLE}
-    """).collect()[0]
-    add("orcid_qa", "name_conflict", qa["name_conflict"])
-    add("orcid_qa", "blind_match", qa["blind_match"])
-    add("orcid_qa", "splinter_orcid", qa["splinter_orcid"])
-
-    # Blocking health: block sizes are not persisted by the cascade, so
-    # recompute them for today's block keys only.
-    bs = spark.sql(f"""
-        WITH block_sizes AS (
-            SELECT block_key, COUNT(*) AS n
-            FROM {AFM_TABLE}
-            WHERE block_key IN (SELECT DISTINCT block_key FROM {PENDING_TABLE} WHERE block_key IS NOT NULL)
-            GROUP BY block_key
-        ),
-        joined AS (
-            SELECT p.match_outcome, COALESCE(b.n, 0) AS n
-            FROM {PENDING_TABLE} p
-            LEFT JOIN block_sizes b ON p.block_key = b.block_key
-        )
-        SELECT
-          CAST(percentile_approx(n, 0.5) AS BIGINT) AS p50,
-          CAST(percentile_approx(n, 0.95) AS BIGINT) AS p95,
-          MAX(n) AS max_n
-        FROM joined
-    """).collect()[0]
-    add("batch_block_size", "p50", bs["p50"])
-    add("batch_block_size", "p95", bs["p95"])
-    add("batch_block_size", "max", bs["max_n"])
-
-    add_query(f"""
-        WITH block_sizes AS (
-            SELECT block_key, COUNT(*) AS n
-            FROM {AFM_TABLE}
-            WHERE block_key IN (SELECT DISTINCT block_key FROM {PENDING_TABLE} WHERE block_key IS NOT NULL)
-            GROUP BY block_key
-        )
-        SELECT CASE WHEN COALESCE(b.n, 0) = 0 THEN '0'
-                    WHEN b.n <= 10 THEN '1-10'
-                    WHEN b.n <= 100 THEN '11-100'
-                    WHEN b.n <= 1000 THEN '101-1000'
-                    ELSE '1000+' END AS d,
-               COUNT(*) AS c
-        FROM {PENDING_TABLE} p
-        LEFT JOIN block_sizes b ON p.block_key = b.block_key
-        WHERE p.match_outcome = 'AMBIGUOUS'
-        GROUP BY 1
-    """, "ambiguous_by_block_size", "d", "c")
-
-if ephemeral_present[MINT_QUEUE_TABLE]:
-    mq = spark.sql(f"""
-        SELECT COUNT(*) AS total,
-               SUM(CASE WHEN orcid IS NOT NULL THEN 1 ELSE 0 END) AS with_orcid
-        FROM {MINT_QUEUE_TABLE}
-    """).collect()[0]
-    add("new_authors_minted", None, mq["total"])
-    add("new_authors_minted", "with_orcid", mq["with_orcid"])
-
-    # Mint provenance: clusters minted despite existing candidates (any AMBIGUOUS
-    # feeder seat) are the splinter-risk pool; NO_CANDIDATES mints are clean-new.
-    if ephemeral_present[PENDING_TABLE] and ephemeral_present[MATCH_BATCH_TABLE]:
-        add_query(f"""
-            WITH unmatched AS (
-              SELECT pa.match_outcome,
-                xxhash64(
-                  CASE WHEN pa.pn_first IS NOT NULL AND pa.pn_first != '' AND pa.pn_last IS NOT NULL
-                       THEN CONCAT(pa.pn_first, ' ', pa.pn_last)
-                       WHEN pa.pn_first_initial IS NOT NULL AND pa.pn_first_initial != '' AND pa.pn_last IS NOT NULL
-                       THEN CONCAT(pa.pn_first_initial, ' ', pa.pn_last)
-                       ELSE LOWER(TRIM(pa.raw_author_name)) END,
-                  CASE WHEN SIZE(b.all_institution_ids) > 0
-                       THEN concat_ws('|', sort_array(b.all_institution_ids))
-                       ELSE concat_ws('|', sort_array(pa.work_source_ids)) END
-                ) AS cluster_hash
-              FROM {PENDING_TABLE} pa
-              JOIN {MATCH_BATCH_TABLE} b
-                ON pa.work_id = b.work_id AND pa.author_sequence = b.author_sequence
-              WHERE pa.match_outcome <> 'MATCHED'
-            ),
-            cluster_prov AS (
-              SELECT q.cluster_hash,
-                     MAX(CASE WHEN u.match_outcome = 'AMBIGUOUS' THEN 1 ELSE 0 END) AS any_ambiguous
-              FROM {MINT_QUEUE_TABLE} q
-              JOIN unmatched u ON q.cluster_hash = u.cluster_hash
-              GROUP BY q.cluster_hash
-            )
-            SELECT CASE WHEN any_ambiguous = 1 THEN 'from_ambiguous'
-                        ELSE 'from_no_candidates' END AS d,
-                   COUNT(*) AS c
-            FROM cluster_prov GROUP BY 1
-        """, "new_authors_minted", "d", "c")
-
-if ephemeral_present[DRIFT_TABLE]:
-    add("string_drift_works", None,
-        spark.sql(f"SELECT COUNT(DISTINCT work_id) AS c FROM {DRIFT_TABLE}").collect()[0]["c"])
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Assignment log — durable per-seat copy of today's run
-
-# COMMAND ----------
-
-# origin: 'rematch' = admitted by the #649 worklist; 'new_work' = work created for this run;
-# 'restamped' = an older work whose updated_date bump pulled its unbound seats back in.
-ASSIGN_LOG_SQL = f"""
-WITH block_sizes AS (
-    SELECT block_key, COUNT(*) AS block_size
-    FROM {AFM_TABLE}
-    WHERE block_key IN (SELECT DISTINCT block_key FROM {PENDING_TABLE} WHERE block_key IS NOT NULL)
-    GROUP BY block_key
-),
-worklist AS (
-    SELECT DISTINCT work_id FROM {REMATCH_APPLIED_TABLE} WHERE run_date = DATE'{RUN_DATE}'
-)
-SELECT DATE'{RUN_DATE}' AS run_date,
-       p.work_id,
-       CAST(p.author_sequence AS INT) AS author_sequence,
-       p.raw_author_name,
-       p.block_key,
-       CAST(COALESCE(b.block_size, 0) AS INT) AS block_size,
-       p.match_outcome,
-       p.match_method,
-       p.name_match_tier,
-       p.existing_author_id,
-       p.orcid_author_id,
-       CAST(p.orcid_match_count AS INT) AS orcid_match_count,
-       CAST(mb.all_institution_ids AS ARRAY<STRING>) AS institution_ids,
-       CAST(p.work_source_ids AS ARRAY<STRING>) AS work_source_ids,
-       w.primary_location.source.id AS primary_source_id,
-       w.primary_location.source.display_name AS primary_source_name,
-       w.primary_location.provenance AS provenance,
-       w.created_date AS work_created_date,
-       CASE WHEN wl.work_id IS NOT NULL THEN 'rematch'
-            WHEN w.created_date >= DATE'{RUN_DATE}' - INTERVAL 1 DAY THEN 'new_work'
-            ELSE 'restamped' END AS origin,
-       current_timestamp() AS logged_at
-FROM {PENDING_TABLE} p
-LEFT JOIN block_sizes b ON p.block_key = b.block_key
-LEFT JOIN {MATCH_BATCH_TABLE} mb ON p.work_id = mb.work_id AND p.author_sequence = mb.author_sequence
-LEFT JOIN {BASE_TABLE} w ON p.work_id = w.id
-LEFT JOIN worklist wl ON p.work_id = wl.work_id
-"""
-
-ASSIGN_LOGGED = False
-if ephemeral_present[PENDING_TABLE] and ephemeral_present[MATCH_BATCH_TABLE]:
-    spark.sql(f"DELETE FROM {ASSIGN_LOG_TABLE} WHERE run_date = DATE'{RUN_DATE}'")
-    spark.sql(ASSIGN_LOG_SQL).write.format("delta").mode("append").saveAsTable(ASSIGN_LOG_TABLE)
-    spark.sql(f"DELETE FROM {ASSIGN_LOG_TABLE} WHERE run_date < DATE'{RUN_DATE}' - INTERVAL {ASSIGN_LOG_RETENTION_DAYS} DAYS")
-    spark.table(ASSIGN_LOG_TABLE).where(f"run_date = DATE'{RUN_DATE}'").createOrReplaceTempView("assign_today")
-    ASSIGN_LOGGED = True
-    add("assignment_log_rows", None, spark.table("assign_today").count())
-
-# COMMAND ----------
-
-# --- Outcomes by source / provenance / origin (from the assignment log) -----
-if ASSIGN_LOGGED:
-    for r in spark.sql("""
-        SELECT CONCAT(regexp_replace(primary_source_id, '.*/', ''), ' · ',
-                      LEFT(COALESCE(primary_source_name, ''), 80)) AS d,
-               COUNT(*) AS seats,
-               COUNT_IF(match_outcome = 'MATCHED') AS matched
-        FROM assign_today
-        WHERE primary_source_id IS NOT NULL
-        GROUP BY 1 ORDER BY seats DESC LIMIT 20
-    """).collect():
-        add("seats_by_source", r["d"], r["seats"])
-        add("matched_by_source", r["d"], r["matched"])
-
-    for dim in ["provenance", "origin"]:
-        for r in spark.sql(f"""
-            SELECT COALESCE({dim}, '(null)') AS d, COUNT(*) AS seats,
-                   COUNT_IF(match_outcome = 'MATCHED') AS matched
-            FROM assign_today GROUP BY 1
-        """).collect():
-            add(f"seats_by_{dim}", r["d"], r["seats"])
-            add(f"matched_by_{dim}", r["d"], r["matched"])
-
-# COMMAND ----------
-
-# --- Block-join skew ---------------------------------------------------------
-# The candidate join costs SUM(block_size) over the DISTINCT signal tuples MatchAuthors
-# dedupes to (name, institutions, sources; topics omitted here), and its wall time is set
-# by the largest single block_key partition. Seat-level rows are kept for comparison.
-if ASSIGN_LOGGED:
-    spark.sql("""
-        SELECT block_key, MAX(block_size) AS block_size, COUNT(*) AS seats
-        FROM assign_today
-        WHERE block_key IS NOT NULL AND block_key <> ''
-        GROUP BY block_key, raw_author_name, institution_ids, work_source_ids
-    """).createOrReplaceTempView("assign_tuples")
-    sk = spark.sql("""
-        WITH per_block AS (
-            SELECT block_key, SUM(block_size) AS tuple_rows, SUM(seats * block_size) AS seat_rows,
-                   SUM(CASE WHEN block_size > 100000 THEN seats ELSE 0 END) AS seats_gt100k
-            FROM assign_tuples GROUP BY block_key
-        )
-        SELECT SUM(tuple_rows) AS join_rows_tuples, SUM(seat_rows) AS join_rows_seats,
-               MAX(tuple_rows) AS max_block_rows_tuples, MAX(seat_rows) AS max_block_rows_seats,
-               SUM(seats_gt100k) AS seats_in_blocks_gt100k
-        FROM per_block
-    """).collect()[0]
-    for k in ["join_rows_tuples", "join_rows_seats", "max_block_rows_tuples",
-              "max_block_rows_seats", "seats_in_blocks_gt100k"]:
-        add("block_skew", k, sk[k])
-    add_query("""
-        SELECT block_key AS d, SUM(block_size) AS c
-        FROM assign_tuples GROUP BY block_key ORDER BY c DESC LIMIT 15
-    """, "block_skew_top", "d", "c")
-
-# COMMAND ----------
-
-# --- Name-concentration wave detector -------------------------------------
-# One raw_author_name flooding the day's batch = a wave: org pseudo-authors
-# (dataset/instrument repos), or a parser bug emitting identical names. Source-
-# agnostic — surfaces the offender by name so it's visible at the metric level,
-# no judge sample needed. Caught "Geoscience Australia" (36K IGSN seats,
-# 2026-07-30) after it was only found via ad-hoc judge slicing.
-if ephemeral_present[PENDING_TABLE]:
-    HOT_SEATS = 1000  # a single name matching/minting >1K seats in one batch
-    hot = spark.sql(f"""
-        SELECT raw_author_name, COUNT(*) AS seats
-        FROM {PENDING_TABLE}
-        WHERE raw_author_name IS NOT NULL AND TRIM(raw_author_name) <> ''
-        GROUP BY raw_author_name
-        HAVING COUNT(*) >= {HOT_SEATS}
-    """).collect()
-    add("name_concentration", "hot_names", len(hot))
-    add("name_concentration", "seats_in_hot_names", sum(r["seats"] for r in hot))
-    # Name each offender (top 15) so "which" is answerable straight from metrics.
-    for r in sorted(hot, key=lambda x: -x["seats"])[:15]:
-        add("name_concentration_top", r["raw_author_name"][:120], r["seats"])
-
-# COMMAND ----------
-
-# --- #608 guard telemetry (already persisted; roll up today's runs) --------
-gt = spark.sql(f"""
-    SELECT COUNT(*) AS runs,
-           SUM(changed_name_positions) AS changed_name_positions,
-           SUM(incompatible) AS incompatible,
-           SUM(abstain_unparsed) AS abstain_unparsed,
-           SUM(abstain_cjk) AS abstain_cjk,
-           SUM(curated_holds) AS curated_holds,
-           SUM(would_invalidate) AS would_invalidate,
-           SUM(rebindable) AS rebindable,
-           SUM(realign_tier) AS realign_tier,
-           SUM(legacy_tier) AS legacy_tier,
-           SUM(isolated_holds) AS isolated_holds
-    FROM {GUARD_TELEMETRY_TABLE}
-    WHERE DATE(run_at) = DATE'{RUN_DATE}'
-""").collect()[0]
-add("guard_runs_on_date", None, gt["runs"])
-for k in ["changed_name_positions", "incompatible", "abstain_unparsed",
-          "abstain_cjk", "curated_holds", "would_invalidate", "rebindable",
-          "realign_tier", "legacy_tier", "isolated_holds"]:
-    add("guard_telemetry", k, gt[k])
-
-# COMMAND ----------
-
 # --- Author-list change events (from the events table, so same-day re-runs
 # --- aggregate the full day) ------------------------------------------------
 if not BOOTSTRAP:
@@ -816,32 +491,6 @@ add("stale_seats", "works_missing_seats", fp["works_missing_seats"])
 add("null_reservoir", "seats", fp["null_seats"])
 add("null_reservoir", "seats_match_eligible", fp["null_seats_eligible"])
 add("null_reservoir", "works", fp["works_with_null_seats"])
-
-# COMMAND ----------
-
-# --- Durable-table daily activity ------------------------------------------
-au = spark.sql(f"""
-    SELECT COUNT(*) AS total,
-           SUM(CASE WHEN orcid IS NOT NULL THEN 1 ELSE 0 END) AS with_orcid,
-           SUM(CASE WHEN DATE(created_date) = DATE'{RUN_DATE}' THEN 1 ELSE 0 END) AS created_on_date
-    FROM {AUTHORS_TABLE}
-""").collect()[0]
-add("authors_total", None, au["total"])
-add("authors_with_orcid", None, au["with_orcid"])
-add("authors_created_on_date", None, au["created_on_date"])
-
-wa = spark.sql(f"""
-    SELECT SUM(CASE WHEN DATE(created_at) = DATE'{RUN_DATE}' THEN 1 ELSE 0 END) AS seats_created,
-           SUM(CASE WHEN DATE(updated_at) = DATE'{RUN_DATE}' THEN 1 ELSE 0 END) AS seats_updated
-    FROM {SEATS_TABLE}
-""").collect()[0]
-add("seats_created_on_date", None, wa["seats_created"])
-add("seats_updated_on_date", None, wa["seats_updated"])
-
-add("works_authorships_updated_on_date", None, spark.sql(f"""
-    SELECT COUNT(*) AS c FROM {AUTHORSHIPS_TABLE}
-    WHERE DATE(updated_datetime) = DATE'{RUN_DATE}'
-""").collect()[0]["c"])
 
 # COMMAND ----------
 
@@ -909,31 +558,31 @@ except Exception as e:
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Write (idempotent per snapshot_date)
+# --- Daily seat activity on the durable tables (observer-side: no single
+# --- notebook owns these — MatchAuthors, UpdateWorkAuthors and the curation
+# --- apply all write work_authors) ------------------------------------------
+wa = spark.sql(f"""
+    SELECT SUM(CASE WHEN DATE(created_at) = DATE'{RUN_DATE}' THEN 1 ELSE 0 END) AS seats_created,
+           SUM(CASE WHEN DATE(updated_at) = DATE'{RUN_DATE}' THEN 1 ELSE 0 END) AS seats_updated
+    FROM {SEATS_TABLE}
+""").collect()[0]
+add("seats_created_on_date", None, wa["seats_created"])
+add("seats_updated_on_date", None, wa["seats_updated"])
+
+add("works_authorships_updated_on_date", None, spark.sql(f"""
+    SELECT COUNT(*) AS c FROM {AUTHORSHIPS_TABLE}
+    WHERE DATE(updated_datetime) = DATE'{RUN_DATE}'
+""").collect()[0]["c"])
 
 # COMMAND ----------
 
-seats_version = int(
-    spark.sql(f"DESCRIBE HISTORY {SEATS_TABLE} LIMIT 1").collect()[0]["version"]
-)
+# MAGIC %md
+# MAGIC ## Write (idempotent per snapshot_date, component, source)
 
-schema = StructType([
-    StructField("snapshot_date", DateType(), False),
-    StructField("snapshot_version", LongType(), True),
-    StructField("metric", StringType(), False),
-    StructField("dimension", StringType(), True),
-    StructField("value", LongType(), False),
-])
+# COMMAND ----------
 
-df = (spark.createDataFrame(
-        [(RUN_DATE, seats_version, m, d, v) for m, d, v in rows], schema)
-      .withColumn("computed_at", F.current_timestamp()))
-
-spark.sql(f"DELETE FROM {DST_TABLE} WHERE snapshot_date = DATE'{RUN_DATE}'")
-df.write.format("delta").mode("append").saveAsTable(DST_TABLE)
-
-print(f"done: wrote {len(rows)} metric rows for {RUN_DATE} (bootstrap={BOOTSTRAP})")
+n = emit(spark, COMPONENT, rows, source=SOURCE, snapshot_date=RUN_DATE)
+print(f"done: wrote {n} metric rows for {RUN_DATE} to {METRICS_TABLE} (bootstrap={BOOTSTRAP})")
 
 # COMMAND ----------
 
@@ -944,7 +593,7 @@ print(f"done: wrote {len(rows)} metric rows for {RUN_DATE} (bootstrap={BOOTSTRAP
 
 display(spark.sql(f"""
     SELECT metric, dimension, value
-    FROM {DST_TABLE}
-    WHERE snapshot_date = DATE'{RUN_DATE}'
+    FROM {METRICS_TABLE}
+    WHERE snapshot_date = DATE'{RUN_DATE}' AND component = '{COMPONENT}' AND source = '{SOURCE}'
     ORDER BY metric, (dimension IS NOT NULL), value DESC
 """))

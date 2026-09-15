@@ -4,13 +4,16 @@ resources:
       name: Authorship Daily Metrics
       description: |
         Observation-only daily monitor for the author-matching pipeline
-        (oxjob #640). Snapshots the ephemeral MatchAuthors/UpdateWorkAuthors
-        run-state before the next end2end run overwrites it, diffs a per-work
-        author-list fingerprint to detect list growth/shrinkage/name changes,
-        and appends tall metrics to openalex.authors.authorship_daily_metrics.
-        Writes ONLY monitor-owned tables (authorship_daily_metrics,
+        (oxjob #640, now the observer half of oxjob #1116 Monitoring). Diffs a
+        per-work author-list fingerprint to detect list growth/shrinkage/name
+        changes, tracks the null-author reservoir and stale seats, collects the
+        end2end stage runtimes, and judges a nightly sample. Metrics go to the
+        shared sink openalex.monitoring.metrics (component author_matching);
+        the run-outcome metrics are written by MatchAuthors/UpdateWorkAuthors
+        themselves. Writes ONLY monitor-owned tables (monitoring.metrics,
         work_author_list_fingerprint, work_author_change_events,
-        authorship_monitor_candidates) — never pipeline tables.
+        authorship_monitor_candidates, authorship_daily_quality_sample) —
+        never pipeline tables.
         First run bootstraps the fingerprint for every work (one-time, hours);
         daily runs are incremental over the day's touched works.
       email_notifications:
