@@ -362,7 +362,10 @@ if MODE == "revert_cited":
 # COMMAND ----------
 
 if MODE in ("wave_e", "repoint_citations"):
-    WAVE_E_AUDIT = f"{TARGET}_wave_e_audit"
+    # one audit per cited band, so successive tiers (uncited, then 1-99, then >=100) each get
+    # their own frozen table and the "already ran" guard still bites within a tier
+    WAVE_E_AUDIT = (f"{TARGET}_wave_e_audit" if HOLD_CITED_OVER <= 1
+                    else f"{TARGET}_wave_e_c{HOLD_CITED_OVER}_audit")
 
 if MODE == "wave_e":
     hour = datetime.datetime.utcnow().hour
