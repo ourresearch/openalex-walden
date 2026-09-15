@@ -378,6 +378,11 @@ if MODE == "wave_e":
                   AND t.native_id = x.native_id
       WHERE x.hold_reason = 'non_primary_group_has_identifier'
         AND x.executed_at IS NULL AND x.cited_by_count < {HOLD_CITED_OVER}
+        -- wave E's premise is that the moved group carries a DIFFERENT identifier. An anchor with NO
+        -- doi of its own is in the hold only because a SIBLING in its group had one, and the cited
+        -- sample showed every miss came from that class (Denmark 1960-1969 vs 1960-69; Sweden
+        -- 1981-1991 vs 1982-1991). Costs 3.1% of keys, removes the error class.
+        AND NULLIF(t.merge_key.doi, '') IS NOT NULL
         -- section 2's precedence rule: SAME DOI on 2+ groups -> RETAIN. `stage` only asked whether a
         -- non-primary group carries an identifier, never whether it is the SAME one, so the hold mixes
         -- 25,802 works that are genuinely distinct objects with 13,473 that are one object whose title
