@@ -447,9 +447,14 @@ if MODE == "wave_e":
                         WHERE EXISTS (SELECT 1 FROM {WAVE_E_AUDIT} x WHERE x.old_work_id = m.id
                                       AND (lower(m.doi) = x.anchor_doi OR m.pmid = x.anchor_pmid
                                            OR m.arxiv = x.anchor_arxiv))""").collect()[0].num_affected_rows
-    spark.sql(f"""UPDATE {TARGET} SET executed_at = current_timestamp()
-                  WHERE hold_reason = 'non_primary_group_has_identifier' AND executed_at IS NULL
-                    AND cited_by_count < {HOLD_CITED_OVER}""")
+    # mark ONLY what the audit actually took. The scope excludes same-DOI and no-DOI anchors on the
+    # merits, and a blanket UPDATE on the cited band would mark those as executed without touching them
+    # -- the target would then misreport them as handled and they would vanish from the held set.
+    spark.sql(f"""MERGE INTO {TARGET} t
+                  USING (SELECT DISTINCT provenance, native_id_namespace, native_id FROM {WAVE_E_AUDIT}) a
+                    ON t.provenance = a.provenance AND t.native_id_namespace = a.native_id_namespace
+                   AND t.native_id = a.native_id AND t.executed_at IS NULL
+                  WHEN MATCHED THEN UPDATE SET t.executed_at = current_timestamp()""")
     out = dict(audit_table=WAVE_E_AUDIT, audited=n, pins_deleted=pins,
                title_alias_rows_deleted=ali, id_map_rows_deleted=ids)
     assert pins == n, f"pins {pins} != audited {n}"
