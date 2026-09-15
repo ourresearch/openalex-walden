@@ -20,7 +20,7 @@ resources:
         # metrics are late simply reads as no_data for the night.
         quartz_cron_expression: 0 30 23 * * ?
         timezone_id: UTC
-        pause_status: PAUSED   # unpause after the first manual backfill run is reviewed
+        pause_status: UNPAUSED   # unpaused 2026-09-15 after the findings backfill was reviewed
       parameters:
         - name: snapshot_date
           default: "{{job.start_time.iso_date}}"
