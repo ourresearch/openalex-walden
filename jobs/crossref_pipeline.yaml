@@ -8,26 +8,15 @@ resources:
       name: Crossref
       catalog: openalex
       target: crossref
-      # REFRESH PROFILE (oxjob #1118, 2026-09-15) -- TEMPORARY. Revert to
-      # `serverless: true` / `photon: true` and UNPAUSE jobs/crossref.yaml once the
-      # selective refresh of crossref_parsed + crossref_works lands. photon OFF because
-      # the refresh runs the Pandas-UDF stages (see oxjob #314). arrow 50 (not 100):
-      # crossref_works' UDF stage crashed at 100 on 2026-09-15 with the #880/#911
-      # BrokenPipe signature after 111M rows; development false so DLT retries a flow.
-      serverless: false
-      photon: false
-      clusters:
-        - label: default
-          node_type_id: r5d.8xlarge
-          driver_node_type_id: r5d.8xlarge
-          num_workers: 20
+      serverless: true
+      photon: true
       continuous: false
-      development: false  # TEMPORARY (oxjob #1118 refresh): retries on flow failure
+      development: true
       channel: CURRENT
       configuration:
         environment: prod
         pipelines.clusterShutdown.delay: 300s
-        spark.sql.execution.arrow.maxRecordsPerBatch: "50"  # TEMPORARY (oxjob #1118 refresh); serverless steady state is 100
+        spark.sql.execution.arrow.maxRecordsPerBatch: "100"
       tags:
         environment: prod
         workflow: crossref
