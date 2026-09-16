@@ -90,6 +90,7 @@ metrics writer and a checks file, and nothing else changes.
 | `jobs/monitoring.yaml` | the job: findings (serverless) then report (warehouse), 23:30 UTC |
 | `scripts/monitoring_dryrun.py` | local replay of a component's history through the engine |
 | `scripts/monitoring_render_docs.py` | YAML → `docs/monitoring/<component>.md` |
+| `monitoring/alerts/monitoring_daily_email.json` + `scripts/monitoring_create_alert.py` | the daily email: a SQL alert (v2) over `reports` + `findings`, custom subject/body, 00:05 UTC. Hand-created as its owner (not a bundle resource — DABs alerts must be owned by the deploy principal, which cannot read the tables). Re-run the script to update; edit the JSON, not the UI. |
 
 Tables, all in `openalex.monitoring`: `metrics` (shared sink, liquid-clustered on
 component + date; one delete-then-append slice per writer `source`), `checks` (mirror of

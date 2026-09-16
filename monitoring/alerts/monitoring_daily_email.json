@@ -1,0 +1,35 @@
+{
+  "_note": "Hand-created via the SDK as casey@ourresearch.org (scripts/monitoring_create_alert.py). Not a bundle resource: DABs alerts must be owned by the deploying identity (github-actions-deploy), which has no access to openalex.monitoring or the warehouse, and the bundle-level run_as (terraform_user) is rejected for alerts. Re-run the script to update.",
+  "display_name": "Monitoring daily report",
+  "warehouse_id": "3996dc0a9b183ce3",
+  "query_text": "WITH night AS (\n  SELECT current_date() - INTERVAL 1 DAY AS d\n),\nf AS (\n  SELECT snapshot_date,\n         COUNT(*) AS n_checks,\n         COUNT_IF(status = 'critical') AS n_critical,\n         COUNT_IF(status = 'watch') AS n_watch,\n         COUNT_IF(status IN ('no_data', 'insufficient_history', 'insufficient_n')) AS n_unscored,\n         COALESCE(concat_ws(' · ', collect_list(CASE WHEN status = 'critical' THEN\n           concat(check_id, COALESCE(concat('[', dimension, ']'), ''), ' ', ROUND(value, 3),\n                  CASE WHEN page THEN ' (pages)' ELSE '' END) END)), '(none)') AS criticals,\n         COALESCE(concat_ws(' · ', collect_list(CASE WHEN status = 'watch' THEN\n           concat(check_id, COALESCE(concat('[', dimension, ']'), ''), ' ', ROUND(value, 3)) END)), '(none)') AS watches\n  FROM openalex.monitoring.findings\n  WHERE snapshot_date = (SELECT d FROM night)\n  GROUP BY snapshot_date\n)\nSELECT CAST(night.d AS STRING) AS report_date,\n       COALESCE(r.headline, '(no report row for this night)') AS headline,\n       COALESCE(f.n_checks, 0) AS n_checks,\n       COALESCE(f.n_critical, 0) AS n_critical,\n       COALESCE(f.n_watch, 0) AS n_watch,\n       COALESCE(f.n_unscored, 0) AS n_unscored,\n       COALESCE(f.criticals, '(no findings for this night)') AS criticals,\n       COALESCE(f.watches, '(none)') AS watches,\n       COALESCE(r.anomalies, '') AS anomalies,\n       COALESCE(r.failures, '') AS failures,\n       COALESCE(r.opportunities, '') AS opportunities,\n       concat(CAST(night.d AS STRING), ' · ', COALESCE(f.n_critical, 0), ' critical, ',\n              COALESCE(f.n_watch, 0), ' watch — ', COALESCE(r.headline, 'no report')) AS subject\nFROM night\nLEFT JOIN f ON f.snapshot_date = night.d\nLEFT JOIN openalex.monitoring.reports r ON r.report_date = night.d\n",
+  "evaluation": {
+    "comparison_operator": "NOT_EQUAL",
+    "source": {
+      "name": "subject",
+      "display": "subject"
+    },
+    "threshold": {
+      "value": {
+        "string_value": ""
+      }
+    },
+    "empty_result_state": "TRIGGERED",
+    "notification": {
+      "notify_on_ok": false,
+      "retrigger_seconds": 3600,
+      "subscriptions": [
+        {
+          "user_email": "casey@ourresearch.org"
+        }
+      ]
+    }
+  },
+  "custom_summary": "Monitoring {{QUERY_RESULT_VALUE}}",
+  "custom_description": "{{#QUERY_RESULT_ROWS}}\n<b>{{report_date}}</b> — {{n_checks}} checks: <b>{{n_critical}} critical</b>, {{n_watch}} watch, {{n_unscored}} not scored<br>\n<br>\n<b>CRITICAL</b><br>\n{{criticals}}<br>\n<br>\n<b>WATCH</b><br>\n{{watches}}<br>\n<br>\n<b>{{headline}}</b><br>\n<br>\n<b>Anomalies</b><br>\n{{anomalies}}<br>\n<br>\n<b>Failures</b><br>\n{{failures}}<br>\n<br>\n<b>Opportunities</b><br>\n{{opportunities}}<br>\n{{/QUERY_RESULT_ROWS}}\n<br>\nTables: openalex.monitoring.findings / reports. Checks: monitoring/checks/author_matching.yaml in openalex-walden.\n",
+  "schedule": {
+    "pause_status": "UNPAUSED",
+    "quartz_cron_schedule": "0 5 0 * * ?",
+    "timezone_id": "UTC"
+  }
+}
