@@ -466,11 +466,18 @@ if MODE == "wave_e":
 if MODE == "repoint_citations":
     if not spark.catalog.tableExists(WAVE_E_AUDIT):
         raise Exception(f"{WAVE_E_AUDIT} does not exist: run wave_e first")
+    # Take the work the anchor ACTUALLY landed on (the registry), not whatever work_id_map says: a DOI
+    # can sit on several ids, which both makes the MERGE ambiguous
+    # (DELTA_MULTIPLE_SOURCE_ROW_MATCHING_TARGET_ROW_IN_MERGE) and risks repointing a citation somewhere
+    # the record did not go. GROUP BY guarantees exactly one source row per (old_work_id, doi).
     moved = f"""
-      SELECT DISTINCT x.old_work_id, x.anchor_doi, m.id AS new_work_id
+      SELECT x.old_work_id, x.anchor_doi, MIN(r.work_id) AS new_work_id
       FROM {WAVE_E_AUDIT} x
-      JOIN {MAP} m ON lower(m.doi) = x.anchor_doi
-      WHERE x.anchor_doi IS NOT NULL AND m.id <> x.old_work_id
+      JOIN {REGISTRY} r ON r.provenance = x.provenance
+                       AND r.native_id_namespace = x.native_id_namespace
+                       AND r.native_id = x.native_id
+      WHERE x.anchor_doi IS NOT NULL AND r.work_id IS NOT NULL AND r.work_id <> x.old_work_id
+      GROUP BY x.old_work_id, x.anchor_doi
     """
     plan = one(f"""
       SELECT COUNT(*) AS dois_that_moved, COUNT(DISTINCT old_work_id) AS old_works,
