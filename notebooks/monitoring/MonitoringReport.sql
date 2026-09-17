@@ -7,11 +7,12 @@
 -- MAGIC
 -- MAGIC Input: the night's findings across every component (status, value, baseline, deviation,
 -- MAGIC the check's failure modes) plus the last 7 reports so the narrative has continuity.
--- MAGIC Output: one row in `openalex.monitoring.reports` with a one-line headline and three SHORT
--- MAGIC fields — anomalies, failures, opportunities. Status is never decided here; the engine
--- MAGIC already did that. This step only explains, briefly: the daily email already lists every
--- MAGIC flagged check, so the model's job is the two or three sentences a reader needs on top
--- MAGIC (Casey, 2026-09-17: "it needs to be more concise").
+-- MAGIC Output: one row in `openalex.monitoring.reports` with a one-line headline and two SHORT
+-- MAGIC fields — `attention` (what needs a human today) and `watch` (what to keep an eye on).
+-- MAGIC Status is never decided here; the engine already did that. The daily email shows these
+-- MAGIC two fields per component above a deterministic health line computed by the alert query
+-- MAGIC (Casey, 2026-09-17: not "7 critical, 7 watch" but what needs attention, what to watch,
+-- MAGIC and overall health). The older anomalies/failures/opportunities columns stay NULL.
 -- MAGIC
 -- MAGIC The night is the job's `snapshot_date` parameter (blank = today UTC), same as the findings
 -- MAGIC task, so a backfill or rerun narrates the right night.
@@ -30,9 +31,11 @@ SET VARIABLE night_date = COALESCE(TRY_CAST(NULLIF(TRIM(:snapshot_date), '') AS 
 CREATE TABLE IF NOT EXISTS openalex.monitoring.reports (
   report_date   DATE NOT NULL,
   headline      STRING,
-  anomalies     STRING,
-  failures      STRING,
-  opportunities STRING,
+  attention     STRING,   -- what needs a human today (<= 60 words, or "nothing")
+  watch         STRING,   -- what to keep an eye on (<= 40 words, or "nothing")
+  anomalies     STRING,   -- legacy, NULL since 2026-09-17
+  failures      STRING,   -- legacy
+  opportunities STRING,   -- legacy
   all_clear     BOOLEAN,
   n_critical    INT,
   n_watch       INT,
@@ -75,8 +78,9 @@ quiet AS (
   FROM monitoring_today WHERE status IN ('no_data', 'insufficient_n')
 ),
 history AS (
-  SELECT concat_ws('\n', collect_list(concat(report_date, ': ', headline, '\n  anomalies: ', anomalies,
-           '\n  failures: ', failures, '\n  opportunities: ', opportunities))) AS h
+  SELECT concat_ws('\n', collect_list(concat(report_date, ': ', headline,
+           '\n  attention: ', COALESCE(attention, anomalies, 'none'),
+           '\n  watch: ', COALESCE(watch, 'none')))) AS h
   FROM (SELECT * FROM openalex.monitoring.reports r
         WHERE r.report_date >= night_date - INTERVAL 7 DAYS AND r.report_date < night_date ORDER BY r.report_date)
 ),
@@ -92,14 +96,14 @@ SELECT
     'component against a written checklist; you do not decide status. The reader gets the full list ',
     'of flagged checks next to your text, so do NOT restate it. Write the few sentences they need on top: ',
     'what matters most tonight and why, in the language of the known failure modes.\n\n',
-    'Write four fields as JSON, and keep every one SHORT:\n',
-    '- headline: one line, at most 90 characters, the single most important thing tonight.\n',
-    '- anomalies: at most 60 words. The one or two findings a human should look at first, each with its ',
-    'value against baseline or line, and the matching known failure mode if there is one. Group findings ',
-    'that are plainly one event. No diagnosis beyond the known failure modes; say "cause unknown" if so.\n',
-    '- failures: at most 20 words on checks that did not run or had no data, or exactly "none".\n',
-    '- opportunities: at most 25 words, one concrete suggestion only if tonight''s evidence clearly supports ',
-    'it, or exactly "none". Never propose engineering changes at length.\n',
+    'Write three fields as JSON, and keep every one SHORT:\n',
+    '- headline: one line, at most 80 characters: the state of the system tonight in plain words ',
+    '(e.g. "Author matching healthy; one absorber cluster to check").\n',
+    '- attention: at most 60 words. What needs a human TODAY, from the critical findings (paging ones first): ',
+    'what happened, the value against its line, the matching known failure mode if there is one, and what ',
+    'to look at. Group findings that are plainly one event. If no critical finding, exactly "nothing".\n',
+    '- watch: at most 40 words. From the watch findings and any checks that produced no data: what to keep ',
+    'an eye on and why, grouped. If none, exactly "nothing".\n',
     'Attribute a finding to a tier, source, class or profile ONLY when that appears in the finding''s own ',
     'dimension field; the known_failure_modes text describes PAST incidents and must not be read as ',
     'tonight''s cause. If the data does not say which, say so.\n',
@@ -121,20 +125,19 @@ DELETE FROM openalex.monitoring.reports WHERE report_date = night_date
 -- COMMAND ----------
 
 INSERT INTO openalex.monitoring.reports
-  (report_date, headline, anomalies, failures, opportunities, all_clear, n_critical, n_watch, n_checks,
+  (report_date, headline, attention, watch, all_clear, n_critical, n_watch, n_checks,
    findings_json, model, prompt_chars, created_at)
 SELECT night_date,
        get_json_object(out, '$.headline'),
-       get_json_object(out, '$.anomalies'),
-       get_json_object(out, '$.failures'),
-       get_json_object(out, '$.opportunities'),
+       get_json_object(out, '$.attention'),
+       get_json_object(out, '$.watch'),
        n_critical = 0 AND n_watch = 0,
        n_critical, n_watch, n_checks, findings_json,
        'databricks-claude-opus-4-8', LENGTH(prompt), current_timestamp()
 FROM (
   SELECT p.*, ai_query(
     'databricks-claude-opus-4-8', prompt,
-    responseFormat => '{"type": "json_schema", "json_schema": {"name": "report", "schema": {"type": "object", "properties": {"headline": {"type": "string"}, "anomalies": {"type": "string"}, "failures": {"type": "string"}, "opportunities": {"type": "string"}}, "required": ["headline", "anomalies", "failures", "opportunities"]}, "strict": true}}'
+    responseFormat => '{"type": "json_schema", "json_schema": {"name": "report", "schema": {"type": "object", "properties": {"headline": {"type": "string"}, "attention": {"type": "string"}, "watch": {"type": "string"}}, "required": ["headline", "attention", "watch"]}, "strict": true}}'
   ) AS out
   FROM monitoring_prompt p
 )
