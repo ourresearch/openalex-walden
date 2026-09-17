@@ -590,11 +590,32 @@ def pdf_backfill():
             .drop("_source_pdf_id_for_filter", "_grobid_uuid_for_filter", "_invalid_grobid_uuid")
     )
 
+def _removed_pdf_urls():
+    # PDF URLs where a fresh taxicab fetch found no file: the URL now resolves to a
+    # host-verified paywall/abstract shape or a 404 (openalex.pdf.pdf_removed, oxjob #1105).
+    # The row keeps its parse but no longer attests OA. Blocks, errors and interstitials
+    # never enter that table, so a bot block cannot strip OA from a real file (oxjob #994).
+    # Defensive read: empty set if the table is absent.
+    try:
+        return (
+            spark.read.table("openalex.pdf.pdf_removed")
+                .select(col("pdf_url").alias("native_id"), lit(True).alias("_pdf_removed"))
+                .dropDuplicates(["native_id"])
+        )
+    except Exception:
+        return spark.createDataFrame([], "native_id STRING, _pdf_removed BOOLEAN")
+
+
 @dlt.table
 def pdf_combined():
     return (
         dlt.read_stream("pdf_parse").unionByName(dlt.read_stream("pdf_backfill"))
-        .withColumn("is_oa", col("is_oa") & ~_front_matter_url("native_id"))
+        .join(_removed_pdf_urls(), "native_id", "left")
+        .withColumn(
+            "is_oa",
+            col("is_oa") & ~_front_matter_url("native_id") & ~coalesce(col("_pdf_removed"), lit(False)),
+        )
+        .drop("_pdf_removed")
     )
 
 # COMMAND ----------
