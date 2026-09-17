@@ -5,13 +5,25 @@
 -- MAGIC Runs on a SQL WAREHOUSE (cluster-side `ai_query` on DBR 16.4 injects a `temperature`
 -- MAGIC parameter the opus endpoint rejects — same reason as `AuthorshipQualityJudgeApply`).
 -- MAGIC
--- MAGIC Input: today's findings across every component (status, value, baseline, deviation,
+-- MAGIC Input: the night's findings across every component (status, value, baseline, deviation,
 -- MAGIC the check's failure modes) plus the last 7 reports so the narrative has continuity.
--- MAGIC Output: one row in `openalex.monitoring.reports` with three sections — anomalies,
--- MAGIC failures, opportunities — and a one-line headline. Status is never decided here; the
--- MAGIC engine already did that. This step only explains.
+-- MAGIC Output: one row in `openalex.monitoring.reports` with a one-line headline and three SHORT
+-- MAGIC fields — anomalies, failures, opportunities. Status is never decided here; the engine
+-- MAGIC already did that. This step only explains, briefly: the daily email already lists every
+-- MAGIC flagged check, so the model's job is the two or three sentences a reader needs on top
+-- MAGIC (Casey, 2026-09-17: "it needs to be more concise").
 -- MAGIC
+-- MAGIC The night is the job's `snapshot_date` parameter (blank = today UTC), same as the findings
+-- MAGIC task, so a backfill or rerun narrates the right night.
 -- MAGIC Idempotent per (report_date): delete-then-insert. Cost: one prompt of a few KB — cents.
+
+-- COMMAND ----------
+
+DECLARE OR REPLACE VARIABLE night_date DATE DEFAULT current_date()
+
+-- COMMAND ----------
+
+SET VARIABLE night_date = COALESCE(TRY_CAST(NULLIF(TRIM(:snapshot_date), '') AS DATE), current_date())
 
 -- COMMAND ----------
 
@@ -38,7 +50,7 @@ SELECT f.*, c.failure_modes
 FROM openalex.monitoring.findings f
 LEFT JOIN openalex.monitoring.checks c
   ON c.component = f.component AND c.check_id = f.check_id
-WHERE f.snapshot_date = current_date()
+WHERE f.snapshot_date = night_date
 
 -- COMMAND ----------
 
@@ -65,8 +77,8 @@ quiet AS (
 history AS (
   SELECT concat_ws('\n', collect_list(concat(report_date, ': ', headline, '\n  anomalies: ', anomalies,
            '\n  failures: ', failures, '\n  opportunities: ', opportunities))) AS h
-  FROM (SELECT * FROM openalex.monitoring.reports
-        WHERE report_date >= current_date() - INTERVAL 7 DAYS ORDER BY report_date)
+  FROM (SELECT * FROM openalex.monitoring.reports r
+        WHERE r.report_date >= night_date - INTERVAL 7 DAYS AND r.report_date < night_date ORDER BY r.report_date)
 ),
 sections AS (
   SELECT concat_ws('\n', collect_list(concat('- [', component, '] ', section))) AS s
@@ -76,17 +88,21 @@ SELECT
   counts.n_checks, counts.n_critical, counts.n_watch,
   COALESCE(flagged.j, '[]') AS findings_json,
   concat(
-    'You are the OpenAlex Walden daily monitor. Every night, deterministic checks ',
-    'score each component of the system against a written checklist. Your job is to READ the ',
-    'results and write the morning report. You do not decide status; the checks did. You explain, ',
-    'connect today to the recent history, and point at what a human should look at first.\n\n',
-    'Write four fields as JSON: headline (one line, <= 120 chars), anomalies (things that deviated ',
-    'from baseline and what they most likely mean, grouped, most severe first; name component, check, ',
-    'value vs baseline), failures (things that did not run or did not produce data), opportunities ',
-    '(improvements worth a job: a check to add, a threshold to tune, a root cause worth fixing — ',
-    'only if the evidence supports it). Use plain prose, short paragraphs, no bullet spam. ',
-    'If nothing is flagged, headline says all clear with the counts and the other fields say so in one line. ',
-    'Never invent numbers not in the input. When a finding matches a known failure mode, say so.\n\n',
+    'You are the OpenAlex Walden nightly monitor. Deterministic checks have already scored each ',
+    'component against a written checklist; you do not decide status. The reader gets the full list ',
+    'of flagged checks next to your text, so do NOT restate it. Write the few sentences they need on top: ',
+    'what matters most tonight and why, in the language of the known failure modes.\n\n',
+    'Write four fields as JSON, and keep every one SHORT:\n',
+    '- headline: one line, at most 90 characters, the single most important thing tonight.\n',
+    '- anomalies: at most 60 words. The one or two findings a human should look at first, each with its ',
+    'value against baseline or line, and the matching known failure mode if there is one. Group findings ',
+    'that are plainly one event. No diagnosis beyond the known failure modes; say "cause unknown" if so.\n',
+    '- failures: at most 20 words on checks that did not run or had no data, or exactly "none".\n',
+    '- opportunities: at most 25 words, one concrete suggestion only if tonight''s evidence clearly supports ',
+    'it, or exactly "none". Never propose engineering changes at length.\n',
+    'Plain prose, no bullets, no headings, no preamble. If nothing is flagged, headline says all clear ',
+    'with the counts and the other fields are "none". Never invent numbers not in the input. ',
+    'Several components may appear; name the component when more than one is flagged.\n\n',
     'CHECKLIST SECTIONS IN SCOPE TODAY:\n', COALESCE(sections.s, '(none)'), '\n\n',
     'COUNTS: ', counts.n_checks, ' checks, ', counts.n_critical, ' critical, ', counts.n_watch, ' watch.\n\n',
     'FLAGGED FINDINGS (critical + watch):\n', COALESCE(flagged.j, '[]'), '\n\n',
@@ -97,14 +113,14 @@ FROM counts, flagged, quiet, history, sections
 
 -- COMMAND ----------
 
-DELETE FROM openalex.monitoring.reports WHERE report_date = current_date()
+DELETE FROM openalex.monitoring.reports WHERE report_date = night_date
 
 -- COMMAND ----------
 
 INSERT INTO openalex.monitoring.reports
   (report_date, headline, anomalies, failures, opportunities, all_clear, n_critical, n_watch, n_checks,
    findings_json, model, prompt_chars, created_at)
-SELECT current_date(),
+SELECT night_date,
        get_json_object(out, '$.headline'),
        get_json_object(out, '$.anomalies'),
        get_json_object(out, '$.failures'),
@@ -123,4 +139,4 @@ FROM (
 -- COMMAND ----------
 
 SELECT report_date, headline, n_critical, n_watch, n_checks, prompt_chars
-FROM openalex.monitoring.reports WHERE report_date = current_date()
+FROM openalex.monitoring.reports WHERE report_date = night_date
