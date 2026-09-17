@@ -54,3 +54,7 @@ resources:
           default: "true"
         - name: source_id
           default: ""
+        # Backfill works for a source list (oxjob #1205): a list id ("doyens") or "*".
+        # Run with is_full_sync=false. See the widget comment in sync_works.
+        - name: listed_in
+          default: ""
