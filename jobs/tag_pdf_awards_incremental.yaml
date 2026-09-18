@@ -5,7 +5,7 @@ resources:
       schedule:
         quartz_cron_expression: 0 0 6 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: Tag_Pdf_Awards_Incremental
           notebook_task:
