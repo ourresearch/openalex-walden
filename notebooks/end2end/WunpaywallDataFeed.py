@@ -12,9 +12,10 @@ dbutils.widgets.dropdown("mode", "daily", ["daily", "weekly"], "Export Mode")
 mode = dbutils.widgets.get("mode")
 print(f"mode is {mode}")
 
-# safety — weekly accumulates ~7x daily volume
-DAILY_LARGE_RECORD_COUNT = 1500000
-WEEKLY_LARGE_RECORD_COUNT = DAILY_LARGE_RECORD_COUNT * 7
+# safety ceilings. Sized off observed legitimate maxima (daily 12.8M, weekly 31.1M) against a
+# ~178M-row corpus. Weekly is NOT 7x daily: both are driven by the same discrete corpus waves.
+DAILY_LARGE_RECORD_COUNT = 20000000
+WEEKLY_LARGE_RECORD_COUNT = 45000000
 LARGE_RECORD_COUNT = WEEKLY_LARGE_RECORD_COUNT if mode == "weekly" else DAILY_LARGE_RECORD_COUNT
 dbutils.widgets.dropdown("wunpaywall_guard_override", "false", ["false", "true"], "Wunpaywall Guard Override")
 wunpaywall_guard_override = dbutils.widgets.get("wunpaywall_guard_override").lower() == "true"
