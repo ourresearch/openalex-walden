@@ -25,12 +25,13 @@ resources:
               # PDFs for works taxicab actually scraped (live pipeline). Drained
               # the schedule-blocking ~31h runs. Backfill drained deliberately elsewhere.
               only_scrape_new: "true"
-              # oxjob #1118: Cairn labels book-chapter article pages as content_type='pdf'
-              # in landing_page_works, so this source queued 24,996 of them on 2026-09-20
-              # for 0 PDFs while holding the per-host budget the working
-              # /article/<id>/pdf route needs. Cairn PDFs are harvested by the #1118
-              # rescrape waves instead.
-              exclude_url_regex: "cairn\\.info"
+              # oxjob #1118: Cairn's landing_page_works rows label article LANDING pages
+              # (journal and book alike) as content_type='pdf', so this source fetched
+              # 143,373 Cairn URLs on 2026-09-20 for 0 PDFs. Skip Cairn URLs that are not
+              # the working /article/<id>/pdf route -- that route stays eligible, so this
+              # keeps working once the stored URLs are corrected. Also drops the retired
+              # load_pdf.php form, which 520s for every client.
+              exclude_url_regex: "cairn\\.info/(?!.*/pdf)"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -67,4 +68,4 @@ resources:
         - name: only_scrape_new
           default: "true"
         - name: exclude_url_regex
-          default: "cairn\\.info"
+          default: "cairn\\.info/(?!.*/pdf)"
