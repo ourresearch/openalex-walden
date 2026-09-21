@@ -10,8 +10,13 @@ resources:
         works-vectors-v1 (2.06 TB of a 3.24 TB cluster). Add a third data node before the
         full sync; remove it once v1 is dropped after the flip.
 
-        Full sync: ~473.6M docs, ~6-8 hours, checkpointed (safe to re-run to resume).
+        Full sync: ~473.6M docs, checkpointed (safe to re-run to resume).
         Uses its own staging/checkpoint tables so the v1 sync can still run alongside.
+
+        SIZING: 8 workers, not the v1 job's 2. work_embeddings_qwen3 is 1.87 TB (vs 418 GB for
+        the gte work_embeddings_v2 the v1 job was sized for), and the staging write shuffles all
+        of it. On 2 workers the first attempt (run 572997100030065) filled both workers' elastic
+        disks (4.2 TB each, 46 GB free) and stalled at 0.7% CPU for 3 h. Do not shrink this back.
       email_notifications:
         on_failure:
           - jason@ourresearch.org
@@ -41,7 +46,7 @@ resources:
             enable_elastic_disk: true
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-            num_workers: 2
+            num_workers: 8
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
