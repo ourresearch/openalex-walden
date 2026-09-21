@@ -31,13 +31,6 @@ resources:
               # the working /article/<id>/pdf route -- that route stays eligible. Also
               # drops the retired load_pdf.php form, which 520s for every client.
               exclude_url_regex: "cairn\\.info/(?!.*/pdf)"
-              # oxjob #1118: the ~49K article-pdf URLs the rescrape waves surfaced up to
-              # 2026-09-21 are skipped as backlog (under the 09-20/21 load that route
-              # returned 500 on ~90% of fetches and held a run for 22h); Cairn landing
-              # pages created after the cutoff are fetched normally. Inert once the
-              # 30-day lookback passes the cutoff (~2026-10-21); safe to remove then.
-              exclude_backlog_regex: "cairn\\.info"
-              exclude_backlog_before: "2026-09-21T12:00:00"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -75,7 +68,3 @@ resources:
           default: "true"
         - name: exclude_url_regex
           default: "cairn\\.info/(?!.*/pdf)"
-        - name: exclude_backlog_regex
-          default: "cairn\\.info"
-        - name: exclude_backlog_before
-          default: "2026-09-21T12:00:00"
