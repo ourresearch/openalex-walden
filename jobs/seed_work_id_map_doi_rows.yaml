@@ -1,0 +1,48 @@
+resources:
+  jobs:
+    Seed_Work_Id_Map_Doi_Rows:
+      name: Seed Work Id Map Doi Rows
+      description: |
+        oxjob #1256: make work_id_map's DOI rows agree with the registry. For every cleaned DOI
+        carried by a pinned anchor of the chosen provenances, the map must have a row and MIN(id)
+        over that DOI must be the anchor's work; otherwise MapWorkIds mints a duplicate for every
+        record that arrives with the DOI and parse_work_references cannot resolve citations to it
+        (24.35M crossref anchors had no DOI row on 2026-09-21, 827K pointed at a ghost).
+        Insert-only plus an audited delete + reinsert of the wrong rows. Moves no anchors, no
+        citations: the ghost repoint is RepointWorkIds wave_e + repoint_citations afterwards.
+
+        MANUAL TRIGGER ONLY.
+          mode=stage    census of live anchors vs the map into target_table
+          mode=dry_run  what execute would do
+          mode=execute  confirm=yes, outside 04:00-08:00 UTC; freezes <target>_audit first; runs once per target
+          mode=verify   the morning after: live re-census, example DOIs
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode
+          default: "stage"
+        - name: provenances
+          default: "crossref"
+        - name: apply
+          default: "insert,repair"
+        - name: target_table
+          default: "openalex.works.oxjob1256_map_doi_seed_target"
+        - name: confirm
+          default: "no"
+      tasks:
+        - task_key: seed_work_id_map_doi_rows
+          notebook_task:
+            notebook_path: notebooks/maintenance/SeedWorkIdMapDoiRows
+            source: GIT
+            base_parameters:
+              mode: "{{job.parameters.mode}}"
+              provenances: "{{job.parameters.provenances}}"
+              apply: "{{job.parameters.apply}}"
+              target_table: "{{job.parameters.target_table}}"
+              confirm: "{{job.parameters.confirm}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
