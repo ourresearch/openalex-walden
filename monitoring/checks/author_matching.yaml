@@ -230,6 +230,18 @@ sections:
         expr: new_authors_minted[from_ambiguous] / new_authors_minted
         rule: relative
         failure_modes: baseline ~78%
+      - id: mint_dup_holder
+        title: mints whose ORCID an older profile already held
+        expr: new_authors_minted[dup_of_existing_holder]
+        rule: absolute
+        missing_as_zero: true
+        watch_above: 50
+        critical_above: 1000
+        page: true
+        failure_modes: >
+          the ORCID tier's holder lookup is stale or wrong: 2026-07-15/16 minted 59K same-ORCID profiles in
+          two nights unseen. Before oxjob #444 the 12:21 UTC authors_for_matching rebuild racing this run
+          leaked ~40/night; the tier now also reads openalex.authors.authors, so expect ~0.
       - id: splinter_rate
         title: judged splinter rate (arm B candidate pick, 7-day rolling)
         expr: judge_arm_b[candidate_pick] / (judge_arm_b[candidate_pick] + judge_arm_b[none_correct] + judge_arm_b[cannot_determine])
