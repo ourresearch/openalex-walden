@@ -1,5 +1,25 @@
 # OpenAlex Walden
 
+## Guardrails pre-flight: never let the 05:00 UTC run be the first to see a bulk change
+
+`Walden End 2 End` runs `notebooks/end2end/Guardrails` after `CreateWorksEnriched`. Check 1 fails
+the run when more than **7.5M** `openalex_works` rows carry this run's `updated_date` stamp, and a
+failure skips the entire publish path (ES sync, Full_Snapshot, Wunpaywall, Lakebase, deleted-works
+tracking). The Delta write has already happened, so the data is there and nothing publishes; every
+job waiting on "after the nightly" loses a day until someone reruns with `guardrails_override=true`.
+It has tripped on intended work four times (2026-06-25 corresponding-institution backfill, 07-22
+authorships propagation, 08-21 content-hash wave, 09-21 `institution_ancestors` rollup, #1265).
+
+Before shipping anything that feeds `CreateWorkAuthorships` / `CreateWorksEnriched` (institution
+ancestors, author ids, affiliations, topics, locations, types): estimate how many works get a new
+content hash; a small entity-side change can re-stamp tens of millions of works. If it is anywhere
+near 7.5M, hand-run End 2 End yourself with `guardrails_override=true` while awake and say so in
+#dev, or ship in the morning; do not leave it for the scheduled run. Over ~10M also crosses the ES
+mega-sync threshold (replicas dropped). The override flags are per consequence class
+(`guardrails_override`, `deleted_works_guard_override`, `deleted_locations_guard_override`,
+`wunpaywall_guard_override`); bypass only the one that fired. Morning after any walden ship, check
+the End 2 End result before reading any "after the nightly" acceptance test.
+
 ## Landing Page & PDF Integration
 
 Landing page and PDF data get merged into crossref/repo records at two pipeline stages:
