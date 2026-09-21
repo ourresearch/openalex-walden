@@ -38,12 +38,18 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("provenances", "crossref")
 dbutils.widgets.text("apply", "insert,repair")
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_map_doi_seed_target")
+dbutils.widgets.text("hold_cited_over", "1")
 dbutils.widgets.text("confirm", "no")
 
 MODE = dbutils.widgets.get("mode")
 PROVENANCES = [p.strip() for p in dbutils.widgets.get("provenances").split(",") if p.strip()]
 APPLY = [a.strip() for a in dbutils.widgets.get("apply").split(",") if a.strip()]
 TARGET = dbutils.widgets.get("target_table")
+# A repair whose displaced id is cited >= this many times is HELD: citations followed the map row to the
+# ghost (stage 2026-09-21: 24,712 cites on repo-only W4213439731 vs 1,390 on the crossref anchor), so
+# re-pointing the DOI alone would send new citations to the anchor while the old ones stay on the ghost.
+# Those pairs need the merge + work_references UPDATE (RepointWorkIds wave_e / repoint_citations), not a seed.
+HOLD_CITED_OVER = int(dbutils.widgets.get("hold_cited_over"))
 CONFIRM = dbutils.widgets.get("confirm") == "yes"
 AUDIT = f"{TARGET}_audit"
 
@@ -138,7 +144,12 @@ if MODE == "stage":
 
 if MODE in ("dry_run", "execute"):
     apply_list = ", ".join(f"'{a}'" for a in APPLY)
-    scope = f"{TARGET} t WHERE t.action IN ({apply_list}) AND t.executed_at IS NULL"
+    scope = (f"{TARGET} t WHERE t.action IN ({apply_list}) AND t.executed_at IS NULL "
+             f"AND COALESCE(t.displaced_cited_by_count, 0) < {HOLD_CITED_OVER}")
+    held = one(f"""SELECT COUNT(*) AS repairs_held_displaced_id_cited, SUM(displaced_cited_by_count) AS cites_on_held_ghosts
+                   FROM {TARGET} t WHERE t.action = 'repair' AND t.executed_at IS NULL
+                   AND COALESCE(t.displaced_cited_by_count, 0) >= {HOLD_CITED_OVER}""")
+    print({**held, "hold_cited_over": HOLD_CITED_OVER})
     plan = one(f"""
         SELECT SUM(CASE WHEN t.action = 'insert' THEN 1 ELSE 0 END) AS rows_to_insert_new,
                SUM(CASE WHEN t.action = 'repair' THEN 1 ELSE 0 END) AS dois_to_repair,

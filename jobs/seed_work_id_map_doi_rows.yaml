@@ -13,7 +13,7 @@ resources:
 
         MANUAL TRIGGER ONLY.
           mode=stage    census of live anchors vs the map into target_table
-          mode=dry_run  what execute would do
+          mode=dry_run  what execute would do; repairs whose displaced id is cited >= hold_cited_over are held
           mode=execute  confirm=yes, outside 04:00-08:00 UTC; freezes <target>_audit first; runs once per target
           mode=verify   the morning after: live re-census, example DOIs
       max_concurrent_runs: 1
@@ -26,6 +26,8 @@ resources:
           default: "insert,repair"
         - name: target_table
           default: "openalex.works.oxjob1256_map_doi_seed_target"
+        - name: hold_cited_over
+          default: "1"
         - name: confirm
           default: "no"
       tasks:
@@ -38,6 +40,7 @@ resources:
               provenances: "{{job.parameters.provenances}}"
               apply: "{{job.parameters.apply}}"
               target_table: "{{job.parameters.target_table}}"
+              hold_cited_over: "{{job.parameters.hold_cited_over}}"
               confirm: "{{job.parameters.confirm}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
