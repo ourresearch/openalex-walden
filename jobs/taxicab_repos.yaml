@@ -27,11 +27,14 @@ resources:
               # once the trailing window passes it, then inert. Safe to remove later.
               ingested_after: "2026-07-01T13:00:00"
               # oxjob #1118: the forced full re-harvest of the Cairn OAI endpoint
-              # (asswjsx35xuxkrfsyfwn, 2026-09-19/20) re-stamped ~585K repo_works rows,
-              # and this job spent 2026-09-20/21 fetching their DataDome-protected landing
-              # pages at 10/host while every scheduled run was skipped. Skip Cairn here;
-              # Cairn fetches are driven deliberately by the #1118 rescrape waves.
-              exclude_url_regex: "cairn\\.info"
+              # (asswjsx35xuxkrfsyfwn) re-stamped 585K repo_works rows between 2026-09-19
+              # 16:00 and 09-20 10:00 UTC, and this job spent 09-20/21 fetching their
+              # DataDome-protected landing pages at 10/host while every scheduled run was
+              # skipped. Skip Cairn rows from before the cutoff; Cairn records ingested
+              # after it are fetched normally. Inert once the 3-day lookback passes the
+              # cutoff (~2026-09-24); safe to remove then.
+              exclude_backlog_regex: "cairn\\.info"
+              exclude_backlog_before: "2026-09-21T12:00:00"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -67,5 +70,7 @@ resources:
           default: "repo_only"
         - name: ingested_after
           default: "2026-07-01T13:00:00"
-        - name: exclude_url_regex
+        - name: exclude_backlog_regex
           default: "cairn\\.info"
+        - name: exclude_backlog_before
+          default: "2026-09-21T12:00:00"
