@@ -2546,7 +2546,7 @@ def match_affiliation_to_institution_ids(aff_string):
                                                     'Université-Sorbonne','Sorbonne-Université','Paris-Sorbonne University',
                                                     'Sorbonne Université','Sorbonne université',
                                                     'Paris Sorbonne University','Pierre-and-Marie-Curie University',
-                                                    'Pierre et Marie Curie','Pitié-Salpêtrière','Pitié Salpêtrière']):
+                                                    'Pierre et Marie Curie']):
                 if not any(word in aff_string for word in ['Université-Sorbonne-Paris','Panthéon-Sorbonne University',
                                                         'Panthéon-Sorbonne University','Université Sorbonne-Nouvelle',
                                                         'Université Sorbonne Nouvelle','New Sorbonne University']):
@@ -4899,8 +4899,8 @@ def process_current_affiliation_with_ids(current_affs, aff_string):
 
     Examples
     --------
-    >>> process_current_affiliation_with_ids([-1, 4210086685], "AP-HP Sorbonne University")
-    [4210086685, 39804081]
+    >>> process_current_affiliation_with_ids([-1, 4210086685], "Hôpital Armand-Trousseau, AP-HP")
+    [4210086685]
 
     >>> process_current_affiliation_with_ids([88155538], "Universidad Pública de Navarra")
     [175051016]
@@ -4908,11 +4908,6 @@ def process_current_affiliation_with_ids(current_affs, aff_string):
 
     if (len(current_affs) > 1) & (-1 in current_affs):
         current_affs.remove(-1)
-
-    # Sorbonne Hospitals
-    if any(inst in current_affs for inst in [4210086685,4210166768,4210134887,4210153132,4210090185,
-                                             4210102928,4210121705]):
-        current_affs.append(39804081)
 
     # International Council for the Exploration of the Sea
     if 282179226 in current_affs:
