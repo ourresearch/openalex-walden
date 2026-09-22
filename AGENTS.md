@@ -19,6 +19,8 @@ mega-sync threshold (replicas dropped). The override flags are per consequence c
 (`guardrails_override`, `deleted_works_guard_override`, `deleted_locations_guard_override`,
 `wunpaywall_guard_override`); bypass only the one that fired. Morning after any walden ship, check
 the End 2 End result before reading any "after the nightly" acceptance test.
+Step-by-step for the overnight override (front-load the upstream job, run-now JSON, cancel the
+queued schedule, morning checks): `docs/runbooks/end2end-guardrails-override.md`.
 
 ## Landing Page & PDF Integration
 
