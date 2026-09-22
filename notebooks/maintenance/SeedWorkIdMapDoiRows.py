@@ -156,11 +156,18 @@ if MODE in ("dry_run", "execute"):
                COUNT(DISTINCT t.anchor_work_id) AS anchor_works,
                SUM(CASE WHEN t.action = 'repair' AND t.displaced_cited_by_count > 0 THEN 1 ELSE 0 END) AS repairs_where_displaced_id_is_cited
         FROM {scope}""")
+    # A displaced id with no pin in the registry is a dead work (merged away or deleted; 743K of the 866K
+    # repairs on 2026-09-21): its row is dropped outright, other keys included -- a dead id can never be a
+    # correct verdict (TrackDeletedWorks policy: a dead id never resolves again). Live ids keep their
+    # pmid / arxiv / title_author verdicts and lose only the DOI.
     to_delete = one(f"""
         SELECT COUNT(*) AS map_rows_to_delete,
-               SUM(CASE WHEN m.pmid IS NOT NULL OR m.arxiv IS NOT NULL OR m.title_author IS NOT NULL THEN 1 ELSE 0 END) AS rows_reinserted_without_doi,
+               SUM(CASE WHEN p.work_id IS NULL THEN 1 ELSE 0 END) AS rows_dropped_dead_id,
+               SUM(CASE WHEN p.work_id IS NOT NULL
+                         AND (m.pmid IS NOT NULL OR m.arxiv IS NOT NULL OR m.title_author IS NOT NULL) THEN 1 ELSE 0 END) AS rows_reinserted_without_doi,
                COUNT(DISTINCT m.id) AS ids_losing_this_doi
         FROM {MAP} m
+        LEFT JOIN (SELECT DISTINCT work_id FROM {REGISTRY} WHERE work_id IS NOT NULL) p ON p.work_id = m.id
         WHERE EXISTS (SELECT 1 FROM {scope} AND t.action = 'repair'
                       AND t.doi_clean = {CLEAN.format(col='m.doi')})""")
     print({**plan, **to_delete})
@@ -187,12 +194,13 @@ if MODE == "execute":
 
     t0 = time.time()
     spark.sql(f"""CREATE TABLE {AUDIT} AS
-                  SELECT m.*, current_timestamp() AS deleted_at
+                  SELECT m.*, (p.work_id IS NOT NULL) AS id_is_live, current_timestamp() AS deleted_at
                   FROM {MAP} m
+                  LEFT JOIN (SELECT DISTINCT work_id FROM {REGISTRY} WHERE work_id IS NOT NULL) p ON p.work_id = m.id
                   WHERE EXISTS (SELECT 1 FROM {scope} AND t.action = 'repair'
                                 AND t.doi_clean = {CLEAN.format(col='m.doi')})""")
-    audited = one(f"SELECT COUNT(*) AS n FROM {AUDIT}")["n"]
-    print(f"audit frozen: {audited:,} map rows -> {AUDIT}")
+    audited = one(f"SELECT COUNT(*) AS n, SUM(CASE WHEN id_is_live THEN 0 ELSE 1 END) AS dead FROM {AUDIT}")
+    print(f"audit frozen: {audited['n']:,} map rows ({audited['dead']:,} on dead ids) -> {AUDIT}")
 
     if "repair" in APPLY:
         spark.sql(f"""DELETE FROM {MAP} m
@@ -201,8 +209,8 @@ if MODE == "execute":
         spark.sql(f"""INSERT INTO {MAP} (id, doi, pmid, arxiv, title_author, created_date, updated_date)
                       SELECT id, NULL, pmid, arxiv, title_author, created_date, current_timestamp()
                       FROM {AUDIT}
-                      WHERE pmid IS NOT NULL OR arxiv IS NOT NULL OR title_author IS NOT NULL""")
-        print(f"repair: deleted {audited:,} rows, re-inserted their non-DOI verdicts")
+                      WHERE id_is_live AND (pmid IS NOT NULL OR arxiv IS NOT NULL OR title_author IS NOT NULL)""")
+        print(f"repair: deleted {audited['n']:,} rows, re-inserted the non-DOI verdicts of the live ids")
 
     spark.sql(f"""INSERT INTO {MAP} (id, doi, pmid, arxiv, title_author, created_date, updated_date)
                   SELECT t.anchor_work_id, t.doi, NULL, NULL, NULL, current_date(), current_timestamp()
