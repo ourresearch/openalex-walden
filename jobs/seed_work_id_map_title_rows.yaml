@@ -1,0 +1,43 @@
+resources:
+  jobs:
+    Seed_Work_Id_Map_Title_Rows:
+      name: Seed Work Id Map Title Rows
+      description: |
+        oxjob #1256: register every title_author a bound anchor carries as its own title-only row in
+        work_id_map (the map is a registry of identifier→work bindings, many rows per work). Backfill
+        of the stock behind the identical-key duplicate leak: 80.7M pinned (work, title_author) pairs
+        the map lacked on 2026-09-22; MapWorkIds registers the nightly increment itself since walden
+        3631b877. Insert-only; moves no anchors, citations or works.
+
+        MANUAL TRIGGER ONLY.
+          mode=stage    missing bindings into target_table, with each key's distinct-id count
+          mode=dry_run  what execute would insert; include_blocked_keys=no leaves out pairs that push a key past n_ids 3
+          mode=execute  confirm=yes, outside 04:00-08:00 UTC; runs once per target
+          mode=verify   the morning after: live re-census (expect ~0 missing)
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode
+          default: "stage"
+        - name: target_table
+          default: "openalex.works.oxjob1256_map_title_seed_target"
+        - name: include_blocked_keys
+          default: "yes"
+        - name: confirm
+          default: "no"
+      tasks:
+        - task_key: seed_work_id_map_title_rows
+          notebook_task:
+            notebook_path: notebooks/maintenance/SeedWorkIdMapTitleRows
+            source: GIT
+            base_parameters:
+              mode: "{{job.parameters.mode}}"
+              target_table: "{{job.parameters.target_table}}"
+              include_blocked_keys: "{{job.parameters.include_blocked_keys}}"
+              confirm: "{{job.parameters.confirm}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
