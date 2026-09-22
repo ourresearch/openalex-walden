@@ -58,3 +58,7 @@ resources:
         # Run with is_full_sync=false. See the widget comment in sync_works.
         - name: listed_in
           default: ""
+        # Backfill works with a non-empty x_sdgs list (oxjob #1300, shadow Jev-head SDG field):
+        # "true", with is_full_sync=false and the other selectors empty.
+        - name: x_sdgs
+          default: "false"
