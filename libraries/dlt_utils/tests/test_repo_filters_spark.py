@@ -74,3 +74,42 @@ def test_figshare_component_carve(spark):
     assert kept == sorted(
         [f"oai:figshare.com:article/{i}" for i in (5, 6, 7, 8, 9, 10)]
         + ["oai:ojs.example.org:article/11", "oai:tandfonline.example:12", "NULL", "oai:other.org:13"])
+
+
+TITLE_SCHEMA = StructType([
+    StructField("native_id", StringType()), StructField("endpoint_id", StringType()),
+    StructField("title", StringType()),
+    StructField("set_spec", ArrayType(StringType())),
+    StructField("ids", ArrayType(StructType([
+        StructField("id", StringType()), StructField("namespace", StringType()),
+        StructField("relationship", StringType())]))),
+    StructField("_change_type", StringType()),
+])
+
+
+def test_cairn_paratext_title_carve(spark):
+    # oxjob #1311: the Spark predicate must agree with is_paratext_title() on the same strings.
+    from openalex.dlt.repo_filters import is_paratext_title
+    cairn = "asswjsx35xuxkrfsyfwn"
+    titles = [
+        "Pages de début", "Pages de fin", "  Bibliographie ", "PRÉFACE", "Préfacé", "Avant-Propos",
+        "Index des noms de personnes", "Annexe 3", "Liste des sigles et acronymes",
+        "Préface à l’édition française", "Remerciements", "Front Matter",
+        # kept
+        "Introduction", "Conclusion", "Présentation", "Éditorial",
+        "Annexe 2. Grille d’évaluation des compétences sociales",
+        "Chapitre 4. Les implications des politiques publiques", "La psychomotricité",
+        "Bibliographie des travaux scientifiques de jean lafond et de ses collaborateurs (1950-2020)",
+    ]
+    rows = [(f"oai:cairn.info:X_{i:04d}", cairn, t, ["A999_HAR_ETAF"], None, "upsert")
+            for i, t in enumerate(titles)]
+    # the same headings on another endpoint are kept; a delete event bypasses the rule; NULL title kept
+    rows += [("oai:other.org:1", "e2", "Pages de début", None, None, "upsert"),
+             ("oai:cairn.info:D_0001", cairn, "Pages de début", None, None, "delete"),
+             ("oai:cairn.info:N_0001", cairn, None, None, None, "upsert")]
+    out = apply_endpoint_filters(spark.createDataFrame(rows, TITLE_SCHEMA),
+                                 keep_when=F.col("_change_type") == "delete")
+    kept = {r.native_id for r in out.collect()}
+    expected = {f"oai:cairn.info:X_{i:04d}" for i, t in enumerate(titles) if not is_paratext_title(t)}
+    expected |= {"oai:other.org:1", "oai:cairn.info:D_0001", "oai:cairn.info:N_0001"}
+    assert kept == expected

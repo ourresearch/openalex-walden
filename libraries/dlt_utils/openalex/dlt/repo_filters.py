@@ -9,6 +9,8 @@ repo_parsed_irdb() -- raw CDF passthroughs -- bypassed them entirely: 20,874,419
 repo_works past rules we had already agreed to, 20,872,994 of them (99.99%) from backfill.
 """
 
+import re
+
 import pyspark.sql.functions as F
 
 from .repo_types import TYPES_TO_DELETE
@@ -129,6 +131,128 @@ ENDPOINT_SETSPEC_KEEP = {
 }
 
 
+# oxjob #1311: Cairn.info deposits every book's paratext as its own OAI record -- "Pages de
+# début", "Pages de fin", "Bibliographie", "Index", "Remerciements", the preface -- with the book's
+# author on it. The record clears MIN_TITLE_LENGTH, mints as a work, and its title_author key
+# ("bibliographie_durand;g") joins the same author's bibliographies from DIFFERENT books into one
+# work (#1301 finding 2: 10% of one night's repo admissions; all 7 of 200 wrong title_author merges).
+# Cairn sends no raw_native_type and its setSpec is the collection code (A999_HAR_ETAF, DUNOD_HC),
+# so the title is the only signal. Whole-endpoint sizing (2026-09-22): 141,364 records on the two
+# Cairn endpoints, 126,118 holding a work, 11,171 title_author-resolved; 4.9% of the last 30
+# nights' Cairn admissions. Scoped to Cairn on purpose: the same headings are 1.76M Crossref records
+# ("Index", "Front Matter", "Preface") and ~250K on other repositories, a policy question of their
+# own, not this rule's.
+#
+# Matching is on a FOLDED title -- lower(trim()), whitespace collapsed, accents mapped through
+# translate() (Spark has no unaccent) -- because Cairn's forms vary: "Préface" / "Preface" /
+# "Préfacé", "Avant-propos" / "Avant-Propos" / "AVANT-PROPOS". PARATEXT_TITLES is the exact set of
+# folded headings; PARATEXT_TITLE_PATTERNS covers their structured long tail ("Index des noms de
+# lieux", "Liste des sigles et acronymes", "Préface à l'édition française", "Annexe 3") and is
+# capped at PARATEXT_PATTERN_MAX_LEN characters so a titled appendix ("Annexe 2. Grille
+# d'évaluation ...") or a bibliographic article is never claimed. NOT included, deliberately:
+# "Introduction", "Conclusion", "Présentation", "Éditorial", "Prologue", "Épilogue" -- authored
+# chapters and issue introductions that happen to share a heading (their title-key merges are
+# MapWorkIds' problem, not an ingest deletion). is_paratext_title() is the pure-Python mirror of
+# the Spark predicate; the tests run it over every distinct title the two endpoints admitted in
+# the 30 nights before 2026-09-22 (tests/fixtures/oxjob1311_cairn_titles.json).
+ENDPOINT_PARATEXT_TITLE_DELETE = frozenset({
+    "asswjsx35xuxkrfsyfwn",  # Cairn.info (live harvest; 1.28M records, 550K admitted 2026-09-20/21)
+    "saf6vuotbas9qzkypz6j",  # Cairn.info (older endpoint on the same source; 298K records)
+})
+
+# translate() pairs: accented Latin letters Cairn uses -> base letter. Same length, same order,
+# so str.translate and Spark translate() fold identically.
+PARATEXT_FOLD_FROM = "àâäáãåéèêëíìîïóòôöõúùûüçñýÿœæ"
+PARATEXT_FOLD_TO = "aaaaaaeeeeiiiiooooouuuucnyyoa"
+PARATEXT_PATTERN_MAX_LEN = 60
+
+PARATEXT_TITLES = frozenset({
+    # covers and whole front / back matter blocks
+    "pages de debut", "pages de fin", "paginas iniciales", "paginas finales", "front matter",
+    "back matter", "page de titre", "pages liminaires", "couverture", "sommaire",
+    "table des matieres", "table", "contents",
+    # bibliographies and reference lists
+    "bibliographie", "bibliography", "references", "references bibliographiques",
+    "reperes bibliographiques", "orientation bibliographique", "orientations bibliographiques",
+    "indications bibliographiques", "bibliographie generale", "bibliographie selective",
+    "bibliographie indicative", "bibliographie complementaire", "bibliographie sommaire",
+    "bibliographie critique", "bibliographie succincte", "bibliographie thematique",
+    "bibliographie courante", "bibliographie et sitographie", "bibliographie et webographie",
+    "sources et bibliographie", "notes bibliographiques", "note bibliographique",
+    "notices bibliographiques", "elements de bibliographie", "elements bibliographiques",
+    "selection bibliographique", "conseils bibliographiques", "lectures bibliographiques",
+    "sources", "sitographie", "webographie", "filmographie", "discographie",
+    # indexes
+    "index", "index nominum", "index rerum", "index alphabetique", "index general",
+    "index thematique", "index analytique", "index geographique", "index terminologique",
+    # contributor lists
+    "les auteurs", "auteurs", "liste des auteurs", "presentation des auteurs",
+    "les contributeurs", "contributeurs", "liste des contributeurs", "liste des collaborateurs",
+    "a propos des auteurs", "biographie des auteurs", "biographies des auteurs",
+    "notices biographiques des auteurs", "notes sur les auteurs", "notice sur les auteurs",
+    "les auteurs et autrices", "auteurs et autrices", "ont collabore a ce numero",
+    "ont participe a ce numero",
+    # glossaries and abbreviation tables
+    "glossaire", "lexique", "abreviations", "abbreviations", "sigles", "acronymes",
+    "liste des abreviations", "liste des sigles", "liste des acronymes", "sigles et abreviations",
+    "sigles et acronymes", "abreviations et sigles", "abreviations et acronymes",
+    "principales abreviations", "liste des principales abreviations",
+    "liste des sigles et abreviations", "liste des sigles et acronymes", "liste des sigles utilises",
+    "table des abreviations", "table des sigles", "table des sigles et abreviations",
+    "repertoire des sigles",
+    # annexes, notes, lists of figures, credits
+    "annexe", "annexes", "notes", "table des illustrations", "liste des illustrations",
+    "liste des figures", "liste des tableaux", "table des figures", "table des tableaux",
+    "liste des cartes", "table des cartes", "credits", "credits photographiques",
+    "credits iconographiques", "copyright", "errata", "erratum",
+    # thanks, chronologies, notices
+    "remerciements", "chronologie", "chronologies", "chronologie sommaire",
+    "reperes chronologiques", "avertissement",
+    # prefatory paratext (not the authored "introduction" / "conclusion" / "presentation")
+    "preface", "prefaces", "avant-propos", "postface", "foreword",
+})
+
+# Java regexes applied to the folded title (through Column.rlike, a literal -- never interpolated
+# into a SQL string, so no backslash rule applies; kept backslash-free anyway, like #1000).
+PARATEXT_TITLE_PATTERNS = (
+    r"^annexe [0-9ivxl]+$",
+    r"^index (des|du|de la|de l'|de) [a-z' -]+$",
+    r"^(bibliographie|references|reperes|orientations?|indications|elements|selection|complements|notes?|notices?) [a-z' -]*bibliographi[a-z]*$",
+    r"^bibliographie [a-z' -]+$",
+    r"^(liste|table|tableau|repertoire) des (sigles|abreviations|acronymes|auteurs|contributeurs|collaborateurs|figures|tableaux|illustrations|cartes|encadres|graphiques|schemas|planches|matieres|documents)( [a-z' -]+)?$",
+    r"^(preface|avant-propos|postface|prefaces) (a|de|pour|du) ",
+    r"^(pages|paginas) (de debut|de fin|iniciales|finales)$",
+    r"^(les auteurs|auteurs|presentation des auteurs|a propos des auteurs|notices? sur les auteurs)( de ce numero| du numero| du dossier)?$",
+)
+_PARATEXT_RX = tuple(re.compile(p) for p in PARATEXT_TITLE_PATTERNS)
+_PARATEXT_TR = str.maketrans(PARATEXT_FOLD_FROM, PARATEXT_FOLD_TO)
+
+
+def fold_title(title):
+    """lower(trim()), whitespace collapsed, accents folded -- the key both sides match on."""
+    if title is None:
+        return None
+    return re.sub(r"[ \t\r\n]+", " ", title.strip().lower()).translate(_PARATEXT_TR)
+
+
+def is_paratext_title(title):
+    """Pure-Python mirror of the Spark predicate in apply_endpoint_filters (oxjob #1311)."""
+    folded = fold_title(title)
+    if not folded:
+        return False
+    if folded in PARATEXT_TITLES:
+        return True
+    if len(folded) > PARATEXT_PATTERN_MAX_LEN:
+        return False
+    return any(rx.search(folded) for rx in _PARATEXT_RX)
+
+
+def _folded_title_col(title_col):
+    return F.translate(
+        F.regexp_replace(F.lower(F.trim(F.col(title_col))), "[ \t\r\n]+", " "),
+        PARATEXT_FOLD_FROM, PARATEXT_FOLD_TO)
+
+
 # oxjob #1000: figshare mirrors publishers' supplementary material -- tables (.t001), figures
 # (.g001) and supporting-information files (.s001) -- under the PUBLISHER's component DOI
 # (10.1371/journal.pone.0274801.s001). Crossref deliberately excludes type=component
@@ -181,7 +305,8 @@ def apply_repo_policy_filters(df, title_col="title", type_col="raw_native_type",
 
 
 def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spec",
-                           native_id_col="native_id", ids_col="ids", keep_when=None):
+                           native_id_col="native_id", ids_col="ids", title_col="title",
+                           keep_when=None):
     """Drop records from denylisted endpoints and carved setSpec classes (oxjob #881 round 2).
 
     Call on the union in repo_enriched(), where every stream carries endpoint_id and set_spec.
@@ -198,6 +323,11 @@ def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spe
     extracted DOI ends in a component suffix (COMPONENT_DOI_SUFFIX) is removed -- a publisher's
     supplementary table/figure/SI file mirrored under the publisher's component DOI, which
     Crossref itself never mints. NULL ids or no doi entry is kept.
+
+    oxjob #1311: a record from an ENDPOINT_PARATEXT_TITLE_DELETE endpoint (Cairn.info) whose
+    folded title is a paratext heading (PARATEXT_TITLES / PARATEXT_TITLE_PATTERNS) is removed --
+    a book's cover pages, bibliography, index, acknowledgements, preface. NULL title is kept here
+    (apply_repo_policy_filters already drops it).
 
     keep_when: same contract as apply_repo_policy_filters -- delete events carry the pre-image
     of the row being removed and must bypass every filter or the deletion never propagates.
@@ -229,6 +359,18 @@ def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spe
         f"exists(coalesce({ids_col}, array()), "
         f"i -> i.namespace = 'doi' AND lower(i.id) RLIKE '{COMPONENT_DOI_SUFFIX}')")
     carved = carved | (from_component_mirror & has_component_doi)
+
+    # oxjob #1311: Cairn paratext headings. Exact set on the folded title, then the regex families
+    # gated by the length cap -- the same order as is_paratext_title().
+    folded = _folded_title_col(title_col)
+    in_pattern = F.lit(False)
+    for pattern in PARATEXT_TITLE_PATTERNS:
+        in_pattern = in_pattern | folded.rlike(pattern)
+    is_paratext = folded.isin(*sorted(PARATEXT_TITLES)) | (
+        (F.length(folded) <= PARATEXT_PATTERN_MAX_LEN) & in_pattern)
+    carved = carved | (
+        F.col(endpoint_col).isin(*sorted(ENDPOINT_PARATEXT_TITLE_DELETE))
+        & F.coalesce(is_paratext, F.lit(False)))
 
     # oxjob #1000: NULL-safe. (NULL == endpoint_id) & ~in_kept_class is NULL, and ~(False | NULL)
     # is NULL, which filter() drops -- so the keep-list term (0.3.26) silently removed any record
