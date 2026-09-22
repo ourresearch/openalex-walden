@@ -63,7 +63,15 @@ CLEAN = r"regexp_replace({col}, '[^a-zA-Z0-9\./-]', '')"
 PROV_LIST = ", ".join(f"'{p}'" for p in PROVENANCES)
 assert set(APPLY) <= {"insert", "repair"}, APPLY
 
-import datetime, time
+import datetime, json, time
+
+SUMMARY = {"mode": MODE}
+
+
+def note(**kw):
+    """Serverless notebook tasks return no stdout through the API; everything printed is also returned via notebook.exit."""
+    SUMMARY.update(kw)
+    print(kw)
 
 print(dict(mode=MODE, provenances=PROVENANCES, apply=APPLY, target=TARGET, confirm=CONFIRM))
 
@@ -133,7 +141,8 @@ if MODE == "stage":
                   SELECT *, current_timestamp() AS staged_at, CAST(NULL AS TIMESTAMP) AS executed_at
                   FROM ({census_sql()})""")
     spark.sql(f"ALTER TABLE {TARGET} CLUSTER BY (action, doi_clean)")
-    print(f"staged in {int(time.time() - t0)}s -> {TARGET}")
+    note(staged_seconds=int(time.time() - t0), target=TARGET,
+         census=rows(f"SELECT action, COUNT(*) AS dois FROM {TARGET} GROUP BY 1 ORDER BY 1"))
     print_census(TARGET)
     print("most-cited displaced ids (the map currently sends this DOI to them, not to the anchor's work):")
     for r in rows(f"""SELECT doi_clean, anchor_work_id, map_min_id, displaced_cited_by_count
@@ -149,7 +158,7 @@ if MODE in ("dry_run", "execute"):
     held = one(f"""SELECT COUNT(*) AS repairs_held_displaced_id_cited, SUM(displaced_cited_by_count) AS cites_on_held_ghosts
                    FROM {TARGET} t WHERE t.action = 'repair' AND t.executed_at IS NULL
                    AND COALESCE(t.displaced_cited_by_count, 0) >= {HOLD_CITED_OVER}""")
-    print({**held, "hold_cited_over": HOLD_CITED_OVER})
+    note(**held, hold_cited_over=HOLD_CITED_OVER)
     plan = one(f"""
         SELECT SUM(CASE WHEN t.action = 'insert' THEN 1 ELSE 0 END) AS rows_to_insert_new,
                SUM(CASE WHEN t.action = 'repair' THEN 1 ELSE 0 END) AS dois_to_repair,
@@ -170,9 +179,9 @@ if MODE in ("dry_run", "execute"):
         LEFT JOIN (SELECT DISTINCT work_id FROM {REGISTRY} WHERE work_id IS NOT NULL) p ON p.work_id = m.id
         WHERE EXISTS (SELECT 1 FROM {scope} AND t.action = 'repair'
                       AND t.doi_clean = {CLEAN.format(col='m.doi')})""")
-    print({**plan, **to_delete})
+    note(**plan, **to_delete)
     if (plan["rows_to_insert_new"] or 0) + (plan["dois_to_repair"] or 0) == 0:
-        dbutils.notebook.exit("nothing to do")
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "nothing to do"}, default=str))
     print("sample repairs:")
     for r in rows(f"""SELECT doi_clean, anchor_work_id, provenances, map_ids, displaced_cited_by_count
                       FROM {scope} AND t.action = 'repair' ORDER BY displaced_cited_by_count DESC NULLS LAST LIMIT 10"""):
@@ -200,7 +209,7 @@ if MODE == "execute":
                   WHERE EXISTS (SELECT 1 FROM {scope} AND t.action = 'repair'
                                 AND t.doi_clean = {CLEAN.format(col='m.doi')})""")
     audited = one(f"SELECT COUNT(*) AS n, SUM(CASE WHEN id_is_live THEN 0 ELSE 1 END) AS dead FROM {AUDIT}")
-    print(f"audit frozen: {audited['n']:,} map rows ({audited['dead']:,} on dead ids) -> {AUDIT}")
+    note(audit=AUDIT, audit_rows=audited['n'], audit_rows_dead_id=audited['dead'])
 
     if "repair" in APPLY:
         spark.sql(f"""DELETE FROM {MAP} m
@@ -216,21 +225,21 @@ if MODE == "execute":
                   SELECT t.anchor_work_id, t.doi, NULL, NULL, NULL, current_date(), current_timestamp()
                   FROM {scope}""")
     spark.sql(f"UPDATE {TARGET} t SET executed_at = current_timestamp() WHERE t.action IN ({apply_list}) AND t.executed_at IS NULL")
-    print(f"executed in {int(time.time() - t0)}s:",
-          rows(f"SELECT action, COUNT(*) AS n FROM {TARGET} WHERE executed_at IS NOT NULL GROUP BY 1 ORDER BY 1"))
+    note(executed_seconds=int(time.time() - t0),
+         executed=rows(f"SELECT action, COUNT(*) AS n FROM {TARGET} WHERE executed_at IS NOT NULL GROUP BY 1 ORDER BY 1"))
 
 # COMMAND ----------
 
 if MODE == "verify":
     t0 = time.time()
     spark.sql(f"CREATE OR REPLACE TEMPORARY VIEW census AS {census_sql()}")
-    print(f"live census ({int(time.time() - t0)}s):")
+    note(census_seconds=int(time.time() - t0),
+         census=rows("SELECT action, COUNT(*) AS dois FROM census GROUP BY 1 ORDER BY 1"))
     print_census("census")
     if spark.catalog.tableExists(TARGET):
         print("executed rows whose DOI still does not resolve to the anchor (expect 0):")
-        for r in rows(f"""SELECT c.action, COUNT(*) AS n FROM {TARGET} t JOIN census c ON c.doi_clean = t.doi_clean
-                          WHERE t.executed_at IS NOT NULL AND c.action <> 'ok' GROUP BY 1"""):
-            print("  ", r)
+        note(executed_not_resolving_to_anchor=rows(f"""SELECT c.action, COUNT(*) AS n FROM {TARGET} t JOIN census c ON c.doi_clean = t.doi_clean
+                          WHERE t.executed_at IS NOT NULL AND c.action <> 'ok' GROUP BY 1"""))
     examples = ["10.1103/physrevb.65.045102", "10.5802/alco.124", "10.1890/08-0418.1",
                 "10.1145/3770855.3818994", "10.1063/5.0347370"]
     ex = ", ".join(f"'{d}'" for d in examples)
@@ -238,3 +247,7 @@ if MODE == "verify":
     for r in rows(f"""SELECT {CLEAN.format(col='doi')} AS doi_clean, collect_set(id) AS map_ids, MIN(id) AS resolves_to
                       FROM {MAP} WHERE lower({CLEAN.format(col='doi')}) IN ({ex}) GROUP BY 1 ORDER BY 1"""):
         print("  ", r)
+
+# COMMAND ----------
+
+dbutils.notebook.exit(json.dumps(SUMMARY, default=str))
