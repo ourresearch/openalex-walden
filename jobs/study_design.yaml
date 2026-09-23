@@ -1,0 +1,82 @@
+resources:
+  jobs:
+    Study_Design:
+      name: Study Design
+      description: |
+        Study design per work (oxjob #1312): PubMed's MeSH V03 study-characteristics
+        tags where a MEDLINE-indexed record carries them, automated tagging (Jev,
+        one request per work over title + venue + abstract, utils/study_design.py)
+        everywhere else. Three steps: rebuild the tagger queue (works with an
+        abstract in a research-carrying type and no row at the current
+        tagger_version), drain it in priority order under the run's caps, rebuild
+        the served table openalex.works.works_study_design.
+        Nightly caps (max_works / max_usd / max_minutes) cover the day's new works
+        (~100K, ~$6). The backfill (~180M works, ~$11K) is the same job run by hand
+        with the big caps in docs/study_design.md. Writes ONLY its own tables
+        (works_study_design_queue / _tagger / _errors / _progress /
+        works_study_design); nothing feeds CreateWorksEnriched or ES yet.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        # 19:00 UTC: after Walden End 2 End (05:00 UTC start, usually done by ~17:30)
+        # so the day's new works are in openalex_works; before Works Daily Metrics
+        # (22:00) and Authorship Daily Metrics (22:30).
+        quartz_cron_expression: 0 0 19 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      parameters:
+        - name: max_works
+          default: "400000"
+        - name: max_usd
+          default: "40"
+        - name: max_minutes
+          default: "150"
+        - name: rps
+          default: "250"
+        - name: concurrency
+          default: "64"
+        - name: dry_run
+          default: "false"
+      tasks:
+        - task_key: build_queue
+          notebook_task:
+            notebook_path: notebooks/study_design/BuildStudyDesignQueue
+            source: GIT
+          environment_key: Default
+        - task_key: tag
+          depends_on:
+            - task_key: build_queue
+          notebook_task:
+            notebook_path: notebooks/study_design/StudyDesignTagger
+            source: GIT
+            base_parameters:
+              max_works: "{{job.parameters.max_works}}"
+              max_usd: "{{job.parameters.max_usd}}"
+              max_minutes: "{{job.parameters.max_minutes}}"
+              rps: "{{job.parameters.rps}}"
+              concurrency: "{{job.parameters.concurrency}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          environment_key: Default
+          # A retry resumes: finished chunks are in works_study_design_progress.
+          max_retries: 2
+          min_retry_interval_millis: 300000
+        - task_key: build_served
+          depends_on:
+            - task_key: tag
+          notebook_task:
+            notebook_path: notebooks/study_design/BuildStudyDesignServed
+            source: GIT
+          environment_key: Default
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"

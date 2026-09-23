@@ -60,6 +60,7 @@ include:
   - jobs/register_topic_classifier.yaml
   - jobs/sdg_frontfill.yaml
   - jobs/register_sdg_classifier.yaml
+  - jobs/study_design.yaml
   - jobs/award_topics.yaml
   - jobs/tag_pdf_awards_incremental.yaml
   - jobs/crossref_work_funders.yaml
