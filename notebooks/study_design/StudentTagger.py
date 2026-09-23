@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS {STUDENT} (
 COMMENT 'Every study-design student prediction (oxjob #1335), owned or not; re-threshold from here without a GPU pass'
 """)
 
+# The student runs before the Jev tagger, so on a fresh schema it must create the shared progress table itself.
+spark.sql(f"""
+CREATE TABLE IF NOT EXISTS {PROGRESS} (
+  build_id STRING, chunk_id BIGINT, n_queued INT, n_tagged INT, n_failed INT, input_tokens BIGINT, usd DOUBLE,
+  seconds DOUBLE, tagger_version STRING, done_at TIMESTAMP
+) USING DELTA COMMENT 'One row per finished queue chunk (oxjob #1312); the tagger skips chunks listed here for the same build_id'
+""")
+
 OUT_SCHEMA = StructType([
     StructField("work_id", LongType(), False),
     StructField("probabilities", MapType(StringType(), FloatType()), True),
