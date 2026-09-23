@@ -224,7 +224,8 @@ if MODE == "execute":
     spark.sql(f"""INSERT INTO {MAP} (id, doi, pmid, arxiv, title_author, created_date, updated_date)
                   SELECT t.anchor_work_id, t.doi, NULL, NULL, NULL, current_date(), current_timestamp()
                   FROM {scope}""")
-    spark.sql(f"UPDATE {TARGET} t SET executed_at = current_timestamp() WHERE t.action IN ({apply_list}) AND t.executed_at IS NULL")
+    # stamp only what execute applied: held repairs (displaced id cited >= hold_cited_over) were not touched
+    spark.sql(f"UPDATE {scope} SET executed_at = current_timestamp()")
     note(executed_seconds=int(time.time() - t0),
          executed=rows(f"SELECT action, COUNT(*) AS n FROM {TARGET} WHERE executed_at IS NOT NULL GROUP BY 1 ORDER BY 1"))
 
