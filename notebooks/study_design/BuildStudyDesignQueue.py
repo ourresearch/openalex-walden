@@ -3,7 +3,8 @@
 # MAGIC # Build the study-design tagger queue (oxjob #1312)
 # MAGIC
 # MAGIC Every work with an abstract in a research-carrying type that has no
-# MAGIC `works_study_design_tagger` row at the current `tagger_version`. The queue
+# MAGIC `works_study_design_tagger` row at the current Jev `tagger_version` or the
+# MAGIC student's `STUDENT_VERSION` (oxjob #1335). The queue
 # MAGIC carries the tagger's inputs (title, venue, abstract) so the tagger never
 # MAGIC joins back to `openalex_works`, and is partitioned into hash chunks of
 # MAGIC ~`chunk_works` rows whose ids sort in priority order:
@@ -84,7 +85,7 @@ SELECT w.id AS work_id, w.title, w.primary_location.source.display_name AS venue
             ELSE 3 END AS priority
 FROM openalex.works.openalex_works w
 LEFT ANTI JOIN {TAGGER} t
-  ON w.id = t.work_id AND t.tagger_version = '{sd.TAGGER_VERSION}'
+  ON w.id = t.work_id AND t.tagger_version IN ({sd.sql_versions()})
 WHERE NOT w.is_xpac
   AND w.type IN ({TYPES})
   AND w.title IS NOT NULL AND length(w.title) >= 10

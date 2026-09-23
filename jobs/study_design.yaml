@@ -4,12 +4,15 @@ resources:
       name: Study Design
       description: |
         Study design per work (oxjob #1312): PubMed's MeSH V03 study-characteristics
-        tags where a MEDLINE-indexed record carries them, automated tagging (Jev,
-        one request per work over title + venue + abstract, utils/study_design.py)
-        everywhere else. Three steps: rebuild the tagger queue (works with an
-        abstract in a research-carrying type and no row at the current
-        tagger_version), drain it in priority order under the run's caps, rebuild
-        the served table openalex.works.works_study_design.
+        tags where a MEDLINE-indexed record carries them, automated tagging
+        everywhere else: a fine-tuned encoder (the student, oxjob #1335,
+        utils/study_design_student.py, GPU workers) tags the works it is sure
+        about; Jev (one request per work over title + venue + abstract,
+        utils/study_design.py) tags the residual. Four steps: rebuild the tagger
+        queue (works with an abstract in a research-carrying type and no row at
+        the current student or Jev tagger_version), student over the queue,
+        Jev over what is left under the run's caps, rebuild the served table
+        openalex.works.works_study_design.
         Nightly caps (max_works / max_usd / max_minutes) cover the day's new works
         (~100K, ~$6). The backfill (~180M works, ~$11K) is the same job run by hand
         with the big caps in docs/study_design.md. Writes ONLY its own tables
@@ -40,15 +43,31 @@ resources:
           default: "64"
         - name: dry_run
           default: "false"
+        - name: student_max_works
+          default: "2000000"
       tasks:
         - task_key: build_queue
           notebook_task:
             notebook_path: notebooks/study_design/BuildStudyDesignQueue
             source: GIT
           environment_key: Default
-        - task_key: tag
+        - task_key: student
           depends_on:
             - task_key: build_queue
+          notebook_task:
+            notebook_path: notebooks/study_design/StudentTagger
+            source: GIT
+            base_parameters:
+              max_works: "{{job.parameters.student_max_works}}"
+              max_minutes: "{{job.parameters.max_minutes}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          job_cluster_key: study-design-gpu-cluster
+          # A retry resumes: finished chunks are in works_study_design_progress at the student version.
+          max_retries: 2
+          min_retry_interval_millis: 300000
+        - task_key: tag
+          depends_on:
+            - task_key: student
           notebook_task:
             notebook_path: notebooks/study_design/StudyDesignTagger
             source: GIT
@@ -70,6 +89,28 @@ resources:
             notebook_path: notebooks/study_design/BuildStudyDesignServed
             source: GIT
           environment_key: Default
+      job_clusters:
+        - job_cluster_key: study-design-gpu-cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.task.resource.gpu.amount: "1.0"
+            aws_attributes:
+              first_on_demand: 0
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: g6.2xlarge
+            enable_elastic_disk: false
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            custom_tags:
+              oxjob: "1335"
+            autoscale:
+              min_workers: 2
+              max_workers: 16
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub

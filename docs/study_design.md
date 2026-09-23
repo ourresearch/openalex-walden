@@ -101,3 +101,34 @@ PubMed-vs-tagger table `build_served` displays (`both` / `pubmed_only` /
 against the judge (secondary analyses, sub-studies), so `pubmed_only` on
 `randomized-controlled-trial` is mostly PubMed's over-tagging, not the tagger
 missing trials.
+
+## Student (oxjob #1335)
+
+Jev's labels are also a training set. `utils/study_design_student.py` runs a
+fine-tuned `multilingual-e5-small` (512 tokens over title + venue +
+abstract[:6000], soft-trained on 1.5M of the backfill's Jev outputs) that
+emits the same 13 probabilities and two Nouls, so `derive()`, the gates and
+the served values are unchanged. Weights: `sd.STUDENT_MODEL_DIR`
+(`/Volumes/openalex/works/models/study_design/<arm>/`).
+
+Per class the student has a certified positive threshold (`STUDENT_TAU_POS`,
+chosen on the judged dev split at the class bar; oxjob #1335 EXPLORE § 3) and
+a negative cut (`STUDENT_TAU_NEG`, under which it loses ≤ 2% of Jev's own
+positives on 78K held-out labels; RCT 0.5%). A work is the student's when no
+class score sits in its band (`student_route`); the rest go to Jev. The
+student never emits RCT (its false positives are the rubric's hard cases:
+protocols, non-randomised trials and secondary analyses with "randomised" in
+the text) and, in v1, not Observational (recall 15 points under Jev's).
+Measured on a uniform 100K slice: 13.7% of works reach Jev, $7.4 per million
+works instead of $54; the student's value set equals Jev's on 97% of the works
+it owns.
+
+Job order: `build_queue` → `student` (GPU job cluster, `mapInPandas`, every
+prediction kept in `works_study_design_student`, owned works appended to
+`works_study_design_tagger` at `STUDENT_VERSION` with `jev_model` NULL) →
+`tag` (Jev, every chunk anti-joined on both versions) → `build_served`. To
+re-threshold, change the tau tables, bump `STUDENT_VERSION`, and rebuild from
+`works_study_design_student`; no GPU pass needed. A new student (weights or
+window) is a new `STUDENT_ARM`, re-certified with `oxjobs #1335
+scratch/score_student.py` and `cascade.py` before it ships.
+

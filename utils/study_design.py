@@ -383,3 +383,68 @@ def answer_row(w: dict, r: dict) -> dict | None:
         "tagger_version": TAGGER_VERSION,
         "jev_model": r.get("model") or JEV_MODEL,
     }
+
+# ---------------------------------------------------------------------------
+# Student (oxjob #1335): a fine-tuned encoder that reproduces Jev's outputs; owns the works it is sure about
+# ---------------------------------------------------------------------------
+
+# The student emits the same 13 Choice probabilities + 2 Nouls as Jev, so derive() and the gates run unchanged.
+# Per class: STUDENT_TAU_POS = its threshold certified on the judged dev split at the class bar (oxjob #1335 EXPLORE § 3);
+# STUDENT_TAU_NEG = the score under which its negatives lose <= 2% of Jev's positives (RCT 0.5%) on 78K held-out Jev labels
+# (§ 5). A work is the student's when every class score is outside (TAU_NEG, TAU_POS); the rest go to Jev. Classes the
+# student does not own (RCT; Observational by the recall rule) have no TAU_POS: any score >= TAU_NEG routes the work to Jev.
+STUDENT_ARM = "e5s"                                   # multilingual-e5-small, 512 tokens, 1 epoch over 1.5M Jev labels
+STUDENT_VERSION = f"student-{STUDENT_ARM}-v1+{CONFIG_NAME}"   # checkpoint key for student-tagged rows (jev_model NULL)
+STUDENT_MODEL_DIR = f"/Volumes/openalex/works/models/study_design/{STUDENT_ARM}"
+STUDENT_TAU_POS = {"clinical_trial": 0.86, "observational": 0.87, "meta_analysis": 0.99, "systematic_review": 0.94, "case_report": 0.98, "other_primary_research": 0.3, "protocol": 0.65}
+STUDENT_TAU_NEG = {"rct": 0.629, "meta_analysis": 0.931, "systematic_review": 0.719, "protocol": 0.643, "clinical_trial": 0.643, "case_report": 0.875, "observational": 0.425, "other_primary_research": 0.115}
+TAGGER_VERSIONS = (TAGGER_VERSION, STUDENT_VERSION)   # a work is tagged if it has a row at either
+
+
+def student_route(scores: dict) -> str:
+    """'student' when no class score sits in its residual band, else 'jev'. scores = derive() output (gates applied)."""
+    for c in CLASSES:
+        s = scores.get(c, 0.0)
+        tp = STUDENT_TAU_POS.get(c)
+        if tp is None:
+            if s >= STUDENT_TAU_NEG[c]:
+                return "jev"
+        elif STUDENT_TAU_NEG[c] <= s < tp:
+            return "jev"
+    return "student"
+
+
+def student_classes(scores: dict) -> list[str]:
+    """Owned classes clearing their certified threshold, parents added, in CLASSES order."""
+    hit = {c for c, tp in STUDENT_TAU_POS.items() if scores.get(c, 0.0) >= tp}
+    for c in list(hit):
+        if c in PARENT:
+            hit.add(PARENT[c])
+    return [c for c in CLASSES if c in hit]
+
+
+def student_values(scores: dict) -> list[str]:
+    return [VALUE_ID[c] for c in student_classes(scores)]
+
+
+def student_answer_row(w: dict, probs: dict, is_rct: float, human: float) -> dict:
+    """One works_study_design_tagger row from the student's outputs (only meaningful when student_route == 'student')."""
+    a = {"design": {"probabilities": probs}, "is_rct": {"noul": float(is_rct)}, "human_subjects": {"noul": float(human)}}
+    scores = derive(a, w)
+    return {
+        "work_id": int(w["work_id"]),
+        "tagger_values": student_values(scores),
+        "scores": {k: float(v) for k, v in scores.items()},
+        "probabilities": {k: float(v) for k, v in probs.items()},
+        "is_rct": float(is_rct),
+        "human_subjects": float(human),
+        "stated_random": stated_random(w),
+        "abstract_chars": len(w.get("abstract") or ""),
+        "input_tokens": 0,
+        "tagger_version": STUDENT_VERSION,
+        "jev_model": None,
+    }
+
+
+def sql_versions() -> str:
+    return ", ".join(f"'{v}'" for v in TAGGER_VERSIONS)

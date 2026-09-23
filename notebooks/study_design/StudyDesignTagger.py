@@ -7,7 +7,8 @@
 # MAGIC derived scores + code gates + thresholds from `utils/study_design.py`, one
 # MAGIC append per chunk into `works_study_design_tagger`. Restart-safe: finished
 # MAGIC chunks are recorded in `works_study_design_progress`; a retried run skips
-# MAGIC them and anti-joins the first unfinished chunk against the tagger table.
+# MAGIC them and anti-joins every chunk against the tagger table (the student task,
+# MAGIC oxjob #1335, has already tagged the works it owns).
 # MAGIC
 # MAGIC Stops at `max_works`, `max_usd` or `max_minutes`, whichever first. The
 # MAGIC nightly run uses small caps; the backfill is the same notebook with big
@@ -112,7 +113,6 @@ if DRY_RUN:
 client = sd.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=CONCURRENCY, rps=RPS)
 run_t0 = time.time()
 tot_tagged = tot_failed = tot_queued = 0
-first = True
 
 for chunk_id, n_chunk in todo:
     if tot_queued >= MAX_WORKS:
@@ -131,16 +131,15 @@ for chunk_id, n_chunk in todo:
     works = pdf.where(pdf.notna(), None).to_dict("records")
     del pdf
     n_already = 0
-    if first:
-        # Only the first unfinished chunk can be partially tagged (a retried run); anti-join it once.
-        ids_df = spark.createDataFrame([(int(w["work_id"]),) for w in works], "work_id BIGINT")
-        already = {int(r.work_id) for r in spark.table(TAGGER).where(F.col("tagger_version") == sd.TAGGER_VERSION)
-                   .join(ids_df, "work_id", "left_semi").select("work_id").collect()}
-        if already:
-            works = [w for w in works if int(w["work_id"]) not in already]
-            n_already = len(already)
-            print(f"chunk {chunk_id}: {n_already:,} works already tagged this version, skipping them")
-        first = False
+    # Every chunk can be partially tagged: the student task (oxjob #1335) tags the works it owns before this task
+    # runs, and a retried run may have tagged part of the first chunk. Anti-join each chunk on both versions.
+    ids_df = spark.createDataFrame([(int(w["work_id"]),) for w in works], "work_id BIGINT")
+    already = {int(r.work_id) for r in spark.table(TAGGER).where(F.col("tagger_version").isin(list(sd.TAGGER_VERSIONS)))
+               .join(ids_df, "work_id", "left_semi").select("work_id").collect()}
+    if already:
+        works = [w for w in works if int(w["work_id"]) not in already]
+        n_already = len(already)
+        print(f"chunk {chunk_id}: {n_already:,} works already tagged (student or Jev), skipping them")
     truncated = False
     if len(works) + tot_queued > MAX_WORKS:
         works = works[: MAX_WORKS - tot_queued]
