@@ -1,0 +1,84 @@
+# Monthly refresh of the semantic-search vectors (oxjob #1275). Two tasks:
+#   1. embed  — EmbedQwen3Incremental: new/changed/missing works → work_embeddings_qwen3 (serverless, ai_query)
+#   2. sync   — sync_vector_index_qwen3 incremental: rows embedded in the last `sync_lookback_days` → ES works-vectors-v2
+# The sync only runs if the embed task succeeds. Both are idempotent; a failed run is simply re-run.
+resources:
+  jobs:
+    Embed_Qwen3_Monthly:
+      name: Embed works with Qwen3 + sync to ES (monthly, oxjob #1275)
+      description: |
+        Keeps openalex.vector_search.work_embeddings_qwen3 and the ES index works-vectors-v2 current.
+        Embeds works whose title/abstract/venue changed in the last lookback_days plus any titled work
+        without a vector (documents bare, no instruction prefix), then runs the Qwen3 ES sync in
+        incremental mode over rows embedded in the last sync_lookback_days.
+        ~9M new works/month ≈ 1.5 h embed at parallel=4, ≈$35 endpoint. Must not overlap the bulk
+        runner or a full sync (job "Sync Vector Index to Elasticsearch (Qwen3, oxjob #1275)").
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 0 6 1 * ?"   # 06:00 UTC on the 1st of each month
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      parameters:
+        - name: lookback_days
+          default: "35"
+        - name: sync_lookback_days
+          default: "7"
+        - name: parallel
+          default: "4"
+        - name: max_works
+          default: "50000000"
+      tasks:
+        - task_key: embed
+          notebook_task:
+            notebook_path: notebooks/vector_search/EmbedQwen3Incremental
+            source: GIT
+            base_parameters:
+              lookback_days: "{{job.parameters.lookback_days}}"
+              parallel: "{{job.parameters.parallel}}"
+              max_works: "{{job.parameters.max_works}}"
+          environment_key: Default
+          timeout_seconds: 43200
+        - task_key: sync
+          depends_on:
+            - task_key: embed
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_vector_index_qwen3
+            source: GIT
+            base_parameters:
+              is_full_sync: "false"
+              lookback_days: "{{job.parameters.sync_lookback_days}}"
+          job_cluster_key: vector_sync_cluster
+          timeout_seconds: 21600
+      job_clusters:
+        - job_cluster_key: vector_sync_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: rd-fleet.12xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 2   # incremental only (~10M rows); the full sync job uses 8
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
