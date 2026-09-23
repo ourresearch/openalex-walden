@@ -71,6 +71,17 @@ Start by ~03:30 UTC to leave room. Every step is idempotent; if anything fails, 
    databricks jobs cancel-run <queued_run_id>
    ```
    Cancelling a prod run is Jason's call; if you cannot, pre-announce the red run in #dev.
+
+   **Pausing the schedule with `databricks jobs update` does not hold.** The End 2 End job is
+   bundle-managed (`deployment.kind: BUNDLE`, `jobs/walden_end2end.yaml` says
+   `pause_status: UNPAUSED`), and `deploy-databricks.yml` redeploys the bundle on every push to
+   `main`. Seen 2026-09-22: paused 18:35 CT, silently unpaused by an unrelated push at 22:32 CT,
+   scheduled run fired at 00:00 CT as usual. Either commit `pause_status: PAUSED` to the yaml for
+   the night and revert it in the morning (two pushes), or rely on cancelling the queued
+   PERIODIC run at 00:00 CT (this step). Update 2026-09-23: the collision is survivable. The
+   scheduled run's `*_Ingest_DLT` tasks timed out once at 01:00 CT, the retries succeeded when the
+   override run ended, and the scheduled run went green at 08:22 CT with a normal Guardrails count.
+   Cost is a late public snapshot and one failure email, not a lost night.
 7. **Watch.** Task timeline from a 04:12 start: Works_Base ~06:15, Authorships ~06:20,
    Works_Enriched ~06:30, Guardrails ~07:02, ES sync 07:08 to 10:46 (52M docs), Full_Snapshot
    07:13 to 08:22, Lakebase 07:08 to 08:31. A one-shot waiter:
