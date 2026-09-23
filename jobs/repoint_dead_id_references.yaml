@@ -1,0 +1,51 @@
+resources:
+  jobs:
+    Repoint_Dead_Id_References:
+      name: Repoint Dead Id References
+      description: |
+        oxjob #1256 step two: move work_references.cited_work_id off dead work ids onto the work that
+        owns the reference's DOI (the Crossref anchor recorded by the SeedWorkIdMapDoiRows repair).
+        11.5M references / 7.2M citing works on 2026-09-21. Waves by citing work under the 7.5M
+        Guardrails stamp; one wave per night, hand-run, guardrails_override=true on the next End 2 End.
+
+        MANUAL TRIGGER ONLY.
+          mode=stage    edges from the repair audit (dead ids) x repair target (anchors) x work_references; waves of wave_size citing works
+          mode=dry_run  per-wave counts, top anchors, samples
+          mode=execute  confirm=yes wave=N, outside 04:00-08:00 UTC, never while End 2 End runs; freezes <target>_wave<N>_audit; once per wave
+          mode=verify   executed edges still on a dead id (expect 0); the example DOI
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode
+          default: "stage"
+        - name: target_table
+          default: "openalex.works.oxjob1256_dead_id_refs_target"
+        - name: audit_table
+          default: "openalex.works.oxjob1256_map_doi_seed_target_repair2_audit"
+        - name: repair_target
+          default: "openalex.works.oxjob1256_map_doi_seed_target_repair2"
+        - name: wave_size
+          default: "4000000"
+        - name: wave
+          default: "1"
+        - name: confirm
+          default: "no"
+      tasks:
+        - task_key: repoint_dead_id_references
+          notebook_task:
+            notebook_path: notebooks/maintenance/RepointDeadIdReferences
+            source: GIT
+            base_parameters:
+              mode: "{{job.parameters.mode}}"
+              target_table: "{{job.parameters.target_table}}"
+              audit_table: "{{job.parameters.audit_table}}"
+              repair_target: "{{job.parameters.repair_target}}"
+              wave_size: "{{job.parameters.wave_size}}"
+              wave: "{{job.parameters.wave}}"
+              confirm: "{{job.parameters.confirm}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD

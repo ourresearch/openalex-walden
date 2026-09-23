@@ -83,6 +83,7 @@ include:
   - jobs/repoint_work_ids.yaml
   - jobs/seed_work_id_map_doi_rows.yaml
   - jobs/seed_work_id_map_title_rows.yaml
+  - jobs/repoint_dead_id_references.yaml
   - jobs/sources.yaml
   - jobs/union_all_works_pipeline.yaml
   - jobs/repo_pipeline.yaml
