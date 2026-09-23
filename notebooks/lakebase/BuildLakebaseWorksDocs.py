@@ -51,7 +51,10 @@ dbutils.widgets.text("trigger_syncs", "false")  # end2end passes true once synce
 dbutils.widgets.text("run_deletes", "false")    # force the full delete sweep (auto-runs when doc count > works count)
 
 IS_FULL_BUILD = dbutils.widgets.get("is_full_build").lower() == "true"
-GUARDRAILS_OVERRIDE = dbutils.widgets.get("guardrails_override").lower() == "true"
+# job parameter OR a pre-cleared row in openalex.works.e2e_overrides (scripts/preclear_e2e.py)
+GUARDRAILS_OVERRIDE = spark.sql(
+    f"SELECT openalex.works.e2e_override_active('guardrails_override', '{dbutils.widgets.get('guardrails_override').replace(chr(39), chr(39) * 2)}')"
+).collect()[0][0]
 TRIGGER_SYNCS = dbutils.widgets.get("trigger_syncs").lower() == "true"
 RUN_DELETES = dbutils.widgets.get("run_deletes").lower() == "true"
 

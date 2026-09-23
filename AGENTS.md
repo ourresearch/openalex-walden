@@ -13,14 +13,17 @@ authorships propagation, 08-21 content-hash wave, 09-21 `institution_ancestors` 
 Before shipping anything that feeds `CreateWorkAuthorships` / `CreateWorksEnriched` (institution
 ancestors, author ids, affiliations, topics, locations, types): estimate how many works get a new
 content hash; a small entity-side change can re-stamp tens of millions of works. If it is anywhere
-near 7.5M, hand-run End 2 End yourself with `guardrails_override=true` while awake and say so in
-#dev, or ship in the morning; do not leave it for the scheduled run. Over ~10M also crosses the ES
-mega-sync threshold (replicas dropped). The override flags are per consequence class
-(`guardrails_override`, `deleted_works_guard_override`, `deleted_locations_guard_override`,
-`wunpaywall_guard_override`); bypass only the one that fired. Morning after any walden ship, check
-the End 2 End result before reading any "after the nightly" acceptance test.
-Step-by-step for the overnight override (front-load the upstream job, run-now JSON, cancel the
-queued schedule, morning checks): `docs/runbooks/end2end-guardrails-override.md`.
+near 7.5M, pre-clear the scheduled run (after Jason's per-run yes) with
+`scripts/preclear_e2e.py --reason "..." --by jason`, which writes a dated row to
+`openalex.works.e2e_overrides` that every gate reads through `openalex.works.e2e_override_active()`,
+and say so in #dev; or ship in the morning. Do not start a second manual End 2 End in the evening:
+it collides with the 05:00 UTC schedule, and pausing the schedule does not survive a bundle deploy.
+Over ~10M also crosses the ES mega-sync threshold (replicas dropped). The override flags are per
+consequence class (`guardrails_override`, `deleted_works_guard_override`,
+`deleted_locations_guard_override`, `wunpaywall_guard_override`); bypass only the one that fired.
+Morning after any walden ship, check the End 2 End result before reading any "after the nightly"
+acceptance test. Step-by-step (front-load the upstream job, pre-clear, morning checks, the manual-run
+fallback): `docs/runbooks/end2end-guardrails-override.md`.
 
 ## Landing Page & PDF Integration
 

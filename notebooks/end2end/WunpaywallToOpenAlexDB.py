@@ -29,7 +29,10 @@
 # MAGIC MERGE_BATCH_SIZE = 50000
 # MAGIC MAX_BATCH_RETRIES = 3
 # MAGIC dbutils.widgets.dropdown("wunpaywall_guard_override", "false", ["false", "true"], "Wunpaywall Guard Override")
-# MAGIC wunpaywall_guard_override = dbutils.widgets.get("wunpaywall_guard_override").lower() == "true"
+# MAGIC # job parameter OR a pre-cleared row in openalex.works.e2e_overrides (scripts/preclear_e2e.py)
+# MAGIC wunpaywall_guard_override = spark.sql(
+# MAGIC     f"SELECT openalex.works.e2e_override_active('wunpaywall_guard_override', '{dbutils.widgets.get('wunpaywall_guard_override').replace(chr(39), chr(39) * 2)}')"
+# MAGIC ).collect()[0][0]
 # MAGIC dbutils.widgets.text("since_date", "", "Override watermark (e.g. 2026-02-07)")
 # MAGIC since_date_override = dbutils.widgets.get("since_date").strip()
 # MAGIC

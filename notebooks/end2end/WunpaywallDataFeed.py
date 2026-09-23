@@ -18,7 +18,10 @@ DAILY_LARGE_RECORD_COUNT = 20000000
 WEEKLY_LARGE_RECORD_COUNT = 45000000
 LARGE_RECORD_COUNT = WEEKLY_LARGE_RECORD_COUNT if mode == "weekly" else DAILY_LARGE_RECORD_COUNT
 dbutils.widgets.dropdown("wunpaywall_guard_override", "false", ["false", "true"], "Wunpaywall Guard Override")
-wunpaywall_guard_override = dbutils.widgets.get("wunpaywall_guard_override").lower() == "true"
+# job parameter OR a pre-cleared row in openalex.works.e2e_overrides (scripts/preclear_e2e.py)
+wunpaywall_guard_override = spark.sql(
+    f"SELECT openalex.works.e2e_override_active('wunpaywall_guard_override', '{dbutils.widgets.get('wunpaywall_guard_override').replace(chr(39), chr(39) * 2)}')"
+).collect()[0][0]
 
 # other variables
 last_export_table = f"openalex.unpaywall.last_{mode}_export_timestamp"

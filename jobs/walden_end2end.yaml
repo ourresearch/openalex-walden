@@ -508,6 +508,10 @@ resources:
       # Every parameter here is a circuit-breaker bypass. Job parameters propagate to
       # every notebook task automatically, so no task re-declares them; each notebook
       # reads the widget under exactly this name. One switch per consequence class —
+      # Each notebook resolves its flag through openalex.works.e2e_override_active(flag, param):
+      # the parameter, OR a pre-cleared row in openalex.works.e2e_overrides whose window covers
+      # the run (scripts/preclear_e2e.py). That row is how a planned wave clears the SCHEDULED
+      # nightly without a second manual run; see docs/runbooks/end2end-guardrails-override.md.
       # bypassing a quality gate must never authorize a mass delete or an oversized feed.
       #
       #   guardrails_override               Guardrails (all checks), the curation-count
