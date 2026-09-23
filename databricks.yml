@@ -38,7 +38,7 @@ include:
   - jobs/expunge_deletes_works.yaml
   - jobs/sync_vector_index.yaml
   - jobs/sync_vector_index_qwen3.yaml
-  - jobs/embed_qwen3_monthly.yaml
+  - jobs/embed_qwen3_nightly.yaml
   - jobs/union_all_works.yaml
   - jobs/crossref.yaml
   - jobs/datacite.yaml
