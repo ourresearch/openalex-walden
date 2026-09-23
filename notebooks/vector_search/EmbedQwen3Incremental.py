@@ -1,10 +1,10 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Incremental Qwen3 embeddings (monthly, oxjob #1275)
+# MAGIC # Incremental Qwen3 embeddings (nightly, oxjob #1275)
 # MAGIC
 # MAGIC Keeps `openalex.vector_search.work_embeddings_qwen3` (the semantic-search corpus vectors, served from
-# MAGIC ES `works-vectors-v2`) current with `openalex.works.openalex_works`. Runs monthly from
-# MAGIC `jobs/embed_qwen3_monthly.yaml`; the ES incremental sync is the next task in that job.
+# MAGIC ES `works-vectors-v2`) current with `openalex.works.openalex_works`. Runs nightly from
+# MAGIC `jobs/embed_qwen3_nightly.yaml`; the ES incremental sync is the next task in that job.
 # MAGIC
 # MAGIC Replaces `ContinuousEmbeddings.py` (gte-large-en), whose source `works_for_embedding` was a snapshot with
 # MAGIC no builder, which is why 109M works never got a gte vector.
@@ -23,7 +23,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("lookback_days", "35")
+dbutils.widgets.text("lookback_days", "3")
 dbutils.widgets.text("parallel", "4")
 dbutils.widgets.text("chunk_rows", "250000")
 dbutils.widgets.text("max_works", "50000000")  # guardrail: fail before spending if the candidate set is absurd
@@ -159,3 +159,7 @@ print(f"embedded this run: {embedded:,} of {n_changed:,} candidates (≈${embedd
 print(f"coverage gap after run: {gap:,} titled works without a vector = {100*gap/total:.3f}% (ACCEPTANCE #1275 test 2 wants < 0.1%)")
 if failed:
     raise RuntimeError(f"{len(failed)} chunks failed: {failed}. Re-run the job; it only redoes what is missing.")
+import json
+dbutils.notebook.exit(json.dumps({"candidates": n_changed, "by_reason": {r.reason: r.n for r in stats}, "embedded": embedded,
+                                  "chunks": n_chunks, "embed_minutes": round((time.time() - t0) / 60, 1),
+                                  "gap": gap, "gap_pct": round(100 * gap / total, 4)}))  # visible via jobs get-run-output
