@@ -85,7 +85,7 @@ stream is always tagged first and the backfill drains behind it.
 2026-09-22): run the same job by hand with big caps, e.g.
 
 ```
-databricks jobs run-now --job-id <Study Design job id> --json '{"job_parameters": {"max_works": "30000000", "max_usd": "1800", "max_minutes": "1380", "rps": "300"}}'
+databricks jobs run-now --json '{"job_id": 552446330684613, "job_parameters": {"max_works": "30000000", "max_usd": "1800", "max_minutes": "1380", "rps": "300"}}'
 ```
 
 At 300 req/s a 23-hour run tags ~25M works (~$1.5K); the whole corpus is about
