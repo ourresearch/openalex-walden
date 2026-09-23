@@ -2,9 +2,9 @@
 # Sync full snapshot from staging (s3://openalex-snapshots/full/{date}/)
 # to the public bucket (s3://openalex/data/).
 #
-# Runs only on quarterly releases. Monthly snapshots stay in staging only and
-# are served to enterprise customers via the API-key gateway. Public free-tier
-# consumers continue to receive a quarterly drop here.
+# Publishes only on quarterly releases (see the public-release gate below for
+# the calendar rule). Every other daily snapshot stays in staging only and is
+# served to enterprise customers via the API-key gateway.
 #
 # Layout in staging (set by notebooks/snapshot/_utils.py):
 #   {staging_base}/jsonl/{entity}/updated_date=*/part_NNNN.gz
@@ -32,23 +32,9 @@
 import json
 import os
 import random
+import re
 import time
 from datetime import datetime, timezone
-
-# ---------------------------------------------------------------------------
-# Quarterly-release gate
-# ---------------------------------------------------------------------------
-
-dbutils.widgets.text("is_quarterly_release", "false")
-_quarterly_param = dbutils.widgets.get("is_quarterly_release").strip().lower()
-IS_QUARTERLY = _quarterly_param in ("true", "1", "yes")
-
-if not IS_QUARTERLY:
-    print(f"is_quarterly_release={_quarterly_param!r} — skipping public sync.")
-    print("Snapshot remains in staging only (s3://openalex-snapshots/full/...).")
-    dbutils.notebook.exit("skipped: monthly run, no public sync")
-
-print(f"is_quarterly_release={_quarterly_param!r} — proceeding with public sync.")
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -75,6 +61,11 @@ local_scratch = "/local_disk0/s3_transfer"
 # it is published — otherwise public consumers are sent to an inaccessible bucket.
 STAGING_URL_PREFIX = f"{staging_base}/"
 PUBLIC_URL_PREFIX = f"s3://{PUBLIC_BUCKET}/{PUBLIC_PREFIX}/"
+
+RELEASE_NOTES_URL = (
+    "https://raw.githubusercontent.com/ourresearch/openalex-walden"
+    "/main/notebooks/snapshot/RELEASE_NOTES.txt"
+)
 
 MAX_RETRIES = 3
 
@@ -114,6 +105,174 @@ ENTITIES = [
     "source-types",
     "work-types",
 ]
+
+# COMMAND ----------
+
+# ---------------------------------------------------------------------------
+# Public-release gate (oxjob #1323)
+#
+# The public snapshot is released on a calendar rule instead of by hand:
+#
+#   public_release = auto   (default; what the nightly End 2 End passes)
+#       Publish when the snapshot date is on or shortly after a scheduled release
+#       day AND the public bucket has not yet received that release. The schedule
+#       is the `public_release_rule` weekday#ordinal in each `public_release_months`
+#       month (default: second Wednesday of Jan/Apr/Jul/Oct — a weekday, mid-month,
+#       clear of the holiday weeks, so a failure is seen the same working day).
+#       "Not yet received" is read from the public combined manifest's `date`, so a
+#       failed release-day run is retried by the next nightly for up to
+#       `public_release_grace_days` days, and a completed one is not repeated.
+#   public_release = force  Publish this snapshot regardless of the schedule.
+#   public_release = skip   Never publish (staging only).
+#
+# Release notes are generated, not written: every release prepends a
+# `RELEASE <date>` entry with a generic line to the public RELEASE_NOTES.txt
+# (see the final cell). The bucket copy is the authoritative history; the copy in
+# git is only the seed used if the bucket has none.
+# ---------------------------------------------------------------------------
+
+from datetime import date as _date, timedelta as _timedelta
+
+_WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+
+
+def nth_weekday(year, month, weekday, ordinal):
+    """Date of the `ordinal`-th `weekday` (0=Mon..6=Sun) in year/month."""
+    first = _date(year, month, 1)
+    offset = (weekday - first.weekday()) % 7
+    return first + _timedelta(days=offset + 7 * (ordinal - 1))
+
+
+def parse_release_rule(rule):
+    """'wed#2' -> (2, 2): weekday index and ordinal-in-month."""
+    day, _, ordinal = rule.strip().lower().partition("#")
+    if day not in _WEEKDAYS or not ordinal.isdigit() or not 1 <= int(ordinal) <= 4:
+        raise ValueError(f"public_release_rule must look like 'wed#2', got {rule!r}")
+    return _WEEKDAYS[day], int(ordinal)
+
+
+def scheduled_release_dates(months, rule, around):
+    """Scheduled release dates in the year before and after `around`, ascending."""
+    weekday, ordinal = parse_release_rule(rule)
+    out = []
+    for year in (around.year - 1, around.year, around.year + 1):
+        for month in months:
+            out.append(nth_weekday(year, month, weekday, ordinal))
+    return sorted(out)
+
+
+def latest_scheduled_release(months, rule, on):
+    """Most recent scheduled release date on or before `on`."""
+    return max(d for d in scheduled_release_dates(months, rule, on) if d <= on)
+
+
+def next_scheduled_release(months, rule, after):
+    """First scheduled release date strictly after `after`."""
+    return min(d for d in scheduled_release_dates(months, rule, after) if d > after)
+
+
+def auto_release_decision(snapshot_date, published_date, months, rule, grace_days):
+    """Decide whether an auto-mode run publishes.
+
+    Returns (publish: bool, scheduled: date, reason: str). `published_date` is the
+    `date` of the public bucket's current combined manifest.
+    """
+    scheduled = latest_scheduled_release(months, rule, snapshot_date)
+    if snapshot_date > scheduled + _timedelta(days=grace_days):
+        nxt = next_scheduled_release(months, rule, snapshot_date)
+        return False, scheduled, (
+            f"no release window open: last scheduled {scheduled} (+{grace_days}d grace) "
+            f"has passed, next is {nxt}"
+        )
+    if published_date >= scheduled:
+        return False, scheduled, (
+            f"release {scheduled} already published (public manifest date {published_date})"
+        )
+    return True, scheduled, (
+        f"release {scheduled} is due (snapshot {snapshot_date}, public manifest date "
+        f"{published_date})"
+    )
+
+
+RELEASE_NOTES_TITLE = "OPENALEX STANDARD-FORMAT SNAPSHOT RELEASE NOTES"
+RELEASE_NOTES_SCHEDULE_LINE = (
+    "Public releases land on the second Wednesday of January, April, July and October (UTC).\n"
+    "Schedule and sync guidance: https://help.openalex.org/access/sync/"
+)
+RELEASE_ENTRY_LINE = "- quarterly snapshot with bug fixes and improvements"
+
+
+def with_release_entry(notes_text, release_date):
+    """Return RELEASE_NOTES.txt text carrying a `RELEASE <date>` entry for this release.
+
+    Idempotent: an existing entry for the date is left alone (a rerun on the same
+    day must not duplicate it). The schedule line is (re)inserted under the title so
+    a bucket copy written before the schedule existed picks it up.
+    """
+    header = f"RELEASE {release_date.isoformat()}"
+    lines = notes_text.strip("\n").split("\n")
+    if lines and lines[0].strip() == RELEASE_NOTES_TITLE:
+        lines = lines[1:]
+    body = "\n".join(lines).strip("\n")
+    sched_first = RELEASE_NOTES_SCHEDULE_LINE.split("\n", 1)[0]
+    if body.startswith(sched_first):
+        body = body.split("\n\n", 1)[1] if "\n\n" in body else ""
+    if re.search(rf"^{re.escape(header)}\s*$", body, re.M) is None:
+        body = f"{header}\n{RELEASE_ENTRY_LINE}\n\n{body}"
+    return f"{RELEASE_NOTES_TITLE}\n\n{RELEASE_NOTES_SCHEDULE_LINE}\n\n{body}\n"
+
+
+dbutils.widgets.text("public_release", "auto")
+dbutils.widgets.text("public_release_months", "1,4,7,10")
+dbutils.widgets.text("public_release_rule", "wed#2")
+dbutils.widgets.text("public_release_grace_days", "7")
+
+_mode = dbutils.widgets.get("public_release").strip().lower()
+if _mode not in ("auto", "force", "skip"):
+    raise ValueError(f"public_release must be auto|force|skip, got {_mode!r}")
+
+snapshot_date_obj = _date.fromisoformat(date_str)
+
+if _mode == "skip":
+    print(f"public_release=skip — snapshot {date_str} stays in staging only.")
+    dbutils.notebook.exit("skipped: public_release=skip")
+
+if _mode == "auto":
+    import boto3 as _boto3
+
+    months = sorted({int(m) for m in dbutils.widgets.get("public_release_months").split(",") if m.strip()})
+    rule = dbutils.widgets.get("public_release_rule")
+    grace_days = int(dbutils.widgets.get("public_release_grace_days"))
+
+    # Current public release, read from the combined manifest (the bucket is public,
+    # but the open-data keys are needed later anyway and are never rate-limited).
+    _gate_client = _boto3.client(
+        "s3",
+        aws_access_key_id=dbutils.secrets.get("openalex-open-data", "aws_access_key_id"),
+        aws_secret_access_key=dbutils.secrets.get("openalex-open-data", "aws_secret_access_key"),
+    )
+    # Unreadable manifest fails loudly rather than guessing: guessing "unpublished"
+    # would re-copy the whole snapshot on a transient S3 error inside the grace window.
+    try:
+        _body = _gate_client.get_object(Bucket=PUBLIC_BUCKET, Key=f"{PUBLIC_PREFIX}/jsonl/manifest.json")["Body"]
+        published_date = _date.fromisoformat(json.load(_body)["date"])
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(
+            f"public-release gate cannot read s3://{PUBLIC_BUCKET}/{PUBLIC_PREFIX}/jsonl/manifest.json "
+            f"({type(e).__name__}: {e}); rerun, or run with public_release=force/skip"
+        )
+    del _gate_client
+
+    publish, scheduled, reason = auto_release_decision(
+        snapshot_date_obj, published_date, months, rule, grace_days
+    )
+    print(f"public_release=auto: rule {rule} in months {months}, grace {grace_days}d")
+    print(f"  {reason}")
+    if not publish:
+        dbutils.notebook.exit(f"skipped: {reason}")
+    print("  proceeding with public sync.")
+else:
+    print(f"public_release=force — publishing snapshot {date_str} regardless of schedule.")
 
 print(f"Snapshot date: {date_str}")
 print(f"Staging base:  {staging_base}")
@@ -569,31 +728,36 @@ print(f"\nPublic snapshot ready at: s3://{PUBLIC_BUCKET}/{PUBLIC_PREFIX}/")
 # COMMAND ----------
 
 # ---------------------------------------------------------------------------
-# Upload RELEASE_NOTES.txt to public bucket root
+# RELEASE_NOTES.txt: prepend this release's entry and upload to the bucket root
+#
+# The bucket copy is the source of truth (entries are generated per release, so
+# nothing in git tracks them). notebooks/snapshot/RELEASE_NOTES.txt on main is
+# only the seed used when the bucket has no copy yet.
 # ---------------------------------------------------------------------------
 
 import requests as _requests
 
-RELEASE_NOTES_URL = (
-    "https://raw.githubusercontent.com/ourresearch/openalex-walden"
-    "/main/notebooks/snapshot/RELEASE_NOTES.txt"
-)
+client = _get_public_client()
+try:
+    current_notes = client.get_object(Bucket=PUBLIC_BUCKET, Key="RELEASE_NOTES.txt")["Body"].read().decode("utf-8")
+    print("Read current RELEASE_NOTES.txt from the public bucket")
+except client.exceptions.NoSuchKey:
+    resp = _requests.get(RELEASE_NOTES_URL, timeout=30)
+    resp.raise_for_status()
+    current_notes = resp.text
+    print("No RELEASE_NOTES.txt in the public bucket — seeding from git")
 
-print("Uploading RELEASE_NOTES.txt to s3://openalex/ ...")
-
-resp = _requests.get(RELEASE_NOTES_URL, timeout=30)
-resp.raise_for_status()
+new_notes = with_release_entry(current_notes, snapshot_date_obj)
 
 os.makedirs(local_scratch, exist_ok=True)
 local_rn = os.path.join(local_scratch, "RELEASE_NOTES.txt")
 with open(local_rn, "w") as f:
-    f.write(resp.text)
+    f.write(new_notes)
 
-client = _get_public_client()
-client.upload_file(local_rn, PUBLIC_BUCKET, "RELEASE_NOTES.txt")
+client.upload_file(local_rn, PUBLIC_BUCKET, "RELEASE_NOTES.txt", ExtraArgs={"ContentType": "text/plain"})
 
 head = client.head_object(Bucket=PUBLIC_BUCKET, Key="RELEASE_NOTES.txt")
-print(f"  Uploaded RELEASE_NOTES.txt ({head['ContentLength']} bytes)")
+print(f"  Uploaded RELEASE_NOTES.txt ({head['ContentLength']} bytes) with entry RELEASE {date_str}")
 
 try:
     os.remove(local_rn)

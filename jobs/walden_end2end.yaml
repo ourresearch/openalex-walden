@@ -318,7 +318,9 @@ resources:
           run_job_task:
             job_id: ${resources.jobs.Full_Snapshot.id}
             job_parameters:
-              is_quarterly_release: "false"
+              # auto = the calendar rule in jobs/snapshot_full.yaml decides whether
+              # this nightly's snapshot goes to the public bucket (oxjob #1323).
+              public_release: "auto"
         - task_key: Sync_to_Elasticsearch
           depends_on:
             - task_key: Guardrails
