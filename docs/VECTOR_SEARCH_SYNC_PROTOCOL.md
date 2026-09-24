@@ -1,159 +1,58 @@
-# Vector Search Index Sync Protocol
+# Semantic-search vectors: how they are built and kept current
 
-This document describes the safe procedure for syncing the Databricks Vector Search index for OpenAlex's `/find/works` endpoint.
+Status 2026-09-24 (oxjob #1275). Replaces the old protocol for the Databricks Vector Search index behind
+`/find/works`, which no longer exists (endpoint 404, no vector-search endpoints in the workspace).
 
-## Overview
+## The stack
 
-The Vector Search index uses a **storage-optimized endpoint**, which means:
-- Every sync **partially rebuilds** the index (not fully incremental)
-- Syncs can take several hours for large datasets
-- **Modifications to the source table during sync can cause failures**
+| piece | where | notes |
+|---|---|---|
+| corpus vectors | `openalex.vector_search.work_embeddings_qwen3` | 1024-d, `databricks-qwen3-embedding-0-6b` (pay-per-token), text = `Title / Abstract / Venue` capped at 2,000 chars, documents bare (no instruction prefix). Columns: `work_id, embedding, publication_year, type, is_oa, has_abstract, has_content_pdf, has_content_grobid_xml, embedded_at, bucket`. Clustered by `work_id`. |
+| embedding text | `openalex.vector_search.work_text_qwen3_source` | what each vector was computed from; the nightly job diffs against it to find changed works |
+| ES index | `works-vectors-v2` on the `openalex-vector-search` deployment | 8 shards, 0 replicas, `dense_vector` bfloat16 + `int8_hnsw`, 14 filter fields; created by `notebooks/elastic/sync_vector_index_qwen3.ipynb` (do not hand-create it) |
+| query side | elastic-api `core/semantic_search.py` | same model with Qwen3's query instruction prefix, kNN k=50 in `core/vector_index.py`, citation-saturation boost |
 
-## Pre-Sync Checklist
+The gte-large-en stack (`work_embeddings_v2`, `works_for_embedding`, `works-vectors-v1`, `ContinuousEmbeddings.py`,
+`sync_vector_index.ipynb`) was retired 2026-09-24. Some March-2026 author-disambiguation notebooks in
+`notebooks/vector_search/` still name `work_embeddings_v2`; they are unscheduled and would need re-pointing at
+`work_embeddings_qwen3` (a different embedding space) before reuse.
 
-Before triggering a sync, verify ALL of the following:
+## Nightly refresh (`jobs/embed_qwen3_nightly.yaml`, daily 15:00 UTC, after Walden End 2 End lands)
 
-### 1. Stop All Embedding Loops
+1. **embed** (serverless notebook `notebooks/vector_search/EmbedQwen3Incremental.py`): candidates = works updated in
+   the last `lookback_days` (3) whose text is new or differs from `work_text_qwen3_source`, plus any titled work with
+   no vector; MERGE the text into the source table; DELETE stale vectors; embed in 250K-row chunks, 4 in parallel,
+   blind appends. Refuses to run past `max_works` (50M) so a text-format change cannot re-embed the corpus unattended.
+   Returns a JSON summary (`dbutils.notebook.exit`).
+2. **stage** (SQL-file task on the serverless warehouse `69a583ace3bdc8d0`, `notebooks/elastic/stage_vector_sync_qwen3.sql`):
+   rows embedded in the last 2 days joined to their 14 filter fields → `vector_sync_staging_qwen3` (10 batches).
+   This runs on the warehouse on purpose: the same query stalled for hours on the job cluster.
+3. **sync** (`sync_vector_index_qwen3.ipynb`, `is_full_sync=false`, 2-worker job cluster): reuses the staging table
+   and bulk-indexes it into `works-vectors-v2` (`index` ops, so re-sending is safe), checkpointing per batch, then
+   drops the staging/checkpoint tables.
 
-Check for running embedding loops:
-```bash
-# Check for running SQL statements
-databricks api get /api/2.0/sql/statements/<STATEMENT_ID> | jq '.status.state'
-```
+Typical night: ~300K works, ~25 min wall, ≈$1 of endpoint. Failure emails jason@ourresearch.org; a failed run is
+simply re-run (every step is idempotent).
 
-If any loops are running, either:
-- Wait for them to complete, OR
-- Cancel them (if safe to do so)
+## Full rebuild (only if the model or the text format changes)
 
-### 2. Verify Table is Stable
+- Re-embed with the bulk runner in oxjobs #1275 (`scratch/embed_loop.py`: 500 hash buckets, parallel blind appends,
+  ≈$2.1K and 15 h for 474M works on the pay-per-token endpoint).
+- Build the index with job "Sync Vector Index to Elasticsearch (Qwen3, oxjob #1275)" (`is_full_sync=true`, 8 workers;
+  do not shrink). It needs ~1.5 TB free on the vector deployment on top of whatever is serving; add a zone
+  (`ec_add_zone.py` in the oxjob, Elastic Cloud control-plane key required) and remove it afterwards.
+- Freeze `cluster.routing.rebalance.enable=none` for the build and unfreeze after, or ES will shuttle shards mid-build.
+- Benchmark old vs new before flipping `WORKS_VECTOR_INDEX` in elastic-api (harness in oxjob #1275 / #1258).
 
-```sql
--- Check recent table history for any pending operations
-DESCRIBE HISTORY openalex.vector_search.work_embeddings_v2 LIMIT 5
-```
-
-Ensure:
-- No recent `CREATE OR REPLACE` operations
-- No active MERGE/INSERT operations
-- Last few operations show `numOutputRows: 0` (empty batches = loop finished)
-
-### 3. Verify Data Integrity
-
-```sql
--- Count embeddings
-SELECT COUNT(*) FROM openalex.vector_search.work_embeddings_v2;
-
--- Check for duplicates (should be 0)
-SELECT COUNT(*) - COUNT(DISTINCT work_id) as duplicates
-FROM openalex.vector_search.work_embeddings_v2;
-```
-
-### 4. Check Current Index Status
+## Checks
 
 ```bash
-databricks api get /api/2.0/vector-search/indexes/openalex.vector_search.work_embeddings_index | jq '.status'
+# index size and count
+curl -s "$ES_VECTOR_SEARCH_URL/_cat/indices/works-vectors-v2?v&h=index,health,docs.count,store.size&bytes=gb"
+# last nightly run
+databricks jobs list-runs --job-id 760271376237273 --limit 1
+# works without a vector (should be ~0 after each run)
+SELECT count(*) FROM openalex.works.openalex_works w
+LEFT ANTI JOIN openalex.vector_search.work_embeddings_qwen3 e ON e.work_id = CAST(w.id AS STRING)
+WHERE w.title IS NOT NULL AND length(trim(w.title)) > 0
 ```
-
-Verify:
-- `ready: true` (can serve queries)
-- `detailed_state` is not `*_UPDATE` or `*_FAILED`
-
-## Trigger Sync
-
-Once all checks pass:
-
-```bash
-# Trigger the sync
-databricks api post /api/2.0/vector-search/indexes/openalex.vector_search.work_embeddings_index/sync
-
-# Start monitoring (in a tmux/screen session)
-cd /path/to/openalex-walden
-python scripts/monitor_vector_sync.py --interval 300 --slack-channel CRRBCGH36
-```
-
-## During Sync
-
-**DO NOT:**
-- Run any INSERT/UPDATE/DELETE on `work_embeddings_v2`
-- Run any `CREATE OR REPLACE TABLE` operations
-- Run any table optimization/vacuum operations
-- Cancel or restart the sync
-
-**DO:**
-- Monitor progress via the monitoring script
-- Watch for Slack notifications
-- Be patient - syncs can take 4-8 hours for 200M+ rows
-
-## After Sync
-
-### If Successful
-
-1. Verify the index is serving queries:
-```bash
-curl -s "https://api.openalex.org/find/works/health" | jq '.index'
-```
-
-2. Test a search query:
-```bash
-curl -s "https://api.openalex.org/find/works?query=machine+learning&count=3" | jq '.meta'
-```
-
-3. Log the successful sync in the job file (if applicable)
-
-### If Failed
-
-1. Check the error:
-```bash
-databricks api get /api/2.0/vector-search/indexes/openalex.vector_search.work_embeddings_index | jq '.status.failed_status'
-```
-
-2. Common failure causes:
-   - **Table modified during sync**: Wait for stability, re-trigger
-   - **IngestionFailed**: May be transient, try re-triggering
-   - **Persistent failures**: Contact Databricks support
-
-3. Re-trigger (if appropriate):
-```bash
-databricks api post /api/2.0/vector-search/indexes/openalex.vector_search.work_embeddings_index/sync
-```
-
-## Known Issues
-
-### Storage-Optimized Limitations
-
-- **No true checkpointing**: If sync fails at 90%, you start over
-- **Partial rebuilds**: Even "incremental" syncs rebuild portions of the index
-- **No continuous sync**: Only triggered sync is supported
-
-### Previous Failure (2026-01-25)
-
-The sync failed at Delta commit version 538 because a `CREATE OR REPLACE TABLE AS SELECT` (deduplication) operation modified the table mid-sync.
-
-**Lesson learned**: Never modify the table structure during a sync.
-
-## Monitoring Script Usage
-
-```bash
-# Check current status once
-python scripts/monitor_vector_sync.py --once
-
-# Monitor continuously (5 min interval, notify Slack)
-python scripts/monitor_vector_sync.py --interval 300 --slack-channel CRRBCGH36
-
-# Monitor continuously (1 min interval, no Slack)
-python scripts/monitor_vector_sync.py --interval 60
-```
-
-Required environment variables:
-- `DATABRICKS_HOST`
-- `DATABRICKS_TOKEN`
-- `SLACK_BOT_TOKEN` (optional, for notifications)
-
-## Quick Reference
-
-| Command | Purpose |
-|---------|---------|
-| `databricks api get /api/2.0/vector-search/indexes/openalex.vector_search.work_embeddings_index \| jq '.status'` | Check index status |
-| `databricks api post /api/2.0/vector-search/indexes/openalex.vector_search.work_embeddings_index/sync` | Trigger sync |
-| `python scripts/monitor_vector_sync.py --once` | One-time status check |
-| `DESCRIBE HISTORY openalex.vector_search.work_embeddings_v2 LIMIT 5` | Check recent table changes |
