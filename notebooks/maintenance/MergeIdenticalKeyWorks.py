@@ -259,7 +259,10 @@ if MODE == "execute":
                          NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
                          m.doi, m.pmid, m.arxiv, m.title_author, m.created_date, m.updated_date, current_timestamp()
                   FROM {TARGET} t JOIN {MAP} m ON m.id = t.loser_work_id WHERE {wave_pred()}""")
-    n = one(f"SELECT SUM(CASE WHEN kind = 'pin' THEN 1 ELSE 0 END) AS pins, SUM(CASE WHEN kind = 'map' THEN 1 ELSE 0 END) AS map_rows FROM {AUDIT}")
+    # a loser under two keys is audited once per key; the DELETEs are by pin / id, so compare DISTINCT
+    n = one(f"""SELECT COUNT(DISTINCT CASE WHEN kind = 'pin' THEN CONCAT_WS('|', provenance, native_id_namespace, native_id) END) AS pins,
+                       COUNT(DISTINCT CASE WHEN kind = 'map' THEN CONCAT_WS('|', loser_work_id, doi, pmid, arxiv, title_author, created_date) END) AS map_rows
+                FROM {AUDIT}""")
     pins = spark.sql(f"""DELETE FROM {REGISTRY} r WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'pin'
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
