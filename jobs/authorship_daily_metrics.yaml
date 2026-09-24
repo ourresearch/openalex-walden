@@ -53,6 +53,21 @@ resources:
             notebook_path: notebooks/metrics/AuthorshipQualityJudgeApply
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        # Jev quality sample (oxjob #1301): five pipeline strata judged by Jev
+        # with a capped Opus 5 tail; metrics to openalex.monitoring.metrics
+        # (component jev_quality) for the 23:30 UTC Monitoring job. Runs here
+        # because its authorship stratum reads the same ephemeral
+        # pending_author_assignments the judge does. Runs alongside the apply
+        # task (~15-20 min; Jev 31K calls at 16 threads). Never touches
+        # pipeline tables. Secrets: scope typesafe / api_key; the Opus tail
+        # calls the FMAPI endpoint with the job's own token.
+        - task_key: jev_quality_sample
+          depends_on:
+            - task_key: authorship_quality_judge
+          notebook_task:
+            notebook_path: notebooks/metrics/JevQualitySample
+            source: GIT
+          job_cluster_key: metrics-cluster
       job_clusters:
         - job_cluster_key: metrics-cluster
           new_cluster:
