@@ -28,6 +28,8 @@ resources:
           default: "1500000"
         - name: wave
           default: "1"
+        - name: class_mode
+          default: "title_key"
         - name: tiers
           default: "1,2"
         - name: title_jaccard_min
@@ -50,6 +52,7 @@ resources:
               target_table: "{{job.parameters.target_table}}"
               wave_size: "{{job.parameters.wave_size}}"
               wave: "{{job.parameters.wave}}"
+              class_mode: "{{job.parameters.class_mode}}"
               tiers: "{{job.parameters.tiers}}"
               title_jaccard_min: "{{job.parameters.title_jaccard_min}}"
               abstract_jaccard_min: "{{job.parameters.abstract_jaccard_min}}"

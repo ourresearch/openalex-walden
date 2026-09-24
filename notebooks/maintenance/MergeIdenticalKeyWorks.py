@@ -49,6 +49,7 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi"])
 dbutils.widgets.text("tiers", "1,2")
 dbutils.widgets.text("title_jaccard_min", "0.9")
 dbutils.widgets.text("abstract_jaccard_min", "0.6")
@@ -60,6 +61,7 @@ MODE = dbutils.widgets.get("mode")
 TARGET = dbutils.widgets.get("target_table")
 WAVE_SIZE = int(dbutils.widgets.get("wave_size"))
 WAVE = int(dbutils.widgets.get("wave"))
+CLASS_MODE = dbutils.widgets.get("class_mode")
 TIERS = {int(t) for t in dbutils.widgets.get("tiers").split(",") if t.strip()}
 TITLE_JACCARD_MIN = float(dbutils.widgets.get("title_jaccard_min"))
 ABSTRACT_JACCARD_MIN = float(dbutils.widgets.get("abstract_jaccard_min"))
@@ -89,7 +91,7 @@ def note(**kw):
     SUMMARY.update(kw)
     print(kw)
 
-print(dict(mode=MODE, target=TARGET, wave_size=WAVE_SIZE, wave=WAVE, tiers=sorted(TIERS), title_jaccard_min=TITLE_JACCARD_MIN,
+print(dict(mode=MODE, class_mode=CLASS_MODE, target=TARGET, wave_size=WAVE_SIZE, wave=WAVE, tiers=sorted(TIERS), title_jaccard_min=TITLE_JACCARD_MIN,
            abstract_jaccard_min=ABSTRACT_JACCARD_MIN, preprint_is_same=PREPRINT_IS_SAME, prior_targets=PRIOR_TARGETS, confirm=CONFIRM))
 
 
@@ -108,6 +110,8 @@ def end2end_active():
 
 def class_sql():
     """One row per loser with its winner, the evidence features, the tier, and the hold (2026-09-24 labelled sample, oxjob #1256)."""
+    if CLASS_MODE == "same_doi":
+        return same_doi_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -192,6 +196,84 @@ def class_sql():
            CASE WHEN h.base_hold IN ('same_source', 'year_gap', 'tier_3_off', 'title_too_different') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} THEN NULL
                 WHEN h.base_hold IN ('version_types', 'tier_4_off') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} AND {'TRUE' if PREPRINT_IS_SAME else 'FALSE'} THEN NULL
                 WHEN h.base_hold IS NOT NULL THEN h.base_hold
+                WHEN EXISTS (SELECT 1 FROM winners x WHERE x.work_id = h.loser_work_id) THEN 'chained'
+                END AS hold_reason
+    FROM held h
+    """
+
+
+def same_doi_class_sql():
+    """Same-DOI class: 2-3 live works whose pinned records carry one cleaned DOI. Winner = the work with a Crossref pin
+    for it, else the lowest id (the DOI seed already made MIN(id) over the DOI the anchor). The loser's records re-resolve
+    on the DOI tier. Tier 1: titles agree (Jaccard >= title_jaccard_min); tier 2: titles differ but abstracts agree. Held:
+    year gap > 1 (`year_gap`), titles differ with disagreeing abstracts (`doi_misassigned`: the Spiegelhalter-discussion
+    shape) or with no abstract (`title_differs_no_abstract`); junk / book-vs-part types as in the title class."""
+    clean = "regexp_replace({c}, '[^a-zA-Z0-9\\./-]', '')"
+    return f"""
+    WITH k AS (
+      SELECT lower(NULLIF({clean.format(c='merge_key.doi')}, '')) AS ta, work_id,
+             MAX(CASE WHEN provenance = 'crossref' THEN 1 ELSE 0 END) = 1 AS has_doi,
+             MAX(CASE WHEN provenance NOT IN ('repo', 'repo_backfill') THEN 1 ELSE 0 END) = 0 AS repo_only,
+             COUNT(*) AS n_locations
+      FROM {LM}
+      WHERE work_id IS NOT NULL AND NULLIF(merge_key.doi, '') IS NOT NULL
+        {prior_exclusion()}
+      GROUP BY 1, 2
+    ),
+    live AS (SELECT DISTINCT work_id FROM {REGISTRY} WHERE work_id IS NOT NULL),
+    kl AS (SELECT k.* FROM k JOIN live l ON l.work_id = k.work_id),
+    g AS (SELECT ta, COUNT(*) AS n_ids, SUM(CASE WHEN has_doi THEN 1 ELSE 0 END) AS n_doi FROM kl GROUP BY ta HAVING COUNT(*) BETWEEN 2 AND 3),
+    w AS (
+      SELECT id, publication_year AS yr, type, title,
+             regexp_replace(lower(title), '[^a-z0-9]', '') AS title_norm,
+             array_distinct(filter(split(regexp_replace(lower(title), '[^a-z0-9 ]', ' '), ' +'), x -> x <> '')) AS title_tokens,
+             primary_location.source.id AS src, biblio.volume AS vol, biblio.first_page AS fp,
+             COALESCE(cited_by_count, 0) AS cites,
+             array_distinct(filter(split(regexp_replace(lower(COALESCE(abstract, '')), '[^a-z0-9 ]', ' '), ' +'), x -> length(x) > 3)) AS abs_tokens
+      FROM {WORKS}
+    ),
+    sides AS (
+      SELECT kl.ta, g.n_ids, g.n_doi, kl.work_id, kl.has_doi, kl.repo_only, kl.n_locations, w.yr, w.type, w.title_norm, w.title_tokens, w.src, w.vol, w.fp, w.cites, w.abs_tokens,
+             ROW_NUMBER() OVER (PARTITION BY kl.ta ORDER BY kl.has_doi DESC, kl.work_id) AS rn
+      FROM g JOIN kl ON kl.ta = g.ta LEFT JOIN w ON w.id = kl.work_id
+    ),
+    winners AS (SELECT * FROM sides WHERE rn = 1),
+    pairs AS (
+      SELECT s.ta, s.n_ids, s.n_doi, x.work_id AS winner_work_id, x.yr AS winner_yr, x.has_doi AS winner_has_doi, x.type AS winner_type,
+             s.work_id AS loser_work_id, s.yr AS loser_yr, s.cites AS loser_cites, s.repo_only AS loser_repo_only,
+             s.n_locations AS loser_locations, LENGTH(s.ta) AS key_len, s.type AS loser_type,
+             CASE WHEN s.yr IS NULL OR x.yr IS NULL THEN 'unknown' WHEN s.yr = x.yr THEN 'same'
+                  WHEN ABS(s.yr - x.yr) = 1 THEN 'pm1' ELSE 'gt1' END AS year_cls,
+             (s.title_norm = x.title_norm) AS full_title_same,
+             CASE WHEN size(array_union(s.title_tokens, x.title_tokens)) = 0 THEN 0.0
+                  ELSE size(array_intersect(s.title_tokens, x.title_tokens)) / size(array_union(s.title_tokens, x.title_tokens)) END AS title_jaccard,
+             (s.vol IS NOT NULL AND x.vol IS NOT NULL AND (s.vol <> x.vol OR (s.fp IS NOT NULL AND x.fp IS NOT NULL AND s.fp <> x.fp))) AS biblio_differs,
+             (s.src IS NOT NULL AND s.src = x.src) AS src_same,
+             CASE WHEN size(s.abs_tokens) >= 20 AND size(x.abs_tokens) >= 20
+                  THEN size(array_intersect(s.abs_tokens, x.abs_tokens)) / size(array_union(s.abs_tokens, x.abs_tokens)) END AS abs_jaccard
+      FROM sides s JOIN winners x ON x.ta = s.ta WHERE s.rn > 1
+    ),
+    tiered AS (
+      SELECT p.*,
+             CASE WHEN p.year_cls = 'gt1' THEN NULL
+                  WHEN p.title_jaccard >= {TITLE_JACCARD_MIN} THEN 1
+                  WHEN p.abs_jaccard >= {ABSTRACT_JACCARD_MIN} THEN 2 END AS tier,
+             CASE WHEN p.loser_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')
+                    OR p.winner_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other') THEN 'junk_type'
+                  WHEN (p.loser_type = 'book' AND p.winner_type IN ('book-chapter', 'article')) OR (p.winner_type = 'book' AND p.loser_type IN ('book-chapter', 'article')) THEN 'book_vs_part' END AS exclusion
+      FROM pairs p
+    ),
+    held AS (
+      SELECT t.*,
+             CASE WHEN t.exclusion IS NOT NULL THEN t.exclusion
+                  WHEN t.year_cls = 'gt1' THEN 'year_gap'
+                  WHEN t.tier IS NULL THEN CASE WHEN t.abs_jaccard IS NOT NULL THEN 'doi_misassigned' ELSE 'title_differs_no_abstract' END
+                  WHEN t.tier NOT IN ({', '.join(str(x) for x in sorted(TIERS)) or 'NULL'}) THEN CONCAT('tier_', t.tier, '_off')
+                  END AS base_hold
+      FROM tiered t
+    )
+    SELECT h.*, CAST(NULL AS STRING) AS rescue,
+           CASE WHEN h.base_hold IS NOT NULL THEN h.base_hold
                 WHEN EXISTS (SELECT 1 FROM winners x WHERE x.work_id = h.loser_work_id) THEN 'chained'
                 END AS hold_reason
     FROM held h
