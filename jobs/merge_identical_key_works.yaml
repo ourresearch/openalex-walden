@@ -8,7 +8,9 @@ resources:
         work, else the lowest id. Deletes the loser's registry pins and map rows (audited); the nightly
         MapWorkIds re-binds the loser's records to the winner by title; TrackDeletedWorks ledgers the
         loser; repoint_citations moves work_references loser -> winner the morning after.
-        Holds: year_gap, short_key, too_many_locations, cited_over (sign-off), chained.
+        Rule from the 2026-09-24 labelled sample: tier 1 (same year, identical title, ~100%) + tier 2 (same year,
+        titles share >= 90% of tokens, ~99%), volume/page not contradicting, minus the failure shapes (same source,
+        preprint/conference-vs-article, book-vs-part, junk types). No size or citation caps; chained = second pass.
 
         MANUAL TRIGGER ONLY.
           mode=stage             build the class, apply holds, assign waves per key (uncited first); writes <target>_cited_review
@@ -26,14 +28,10 @@ resources:
           default: "1500000"
         - name: wave
           default: "1"
-        - name: max_year_gap
-          default: "1"
-        - name: short_key_len
-          default: "30"
-        - name: max_locations
-          default: "50"
-        - name: hold_cited_over
-          default: "100"
+        - name: tiers
+          default: "1,2"
+        - name: title_jaccard_min
+          default: "0.9"
         - name: confirm
           default: "no"
       tasks:
@@ -46,10 +44,8 @@ resources:
               target_table: "{{job.parameters.target_table}}"
               wave_size: "{{job.parameters.wave_size}}"
               wave: "{{job.parameters.wave}}"
-              max_year_gap: "{{job.parameters.max_year_gap}}"
-              short_key_len: "{{job.parameters.short_key_len}}"
-              max_locations: "{{job.parameters.max_locations}}"
-              hold_cited_over: "{{job.parameters.hold_cited_over}}"
+              tiers: "{{job.parameters.tiers}}"
+              title_jaccard_min: "{{job.parameters.title_jaccard_min}}"
               confirm: "{{job.parameters.confirm}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git

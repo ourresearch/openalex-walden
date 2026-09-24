@@ -15,12 +15,15 @@
 # MAGIC ends the night with no pins → `TrackDeletedWorks` ledgers it (404, deleted_ids.csv, ES delete). The
 # MAGIC morning after, `repoint_citations` moves `work_references.cited_work_id` loser → winner by id pair.
 # MAGIC
-# MAGIC **Holds** (never executed; `hold_reason` in the target): `year_gap` (|loser year − winner year| >
-# MAGIC `max_year_gap`, both known — reprint / edition / thesis-vs-article = version-of, not this job),
-# MAGIC `short_key` (key ≤ `short_key_len` chars and NOT a known same year), `too_many_locations` (loser has
-# MAGIC > `max_locations` locations), `cited_over` (loser cited ≥ `hold_cited_over`: individual sign-off),
-# MAGIC `chained` (the loser is itself a winner of another key — merge chains are resolved after the first pass).
-# MAGIC Every cited loser (≥ 1) is written to `<target>_cited_review` for the CSV.
+# MAGIC **Rule (from a 1,570-pair blind-labelled sample, 2026-09-24; precision weighted by stratum size):** a pair
+# MAGIC merges when the two records agree on a known publication year (tier 1: full normalized titles identical,
+# MAGIC ~100 %; tier 2: titles differ beyond the key but share >= `title_jaccard_min` of their tokens, ~99 %), volume /
+# MAGIC first page do not contradict, and none of the failure shapes the sample found applies: same primary source
+# MAGIC (letters and serial items sharing a page: 77 % same), preprint / conference / thesis / report vs article
+# MAGIC (a version), a book vs its chapter or a review of it, a junk-typed side, two undated books. Tier 3 (a year
+# MAGIC missing, 94 %) and tier 4 (years one apart, 84 %, mostly preprints becoming articles) are staged but off by
+# MAGIC default (`tiers`). No size or citation caps: every cited loser is listed in `<target>_cited_review` for the
+# MAGIC record; `chained` (the loser is a winner of another key) is a mechanical hold for the second pass.
 # MAGIC
 # MAGIC **Waves** are assigned per KEY (all losers of a key in one wave, so MIN(id) over the key is the winner
 # MAGIC the next morning), uncited keys first, `wave_size` losers per wave. Nightly budget: TrackDeletedWorks
@@ -44,20 +47,16 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.text("max_year_gap", "1")
-dbutils.widgets.text("short_key_len", "30")
-dbutils.widgets.text("max_locations", "50")
-dbutils.widgets.text("hold_cited_over", "100")
+dbutils.widgets.text("tiers", "1,2")
+dbutils.widgets.text("title_jaccard_min", "0.9")
 dbutils.widgets.text("confirm", "no")
 
 MODE = dbutils.widgets.get("mode")
 TARGET = dbutils.widgets.get("target_table")
 WAVE_SIZE = int(dbutils.widgets.get("wave_size"))
 WAVE = int(dbutils.widgets.get("wave"))
-MAX_YEAR_GAP = int(dbutils.widgets.get("max_year_gap"))
-SHORT_KEY_LEN = int(dbutils.widgets.get("short_key_len"))
-MAX_LOCATIONS = int(dbutils.widgets.get("max_locations"))
-HOLD_CITED_OVER = int(dbutils.widgets.get("hold_cited_over"))
+TIERS = {int(t) for t in dbutils.widgets.get("tiers").split(",") if t.strip()}
+TITLE_JACCARD_MIN = float(dbutils.widgets.get("title_jaccard_min"))
 CONFIRM = dbutils.widgets.get("confirm") == "yes"
 AUDIT = f"{TARGET}_wave{WAVE}_audit"
 REFS_AUDIT = f"{TARGET}_wave{WAVE}_refs_audit"
@@ -81,8 +80,7 @@ def note(**kw):
     SUMMARY.update(kw)
     print(kw)
 
-print(dict(mode=MODE, target=TARGET, wave_size=WAVE_SIZE, wave=WAVE, max_year_gap=MAX_YEAR_GAP,
-           short_key_len=SHORT_KEY_LEN, max_locations=MAX_LOCATIONS, hold_cited_over=HOLD_CITED_OVER, confirm=CONFIRM))
+print(dict(mode=MODE, target=TARGET, wave_size=WAVE_SIZE, wave=WAVE, tiers=sorted(TIERS), title_jaccard_min=TITLE_JACCARD_MIN, confirm=CONFIRM))
 
 
 def rows(sql):
@@ -99,7 +97,7 @@ def end2end_active():
 
 
 def class_sql():
-    """One row per loser with its winner and every field the holds need."""
+    """One row per loser with its winner, the evidence features, the tier, and the hold (2026-09-24 labelled sample, oxjob #1256)."""
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -114,29 +112,61 @@ def class_sql():
       SELECT ta, COUNT(*) AS n_ids, SUM(CASE WHEN has_doi THEN 1 ELSE 0 END) AS n_doi
       FROM k GROUP BY ta HAVING COUNT(*) BETWEEN 2 AND 3
     ),
+    w AS (
+      SELECT id, publication_year AS yr, type, title,
+             regexp_replace(lower(title), '[^a-z0-9]', '') AS title_norm,
+             array_distinct(filter(split(regexp_replace(lower(title), '[^a-z0-9 ]', ' '), ' +'), x -> x <> '')) AS title_tokens,
+             primary_location.source.id AS src, biblio.volume AS vol, biblio.first_page AS fp,
+             COALESCE(cited_by_count, 0) AS cites
+      FROM {WORKS}
+    ),
     sides AS (
-      SELECT k.ta, g.n_ids, g.n_doi, k.work_id, k.has_doi, k.repo_only, k.n_locations,
-             w.publication_year AS yr, COALESCE(w.cited_by_count, 0) AS cites,
+      SELECT k.ta, g.n_ids, g.n_doi, k.work_id, k.has_doi, k.repo_only, k.n_locations, w.yr, w.type, w.title_norm, w.title_tokens, w.src, w.vol, w.fp, w.cites,
              ROW_NUMBER() OVER (PARTITION BY k.ta ORDER BY k.has_doi DESC, k.work_id) AS rn
       FROM g JOIN k ON k.ta = g.ta
-      LEFT JOIN {WORKS} w ON w.id = k.work_id
+      LEFT JOIN w ON w.id = k.work_id
       WHERE g.n_doi <= 1
     ),
-    winners AS (SELECT ta, work_id AS winner_work_id, yr AS winner_yr, has_doi AS winner_has_doi FROM sides WHERE rn = 1),
-    losers AS (
-      SELECT s.ta, s.n_ids, s.n_doi, w.winner_work_id, w.winner_yr, w.winner_has_doi,
+    winners AS (SELECT * FROM sides WHERE rn = 1),
+    pairs AS (
+      SELECT s.ta, s.n_ids, s.n_doi, x.work_id AS winner_work_id, x.yr AS winner_yr, x.has_doi AS winner_has_doi, x.type AS winner_type,
              s.work_id AS loser_work_id, s.yr AS loser_yr, s.cites AS loser_cites, s.repo_only AS loser_repo_only,
-             s.n_locations AS loser_locations, LENGTH(s.ta) AS key_len
-      FROM sides s JOIN winners w ON w.ta = s.ta WHERE s.rn > 1
+             s.n_locations AS loser_locations, LENGTH(s.ta) AS key_len, s.type AS loser_type,
+             CASE WHEN s.yr IS NULL OR x.yr IS NULL THEN 'unknown' WHEN s.yr = x.yr THEN 'same'
+                  WHEN ABS(s.yr - x.yr) = 1 THEN 'pm1' ELSE 'gt1' END AS year_cls,
+             (s.title_norm = x.title_norm) AS full_title_same,
+             CASE WHEN size(array_union(s.title_tokens, x.title_tokens)) = 0 THEN 0.0
+                  ELSE size(array_intersect(s.title_tokens, x.title_tokens)) / size(array_union(s.title_tokens, x.title_tokens)) END AS title_jaccard,
+             (s.vol IS NOT NULL AND x.vol IS NOT NULL AND (s.vol <> x.vol OR (s.fp IS NOT NULL AND x.fp IS NOT NULL AND s.fp <> x.fp))) AS biblio_differs,
+             (s.src IS NOT NULL AND s.src = x.src) AS src_same
+      FROM sides s JOIN winners x ON x.ta = s.ta WHERE s.rn > 1
+    ),
+    tiered AS (
+      SELECT p.*,
+             CASE WHEN p.biblio_differs OR p.year_cls = 'gt1' THEN NULL
+                  WHEN p.year_cls = 'same' AND p.full_title_same THEN 1
+                  WHEN p.year_cls = 'same' THEN 2
+                  WHEN p.year_cls = 'unknown' THEN 3
+                  WHEN p.year_cls = 'pm1' THEN 4 END AS tier,
+             -- the failure shapes the labelled sample found: same venue (letters / serial items on one page),
+             -- preprint-or-conference-vs-article (a version, not a duplicate), a book vs its chapter or a review of it
+             CASE WHEN p.loser_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')
+                    OR p.winner_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other') THEN 'junk_type'
+                  WHEN (p.loser_type, p.winner_type) IN (('preprint', 'article'), ('article', 'preprint'), ('conference-paper', 'article'), ('article', 'conference-paper'),
+                                                         ('dissertation', 'article'), ('article', 'dissertation'), ('report', 'article'), ('article', 'report')) THEN 'version_types'
+                  WHEN (p.loser_type = 'book' AND p.winner_type IN ('book-chapter', 'article')) OR (p.winner_type = 'book' AND p.loser_type IN ('book-chapter', 'article')) THEN 'book_vs_part'
+                  WHEN p.src_same THEN 'same_source'
+                  WHEN p.loser_type = 'book' AND p.winner_type = 'book' AND p.year_cls = 'unknown' THEN 'undated_books' END AS exclusion
+      FROM pairs p
     )
-    SELECT l.*,
-           CASE WHEN l.loser_cites >= {HOLD_CITED_OVER} THEN 'cited_over'
-                WHEN l.loser_yr IS NOT NULL AND l.winner_yr IS NOT NULL AND ABS(l.loser_yr - l.winner_yr) > {MAX_YEAR_GAP} THEN 'year_gap'
-                WHEN l.key_len <= {SHORT_KEY_LEN} AND NOT (l.loser_yr IS NOT NULL AND l.loser_yr = l.winner_yr) THEN 'short_key'
-                WHEN l.loser_locations > {MAX_LOCATIONS} THEN 'too_many_locations'
-                WHEN EXISTS (SELECT 1 FROM winners x WHERE x.winner_work_id = l.loser_work_id) THEN 'chained'
+    SELECT t.*,
+           CASE WHEN t.exclusion IS NOT NULL THEN t.exclusion
+                WHEN t.tier IS NULL THEN CASE WHEN t.biblio_differs THEN 'biblio_differs' ELSE 'year_gap' END
+                WHEN t.tier NOT IN ({', '.join(str(x) for x in sorted(TIERS)) or 'NULL'}) THEN CONCAT('tier_', t.tier, '_off')
+                WHEN t.tier = 2 AND t.title_jaccard < {TITLE_JACCARD_MIN} THEN 'title_too_different'
+                WHEN EXISTS (SELECT 1 FROM winners x WHERE x.work_id = t.loser_work_id) THEN 'chained'
                 END AS hold_reason
-    FROM losers l
+    FROM tiered t
     """
 
 
