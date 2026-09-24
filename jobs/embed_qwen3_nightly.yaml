@@ -1,6 +1,8 @@
-# Nightly refresh of the semantic-search vectors (oxjob #1275). Two tasks:
+# Nightly refresh of the semantic-search vectors (oxjob #1275). Three tasks:
 #   1. embed  — EmbedQwen3Incremental: new/changed/missing works → work_embeddings_qwen3 (serverless, ai_query)
-#   2. sync   — sync_vector_index_qwen3 incremental: rows embedded in the last `sync_lookback_days` → ES works-vectors-v2
+#   2. stage  — stage_vector_sync_qwen3.sql on the serverless SQL warehouse: rows embedded in the last 2 days joined
+#               to their filter fields → vector_sync_staging_qwen3 (~2 min; the same query stalls for hours on the job cluster)
+#   3. sync   — sync_vector_index_qwen3 incremental: ships the staging table to ES works-vectors-v2
 # The sync only runs if the embed task succeeds. Both are idempotent; a failed run is simply re-run.
 resources:
   jobs:
@@ -44,15 +46,24 @@ resources:
               max_works: "{{job.parameters.max_works}}"
           environment_key: Default
           timeout_seconds: 43200
-        - task_key: sync
+        - task_key: stage
           depends_on:
             - task_key: embed
+          sql_task:
+            warehouse_id: 69a583ace3bdc8d0   # serverless Medium; builds vector_sync_staging_qwen3 in ~2 min
+            file:
+              path: notebooks/elastic/stage_vector_sync_qwen3.sql
+              source: GIT
+          timeout_seconds: 3600
+        - task_key: sync
+          depends_on:
+            - task_key: stage
           notebook_task:
             notebook_path: notebooks/elastic/sync_vector_index_qwen3
             source: GIT
             base_parameters:
               is_full_sync: "false"
-              lookback_days: "{{job.parameters.sync_lookback_days}}"
+              lookback_days: "{{job.parameters.sync_lookback_days}}"   # only used if the stage task's table is missing
           job_cluster_key: vector_sync_cluster
           timeout_seconds: 21600
       job_clusters:
