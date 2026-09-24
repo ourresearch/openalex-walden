@@ -32,6 +32,12 @@ resources:
           default: "1,2"
         - name: title_jaccard_min
           default: "0.9"
+        - name: abstract_jaccard_min
+          default: "0.6"
+        - name: preprint_is_same
+          default: "no"
+        - name: prior_targets
+          default: ""
         - name: confirm
           default: "no"
       tasks:
@@ -46,6 +52,9 @@ resources:
               wave: "{{job.parameters.wave}}"
               tiers: "{{job.parameters.tiers}}"
               title_jaccard_min: "{{job.parameters.title_jaccard_min}}"
+              abstract_jaccard_min: "{{job.parameters.abstract_jaccard_min}}"
+              preprint_is_same: "{{job.parameters.preprint_is_same}}"
+              prior_targets: "{{job.parameters.prior_targets}}"
               confirm: "{{job.parameters.confirm}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git

@@ -51,6 +51,9 @@ dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
 dbutils.widgets.text("tiers", "1,2")
 dbutils.widgets.text("title_jaccard_min", "0.9")
+dbutils.widgets.text("abstract_jaccard_min", "0.6")
+dbutils.widgets.text("preprint_is_same", "no")
+dbutils.widgets.text("prior_targets", "")
 dbutils.widgets.text("confirm", "no")
 
 MODE = dbutils.widgets.get("mode")
@@ -59,6 +62,10 @@ WAVE_SIZE = int(dbutils.widgets.get("wave_size"))
 WAVE = int(dbutils.widgets.get("wave"))
 TIERS = {int(t) for t in dbutils.widgets.get("tiers").split(",") if t.strip()}
 TITLE_JACCARD_MIN = float(dbutils.widgets.get("title_jaccard_min"))
+ABSTRACT_JACCARD_MIN = float(dbutils.widgets.get("abstract_jaccard_min"))
+PREPRINT_IS_SAME = dbutils.widgets.get("preprint_is_same") == "yes"
+# earlier targets whose executed losers must not be staged again (locations_mapped still shows them until the nightly rebuild)
+PRIOR_TARGETS = [t.strip() for t in dbutils.widgets.get("prior_targets").split(",") if t.strip()]
 CONFIRM = dbutils.widgets.get("confirm") == "yes"
 AUDIT = f"{TARGET}_wave{WAVE}_audit"
 REFS_AUDIT = f"{TARGET}_wave{WAVE}_refs_audit"
@@ -82,7 +89,8 @@ def note(**kw):
     SUMMARY.update(kw)
     print(kw)
 
-print(dict(mode=MODE, target=TARGET, wave_size=WAVE_SIZE, wave=WAVE, tiers=sorted(TIERS), title_jaccard_min=TITLE_JACCARD_MIN, confirm=CONFIRM))
+print(dict(mode=MODE, target=TARGET, wave_size=WAVE_SIZE, wave=WAVE, tiers=sorted(TIERS), title_jaccard_min=TITLE_JACCARD_MIN,
+           abstract_jaccard_min=ABSTRACT_JACCARD_MIN, preprint_is_same=PREPRINT_IS_SAME, prior_targets=PRIOR_TARGETS, confirm=CONFIRM))
 
 
 def rows(sql):
@@ -108,6 +116,7 @@ def class_sql():
              COUNT(*) AS n_locations
       FROM {LM}
       WHERE work_id IS NOT NULL AND merge_key.title_author IS NOT NULL AND LENGTH(merge_key.title_author) > 20
+        {prior_exclusion()}
       GROUP BY 1, 2
     ),
     g AS (
@@ -119,11 +128,12 @@ def class_sql():
              regexp_replace(lower(title), '[^a-z0-9]', '') AS title_norm,
              array_distinct(filter(split(regexp_replace(lower(title), '[^a-z0-9 ]', ' '), ' +'), x -> x <> '')) AS title_tokens,
              primary_location.source.id AS src, biblio.volume AS vol, biblio.first_page AS fp,
-             COALESCE(cited_by_count, 0) AS cites
+             COALESCE(cited_by_count, 0) AS cites,
+             array_distinct(filter(split(regexp_replace(lower(COALESCE(abstract, '')), '[^a-z0-9 ]', ' '), ' +'), x -> length(x) > 3)) AS abs_tokens
       FROM {WORKS}
     ),
     sides AS (
-      SELECT k.ta, g.n_ids, g.n_doi, k.work_id, k.has_doi, k.repo_only, k.n_locations, w.yr, w.type, w.title_norm, w.title_tokens, w.src, w.vol, w.fp, w.cites,
+      SELECT k.ta, g.n_ids, g.n_doi, k.work_id, k.has_doi, k.repo_only, k.n_locations, w.yr, w.type, w.title_norm, w.title_tokens, w.src, w.vol, w.fp, w.cites, w.abs_tokens,
              ROW_NUMBER() OVER (PARTITION BY k.ta ORDER BY k.has_doi DESC, k.work_id) AS rn
       FROM g JOIN k ON k.ta = g.ta
       LEFT JOIN w ON w.id = k.work_id
@@ -140,7 +150,9 @@ def class_sql():
              CASE WHEN size(array_union(s.title_tokens, x.title_tokens)) = 0 THEN 0.0
                   ELSE size(array_intersect(s.title_tokens, x.title_tokens)) / size(array_union(s.title_tokens, x.title_tokens)) END AS title_jaccard,
              (s.vol IS NOT NULL AND x.vol IS NOT NULL AND (s.vol <> x.vol OR (s.fp IS NOT NULL AND x.fp IS NOT NULL AND s.fp <> x.fp))) AS biblio_differs,
-             (s.src IS NOT NULL AND s.src = x.src) AS src_same
+             (s.src IS NOT NULL AND s.src = x.src) AS src_same,
+             CASE WHEN size(s.abs_tokens) >= 20 AND size(x.abs_tokens) >= 20
+                  THEN size(array_intersect(s.abs_tokens, x.abs_tokens)) / size(array_union(s.abs_tokens, x.abs_tokens)) END AS abs_jaccard
       FROM sides s JOIN winners x ON x.ta = s.ta WHERE s.rn > 1
     ),
     tiered AS (
@@ -160,16 +172,35 @@ def class_sql():
                   WHEN p.src_same THEN 'same_source'
                   WHEN p.loser_type = 'book' AND p.winner_type = 'book' AND p.year_cls = 'unknown' THEN 'undated_books' END AS exclusion
       FROM pairs p
+    ),
+    held AS (
+      SELECT t.*,
+             CASE WHEN t.exclusion IS NOT NULL THEN t.exclusion
+                  WHEN t.tier IS NULL THEN CASE WHEN t.biblio_differs THEN 'biblio_differs' ELSE 'year_gap' END
+                  WHEN t.tier NOT IN ({', '.join(str(x) for x in sorted(TIERS)) or 'NULL'}) THEN CONCAT('tier_', t.tier, '_off')
+                  WHEN t.tier = 2 AND t.title_jaccard < {TITLE_JACCARD_MIN} THEN 'title_too_different'
+                  END AS base_hold
+      FROM tiered t
     )
-    SELECT t.*,
-           CASE WHEN t.exclusion IS NOT NULL THEN t.exclusion
-                WHEN t.tier IS NULL THEN CASE WHEN t.biblio_differs THEN 'biblio_differs' ELSE 'year_gap' END
-                WHEN t.tier NOT IN ({', '.join(str(x) for x in sorted(TIERS)) or 'NULL'}) THEN CONCAT('tier_', t.tier, '_off')
-                WHEN t.tier = 2 AND t.title_jaccard < {TITLE_JACCARD_MIN} THEN 'title_too_different'
-                WHEN EXISTS (SELECT 1 FROM winners x WHERE x.work_id = t.loser_work_id) THEN 'chained'
+    -- abstract rescue (2026-09-24 labelled sample, 1,103 held pairs): where both records carry an abstract and the
+    -- token sets agree (Jaccard >= abstract_jaccard_min) the pair is the same work in every bucket below (42/42 each);
+    -- version-type and +-1-year pairs are the same MANUSCRIPT or its preprint, so they join only under preprint_is_same
+    SELECT h.*,
+           CASE WHEN h.base_hold IN ('same_source', 'year_gap', 'tier_3_off', 'title_too_different') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} THEN 'abstract'
+                WHEN h.base_hold IN ('version_types', 'tier_4_off') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} AND {'TRUE' if PREPRINT_IS_SAME else 'FALSE'} THEN 'abstract_preprint'
+                END AS rescue,
+           CASE WHEN h.base_hold IN ('same_source', 'year_gap', 'tier_3_off', 'title_too_different') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} THEN NULL
+                WHEN h.base_hold IN ('version_types', 'tier_4_off') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} AND {'TRUE' if PREPRINT_IS_SAME else 'FALSE'} THEN NULL
+                WHEN h.base_hold IS NOT NULL THEN h.base_hold
+                WHEN EXISTS (SELECT 1 FROM winners x WHERE x.work_id = h.loser_work_id) THEN 'chained'
                 END AS hold_reason
-    FROM tiered t
+    FROM held h
     """
+
+
+def prior_exclusion():
+    """anti-join every prior target's executed losers (and their winners' losers) so a re-stage never re-lists them"""
+    return " ".join(f"AND NOT EXISTS (SELECT 1 FROM {t} p WHERE p.executed_at IS NOT NULL AND p.loser_work_id = work_id)" for t in PRIOR_TARGETS)
 
 
 def wave_pred():
@@ -210,7 +241,8 @@ if MODE == "stage":
          totals=one(f"""SELECT COUNT(*) AS losers, COUNT(DISTINCT ta) AS keys, SUM(CASE WHEN hold_reason IS NULL THEN 1 ELSE 0 END) AS executable,
                                MAX(wave) AS waves FROM {TARGET}"""),
          holds=rows(f"SELECT hold_reason, COUNT(*) AS losers FROM {TARGET} WHERE hold_reason IS NOT NULL GROUP BY 1 ORDER BY 2 DESC"),
-         waves=rows(f"SELECT wave, COUNT(*) AS losers, SUM(loser_cites) AS cites FROM {TARGET} WHERE wave IS NOT NULL GROUP BY 1 ORDER BY 1"))
+         waves=rows(f"SELECT wave, COUNT(*) AS losers, SUM(loser_cites) AS cites FROM {TARGET} WHERE wave IS NOT NULL GROUP BY 1 ORDER BY 1"),
+         rescued=rows(f"SELECT rescue, base_hold, COUNT(*) AS losers FROM {TARGET} WHERE rescue IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC"))
     print_waves(TARGET)
 
 # COMMAND ----------
