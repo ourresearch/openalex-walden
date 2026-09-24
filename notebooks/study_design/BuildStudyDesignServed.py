@@ -74,7 +74,7 @@ w_pm AS (
 tag AS (
   SELECT work_id, tagger_values, tagger_version, updated_at AS tagged_at FROM (
     SELECT *, row_number() OVER (PARTITION BY work_id ORDER BY updated_at DESC) AS rn
-    FROM {TAGGER} WHERE tagger_version = '{sd.TAGGER_VERSION}')
+    FROM {TAGGER} WHERE tagger_version IN ({sd.sql_versions()}))
   WHERE rn = 1
 )
 SELECT coalesce(t.work_id, p.work_id) AS work_id,
