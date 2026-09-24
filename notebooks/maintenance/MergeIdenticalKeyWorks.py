@@ -39,7 +39,9 @@
 # MAGIC - `verify`    the morning after: every audited pin re-pinned; landed on the winner / elsewhere / NULL;
 # MAGIC               losers with 0 pins; losers ledgered.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
-# MAGIC               (before-image) then UPDATE `work_references.cited_work_id` loser → winner.
+# MAGIC               (before-image, both sides) then UPDATE `work_references`: `cited_work_id` loser → winner (citations
+# MAGIC               TO the loser) and `citing_work_id` loser → winner (the loser's OWN reference list comes along; rows keep
+# MAGIC               their location + ref_ind so they never collide with the winner's).
 
 # COMMAND ----------
 
@@ -306,13 +308,24 @@ if MODE == "repoint_citations":
         raise Exception(f"{still} losers still hold registry pins: run verify and wait for the nightly before repointing citations")
     if not CONFIRM:
         dbutils.notebook.exit("dry run only: pass confirm=yes to repoint citations")
+    own = one(f"""SELECT COUNT(*) AS loser_reference_rows, COUNT(DISTINCT r.citing_work_id) AS losers_with_references
+                  FROM {REFS} r JOIN {pairs} p ON r.citing_work_id = p.loser_work_id""")
+    note(**own)
+    # before-image of both directions: rows that CITE a loser (cited side) and the loser's OWN reference list (citing side)
     spark.sql(f"""CREATE TABLE {REFS_AUDIT} AS
-                  SELECT r.citing_work_id, r.native_id, r.native_id_namespace, r.ref_ind, r.cited_work_id AS old_cited_work_id,
-                         p.winner_work_id AS new_cited_work_id, current_timestamp() AS audited_at
-                  FROM {REFS} r JOIN {pairs} p ON r.cited_work_id = p.loser_work_id""")
+                  SELECT 'cited' AS side, r.citing_work_id, r.native_id, r.native_id_namespace, r.ref_ind,
+                         r.cited_work_id AS old_id, p.winner_work_id AS new_id, current_timestamp() AS audited_at
+                  FROM {REFS} r JOIN {pairs} p ON r.cited_work_id = p.loser_work_id
+                  UNION ALL
+                  SELECT 'citing', r.citing_work_id, r.native_id, r.native_id_namespace, r.ref_ind,
+                         r.citing_work_id, p.winner_work_id, current_timestamp()
+                  FROM {REFS} r JOIN {pairs} p ON r.citing_work_id = p.loser_work_id""")
     moved = spark.sql(f"""MERGE INTO {REFS} r USING {pairs} p ON r.cited_work_id = p.loser_work_id
                           WHEN MATCHED THEN UPDATE SET r.cited_work_id = p.winner_work_id, r.updated_timestamp = current_timestamp()""").collect()[0].num_affected_rows
-    note(refs_audit=REFS_AUDIT, edges_repointed=moved)
+    # the loser's own reference list comes along: rows keep their (native_id, ref_ind) so they cannot collide with the winner's
+    carried = spark.sql(f"""MERGE INTO {REFS} r USING {pairs} p ON r.citing_work_id = p.loser_work_id
+                            WHEN MATCHED THEN UPDATE SET r.citing_work_id = p.winner_work_id, r.updated_timestamp = current_timestamp()""").collect()[0].num_affected_rows
+    note(refs_audit=REFS_AUDIT, edges_repointed=moved, loser_reference_rows_carried=carried)
 
 # COMMAND ----------
 
