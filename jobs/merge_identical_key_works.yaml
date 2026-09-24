@@ -1,0 +1,60 @@
+resources:
+  jobs:
+    Merge_Identical_Key_Works:
+      name: Merge Identical Key Works
+      description: |
+        oxjob #1256 step four: collapse works that share a byte-identical title_author key where at most
+        one side carries a DOI (3.99M keys / 4.08M excess works on 2026-09-24). Winner = the DOI-bearing
+        work, else the lowest id. Deletes the loser's registry pins and map rows (audited); the nightly
+        MapWorkIds re-binds the loser's records to the winner by title; TrackDeletedWorks ledgers the
+        loser; repoint_citations moves work_references loser -> winner the morning after.
+        Holds: year_gap, short_key, too_many_locations, cited_over (sign-off), chained.
+
+        MANUAL TRIGGER ONLY.
+          mode=stage             build the class, apply holds, assign waves per key (uncited first); writes <target>_cited_review
+          mode=dry_run wave=N    losers/keys/winners, pins + map rows to delete, samples
+          mode=execute wave=N    confirm=yes, outside 04:00-08:00 UTC, never while End 2 End runs; <target>_wave<N>_audit; once per wave
+          mode=verify wave=N     the morning after: audited pins re-pinned on the winner; losers unpinned + ledgered
+          mode=repoint_citations wave=N confirm=yes   after verify: <target>_wave<N>_refs_audit, then UPDATE work_references
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode
+          default: "stage"
+        - name: target_table
+          default: "openalex.works.oxjob1256_identical_key_merge_target"
+        - name: wave_size
+          default: "1500000"
+        - name: wave
+          default: "1"
+        - name: max_year_gap
+          default: "1"
+        - name: short_key_len
+          default: "30"
+        - name: max_locations
+          default: "50"
+        - name: hold_cited_over
+          default: "100"
+        - name: confirm
+          default: "no"
+      tasks:
+        - task_key: merge_identical_key_works
+          notebook_task:
+            notebook_path: notebooks/maintenance/MergeIdenticalKeyWorks
+            source: GIT
+            base_parameters:
+              mode: "{{job.parameters.mode}}"
+              target_table: "{{job.parameters.target_table}}"
+              wave_size: "{{job.parameters.wave_size}}"
+              wave: "{{job.parameters.wave}}"
+              max_year_gap: "{{job.parameters.max_year_gap}}"
+              short_key_len: "{{job.parameters.short_key_len}}"
+              max_locations: "{{job.parameters.max_locations}}"
+              hold_cited_over: "{{job.parameters.hold_cited_over}}"
+              confirm: "{{job.parameters.confirm}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
