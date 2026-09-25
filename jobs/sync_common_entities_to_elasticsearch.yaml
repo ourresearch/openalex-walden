@@ -39,6 +39,10 @@ resources:
           notebook_task:
             notebook_path: notebooks/elastic/sync_source_lists
             source: GIT
+        - task_key: sync_study_designs
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_study_designs
+            source: GIT
         - task_key: sync_source_types
           notebook_task:
             notebook_path: notebooks/elastic/sync_source_types

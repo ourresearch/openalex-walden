@@ -138,6 +138,31 @@ PARENT = {"rct": "clinical_trial", "meta_analysis": "systematic_review"}
 # tagger_version and re-queue everything); the served build filters it out. A primary-research flag is oxjob #1362.
 SERVED_CLASSES = [c for c in CLASSES if c != "other_primary_research"]
 
+# The study-designs entity (API /study-designs; notebooks/elastic/sync_study_designs.py). CreateWorksEnriched
+# hard-codes the same slug -> display_name CASE; keep the two in step.
+DISPLAY_NAME = {
+    "rct": "Randomized Controlled Trial",
+    "clinical_trial": "Clinical Trial",
+    "observational": "Observational Study",
+    "case_report": "Case Report",
+    "systematic_review": "Systematic Review",
+    "meta_analysis": "Meta-Analysis",
+    "protocol": "Study Protocol",
+}
+DESCRIPTION = {
+    "rct": ("A trial that assigns participants (or clusters, or treatment periods) to interventions by explicit "
+            "randomization and reports its results. Every randomized controlled trial is also a clinical trial."),
+    "clinical_trial": ("A prospective study that assigns participants to an intervention and reports its "
+                       "results, randomized or not."),
+    "observational": ("A study of people or animals in which the investigators do not assign an intervention: "
+                      "cohort, case-control, cross-sectional, registry and survey studies."),
+    "case_report": "A description of one patient or a small series of about ten or fewer, without a comparison group.",
+    "systematic_review": ("A review that reports a systematic search of the literature and explicit criteria for "
+                          "selecting studies. Every meta-analysis is also a systematic review."),
+    "meta_analysis": "A study that statistically pools quantitative results from multiple published studies.",
+    "protocol": "The plan for a study that has not yet reported results.",
+}
+
 # Code-side text gates (== harness/textsig.py). Under rubric v2 an RCT must state random allocation, so the
 # stated-random regex is a hard gate, not a hint.
 RAND = re.compile(r"randomi[sz]|randomly|at random|random(?:ized|ised|isation|ization)?\b|aleatori[sz]|aleat[oó]ri|randomisiert|randomisé|"
