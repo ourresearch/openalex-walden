@@ -518,23 +518,29 @@ if MODE == "verify":
 if MODE == "repoint_citations":
     if not spark.catalog.tableExists(AUDIT):
         raise Exception(f"{AUDIT} does not exist: wave {WAVE} was not executed")
-    if spark.catalog.tableExists(REFS_AUDIT):
-        raise Exception(f"{REFS_AUDIT} exists: citations for wave {WAVE} were already repointed")
-    # losers that hold pins again (resurrected before the MapWorkIds redirect) are left for the re-execute pass
-    pairs = f"""(SELECT DISTINCT loser_work_id, winner_work_id FROM {TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL
-                 AND NOT EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = t.loser_work_id))"""
+    # losers that hold pins again (resurrected before the MapWorkIds redirect) are left for the re-execute pass.
+    # ONE winner per loser (a loser under two keys can list two winners and MERGE needs a single source row per
+    # target row): the lowest winner id, which is what MIN(id) resolution picks too.
+    pairs = f"""(SELECT t.loser_work_id, MIN(t.winner_work_id) AS winner_work_id FROM {TARGET} t
+                 WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = t.loser_work_id)
+                 GROUP BY t.loser_work_id)"""
     still = one(f"""SELECT COUNT(DISTINCT t.loser_work_id) AS n FROM {TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL
                     AND EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = t.loser_work_id)""")["n"]
     plan = one(f"""SELECT COUNT(*) AS edges, COUNT(DISTINCT r.citing_work_id) AS citing_works, COUNT(DISTINCT r.cited_work_id) AS losers_cited
                    FROM {REFS} r JOIN {pairs} p ON r.cited_work_id = p.loser_work_id""")
     note(losers_still_pinned_and_skipped=still, **plan)
-    if not CONFIRM:
-        dbutils.notebook.exit("dry run only: pass confirm=yes to repoint citations")
     own = one(f"""SELECT COUNT(*) AS loser_reference_rows, COUNT(DISTINCT r.citing_work_id) AS losers_with_references
                   FROM {REFS} r JOIN {pairs} p ON r.citing_work_id = p.loser_work_id""")
     note(**own)
-    # before-image of both directions: rows that CITE a loser (cited side) and the loser's OWN reference list (citing side)
-    spark.sql(f"""CREATE TABLE {REFS_AUDIT} AS
+    if plan["edges"] == 0 and own["loser_reference_rows"] == 0:
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "nothing to repoint (already done, or nothing cited)"}, default=str))
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to repoint citations")
+    # before-image of both directions: rows that CITE a loser (cited side) and the loser's OWN reference list (citing side).
+    # Idempotent: the MERGEs only touch rows still keyed to a loser, so a re-run after a failed attempt is safe and the
+    # audit is rebuilt from what is still to move (a completed pass leaves nothing, so nothing gets overwritten).
+    spark.sql(f"""CREATE OR REPLACE TABLE {REFS_AUDIT} AS
                   SELECT 'cited' AS side, r.citing_work_id, r.native_id, r.native_id_namespace, r.ref_ind,
                          r.cited_work_id AS old_id, p.winner_work_id AS new_id, current_timestamp() AS audited_at
                   FROM {REFS} r JOIN {pairs} p ON r.cited_work_id = p.loser_work_id
