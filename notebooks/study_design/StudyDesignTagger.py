@@ -103,7 +103,11 @@ ERR_SCHEMA = StructType([
 build_id = spark.sql(f"SELECT max(build_id) AS b FROM {QUEUE}").collect()[0].b
 if not build_id:
     raise RuntimeError(f"{QUEUE} is empty; run BuildStudyDesignQueue first")
-done = {int(r.chunk_id) for r in spark.sql(f"SELECT chunk_id FROM {PROGRESS} WHERE build_id = '{build_id}'").collect()}
+# Only this tagger's own progress rows: the student task (oxjob #1335) writes rows for the same build at
+# STUDENT_VERSION, and counting those made every student-finished chunk look done here, so the Jev residual was
+# never tagged (found 2026-09-25).
+done = {int(r.chunk_id) for r in spark.sql(
+    f"SELECT chunk_id FROM {PROGRESS} WHERE build_id = '{build_id}' AND tagger_version = '{sd.TAGGER_VERSION}'").collect()}
 chunks = [(int(r.chunk_id), int(r.n)) for r in
           spark.sql(f"SELECT chunk_id, count(*) AS n FROM {QUEUE} GROUP BY chunk_id ORDER BY chunk_id").collect()]
 todo = [(c, n) for c, n in chunks if c not in done]
