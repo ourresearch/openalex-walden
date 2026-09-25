@@ -149,18 +149,20 @@ DISPLAY_NAME = {
     "meta_analysis": "Meta-Analysis",
     "protocol": "Study Protocol",
 }
-DESCRIPTION = {
-    "rct": ("A trial that assigns participants (or clusters, or treatment periods) to interventions by explicit "
-            "randomization and reports its results. Every randomized controlled trial is also a clinical trial."),
-    "clinical_trial": ("A prospective study that assigns participants to an intervention and reports its "
-                       "results, randomized or not."),
-    "observational": ("A study of people or animals in which the investigators do not assign an intervention: "
-                      "cohort, case-control, cross-sectional, registry and survey studies."),
-    "case_report": "A description of one patient or a small series of about ten or fewer, without a comparison group.",
+DESCRIPTION = {   # word-for-word the definitions on help.openalex.org/data/study-designs (MeSH scope notes)
+    "rct": ("A trial that assigns human participants, groups of participants or treatment periods to interventions by "
+            "explicit randomization and reports its results; secondary and post-hoc analyses of a trial's data do not "
+            "count."),
+    "clinical_trial": ("A study that prospectively assigns human participants to one or more interventions and reports "
+                       "the results, randomized or not."),
+    "observational": ("A study of human participants in which the investigators do not assign an intervention, such as "
+                      "a cohort, case-control, cross-sectional, registry or survey study."),
+    "case_report": ("A description of one patient, or a small series of about ten or fewer described one by one, with no "
+                    "comparison group."),
     "systematic_review": ("A review that reports a systematic search of the literature and explicit criteria for "
-                          "selecting studies. Every meta-analysis is also a systematic review."),
-    "meta_analysis": "A study that statistically pools quantitative results from multiple published studies.",
-    "protocol": "The plan for a study that has not yet reported results.",
+                          "selecting the studies it brings together."),
+    "meta_analysis": "A study that statistically pools quantitative results from several independent studies.",
+    "protocol": ("The published plan for a study, setting out its aims, design and methods before any results exist."),
 }
 
 # Code-side text gates (== harness/textsig.py). Under rubric v2 an RCT must state random allocation, so the
