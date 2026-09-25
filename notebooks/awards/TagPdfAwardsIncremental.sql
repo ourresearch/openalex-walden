@@ -143,19 +143,82 @@ WITH funder_regexes AS (
   FROM openalex.common.funder_names_keep fnk
   JOIN openalex.funders.funders_api fa
     ON CAST(regexp_extract(fnk.id, 'F(\\d+)', 1) AS BIGINT) = fa.id
+),
+matched_aliases AS (
+  SELECT DISTINCT fs.work_id, fs.all_sections, fr.*
+  FROM funder_sections fs
+  CROSS JOIN funder_regexes fr
+  WHERE fs.all_sections RLIKE fr.match_regex
+),
+alias_spans AS (
+  -- Zero-width lookahead enumerates overlapping occurrences on ORIGINAL text.
+  -- Capture the suffix after the literal alias; LENGTH gives 1-based [start,end).
+  -- Existing regexes contain no capturing groups; do not slice away lookbehinds.
+  SELECT m.*,
+    LENGTH(m.all_sections) - LENGTH(tail) - LENGTH(m.funder_name) + 1 AS span_start,
+    LENGTH(m.all_sections) - LENGTH(tail) + 1 AS span_end
+  FROM matched_aliases m
+  LATERAL VIEW explode(regexp_extract_all(
+    m.all_sections, CONCAT('(?=(?:', m.match_regex, ')([\\s\\S]*))'), 1
+  )) occurrences AS tail
+),
+parent_child AS (
+  SELECT ror_id AS parent_ror, related_ror_id AS child_ror
+  FROM openalex.institutions.ror_relationships
+  WHERE LOWER(relationship_type) = 'child'
+  UNION
+  SELECT related_ror_id AS parent_ror, ror_id AS child_ror
+  FROM openalex.institutions.ror_relationships
+  WHERE LOWER(relationship_type) = 'parent'
+),
+suppressed_spans AS (
+  SELECT s.work_id, s.all_sections, s.funder_id_numeric, s.span_start, s.span_end
+  FROM alias_spans s
+  JOIN alias_spans l
+    ON s.work_id = l.work_id AND s.all_sections = l.all_sections
+    AND s.funder_id_numeric <> l.funder_id_numeric
+    AND l.span_start <= s.span_start AND l.span_end >= s.span_end
+    AND l.span_end - l.span_start > s.span_end - s.span_start
+  LEFT JOIN parent_child pc
+    ON pc.parent_ror = REPLACE(s.ror_id, 'https://ror.org/', '')
+    AND pc.child_ror = REPLACE(l.ror_id, 'https://ror.org/', '')
+  GROUP BY s.work_id, s.all_sections, s.funder_id_numeric, s.span_start, s.span_end
+  -- A registered child or same-ROR duplicate preserves umbrella/entity credit.
+  HAVING MAX(CASE WHEN pc.parent_ror IS NOT NULL
+    OR (NULLIF(REPLACE(s.ror_id, 'https://ror.org/', ''), '') =
+        NULLIF(REPLACE(l.ror_id, 'https://ror.org/', ''), ''))
+    THEN 1 ELSE 0 END) = 0
+),
+surviving_funder_windows AS (
+  SELECT DISTINCT s.work_id, s.all_sections, s.funder_id_numeric
+  FROM alias_spans s
+  LEFT ANTI JOIN suppressed_spans x
+    ON s.work_id = x.work_id AND s.all_sections = x.all_sections
+    AND s.funder_id_numeric = x.funder_id_numeric
+    AND s.span_start = x.span_start AND s.span_end = x.span_end
+),
+suppressed_funder_windows AS (
+  -- Drop only if ALL occurrences of ALL aliases are covered in this window.
+  -- Overlapping/nested longer aliases cannot double-count away a standalone span.
+  SELECT DISTINCT m.work_id, m.all_sections, m.funder_id_numeric
+  FROM matched_aliases m
+  LEFT ANTI JOIN surviving_funder_windows k
+    ON m.work_id = k.work_id AND m.all_sections = k.all_sections
+    AND m.funder_id_numeric = k.funder_id_numeric
 )
 SELECT DISTINCT
-  fs.work_id,
-  fs.all_sections,
-  fr.funder_name,
-  fr.funder_display_name,
-  fr.funder_id,
-  fr.funder_id_numeric,
-  fr.ror_id,
-  fr.doi
-FROM funder_sections fs
-CROSS JOIN funder_regexes fr
-WHERE fs.all_sections RLIKE fr.match_regex;
+  m.work_id,
+  m.all_sections,
+  m.funder_name,
+  m.funder_display_name,
+  m.funder_id,
+  m.funder_id_numeric,
+  m.ror_id,
+  m.doi
+FROM matched_aliases m
+LEFT ANTI JOIN suppressed_funder_windows x
+  ON m.work_id = x.work_id AND m.all_sections = x.all_sections
+  AND m.funder_id_numeric = x.funder_id_numeric;
 
 -- COMMAND ----------
 
@@ -202,6 +265,11 @@ candidate_awards AS (
 usable_awards AS (
   SELECT ca.*
   FROM candidate_awards ca
+  -- PDF L1b: broader than mint-time decision='suppress'; preserve salvage.
+  LEFT ANTI JOIN openalex.awards.award_id_guard g
+    ON ca.funder_id = g.funder_id AND ca.funder_award_id = g.funder_award_id
+    AND g.verdict = 'garbage'
+    AND COALESCE(g.reason, '') NOT LIKE 'salvaged:%'
   LEFT ANTI JOIN funder_alt_names fan
     ON ca.funder_award_id = fan.alt_name
 ),
