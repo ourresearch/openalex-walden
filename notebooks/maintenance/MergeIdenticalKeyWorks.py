@@ -45,7 +45,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations", "reexecute_resurrected", "record_merges"])
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
@@ -80,6 +80,7 @@ WORKS = "openalex.works.openalex_works"
 REFS = "openalex.works.work_references"
 LEDGER = "openalex.works.deleted_works"
 END2END_JOB_ID = 616701029470182
+MERGED = "openalex.works.merged_work_ids"   # durable loser -> winner record; MapWorkIds redirects legacy adoption through it
 
 import datetime, json, time
 
@@ -381,10 +382,79 @@ if MODE == "execute":
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
     spark.sql(f"UPDATE {TARGET} t SET executed_at = current_timestamp() WHERE {wave_pred()}")
+    record_merges(f"{TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL")
     note(executed_seconds=int(time.time() - t0), audit=AUDIT, audited_pins=n["pins"], audited_map_rows=n["map_rows"],
          pins_deleted=pins, map_rows_deleted=maprows)
     assert pins == n["pins"], f"pins deleted {pins} != audited {n['pins']}"
     print_waves(TARGET)
+
+def record_merges(scope_sql):
+    """Write (loser -> winner) into the durable merged_work_ids table (idempotent). MapWorkIds' legacy adoption
+    (mag id / PMH crosswalk) redirects through it, so a merged loser can never be resurrected by its own legacy
+    record (35,035 came back that way on 2026-09-25 before this existed)."""
+    spark.sql(f"""CREATE TABLE IF NOT EXISTS {MERGED} (loser_work_id BIGINT NOT NULL, winner_work_id BIGINT NOT NULL,
+                  merged_at TIMESTAMP NOT NULL, source STRING) CLUSTER BY (loser_work_id)""")
+    n = spark.sql(f"""MERGE INTO {MERGED} m
+                      USING (SELECT DISTINCT t.loser_work_id, t.winner_work_id, MIN(t.executed_at) AS merged_at, '{TARGET}' AS source
+                             FROM {scope_sql} GROUP BY t.loser_work_id, t.winner_work_id) s
+                        ON m.loser_work_id = s.loser_work_id AND m.winner_work_id = s.winner_work_id
+                      WHEN NOT MATCHED THEN INSERT *""").collect()[0].num_inserted_rows
+    note(merged_work_ids_recorded=n)
+    return n
+
+# COMMAND ----------
+
+if MODE == "record_merges":
+    # backfill the durable table from every executed row of this target (all waves)
+    record_merges(f"{TARGET} t WHERE t.executed_at IS NOT NULL")
+    note(merged_rows_total=one(f"SELECT COUNT(*) AS n FROM {MERGED}")["n"])
+
+# COMMAND ----------
+
+if MODE == "reexecute_resurrected":
+    # executed losers that hold registry pins again (legacy adoption re-pinned their own records before the
+    # MapWorkIds redirect existed): audit + delete their pins and map rows once more so the nightly re-resolves
+    # them through the redirect onto the winner. `wave` selects the wave; `confirm = yes` executes.
+    hour = datetime.datetime.utcnow().hour
+    if 4 <= hour < 8:
+        raise Exception("run outside 04:00-08:00 UTC")
+    active = end2end_active()
+    if active:
+        raise Exception(f"Walden End 2 End is running (runs {active}); wait for it to finish")
+    REAUDIT = f"{TARGET}_wave{WAVE}_reexec_audit"
+    back = f"""(SELECT DISTINCT t.loser_work_id, t.winner_work_id, t.ta FROM {TARGET} t
+                WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = t.loser_work_id))"""
+    plan = one(f"""SELECT COUNT(*) AS resurrected_losers,
+                          (SELECT COUNT(*) FROM {REGISTRY} r WHERE EXISTS (SELECT 1 FROM {back} b WHERE b.loser_work_id = r.work_id)) AS pins_to_delete,
+                          (SELECT COUNT(*) FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {back} b WHERE b.loser_work_id = m.id)) AS map_rows_to_delete
+                   FROM {back} b""")
+    note(**plan)
+    print("how the resurrected records were bound:")
+    for r in rows(f"""SELECT r.work_id_source, r.provenance, COUNT(*) AS pins FROM {REGISTRY} r
+                      WHERE EXISTS (SELECT 1 FROM {back} b WHERE b.loser_work_id = r.work_id) GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 8"""):
+        print("  ", r)
+    if plan["resurrected_losers"] == 0:
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "nothing resurrected"}, default=str))
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to re-execute")
+    if spark.catalog.tableExists(REAUDIT):
+        raise Exception(f"{REAUDIT} exists: already re-executed once; drop it deliberately to run again")
+    record_merges(f"{TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL")
+    spark.sql(f"""CREATE TABLE {REAUDIT} AS
+                  SELECT 'pin' AS kind, b.loser_work_id, b.winner_work_id, b.ta,
+                         r.provenance, r.native_id_namespace, r.native_id, r.work_id_source, r.openalex_created_dt, r.openalex_updated_dt, r.seeded_dt, r.seeded_from,
+                         CAST(NULL AS STRING) AS doi, CAST(NULL AS STRING) AS pmid, CAST(NULL AS STRING) AS arxiv, CAST(NULL AS STRING) AS title_author,
+                         CAST(NULL AS DATE) AS created_date, CAST(NULL AS TIMESTAMP) AS updated_date, current_timestamp() AS audited_at
+                  FROM {back} b JOIN {REGISTRY} r ON r.work_id = b.loser_work_id
+                  UNION ALL
+                  SELECT 'map', b.loser_work_id, b.winner_work_id, b.ta, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                         m.doi, m.pmid, m.arxiv, m.title_author, m.created_date, m.updated_date, current_timestamp()
+                  FROM {back} b JOIN {MAP} m ON m.id = b.loser_work_id""")
+    pins = spark.sql(f"""DELETE FROM {REGISTRY} r WHERE EXISTS (SELECT 1 FROM {REAUDIT} a WHERE a.kind = 'pin'
+                         AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id)""").collect()[0].num_affected_rows
+    maprows = spark.sql(f"DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {REAUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)").collect()[0].num_affected_rows
+    note(reexec_audit=REAUDIT, pins_deleted=pins, map_rows_deleted=maprows)
 
 # COMMAND ----------
 
@@ -416,13 +486,14 @@ if MODE == "repoint_citations":
         raise Exception(f"{AUDIT} does not exist: wave {WAVE} was not executed")
     if spark.catalog.tableExists(REFS_AUDIT):
         raise Exception(f"{REFS_AUDIT} exists: citations for wave {WAVE} were already repointed")
-    pairs = f"(SELECT DISTINCT loser_work_id, winner_work_id FROM {TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL)"
-    still = one(f"SELECT COUNT(*) AS n FROM {pairs} p WHERE EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = p.loser_work_id)")["n"]
+    # losers that hold pins again (resurrected before the MapWorkIds redirect) are left for the re-execute pass
+    pairs = f"""(SELECT DISTINCT loser_work_id, winner_work_id FROM {TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = t.loser_work_id))"""
+    still = one(f"""SELECT COUNT(DISTINCT t.loser_work_id) AS n FROM {TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL
+                    AND EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = t.loser_work_id)""")["n"]
     plan = one(f"""SELECT COUNT(*) AS edges, COUNT(DISTINCT r.citing_work_id) AS citing_works, COUNT(DISTINCT r.cited_work_id) AS losers_cited
                    FROM {REFS} r JOIN {pairs} p ON r.cited_work_id = p.loser_work_id""")
-    note(losers_still_pinned=still, **plan)
-    if still > 0:
-        raise Exception(f"{still} losers still hold registry pins: run verify and wait for the nightly before repointing citations")
+    note(losers_still_pinned_and_skipped=still, **plan)
     if not CONFIRM:
         dbutils.notebook.exit("dry run only: pass confirm=yes to repoint citations")
     own = one(f"""SELECT COUNT(*) AS loser_reference_rows, COUNT(DISTINCT r.citing_work_id) AS losers_with_references
