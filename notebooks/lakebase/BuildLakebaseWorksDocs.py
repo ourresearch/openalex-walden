@@ -225,6 +225,7 @@ def iso_ts(col_name: str):
     )
 
 empty_sdg_array = F.array().cast("array<struct<id:string,display_name:string,score:double>>")
+empty_study_design_array = F.array().cast("array<struct<id:string,display_name:string>>")  # oxjob #1312
 
 df_transformed = (
     df
@@ -339,6 +340,7 @@ df_transformed = (
         F.col("primary_location"),
         F.col("best_oa_location"),
         F.coalesce(F.col("sustainable_development_goals"), empty_sdg_array).alias("sustainable_development_goals"),
+        F.coalesce(F.col("study_designs"), empty_study_design_array).alias("study_designs"),
         F.col("awards"),
         F.col("funders"),
         F.col("institutions"),
