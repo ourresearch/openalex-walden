@@ -43,16 +43,39 @@ resources:
             notebook_path: notebooks/authors/CreateAuthorObservedOrcids
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        # oxjob #1360: one canonical parsed name per profile, voted over every attested string (docs/spec.md of that job).
+        # A Python task (pandas UDF), so it runs on serverless compute, not the warehouse. Skips itself until the
+        # full reparse has stamped author_names with parse_version 2.7; CreateAuthors falls back to the full_name parse.
+        - task_key: Create_Author_Canonical_Names
+          depends_on:
+            - task_key: Update_Author_Full_Names
+          notebook_task:
+            notebook_path: notebooks/authors/CreateAuthorCanonicalNames
+            source: GIT
+          environment_key: Default
+          timeout_seconds: 14400
         - task_key: Create_Authors
           depends_on:
             - task_key: Apply_Author_Name_Curations
             - task_key: Update_Author_Full_Names
+            - task_key: Create_Author_Canonical_Names
             - task_key: Apply_Author_Orcid_Curations
             - task_key: Create_Author_Observed_Orcids
           notebook_task:
             notebook_path: notebooks/authors/CreateAuthors
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - nameparser
+              - pykakasi
+              - korean-romanizer
+              - transliterate
+              - unidecode
+              - pypinyin
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
