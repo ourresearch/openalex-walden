@@ -465,20 +465,22 @@ if MODE == "follow_null_to_winner":
     if not spark.catalog.tableExists(AUDIT):
         raise Exception(f"{AUDIT} does not exist: wave {WAVE} was not executed")
     FOLLOW_AUDIT = f"{TARGET}_wave{WAVE}_follow_audit"
-    scope = f"""(SELECT a.provenance, a.native_id_namespace, a.native_id, a.loser_work_id, a.winner_work_id
+    # one row per record (a record audited under two keys can name two winners): the lowest winner id
+    scope = f"""(SELECT a.provenance, a.native_id_namespace, a.native_id, MIN(a.loser_work_id) AS loser_work_id, MIN(a.winner_work_id) AS winner_work_id
                  FROM {AUDIT} a JOIN {REGISTRY} r ON r.provenance = a.provenance AND r.native_id_namespace = a.native_id_namespace AND r.native_id = a.native_id
                  WHERE a.kind = 'pin' AND r.work_id IS NULL
                    AND NOT EXISTS (SELECT 1 FROM {REGISTRY} p WHERE p.work_id = a.loser_work_id)
-                   AND EXISTS (SELECT 1 FROM {REGISTRY} p WHERE p.work_id = a.winner_work_id))"""
+                   AND EXISTS (SELECT 1 FROM {REGISTRY} p WHERE p.work_id = a.winner_work_id)
+                 GROUP BY a.provenance, a.native_id_namespace, a.native_id)"""
     plan = one(f"SELECT COUNT(*) AS null_pins_to_follow, COUNT(DISTINCT winner_work_id) AS winners, COUNT(DISTINCT loser_work_id) AS losers FROM {scope} x")
     note(**plan)
     if plan["null_pins_to_follow"] == 0:
         dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "nothing to follow"}, default=str))
     if not CONFIRM:
         dbutils.notebook.exit("dry run only: pass confirm=yes to follow")
-    if spark.catalog.tableExists(FOLLOW_AUDIT):
-        raise Exception(f"{FOLLOW_AUDIT} exists: already followed for wave {WAVE}")
-    spark.sql(f"CREATE TABLE {FOLLOW_AUDIT} AS SELECT x.*, current_timestamp() AS audited_at FROM {scope} x")
+    # idempotent: the MERGE only touches rows still NULL, so a re-run after a failed attempt is safe and the audit is
+    # rebuilt from what is still to follow (a completed pass leaves nothing)
+    spark.sql(f"CREATE OR REPLACE TABLE {FOLLOW_AUDIT} AS SELECT x.*, current_timestamp() AS audited_at FROM {scope} x")
     moved = spark.sql(f"""MERGE INTO {REGISTRY} r USING {FOLLOW_AUDIT} x
                           ON r.provenance = x.provenance AND r.native_id_namespace = x.native_id_namespace AND r.native_id = x.native_id
                           WHEN MATCHED AND r.work_id IS NULL THEN UPDATE SET r.work_id = x.winner_work_id, r.work_id_source = 'merge_follow', r.openalex_updated_dt = current_timestamp()""").collect()[0].num_affected_rows
