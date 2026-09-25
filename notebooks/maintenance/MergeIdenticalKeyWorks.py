@@ -45,7 +45,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations", "reexecute_resurrected", "record_merges"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations", "reexecute_resurrected", "record_merges", "follow_null_to_winner"])
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
@@ -455,6 +455,40 @@ if MODE == "reexecute_resurrected":
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {REAUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)").collect()[0].num_affected_rows
     note(reexec_audit=REAUDIT, pins_deleted=pins, map_rows_deleted=maprows)
+
+# COMMAND ----------
+
+if MODE == "follow_null_to_winner":
+    # A loser's records that the nightly could not resolve by any tier (registered NULL, retried nightly) were part of
+    # the loser and belong with its winner: 237K such pins after the 2026-09-25 nightly. Pin them to the winner
+    # directly (source 'merge_follow'), audited, and register their title keys to the winner so the map invariant holds.
+    if not spark.catalog.tableExists(AUDIT):
+        raise Exception(f"{AUDIT} does not exist: wave {WAVE} was not executed")
+    FOLLOW_AUDIT = f"{TARGET}_wave{WAVE}_follow_audit"
+    scope = f"""(SELECT a.provenance, a.native_id_namespace, a.native_id, a.loser_work_id, a.winner_work_id
+                 FROM {AUDIT} a JOIN {REGISTRY} r ON r.provenance = a.provenance AND r.native_id_namespace = a.native_id_namespace AND r.native_id = a.native_id
+                 WHERE a.kind = 'pin' AND r.work_id IS NULL
+                   AND NOT EXISTS (SELECT 1 FROM {REGISTRY} p WHERE p.work_id = a.loser_work_id)
+                   AND EXISTS (SELECT 1 FROM {REGISTRY} p WHERE p.work_id = a.winner_work_id))"""
+    plan = one(f"SELECT COUNT(*) AS null_pins_to_follow, COUNT(DISTINCT winner_work_id) AS winners, COUNT(DISTINCT loser_work_id) AS losers FROM {scope} x")
+    note(**plan)
+    if plan["null_pins_to_follow"] == 0:
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "nothing to follow"}, default=str))
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to follow")
+    if spark.catalog.tableExists(FOLLOW_AUDIT):
+        raise Exception(f"{FOLLOW_AUDIT} exists: already followed for wave {WAVE}")
+    spark.sql(f"CREATE TABLE {FOLLOW_AUDIT} AS SELECT x.*, current_timestamp() AS audited_at FROM {scope} x")
+    moved = spark.sql(f"""MERGE INTO {REGISTRY} r USING {FOLLOW_AUDIT} x
+                          ON r.provenance = x.provenance AND r.native_id_namespace = x.native_id_namespace AND r.native_id = x.native_id
+                          WHEN MATCHED AND r.work_id IS NULL THEN UPDATE SET r.work_id = x.winner_work_id, r.work_id_source = 'merge_follow', r.openalex_updated_dt = current_timestamp()""").collect()[0].num_affected_rows
+    keys = spark.sql(f"""INSERT INTO {MAP} (id, doi, pmid, arxiv, title_author, created_date, updated_date)
+                         SELECT DISTINCT x.winner_work_id, NULL, NULL, NULL, NULLIF(l.merge_key.title_author, ''), current_date(), current_timestamp()
+                         FROM {FOLLOW_AUDIT} x JOIN openalex.works.locations_w_types l
+                           ON l.provenance = x.provenance AND l.native_id_namespace = x.native_id_namespace AND l.native_id = x.native_id
+                         WHERE NULLIF(l.merge_key.title_author, '') IS NOT NULL AND LENGTH(l.merge_key.title_author) > 20
+                           AND NOT EXISTS (SELECT 1 FROM {MAP} m WHERE m.id = x.winner_work_id AND m.title_author = l.merge_key.title_author)""").collect()[0].num_inserted_rows
+    note(follow_audit=FOLLOW_AUDIT, pins_followed_to_winner=moved, title_keys_registered=keys)
 
 # COMMAND ----------
 
