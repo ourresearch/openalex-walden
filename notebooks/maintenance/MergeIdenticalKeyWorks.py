@@ -358,7 +358,7 @@ if MODE == "execute":
     if active:
         raise Exception(f"Walden End 2 End is running (runs {active}); wait for it to finish")
     if not CONFIRM:
-        dbutils.notebook.exit("dry run only: pass confirm=yes to execute")
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "dry run only: pass confirm=yes to execute"}, default=str))
     if spark.catalog.tableExists(AUDIT):
         raise Exception(f"{AUDIT} exists: wave {WAVE} was already executed")
 
@@ -437,7 +437,7 @@ if MODE == "reexecute_resurrected":
     if plan["resurrected_losers"] == 0:
         dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "nothing resurrected"}, default=str))
     if not CONFIRM:
-        dbutils.notebook.exit("dry run only: pass confirm=yes to re-execute")
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "dry run only: pass confirm=yes to re-execute"}, default=str))
     if spark.catalog.tableExists(REAUDIT):
         raise Exception(f"{REAUDIT} exists: already re-executed once; drop it deliberately to run again")
     record_merges(f"{TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL")
@@ -477,7 +477,7 @@ if MODE == "follow_null_to_winner":
     if plan["null_pins_to_follow"] == 0:
         dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "nothing to follow"}, default=str))
     if not CONFIRM:
-        dbutils.notebook.exit("dry run only: pass confirm=yes to follow")
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "dry run only: pass confirm=yes to follow"}, default=str))
     # idempotent: the MERGE only touches rows still NULL, so a re-run after a failed attempt is safe and the audit is
     # rebuilt from what is still to follow (a completed pass leaves nothing)
     spark.sql(f"CREATE OR REPLACE TABLE {FOLLOW_AUDIT} AS SELECT x.*, current_timestamp() AS audited_at FROM {scope} x")
@@ -521,7 +521,7 @@ if MODE == "repoint_arrays":
     if plan["citing_works_to_rewrite"] == 0:
         dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "no arrays hold this wave's losers"}, default=str))
     if not CONFIRM:
-        dbutils.notebook.exit("dry run only: pass confirm=yes to rewrite the arrays")
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "dry run only: pass confirm=yes to rewrite the arrays"}, default=str))
     spark.sql(f"CREATE OR REPLACE TABLE {ARR_AUDIT} AS SELECT f.id, f.old_refs, f.new_refs, current_timestamp() AS audited_at FROM {fix} f")
     n = spark.sql(f"""MERGE INTO {WORKS} w USING {ARR_AUDIT} a ON w.id = a.id
                       WHEN MATCHED THEN UPDATE SET w.referenced_works = slice(a.new_refs, 1, 5000),
@@ -575,7 +575,7 @@ if MODE == "repoint_citations":
     if plan["edges"] == 0 and own["loser_reference_rows"] == 0:
         dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "nothing to repoint (already done, or nothing cited)"}, default=str))
     if not CONFIRM:
-        dbutils.notebook.exit("dry run only: pass confirm=yes to repoint citations")
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "dry run only: pass confirm=yes to repoint citations"}, default=str))
     # before-image of both directions: rows that CITE a loser (cited side) and the loser's OWN reference list (citing side).
     # Idempotent: the MERGEs only touch rows still keyed to a loser, so a re-run after a failed attempt is safe and the
     # audit is rebuilt from what is still to move (a completed pass leaves nothing, so nothing gets overwritten).
