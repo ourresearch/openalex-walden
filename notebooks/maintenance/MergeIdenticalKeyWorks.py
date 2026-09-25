@@ -45,7 +45,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations", "reexecute_resurrected", "record_merges", "follow_null_to_winner"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations", "reexecute_resurrected", "record_merges", "follow_null_to_winner", "repoint_arrays"])
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
@@ -491,6 +491,44 @@ if MODE == "follow_null_to_winner":
                          WHERE NULLIF(l.merge_key.title_author, '') IS NOT NULL AND LENGTH(l.merge_key.title_author) > 20
                            AND NOT EXISTS (SELECT 1 FROM {MAP} m WHERE m.id = x.winner_work_id AND m.title_author = l.merge_key.title_author)""").collect()[0].num_inserted_rows
     note(follow_audit=FOLLOW_AUDIT, pins_followed_to_winner=moved, title_keys_registered=keys)
+
+# COMMAND ----------
+
+if MODE == "repoint_arrays":
+    # cited_by_count is computed from the citing works' referenced_works ARRAYS (CreateWorksEnriched), and the nightly
+    # MERGE only ever unions into them, so a merged loser id stays in every citing work's list and keeps collecting
+    # citations. Rewrite the arrays of exactly the works known to cite this wave's losers: from the refs audit (parsed
+    # graph) and openalex.mid.citation (legacy graph). Audited (before-image arrays); cited_by_count follows on the nightly.
+    if not spark.catalog.tableExists(AUDIT):
+        raise Exception(f"{AUDIT} does not exist: wave {WAVE} was not executed")
+    ARR_AUDIT = f"{TARGET}_wave{WAVE}_arrays_audit"
+    pairs = f"""(SELECT t.loser_work_id, MIN(t.winner_work_id) AS winner_work_id FROM {TARGET} t
+                 WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL GROUP BY t.loser_work_id)"""
+    citing = f"""(SELECT DISTINCT id FROM (
+                    SELECT c.paper_id AS id FROM openalex.mid.citation c JOIN {pairs} p ON c.paper_reference_id = p.loser_work_id
+                    UNION ALL
+                    SELECT a.citing_work_id FROM {REFS_AUDIT} a JOIN {pairs} p ON a.old_id = p.loser_work_id WHERE a.side = 'cited'
+                    UNION ALL
+                    SELECT r.citing_work_id FROM {REFS} r JOIN {pairs} p ON r.cited_work_id = p.loser_work_id))"""
+    fix = f"""(SELECT w.id, w.referenced_works AS old_refs,
+                      array_sort(collect_set(COALESCE(p.winner_work_id, x.ref))) AS new_refs
+               FROM {WORKS} w JOIN {citing} ci ON ci.id = w.id
+               LATERAL VIEW explode(w.referenced_works) x AS ref
+               LEFT JOIN {pairs} p ON p.loser_work_id = x.ref
+               GROUP BY w.id, w.referenced_works
+               HAVING MAX(CASE WHEN p.loser_work_id IS NOT NULL THEN 1 ELSE 0 END) = 1)"""
+    plan = one(f"SELECT COUNT(*) AS citing_works_to_rewrite FROM {fix} f")
+    note(**plan)
+    if plan["citing_works_to_rewrite"] == 0:
+        dbutils.notebook.exit(json.dumps({**SUMMARY, "result": "no arrays hold this wave's losers"}, default=str))
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to rewrite the arrays")
+    spark.sql(f"CREATE OR REPLACE TABLE {ARR_AUDIT} AS SELECT f.id, f.old_refs, f.new_refs, current_timestamp() AS audited_at FROM {fix} f")
+    n = spark.sql(f"""MERGE INTO {WORKS} w USING {ARR_AUDIT} a ON w.id = a.id
+                      WHEN MATCHED THEN UPDATE SET w.referenced_works = slice(a.new_refs, 1, 5000),
+                                                   w.referenced_works_count = least(size(a.new_refs), 5000),
+                                                   w.updated_date = current_timestamp()""").collect()[0].num_affected_rows
+    note(arrays_audit=ARR_AUDIT, citing_works_rewritten=n)
 
 # COMMAND ----------
 

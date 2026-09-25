@@ -28,7 +28,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "record_redirects"])
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_dead_id_refs_target")
 dbutils.widgets.text("audit_table", "openalex.works.oxjob1256_map_doi_seed_target_repair2_audit")
 dbutils.widgets.text("repair_target", "openalex.works.oxjob1256_map_doi_seed_target_repair2")
@@ -179,6 +179,21 @@ if MODE == "execute":
     spark.sql(f"UPDATE {TARGET} t SET executed_at = current_timestamp() WHERE {wave_pred()}")
     note(executed_seconds=int(time.time() - t0), audit=AUDIT, audited=n_audit, edges_repointed=moved)
     print_waves(TARGET)
+
+# COMMAND ----------
+
+if MODE == "record_redirects":
+    # dead id -> anchor pairs of the executed waves into openalex.works.merged_work_ids, so CreateWorksEnriched's
+    # legacy citation graph (openalex.mid.citation) credits the anchor too, and MapWorkIds never adopts the dead id.
+    MERGED = "openalex.works.merged_work_ids"
+    spark.sql(f"""CREATE TABLE IF NOT EXISTS {MERGED} (loser_work_id BIGINT NOT NULL, winner_work_id BIGINT NOT NULL,
+                  merged_at TIMESTAMP NOT NULL, source STRING) CLUSTER BY (loser_work_id)""")
+    n = spark.sql(f"""MERGE INTO {MERGED} m
+                      USING (SELECT t.dead_id AS loser_work_id, MIN(t.anchor_work_id) AS winner_work_id, MIN(t.executed_at) AS merged_at, 'dead_id_doi' AS source
+                             FROM {TARGET} t WHERE t.executed_at IS NOT NULL GROUP BY t.dead_id) s
+                        ON m.loser_work_id = s.loser_work_id
+                      WHEN NOT MATCHED THEN INSERT *""").collect()[0].num_inserted_rows
+    note(redirects_recorded=n, merged_rows_total=one(f"SELECT COUNT(*) AS n FROM {MERGED}")["n"])
 
 # COMMAND ----------
 
