@@ -65,6 +65,13 @@ resources:
             notebook_path: notebooks/authors/CreateAuthors
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        - task_key: Delete_Emptied_Authors
+          depends_on:
+            - task_key: Create_Authors
+          notebook_task:
+            notebook_path: notebooks/authors/DeleteEmptiedAuthors
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
       environments:
         - environment_key: Default
           spec:

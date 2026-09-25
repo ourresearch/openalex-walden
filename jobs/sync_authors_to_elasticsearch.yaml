@@ -17,6 +17,18 @@ resources:
             source: GIT
             base_parameters:
               is_full_sync: "false"
+        - task_key: delete_authors
+          depends_on:
+            - task_key: sync_authors
+          job_cluster_key: sync_authors_cluster
+          notebook_task:
+            notebook_path: notebooks/elastic/delete_authors
+            source: GIT
+            base_parameters:
+              guard_fraction: "0.02"
+              deleted_authors_guard_override: "false"
+          max_retries: 2
+          min_retry_interval_millis: 300000
       job_clusters:
         - job_cluster_key: sync_authors_cluster
           new_cluster:
