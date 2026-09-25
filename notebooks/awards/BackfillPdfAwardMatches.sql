@@ -21,7 +21,7 @@
 
 -- Funders to backfill (numeric funder_id as used in grobid_award_matches)
 CREATE OR REPLACE TEMP VIEW backfill_funders AS
-SELECT * FROM VALUES (4320334779) AS t(funder_id_numeric);
+SELECT * FROM VALUES (4320306230) AS t(funder_id_numeric);  -- 2026-09-24: AHA (oxjob #1358); previous run 2026-08-20: FCT 4320334779
 
 -- COMMAND ----------
 
