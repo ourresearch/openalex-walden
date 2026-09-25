@@ -133,6 +133,11 @@ VALUE_ID = {
 }
 PARENT = {"rct": "clinical_trial", "meta_analysis": "systematic_review"}
 
+# Values served in works.study_designs: PubMed's vocabulary only (Jason, 2026-09-25, oxjob #1312). The tagger still
+# emits other_primary_research (it is part of the certified request, so dropping it from CLASSES would change
+# tagger_version and re-queue everything); the served build filters it out. A primary-research flag is oxjob #1362.
+SERVED_CLASSES = [c for c in CLASSES if c != "other_primary_research"]
+
 # Code-side text gates (== harness/textsig.py). Under rubric v2 an RCT must state random allocation, so the
 # stated-random regex is a hard gate, not a hint.
 RAND = re.compile(r"randomi[sz]|randomly|at random|random(?:ized|ised|isation|ization)?\b|aleatori[sz]|aleat[oó]ri|randomisiert|randomisé|"

@@ -7,7 +7,9 @@
 # MAGIC Provenance rule (Jason, 2026-09-22): where a **MEDLINE-indexed** PubMed
 # MAGIC record carries a study-characteristics tag (MeSH V03), PubMed's values are
 # MAGIC served; otherwise the tagger's. Both are stored so disagreement on the live
-# MAGIC corpus is measurable. Parents are implied (RCT ⇒ Clinical Trial;
+# MAGIC corpus is measurable. Only PubMed's vocabulary is served: the tagger's
+# MAGIC other-primary-research is kept in `tagger_values` but never in
+# MAGIC `study_designs` (Jason, 2026-09-25; oxjob #1362). Parents are implied (RCT ⇒ Clinical Trial;
 # MAGIC Meta-Analysis ⇒ Systematic Review). Publication formats (Editorial, Letter,
 # MAGIC Review, Guideline …) are `type`'s business and never appear here.
 # MAGIC
@@ -36,7 +38,7 @@ SCHEMA = dbutils.widgets.get("schema").strip()
 TAGGER = f"{SCHEMA}.works_study_design_tagger"
 SERVED = f"{SCHEMA}.works_study_design"
 
-CANON = ", ".join(f"'{sd.VALUE_ID[c]}'" for c in sd.CLASSES)   # canonical value order
+CANON = ", ".join(f"'{sd.VALUE_ID[c]}'" for c in sd.SERVED_CLASSES)   # served values, canonical order
 RCT, CT, MA, SR = (sd.VALUE_ID[c] for c in ("rct", "clinical_trial", "meta_analysis", "systematic_review"))
 
 # COMMAND ----------
@@ -72,13 +74,16 @@ w_pm AS (
   WHERE NOT w.is_xpac AND w.ids['pmid'] IS NOT NULL
 ),
 tag AS (
-  SELECT work_id, tagger_values, tagger_version, updated_at AS tagged_at FROM (
+  -- tagger_values keeps the tagger's full output (incl. other-primary-research, for oxjob #1362); study_designs
+  -- serves PubMed's vocabulary only (served_values)
+  SELECT work_id, tagger_values, filter(tagger_values, v -> array_contains(array({CANON}), v)) AS served_values,
+         tagger_version, updated_at AS tagged_at FROM (
     SELECT *, row_number() OVER (PARTITION BY work_id ORDER BY updated_at DESC) AS rn
     FROM {TAGGER} WHERE tagger_version IN ({sd.sql_versions()}))
   WHERE rn = 1
 )
 SELECT coalesce(t.work_id, p.work_id) AS work_id,
-       CASE WHEN p.pubmed_values IS NOT NULL THEN p.pubmed_values ELSE t.tagger_values END AS study_designs,
+       CASE WHEN p.pubmed_values IS NOT NULL THEN p.pubmed_values ELSE t.served_values END AS study_designs,
        CASE WHEN p.pubmed_values IS NOT NULL THEN 'pubmed' ELSE 'tagger' END AS source,
        p.pubmed_values,
        t.tagger_values,
@@ -86,7 +91,7 @@ SELECT coalesce(t.work_id, p.work_id) AS work_id,
        t.tagged_at,
        current_timestamp() AS updated_at
 FROM tag t FULL OUTER JOIN w_pm p ON t.work_id = p.work_id
-WHERE size(CASE WHEN p.pubmed_values IS NOT NULL THEN p.pubmed_values ELSE t.tagger_values END) > 0
+WHERE size(CASE WHEN p.pubmed_values IS NOT NULL THEN p.pubmed_values ELSE t.served_values END) > 0
 """)
 print(f"{SERVED} rebuilt ({time.time() - t0:.0f}s)")
 

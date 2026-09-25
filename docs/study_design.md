@@ -6,7 +6,7 @@ one; a systematic review is `type: review` with `study_design: systematic-review
 
 ## Values
 
-Eight values, multi-valued with implied parents (RCT ⇒ Clinical Trial;
+Seven values, multi-valued with implied parents (RCT ⇒ Clinical Trial;
 Meta-Analysis ⇒ Systematic Review). They are the MeSH V03 "Study
 Characteristics" half of PubMed's `PublicationType`; the V02 "Publication
 Formats" half (Editorial, Letter, Review, Guideline …) already lives in `type`.
@@ -20,7 +20,11 @@ Formats" half (Editorial, Letter, Review, Guideline …) already lives in `type`
 | `systematic-review` | Systematic Review | `systematic_review` or `meta_analysis` |
 | `meta-analysis` | Meta-Analysis, Network Meta-Analysis | `meta_analysis` |
 | `study-protocol` | Clinical Trial Protocol | `protocol` |
-| `other-primary-research` | none (OpenAlex-only) | `other_primary_research` |
+
+Only PubMed's vocabulary is served (Jason, 2026-09-25). The tagger still has an
+`other_primary_research` class; its value stays in `works_study_design.tagger_values`
+but never reaches `study_designs` (`sd.SERVED_CLASSES`). A primary-research flag is
+oxjob #1362.
 
 Out: Scoping Review, the modifier tags (Comparative / Multicenter / Evaluation /
 Validation Study), funding tags, and "Evidence Synthesis" (54 records, a
