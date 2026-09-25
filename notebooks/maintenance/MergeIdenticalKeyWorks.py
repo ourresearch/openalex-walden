@@ -510,12 +510,11 @@ if MODE == "repoint_arrays":
                     SELECT a.citing_work_id FROM {REFS_AUDIT} a JOIN {pairs} p ON a.old_id = p.loser_work_id WHERE a.side = 'cited'
                     UNION ALL
                     SELECT r.citing_work_id FROM {REFS} r JOIN {pairs} p ON r.cited_work_id = p.loser_work_id))"""
-    fix = f"""(SELECT w.id, w.referenced_works AS old_refs,
-                      array_sort(collect_set(COALESCE(p.winner_work_id, x.ref))) AS new_refs
-               FROM {WORKS} w JOIN {citing} ci ON ci.id = w.id
-               LATERAL VIEW explode(w.referenced_works) x AS ref
+    fix = f"""(SELECT x.id, x.old_refs, array_sort(collect_set(COALESCE(p.winner_work_id, x.ref))) AS new_refs
+               FROM (SELECT w.id, w.referenced_works AS old_refs, explode(w.referenced_works) AS ref
+                     FROM {WORKS} w JOIN {citing} ci ON ci.id = w.id) x
                LEFT JOIN {pairs} p ON p.loser_work_id = x.ref
-               GROUP BY w.id, w.referenced_works
+               GROUP BY x.id, x.old_refs
                HAVING MAX(CASE WHEN p.loser_work_id IS NOT NULL THEN 1 ELSE 0 END) = 1)"""
     plan = one(f"SELECT COUNT(*) AS citing_works_to_rewrite FROM {fix} f")
     note(**plan)
