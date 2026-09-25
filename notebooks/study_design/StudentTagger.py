@@ -34,14 +34,14 @@ from pyspark.sql.types import (ArrayType, BooleanType, FloatType, IntegerType, L
                                StringType, StructField, StructType)
 
 dbutils.widgets.text("schema", "openalex.works", "target schema")
-dbutils.widgets.text("max_works", "2000000", "stop after this many works this run")
+dbutils.widgets.text("student_max_works", "2000000", "stop after this many works this run (job parameter student_max_works; a widget named max_works would be overridden by the job-level Jev cap)")
 dbutils.widgets.text("max_minutes", "150", "stop starting new chunks after this long")
 dbutils.widgets.text("chunks_per_wave", "8", "queue chunks per Spark wave (8 x 50K works)")
 dbutils.widgets.text("batch_size", "128", "encoder batch size per GPU")
 dbutils.widgets.text("dry_run", "false", "true = report the queue, run nothing")
 
 SCHEMA = dbutils.widgets.get("schema").strip()
-MAX_WORKS = int(dbutils.widgets.get("max_works"))
+MAX_WORKS = int(dbutils.widgets.get("student_max_works"))
 MAX_MINUTES = float(dbutils.widgets.get("max_minutes"))
 WAVE = int(dbutils.widgets.get("chunks_per_wave"))
 BATCH = int(dbutils.widgets.get("batch_size"))

@@ -10,9 +10,11 @@
 # MAGIC them and anti-joins every chunk against the tagger table (the student task,
 # MAGIC oxjob #1335, has already tagged the works it owns).
 # MAGIC
-# MAGIC Stops at `max_works`, `max_usd` or `max_minutes`, whichever first. The
-# MAGIC nightly run uses small caps; the backfill is the same notebook with big
-# MAGIC ones (docs/study_design.md).
+# MAGIC Stops at `max_works`, `max_usd` or `max_minutes`, whichever first, and
+# MAGIC never starts or continues past `max_total_usd` (Jev spend summed over the
+# MAGIC progress table, every run). With `jev_residual_only` (default) it tags
+# MAGIC only works the student routed to it. The nightly run uses small caps; the
+# MAGIC backfill is the same notebook with big ones (docs/study_design.md).
 # MAGIC
 # MAGIC Batch-job rules: progress every 10K works, per-chunk rate + ETA, errors to
 # MAGIC a table, no monolithic writes, checkpoint per chunk.
@@ -45,6 +47,8 @@ dbutils.widgets.text("max_minutes", "150", "stop starting new chunks after this 
 dbutils.widgets.text("rps", "250", "Jev requests/s cap (account cap 400 req/s, 1.2M tok/s)")
 dbutils.widgets.text("concurrency", "64", "Jev threads")
 dbutils.widgets.text("dry_run", "false", "true = report the queue and projected cost, call nothing")
+dbutils.widgets.text("max_total_usd", "4000", "ceiling on Jev spend recorded in the progress table across ALL runs; the task refuses to start or stops at it")
+dbutils.widgets.text("jev_residual_only", "true", "true = tag only works the student routed to Jev; works the student never saw stay queued")
 
 SCHEMA = dbutils.widgets.get("schema").strip()
 MAX_WORKS = int(dbutils.widgets.get("max_works"))
@@ -53,11 +57,14 @@ MAX_MINUTES = float(dbutils.widgets.get("max_minutes"))
 RPS = float(dbutils.widgets.get("rps"))
 CONCURRENCY = int(dbutils.widgets.get("concurrency"))
 DRY_RUN = dbutils.widgets.get("dry_run").strip().lower() == "true"
+MAX_TOTAL_USD = float(dbutils.widgets.get("max_total_usd"))
+RESIDUAL_ONLY = dbutils.widgets.get("jev_residual_only").strip().lower() == "true"
 
 QUEUE = f"{SCHEMA}.works_study_design_queue"
 TAGGER = f"{SCHEMA}.works_study_design_tagger"
 ERRORS = f"{SCHEMA}.works_study_design_errors"
 PROGRESS = f"{SCHEMA}.works_study_design_progress"
+STUDENT = f"{SCHEMA}.works_study_design_student"
 
 # COMMAND ----------
 
@@ -105,6 +112,16 @@ print(f"queue build {build_id}: {len(chunks)} chunks / {sum(n for _, n in chunks
       f"{len(done)} chunks already done this build; {len(todo)} chunks / {n_queue:,} works to go")
 print(f"this run: up to {MAX_WORKS:,} works, ${MAX_USD:,.0f}, {MAX_MINUTES:.0f} min at {RPS:.0f} req/s x {CONCURRENCY} threads; "
       f"projected ${min(MAX_WORKS, n_queue) * 1500 * sd.JEV_USD_PER_TOKEN:,.2f} at ~1,500 tokens/work; tagger_version {sd.TAGGER_VERSION}")
+# Spend guard across runs (oxjob #1335, 2026-09-24): per-run caps did not stop a mis-parameterised run from spending
+# ~$900 on works the student should have tagged. Progress rows are the ledger; a run that dies mid-chunk under-counts by
+# at most one chunk. Raise max_total_usd on purpose when the ceiling is reached; the failure emails the job owner.
+spent_before = float(spark.sql(f"SELECT coalesce(sum(usd), 0) AS u FROM {PROGRESS} WHERE tagger_version = '{sd.TAGGER_VERSION}'")
+                     .collect()[0].u)
+print(f"Jev spend recorded across all runs: ${spent_before:,.2f}; ceiling max_total_usd ${MAX_TOTAL_USD:,.0f}; "
+      f"jev_residual_only={RESIDUAL_ONLY}")
+if spent_before >= MAX_TOTAL_USD:
+    raise RuntimeError(f"Jev spend ${spent_before:,.2f} is at or over the max_total_usd ceiling ${MAX_TOTAL_USD:,.0f}; "
+                       "raise it deliberately (jobs/study_design.yaml or the run's job_parameters) to continue")
 if DRY_RUN:
     dbutils.notebook.exit("dry run")
 
@@ -120,6 +137,9 @@ for chunk_id, n_chunk in todo:
         break
     if client.usd >= MAX_USD:
         print(f"stop: max_usd ${MAX_USD:.2f} reached (${client.usd:.2f})")
+        break
+    if spent_before + client.usd >= MAX_TOTAL_USD:
+        print(f"stop: max_total_usd ${MAX_TOTAL_USD:,.0f} reached (${spent_before:,.2f} before this run + ${client.usd:.2f})")
         break
     if (time.time() - run_t0) / 60 >= MAX_MINUTES:
         print(f"stop: max_minutes {MAX_MINUTES:.0f} reached")
@@ -140,6 +160,17 @@ for chunk_id, n_chunk in todo:
         works = [w for w in works if int(w["work_id"]) not in already]
         n_already = len(already)
         print(f"chunk {chunk_id}: {n_already:,} works already tagged (student or Jev), skipping them")
+    if RESIDUAL_ONLY and works:
+        # Only works the student looked at and handed over (route = 'jev' at the current student version). A student
+        # stage that stopped early leaves the rest queued for the next run instead of handing it to Jev at full price.
+        eligible = {int(r.work_id) for r in spark.table(STUDENT)
+                    .where((F.col("route") == "jev") & (F.col("student_version") == sd.STUDENT_VERSION))
+                    .join(ids_df, "work_id", "left_semi").select("work_id").collect()}
+        n_unseen = sum(1 for w in works if int(w["work_id"]) not in eligible)
+        if n_unseen:
+            works = [w for w in works if int(w["work_id"]) in eligible]
+            print(f"chunk {chunk_id}: {n_unseen:,} works the student has not routed to Jev; left in the queue "
+                  f"(jev_residual_only), {len(works):,} to tag")
     truncated = False
     if len(works) + tot_queued > MAX_WORKS:
         works = works[: MAX_WORKS - tot_queued]

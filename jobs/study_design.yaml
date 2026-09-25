@@ -45,6 +45,13 @@ resources:
           default: "false"
         - name: student_max_works
           default: "2000000"
+        - name: max_total_usd
+          # ceiling on Jev spend across ALL runs (sum of usd in works_study_design_progress); the tag task
+          # fails at it instead of starting. Raise deliberately. Jev spend to 2026-09-24 was ~$2.0K.
+          default: "4000"
+        - name: jev_residual_only
+          # Jev tags only works the student routed to it; the rest stay queued for the next run
+          default: "true"
       tasks:
         - task_key: build_queue
           notebook_task:
@@ -58,7 +65,9 @@ resources:
             notebook_path: notebooks/study_design/StudentTagger
             source: GIT
             base_parameters:
-              max_works: "{{job.parameters.student_max_works}}"
+              # widget is named student_max_works on purpose: a job parameter is pushed down to every
+              # same-named widget and beats base_parameters, so a widget called max_works got the Jev cap
+              student_max_works: "{{job.parameters.student_max_works}}"
               max_minutes: "{{job.parameters.max_minutes}}"
               dry_run: "{{job.parameters.dry_run}}"
           job_cluster_key: study-design-gpu-cluster
@@ -78,6 +87,8 @@ resources:
               rps: "{{job.parameters.rps}}"
               concurrency: "{{job.parameters.concurrency}}"
               dry_run: "{{job.parameters.dry_run}}"
+              max_total_usd: "{{job.parameters.max_total_usd}}"
+              jev_residual_only: "{{job.parameters.jev_residual_only}}"
           environment_key: Default
           # A retry resumes: finished chunks are in works_study_design_progress.
           max_retries: 2
