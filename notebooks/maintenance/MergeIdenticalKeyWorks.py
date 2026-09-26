@@ -38,6 +38,11 @@
 # MAGIC               Undo: re-INSERT the audit rows (pins + map rows) — the nightly has not run yet.
 # MAGIC - `verify`    the morning after: every audited pin re-pinned; landed on the winner / elsewhere / NULL;
 # MAGIC               losers with 0 pins; losers ledgered.
+# MAGIC
+# MAGIC **`class_mode = exact_signature`** (2026-09-26): pairs whose title keys DIFFER but whose records agree exactly on
+# MAGIC normalized title + year + abstract / author list / page fingerprint / arXiv id (see `exact_signature_class_sql`).
+# MAGIC The unpin alone would make the loser's records mint (their keys are not the winner's), so `execute` also writes
+# MAGIC `<target>_wave<N>_aliases` and inserts those keys into `work_id_map` with the winner's id.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
 # MAGIC               (before-image, both sides) then UPDATE `work_references`: `cited_work_id` loser → winner (citations
 # MAGIC               TO the loser) and `citing_work_id` loser → winner (the loser's OWN reference list comes along; rows keep
@@ -49,7 +54,7 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi"])
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature"])
 dbutils.widgets.text("tiers", "1,2")
 dbutils.widgets.text("title_jaccard_min", "0.9")
 dbutils.widgets.text("abstract_jaccard_min", "0.6")
@@ -113,6 +118,8 @@ def class_sql():
     """One row per loser with its winner, the evidence features, the tier, and the hold (2026-09-24 labelled sample, oxjob #1256)."""
     if CLASS_MODE == "same_doi":
         return same_doi_class_sql()
+    if CLASS_MODE == "exact_signature":
+        return exact_signature_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -281,6 +288,120 @@ def same_doi_class_sql():
     """
 
 
+def exact_signature_class_sql():
+    """Exact-signature class (oxjob #1256, 2026-09-26): live works whose records carry DIFFERENT title keys but agree
+    exactly on normalized full title + publication year + at least one of {abstract (>= 400 normalized chars), ordered
+    author surnames (>= 2 authors), source + volume + issue + first page, arXiv id}; groups of 2-3 per signature; at most
+    one distinct DOI across the pair; types equal or both journal-ish. Blind-labelled 198 + 130 pairs: 97.9 % same before
+    the holds below, 99.91 % on a fresh draw after them. Winner = the DOI-bearing side, else the lower id.
+    Holds: biblio_differs, biblio_only_authors_disjoint, other_type (the three failure shapes of the first sample),
+    pmid_conflict, multi_winner (a loser matched to two winners), chained, loser_key_shared (a loser record key also
+    held by a third work, which could route the records there). Keys differ, so execute also re-keys the loser's
+    record keys onto the winner (`<target>_wave<N>_aliases`); `ta` = 'sig:<winner id>' groups a winner's losers."""
+    norm = "regexp_replace(lower({c}), '[^\\\\p{{L}}\\\\p{{N}}]', '')"
+    surnames = "transform(authorships, a -> lower(regexp_replace(element_at(split(trim(a.author.display_name), ' '), -1), '[^\\\\p{L}]', '')))"
+    journalish = "('article', 'review', 'other', 'paratext', 'editorial', 'letter')"
+    return f"""
+    WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
+    s AS (
+      SELECT 'biblio' AS sn, id, concat_ws('|', primary_location.source.id, publication_year, lower(biblio.volume), lower(biblio.issue),
+                                           lower(biblio.first_page), {norm.format(c='title')}) AS sig FROM live
+        WHERE primary_location.source.id IS NOT NULL AND publication_year IS NOT NULL AND biblio.volume IS NOT NULL
+          AND biblio.first_page IS NOT NULL AND length({norm.format(c='title')}) >= 15
+      UNION ALL
+      SELECT 'abstract', id, concat(publication_year, '|', sha2({norm.format(c='abstract')}, 256)) FROM live
+        WHERE abstract IS NOT NULL AND publication_year IS NOT NULL AND length({norm.format(c='abstract')}) >= 400
+      UNION ALL
+      SELECT 'authors', id, concat_ws('|', publication_year, {norm.format(c='title')}, array_join({surnames}, ',')) FROM live
+        WHERE publication_year IS NOT NULL AND size(authorships) >= 2 AND length({norm.format(c='title')}) >= 30
+      UNION ALL
+      SELECT 'arxiv', l.work_id, lower(regexp_replace(l.merge_key.arxiv, 'v[0-9]+$', '')) FROM {LM} l JOIN live ON live.id = l.work_id
+        WHERE l.merge_key.arxiv IS NOT NULL AND l.work_id IS NOT NULL),
+    g AS (SELECT sn, sig, collect_set(id) AS ids FROM s GROUP BY sn, sig HAVING size(collect_set(id)) BETWEEN 2 AND 3),
+    p0 AS (SELECT sn, array_min(ids) AS a, b FROM g LATERAL VIEW explode(ids) e AS b WHERE b <> array_min(ids)),
+    p AS (SELECT a, b, max(sn = 'biblio') AS s_biblio, max(sn = 'abstract') AS s_abstract, max(sn = 'authors') AS s_authors,
+                 max(sn = 'arxiv') AS s_arxiv FROM p0 GROUP BY a, b),
+    wf AS (SELECT id, regexp_replace(regexp_replace(lower(doi), '^https?://(dx\\\\.)?doi\\\\.org/', ''), '\\\\s', '') AS d,
+                  publication_year AS yr, type, primary_location.source.id AS src, {norm.format(c='title')} AS tn,
+                  biblio.volume AS vol, biblio.first_page AS fp, {surnames} AS fam, ids['pmid'] AS pmid,
+                  COALESCE(cited_by_count, 0) AS cites FROM live),
+    f AS (
+      SELECT p.*, x.d AS da, y.d AS db, x.type AS ta_type, y.type AS tb_type, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb,
+             x.tn = y.tn AS title_same, x.yr = y.yr AS year_same, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
+             (x.type = y.type OR (x.type IN {journalish} AND y.type IN {journalish})) AS type_ok,
+             (x.vol IS NOT NULL AND y.vol IS NOT NULL AND (x.vol <> y.vol OR (x.fp IS NOT NULL AND y.fp IS NOT NULL AND x.fp <> y.fp))) AS biblio_differs,
+             (size(x.fam) > 0 AND size(y.fam) > 0 AND size(array_intersect(x.fam, y.fam)) = 0) AS authors_disjoint,
+             (x.pmid IS NOT NULL AND y.pmid IS NOT NULL AND x.pmid <> y.pmid) AS pmid_conflict,
+             CASE WHEN x.type IN {journalish} THEN 'journalish' WHEN x.type = 'dissertation' THEN 'thesis' WHEN x.type = 'preprint' THEN 'preprint'
+                  WHEN x.type = 'conference-paper' THEN 'conference' WHEN x.type IN ('book', 'book-chapter') THEN 'book' ELSE 'other_type' END AS tg,
+             regexp_replace(x.tn, '[^\\\\p{{L}}]', '') = '' AS digit_title
+      FROM p JOIN wf x ON x.id = p.a JOIN wf y ON y.id = p.b),
+    r1 AS (
+      SELECT *,
+             -- winner = the DOI-bearing side, else the lower id (a < b by construction)
+             CASE WHEN db IS NOT NULL AND da IS NULL THEN b ELSE a END AS winner_work_id,
+             CASE WHEN db IS NOT NULL AND da IS NULL THEN a ELSE b END AS loser_work_id
+      FROM f
+      WHERE title_same AND year_same AND NOT digit_title
+        AND (da IS NULL OR db IS NULL OR da = db)),
+    lm AS (SELECT work_id, COUNT(*) AS n_locations,
+                  MAX(CASE WHEN provenance NOT IN ('repo', 'repo_backfill') THEN 1 ELSE 0 END) = 0 AS repo_only
+           FROM {LM} WHERE work_id IS NOT NULL GROUP BY work_id),
+    -- the loser's record keys, as MapWorkIds will look them up after the unpin
+    lkeys AS (
+      SELECT DISTINCT x.loser_work_id, x.winner_work_id, kv.col, kv.k
+      FROM (SELECT r.loser_work_id, r.winner_work_id, l.merge_key AS mk FROM r1 r JOIN {LM} l ON l.work_id = r.loser_work_id) x
+      LATERAL VIEW explode(map('doi', NULLIF(x.mk.doi, ''), 'pmid', x.mk.pmid, 'arxiv', x.mk.arxiv,
+                               'title_author', x.mk.title_author)) kv AS col, k
+      WHERE kv.k IS NOT NULL),
+    kin AS (SELECT DISTINCT col, k FROM lkeys),
+    holders AS (
+      SELECT 'doi' AS col, m.doi AS k, m.id FROM {MAP} m JOIN kin ON kin.col = 'doi' AND kin.k = m.doi
+      UNION ALL SELECT 'pmid', m.pmid, m.id FROM {MAP} m JOIN kin ON kin.col = 'pmid' AND kin.k = m.pmid
+      UNION ALL SELECT 'arxiv', m.arxiv, m.id FROM {MAP} m JOIN kin ON kin.col = 'arxiv' AND kin.k = m.arxiv
+      UNION ALL SELECT 'title_author', m.title_author, m.id FROM {MAP} m JOIN kin ON kin.col = 'title_author' AND kin.k = m.title_author),
+    kc AS (SELECT col, k, COUNT(DISTINCT id) AS n, MIN(id) AS mn, MAX(id) AS mx FROM holders GROUP BY col, k),
+    shared AS (
+      SELECT DISTINCT lk.loser_work_id FROM lkeys lk JOIN kc ON kc.col = lk.col AND kc.k = lk.k
+      WHERE kc.n > 2
+         OR (kc.n = 2 AND NOT (kc.mn IN (lk.loser_work_id, lk.winner_work_id) AND kc.mx IN (lk.loser_work_id, lk.winner_work_id)))
+         OR (kc.n = 1 AND kc.mn NOT IN (lk.loser_work_id, lk.winner_work_id))),
+    multi AS (SELECT loser_work_id FROM r1 GROUP BY loser_work_id HAVING COUNT(DISTINCT winner_work_id) > 1),
+    winners AS (SELECT DISTINCT winner_work_id FROM r1)
+    SELECT concat('sig:', r.winner_work_id) AS ta, CAST(2 AS BIGINT) AS n_ids,
+           CAST((r.da IS NOT NULL) OR (r.db IS NOT NULL) AS BIGINT) AS n_doi,
+           r.winner_work_id,
+           CASE WHEN r.winner_work_id = r.a THEN r.ya ELSE r.yb END AS winner_yr,
+           CASE WHEN r.winner_work_id = r.a THEN r.da ELSE r.db END IS NOT NULL AS winner_has_doi,
+           CASE WHEN r.winner_work_id = r.a THEN r.ta_type ELSE r.tb_type END AS winner_type,
+           r.loser_work_id,
+           CASE WHEN r.loser_work_id = r.a THEN r.ya ELSE r.yb END AS loser_yr,
+           CASE WHEN r.loser_work_id = r.a THEN r.ca ELSE r.cb END AS loser_cites,
+           COALESCE(lm.repo_only, FALSE) AS loser_repo_only, COALESCE(lm.n_locations, 0) AS loser_locations,
+           CAST(NULL AS INT) AS key_len,
+           CASE WHEN r.loser_work_id = r.a THEN r.ta_type ELSE r.tb_type END AS loser_type,
+           'same' AS year_cls, TRUE AS full_title_same, 1.0D AS title_jaccard, r.biblio_differs, r.src_same,
+           1 AS tier, CAST(NULL AS STRING) AS exclusion,
+           concat_ws('+', CASE WHEN r.s_abstract THEN 'abstract' END, CASE WHEN r.s_authors THEN 'authors' END,
+                          CASE WHEN r.s_biblio THEN 'biblio' END, CASE WHEN r.s_arxiv THEN 'arxiv' END) AS signals,
+           CAST(NULL AS STRING) AS base_hold, CAST(NULL AS STRING) AS rescue,
+           CASE WHEN NOT r.type_ok THEN 'version_types'
+                WHEN r.biblio_differs THEN 'biblio_differs'
+                WHEN r.s_biblio AND NOT (r.s_abstract OR r.s_authors OR r.s_arxiv) AND r.authors_disjoint THEN 'biblio_only_authors_disjoint'
+                WHEN r.tg = 'other_type' THEN 'other_type'
+                WHEN r.pmid_conflict THEN 'pmid_conflict'
+                WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
+                WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
+                WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
+                END AS hold_reason
+    FROM r1 r
+    LEFT JOIN lm ON lm.work_id = r.loser_work_id
+    LEFT JOIN multi mu ON mu.loser_work_id = r.loser_work_id
+    LEFT JOIN winners wn ON wn.winner_work_id = r.loser_work_id
+    LEFT JOIN shared sh ON sh.loser_work_id = r.loser_work_id
+    """
+
+
 def prior_exclusion():
     """anti-join every prior target's executed losers (and their winners' losers) so a re-stage never re-lists them"""
     return " ".join(f"AND NOT EXISTS (SELECT 1 FROM {t} p WHERE p.executed_at IS NOT NULL AND p.loser_work_id = work_id)" for t in PRIOR_TARGETS)
@@ -381,6 +502,22 @@ if MODE == "execute":
     pins = spark.sql(f"""DELETE FROM {REGISTRY} r WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'pin'
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
+    if CLASS_MODE == "exact_signature":
+        # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
+        # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
+        ALIASES = f"{TARGET}_wave{WAVE}_aliases"
+        spark.sql(f"""CREATE TABLE {ALIASES} AS
+                      SELECT DISTINCT t.winner_work_id AS id, NULLIF(l.merge_key.doi, '') AS doi, l.merge_key.pmid AS pmid,
+                             l.merge_key.arxiv AS arxiv, l.merge_key.title_author AS title_author, t.loser_work_id
+                      FROM {TARGET} t JOIN {AUDIT} a ON a.kind = 'pin' AND a.loser_work_id = t.loser_work_id
+                      JOIN {LM} l ON l.provenance = a.provenance AND l.native_id_namespace = a.native_id_namespace AND l.native_id = a.native_id
+                      WHERE {wave_pred()}
+                        AND COALESCE(NULLIF(l.merge_key.doi, ''), l.merge_key.pmid, l.merge_key.arxiv, l.merge_key.title_author) IS NOT NULL""")
+        aliases = spark.sql(f"""INSERT INTO {MAP} (id, doi, pmid, arxiv, title_author, created_date, updated_date)
+                                SELECT DISTINCT id, doi, pmid, arxiv, title_author, current_date(), current_timestamp() FROM {ALIASES} x
+                                WHERE NOT EXISTS (SELECT 1 FROM {MAP} m WHERE m.id = x.id AND m.doi <=> x.doi AND m.pmid <=> x.pmid
+                                                  AND m.arxiv <=> x.arxiv AND m.title_author <=> x.title_author)""").collect()[0].num_inserted_rows
+        note(aliases_table=ALIASES, alias_rows_inserted=aliases)
     spark.sql(f"UPDATE {TARGET} t SET executed_at = current_timestamp() WHERE {wave_pred()}")
     record_merges(f"{TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL")
     note(executed_seconds=int(time.time() - t0), audit=AUDIT, audited_pins=n["pins"], audited_map_rows=n["map_rows"],
