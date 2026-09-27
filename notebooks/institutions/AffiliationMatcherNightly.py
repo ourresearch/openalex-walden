@@ -44,15 +44,16 @@ from utils.affiliation_matcher.retrieve import Index  # noqa: E402
 
 dbutils.widgets.text("answers_table", "openalex.institutions.affiliation_matcher_answers", "where answers go")
 dbutils.widgets.text("since_days", "14", "queue: lookup strings created in the last N days with no answer")
-dbutils.widgets.text("max_strings", "150000", "queue cap per run")
+dbutils.widgets.text("max_strings", "60000", "queue cap per run (a backlog drains over nights; the rest keep the legacy answer meanwhile)")
+dbutils.widgets.text("max_minutes", "26", "stop starting chunks after this many minutes: End 2 End has ≈ 37 min of slack including cluster start")
 dbutils.widgets.text("chunk_strings", "20000", "strings per chunk (one MERGE each)")
 dbutils.widgets.text("artifacts", "/Volumes/openalex/works/models/affiliation_matcher/v1", "chooser JSON + name-embedding cache")
 dbutils.widgets.text("cards", "frozen", "frozen = the decider's institutions + lineage snapshot (#1363 FROZEN_DECIDER.md); live = rebuild from walden tables")
-dbutils.widgets.text("decider_mode", "no_model", "student = #1363 decider v1 (student p + v1 chooser) first; no_model = the no-Jev chooser first")
+dbutils.widgets.text("decider_mode", "student", "student = #1363 decider v1 (student p + v1 chooser) first; no_model = the no-Jev chooser first")
 dbutils.widgets.text("jev", "true", "false = first-pass chooser only")
 dbutils.widgets.text("jev_min_uncertainty", "", "Jev only strings unsure at this margin (#1363 hybrid b); default 0.2 for student, 0.05 for no_model")
-dbutils.widgets.text("jev_deadline_min", "22", "stop starting Jev batches after this many minutes of Jev")
-dbutils.widgets.text("jev_rps", "330", "Jev requests/s (account cap 400)")
+dbutils.widgets.text("jev_deadline_min", "12", "stop starting Jev batches after this many minutes of Jev")
+dbutils.widgets.text("jev_rps", "250", "Jev requests/s (account cap 400; leaves room for a broker pass from desk)")
 dbutils.widgets.text("jev_threads", "96", "Jev threads")
 dbutils.widgets.text("max_usd", "25", "stop starting Jev batches past this spend this run")
 dbutils.widgets.text("require_swap", "true", "true = do nothing until the answers table holds corpus rows")
@@ -61,6 +62,7 @@ dbutils.widgets.text("dry_run", "false", "true = write to <answers_table>_dryrun
 ANSWERS = dbutils.widgets.get("answers_table").strip()
 SINCE_DAYS = int(dbutils.widgets.get("since_days"))
 MAX_STRINGS = int(dbutils.widgets.get("max_strings"))
+MAX_MINUTES = float(dbutils.widgets.get("max_minutes"))
 CHUNK = int(dbutils.widgets.get("chunk_strings"))
 ART = dbutils.widgets.get("artifacts").rstrip("/")
 CARDS_MODE = dbutils.widgets.get("cards").strip().lower()
@@ -170,6 +172,9 @@ jev_used_s = 0.0
 totals = {"strings": 0, "jev": 0, "student": 0, "no_jev": 0, "empty_pool": 0, "es_failed": 0}
 
 for c0 in range(0, len(strings), CHUNK):
+    if (time.time() - T0) / 60 >= MAX_MINUTES:
+        log(f"stop: max_minutes {MAX_MINUTES:.0f} reached; {len(strings) - c0:,} strings wait for the next night")
+        break
     S, T5 = strings[c0:c0 + CHUNK], top5[c0:c0 + CHUNK]
     # ES neighbours (network-bound threads) run beside lexical (CPU processes) and dense (GPU).
     t = time.time()

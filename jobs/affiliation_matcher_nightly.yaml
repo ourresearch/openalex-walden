@@ -17,13 +17,15 @@ resources:
         - name: since_days
           default: "14"
         - name: max_strings
-          default: "150000"
+          default: "60000"
+        - name: max_minutes
+          default: "26"
         - name: decider_mode
-          default: "no_model"
+          default: "student"
         - name: jev
           default: "true"
         - name: jev_deadline_min
-          default: "22"
+          default: "12"
         - name: max_usd
           default: "25"
         - name: require_swap
@@ -38,6 +40,7 @@ resources:
             base_parameters:
               since_days: "{{job.parameters.since_days}}"
               max_strings: "{{job.parameters.max_strings}}"
+              max_minutes: "{{job.parameters.max_minutes}}"
               decider_mode: "{{job.parameters.decider_mode}}"
               jev: "{{job.parameters.jev}}"
               jev_deadline_min: "{{job.parameters.jev_deadline_min}}"
@@ -64,7 +67,7 @@ resources:
               availability: SPOT_WITH_FALLBACK
               zone_id: auto
               ebs_volume_count: 0
-            node_type_id: g6.4xlarge
+            node_type_id: g6e.4xlarge   # one L40S: student ≈ 3,100 pairs/s (an L4 did ≈ 1,100); 40K strings ≈ 25 min
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
             num_workers: 0
