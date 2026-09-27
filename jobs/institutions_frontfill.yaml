@@ -15,9 +15,11 @@ resources:
         - task_key: refresh_RAS_institutions_mv
           depends_on:
             - task_key: institution_batch_inference
+          # Was saved query 6de630ad (REFRESH only). Now in the repo, with the #1386 duplicate check.
           sql_task:
-            query:
-              query_id: 6de630ad-baeb-49cc-a393-3c985d5f9fcb
+            file:
+              path: notebooks/institutions/refresh_raw_affiliation_strings_institutions_mv.sql
+              source: GIT
             warehouse_id: 3996dc0a9b183ce3
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
