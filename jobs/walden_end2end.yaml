@@ -200,10 +200,27 @@ resources:
             notebook_path: notebooks/end2end/SyncWorkAuthorCurations
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        # oxjob #1386: the new affiliation matcher on tonight's new strings, in parallel with Sync_RAS_Curations.
+        - task_key: Affiliation_Matcher_Nightly
+          depends_on:
+            - task_key: Prepare_Affiliation_Strings
+          run_job_task:
+            job_id: ${resources.jobs.Affiliation_Matcher_Nightly.id}
+          timeout_seconds: 3000
+        # Passes whether the matcher succeeded, failed or timed out: its strings then keep the legacy answer.
+        - task_key: Affiliation_Matcher_Gate
+          depends_on:
+            - task_key: Affiliation_Matcher_Nightly
+          run_if: ALL_DONE
+          condition_task:
+            op: EQUAL_TO
+            left: "1"
+            right: "1"
         - task_key: Institutions_Frontfill
           depends_on:
             - task_key: Prepare_Affiliation_Strings
             - task_key: Sync_RAS_Curations
+            - task_key: Affiliation_Matcher_Gate
           run_job_task:
             job_id: 637771147662119
           max_retries: 2

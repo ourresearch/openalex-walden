@@ -1,0 +1,67 @@
+# oxjob #1386: the new affiliation matcher on each night's new strings -> affiliation_matcher_answers.
+# Called by Walden End 2 End right after Prepare_Affiliation_Strings, in parallel with Sync_RAS_Curations
+# (≈ 37 min of slack before Institutions_Frontfill), through Affiliation_Matcher_Gate (run_if ALL_DONE):
+# a failed or slow night never blocks the End 2 End; its strings keep the legacy answer and are retried next night.
+# No-op until the corpus answers are loaded (require_swap).
+resources:
+  jobs:
+    Affiliation_Matcher_Nightly:
+      name: Affiliation Matcher Nightly
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      timeout_seconds: 3000
+      max_concurrent_runs: 1
+      parameters:
+        - name: since_days
+          default: "14"
+        - name: max_strings
+          default: "150000"
+        - name: jev
+          default: "true"
+        - name: jev_deadline_min
+          default: "22"
+        - name: max_usd
+          default: "25"
+        - name: require_swap
+          default: "true"
+        - name: dry_run
+          default: "false"
+      tasks:
+        - task_key: match_new_strings
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherNightly
+            source: GIT
+            base_parameters:
+              since_days: "{{job.parameters.since_days}}"
+              max_strings: "{{job.parameters.max_strings}}"
+              jev: "{{job.parameters.jev}}"
+              jev_deadline_min: "{{job.parameters.jev_deadline_min}}"
+              max_usd: "{{job.parameters.max_usd}}"
+              require_swap: "{{job.parameters.require_swap}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          job_cluster_key: matcher-gpu
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      job_clusters:
+        - job_cluster_key: matcher-gpu
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              ebs_volume_count: 0
+            node_type_id: g6.4xlarge
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
