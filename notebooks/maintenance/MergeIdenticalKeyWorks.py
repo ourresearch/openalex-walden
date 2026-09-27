@@ -563,6 +563,9 @@ if MODE == "release_held":
     if spark.catalog.tableExists(AUDIT):
         raise Exception(f"{AUDIT} exists: wave {WAVE} was already executed; release into a new wave")
     keep = ", ".join(str(x) for x in KEEP_HELD) or "NULL"
+    # `x NOT IN (NULL)` is never true, so an empty keep list must drop the clause rather than render NULL
+    def not_kept(alias=""):
+        return f"{alias}loser_work_id NOT IN ({keep})" if KEEP_HELD else "TRUE"
     if RELEASE_LIST:
         spark.read.option("header", True).csv(RELEASE_LIST).selectExpr(
             "CAST(loser_work_id AS BIGINT) AS loser_work_id", "CAST(winner_work_id AS BIGINT) AS winner_work_id"
@@ -580,7 +583,7 @@ if MODE == "release_held":
                           USING (SELECT DISTINCT r.loser_work_id, r.winner_work_id FROM release_list r
                                  LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = r.loser_work_id) r
                             ON t.loser_work_id = r.loser_work_id AND t.winner_work_id = r.winner_work_id
-                          WHEN MATCHED AND t.hold_reason IS NOT NULL AND t.executed_at IS NULL AND t.loser_work_id NOT IN ({keep})
+                          WHEN MATCHED AND t.hold_reason IS NOT NULL AND t.executed_at IS NULL AND {not_kept('t.')}
                             THEN UPDATE SET hold_reason = NULL, wave = {WAVE}""").collect()[0].num_updated_rows
         note(release_list=RELEASE_LIST, **listed, released_into_wave=n, wave_now=WAVE)
         print_waves(TARGET)
@@ -588,7 +591,7 @@ if MODE == "release_held":
     before = one(f"""SELECT COUNT(*) AS held, SUM(CASE WHEN loser_work_id IN ({keep}) THEN 1 ELSE 0 END) AS kept
                      FROM {TARGET} WHERE hold_reason = '{RELEASE_HOLD}' AND executed_at IS NULL""")
     n = spark.sql(f"""UPDATE {TARGET} SET hold_reason = NULL, wave = {WAVE}
-                      WHERE hold_reason = '{RELEASE_HOLD}' AND executed_at IS NULL AND loser_work_id NOT IN ({keep})""").collect()[0].num_affected_rows
+                      WHERE hold_reason = '{RELEASE_HOLD}' AND executed_at IS NULL AND {not_kept()}""").collect()[0].num_affected_rows
     spark.sql(f"""UPDATE {TARGET} SET hold_reason = '{RELEASE_HOLD}_rejected'
                   WHERE hold_reason = '{RELEASE_HOLD}' AND executed_at IS NULL AND loser_work_id IN ({keep})""")
     note(release_hold=RELEASE_HOLD, held_before=before["held"], kept_held=before["kept"], released_into_wave=n, wave_now=WAVE)
