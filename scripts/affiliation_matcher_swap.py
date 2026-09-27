@@ -166,6 +166,12 @@ def cmd_without_bot(a):
 
 
 def cmd_candidate(a):
+    if a.answers != STANDIN:  # a corpus-run table: same checks and column mapping as `load`, into a scratch copy
+        check_source(a.answers, a.warehouse)
+        adapted = SCRATCH + "answers_adapted"
+        run(f"adapt {a.answers}", f"CREATE OR REPLACE TABLE {adapted} CLUSTER BY (raw_affiliation_string) AS\n"
+                                  f"{adapted_select(a.answers, a.warehouse)}", a.warehouse)
+        a.answers = adapted
     run(f"candidate MV from {a.answers}", f"""
 CREATE OR REPLACE TABLE {CANDIDATE} CLUSTER BY (raw_affiliation_string)
 TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported') AS
@@ -418,28 +424,35 @@ def cmd_define_mv(a):
     run(f"CREATE OR REPLACE {MV}", MV_SQL.read_text(), a.warehouse)
 
 
-def cmd_load(a):
-    wh = a.warehouse
+def check_source(source, wh):
     cols, rows = sql(f"""SELECT COUNT(*) AS rows, COUNT(DISTINCT raw_affiliation_string) AS strings,
-                         COUNT_IF(raw_affiliation_string IS NULL OR institution_ids IS NULL) AS nulls FROM {a.source}""", wh)
+                         COUNT_IF(raw_affiliation_string IS NULL OR institution_ids IS NULL) AS nulls FROM {source}""", wh)
     show(cols, rows)
     r = dict(zip(cols, rows[0]))
     if r["rows"] != r["strings"] or int(r["nulls"]):
         sys.exit("refusing: the source must have one row per string and no NULL keys or ids")
-    src_cols = {row[0] for row in sql(f"DESCRIBE TABLE {a.source}", wh)[1]}
+
+
+def adapted_select(source, wh, matcher_version="v1"):
+    """The answers-table columns from a corpus-run table, whatever optional columns it has."""
+    src_cols = {row[0] for row in sql(f"DESCRIBE TABLE {source}", wh)[1]}
     def col(name, default):
         return name if name in src_cols else f"{default} AS {name}"
-    run(f"INSERT OVERWRITE {ANSWERS} FROM {a.source}", f"""
-INSERT OVERWRITE {ANSWERS}
-SELECT raw_affiliation_string,
+    return f"""SELECT raw_affiliation_string,
        institution_ids,
        {col('countries', 'CAST(array() AS ARRAY<STRING>)')},
        {col('scores', 'CAST(NULL AS MAP<BIGINT, DOUBLE>)')},
        {col('decider', 'CAST(NULL AS STRING)')},
        {col('tier', 'CAST(NULL AS STRING)')},
-       {col('matcher_version', repr(a.matcher_version))},
+       {col('matcher_version', repr(matcher_version))},
        {col('run_at', 'CURRENT_TIMESTAMP()')}
-FROM {a.source}""", wh)
+FROM {source}"""
+
+
+def cmd_load(a):
+    wh = a.warehouse
+    check_source(a.source, wh)
+    run(f"INSERT OVERWRITE {ANSWERS} FROM {a.source}", f"INSERT OVERWRITE {ANSWERS}\n{adapted_select(a.source, wh, a.matcher_version)}", wh)
     show(*sql(f"SELECT COUNT(*) AS rows, COUNT_IF(SIZE(institution_ids) = 0) AS names_none FROM {ANSWERS}", wh))
 
 
