@@ -166,7 +166,8 @@ def cmd_without_bot(a):
 
 def cmd_candidate(a):
     run(f"candidate MV from {a.answers}", f"""
-CREATE OR REPLACE TABLE {CANDIDATE} CLUSTER BY (raw_affiliation_string) AS
+CREATE OR REPLACE TABLE {CANDIDATE} CLUSTER BY (raw_affiliation_string)
+TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported') AS
 {mv_select(a.answers, a.without_bot)}""", a.warehouse)
     show(*sql(f"SELECT COUNT(*) AS rows, COUNT(DISTINCT raw_affiliation_string) AS strings, "
               f"COUNT_IF(source = 'matcher') AS matcher_strings FROM {CANDIDATE}", a.warehouse))
