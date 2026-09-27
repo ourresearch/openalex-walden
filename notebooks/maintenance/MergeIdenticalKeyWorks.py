@@ -50,7 +50,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations", "reexecute_resurrected", "record_merges", "follow_null_to_winner", "repoint_arrays", "release_held"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations", "reexecute_resurrected", "record_merges", "follow_null_to_winner", "repoint_arrays", "release_held", "rehold_list"])
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
@@ -552,6 +552,21 @@ if MODE == "execute":
     note(executed_seconds=int(time.time() - t0), audit=AUDIT, audited_pins=n["pins"], audited_map_rows=n["map_rows"],
          pins_deleted=pins, map_rows_deleted=maprows)
     assert pins == n["pins"], f"pins deleted {pins} != audited {n['pins']}"
+    print_waves(TARGET)
+
+# COMMAND ----------
+
+if MODE == "rehold_list":
+    # put listed (loser, winner) pairs of an unexecuted wave back on hold as release_hold (e.g. a lower-id sibling on the key)
+    if not (RELEASE_LIST and RELEASE_HOLD):
+        raise Exception("rehold_list needs release_list (CSV of pairs) and release_hold (the hold_reason to set)")
+    spark.read.option("header", True).csv(RELEASE_LIST).selectExpr(
+        "CAST(loser_work_id AS BIGINT) AS loser_work_id", "CAST(winner_work_id AS BIGINT) AS winner_work_id"
+    ).createOrReplaceTempView("rehold_list")
+    n = spark.sql(f"""MERGE INTO {TARGET} t USING (SELECT DISTINCT * FROM rehold_list) r
+                      ON t.loser_work_id = r.loser_work_id AND t.winner_work_id = r.winner_work_id
+                      WHEN MATCHED AND t.executed_at IS NULL THEN UPDATE SET hold_reason = '{RELEASE_HOLD}', wave = NULL""").collect()[0].num_updated_rows
+    note(rehold_list=RELEASE_LIST, hold_reason=RELEASE_HOLD, reheld=n)
     print_waves(TARGET)
 
 # COMMAND ----------
