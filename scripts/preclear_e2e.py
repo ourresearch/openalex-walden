@@ -34,6 +34,7 @@ FLAGS = (
     "deleted_works_guard_override",
     "deleted_locations_guard_override",
     "wunpaywall_guard_override",
+    "hash_rebaseline",   # CreateWorksEnriched: changed works take the new content_hash without a new updated_date (#1386)
 )
 NIGHTLY_UTC_HOUR = 5          # walden_end2end schedule: 0 0 5 * * ? UTC
 WINDOW_AFTER_START_H = 18     # a full run is ~7 h; 18 h also covers a morning repair run, and ends before the next nightly
