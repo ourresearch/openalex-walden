@@ -407,8 +407,14 @@ def cmd_create_answers_table(a):
 
 
 def cmd_define_mv(a):
-    for t in (ANSWERS, WITHOUT_BOT):  # the definition joins both; SyncRasCurations creates the second
-        sql(f"DESCRIBE TABLE {t}", a.warehouse)
+    sql(f"DESCRIBE TABLE {ANSWERS}", a.warehouse)  # create-answers-table first
+    # The definition also joins ras_curations_without_bot, which SyncRasCurations maintains nightly once pushed;
+    # build it now with the notebook's own statements if no nightly has yet.
+    exists = sql(f"SHOW TABLES IN openalex.institutions LIKE '{WITHOUT_BOT.split('.')[-1]}'", a.warehouse)[1]
+    if not exists:
+        create, merge = without_bot_merge(WITHOUT_BOT)
+        run(f"create {WITHOUT_BOT}", create, a.warehouse)
+        run(f"fill {WITHOUT_BOT}", merge, a.warehouse)
     run(f"CREATE OR REPLACE {MV}", MV_SQL.read_text(), a.warehouse)
 
 
