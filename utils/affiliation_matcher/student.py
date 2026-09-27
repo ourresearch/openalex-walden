@@ -64,11 +64,13 @@ def predict(m, tok, R, dev, maxlen, bs=512, log=None, workers=0):
     return out
 
 
-def load(model_dir):
-    """(model, tokenizer, device, maxlen) from a #1363 student dir (model.pt, student.json, tokenizer files)."""
+def load(model_dir, base_dir=None):
+    """(model, tokenizer, device, maxlen) from a #1363 student dir (model.pt, student.json, tokenizer files).
+    base_dir = the pinned base encoder (#1363 decider/v1/base_multilingual-e5-base), so no Hugging Face Hub call;
+    model.pt overwrites every weight anyway, the base only supplies the architecture."""
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     meta = json.load(open(f"{model_dir}/student.json"))
-    m = XEnc(meta["base"])
+    m = XEnc(base_dir if base_dir and os.path.isdir(base_dir) else meta["base"])
     m.load_state_dict(torch.load(f"{model_dir}/model.pt", map_location="cpu"))
     m.to(dev)
     tok = AutoTokenizer.from_pretrained(model_dir)
