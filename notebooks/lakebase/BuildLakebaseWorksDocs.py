@@ -52,6 +52,9 @@ dbutils.widgets.text("run_deletes", "false")    # force the full delete sweep (a
 # "k/N": incremental MERGE over every work with pmod(id, N) = k instead of the 2-day churn window, for a
 # hash-rebaselined change that moved no updated_date (oxjob #1322 keywords). doc_hash still gates the writes.
 dbutils.widgets.text("id_mod", "")
+# Only the works listed in this table (column `id` BIGINT), e.g. the works whose content changed on a hash-rebaselined
+# night (oxjob #1386); combine with id_mod for chunks. doc_hash still gates the writes.
+dbutils.widgets.text("ids_table", "")
 
 IS_FULL_BUILD = dbutils.widgets.get("is_full_build").lower() == "true"
 # job parameter OR a pre-cleared row in openalex.works.e2e_overrides (scripts/preclear_e2e.py)
@@ -67,6 +70,11 @@ if ID_MOD:
     if not _m or int(_m.group(1)) >= int(_m.group(2)) or IS_FULL_BUILD:
         raise ValueError(f"id_mod must be k/N with 0 <= k < N and is_full_build=false, got {ID_MOD!r}")
     ID_MOD_K, ID_MOD_N = int(_m.group(1)), int(_m.group(2))
+BACKFILL_IDS_TABLE = dbutils.widgets.get("ids_table").strip()  # not IDS_TABLE: that name is lakebase_works_ids
+if BACKFILL_IDS_TABLE:
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+", BACKFILL_IDS_TABLE) or IS_FULL_BUILD:
+        raise ValueError(f"ids_table must be catalog.schema.table and is_full_build=false, got {BACKFILL_IDS_TABLE!r}")
 
 print(f"IS_FULL_BUILD: {IS_FULL_BUILD}")
 
@@ -86,6 +94,10 @@ if total_works < 400_000_000 and not GUARDRAILS_OVERRIDE:
 
 if IS_FULL_BUILD:
     SQL_QUERY = f"SELECT * FROM {WORKS_TABLE}"
+elif BACKFILL_IDS_TABLE:
+    _mod = f"AND pmod(w.id, {ID_MOD_N}) = {ID_MOD_K}" if ID_MOD else ""
+    SQL_QUERY = f"SELECT w.* FROM {WORKS_TABLE} w LEFT SEMI JOIN {BACKFILL_IDS_TABLE} t ON t.id = w.id WHERE TRUE {_mod}"
+    print(f"ids_table backfill: works in {BACKFILL_IDS_TABLE} {_mod} (doc_hash-gated MERGE; no churn-window guard)")
 elif ID_MOD:
     SQL_QUERY = f"SELECT * FROM {WORKS_TABLE} WHERE pmod(id, {ID_MOD_N}) = {ID_MOD_K}"
     print(f"ID_MOD backfill: pmod(id, {ID_MOD_N}) = {ID_MOD_K} (doc_hash-gated MERGE; no churn-window guard)")
