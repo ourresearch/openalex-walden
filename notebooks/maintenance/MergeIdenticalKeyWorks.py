@@ -60,6 +60,7 @@ dbutils.widgets.text("title_jaccard_min", "0.9")
 dbutils.widgets.text("abstract_jaccard_min", "0.6")
 dbutils.widgets.text("preprint_is_same", "no")
 dbutils.widgets.text("prior_targets", "")
+dbutils.widgets.text("hold_cited_over", "")
 dbutils.widgets.text("confirm", "no")
 
 MODE = dbutils.widgets.get("mode")
@@ -73,6 +74,8 @@ ABSTRACT_JACCARD_MIN = float(dbutils.widgets.get("abstract_jaccard_min"))
 PREPRINT_IS_SAME = dbutils.widgets.get("preprint_is_same") == "yes"
 # earlier targets whose executed losers must not be staged again (locations_mapped still shows them until the nightly rebuild)
 PRIOR_TARGETS = [t.strip() for t in dbutils.widgets.get("prior_targets").split(",") if t.strip()]
+# losers cited at least this often are held for a labelled review instead of merging (empty = no cap)
+HOLD_CITED_OVER = int(dbutils.widgets.get("hold_cited_over")) if dbutils.widgets.get("hold_cited_over").strip() else None
 CONFIRM = dbutils.widgets.get("confirm") == "yes"
 AUDIT = f"{TARGET}_wave{WAVE}_audit"
 REFS_AUDIT = f"{TARGET}_wave{WAVE}_refs_audit"
@@ -98,7 +101,8 @@ def note(**kw):
     print(kw)
 
 print(dict(mode=MODE, class_mode=CLASS_MODE, target=TARGET, wave_size=WAVE_SIZE, wave=WAVE, tiers=sorted(TIERS), title_jaccard_min=TITLE_JACCARD_MIN,
-           abstract_jaccard_min=ABSTRACT_JACCARD_MIN, preprint_is_same=PREPRINT_IS_SAME, prior_targets=PRIOR_TARGETS, confirm=CONFIRM))
+           abstract_jaccard_min=ABSTRACT_JACCARD_MIN, preprint_is_same=PREPRINT_IS_SAME, prior_targets=PRIOR_TARGETS,
+           hold_cited_over=HOLD_CITED_OVER, confirm=CONFIRM))
 
 
 def rows(sql):
@@ -422,8 +426,11 @@ def print_waves(table):
 
 if MODE == "stage":
     t0 = time.time()
+    cited_hold = (f"CASE WHEN c0.hold_reason IS NULL AND c0.loser_cites >= {HOLD_CITED_OVER} THEN 'cited_over_{HOLD_CITED_OVER}' ELSE c0.hold_reason END"
+                  if HOLD_CITED_OVER is not None else "c0.hold_reason")
     spark.sql(f"""CREATE OR REPLACE TABLE {TARGET} AS
-                  WITH c AS ({class_sql()}),
+                  WITH c0 AS ({class_sql()}),
+                  c AS (SELECT c0.* EXCEPT (hold_reason), {cited_hold} AS hold_reason FROM c0),
                   keys AS (
                     SELECT ta, MAX(CASE WHEN hold_reason IS NOT NULL THEN 1 ELSE 0 END) AS held,
                            MAX(loser_cites) AS max_cites, COUNT(*) AS n_losers

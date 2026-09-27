@@ -40,6 +40,8 @@ resources:
           default: "no"
         - name: prior_targets
           default: ""
+        - name: hold_cited_over
+          default: ""
         - name: confirm
           default: "no"
       tasks:
@@ -58,6 +60,7 @@ resources:
               abstract_jaccard_min: "{{job.parameters.abstract_jaccard_min}}"
               preprint_is_same: "{{job.parameters.preprint_is_same}}"
               prior_targets: "{{job.parameters.prior_targets}}"
+              hold_cited_over: "{{job.parameters.hold_cited_over}}"
               confirm: "{{job.parameters.confirm}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
