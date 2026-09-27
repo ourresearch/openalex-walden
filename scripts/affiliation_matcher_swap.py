@@ -374,9 +374,9 @@ one_work AS (
 ),
 published AS (
   SELECT o.raw_affiliation_string,
-         ARRAY_SORT(TRANSFORM(FLATTEN(COLLECT_LIST(
+         ARRAY_SORT(TRANSFORM(FLATTEN(FLATTEN(COLLECT_LIST(
            TRANSFORM(FILTER(a.affiliations, x -> x.raw_affiliation_string = o.raw_affiliation_string),
-                     x -> x.institution_ids))), u -> CAST(REPLACE(u, 'https://openalex.org/I', '') AS BIGINT))) AS ids
+                     x -> x.institution_ids)))), u -> CAST(REPLACE(u, 'https://openalex.org/I', '') AS BIGINT))) AS ids
   FROM one_work o JOIN openalex.works.openalex_works w ON w.id = o.work_id
   LATERAL VIEW EXPLODE(w.authorships) t AS a
   GROUP BY o.raw_affiliation_string
