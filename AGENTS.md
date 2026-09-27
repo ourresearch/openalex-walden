@@ -2,6 +2,12 @@
 
 ## Guardrails pre-flight: never let the 05:00 UTC run be the first to see a bulk change
 
+**Guardrails contain bugs; they never set the size or pace of our work (Jason, 2026-09-26).** The 7.5M line
+exists to catch the unexpected (a bug that re-stamps 200M works), not to budget intended changes. Never split
+a change across nights, trim it or delay it to fit under the line: make it as big and as fast as it can be and
+pre-clear it, asking Jason for the override in the same question as the change itself. Full rule: `~/ox/CLAUDE.md`
+Batch Job Rule 7.
+
 `Walden End 2 End` runs `notebooks/end2end/Guardrails` after `CreateWorksEnriched`. Check 1 fails
 the run when more than **7.5M** `openalex_works` rows carry this run's `updated_date` stamp, and a
 failure skips the entire publish path (ES sync, Full_Snapshot, Wunpaywall, Lakebase, deleted-works
@@ -16,7 +22,7 @@ content hash; a small entity-side change can re-stamp tens of millions of works.
 near 7.5M, pre-clear the scheduled run (after Jason's per-run yes) with
 `scripts/preclear_e2e.py --reason "..." --by jason`, which writes a dated row to
 `openalex.works.e2e_overrides` that every gate reads through `openalex.works.e2e_override_active()`,
-and say so in #dev; or ship in the morning. Do not start a second manual End 2 End in the evening:
+and say so in #dev. Do not start a second manual End 2 End in the evening:
 it collides with the 05:00 UTC schedule, and pausing the schedule does not survive a bundle deploy.
 Over ~10M also crosses the ES mega-sync threshold (replicas dropped). The override flags are per
 consequence class (`guardrails_override`, `deleted_works_guard_override`,
