@@ -444,17 +444,20 @@ def check_source(source, wh):
 
 def adapted_select(source, wh, matcher_version="v1"):
     """The answers-table columns from a corpus-run table, whatever optional columns it has."""
-    src_cols = {row[0] for row in sql(f"DESCRIBE TABLE {source}", wh)[1]}
-    def col(name, default):
-        return name if name in src_cols else f"{default} AS {name}"
+    src_cols = {row[0] for row in sql(f"DESCRIBE TABLE {source}", wh)[1] if row[0] and not row[0].startswith("#")}
+    def col(name, typ, default, src=None):
+        src = src or name
+        return f"CAST({src} AS {typ}) AS {name}" if src in src_cols else f"CAST({default} AS {typ}) AS {name}"
+    # #1385 writes answers_tag (the run's tag) where this table has matcher_version.
+    mv_src = "matcher_version" if "matcher_version" in src_cols else "answers_tag"
     return f"""SELECT raw_affiliation_string,
-       institution_ids,
-       {col('countries', 'CAST(array() AS ARRAY<STRING>)')},
-       {col('scores', 'CAST(NULL AS MAP<BIGINT, DOUBLE>)')},
-       {col('decider', 'CAST(NULL AS STRING)')},
-       {col('tier', 'CAST(NULL AS STRING)')},
-       {col('matcher_version', repr(matcher_version))},
-       {col('run_at', 'CURRENT_TIMESTAMP()')}
+       CAST(institution_ids AS ARRAY<BIGINT>) AS institution_ids,
+       {col('countries', 'ARRAY<STRING>', 'array()')},
+       {col('scores', 'MAP<BIGINT, DOUBLE>', 'NULL')},
+       {col('decider', 'STRING', 'NULL')},
+       {col('tier', 'STRING', 'NULL')},
+       {col('matcher_version', 'STRING', repr(matcher_version), mv_src)},
+       {col('run_at', 'TIMESTAMP', 'CURRENT_TIMESTAMP()')}
 FROM {source}"""
 
 
