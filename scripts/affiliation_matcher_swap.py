@@ -20,6 +20,7 @@ Production (Jason's yes + a charter write-log row before and after, every time):
     scripts/affiliation_matcher_swap.py load --from openalex.institutions.oxjob1385_answers_v1
     scripts/affiliation_matcher_swap.py revert                   # empty the answers table
     scripts/affiliation_matcher_swap.py verify                   # after the swap night: ACCEPTANCE 1-2
+    scripts/affiliation_matcher_swap.py changed-works --since-utc '2026-09-28 05:00:00'   # ids for the ES/Lakebase backfill
 
 Needs the `databricks` CLI authenticated on this machine. Warehouse: --warehouse, default serverless.
 """
@@ -48,6 +49,7 @@ SCRATCH_WITHOUT_BOT = SCRATCH + "ras_curations_without_bot"
 CANDIDATE = SCRATCH + "candidate_mv"
 DIFF_STRINGS = SCRATCH + "diff_strings"
 DIFF_SEATS = SCRATCH + "diff_seats"
+CHANGED_WORKS = SCRATCH + "changed_works"   # ids for the ES / Lakebase `ids_table` backfill after the swap night
 
 DEFAULT_WAREHOUSE = "69a583ace3bdc8d0"  # Serverless Medium SQL
 
@@ -417,6 +419,27 @@ FROM smp JOIN {MV} mv ON mv.raw_affiliation_string = smp.raw_affiliation_string
 GROUP BY smp.action""", wh))
 
 
+def cmd_changed_works(a):
+    """After the rebaselined night: every work whose content hash changed in that night's openalex_works_hash MERGE
+    while its updated_date stayed put, i.e. what the incremental ES / Lakebase syncs never saw. Feeds the
+    `ids_table` backfill mode of sync_works and BuildLakebaseWorksDocs."""
+    wh = a.warehouse
+    cols, rows = sql(f"""SELECT version, timestamp FROM (DESCRIBE HISTORY openalex.works.openalex_works_hash)
+                         WHERE operation = 'MERGE' AND timestamp >= TIMESTAMP'{a.since_utc}'
+                         ORDER BY version LIMIT 1""", wh)
+    if not rows:
+        sys.exit(f"no openalex_works_hash MERGE since {a.since_utc} UTC")
+    v, ts = int(rows[0][0]), rows[0][1]
+    print(f"openalex_works_hash MERGE: version {v} at {ts} UTC; comparing with version {v - 1}")
+    run("changed works", f"""
+CREATE OR REPLACE TABLE {CHANGED_WORKS} CLUSTER BY (id) AS
+SELECT a.id
+FROM openalex.works.openalex_works_hash VERSION AS OF {v} a
+JOIN openalex.works.openalex_works_hash VERSION AS OF {v - 1} b ON a.id = b.id
+WHERE a.content_hash <> b.content_hash AND a.updated_date <=> b.updated_date""", wh)
+    show(*sql(f"SELECT COUNT(*) AS works_changed_without_a_stamp FROM {CHANGED_WORKS}", wh))
+
+
 def cmd_create_answers_table(a):
     run(f"create {ANSWERS}", ANSWERS_DDL, a.warehouse)
 
@@ -433,16 +456,22 @@ def cmd_define_mv(a):
     run(f"CREATE OR REPLACE {MV}", MV_SQL.read_text(), a.warehouse)
 
 
-def check_source(source, wh):
+def versioned(source, version):
+    """`source` pinned to a Delta version when one is given (load exactly the version the corpus run names final)."""
+    return f"{source} VERSION AS OF {int(version)}" if version is not None else source
+
+
+def check_source(source, wh, version=None):
     cols, rows = sql(f"""SELECT COUNT(*) AS rows, COUNT(DISTINCT raw_affiliation_string) AS strings,
-                         COUNT_IF(raw_affiliation_string IS NULL OR institution_ids IS NULL) AS nulls FROM {source}""", wh)
+                         COUNT_IF(raw_affiliation_string IS NULL OR institution_ids IS NULL) AS nulls
+                         FROM {versioned(source, version)}""", wh)
     show(cols, rows)
     r = dict(zip(cols, rows[0]))
     if r["rows"] != r["strings"] or int(r["nulls"]):
         sys.exit("refusing: the source must have one row per string and no NULL keys or ids")
 
 
-def adapted_select(source, wh, matcher_version="v1"):
+def adapted_select(source, wh, matcher_version="v1", version=None):
     """The answers-table columns from a corpus-run table, whatever optional columns it has."""
     src_cols = {row[0] for row in sql(f"DESCRIBE TABLE {source}", wh)[1] if row[0] and not row[0].startswith("#")}
     def col(name, typ, default, src=None):
@@ -458,13 +487,15 @@ def adapted_select(source, wh, matcher_version="v1"):
        {col('tier', 'STRING', 'NULL')},
        {col('matcher_version', 'STRING', repr(matcher_version), mv_src)},
        {col('run_at', 'TIMESTAMP', 'CURRENT_TIMESTAMP()')}
-FROM {source}"""
+FROM {versioned(source, version)}"""
 
 
 def cmd_load(a):
     wh = a.warehouse
-    check_source(a.source, wh)
-    run(f"INSERT OVERWRITE {ANSWERS} FROM {a.source}", f"INSERT OVERWRITE {ANSWERS}\n{adapted_select(a.source, wh, a.matcher_version)}", wh)
+    check_source(a.source, wh, a.version)
+    src = versioned(a.source, a.version)
+    run(f"INSERT OVERWRITE {ANSWERS} FROM {src}",
+        f"INSERT OVERWRITE {ANSWERS}\n{adapted_select(a.source, wh, a.matcher_version, a.version)}", wh)
     show(*sql(f"SELECT COUNT(*) AS rows, COUNT_IF(SIZE(institution_ids) = 0) AS names_none FROM {ANSWERS}", wh))
 
 
@@ -502,9 +533,13 @@ def main():
     sub.add_parser("define-mv").set_defaults(f=cmd_define_mv)
     p = sub.add_parser("load")
     p.add_argument("--from", dest="source", required=True)
+    p.add_argument("--version", type=int, help="Delta version of the source to load (the one the corpus run names final)")
     p.add_argument("--matcher-version", default="v1")
     p.set_defaults(f=cmd_load)
     sub.add_parser("revert").set_defaults(f=cmd_revert)
+    p = sub.add_parser("changed-works")
+    p.add_argument("--since-utc", required=True, help="e.g. '2026-09-28 05:00:00' (the swap night's End 2 End start)")
+    p.set_defaults(f=cmd_changed_works)
     a = ap.parse_args()
     a.f(a)
 
