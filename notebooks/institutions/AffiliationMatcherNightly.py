@@ -196,14 +196,14 @@ for c0 in range(0, len(strings), CHUNK):
         t = time.time()
         sp = st.p_for(student, ix, [(k, S[k], i) for k in range(len(S)) for i in cands[k]], workers=8)
         log(f"  student: {len(sp):,} pairs in {time.time() - t:.0f}s")
-    out = {}
-    for k, s in enumerate(S):
-        if not cands[k]:
-            out[k] = ([], {}, "empty_pool")
-            continue
-        js = {i: sp[(k, i)] for i in cands[k]} if student is not None else {i: 1.0 for i in cands[k]}
-        ids, probs = dec_first.decide(s, js, ranks[k])
+    out = {k: ([], {}, "empty_pool") for k in range(len(S)) if not cands[k]}
+    todo = [k for k in range(len(S)) if cands[k]]
+    t = time.time()
+    first = nm.decide_many(dec_first, [(S[k], {i: sp[(k, i)] for i in cands[k]} if student is not None
+                                              else {i: 1.0 for i in cands[k]}, ranks[k]) for k in todo])
+    for k, (ids, probs) in zip(todo, first):
         out[k] = (ids, probs, FIRST_NAME)
+    log(f"  first-pass chooser {time.time() - t:.0f}s")
 
     if jev_client is not None:
         unsure = sorted((k for k in out if out[k][2] == FIRST_NAME and nm.uncertainty(out[k][1]) > JEV_B),
@@ -215,8 +215,8 @@ for c0 in range(0, len(strings), CHUNK):
                 break
             batch = [(k, S[k], cands[k]) for k in unsure[b0:b0 + 1000]]
             got = nm.jev_strings(jev_client, ix, batch, threads=JEV_THREADS)
-            for k, js in got.items():
-                ids, probs = dec_jev.decide(S[k], js, ranks[k])
+            keys = list(got)
+            for k, (ids, probs) in zip(keys, nm.decide_many(dec_jev, [(S[k], got[k], ranks[k]) for k in keys])):
                 out[k] = (ids, probs, "jev")
             done_k += len(got)
         jev_used_s += time.time() - t
