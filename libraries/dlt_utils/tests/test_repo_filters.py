@@ -143,3 +143,82 @@ def test_component_doi_suffix_regex():
                       "10.4067/s0718-07642015000400001",
                       "10.1080/00131881.2024.2347977"):
         assert not rx.search(real_work), real_work
+
+
+# ---- oxjob #1311: Cairn.info paratext headings ---------------------------------------------
+
+def _fixture():
+    import json, os
+    path = os.path.join(os.path.dirname(__file__), "fixtures", "oxjob1311_cairn_titles.json")
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def test_cairn_paratext_rule_is_scoped_to_the_two_cairn_endpoints():
+    # both endpoints map to source S4406923042 (Cairn.info); the rule must never widen to the
+    # generic endpoint structures, and the same headings on Crossref (1.76M) are out of scope
+    assert rf.ENDPOINT_PARATEXT_TITLE_DELETE == {"asswjsx35xuxkrfsyfwn", "saf6vuotbas9qzkypz6j"}
+    assert not rf.ENDPOINT_PARATEXT_TITLE_DELETE & rf.ENDPOINTS_TO_DELETE
+    assert not rf.ENDPOINT_PARATEXT_TITLE_DELETE & set(rf.ENDPOINT_SETSPEC_DELETE)
+    assert not rf.ENDPOINT_PARATEXT_TITLE_DELETE & set(rf.ENDPOINT_SETSPEC_KEEP)
+    import inspect
+    assert "title_col" in inspect.signature(rf.apply_endpoint_filters).parameters
+
+
+def test_fold_title_matches_spark_translate_semantics():
+    # same-length translate pairs, so str.translate and Spark translate() agree letter for letter
+    assert len(rf.PARATEXT_FOLD_FROM) == len(rf.PARATEXT_FOLD_TO)
+    assert rf.fold_title("  Pages  de\tDébut ") == "pages de debut"
+    assert rf.fold_title("PRÉFACE") == "preface"
+    assert rf.fold_title("Avant-Propos") == "avant-propos"
+    assert rf.fold_title(None) is None
+    assert rf.fold_title("   ") == ""
+    # every exact heading is already in folded form (or the Spark side can never match it)
+    for t in rf.PARATEXT_TITLES:
+        assert rf.fold_title(t) == t, t
+
+
+def test_paratext_patterns_are_plain_java_regexes():
+    # no backslash escapes (the #1000 rule; these go through Column.rlike as literals, but the
+    # habit keeps them safe if anyone ever moves them into an F.expr string)
+    for p in rf.PARATEXT_TITLE_PATTERNS:
+        assert "\\" not in p, p
+
+
+def test_authored_headings_are_not_paratext():
+    # the README's warning: "Introduction" can be a real chapter. These stay.
+    for heading in ("Introduction", "Conclusion", "Présentation", "Éditorial", "Editorial",
+                    "Prologue", "Épilogue", "Préambule", "Ouverture", "Conclusion générale",
+                    "Introduction générale", "Chapitre 4. Modélisation de la crise ontologique (2)",
+                    "Annexe 2. Grille d’évaluation des compétences sociales",
+                    "Bibliographie des travaux scientifiques de jean lafond et de ses collaborateurs (1950-2020)",
+                    "La psychomotricité", "Petit lexique de l’administration française"):
+        assert not rf.is_paratext_title(heading), heading
+
+
+def test_paratext_headings_are_matched_in_every_observed_form():
+    for heading in ("Pages de début", "Pages de debut", "pages de fin", "Pages de Fin", "Páginas iniciales",
+                    "Bibliographie", "BIBLIOGRAPHIE", "Bibliographie sélective", "Références bibliographiques",
+                    "Préface", "Preface", "Préfacé", "Préface à l’édition française", "Avant-Propos", "Postface",
+                    "Index", "Index des noms de personnes", "Index des noms cités", "Index nominum",
+                    "Les auteurs", "Liste des auteurs", "Présentation des auteurs", "Remerciements",
+                    "Glossaire", "Lexique", "Liste des abréviations", "Sigles et acronymes",
+                    "Annexe", "Annexes", "Annexe 3", "Annexe II", "Notes", "Chronologie", "Avertissement",
+                    "Front matter", "Back Matter", "Table des matières", "Sommaire", "Erratum", "Foreword"):
+        assert rf.is_paratext_title(heading), heading
+
+
+def test_rule_against_the_30_night_cairn_sample():
+    # tests/fixtures/oxjob1311_cairn_titles.json: every distinct title the two Cairn endpoints
+    # admitted in the 30 nights before 2026-09-22. 'paratext' is the reviewed set the rule must
+    # remove, 'content' the headings it must keep. A pattern edit that widens or narrows the
+    # rule fails here, with the title.
+    fx = _fixture()
+    assert fx["sample"]["paratext_distinct_titles"] == len(fx["paratext"])
+    missed = [t for t in fx["paratext"] if not rf.is_paratext_title(t)]
+    assert missed == [], missed[:20]
+    claimed = [t for t in fx["content"] if rf.is_paratext_title(t)]
+    assert claimed == [], claimed[:20]
+    # the rule's footprint on the sample: 4.9% of records. A rewrite that claims a materially
+    # different share of the same sample must update the fixture on purpose.
+    assert 0.04 < fx["sample"]["paratext_records"] / fx["sample"]["records"] < 0.06
