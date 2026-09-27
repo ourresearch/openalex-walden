@@ -55,6 +55,8 @@ dbutils.widgets.text("id_mod", "")
 # Only the works listed in this table (column `id` BIGINT), e.g. the works whose content changed on a hash-rebaselined
 # night (oxjob #1386); combine with id_mod for chunks. doc_hash still gates the writes.
 dbutils.widgets.text("ids_table", "")
+# Faster form: a table already holding the works rows (openalex_works schema, built on a SQL warehouse) (oxjob #1386)
+dbutils.widgets.text("rows_table", "")
 
 IS_FULL_BUILD = dbutils.widgets.get("is_full_build").lower() == "true"
 # job parameter OR a pre-cleared row in openalex.works.e2e_overrides (scripts/preclear_e2e.py)
@@ -75,6 +77,11 @@ if BACKFILL_IDS_TABLE:
     import re
     if not re.fullmatch(r"[A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+", BACKFILL_IDS_TABLE) or IS_FULL_BUILD:
         raise ValueError(f"ids_table must be catalog.schema.table and is_full_build=false, got {BACKFILL_IDS_TABLE!r}")
+BACKFILL_ROWS_TABLE = dbutils.widgets.get("rows_table").strip()
+if BACKFILL_ROWS_TABLE:
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+", BACKFILL_ROWS_TABLE) or IS_FULL_BUILD:
+        raise ValueError(f"rows_table must be catalog.schema.table and is_full_build=false, got {BACKFILL_ROWS_TABLE!r}")
 
 print(f"IS_FULL_BUILD: {IS_FULL_BUILD}")
 
@@ -94,6 +101,9 @@ if total_works < 400_000_000 and not GUARDRAILS_OVERRIDE:
 
 if IS_FULL_BUILD:
     SQL_QUERY = f"SELECT * FROM {WORKS_TABLE}"
+elif BACKFILL_ROWS_TABLE:
+    SQL_QUERY = f"SELECT * FROM {BACKFILL_ROWS_TABLE}"
+    print(f"rows_table backfill: works rows from {BACKFILL_ROWS_TABLE} (doc_hash-gated MERGE; no churn-window guard)")
 elif BACKFILL_IDS_TABLE:
     _mod = f"AND pmod(w.id, {ID_MOD_N}) = {ID_MOD_K}" if ID_MOD else ""
     SQL_QUERY = f"SELECT w.* FROM {WORKS_TABLE} w LEFT SEMI JOIN {BACKFILL_IDS_TABLE} t ON t.id = w.id WHERE TRUE {_mod}"
