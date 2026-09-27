@@ -65,6 +65,8 @@ def load_decider(path, features):
     """A decider.Decider backed by the JSON export (same decide() as the pickled one)."""
     d = json.load(open(path))
     dec = Decider.__new__(Decider)
-    dec.m = {"clf": GBT(d), "t": d["t"], "no_p": d["no_p"], "decider": d.get("decider"), "features": d.get("features")}
+    dec.m = {"clf": GBT(d), "t": d["t"], "no_p": d["no_p"], "decider": d.get("decider"), "features": d.get("features"),
+             "fset": d.get("fset", "v1")}
+    dec.fset = dec.m["fset"]  # decider v1.1: "ror" adds the ROR-relationship features (Features needs ror_rel)
     dec.F = features
     return dec

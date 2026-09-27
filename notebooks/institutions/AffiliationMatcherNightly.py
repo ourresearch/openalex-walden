@@ -9,8 +9,8 @@
 # MAGIC
 # MAGIC Per string: retrieve (lex2, ES neighbours, dense chunks, stored TF top 5) -> first-pass chooser -> Jev on the
 # MAGIC strings it is unsure about, most unsure first, until `jev_deadline_min` -> Jev chooser for those. First pass is
-# MAGIC `decider_mode`: `student` = #1363's frozen decider v1 (cross-encoder student p + v1 chooser, 88.8% exact on
-# MAGIC test v2; Jev on 20.5% of strings at b = 0.2 lifts it to 89.5%), or `no_model` = the no-Jev chooser (82.5%; Jev
+# MAGIC `decider_mode`: `student` = #1363's frozen decider v1.1 (cross-encoder student p + chooser with ROR relationships,
+# MAGIC 89.6% exact on test v2; Jev on 18.6% of strings at b = 0.2 lifts it to 90.4%), or `no_model` = the no-Jev chooser (82.5%; Jev
 # MAGIC on 62.9% at b = 0.05 lifts it to ≈ 89.9% on test v1). A string the deadline cuts keeps its first-pass answer.
 # MAGIC
 # MAGIC Queue: lookup strings created in the last `since_days` days with no answers row. Does nothing until the corpus
@@ -121,9 +121,11 @@ else:
     CARDS, LINEAGE = f"{ART}/institutions.jsonl.gz", f"{ART}/lineage.jsonl.gz"
     log(f"frozen cards: {CARDS} (sha256 {hashlib.sha256(open(CARDS, 'rb').read()).hexdigest()[:12]}…)")
 ix = Index(CARDS)
-F = Features(ix, LINEAGE)
-dec_jev = gbt.load_decider(f"{ART}/chooser_jev.json", F)
-FIRST = "chooser_me5b_full" if DECIDER_MODE == "student" else "chooser_nojev"
+# decider v1.1 (#1363 FROZEN_DECIDER.md): the student-mode choosers add ROR parent/child/related features
+F = Features(ix, LINEAGE, ror_rel=f"{ART}/ror_rel.jsonl.gz")
+JEV_CHOOSER = "chooser_jev_ror" if DECIDER_MODE == "student" else "chooser_jev"
+dec_jev = gbt.load_decider(f"{ART}/{JEV_CHOOSER}.json", F)
+FIRST = "chooser_me5b_full_ror" if DECIDER_MODE == "student" else "chooser_nojev"
 dec_first = gbt.load_decider(f"{ART}/{FIRST}.json", F)
 FIRST_NAME = "student" if DECIDER_MODE == "student" else "no_jev"
 student = None
@@ -131,7 +133,7 @@ if DECIDER_MODE == "student":
     from utils.affiliation_matcher import student as st  # noqa: E402
     student = st.load(f"{ART}/student_me5b_full", base_dir=f"{ART}/base_multilingual-e5-base")
     log(f"student loaded on {student[2]}")
-chooser_sha = hashlib.sha256(open(f"{ART}/chooser_jev.json", "rb").read() + open(f"{ART}/{FIRST}.json", "rb").read()).hexdigest()[:10]
+chooser_sha = hashlib.sha256(open(f"{ART}/{JEV_CHOOSER}.json", "rb").read() + open(f"{ART}/{FIRST}.json", "rb").read()).hexdigest()[:10]
 MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}"
 log(f"index: {len(ix.inst):,} institutions, {len(ix.variants):,} name variants; matcher_version {MATCHER_VERSION}")
 
