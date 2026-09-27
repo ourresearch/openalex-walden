@@ -65,6 +65,31 @@ def write_lineage(spark, path):
     return n
 
 
+ROR_REL_SQL = """
+WITH r AS (SELECT id, relationships FROM openalex.institutions.ror_parsed
+           QUALIFY row_number() OVER (PARTITION BY id ORDER BY updated_date DESC) = 1),
+     m AS (SELECT ror, id AS oa FROM openalex.institutions.institutions_api WHERE ror IS NOT NULL),
+     e AS (SELECT r.id AS ror, lower(rel.type) AS type, rel.id AS other FROM r LATERAL VIEW explode(relationships) x AS rel)
+SELECT a.oa AS id, e.type, collect_set(b.oa) AS ids
+FROM e JOIN m a ON a.ror = e.ror JOIN m b ON b.ror = e.other
+WHERE e.type IN ('parent', 'child', 'related')
+GROUP BY a.oa, e.type
+"""
+
+
+def write_ror_rel(spark, path):
+    """{id, parent, child, related} between OpenAlex ids from the latest ror_parsed row per record, like #1363
+    data/ror_rel.jsonl.gz (decider v1.1's ROR features; 31,927 ids, 69,745 edges on 27 Sep). oxjob #1393: live cards
+    need live relationships, or a new record gets none."""
+    rel = {}
+    for r in spark.sql(ROR_REL_SQL).toLocalIterator():
+        rel.setdefault(int(r.id), {})[r.type] = sorted(int(x) for x in r.ids)
+    with gzip.open(path, "wt") as f:
+        for i, d in rel.items():
+            f.write(json.dumps({"id": i, **d}) + "\n")
+    return len(rel)
+
+
 def names_for_dense(ix):
     """#1363 rstudy_prep.py: every name variant as "name, city, country"."""
     out = []
@@ -177,6 +202,42 @@ def dense_chunks_all(strings, names, model_name="intfloat/multilingual-e5-base",
                 if sc > b.get(iid, -9):
                     b[iid] = float(sc)
     return [sorted(b, key=lambda i: -b[i])[:100] for b in best], N.cpu()
+
+
+def name_embeddings_cached(names, cache_path, model_name="intfloat/multilingual-e5-base", prefix="query: ", maxlen=128,
+                           device=None, batch_size=256):
+    """Embeddings of `names` (as dense_chunks_all encodes them), reusing a rolling per-text cache so live cards embed
+    only the names that changed since the last run (oxjob #1393). The cache is rewritten holding exactly today's
+    names. Returns (tensor in `names` order, number of names embedded this run)."""
+    import os
+    import torch
+    cache = torch.load(cache_path) if os.path.exists(cache_path) else {"texts": [], "emb": None}
+    row = {t: k for k, t in enumerate(cache["texts"])}
+    texts = list(dict.fromkeys(t for _, t in names))
+    missing = [t for t in texts if t not in row]
+    new = None
+    if missing:
+        from sentence_transformers import SentenceTransformer
+        device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        m = SentenceTransformer(model_name, device=device)
+        m.max_seq_length = maxlen
+        if device == "cuda":
+            m.half()
+        new = m.encode([prefix + t for t in missing], batch_size=batch_size, normalize_embeddings=True,
+                       convert_to_tensor=True, show_progress_bar=False).cpu()
+    parts, at = [], {}
+    for t in texts:
+        if t in row:
+            parts.append(cache["emb"][row[t]])
+        else:
+            parts.append(new[len(at)])
+            at[t] = len(at)
+    E = torch.stack(parts)
+    tmp = cache_path + ".tmp"
+    torch.save({"texts": texts, "emb": E}, tmp)
+    os.replace(tmp, cache_path)
+    k = {t: j for j, t in enumerate(texts)}
+    return E[[k[t] for _, t in names]], len(missing)
 
 
 def top5_from_model_response(mr):

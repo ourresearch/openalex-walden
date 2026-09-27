@@ -1,0 +1,103 @@
+# oxjob #1393: when OpenAlex mints institutions from a new ROR dump, re-match the existing strings that could name
+# them, so old works (and new works reusing an old string) get the new institution at the next End 2 End.
+# Daily at 09:00 CT: after institutions_api picks up the Institutions job's mints (00:56 CT) and clear of End 2 End's
+# matcher window. `check` is seconds on serverless; the GPU tasks run only on days with unswept institutions (a ROR
+# dump every 2-4 weeks). Code and measurements: notebooks/institutions/AffiliationMatcherSweep.py,
+# utils/affiliation_matcher/sweep.py.
+resources:
+  jobs:
+    Affiliation_Matcher_New_Institutions_Sweep:
+      name: Affiliation Matcher New Institutions Sweep
+      schedule:
+        quartz_cron_expression: "0 0 9 * * ?"
+        timezone_id: America/Chicago
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 43200
+      tasks:
+        - task_key: check
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherSweep
+            source: GIT
+            base_parameters:
+              step: check
+          environment_key: Default
+          timeout_seconds: 1800
+        - task_key: any_pending
+          depends_on:
+            - task_key: check
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.check.values.pending}}"
+            right: "0"
+        - task_key: search
+          depends_on:
+            - task_key: any_pending
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherSweep
+            source: GIT
+            base_parameters:
+              step: search
+          job_cluster_key: matcher-gpu
+          timeout_seconds: 7200
+        - task_key: match
+          depends_on:
+            - task_key: search
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherNightly
+            source: GIT
+            base_parameters:
+              queue_table: openalex.institutions.affiliation_matcher_sweep_queue
+              target_table: openalex.institutions.affiliation_matcher_sweep_answers
+              sweep_ids_table: openalex.institutions.affiliation_matcher_sweep_ids
+              cards: live
+              require_swap: "false"
+              max_strings: "5000000"
+              max_minutes: "600"
+              jev_deadline_min: "120"
+              jev_rps: "150"
+              max_usd: "60"
+          job_cluster_key: matcher-gpu
+          timeout_seconds: 39600
+        - task_key: apply
+          depends_on:
+            - task_key: match
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherSweep
+            source: GIT
+            base_parameters:
+              step: apply
+          environment_key: Default
+          timeout_seconds: 3600
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      job_clusters:
+        - job_cluster_key: matcher-gpu
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              ebs_volume_count: 0
+            node_type_id: g6e.4xlarge
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0

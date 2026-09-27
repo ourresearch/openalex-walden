@@ -58,6 +58,10 @@ dbutils.widgets.text("jev_threads", "96", "Jev threads")
 dbutils.widgets.text("max_usd", "25", "stop starting Jev batches past this spend this run")
 dbutils.widgets.text("require_swap", "true", "true = do nothing until the answers table holds corpus rows")
 dbutils.widgets.text("dry_run", "false", "true = write to <answers_table>_dryrun (overwritten) instead")
+dbutils.widgets.text("queue_table", "", "answer the strings in this table (column raw_affiliation_string) instead of the nightly queue; needs target_table")
+dbutils.widgets.text("target_table", "", "with queue_table: where answers go (never the answers table); strings already there are skipped (restart-safe)")
+dbutils.widgets.text("cards_exclude_table", "", "simulation only (#1393): drop these institutions (column institution_id) from the cards, e.g. to rebuild the world before a ROR dump")
+dbutils.widgets.text("sweep_ids_table", "", "with queue_table: new-card sweep (#1393) — institutions being swept (column institution_id); a string none of them reaches in lex2/dense is written with decider 'no_swept_candidate' and not matched further")
 
 ANSWERS = dbutils.widgets.get("answers_table").strip()
 SINCE_DAYS = int(dbutils.widgets.get("since_days"))
@@ -77,6 +81,12 @@ MAX_USD = float(dbutils.widgets.get("max_usd"))
 REQUIRE_SWAP = dbutils.widgets.get("require_swap").strip().lower() == "true"
 DRY_RUN = dbutils.widgets.get("dry_run").strip().lower() == "true"
 TARGET = ANSWERS + "_dryrun" if DRY_RUN else ANSWERS
+QUEUE_TABLE = dbutils.widgets.get("queue_table").strip()
+SWEEP_IDS_TABLE = dbutils.widgets.get("sweep_ids_table").strip()
+if QUEUE_TABLE:
+    TARGET = dbutils.widgets.get("target_table").strip()
+    assert TARGET and TARGET != ANSWERS, "queue_table needs a target_table other than the answers table"
+assert not SWEEP_IDS_TABLE or QUEUE_TABLE, "sweep_ids_table needs queue_table"
 LOOKUP = "openalex.institutions.affiliation_strings_lookup"
 
 T0 = time.time()
@@ -88,13 +98,26 @@ def log(msg):
 has_answers = spark.catalog.tableExists(ANSWERS)
 corpus_rows = (spark.sql(f"SELECT count(*) AS n FROM {ANSWERS} WHERE tier IS NULL OR tier <> 'nightly'").collect()[0].n
                if has_answers else 0)
-if REQUIRE_SWAP and corpus_rows == 0:
+if REQUIRE_SWAP and corpus_rows == 0 and not QUEUE_TABLE:
     dbutils.notebook.exit(f"{ANSWERS} holds no corpus answers yet (swap not loaded); nothing to do")
 done_join = (f"LEFT ANTI JOIN {ANSWERS} a ON a.raw_affiliation_string = l.raw_affiliation_string" if has_answers else "")
 if DRY_RUN:
     done_join = ""  # a dry run answers the queue as if nothing were answered yet
 
-queue = spark.sql(f"""
+if QUEUE_TABLE:
+    # a given list (test sets, the new-card sweep): every string in it, except those the target already holds
+    done_t = (f"LEFT ANTI JOIN {TARGET} t ON t.raw_affiliation_string = q.raw_affiliation_string"
+              if spark.catalog.tableExists(TARGET) else "")
+    queue = spark.sql(f"""
+SELECT q.raw_affiliation_string AS s, to_json(l.model_response) AS mr
+FROM (SELECT DISTINCT raw_affiliation_string FROM {QUEUE_TABLE}) q
+LEFT JOIN {LOOKUP} l ON l.raw_affiliation_string = q.raw_affiliation_string
+{done_t}
+WHERE q.raw_affiliation_string IS NOT NULL AND trim(q.raw_affiliation_string) <> ''
+LIMIT {MAX_STRINGS}
+""").collect()
+else:
+    queue = spark.sql(f"""
 SELECT l.raw_affiliation_string AS s, to_json(l.model_response) AS mr
 FROM {LOOKUP} l
 {done_join}
@@ -117,14 +140,26 @@ if not strings:
 WORK = "/local_disk0/tmp/affiliation_matcher"
 os.makedirs(WORK, exist_ok=True)
 if CARDS_MODE == "live":
-    CARDS, LINEAGE = f"{WORK}/institutions.jsonl.gz", f"{WORK}/lineage.jsonl.gz"
-    log(f"live cards: {nm.write_cards(spark, CARDS):,}; lineage rows: {nm.write_lineage(spark, LINEAGE):,}")
+    # oxjob #1393: ROR relationships go live with the cards, or a new record would get no ROR features
+    CARDS, LINEAGE, ROR_REL = f"{WORK}/institutions.jsonl.gz", f"{WORK}/lineage.jsonl.gz", f"{WORK}/ror_rel.jsonl.gz"
+    log(f"live cards: {nm.write_cards(spark, CARDS):,}; lineage rows: {nm.write_lineage(spark, LINEAGE):,}; "
+        f"ROR relationship rows: {nm.write_ror_rel(spark, ROR_REL):,}")
 else:
-    CARDS, LINEAGE = f"{ART}/institutions.jsonl.gz", f"{ART}/lineage.jsonl.gz"
+    CARDS, LINEAGE, ROR_REL = f"{ART}/institutions.jsonl.gz", f"{ART}/lineage.jsonl.gz", f"{ART}/ror_rel.jsonl.gz"
     log(f"frozen cards: {CARDS} (sha256 {hashlib.sha256(open(CARDS, 'rb').read()).hexdigest()[:12]}…)")
+EXCLUDE_TABLE = dbutils.widgets.get("cards_exclude_table").strip()
+if EXCLUDE_TABLE:
+    assert QUEUE_TABLE, "cards_exclude_table is for simulations on a queue_table"
+    excl = {int(r.institution_id) for r in spark.table(EXCLUDE_TABLE).collect()}
+    src, CARDS = CARDS, f"{WORK}/institutions_excluded.jsonl.gz"
+    with gzip.open(src, "rt") as fi, gzip.open(CARDS, "wt") as fo:
+        for line in fi:
+            if int(json.loads(line)["id"]) not in excl:
+                fo.write(line)
+    log(f"cards without the {len(excl):,} institutions in {EXCLUDE_TABLE}")
 ix = Index(CARDS)
 # decider v1.1 (#1363 FROZEN_DECIDER.md): the student-mode choosers add ROR parent/child/related features
-F = Features(ix, LINEAGE, ror_rel=f"{ART}/ror_rel.jsonl.gz")
+F = Features(ix, LINEAGE, ror_rel=ROR_REL)
 JEV_CHOOSER = "chooser_jev_ror" if DECIDER_MODE == "student" else "chooser_jev"
 dec_jev = gbt.load_decider(f"{ART}/{JEV_CHOOSER}.json", F)
 FIRST = "chooser_me5b_full_ror" if DECIDER_MODE == "student" else "chooser_nojev"
@@ -136,15 +171,23 @@ if DECIDER_MODE == "student":
     student = st.load(f"{ART}/student_me5b_full", base_dir=f"{ART}/base_multilingual-e5-base")
     log(f"student loaded on {student[2]}")
 chooser_sha = hashlib.sha256(open(f"{ART}/{JEV_CHOOSER}.json", "rb").read() + open(f"{ART}/{FIRST}.json", "rb").read()).hexdigest()[:10]
-MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}"
+MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "")
 log(f"index: {len(ix.inst):,} institutions, {len(ix.variants):,} name variants; matcher_version {MATCHER_VERSION}")
 
 names = nm.names_for_dense(ix)
-names_key = hashlib.sha256(("intfloat/multilingual-e5-base|query: |128\n" + "\n".join(f"{i}\t{t}" for i, t in names)).encode()).hexdigest()[:16]
-EMB = f"{ART}/names_me5b_{names_key}.pt"
 import torch  # noqa: E402
-name_emb = torch.load(EMB) if os.path.exists(EMB) else None
-log(f"dense names: {len(names):,} ({'cached' if name_emb is not None else 'embedding this run'})")
+if CARDS_MODE == "live":
+    # one rolling per-text cache: only names that changed since the last run are embedded (a whole-list key would
+    # re-embed 266K names and leave a new ≈ 400 MB file in the Volume on every night a name changes)
+    name_emb, n_new = nm.name_embeddings_cached(names, f"{ART}/names_me5b_live_cache.pt" if not EXCLUDE_TABLE
+                                                else f"{ART}/names_me5b_live_cache_sim.pt")
+    EMB = None
+    log(f"dense names: {len(names):,} ({n_new:,} embedded this run)")
+else:
+    names_key = hashlib.sha256(("intfloat/multilingual-e5-base|query: |128\n" + "\n".join(f"{i}\t{t}" for i, t in names)).encode()).hexdigest()[:16]
+    EMB = f"{ART}/names_me5b_{names_key}.pt"
+    name_emb = torch.load(EMB) if os.path.exists(EMB) else None
+    log(f"dense names: {len(names):,} ({'cached' if name_emb is not None else 'embedding this run'})")
 
 ES_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 jev_client = sd.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=JEV_THREADS, rps=JEV_RPS) if USE_JEV else None
@@ -155,8 +198,12 @@ CREATE TABLE IF NOT EXISTS {TARGET} (
   scores MAP<BIGINT, DOUBLE>, decider STRING, tier STRING, matcher_version STRING, run_at TIMESTAMP
 ) CLUSTER BY (raw_affiliation_string)
 """)
-if DRY_RUN:
+if DRY_RUN and not QUEUE_TABLE:
     spark.sql(f"TRUNCATE TABLE {TARGET}")
+SWEEP = ({int(r.institution_id) for r in spark.sql(f"SELECT DISTINCT institution_id FROM {SWEEP_IDS_TABLE}").collect()}
+         if SWEEP_IDS_TABLE else None)
+if SWEEP is not None:
+    log(f"sweep: {len(SWEEP):,} institutions; {len(SWEEP - set(ix.inst)):,} of them have no card (withdrawn or not minted)")
 
 # COMMAND ----------
 
@@ -169,16 +216,17 @@ bg = ThreadPoolExecutor(1)
 log(f"lexical workers: {n_proc}")
 
 jev_used_s = 0.0
-totals = {"strings": 0, "jev": 0, "student": 0, "no_jev": 0, "empty_pool": 0, "es_failed": 0}
+totals = {"strings": 0, "jev": 0, "student": 0, "no_jev": 0, "empty_pool": 0, "es_failed": 0, "no_swept_candidate": 0}
 
 for c0 in range(0, len(strings), CHUNK):
     if (time.time() - T0) / 60 >= MAX_MINUTES:
         log(f"stop: max_minutes {MAX_MINUTES:.0f} reached; {len(strings) - c0:,} strings wait for the next night")
         break
     S, T5 = strings[c0:c0 + CHUNK], top5[c0:c0 + CHUNK]
-    # ES neighbours (network-bound threads) run beside lexical (CPU processes) and dense (GPU).
+    # ES neighbours (network-bound threads) run beside lexical (CPU processes) and dense (GPU). In a sweep they wait
+    # for the filter below: neighbour votes and the TF top 5 can't name a record no string carries yet.
     t = time.time()
-    nb_future = bg.submit(nm.neighbour_all, S, ES_URL, 32)
+    nb_future = bg.submit(nm.neighbour_all, S, ES_URL, 32) if SWEEP is None else None
     lex = lex_pool.map(nm.lex2, S, chunksize=100)
     log(f"chunk {c0 // CHUNK}: {len(S):,} strings; lex2 {time.time() - t:.0f}s")
     t = time.time()
@@ -187,6 +235,16 @@ for c0 in range(0, len(strings), CHUNK):
         name_emb = name_emb_now
         torch.save(name_emb, EMB)
     log(f"  dense {time.time() - t:.0f}s")
+    skipped = []
+    if SWEEP is not None:
+        # new-card sweep (#1393): a string whose lex2 top 10 and dense top 10 hold no swept institution has the same
+        # pool as before, so its answer can't change because of the new cards: record it and move on
+        keep = [k for k in range(len(S)) if SWEEP & set(nm.pool({"lex2": lex[k], "dense_me5b_chunks": dense[k]}))]
+        kept = set(keep)
+        skipped = [S[k] for k in range(len(S)) if k not in kept]
+        S, T5, lex, dense = [S[k] for k in keep], [T5[k] for k in keep], [lex[k] for k in keep], [dense[k] for k in keep]
+        log(f"  sweep filter: {len(S):,} strings reach a swept institution, {len(skipped):,} don't")
+        nb_future = bg.submit(nm.neighbour_all, S, ES_URL, 32)
     t = time.time()
     nb = nb_future.result()
     totals["es_failed"] += sum(x is None for x in nb)
@@ -197,7 +255,7 @@ for c0 in range(0, len(strings), CHUNK):
 
     # First-pass chooser on everything (student p + v1 chooser, or the no-model chooser); its uncertainty orders
     # the Jev queue.
-    if student is not None:
+    if student is not None and S:
         t = time.time()
         sp = st.p_for(student, ix, [(k, S[k], i) for k in range(len(S)) for i in cands[k]], workers=8)
         log(f"  student: {len(sp):,} pairs in {time.time() - t:.0f}s")
@@ -229,10 +287,12 @@ for c0 in range(0, len(strings), CHUNK):
             f"${jev_client.usd:.2f} this run; retries {jev_client.n_retry}, failures {jev_client.n_fail}")
 
     rows = [(S[k], [int(i) for i in sorted(out[k][0])], [], {int(i): float(p) for i, p in out[k][1].items()},
-             out[k][2], "nightly", MATCHER_VERSION) for k in range(len(S))]
+             out[k][2], "sweep" if SWEEP is not None else "nightly", MATCHER_VERSION) for k in range(len(S))]
+    rows += [(x, [], [], {}, "no_swept_candidate", "sweep", MATCHER_VERSION) for x in skipped]
     for k in range(len(S)):
         totals[out[k][2]] += 1
-    totals["strings"] += len(S)
+    totals["no_swept_candidate"] += len(skipped)
+    totals["strings"] += len(S) + len(skipped)
     df = spark.createDataFrame(rows, "raw_affiliation_string STRING, institution_ids ARRAY<BIGINT>, countries ARRAY<STRING>, "
                                      "scores MAP<BIGINT, DOUBLE>, decider STRING, tier STRING, matcher_version STRING")
     df.createOrReplaceTempView("am_chunk")
