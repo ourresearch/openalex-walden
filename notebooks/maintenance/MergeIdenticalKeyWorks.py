@@ -422,6 +422,20 @@ def print_waves(table):
                       FROM {table} GROUP BY 1, 2 ORDER BY 1 NULLS LAST, 2 NULLS FIRST"""):
         print(r)
 
+def record_merges(scope_sql):
+    """Write (loser -> winner) into the durable merged_work_ids table (idempotent). MapWorkIds' legacy adoption
+    (mag id / PMH crosswalk) redirects through it, so a merged loser can never be resurrected by its own legacy
+    record (35,035 came back that way on 2026-09-25 before this existed)."""
+    spark.sql(f"""CREATE TABLE IF NOT EXISTS {MERGED} (loser_work_id BIGINT NOT NULL, winner_work_id BIGINT NOT NULL,
+                  merged_at TIMESTAMP NOT NULL, source STRING) CLUSTER BY (loser_work_id)""")
+    n = spark.sql(f"""MERGE INTO {MERGED} m
+                      USING (SELECT DISTINCT t.loser_work_id, t.winner_work_id, MIN(t.executed_at) AS merged_at, '{TARGET}' AS source
+                             FROM {scope_sql} GROUP BY t.loser_work_id, t.winner_work_id) s
+                        ON m.loser_work_id = s.loser_work_id AND m.winner_work_id = s.winner_work_id
+                      WHEN NOT MATCHED THEN INSERT *""").collect()[0].num_inserted_rows
+    note(merged_work_ids_recorded=n)
+    return n
+
 # COMMAND ----------
 
 if MODE == "stage":
@@ -531,20 +545,6 @@ if MODE == "execute":
          pins_deleted=pins, map_rows_deleted=maprows)
     assert pins == n["pins"], f"pins deleted {pins} != audited {n['pins']}"
     print_waves(TARGET)
-
-def record_merges(scope_sql):
-    """Write (loser -> winner) into the durable merged_work_ids table (idempotent). MapWorkIds' legacy adoption
-    (mag id / PMH crosswalk) redirects through it, so a merged loser can never be resurrected by its own legacy
-    record (35,035 came back that way on 2026-09-25 before this existed)."""
-    spark.sql(f"""CREATE TABLE IF NOT EXISTS {MERGED} (loser_work_id BIGINT NOT NULL, winner_work_id BIGINT NOT NULL,
-                  merged_at TIMESTAMP NOT NULL, source STRING) CLUSTER BY (loser_work_id)""")
-    n = spark.sql(f"""MERGE INTO {MERGED} m
-                      USING (SELECT DISTINCT t.loser_work_id, t.winner_work_id, MIN(t.executed_at) AS merged_at, '{TARGET}' AS source
-                             FROM {scope_sql} GROUP BY t.loser_work_id, t.winner_work_id) s
-                        ON m.loser_work_id = s.loser_work_id AND m.winner_work_id = s.winner_work_id
-                      WHEN NOT MATCHED THEN INSERT *""").collect()[0].num_inserted_rows
-    note(merged_work_ids_recorded=n)
-    return n
 
 # COMMAND ----------
 
