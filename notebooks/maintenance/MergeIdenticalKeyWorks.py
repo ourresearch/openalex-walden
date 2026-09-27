@@ -50,7 +50,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations", "reexecute_resurrected", "record_merges", "follow_null_to_winner", "repoint_arrays"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "repoint_citations", "reexecute_resurrected", "record_merges", "follow_null_to_winner", "repoint_arrays", "release_held"])
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
@@ -61,6 +61,8 @@ dbutils.widgets.text("abstract_jaccard_min", "0.6")
 dbutils.widgets.text("preprint_is_same", "no")
 dbutils.widgets.text("prior_targets", "")
 dbutils.widgets.text("hold_cited_over", "")
+dbutils.widgets.text("release_hold", "")
+dbutils.widgets.text("keep_held_losers", "")
 dbutils.widgets.text("confirm", "no")
 
 MODE = dbutils.widgets.get("mode")
@@ -75,6 +77,9 @@ PREPRINT_IS_SAME = dbutils.widgets.get("preprint_is_same") == "yes"
 # earlier targets whose executed losers must not be staged again (locations_mapped still shows them until the nightly rebuild)
 PRIOR_TARGETS = [t.strip() for t in dbutils.widgets.get("prior_targets").split(",") if t.strip()]
 # losers cited at least this often are held for a labelled review instead of merging (empty = no cap)
+RELEASE_HOLD = dbutils.widgets.get("release_hold").strip()
+# comma-separated loser ids that stay held when release_held runs (the labelled review's rejects)
+KEEP_HELD = [int(x) for x in dbutils.widgets.get("keep_held_losers").replace(" ", "").split(",") if x]
 HOLD_CITED_OVER = int(dbutils.widgets.get("hold_cited_over")) if dbutils.widgets.get("hold_cited_over").strip() else None
 CONFIRM = dbutils.widgets.get("confirm") == "yes"
 AUDIT = f"{TARGET}_wave{WAVE}_audit"
@@ -544,6 +549,24 @@ if MODE == "execute":
     note(executed_seconds=int(time.time() - t0), audit=AUDIT, audited_pins=n["pins"], audited_map_rows=n["map_rows"],
          pins_deleted=pins, map_rows_deleted=maprows)
     assert pins == n["pins"], f"pins deleted {pins} != audited {n['pins']}"
+    print_waves(TARGET)
+
+# COMMAND ----------
+
+if MODE == "release_held":
+    # a labelled review cleared a held class: move its rows into wave N, except the listed rejects (which stay held)
+    if not RELEASE_HOLD:
+        raise Exception("release_held needs release_hold (the hold_reason being cleared)")
+    if spark.catalog.tableExists(AUDIT):
+        raise Exception(f"{AUDIT} exists: wave {WAVE} was already executed; release into a new wave")
+    keep = ", ".join(str(x) for x in KEEP_HELD) or "NULL"
+    before = one(f"""SELECT COUNT(*) AS held, SUM(CASE WHEN loser_work_id IN ({keep}) THEN 1 ELSE 0 END) AS kept
+                     FROM {TARGET} WHERE hold_reason = '{RELEASE_HOLD}' AND executed_at IS NULL""")
+    n = spark.sql(f"""UPDATE {TARGET} SET hold_reason = NULL, wave = {WAVE}
+                      WHERE hold_reason = '{RELEASE_HOLD}' AND executed_at IS NULL AND loser_work_id NOT IN ({keep})""").collect()[0].num_affected_rows
+    spark.sql(f"""UPDATE {TARGET} SET hold_reason = '{RELEASE_HOLD}_rejected'
+                  WHERE hold_reason = '{RELEASE_HOLD}' AND executed_at IS NULL AND loser_work_id IN ({keep})""")
+    note(release_hold=RELEASE_HOLD, held_before=before["held"], kept_held=before["kept"], released_into_wave=n, wave_now=WAVE)
     print_waves(TARGET)
 
 # COMMAND ----------
