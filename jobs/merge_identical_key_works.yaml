@@ -46,6 +46,8 @@ resources:
           default: ""
         - name: keep_held_losers
           default: ""
+        - name: release_list
+          default: ""
         - name: confirm
           default: "no"
       tasks:
@@ -67,6 +69,7 @@ resources:
               hold_cited_over: "{{job.parameters.hold_cited_over}}"
               release_hold: "{{job.parameters.release_hold}}"
               keep_held_losers: "{{job.parameters.keep_held_losers}}"
+              release_list: "{{job.parameters.release_list}}"
               confirm: "{{job.parameters.confirm}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git

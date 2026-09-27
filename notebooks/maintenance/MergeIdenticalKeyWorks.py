@@ -63,6 +63,7 @@ dbutils.widgets.text("prior_targets", "")
 dbutils.widgets.text("hold_cited_over", "")
 dbutils.widgets.text("release_hold", "")
 dbutils.widgets.text("keep_held_losers", "")
+dbutils.widgets.text("release_list", "")
 dbutils.widgets.text("confirm", "no")
 
 MODE = dbutils.widgets.get("mode")
@@ -78,6 +79,8 @@ PREPRINT_IS_SAME = dbutils.widgets.get("preprint_is_same") == "yes"
 PRIOR_TARGETS = [t.strip() for t in dbutils.widgets.get("prior_targets").split(",") if t.strip()]
 # losers cited at least this often are held for a labelled review instead of merging (empty = no cap)
 RELEASE_HOLD = dbutils.widgets.get("release_hold").strip()
+# CSV (loser_work_id, winner_work_id, ...) of reviewed pairs to release regardless of their hold, e.g. a Jev-gated and blind-confirmed list
+RELEASE_LIST = dbutils.widgets.get("release_list").strip()
 # comma-separated loser ids that stay held when release_held runs (the labelled review's rejects)
 KEEP_HELD = [int(x) for x in dbutils.widgets.get("keep_held_losers").replace(" ", "").split(",") if x]
 HOLD_CITED_OVER = int(dbutils.widgets.get("hold_cited_over")) if dbutils.widgets.get("hold_cited_over").strip() else None
@@ -555,11 +558,30 @@ if MODE == "execute":
 
 if MODE == "release_held":
     # a labelled review cleared a held class: move its rows into wave N, except the listed rejects (which stay held)
-    if not RELEASE_HOLD:
-        raise Exception("release_held needs release_hold (the hold_reason being cleared)")
+    if not RELEASE_HOLD and not RELEASE_LIST:
+        raise Exception("release_held needs release_hold (the hold_reason being cleared) or release_list (a CSV of pairs)")
     if spark.catalog.tableExists(AUDIT):
         raise Exception(f"{AUDIT} exists: wave {WAVE} was already executed; release into a new wave")
     keep = ", ".join(str(x) for x in KEEP_HELD) or "NULL"
+    if RELEASE_LIST:
+        spark.read.option("header", True).csv(RELEASE_LIST).selectExpr(
+            "CAST(loser_work_id AS BIGINT) AS loser_work_id", "CAST(winner_work_id AS BIGINT) AS winner_work_id"
+        ).createOrReplaceTempView("release_list")
+        listed = one(f"""SELECT COUNT(*) AS listed,
+                                SUM(CASE WHEN t.loser_work_id IS NOT NULL THEN 1 ELSE 0 END) AS matched_held,
+                                SUM(CASE WHEN m.loser_work_id IS NOT NULL THEN 1 ELSE 0 END) AS already_merged
+                         FROM release_list r
+                         LEFT JOIN (SELECT DISTINCT loser_work_id, winner_work_id FROM {TARGET}
+                                    WHERE hold_reason IS NOT NULL AND executed_at IS NULL) t
+                           ON t.loser_work_id = r.loser_work_id AND t.winner_work_id = r.winner_work_id
+                         LEFT JOIN {MERGED} m ON m.loser_work_id = r.loser_work_id""")
+        n = spark.sql(f"""UPDATE {TARGET} SET hold_reason = NULL, wave = {WAVE}
+                          WHERE hold_reason IS NOT NULL AND executed_at IS NULL AND loser_work_id NOT IN ({keep})
+                            AND loser_work_id NOT IN (SELECT loser_work_id FROM {MERGED})
+                            AND (loser_work_id, winner_work_id) IN (SELECT loser_work_id, winner_work_id FROM release_list)""").collect()[0].num_affected_rows
+        note(release_list=RELEASE_LIST, **listed, released_into_wave=n, wave_now=WAVE)
+        print_waves(TARGET)
+        dbutils.notebook.exit(json.dumps(SUMMARY, default=str))
     before = one(f"""SELECT COUNT(*) AS held, SUM(CASE WHEN loser_work_id IN ({keep}) THEN 1 ELSE 0 END) AS kept
                      FROM {TARGET} WHERE hold_reason = '{RELEASE_HOLD}' AND executed_at IS NULL""")
     n = spark.sql(f"""UPDATE {TARGET} SET hold_reason = NULL, wave = {WAVE}
