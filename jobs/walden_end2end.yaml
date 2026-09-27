@@ -221,6 +221,7 @@ resources:
             - task_key: Prepare_Affiliation_Strings
             - task_key: Sync_RAS_Curations
             - task_key: Affiliation_Matcher_Gate
+              outcome: "true"   # the gate always evaluates true; the API requires an outcome on a condition dependency
           run_job_task:
             job_id: 637771147662119
           max_retries: 2
