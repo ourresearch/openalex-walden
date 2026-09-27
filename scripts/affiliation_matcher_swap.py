@@ -308,6 +308,39 @@ FROM net LEFT JOIN {INSTITUTIONS} inst ON inst.id = net.institution_id"""
     show(*sql(base + f"\nORDER BY net DESC LIMIT {a.top}", wh))
 
 
+def cmd_rehearse_mv(a):
+    """Build the new definition as a real scratch MV (reads --answers and the scratch bot-free curations): does it
+    compile as an MV, how long is a full build, is the next refresh incremental."""
+    name = SCRATCH + "mv_rehearsal"
+    run(f"CREATE MV {name}", f"""
+CREATE OR REPLACE MATERIALIZED VIEW {name}
+CLUSTER BY (raw_affiliation_string)
+AS
+{mv_select(a.answers, a.without_bot)}""", a.warehouse)
+    run(f"REFRESH MV {name}", f"REFRESH MATERIALIZED VIEW {name}", a.warehouse)
+    show(*sql(f"DESCRIBE TABLE EXTENDED {name}", a.warehouse))
+
+
+def cmd_bot_agreement(a):
+    """Of the curation bot's winning adds and removes, how many does the candidate agree with?"""
+    show(*sql(f"""
+WITH bot AS (
+  SELECT entity_id AS s, CAST(REGEXP_REPLACE(value, '^https?://openalex\\\\.org/I', '') AS BIGINT) AS i,
+         MAX_BY(action, STRUCT(created, id)) AS action,
+         MAX_BY(user_id = 'user-5UKz4XUnsuZY', STRUCT(created, id)) AS bot_wins
+  FROM openalex_users.public.curations
+  WHERE entity = 'ras' AND property = 'institution_ids' AND action IN ('add', 'remove')
+    AND value RLIKE '^https?://openalex\\\\.org/I[0-9]+$'
+  GROUP BY entity_id, value
+)
+SELECT b.action, COUNT(*) AS bot_pairs,
+       COUNT_IF(ARRAY_CONTAINS(n.institution_ids, b.i)) AS candidate_has_id,
+       COUNT_IF(n.source = 'matcher') AS answered_by_matcher
+FROM bot b JOIN {a.candidate} n ON n.raw_affiliation_string = b.s
+WHERE b.bot_wins
+GROUP BY b.action""", a.warehouse))
+
+
 def cmd_create_answers_table(a):
     run(f"create {ANSWERS}", ANSWERS_DDL, a.warehouse)
 
@@ -363,6 +396,13 @@ def main():
     p.add_argument("--top", type=int, default=50)
     p.set_defaults(f=cmd_diff)
     sub.add_parser("check-mv-unchanged").set_defaults(f=cmd_check_mv_unchanged)
+    p = sub.add_parser("rehearse-mv")
+    p.add_argument("--answers", default=STANDIN)
+    p.add_argument("--without-bot", default=SCRATCH_WITHOUT_BOT)
+    p.set_defaults(f=cmd_rehearse_mv)
+    p = sub.add_parser("bot-agreement")
+    p.add_argument("--candidate", default=CANDIDATE)
+    p.set_defaults(f=cmd_bot_agreement)
     sub.add_parser("create-answers-table").set_defaults(f=cmd_create_answers_table)
     sub.add_parser("define-mv").set_defaults(f=cmd_define_mv)
     p = sub.add_parser("load")
