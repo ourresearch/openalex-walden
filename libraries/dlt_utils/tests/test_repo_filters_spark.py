@@ -68,8 +68,9 @@ def test_figshare_component_carve(spark):
         ("oai:figshare.com:article/14", "b6f3a90f96528af2baa", ["gallica:typedoc:objets"],
          _doi("10.6084/m9.figshare.1"), "upsert"),
     ]
-    out = apply_endpoint_filters(spark.createDataFrame(rows, SCHEMA),
-                                 keep_when=F.col("_change_type") == "delete")
+    # apply_endpoint_filters reads `title` since oxjob #1311 (the Repo union always carries it)
+    df = spark.createDataFrame(rows, SCHEMA).withColumn("title", F.lit("A research article"))
+    out = apply_endpoint_filters(df, keep_when=F.col("_change_type") == "delete")
     kept = sorted(r.native_id or "NULL" for r in out.collect())
     assert kept == sorted(
         [f"oai:figshare.com:article/{i}" for i in (5, 6, 7, 8, 9, 10)]
