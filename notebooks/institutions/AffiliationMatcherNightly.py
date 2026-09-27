@@ -45,6 +45,7 @@ dbutils.widgets.text("since_days", "14", "queue: lookup strings created in the l
 dbutils.widgets.text("max_strings", "150000", "queue cap per run")
 dbutils.widgets.text("chunk_strings", "20000", "strings per chunk (one MERGE each)")
 dbutils.widgets.text("artifacts", "/Volumes/openalex/works/models/affiliation_matcher/v1", "chooser JSON + name-embedding cache")
+dbutils.widgets.text("cards", "frozen", "frozen = the decider's institutions + lineage snapshot (#1363 FROZEN_DECIDER.md); live = rebuild from walden tables")
 dbutils.widgets.text("jev", "true", "false = no-Jev chooser only")
 dbutils.widgets.text("jev_min_uncertainty", "0.05", "Jev only strings unsure at this margin (#1363 hybrid b)")
 dbutils.widgets.text("jev_deadline_min", "22", "stop starting Jev batches after this many minutes of Jev")
@@ -59,6 +60,7 @@ SINCE_DAYS = int(dbutils.widgets.get("since_days"))
 MAX_STRINGS = int(dbutils.widgets.get("max_strings"))
 CHUNK = int(dbutils.widgets.get("chunk_strings"))
 ART = dbutils.widgets.get("artifacts").rstrip("/")
+CARDS_MODE = dbutils.widgets.get("cards").strip().lower()
 USE_JEV = dbutils.widgets.get("jev").strip().lower() == "true"
 JEV_B = float(dbutils.widgets.get("jev_min_uncertainty"))
 JEV_DEADLINE_S = float(dbutils.widgets.get("jev_deadline_min")) * 60
@@ -102,17 +104,23 @@ if not strings:
 
 # COMMAND ----------
 
-# Inputs from walden tables, rebuilt every run (a new ROR institution is a candidate the next night).
+# Cards + lineage: by default the frozen snapshot the decider was scored and the corpus was run with (same features,
+# same candidates dropped). `live` rebuilds them from walden tables so a new ROR institution is a candidate the next
+# night; switch only together with a re-scored chooser (after ship: the new-card sweep).
 WORK = "/local_disk0/tmp/affiliation_matcher"
 os.makedirs(WORK, exist_ok=True)
-CARDS, LINEAGE = f"{WORK}/institutions.jsonl.gz", f"{WORK}/lineage.jsonl.gz"
-log(f"cards: {nm.write_cards(spark, CARDS):,}; lineage rows: {nm.write_lineage(spark, LINEAGE):,}")
+if CARDS_MODE == "live":
+    CARDS, LINEAGE = f"{WORK}/institutions.jsonl.gz", f"{WORK}/lineage.jsonl.gz"
+    log(f"live cards: {nm.write_cards(spark, CARDS):,}; lineage rows: {nm.write_lineage(spark, LINEAGE):,}")
+else:
+    CARDS, LINEAGE = f"{ART}/institutions.jsonl.gz", f"{ART}/lineage.jsonl.gz"
+    log(f"frozen cards: {CARDS} (sha256 {hashlib.sha256(open(CARDS, 'rb').read()).hexdigest()[:12]}…)")
 ix = Index(CARDS)
 F = Features(ix, LINEAGE)
 dec_jev = gbt.load_decider(f"{ART}/chooser_jev.json", F)
 dec_nojev = gbt.load_decider(f"{ART}/chooser_nojev.json", F)
 chooser_sha = hashlib.sha256(open(f"{ART}/chooser_jev.json", "rb").read() + open(f"{ART}/chooser_nojev.json", "rb").read()).hexdigest()[:10]
-MATCHER_VERSION = f"v1/{chooser_sha}"
+MATCHER_VERSION = f"v1/{chooser_sha}/{CARDS_MODE}"
 log(f"index: {len(ix.inst):,} institutions, {len(ix.variants):,} name variants; matcher_version {MATCHER_VERSION}")
 
 names = nm.names_for_dense(ix)
