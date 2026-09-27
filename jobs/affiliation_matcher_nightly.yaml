@@ -18,6 +18,8 @@ resources:
           default: "14"
         - name: max_strings
           default: "150000"
+        - name: decider_mode
+          default: "no_model"
         - name: jev
           default: "true"
         - name: jev_deadline_min
@@ -36,6 +38,7 @@ resources:
             base_parameters:
               since_days: "{{job.parameters.since_days}}"
               max_strings: "{{job.parameters.max_strings}}"
+              decider_mode: "{{job.parameters.decider_mode}}"
               jev: "{{job.parameters.jev}}"
               jev_deadline_min: "{{job.parameters.jev_deadline_min}}"
               max_usd: "{{job.parameters.max_usd}}"

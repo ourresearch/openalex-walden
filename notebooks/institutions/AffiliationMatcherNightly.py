@@ -7,9 +7,11 @@
 # MAGIC the legacy model + rules. Code: `utils/affiliation_matcher/` (retrieve + decider vendored from #1363 unchanged;
 # MAGIC the chooser as JSON trees, `gbt.py`).
 # MAGIC
-# MAGIC Per string: retrieve (lex2, ES neighbours, dense chunks, stored TF top 5) -> no-Jev chooser -> Jev on the strings
-# MAGIC it is unsure about, most unsure first, until `jev_deadline_min` -> Jev chooser for those. A string the deadline
-# MAGIC cuts keeps its no-Jev answer (`decider = 'no_jev'`), still well above the legacy model.
+# MAGIC Per string: retrieve (lex2, ES neighbours, dense chunks, stored TF top 5) -> first-pass chooser -> Jev on the
+# MAGIC strings it is unsure about, most unsure first, until `jev_deadline_min` -> Jev chooser for those. First pass is
+# MAGIC `decider_mode`: `student` = #1363's frozen decider v1 (cross-encoder student p + v1 chooser, 88.8% exact on
+# MAGIC test v2; Jev on 20.5% of strings at b = 0.2 lifts it to 89.5%), or `no_model` = the no-Jev chooser (82.5%; Jev
+# MAGIC on 62.9% at b = 0.05 lifts it to ≈ 89.9% on test v1). A string the deadline cuts keeps its first-pass answer.
 # MAGIC
 # MAGIC Queue: lookup strings created in the last `since_days` days with no answers row. Does nothing until the corpus
 # MAGIC answers are loaded (`scripts/affiliation_matcher_swap.py load`), so it can ship before the swap.
@@ -46,8 +48,9 @@ dbutils.widgets.text("max_strings", "150000", "queue cap per run")
 dbutils.widgets.text("chunk_strings", "20000", "strings per chunk (one MERGE each)")
 dbutils.widgets.text("artifacts", "/Volumes/openalex/works/models/affiliation_matcher/v1", "chooser JSON + name-embedding cache")
 dbutils.widgets.text("cards", "frozen", "frozen = the decider's institutions + lineage snapshot (#1363 FROZEN_DECIDER.md); live = rebuild from walden tables")
-dbutils.widgets.text("jev", "true", "false = no-Jev chooser only")
-dbutils.widgets.text("jev_min_uncertainty", "0.05", "Jev only strings unsure at this margin (#1363 hybrid b)")
+dbutils.widgets.text("decider_mode", "no_model", "student = #1363 decider v1 (student p + v1 chooser) first; no_model = the no-Jev chooser first")
+dbutils.widgets.text("jev", "true", "false = first-pass chooser only")
+dbutils.widgets.text("jev_min_uncertainty", "", "Jev only strings unsure at this margin (#1363 hybrid b); default 0.2 for student, 0.05 for no_model")
 dbutils.widgets.text("jev_deadline_min", "22", "stop starting Jev batches after this many minutes of Jev")
 dbutils.widgets.text("jev_rps", "330", "Jev requests/s (account cap 400)")
 dbutils.widgets.text("jev_threads", "96", "Jev threads")
@@ -62,7 +65,9 @@ CHUNK = int(dbutils.widgets.get("chunk_strings"))
 ART = dbutils.widgets.get("artifacts").rstrip("/")
 CARDS_MODE = dbutils.widgets.get("cards").strip().lower()
 USE_JEV = dbutils.widgets.get("jev").strip().lower() == "true"
-JEV_B = float(dbutils.widgets.get("jev_min_uncertainty"))
+DECIDER_MODE = dbutils.widgets.get("decider_mode").strip().lower()
+assert DECIDER_MODE in ("student", "no_model"), DECIDER_MODE
+JEV_B = float(dbutils.widgets.get("jev_min_uncertainty") or (0.2 if DECIDER_MODE == "student" else 0.05))
 JEV_DEADLINE_S = float(dbutils.widgets.get("jev_deadline_min")) * 60
 JEV_RPS = float(dbutils.widgets.get("jev_rps"))
 JEV_THREADS = int(dbutils.widgets.get("jev_threads"))
@@ -118,9 +123,16 @@ else:
 ix = Index(CARDS)
 F = Features(ix, LINEAGE)
 dec_jev = gbt.load_decider(f"{ART}/chooser_jev.json", F)
-dec_nojev = gbt.load_decider(f"{ART}/chooser_nojev.json", F)
-chooser_sha = hashlib.sha256(open(f"{ART}/chooser_jev.json", "rb").read() + open(f"{ART}/chooser_nojev.json", "rb").read()).hexdigest()[:10]
-MATCHER_VERSION = f"v1/{chooser_sha}/{CARDS_MODE}"
+FIRST = "chooser_me5b_full" if DECIDER_MODE == "student" else "chooser_nojev"
+dec_first = gbt.load_decider(f"{ART}/{FIRST}.json", F)
+FIRST_NAME = "student" if DECIDER_MODE == "student" else "no_jev"
+student = None
+if DECIDER_MODE == "student":
+    from utils.affiliation_matcher import student as st  # noqa: E402
+    student = st.load(f"{ART}/student_me5b_full")
+    log(f"student loaded on {student[2]}")
+chooser_sha = hashlib.sha256(open(f"{ART}/chooser_jev.json", "rb").read() + open(f"{ART}/{FIRST}.json", "rb").read()).hexdigest()[:10]
+MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}"
 log(f"index: {len(ix.inst):,} institutions, {len(ix.variants):,} name variants; matcher_version {MATCHER_VERSION}")
 
 names = nm.names_for_dense(ix)
@@ -151,7 +163,7 @@ lex_pool = ctx.Pool(n_proc)
 log(f"lexical workers: {n_proc}")
 
 jev_used_s = 0.0
-totals = {"strings": 0, "jev": 0, "no_jev": 0, "empty_pool": 0, "es_failed": 0}
+totals = {"strings": 0, "jev": 0, "student": 0, "no_jev": 0, "empty_pool": 0, "es_failed": 0}
 
 for c0 in range(0, len(strings), CHUNK):
     S, T5 = strings[c0:c0 + CHUNK], top5[c0:c0 + CHUNK]
@@ -172,17 +184,23 @@ for c0 in range(0, len(strings), CHUNK):
     ranks = [{"lex2": lex[k], "neighbour": nb[k] or [], "dense_me5b_chunks": dense[k], "top5": T5[k]} for k in range(len(S))]
     cands = [nm.candidates(ix, r) for r in ranks]
 
-    # No-Jev chooser on everything; uncertainty orders the Jev queue.
+    # First-pass chooser on everything (student p + v1 chooser, or the no-model chooser); its uncertainty orders
+    # the Jev queue.
+    if student is not None:
+        t = time.time()
+        sp = st.p_for(student, ix, [(k, S[k], i) for k in range(len(S)) for i in cands[k]], workers=8)
+        log(f"  student: {len(sp):,} pairs in {time.time() - t:.0f}s")
     out = {}
     for k, s in enumerate(S):
         if not cands[k]:
             out[k] = ([], {}, "empty_pool")
             continue
-        ids, probs = dec_nojev.decide(s, {i: 1.0 for i in cands[k]}, ranks[k])
-        out[k] = (ids, probs, "no_jev")
+        js = {i: sp[(k, i)] for i in cands[k]} if student is not None else {i: 1.0 for i in cands[k]}
+        ids, probs = dec_first.decide(s, js, ranks[k])
+        out[k] = (ids, probs, FIRST_NAME)
 
     if jev_client is not None:
-        unsure = sorted((k for k in out if out[k][2] == "no_jev" and nm.uncertainty(out[k][1]) > JEV_B),
+        unsure = sorted((k for k in out if out[k][2] == FIRST_NAME and nm.uncertainty(out[k][1]) > JEV_B),
                         key=lambda k: -nm.uncertainty(out[k][1]))
         t = time.time()
         done_k = 0
