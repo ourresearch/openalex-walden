@@ -49,6 +49,9 @@ dbutils.widgets.text("is_full_build", "false")
 dbutils.widgets.text("guardrails_override", "false")
 dbutils.widgets.text("trigger_syncs", "false")  # end2end passes true once synced tables exist
 dbutils.widgets.text("run_deletes", "false")    # force the full delete sweep (auto-runs when doc count > works count)
+# "k/N": incremental MERGE over every work with pmod(id, N) = k instead of the 2-day churn window, for a
+# hash-rebaselined change that moved no updated_date (oxjob #1322 keywords). doc_hash still gates the writes.
+dbutils.widgets.text("id_mod", "")
 
 IS_FULL_BUILD = dbutils.widgets.get("is_full_build").lower() == "true"
 # job parameter OR a pre-cleared row in openalex.works.e2e_overrides (scripts/preclear_e2e.py)
@@ -57,6 +60,13 @@ GUARDRAILS_OVERRIDE = spark.sql(
 ).collect()[0][0]
 TRIGGER_SYNCS = dbutils.widgets.get("trigger_syncs").lower() == "true"
 RUN_DELETES = dbutils.widgets.get("run_deletes").lower() == "true"
+ID_MOD = dbutils.widgets.get("id_mod").strip()
+if ID_MOD:
+    import re
+    _m = re.fullmatch(r"(\d+)/(\d+)", ID_MOD)
+    if not _m or int(_m.group(1)) >= int(_m.group(2)) or IS_FULL_BUILD:
+        raise ValueError(f"id_mod must be k/N with 0 <= k < N and is_full_build=false, got {ID_MOD!r}")
+    ID_MOD_K, ID_MOD_N = int(_m.group(1)), int(_m.group(2))
 
 print(f"IS_FULL_BUILD: {IS_FULL_BUILD}")
 
@@ -76,6 +86,9 @@ if total_works < 400_000_000 and not GUARDRAILS_OVERRIDE:
 
 if IS_FULL_BUILD:
     SQL_QUERY = f"SELECT * FROM {WORKS_TABLE}"
+elif ID_MOD:
+    SQL_QUERY = f"SELECT * FROM {WORKS_TABLE} WHERE pmod(id, {ID_MOD_N}) = {ID_MOD_K}"
+    print(f"ID_MOD backfill: pmod(id, {ID_MOD_N}) = {ID_MOD_K} (doc_hash-gated MERGE; no churn-window guard)")
 else:
     SQL_QUERY = f"""SELECT * FROM {WORKS_TABLE}
 WHERE updated_date >= current_date() - INTERVAL 2 days
