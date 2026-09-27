@@ -340,12 +340,13 @@ WITH bot AS (
     AND value RLIKE '^https?://openalex\\\\.org/I[0-9]+$'
   GROUP BY entity_id, value
 )
-SELECT b.action, COUNT(*) AS bot_pairs,
+SELECT CASE WHEN n.source = 'matcher' THEN 'answered by the matcher' ELSE 'legacy (bot curations still apply)' END AS strings,
+       b.action, COUNT(*) AS bot_pairs,
        COUNT_IF(ARRAY_CONTAINS(n.institution_ids, b.i)) AS candidate_has_id,
-       COUNT_IF(n.source = 'matcher') AS answered_by_matcher
+       ROUND(100 * COUNT_IF(ARRAY_CONTAINS(n.institution_ids, b.i) = (b.action = 'add')) / COUNT(*), 1) AS pct_agree_with_bot
 FROM bot b JOIN {a.candidate} n ON n.raw_affiliation_string = b.s
 WHERE b.bot_wins
-GROUP BY b.action""", a.warehouse))
+GROUP BY 1, 2 ORDER BY 1, 2""", a.warehouse))
 
 
 def cmd_verify(a):
