@@ -160,6 +160,8 @@ ctx = mp.get_context("fork")
 n_proc = max(1, (os.cpu_count() or 2) - 1)
 nm._IX = ix  # forked workers share the driver's index (copy-on-write) instead of rebuilding it
 lex_pool = ctx.Pool(n_proc)
+from concurrent.futures import ThreadPoolExecutor  # noqa: E402
+bg = ThreadPoolExecutor(1)
 log(f"lexical workers: {n_proc}")
 
 jev_used_s = 0.0
@@ -167,19 +169,21 @@ totals = {"strings": 0, "jev": 0, "student": 0, "no_jev": 0, "empty_pool": 0, "e
 
 for c0 in range(0, len(strings), CHUNK):
     S, T5 = strings[c0:c0 + CHUNK], top5[c0:c0 + CHUNK]
+    # ES neighbours (network-bound threads) run beside lexical (CPU processes) and dense (GPU).
     t = time.time()
+    nb_future = bg.submit(nm.neighbour_all, S, ES_URL, 32)
     lex = lex_pool.map(nm.lex2, S, chunksize=100)
     log(f"chunk {c0 // CHUNK}: {len(S):,} strings; lex2 {time.time() - t:.0f}s")
-    t = time.time()
-    nb = nm.neighbour_all(S, ES_URL, threads=32)
-    totals["es_failed"] += sum(x is None for x in nb)
-    log(f"  neighbour {time.time() - t:.0f}s ({sum(x is None for x in nb)} ES failures)")
     t = time.time()
     dense, name_emb_now = nm.dense_chunks_all(S, names, name_emb=name_emb)
     if name_emb is None:
         name_emb = name_emb_now
         torch.save(name_emb, EMB)
     log(f"  dense {time.time() - t:.0f}s")
+    t = time.time()
+    nb = nb_future.result()
+    totals["es_failed"] += sum(x is None for x in nb)
+    log(f"  neighbour: waited {time.time() - t:.0f}s more ({sum(x is None for x in nb)} ES failures)")
 
     ranks = [{"lex2": lex[k], "neighbour": nb[k] or [], "dense_me5b_chunks": dense[k], "top5": T5[k]} for k in range(len(S))]
     cands = [nm.candidates(ix, r) for r in ranks]
