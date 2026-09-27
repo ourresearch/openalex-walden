@@ -129,7 +129,7 @@ FIRST_NAME = "student" if DECIDER_MODE == "student" else "no_jev"
 student = None
 if DECIDER_MODE == "student":
     from utils.affiliation_matcher import student as st  # noqa: E402
-    student = st.load(f"{ART}/student_me5b_full")
+    student = st.load(f"{ART}/student_me5b_full", base_dir=f"{ART}/base_multilingual-e5-base")
     log(f"student loaded on {student[2]}")
 chooser_sha = hashlib.sha256(open(f"{ART}/chooser_jev.json", "rb").read() + open(f"{ART}/{FIRST}.json", "rb").read()).hexdigest()[:10]
 MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}"
