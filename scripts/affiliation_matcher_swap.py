@@ -19,6 +19,7 @@ Production (Jason's yes + a charter write-log row before and after, every time):
     scripts/affiliation_matcher_swap.py define-mv                # CREATE OR REPLACE the MV from the .sql file
     scripts/affiliation_matcher_swap.py load --from openalex.institutions.oxjob1385_answers_v1
     scripts/affiliation_matcher_swap.py revert                   # empty the answers table
+    scripts/affiliation_matcher_swap.py verify                   # after the swap night: ACCEPTANCE 1-2
 
 Needs the `databricks` CLI authenticated on this machine. Warehouse: --warehouse, default serverless.
 """
@@ -341,6 +342,66 @@ WHERE b.bot_wins
 GROUP BY b.action""", a.warehouse))
 
 
+def cmd_verify(a):
+    """ACCEPTANCE 1-2 after a swap night. (1) For N answered strings, one work carrying each: the authorship's
+    affiliations entry for the string lists exactly (answer + bot-free adds - bot-free removes), restricted to ids in
+    the institutions table. (2) N librarian curations on answered strings are in effect in the MV."""
+    wh = a.warehouse
+    print(f"== (1) {a.n} answered strings: published works vs answer + librarian curations")
+    show(*sql(f"""
+WITH s AS (
+  SELECT ans.raw_affiliation_string, ans.institution_ids
+  FROM {ANSWERS} ans ORDER BY xxhash64(ans.raw_affiliation_string, 1386) LIMIT {a.n}
+),
+raw_expected AS (
+  SELECT s.raw_affiliation_string,
+         ARRAY_EXCEPT(ARRAY_UNION(s.institution_ids, COALESCE(r.curated_add_ids, array())),
+                      COALESCE(r.curated_remove_ids, array())) AS ids
+  FROM s LEFT JOIN {WITHOUT_BOT} r ON r.raw_affiliation_string = s.raw_affiliation_string
+),
+expected AS (  -- authorships keep only ids present in the institutions table
+  SELECT e.raw_affiliation_string,
+         ARRAY_SORT(COALESCE(COLLECT_SET(CASE WHEN inst.id IS NOT NULL THEN x.i END), array())) AS ids
+  FROM raw_expected e
+  LEFT JOIN (SELECT raw_affiliation_string, i FROM raw_expected LATERAL VIEW EXPLODE(ids) t AS i) x
+    ON x.raw_affiliation_string = e.raw_affiliation_string
+  LEFT JOIN {INSTITUTIONS} inst ON inst.id = x.i
+  GROUP BY e.raw_affiliation_string
+),
+one_work AS (
+  SELECT raw_affiliation_string, MIN(work_id) AS work_id FROM {SEATS}
+  WHERE raw_affiliation_string IN (SELECT raw_affiliation_string FROM s) GROUP BY raw_affiliation_string
+),
+published AS (
+  SELECT o.raw_affiliation_string,
+         ARRAY_SORT(TRANSFORM(FLATTEN(COLLECT_LIST(
+           TRANSFORM(FILTER(a.affiliations, x -> x.raw_affiliation_string = o.raw_affiliation_string),
+                     x -> x.institution_ids))), u -> CAST(REPLACE(u, 'https://openalex.org/I', '') AS BIGINT))) AS ids
+  FROM one_work o JOIN openalex.works.openalex_works w ON w.id = o.work_id
+  LATERAL VIEW EXPLODE(w.authorships) t AS a
+  GROUP BY o.raw_affiliation_string
+)
+SELECT COUNT(*) AS strings_with_a_work,
+       COUNT_IF(ARRAY_DISTINCT(p.ids) = e.ids) AS exact,
+       COUNT_IF(ARRAY_DISTINCT(p.ids) <> e.ids) AS differ
+FROM published p JOIN expected e ON e.raw_affiliation_string = p.raw_affiliation_string""", wh))
+    print(f"== (2) {a.n} librarian curations on answered strings, in effect in the MV")
+    show(*sql(f"""
+WITH c AS (
+  SELECT r.raw_affiliation_string, 'add' AS action, i FROM {WITHOUT_BOT} r LATERAL VIEW EXPLODE(r.curated_add_ids) x AS i
+  UNION ALL
+  SELECT r.raw_affiliation_string, 'remove', i FROM {WITHOUT_BOT} r LATERAL VIEW EXPLODE(r.curated_remove_ids) x AS i
+),
+smp AS (
+  SELECT c.* FROM c JOIN {ANSWERS} ans ON ans.raw_affiliation_string = c.raw_affiliation_string
+  ORDER BY xxhash64(c.raw_affiliation_string, c.i, 1386) LIMIT {a.n}
+)
+SELECT smp.action, COUNT(*) AS curations,
+       COUNT_IF((smp.action = 'add') = ARRAY_CONTAINS(mv.institution_ids, smp.i)) AS in_effect
+FROM smp JOIN {MV} mv ON mv.raw_affiliation_string = smp.raw_affiliation_string
+GROUP BY smp.action""", wh))
+
+
 def cmd_create_answers_table(a):
     run(f"create {ANSWERS}", ANSWERS_DDL, a.warehouse)
 
@@ -403,6 +464,9 @@ def main():
     p = sub.add_parser("bot-agreement")
     p.add_argument("--candidate", default=CANDIDATE)
     p.set_defaults(f=cmd_bot_agreement)
+    p = sub.add_parser("verify")
+    p.add_argument("--n", type=int, default=1000)
+    p.set_defaults(f=cmd_verify)
     sub.add_parser("create-answers-table").set_defaults(f=cmd_create_answers_table)
     sub.add_parser("define-mv").set_defaults(f=cmd_define_mv)
     p = sub.add_parser("load")
