@@ -78,8 +78,12 @@ re-stamps works and cannot trip Guardrails.
 
 ## Job `Study Design` (jobs/study_design.yaml)
 
-Nightly 19:00 UTC (after End 2 End): build_queue → student → tag →
-build_served. Job parameters cap each run: `student_max_works` (2M),
+Nightly 19:00 UTC (after End 2 End): build_queue → tag → build_served.
+**Since 2026-09-26 Jev tags every work; the student task is out of the job**
+(Jason: accuracy over cost, Jev on every new work is ~$2.5K a year; oxjob
+#1335). Student rows already in the tagger table stay served. To bring the
+student back, restore the task and GPU job cluster from git history (commit
+079f71b7) and set `jev_residual_only` to true. Job parameters cap each run:
 `max_works` (400K, Jev), `max_usd` ($40), `max_minutes` (150), `rps` (250 of
 the 400 req/s account cap), `concurrency` (64), `dry_run`. Queue priority:
 works created in the last 30 days, then works with a PMID, then no-PMID works
@@ -90,7 +94,7 @@ the backfill drains behind it.
 Jev tagged 17M student-eligible works for ~$900): `max_total_usd` (4,000) is a
 ceiling on Jev spend summed over `works_study_design_progress` across every
 run; the tag task fails at it instead of starting, so raise it on purpose.
-`jev_residual_only` (true) makes Jev tag only works the student routed to it
+`jev_residual_only` (false since 2026-09-26; true when the student runs) makes Jev tag only works the student routed to it
 (`works_study_design_student.route = 'jev'` at the current `STUDENT_VERSION`);
 anything the student has not seen stays queued for the next run.
 
