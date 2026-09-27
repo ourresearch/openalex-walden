@@ -32,11 +32,13 @@ grouping term).
 
 ## Provenance
 
-Where a **MEDLINE-indexed** PubMed record (`openalex.pubmed.pubmed_exploded`,
-latest revision per PMID, `MedlineCitation._Status = 'MEDLINE'`) carries one of
-the tags above, PubMed's values are served. Everywhere else the tagger's values
-are served. The tagger runs on PubMed works too, so `works_study_design` holds
-both columns and disagreement is measurable. There is no provenance field in
+Wherever the tagger ran (works with an abstract), the tagger's values are
+served. Only where it did not (no abstract) does a **MEDLINE-indexed** PubMed
+record (`openalex.pubmed.pubmed_exploded`, latest revision per PMID,
+`MedlineCitation._Status = 'MEDLINE'`) supply the value. This replaced "PubMed
+wins" on 2026-09-26: on a judged sample PubMed was right 279/280 where the two
+agree but only 21-43% where they disagree (oxjob #1312 EXPLORE § 11).
+`works_study_design` holds both columns so disagreement stays measurable. There is no provenance field in
 the API; the tagger is described as "automated tagging", never by name.
 
 ## Tagger

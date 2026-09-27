@@ -4,18 +4,19 @@
 # MAGIC
 # MAGIC `works_study_design`: one row per work with at least one study-design value.
 # MAGIC
-# MAGIC Provenance rule (Jason, 2026-09-22): where a **MEDLINE-indexed** PubMed
-# MAGIC record carries a study-characteristics tag (MeSH V03), PubMed's values are
-# MAGIC served; otherwise the tagger's. Both are stored so disagreement on the live
-# MAGIC corpus is measurable. Only PubMed's vocabulary is served: the tagger's
+# MAGIC Provenance rule (Jason, 2026-09-26; replaces "PubMed wins" of 2026-09-22):
+# MAGIC the tagger's values are served wherever the tagger ran (works with an
+# MAGIC abstract); PubMed's MEDLINE V03 tags only where it did not. A judged sample
+# MAGIC showed PubMed right 279/280 where the two agree but only 21-43% where they
+# MAGIC disagree (oxjob #1312 EXPLORE § 11). Both are stored so disagreement on the
+# MAGIC live corpus stays measurable. Only PubMed's vocabulary is served: the tagger's
 # MAGIC other-primary-research is kept in `tagger_values` but never in
 # MAGIC `study_designs` (Jason, 2026-09-25; oxjob #1362). Parents are implied (RCT ⇒ Clinical Trial;
 # MAGIC Meta-Analysis ⇒ Systematic Review). Publication formats (Editorial, Letter,
 # MAGIC Review, Guideline …) are `type`'s business and never appear here.
 # MAGIC
 # MAGIC Full rebuild every run (CREATE OR REPLACE): ~41M PubMed rows + the tagger
-# MAGIC table. NOT wired into CreateWorksEnriched / ES yet (oxjob #1312 step 6);
-# MAGIC nothing downstream reads it until then.
+# MAGIC table. CreateWorksEnriched merges it into `openalex_works.study_designs`.
 
 # COMMAND ----------
 
@@ -47,7 +48,7 @@ t0 = time.time()
 spark.sql(f"""
 CREATE OR REPLACE TABLE {SERVED}
 USING DELTA CLUSTER BY (work_id)
-COMMENT 'Study design per work (oxjob #1312): PubMed (MEDLINE V03 tags) where present, else automated tagging'
+COMMENT 'Study design per work (oxjob #1312): automated tagging wherever it ran (works with an abstract), else PubMed (MEDLINE V03 tags)'
 AS
 WITH pm AS (
   SELECT pmid, types FROM (
@@ -83,15 +84,15 @@ tag AS (
   WHERE rn = 1
 )
 SELECT coalesce(t.work_id, p.work_id) AS work_id,
-       CASE WHEN p.pubmed_values IS NOT NULL THEN p.pubmed_values ELSE t.served_values END AS study_designs,
-       CASE WHEN p.pubmed_values IS NOT NULL THEN 'pubmed' ELSE 'tagger' END AS source,
+       CASE WHEN t.tagger_values IS NOT NULL THEN t.served_values ELSE p.pubmed_values END AS study_designs,
+       CASE WHEN t.tagger_values IS NOT NULL THEN 'tagger' ELSE 'pubmed' END AS source,
        p.pubmed_values,
        t.tagger_values,
        t.tagger_version,
        t.tagged_at,
        current_timestamp() AS updated_at
 FROM tag t FULL OUTER JOIN w_pm p ON t.work_id = p.work_id
-WHERE size(CASE WHEN p.pubmed_values IS NOT NULL THEN p.pubmed_values ELSE t.served_values END) > 0
+WHERE size(CASE WHEN t.tagger_values IS NOT NULL THEN t.served_values ELSE p.pubmed_values END) > 0
 """)
 print(f"{SERVED} rebuilt ({time.time() - t0:.0f}s)")
 

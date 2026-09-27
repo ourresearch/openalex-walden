@@ -10,9 +10,9 @@ Nouls) over title + venue + abstract, eight derived class scores, three
 code-side text gates on RCT, per-class thresholds fixed on the dev split.
 RCT: 0 false positives in 555 at 0.83 recall; every class over its bar.
 
-Provenance rule (served table): where a MEDLINE-indexed PubMed record carries
-a study-characteristics tag, PubMed's values are served; otherwise the
-tagger's. Both are stored so disagreement is measurable. The tagger is never
+Provenance rule (served table, 2026-09-26): the tagger's values wherever the
+tagger ran; a MEDLINE-indexed PubMed record's study-characteristics tags only
+where it did not (no abstract). Both are stored so disagreement is measurable. The tagger is never
 named in the API or docs ("automated tagging").
 
 Never batch several works into one request (7% of answers flip at N = 8).
