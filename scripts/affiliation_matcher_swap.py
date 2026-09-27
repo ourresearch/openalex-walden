@@ -290,6 +290,14 @@ SELECT COUNT_IF(touched_old > 0 AND touched_new = 0 AND other.work_id IS NULL) A
        COUNT_IF(touched_old = 0 AND touched_new > 0 AND other.work_id IS NULL) AS works_gaining_first_institution
 FROM w LEFT JOIN other ON other.work_id = w.work_id""", wh))
 
+    print("\n== Authors whose profile institutions can change (upper bound: authors on a seat whose institutions change;"
+          " CreateAuthors hashes affiliations + last_known_institutions, so these re-stamp at the next authors build)")
+    show(*sql(f"""
+SELECT COUNT(DISTINCT s.author_id) AS authors_on_changed_seats
+FROM {DIFF_SEATS} d
+JOIN {SEATS} s ON s.work_id = d.work_id AND s.author_sequence = d.author_sequence
+WHERE NOT (d.old_set <=> d.new_set) AND s.author_id IS NOT NULL""", wh))
+
     print(f"\n== Top {a.top} institutions by works lost and gained")
     base = f"""
 WITH e AS (
