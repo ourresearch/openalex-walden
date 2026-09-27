@@ -239,3 +239,20 @@ def jev_strings(client, ix, batch, threads=64):
 def candidates(ix, ranks):
     """The pool (#1363 decider.pool) restricted to institutions with a card."""
     return [i for i in pool(ranks) if i in ix.inst]
+
+
+def decide_many(dec, items):
+    """Decider.decide over many strings with one predict_proba call (identical output, one tree walk per chunk).
+    items: [(s, js, ranks)] -> [(ids, probs)]."""
+    import numpy as np
+    rows, spans = [], []
+    for s, js, ranks in items:
+        R = dec.F.rows(s, js, ranks, dec.m["no_p"], getattr(dec, "fset", "v1"))
+        spans.append((len(rows), len(rows) + len(R), R))
+        rows.extend(f for _, f in R)
+    P = dec.m["clf"].predict_proba(np.asarray(rows, dtype=float))[:, 1] if rows else []
+    out = []
+    for a, b, R in spans:
+        probs = {i: float(p) for (i, _), p in zip(R, P[a:b])}
+        out.append((sorted(i for i, p in probs.items() if p >= dec.m["t"]), probs))
+    return out
