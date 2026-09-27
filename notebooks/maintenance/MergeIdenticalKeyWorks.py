@@ -575,10 +575,13 @@ if MODE == "release_held":
                                     WHERE hold_reason IS NOT NULL AND executed_at IS NULL) t
                            ON t.loser_work_id = r.loser_work_id AND t.winner_work_id = r.winner_work_id
                          LEFT JOIN {MERGED} m ON m.loser_work_id = r.loser_work_id""")
-        n = spark.sql(f"""UPDATE {TARGET} SET hold_reason = NULL, wave = {WAVE}
-                          WHERE hold_reason IS NOT NULL AND executed_at IS NULL AND loser_work_id NOT IN ({keep})
-                            AND loser_work_id NOT IN (SELECT loser_work_id FROM {MERGED})
-                            AND (loser_work_id, winner_work_id) IN (SELECT loser_work_id, winner_work_id FROM release_list)""").collect()[0].num_affected_rows
+        # Delta rejects multi-column IN inside UPDATE; MERGE on the pair instead
+        n = spark.sql(f"""MERGE INTO {TARGET} t
+                          USING (SELECT DISTINCT r.loser_work_id, r.winner_work_id FROM release_list r
+                                 LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = r.loser_work_id) r
+                            ON t.loser_work_id = r.loser_work_id AND t.winner_work_id = r.winner_work_id
+                          WHEN MATCHED AND t.hold_reason IS NOT NULL AND t.executed_at IS NULL AND t.loser_work_id NOT IN ({keep})
+                            THEN UPDATE SET hold_reason = NULL, wave = {WAVE}""").collect()[0].num_updated_rows
         note(release_list=RELEASE_LIST, **listed, released_into_wave=n, wave_now=WAVE)
         print_waves(TARGET)
         dbutils.notebook.exit(json.dumps(SUMMARY, default=str))
