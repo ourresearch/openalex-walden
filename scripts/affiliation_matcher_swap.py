@@ -18,6 +18,8 @@ Production (Jason's yes + a charter write-log row before and after, every time):
     scripts/affiliation_matcher_swap.py create-answers-table     # empty table; changes nothing
     scripts/affiliation_matcher_swap.py define-mv                # CREATE OR REPLACE the MV from the .sql file
     scripts/affiliation_matcher_swap.py load --from openalex.institutions.oxjob1385_answers_v1
+                                                                 # keeps nightly + new-card sweep rows (#1393); if it
+                                                                 # stops midway it prints the put-back MERGE
     scripts/affiliation_matcher_swap.py revert                   # empty the answers table
     scripts/affiliation_matcher_swap.py verify                   # after the swap night: ACCEPTANCE 1-2
     scripts/affiliation_matcher_swap.py changed-works --since-utc '2026-09-28 05:00:00'   # ids for the ES/Lakebase backfill
@@ -496,16 +498,24 @@ def cmd_load(a):
     src = versioned(a.source, a.version)
     # Rows no corpus table holds (oxjob #1393): the nightly's answers for strings newer than the corpus run, and the
     # new-card sweep's answers naming institutions the corpus run's cards lacked. Set them aside, reload, put them
-    # back: a nightly row only where the source has no row for its string, a sweep row always.
+    # back: a nightly row only where the source has no row for its string; a sweep row there too, and over the
+    # source's row when the sweep answered later than the source's run (a newer corpus run, whose cards already
+    # held the new institutions, wins).
     keep = f"{ANSWERS}_kept_by_load"
+    put_back = f"""MERGE INTO {ANSWERS} t
+USING {keep} s ON t.raw_affiliation_string = s.raw_affiliation_string
+WHEN MATCHED AND s.tier = 'sweep' AND s.run_at > t.run_at THEN UPDATE SET *
+WHEN NOT MATCHED THEN INSERT *"""
     run(f"set aside nightly + sweep rows -> {keep}",
         f"CREATE OR REPLACE TABLE {keep} AS SELECT * FROM {ANSWERS} WHERE tier IN ('nightly', 'sweep')", wh)
-    run(f"INSERT OVERWRITE {ANSWERS} FROM {src}",
-        f"INSERT OVERWRITE {ANSWERS}\n{adapted_select(a.source, wh, a.matcher_version, a.version)}", wh)
-    run(f"put back nightly + sweep rows from {keep}", f"""MERGE INTO {ANSWERS} t
-USING {keep} s ON t.raw_affiliation_string = s.raw_affiliation_string
-WHEN MATCHED AND s.tier = 'sweep' THEN UPDATE SET *
-WHEN NOT MATCHED THEN INSERT *""", wh)
+    try:
+        run(f"INSERT OVERWRITE {ANSWERS} FROM {src}",
+            f"INSERT OVERWRITE {ANSWERS}\n{adapted_select(a.source, wh, a.matcher_version, a.version)}", wh)
+        run(f"put back nightly + sweep rows from {keep}", put_back, wh)
+    except BaseException:
+        print(f"LOAD STOPPED before the nightly + sweep rows were put back. They are in {keep}; once the answers "
+              f"table holds the source again, recover with:\n{put_back}", file=sys.stderr, flush=True)
+        raise
     show(*sql(f"SELECT COUNT(*) AS rows, COUNT_IF(SIZE(institution_ids) = 0) AS names_none, "
               f"COUNT_IF(tier = 'nightly') AS nightly, COUNT_IF(tier = 'sweep') AS sweep FROM {ANSWERS}", wh))
 
