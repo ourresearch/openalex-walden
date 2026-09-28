@@ -62,8 +62,8 @@ dbutils.widgets.text("dry_run", "false", "true = write to <answers_table>_dryrun
 dbutils.widgets.text("queue_table", "", "answer the strings in this table (column raw_affiliation_string) instead of the nightly queue; needs target_table")
 dbutils.widgets.text("shard", "", "with queue_table: k/n answers only the strings with pmod(xxhash64(string), n) = k (the sweep runs n shards on n clusters)")
 dbutils.widgets.text("target_table", "", "with queue_table: where answers go (never the answers table); strings already there are skipped (restart-safe)")
-dbutils.widgets.text("vote_ids", "final", "ES neighbour votes: final = each neighbour's institution_ids_final (live answers); legacy = pre-swap ids from vote_ids_table for the strings the swap changed (#1386 charter NOW row 7)")
-dbutils.widgets.text("vote_ids_table", "openalex.institutions.oxjob1386_legacy_vote_ids", "with vote_ids=legacy: raw_affiliation_string -> institution_ids voted instead")
+dbutils.widgets.text("vote_ids", "legacy", "ES neighbour votes: final = each neighbour's institution_ids_final (live answers); legacy = pre-swap ids from vote_ids_table for the strings the swap changed (#1386 charter NOW row 7)")
+dbutils.widgets.text("vote_ids_table", "openalex.institutions.affiliation_matcher_legacy_votes", "with vote_ids=legacy: raw_affiliation_string -> institution_ids voted instead")
 dbutils.widgets.text("cards_exclude_table", "", "simulation only (#1393): drop these institutions (column institution_id) from the cards, e.g. to rebuild the world before a ROR dump")
 dbutils.widgets.text("sweep_ids_table", "", "with queue_table: new-card sweep (#1393) — institutions being swept (column institution_id); a string none of them reaches in lex2/dense is written with decider 'no_swept_candidate' and not matched further")
 
