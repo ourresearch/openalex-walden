@@ -626,8 +626,13 @@ if MODE == "execute":
     n = one(f"""SELECT COUNT(DISTINCT CASE WHEN kind = 'pin' THEN CONCAT_WS('|', provenance, native_id_namespace, native_id) END) AS pins,
                        COUNT(DISTINCT CASE WHEN kind = 'map' THEN CONCAT_WS('|', loser_work_id, doi, pmid, arxiv, title_author, created_date) END) AS map_rows
                 FROM {AUDIT}""")
+    # a record key can be pinned twice (legacy adoption); delete only the loser's pin, and expect exactly the rows that match
+    expected_pins = one(f"""SELECT COUNT(*) AS n FROM {REGISTRY} r WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'pin'
+                         AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
+                         AND a.loser_work_id = r.work_id)""")["n"]
     pins = spark.sql(f"""DELETE FROM {REGISTRY} r WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'pin'
-                         AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id)""").collect()[0].num_affected_rows
+                         AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
+                         AND a.loser_work_id = r.work_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
     if CLASS_MODE in ("exact_signature", "declared_version") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
@@ -649,7 +654,7 @@ if MODE == "execute":
     record_merges(f"{TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL")
     note(executed_seconds=int(time.time() - t0), audit=AUDIT, audited_pins=n["pins"], audited_map_rows=n["map_rows"],
          pins_deleted=pins, map_rows_deleted=maprows)
-    assert pins == n["pins"], f"pins deleted {pins} != audited {n['pins']}"
+    assert pins == expected_pins, f"pins deleted {pins} != matching audited pins {expected_pins}"
     print_waves(TARGET)
 
 # COMMAND ----------
@@ -760,7 +765,8 @@ if MODE == "reexecute_resurrected":
                          m.doi, m.pmid, m.arxiv, m.title_author, m.created_date, m.updated_date, current_timestamp()
                   FROM {back} b JOIN {MAP} m ON m.id = b.loser_work_id""")
     pins = spark.sql(f"""DELETE FROM {REGISTRY} r WHERE EXISTS (SELECT 1 FROM {REAUDIT} a WHERE a.kind = 'pin'
-                         AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id)""").collect()[0].num_affected_rows
+                         AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
+                         AND a.loser_work_id = r.work_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {REAUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)").collect()[0].num_affected_rows
     note(reexec_audit=REAUDIT, pins_deleted=pins, map_rows_deleted=maprows)
 
