@@ -59,6 +59,7 @@ dbutils.widgets.text("max_usd", "25", "stop starting Jev batches past this spend
 dbutils.widgets.text("require_swap", "true", "true = do nothing until the answers table holds corpus rows")
 dbutils.widgets.text("dry_run", "false", "true = write to <answers_table>_dryrun (overwritten) instead")
 dbutils.widgets.text("queue_table", "", "answer the strings in this table (column raw_affiliation_string) instead of the nightly queue; needs target_table")
+dbutils.widgets.text("shard", "", "with queue_table: k/n answers only the strings with pmod(xxhash64(string), n) = k (the sweep runs n shards on n clusters)")
 dbutils.widgets.text("target_table", "", "with queue_table: where answers go (never the answers table); strings already there are skipped (restart-safe)")
 dbutils.widgets.text("cards_exclude_table", "", "simulation only (#1393): drop these institutions (column institution_id) from the cards, e.g. to rebuild the world before a ROR dump")
 dbutils.widgets.text("sweep_ids_table", "", "with queue_table: new-card sweep (#1393) — institutions being swept (column institution_id); a string none of them reaches in lex2/dense is written with decider 'no_swept_candidate' and not matched further")
@@ -83,6 +84,12 @@ DRY_RUN = dbutils.widgets.get("dry_run").strip().lower() == "true"
 TARGET = ANSWERS + "_dryrun" if DRY_RUN else ANSWERS
 QUEUE_TABLE = dbutils.widgets.get("queue_table").strip()
 SWEEP_IDS_TABLE = dbutils.widgets.get("sweep_ids_table").strip()
+SHARD = dbutils.widgets.get("shard").strip()
+SHARD_SQL = ""
+if SHARD:
+    _k, _n = (int(x) for x in SHARD.split("/"))
+    assert 0 <= _k < _n and QUEUE_TABLE, "shard k/n needs 0 <= k < n and a queue_table"
+    SHARD_SQL = f"AND pmod(xxhash64(q.raw_affiliation_string), {_n}) = {_k}"
 if QUEUE_TABLE:
     TARGET = dbutils.widgets.get("target_table").strip()
     assert TARGET and TARGET != ANSWERS, "queue_table needs a target_table other than the answers table"
@@ -113,7 +120,7 @@ SELECT q.raw_affiliation_string AS s, to_json(l.model_response) AS mr
 FROM (SELECT DISTINCT raw_affiliation_string FROM {QUEUE_TABLE}) q
 LEFT JOIN {LOOKUP} l ON l.raw_affiliation_string = q.raw_affiliation_string
 {done_t}
-WHERE q.raw_affiliation_string IS NOT NULL AND trim(q.raw_affiliation_string) <> ''
+WHERE q.raw_affiliation_string IS NOT NULL AND trim(q.raw_affiliation_string) <> '' {SHARD_SQL}
 LIMIT {MAX_STRINGS}
 """).collect()
 else:
@@ -223,10 +230,10 @@ for c0 in range(0, len(strings), CHUNK):
         log(f"stop: max_minutes {MAX_MINUTES:.0f} reached; {len(strings) - c0:,} strings wait for the next night")
         break
     S, T5 = strings[c0:c0 + CHUNK], top5[c0:c0 + CHUNK]
-    # ES neighbours (network-bound threads) run beside lexical (CPU processes) and dense (GPU). In a sweep they wait
-    # for the filter below: neighbour votes and the TF top 5 can't name a record no string carries yet.
+    # ES neighbours (network-bound threads) run beside lexical (CPU processes) and dense (GPU); in a sweep too (for
+    # strings the filter below drops they are wasted, ≈ 17%, but waiting for the filter cost 100-180 s per 10K).
     t = time.time()
-    nb_future = bg.submit(nm.neighbour_all, S, ES_URL, 32) if SWEEP is None else None
+    nb_future = bg.submit(nm.neighbour_all, S, ES_URL, 32)
     lex = lex_pool.map(nm.lex2, S, chunksize=100)
     log(f"chunk {c0 // CHUNK}: {len(S):,} strings; lex2 {time.time() - t:.0f}s")
     t = time.time()
@@ -244,9 +251,10 @@ for c0 in range(0, len(strings), CHUNK):
         skipped = [S[k] for k in range(len(S)) if k not in kept]
         S, T5, lex, dense = [S[k] for k in keep], [T5[k] for k in keep], [lex[k] for k in keep], [dense[k] for k in keep]
         log(f"  sweep filter: {len(S):,} strings reach a swept institution, {len(skipped):,} don't")
-        nb_future = bg.submit(nm.neighbour_all, S, ES_URL, 32)
     t = time.time()
     nb = nb_future.result()
+    if SWEEP is not None:
+        nb = [nb[k] for k in keep]
     totals["es_failed"] += sum(x is None for x in nb)
     log(f"  neighbour: waited {time.time() - t:.0f}s more ({sum(x is None for x in nb)} ES failures)")
 

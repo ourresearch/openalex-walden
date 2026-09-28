@@ -10,7 +10,8 @@
 # MAGIC `step=check` (serverless, seconds): records institutions never seen before in `affiliation_matcher_cards_seen`
 # MAGIC and sets task value `pending`; the rest runs only if it is > 0. `step=search`: candidate strings for the pending
 # MAGIC institutions by ES (`utils/affiliation_matcher/sweep.py`) into `_sweep_queue`. Then `AffiliationMatcherNightly`
-# MAGIC with `queue_table`, `target_table`, `sweep_ids_table` and live cards answers them into `_sweep_answers`.
+# MAGIC with `queue_table`, `shard` k/n, `target_table`, `sweep_ids_table` and live cards answers them into
+# MAGIC `_sweep_answers_<k>`, n tasks on n GPU clusters (Jev is the limit: ≈ 6.5M calls for a September-sized dump).
 # MAGIC `step=apply`: a new answer is written only if it names a pending institution and differs from the current one. Every write is logged in `affiliation_matcher_sweep_log` (old and new ids: the
 # MAGIC revert). A run that would change more than `max_works` works writes nothing and fails (Guardrails trip at 7.5M).
 # MAGIC Restart-safe: institutions are marked swept only after their answers are written; a rerun resumes the staging table.
@@ -30,6 +31,7 @@ dbutils.widgets.text("answers_table", "openalex.institutions.affiliation_matcher
 dbutils.widgets.text("prefix", "openalex.institutions.affiliation_matcher", "state tables: <prefix>_cards_seen, _sweep_queue, _sweep_answers, _sweep_log")
 dbutils.widgets.text("max_institutions", "5000", "institutions per run (a big ROR dump drains over days)")
 dbutils.widgets.text("max_works", "2000000", "write nothing if applying would change more works than this")
+dbutils.widgets.text("shards", "6", "the match step runs as this many tasks on separate GPU clusters, shard k writing <prefix>_sweep_answers_<k>")
 dbutils.widgets.text("apply", "true", "false = count what would change, write nothing")
 
 STEP = dbutils.widgets.get("step").strip()
@@ -40,6 +42,8 @@ SWEEP_IDS, CHANGES = f"{P}_sweep_ids", f"{P}_sweep_changes"
 MAX_INST = int(dbutils.widgets.get("max_institutions"))
 MAX_WORKS = int(dbutils.widgets.get("max_works"))
 APPLY = dbutils.widgets.get("apply").strip().lower() == "true"
+SHARDS = int(dbutils.widgets.get("shards"))
+SHARD_TABLES = [f"{STAGING}_{k}" for k in range(SHARDS)]
 T0 = time.time()
 
 
@@ -101,7 +105,8 @@ ORDER BY first_seen_at, institution_id LIMIT {MAX_INST}""").collect()
               and {int(r.institution_id) for r in spark.table(SWEEP_IDS).collect()} == ids)
     if resume:
         dbutils.notebook.exit(f"resuming: {len(ids):,} institutions, queue and staging kept")
-    spark.sql(f"DROP TABLE IF EXISTS {STAGING}")
+    for t in SHARD_TABLES:
+        spark.sql(f"DROP TABLE IF EXISTS {t}")
     spark.createDataFrame([(i,) for i in sorted(ids)], "institution_id BIGINT").write.mode("overwrite").saveAsTable(SWEEP_IDS)
     WORK = "/local_disk0/tmp/affiliation_matcher"
     os.makedirs(WORK, exist_ok=True)
@@ -126,6 +131,12 @@ ORDER BY first_seen_at, institution_id LIMIT {MAX_INST}""").collect()
 
 # step apply
 ids = {int(r.institution_id) for r in spark.table(SWEEP_IDS).collect()}
+# the shards' answers as one view (a shard whose queue was empty never created its table)
+have = [t for t in SHARD_TABLES if spark.catalog.tableExists(t)]
+spark.sql(f"""CREATE OR REPLACE TEMP VIEW sweep_staging AS
+{" UNION ALL ".join(f"SELECT * FROM {t}" for t in have) if have else
+ "SELECT CAST(NULL AS STRING) AS raw_affiliation_string, CAST(NULL AS ARRAY<BIGINT>) AS institution_ids, CAST(NULL AS MAP<BIGINT, DOUBLE>) AS scores, CAST(NULL AS STRING) AS decider, CAST(NULL AS STRING) AS matcher_version WHERE FALSE"}""")
+STAGING = "sweep_staging"
 left = spark.sql(f"SELECT count(*) AS n FROM {QUEUE} q LEFT ANTI JOIN {STAGING} s USING (raw_affiliation_string)").collect()[0].n
 if left:
     raise RuntimeError(f"{left:,} queued strings not answered yet (matcher time budget); the next run resumes")
