@@ -20,13 +20,31 @@ from openalex.dlt.repo_ids import extract_ids_udf
 OSTI_ORIGIN_DOI_PREFIXES = "2172|25582|17188|11578|5439|18429|15121|21947|25585|17190|17182|15485|18141|15473|34664|7910"
 TRUSTED_HOST_IS_OA_EXPR = f"""
     size(split(native_id, ':')) >= 2 AND (
-      lower(split(native_id, ':')[1]) RLIKE 'arxiv|pubmedcentral|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
+      lower(split(native_id, ':')[1]) RLIKE 'arxiv|pubmedcentral|europepmc|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
       OR (
         lower(split(native_id, ':')[1]) RLIKE 'osti'
         AND NOT exists(ids, x -> x.namespace = 'doi'
                              AND NOT lower(x.id) RLIKE '(^|doi\\\\.org/)10\\\\.({OSTI_ORIGIN_DOI_PREFIXES})/')
       )
     )
+"""
+# oxjob #1344: PubMed Central / Europe PMC version from the record's own OAI setSpec. PMC oai_dc
+# never states a version, so the regex in detect_version_* fell through to submittedVersion for
+# ~2.9M works. The set names the kind of deposit: funder author-manuscript sets (>=99.6% carry a
+# PubMed NIHMS/UKMS/CAMS/HALMS manuscript id; gatesmanu 63/110), preprint sets, or a journal set
+# (publisher deposit). NULL for non-PMC records and PMC records with no setSpec -> the regex
+# decides, as before. Keep byte-identical with the other ingest notebook.
+PMC_VERSION_FROM_SET_SPEC_EXPR = """
+    CASE WHEN (lower(native_id) LIKE 'oai:pubmedcentral.nih.gov:%' OR lower(native_id) LIKE 'oai:europepmc.org:%')
+              AND size(set_spec) > 0 THEN
+      CASE WHEN arrays_overlap(set_spec, array('nihpa','wtpa','hhspa','epapa','nistpa','vapa','capmc','nasapa',
+                                                'hhmipa','hal','hrams','dhspa','asms','gatesmanu','manusctipt'))
+             THEN 'acceptedVersion'
+           WHEN arrays_overlap(set_spec, array('biorxiv','medrxiv','ressq','arxiv','ssrn','chemrxiv'))
+             THEN 'submittedVersion'
+           ELSE 'publishedVersion'
+      END
+    END
 """
 # oxjob #880: the title normalizer had drifted into a local copy here; one definition, in the wheel.
 from openalex.dlt.normalize import normalize_title_udf
@@ -398,7 +416,9 @@ parsed_df = clean_df \
             col("identifiers"),
             col("native_id")
         )) \
-    .withColumn("version", detect_version_udf(col("cleaned_xml"), col("native_id"))) \
+    .withColumn("version", coalesce(
+        expr(PMC_VERSION_FROM_SET_SPEC_EXPR),
+        detect_version_udf(col("cleaned_xml"), col("native_id")))) \
     .withColumn("language", normalize_language_code_udf(regexp_extract(col("cleaned_xml"), r"<dc:language.*?>(.*?)</dc:language>", 1))) \
     .withColumn("published_date",
         expr("""
