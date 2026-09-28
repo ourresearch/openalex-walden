@@ -96,6 +96,7 @@ WORKS = "openalex.works.openalex_works"
 REFS = "openalex.works.work_references"
 LEDGER = "openalex.works.deleted_works"
 END2END_JOB_ID = 616701029470182
+PUBLISHED_TYPES = "('article', 'conference-paper', 'book-chapter')"   # the published side of a preprint pair (Casey 2026-09-28)
 MERGED = "openalex.works.merged_work_ids"   # durable loser -> winner record; MapWorkIds redirects legacy adoption through it
 
 import datetime, json, time
@@ -158,13 +159,7 @@ def class_sql():
              array_distinct(filter(split(regexp_replace(lower(COALESCE(abstract, '')), '[^a-z0-9 ]', ' '), ' +'), x -> length(x) > 3)) AS abs_tokens
       FROM {WORKS}
     ),
-    sides AS (
-      SELECT k.ta, g.n_ids, g.n_doi, k.work_id, k.has_doi, k.repo_only, k.n_locations, w.yr, w.type, w.title_norm, w.title_tokens, w.src, w.vol, w.fp, w.cites, w.abs_tokens,
-             ROW_NUMBER() OVER (PARTITION BY k.ta ORDER BY k.has_doi DESC, k.work_id) AS rn
-      FROM g JOIN k ON k.ta = g.ta
-      LEFT JOIN w ON w.id = k.work_id
-      WHERE g.n_doi <= 1
-    ),
+    {title_key_sides()},
     winners AS (SELECT * FROM sides WHERE rn = 1),
     pairs AS (
       SELECT s.ta, s.n_ids, s.n_doi, x.work_id AS winner_work_id, x.yr AS winner_yr, x.has_doi AS winner_has_doi, x.type AS winner_type,
@@ -192,7 +187,7 @@ def class_sql():
              -- preprint-or-conference-vs-article (a version, not a duplicate), a book vs its chapter or a review of it
              CASE WHEN p.loser_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')
                     OR p.winner_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other') THEN 'junk_type'
-                  WHEN (p.loser_type, p.winner_type) IN (('preprint', 'article'), ('article', 'preprint'), ('conference-paper', 'article'), ('article', 'conference-paper'),
+{preprint_pair_not_excluded('p')}                  WHEN (p.loser_type, p.winner_type) IN (('preprint', 'article'), ('article', 'preprint'), ('conference-paper', 'article'), ('article', 'conference-paper'),
                                                          ('dissertation', 'article'), ('article', 'dissertation'), ('report', 'article'), ('article', 'report')) THEN 'version_types'
                   WHEN (p.loser_type = 'book' AND p.winner_type IN ('book-chapter', 'article')) OR (p.winner_type = 'book' AND p.loser_type IN ('book-chapter', 'article')) THEN 'book_vs_part'
                   WHEN p.src_same THEN 'same_source'
@@ -213,10 +208,10 @@ def class_sql():
     -- version-type and +-1-year pairs are the same MANUSCRIPT or its preprint, so they join only under preprint_is_same
     SELECT h.*,
            CASE WHEN h.base_hold IN ('same_source', 'year_gap', 'tier_3_off', 'title_too_different') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} THEN 'abstract'
-                WHEN h.base_hold IN ('version_types', 'tier_4_off') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} AND {'TRUE' if PREPRINT_IS_SAME else 'FALSE'} THEN 'abstract_preprint'
+                WHEN h.base_hold IN ('version_types', 'tier_4_off') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} AND {preprint_rescue_pred('h')} THEN 'abstract_preprint'
                 END AS rescue,
            CASE WHEN h.base_hold IN ('same_source', 'year_gap', 'tier_3_off', 'title_too_different') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} THEN NULL
-                WHEN h.base_hold IN ('version_types', 'tier_4_off') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} AND {'TRUE' if PREPRINT_IS_SAME else 'FALSE'} THEN NULL
+                WHEN h.base_hold IN ('version_types', 'tier_4_off') AND h.abs_jaccard >= {ABSTRACT_JACCARD_MIN} AND {preprint_rescue_pred('h')} THEN NULL
                 WHEN h.base_hold IS NOT NULL THEN h.base_hold
                 WHEN EXISTS (SELECT 1 FROM winners x WHERE x.work_id = h.loser_work_id) THEN 'chained'
                 END AS hold_reason
@@ -353,11 +348,10 @@ def exact_signature_class_sql():
     r1 AS (
       SELECT *,
              -- winner = the DOI-bearing side, else the lower id (a < b by construction)
-             CASE WHEN db IS NOT NULL AND da IS NULL THEN b ELSE a END AS winner_work_id,
-             CASE WHEN db IS NOT NULL AND da IS NULL THEN a ELSE b END AS loser_work_id
+             {exact_signature_winner()}
       FROM f
       WHERE title_same AND year_same AND NOT digit_title
-        AND (da IS NULL OR db IS NULL OR da = db)),""" + pair_class_tail(EXACT_SIGNATURE_SIGNALS, EXACT_SIGNATURE_HOLD)
+        AND (da IS NULL OR db IS NULL OR da = db)),""" + pair_class_tail(EXACT_SIGNATURE_SIGNALS, exact_signature_hold())
 
 
 def pair_class_tail(signals, hold):
@@ -461,6 +455,61 @@ DECLARED_VERSION_HOLD = """CASE WHEN NOT r.title_same THEN 'title_differs'
                 WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
                 WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
                 END"""
+
+
+def is_preprint_pair(a, b):
+    return f"(({a} = 'preprint' AND {b} IN {PUBLISHED_TYPES}) OR ({b} = 'preprint' AND {a} IN {PUBLISHED_TYPES}))"
+
+
+def title_key_sides():
+    """Winner = the DOI-bearing work, else the lowest id; under preprint_is_same a key holding a preprint is won by its published side."""
+    if not PREPRINT_IS_SAME:
+        return """sides AS (
+      SELECT k.ta, g.n_ids, g.n_doi, k.work_id, k.has_doi, k.repo_only, k.n_locations, w.yr, w.type, w.title_norm, w.title_tokens, w.src, w.vol, w.fp, w.cites, w.abs_tokens,
+             ROW_NUMBER() OVER (PARTITION BY k.ta ORDER BY k.has_doi DESC, k.work_id) AS rn
+      FROM g JOIN k ON k.ta = g.ta
+      LEFT JOIN w ON w.id = k.work_id
+      WHERE g.n_doi <= 1
+    )"""
+    return f"""sides0 AS (
+      SELECT k.ta, g.n_ids, g.n_doi, k.work_id, k.has_doi, k.repo_only, k.n_locations, w.yr, w.type, w.title_norm, w.title_tokens, w.src, w.vol, w.fp, w.cites, w.abs_tokens,
+             MAX(CASE WHEN w.type = 'preprint' THEN 1 ELSE 0 END) OVER (PARTITION BY k.ta) AS key_has_preprint
+      FROM g JOIN k ON k.ta = g.ta
+      LEFT JOIN w ON w.id = k.work_id
+      WHERE g.n_doi <= 1
+    ),
+    sides AS (
+      SELECT * EXCEPT (key_has_preprint),
+             ROW_NUMBER() OVER (PARTITION BY ta ORDER BY CASE WHEN key_has_preprint = 1 AND type IN {PUBLISHED_TYPES} THEN 0 ELSE 1 END,
+                                                        has_doi DESC, work_id) AS rn
+      FROM sides0
+    )"""
+
+
+def preprint_pair_not_excluded(p):
+    """under preprint_is_same a preprint + its published version is one work: no exclusion (the tiers still apply)"""
+    return f"                  WHEN {is_preprint_pair(f'{p}.loser_type', f'{p}.winner_type')} THEN NULL\n" if PREPRINT_IS_SAME else ""
+
+
+def preprint_rescue_pred(h):
+    return is_preprint_pair(f"{h}.loser_type", f"{h}.winner_type") if PREPRINT_IS_SAME else "FALSE"
+
+
+def exact_signature_winner():
+    if not PREPRINT_IS_SAME:
+        return """CASE WHEN db IS NOT NULL AND da IS NULL THEN b ELSE a END AS winner_work_id,
+             CASE WHEN db IS NOT NULL AND da IS NULL THEN a ELSE b END AS loser_work_id"""
+    pa = f"(ta_type = 'preprint' AND tb_type IN {PUBLISHED_TYPES})"
+    pb = f"(tb_type = 'preprint' AND ta_type IN {PUBLISHED_TYPES})"
+    return f"""CASE WHEN {pa} THEN b WHEN {pb} THEN a WHEN db IS NOT NULL AND da IS NULL THEN b ELSE a END AS winner_work_id,
+             CASE WHEN {pa} THEN a WHEN {pb} THEN b WHEN db IS NOT NULL AND da IS NULL THEN a ELSE b END AS loser_work_id"""
+
+
+def exact_signature_hold():
+    if not PREPRINT_IS_SAME:
+        return EXACT_SIGNATURE_HOLD
+    return EXACT_SIGNATURE_HOLD.replace("CASE WHEN NOT r.type_ok THEN 'version_types'",
+                                        f"CASE WHEN NOT r.type_ok AND NOT {is_preprint_pair('r.ta_type', 'r.tb_type')} THEN 'version_types'", 1)
 
 
 def prior_exclusion():
@@ -580,7 +629,7 @@ if MODE == "execute":
     pins = spark.sql(f"""DELETE FROM {REGISTRY} r WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'pin'
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
-    if CLASS_MODE in ("exact_signature", "declared_version"):
+    if CLASS_MODE in ("exact_signature", "declared_version") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
         ALIASES = f"{TARGET}_wave{WAVE}_aliases"
