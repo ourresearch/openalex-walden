@@ -1,0 +1,138 @@
+# oxjob #1401 / #1348: the vector author matcher for tonight's new seats. End 2 End calls this job (run_job_task) after
+# Author_Affiliations + Topics and before Author_Matching; MatchAuthors cell 9 LEFT JOINs openalex.authors.vector_match_decisions
+# for today's run_date, so if any task here fails, Author_Matching simply runs on the name cascade alone (the E2E gate is ALL_DONE).
+#   Cards (seats MatchAuthors will match tonight) -> Embed (GPU, seat-base-v2 + e5, #1342's PCA bases) -> Pool (candidate profiles'
+#   stored seats) -> Decide (band small 0.93 / medium 0.95 + hub-pref + centroid) -> Zone cards -> Sonnet (Claude Sonnet 5.5 picks one
+#   of the top-3 vector candidates or new_person; auto at high confidence; spend cap per night). Mega blocks stay on the cascade.
+# Stopgap by design (Jason, 2026-09-28): ~$540/night of Sonnet; a cheaper distilled judge replaces it later (charter § 6).
+resources:
+  jobs:
+    Vector_Matcher_Nightly:
+      name: Vector Matcher Nightly (oxjob 1401)
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+          - jason@openalex.org
+        no_alert_for_skipped_runs: true
+      timeout_seconds: 9000
+      max_concurrent_runs: 1
+      parameters:
+        - name: max_usd
+          default: "1500"
+        - name: sonnet_concurrency
+          default: "128"
+      tasks:
+        - task_key: Vector_Cards
+          sql_task:
+            warehouse_id: 69a583ace3bdc8d0
+            file:
+              path: notebooks/end2end/vector_match/vector_cards.sql
+              source: GIT
+          timeout_seconds: 1800
+        - task_key: Vector_Embed
+          depends_on:
+            - task_key: Vector_Cards
+          spark_python_task:
+            python_file: notebooks/end2end/vector_match/nightly_embed_dbx.py
+            source: GIT
+            parameters: ["/Volumes/openalex/authors/oxjob_tmp/oxjob1348", "--date", "{{job.start_time.iso_date}}",
+                         "--cards-table", "openalex.authors.vector_match_cards",
+                         "--out-prefix", "/Volumes/openalex/authors/oxjob_tmp/oxjob1401/seat_emb_daily"]
+          job_cluster_key: vector_gpu
+          libraries:
+            - pypi:
+                package: "sentence-transformers>=3.4"
+          timeout_seconds: 3600
+        - task_key: Vector_Pool
+          depends_on:
+            - task_key: Vector_Embed
+          sql_task:
+            warehouse_id: 69a583ace3bdc8d0
+            file:
+              path: notebooks/end2end/vector_match/vector_pool.sql
+              source: GIT
+          timeout_seconds: 3600
+        - task_key: Vector_Decide
+          depends_on:
+            - task_key: Vector_Pool
+          spark_python_task:
+            python_file: notebooks/end2end/vector_match/nightly_decide.py
+            source: GIT
+            parameters: ["/Volumes/openalex/authors/oxjob_tmp/oxjob1348", "--date", "{{job.start_time.iso_date}}",
+                         "--night-table", "openalex.authors.vector_match_night", "--pool-table", "openalex.authors.vector_match_pool",
+                         "--cards-table", "openalex.authors.vector_match_cards", "--out-table", "openalex.authors.vector_match_decisions"]
+          job_cluster_key: vector_cpu
+          timeout_seconds: 3600
+        - task_key: Vector_Zone_Cards
+          depends_on:
+            - task_key: Vector_Decide
+          sql_task:
+            warehouse_id: 69a583ace3bdc8d0
+            file:
+              path: notebooks/end2end/vector_match/vector_zone_cards.sql
+              source: GIT
+          timeout_seconds: 1800
+        - task_key: Vector_Sonnet
+          depends_on:
+            - task_key: Vector_Zone_Cards
+          spark_python_task:
+            python_file: notebooks/end2end/vector_match/nightly_sonnet.py
+            source: GIT
+            parameters: ["/Volumes/openalex/authors/oxjob_tmp/oxjob1401", "--date", "{{job.start_time.iso_date}}",
+                         "--out-table", "openalex.authors.vector_match_decisions", "--zone-cards-table", "openalex.authors.vector_match_zone_cards",
+                         "--card", "full", "--per-cand", "8", "--effort", "medium",
+                         "--concurrency", "{{job.parameters.sonnet_concurrency}}", "--max-usd", "{{job.parameters.max_usd}}"]
+          job_cluster_key: vector_cpu
+          libraries:
+            - pypi:
+                package: anthropic
+          timeout_seconds: 5400
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      job_clusters:
+        - job_cluster_key: vector_gpu
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-gpu-ml-scala2.13
+            node_type_id: g5.12xlarge   # 4 x A10G: ~7 min for an 800K-seat night, both models
+            num_workers: 0
+            aws_attributes:
+              zone_id: auto
+              availability: ON_DEMAND
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: "local[*, 4]"
+              spark.driver.memory: 24g
+            spark_env_vars:
+              MLFLOW_TRACKING_URI: file:/tmp/mlruns
+              DISABLE_MLFLOW_INTEGRATION: "TRUE"
+              MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING: "false"
+              USE_TF: "0"
+            custom_tags:
+              ResourceClass: SingleNode
+              oxjob: "1401"
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+        - job_cluster_key: vector_cpu
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            node_type_id: r5.4xlarge
+            num_workers: 0
+            aws_attributes:
+              zone_id: auto
+              availability: ON_DEMAND
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 300
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: "local[*, 8]"
+              spark.driver.memory: 48g
+            custom_tags:
+              ResourceClass: SingleNode
+              oxjob: "1401"
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD

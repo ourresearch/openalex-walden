@@ -56,6 +56,7 @@ include:
   - jobs/parse_pdfs.yaml
   - jobs/reparse_campaign_stager.yaml
   - jobs/walden_end2end.yaml
+  - jobs/vector_matcher_nightly.yaml
   - jobs/wunpaywall_weekly_data_feed.yaml
   - jobs/snapshot_full.yaml
   - jobs/topics.yaml
