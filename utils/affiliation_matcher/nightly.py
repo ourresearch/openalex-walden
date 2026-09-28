@@ -40,12 +40,23 @@ LEFT JOIN (SELECT * FROM openalex.institutions.ror_parsed
 """
 
 
-def write_cards(spark, path):
+def write_cards(spark, path, counts_from=None):
+    """Live cards. `counts_from` (a frozen cards file): institutions it has keep its works_count, so the chooser's
+    works-count feature stays where decider v1.1 was trained; new institutions take their live count (oxjob #1393:
+    after the swap, live counts cost 0.4 pt exact on test v2, e.g. Paris Cité's direct count fell 68%)."""
+    frozen = {}
+    if counts_from:
+        with gzip.open(counts_from, "rt") as f:
+            for line in f:
+                d = json.loads(line)
+                frozen[str(d["id"])] = d.get("works_count")
     n = 0
     with gzip.open(path, "wt") as f:
         for r in spark.sql(CARDS_SQL).toLocalIterator():
             d = r.asDict()
             d["id"] = str(d["id"])
+            if d["id"] in frozen:
+                d["works_count"] = frozen[d["id"]]
             f.write(json.dumps(d) + "\n")
             n += 1
     return n
