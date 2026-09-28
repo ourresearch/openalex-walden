@@ -57,7 +57,7 @@ t0 = time.time()
 spark.sql(f"""
 CREATE OR REPLACE TABLE {SERVED}
 USING DELTA CLUSTER BY (work_id)
-COMMENT 'Study design per work (oxjob #1312): automated tagging wherever it ran (works with an abstract), else PubMed (MEDLINE V03 tags)'
+COMMENT 'Study design per work (oxjob #1312): automated tagging of works with an abstract; PubMed tags kept in pubmed_values, not served'
 AS
 WITH pm AS (
   SELECT pmid, types FROM (
@@ -98,16 +98,19 @@ tag AS (
     WHERE rn = 1) t
   LEFT JOIN {RCT_CHECK} c ON c.work_id = t.work_id
 )
-SELECT coalesce(t.work_id, p.work_id) AS work_id,
-       CASE WHEN t.tagger_values IS NOT NULL THEN t.served_values ELSE p.pubmed_values END AS study_designs,
-       CASE WHEN t.tagger_values IS NOT NULL THEN 'tagger' ELSE 'pubmed' END AS source,
+-- Automated tagging only (Jason, 2026-09-28): PubMed's tags on works the tagger could not read (no abstract) judged
+-- well under the bar (RCT 37%, Meta-Analysis 44%, Case Report 94%), so they are no longer served. pubmed_values stays
+-- as a column on tagged works for the PubMed-vs-tagger displays below.
+SELECT t.work_id,
+       t.served_values AS study_designs,
+       'tagger' AS source,
        p.pubmed_values,
        t.tagger_values,
        t.tagger_version,
        t.tagged_at,
        current_timestamp() AS updated_at
-FROM tag t FULL OUTER JOIN w_pm p ON t.work_id = p.work_id
-WHERE size(CASE WHEN t.tagger_values IS NOT NULL THEN t.served_values ELSE p.pubmed_values END) > 0
+FROM tag t LEFT JOIN w_pm p ON t.work_id = p.work_id
+WHERE size(t.served_values) > 0
 """)
 print(f"{SERVED} rebuilt ({time.time() - t0:.0f}s)")
 

@@ -176,3 +176,10 @@ own report? Where it says no, `BuildStudyDesignServed` drops RCT and Clinical Tr
 RCT-tagged works: it removes 43 of 58 wrong tags and 11 of 2,054 right ones. Written from desk (plexus task
 `study-design-rct-check.sh`, hourly: works served as RCT with no check row); unchecked works are served as tagged
 until the next rebuild. Prompt and CLI: github.com/ourresearch/openalex-study-designs `tagger/rct_check.py`.
+
+## No PubMed fallback (2026-09-28, Jason)
+
+Works with no abstract (the tagger never runs on them) no longer get PubMed's tags: judged on title + open-access full
+text, PubMed-only tags were right RCT 17/46, Clinical Trial 21/41, Meta-Analysis 49/112, Observational 76/89, Protocol
+42/50, SR 103/115, Case Report 81/86 (where the judge could decide). 642,057 works lose study_designs (579,374 case
+reports). `works_study_design` now holds tagger rows only (`source` is always 'tagger'); `pubmed_values` stays on them.
