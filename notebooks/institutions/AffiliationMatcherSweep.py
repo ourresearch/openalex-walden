@@ -33,6 +33,8 @@ dbutils.widgets.text("max_institutions", "5000", "institutions per run (a big RO
 dbutils.widgets.text("max_works", "2000000", "write nothing if applying would change more works than this")
 dbutils.widgets.text("shards", "6", "the match step runs as this many tasks on separate GPU clusters, shard k writing <prefix>_sweep_answers_<k>")
 dbutils.widgets.text("apply", "true", "false = count what would change, write nothing")
+dbutils.widgets.text("frozen_cards", "/Volumes/openalex/works/models/affiliation_matcher/v1/institutions.jsonl.gz",
+                     "the corpus run's cards: the first run marks exactly these institutions swept")
 
 STEP = dbutils.widgets.get("step").strip()
 ANSWERS = dbutils.widgets.get("answers_table").strip()
@@ -43,6 +45,7 @@ MAX_INST = int(dbutils.widgets.get("max_institutions"))
 MAX_WORKS = int(dbutils.widgets.get("max_works"))
 APPLY = dbutils.widgets.get("apply").strip().lower() == "true"
 SHARDS = int(dbutils.widgets.get("shards"))
+FROZEN_CARDS = dbutils.widgets.get("frozen_cards").strip()
 SHARD_TABLES = [f"{STAGING}_{k}" for k in range(SHARDS)]
 T0 = time.time()
 
@@ -66,14 +69,17 @@ CREATE TABLE IF NOT EXISTS {LOG} (
 """)
 
 if spark.table(SEEN).limit(1).count() == 0:
-    # Seed: the corpus run (#1385) used the frozen cards, which equal institutions_api on 2026-09-27 (140,266 ids),
-    # so every current institution counts as swept.
+    # Seed: the institutions the corpus run (#1385) had cards for (the frozen snapshot: 140,266 ids, ROR records to
+    # 21 Sep 2026) count as swept. Seeding from the snapshot, not institutions_api, means records minted from a ROR
+    # dump that lands before the first run are still swept.
+    spark.read.json(FROZEN_CARDS).selectExpr("CAST(id AS BIGINT) AS institution_id").createOrReplaceTempView("frozen_ids")
     spark.sql(f"""
 INSERT INTO {SEEN}
-SELECT id, ror, current_timestamp(), NULL, current_timestamp(), 'seed: corpus run cards (#1385)', NULL, NULL
-FROM openalex.institutions.institutions_api
+SELECT f.institution_id, i.ror, current_timestamp(), NULL, current_timestamp(), 'seed: corpus run cards (#1385)', NULL, NULL
+FROM (SELECT DISTINCT institution_id FROM frozen_ids) f
+LEFT JOIN openalex.institutions.institutions_api i ON i.id = f.institution_id
 """)
-    log(f"seeded {SEEN}")
+    log(f"seeded {SEEN}: {spark.table(SEEN).count():,} institutions")
 
 if STEP == "check":
     spark.sql(f"""
