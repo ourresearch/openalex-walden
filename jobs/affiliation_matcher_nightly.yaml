@@ -32,6 +32,11 @@ resources:
           default: "true"
         - name: dry_run
           default: "false"
+        # oxjob #1393: live = cards rebuilt nightly from institutions_api + ror_parsed, so an institution minted from a
+        # new ROR dump is a candidate the next night (re-scored on test v2 against the frozen snapshot before the switch).
+        # frozen = #1363's snapshot of 27 Sep (ROR records to 21 Sep): the revert.
+        - name: cards
+          default: "live"
       tasks:
         - task_key: match_new_strings
           notebook_task:
@@ -47,6 +52,7 @@ resources:
               max_usd: "{{job.parameters.max_usd}}"
               require_swap: "{{job.parameters.require_swap}}"
               dry_run: "{{job.parameters.dry_run}}"
+              cards: "{{job.parameters.cards}}"
           job_cluster_key: matcher-gpu
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
