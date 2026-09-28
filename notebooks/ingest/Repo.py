@@ -229,6 +229,17 @@ repository_schema = StructType([
             StructField("dc:format", ArrayType(StringType()), True),
             StructField("dc:publisher", StringType(), True),
             StructField("dc:rights", ArrayType(StringType()), True),
+            # Licence carried outside dc:rights. The harvester re-serialises records with
+            # ElementTree, which names unregistered namespaces ns0, ns1, ... in order of first
+            # use, so this matches the SERIALISED PREFIX, not the namespace URI: dcterms lands
+            # as ns4 in every harvested file that carries accessRights/license (Persee:
+            # dcterms:accessRights = "Content available online under CC BY-NC-SA 3.0 (...)"
+            # behind a copyright line in dc:rights; Pure: dcterms:license). Files that bind
+            # dcterms to another nsN are not covered (3 of 8,485 sampled files, isPartOf only).
+            # Text only: an element's attributes (DOAB's licenseCondition uri=...) are dropped
+            # by StringType, the row is not corrupted.
+            StructField("ns4:accessRights", ArrayType(StringType()), True),
+            StructField("ns4:license", ArrayType(StringType()), True),
             StructField("dc:relation", ArrayType(StringType()), True)
         ]), True)
     ]), True)
@@ -240,6 +251,26 @@ MAX_TITLE_LENGTH = 5000
 MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
 MAX_AFFILIATION_STRING_LENGTH = 1000
+
+# CC0 named as text in dc:rights: the normaliser knows the CC0 URL and the words "public domain"
+# only. Whole-value forms seen in the corpus (whitespace collapsed, lower-cased, trailing period
+# stripped); a bare token would also match revocations such as "In Copyright - The CC0 1.0
+# Universal license was removed from this item". The value is checked as a whole, so a
+# sentence that merely mentions CC0 does not count.
+CC0_TEXT_PATTERNS = (
+    r"^(creative commons |cc |licen[cs]e:? ?)?cc0([- ]1\.0)?( universal| universell| uniwersalna| παγκόσμια| public domain dedication)?( \(cc0([- ]1\.0)?\))?$"
+    r"|^cc-?zero$|^creative commons \(cc0\)$|^creative commons zero v?1\.0 universal( \(cc0[- ]1\.0\))?$"
+    r"|^cc0:? creative commons zero( 1\.0)?( universal)?$|^cc0[- ]?(1\.0 )?no rights reserved$|^no rights reserved \(cc0( 1\.0)?\)$"
+    r"|^https?://(spdx\.org|choosealicense\.com)/licenses/cc0-1\.0(\.html)?/?$|^https?://api\.github\.com/licenses/cc0-1\.0$"
+    r"|^https?://(www\.)?opendefinition\.org/licenses/cc-zero/?$"
+    r"|^dedicaci[óo]n de dominio p[úu]blico 1\.0 universal\.? \(cc0\)$|^uznanie cc0 1\.0 universal \(cc0 1\.0\) przekazanie do domeny publicznej$"
+)
+# Whole values only. The full CC0 legal-code text, the deed sentence ("To the extent possible under
+# law, X has waived ...") and per-item statements ("Items in this record are available as ...") are
+# deliberately not matched: an open-ended prefix would also accept a negated or qualified sentence.
+# A dc:rights value that restricts access blocks every fallback below (not the dc:rights pick
+# itself, whose behaviour is unchanged). Tested on the normalised form (spaces/hyphens removed).
+RIGHTS_RESTRICTED_PATTERN = r"restrictedaccess|closedaccess|embargoedaccess|rightsstatements\.org/vocab/inc|incopyright"
 
 # COMMAND ----------
 
@@ -356,7 +387,53 @@ def repo_parsed():
             ),
         ).otherwise(F.col("`ns0:metadata`.`ns1:dc`.`dc:rights`")[0]),
     )
-    .withColumn("license", normalize_license_udf(F.col("raw_license")))
+    # Fallbacks when the dc:rights pick normalises to nothing (e.g. a copyright line): the
+    # alternative fields with the same creativecommons.org-first selection rule, then CC0 named
+    # as text. Both are blocked by a restricting dc:rights value.
+    .withColumn(
+        "_alt_rights",
+        F.concat(
+            F.coalesce(F.col("`ns0:metadata`.`ns1:dc`.`ns4:accessRights`"), F.array().cast("array<string>")),
+            F.coalesce(F.col("`ns0:metadata`.`ns1:dc`.`ns4:license`"), F.array().cast("array<string>")),
+        ),
+    )
+    .withColumn(
+        "raw_alt_license",
+        F.when(
+            F.expr("size(filter(_alt_rights, x -> x like '%creativecommons.org%')) > 0"),
+            F.expr("filter(_alt_rights, x -> x like '%creativecommons.org%')[0]"),
+        ).otherwise(F.expr("get(_alt_rights, 0)")),  # get(): null on an empty array under ANSI
+    )
+    .withColumn(
+        "_rights_restricted",
+        F.exists(
+            F.coalesce(F.col("`ns0:metadata`.`ns1:dc`.`dc:rights`"), F.array().cast("array<string>")),
+            # coalesce: exists() over a null element would return null, and ~null would then
+            # block the fallbacks for a record that restricts nothing.
+            lambda x: F.coalesce(F.regexp_replace(F.lower(x), "[ -]", "").rlike(RIGHTS_RESTRICTED_PATTERN), F.lit(False)),
+        ),
+    )
+    .withColumn(
+        "_cc0_text",
+        F.exists(
+            F.coalesce(F.col("`ns0:metadata`.`ns1:dc`.`dc:rights`"), F.array().cast("array<string>")),
+            lambda x: F.coalesce(F.regexp_replace(F.regexp_replace(F.lower(F.trim(x)), r"\s+", " "), r"\.$", "").rlike(CC0_TEXT_PATTERNS), F.lit(False)),
+        ),
+    )
+    .withColumn(
+        "license",
+        F.coalesce(
+            normalize_license_udf(F.col("raw_license")),
+            F.when(
+                ~F.col("_rights_restricted"),
+                F.coalesce(
+                    normalize_license_udf(F.col("raw_alt_license")),
+                    F.when(F.col("_cc0_text"), F.lit("public-domain")),
+                ),
+            ),
+        ),
+    )
+    .drop("_alt_rights", "raw_alt_license", "_rights_restricted", "_cc0_text")
     .withColumn("language", normalize_language_code_udf(F.col("`ns0:metadata`.`ns1:dc`.`dc:language`")))
     .withColumn(
         "published_date",
