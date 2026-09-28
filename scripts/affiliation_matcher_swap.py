@@ -494,9 +494,20 @@ def cmd_load(a):
     wh = a.warehouse
     check_source(a.source, wh, a.version)
     src = versioned(a.source, a.version)
+    # Rows no corpus table holds (oxjob #1393): the nightly's answers for strings newer than the corpus run, and the
+    # new-card sweep's answers naming institutions the corpus run's cards lacked. Set them aside, reload, put them
+    # back: a nightly row only where the source has no row for its string, a sweep row always.
+    keep = f"{ANSWERS}_kept_by_load"
+    run(f"set aside nightly + sweep rows -> {keep}",
+        f"CREATE OR REPLACE TABLE {keep} AS SELECT * FROM {ANSWERS} WHERE tier IN ('nightly', 'sweep')", wh)
     run(f"INSERT OVERWRITE {ANSWERS} FROM {src}",
         f"INSERT OVERWRITE {ANSWERS}\n{adapted_select(a.source, wh, a.matcher_version, a.version)}", wh)
-    show(*sql(f"SELECT COUNT(*) AS rows, COUNT_IF(SIZE(institution_ids) = 0) AS names_none FROM {ANSWERS}", wh))
+    run(f"put back nightly + sweep rows from {keep}", f"""MERGE INTO {ANSWERS} t
+USING {keep} s ON t.raw_affiliation_string = s.raw_affiliation_string
+WHEN MATCHED AND s.tier = 'sweep' THEN UPDATE SET *
+WHEN NOT MATCHED THEN INSERT *""", wh)
+    show(*sql(f"SELECT COUNT(*) AS rows, COUNT_IF(SIZE(institution_ids) = 0) AS names_none, "
+              f"COUNT_IF(tier = 'nightly') AS nightly, COUNT_IF(tier = 'sweep') AS sweep FROM {ANSWERS}", wh))
 
 
 def cmd_revert(a):
