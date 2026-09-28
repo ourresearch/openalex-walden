@@ -12,7 +12,9 @@ that could name them, so old works (and new works reusing an old string) get the
 3. Apply (`APPLY_SQL`): keep a new answer only if it names a swept institution and differs from the current one;
    log it, MERGE it into the answers table.
 
-Measured on ROR's 4,130 records created 1-21 Sep 2026 simulated as new: see oxjobs #1393 EXPLORE.
+Measured on ROR's 4,130 records created 1-21 Sep 2026 simulated as new (oxjobs #1393 EXPLORE § 8): exact phrase search
+alone finds 80.9% of the strings the corpus run gave them; this ladder (broad 2,000, cap 50,000) 95.3% of strings and
+95.5% of works; broad 5,000 would add 0.9 pt of works for +35% candidates.
 """
 import collections
 import json
@@ -79,7 +81,7 @@ def phrase_names(ix, iid):
     return list(dict.fromkeys(out))
 
 
-def search(ix, ids, es_url, ladder=(0.7, 0.85, 0.999), broad=20000, cap=200000, page=10000, threads=4, log=print):
+def search(ix, ids, es_url, ladder=(0.7, 0.85, 0.999), broad=2000, cap=50000, page=10000, threads=8, log=print):
     """Candidate strings for institutions `ids` (must have cards in ix). Returns ({id: set(strings)}, stats)."""
     url = es_url.rstrip("/") + f"/{INDEX}/_search"
     S = requests.Session()
