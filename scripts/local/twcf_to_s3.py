@@ -186,12 +186,13 @@ HONORIFIC_RE = re.compile(r"^(?:(?:rev|revd|pr|fr|dr|prof|professor|sir|dame|mr|
 
 
 def split_name(name: str) -> tuple[str | None, str | None]:
-    """Canonical runbook §2.4.1 helper (wolf_to_s3.py), plus a leading
+    """Canonical runbook §2.4.1 helper (wolf_to_s3.py), plus UK post-nominals and a leading
     honorific strip for names like "Rev. Pr. Thierry Magnin"."""
     if not name:
         return None, None
     tokens = HONORIFIC_RE.sub("", name.strip()).split()
-    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr",
+                "frs", "frse", "fba", "fmedsci", "obe", "cbe", "mbe"}  # UK post-nominals ("Simon Conway Morris FRS")
     while tokens and tokens[-1].lower().strip(",.") in suffixes:
         tokens.pop()
     if not tokens:
