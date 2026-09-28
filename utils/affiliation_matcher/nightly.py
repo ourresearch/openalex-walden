@@ -131,14 +131,14 @@ def lex2(s):
     return [i for i, _ in sorted(seen.items(), key=lambda x: -x[1])][:100]
 
 
-def neighbour_all(strings, es_url, threads=32):
-    """#1363 rstudy_gen.py neighbour: ES raw-affiliation-strings-v3, 30 nearest other strings with works,
-    each hit's institution_ids_final voted with weight (score/top)^4. None = ES failed after retries."""
+def neighbour_hits_all(strings, es_url, threads=32):
+    """#1363 rstudy_gen.py neighbour: ES raw-affiliation-strings-v3, 30 nearest other strings with works. Per string
+    [(neighbour string, weight (score/top)^4, its institution_ids_final)], [] with no hits, None if ES failed after retries."""
     url = es_url.rstrip("/") + "/raw-affiliation-strings-v3/_search"
     S = requests.Session()
 
     def one(s):
-        body = {"size": 30, "_source": ["institution_ids_final", "works_count"],
+        body = {"size": 30, "_source": ["raw_affiliation_string", "institution_ids_final", "works_count"],
                 "query": {"bool": {"must": {"match": {"raw_affiliation_string": s[:1000]}},
                                    "must_not": {"term": {"raw_affiliation_string.keyword": s}},
                                    "filter": {"range": {"works_count": {"gt": 0}}}}}}
@@ -155,17 +155,31 @@ def neighbour_all(strings, es_url, threads=32):
         if not hits:
             return []
         top = hits[0]["_score"]
-        sc = defaultdict(float)
-        for h in hits:
-            w = (h["_score"] / top) ** 4
-            for i in h["_source"].get("institution_ids_final") or []:
-                i = int(str(i).lstrip("I"))
-                if i > 0:
-                    sc[i] += w
-        return [i for i, _ in sorted(sc.items(), key=lambda x: -x[1])][:100]
+        return [(h["_source"].get("raw_affiliation_string"), (h["_score"] / top) ** 4,
+                 h["_source"].get("institution_ids_final") or []) for h in hits]
 
     with ThreadPoolExecutor(threads) as ex:
         return list(ex.map(one, strings))
+
+
+def vote(hits, ids_of=None):
+    """Neighbour votes -> the top 100 ids by summed weight. ids_of maps a neighbour string to the ids it votes instead
+    of its institution_ids_final (#1386 charter NOW row 7: the pre-swap ids the chooser was trained on)."""
+    sc = defaultdict(float)
+    for n, w, ids in hits:
+        for i in (ids_of[n] if ids_of and n in ids_of else ids):
+            i = int(str(i).lstrip("I"))
+            if i > 0:
+                sc[i] += w
+    return [i for i, _ in sorted(sc.items(), key=lambda x: -x[1])][:100]
+
+
+def neighbour_all(strings, es_url, threads=32, ids_of=None):
+    """Neighbour candidates per string (None = ES failed). ids_of: optional callable(list of neighbour strings) ->
+    {string: ids}; listed neighbours vote those ids instead of institution_ids_final."""
+    hits = neighbour_hits_all(strings, es_url, threads)
+    lookup = ids_of(sorted({n for h in hits if h for n, _, _ in h if n})) if ids_of else None
+    return [None if h is None else vote(h, lookup) for h in hits]
 
 
 def pieces(s):
