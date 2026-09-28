@@ -33,6 +33,8 @@ dbutils.widgets.text("max_institutions", "5000", "institutions per run (a big RO
 dbutils.widgets.text("max_works", "2000000", "write nothing if applying would change more works than this")
 dbutils.widgets.text("shards", "6", "the match step runs as this many tasks on separate GPU clusters, shard k writing <prefix>_sweep_answers_<k>")
 dbutils.widgets.text("apply", "true", "false = count what would change, write nothing")
+dbutils.widgets.text("patches_table", "openalex.institutions.oxjob1395_patches",
+                     "hand patches to the answers (raw_affiliation_string, layer, before_ids, after_ids): a sweep answer keeps their net adds and removals")
 dbutils.widgets.text("frozen_cards", "/Volumes/openalex/works/models/affiliation_matcher/v1/institutions.jsonl.gz",
                      "the corpus run's cards: the first run marks exactly these institutions swept")
 
@@ -46,6 +48,7 @@ MAX_WORKS = int(dbutils.widgets.get("max_works"))
 APPLY = dbutils.widgets.get("apply").strip().lower() == "true"
 SHARDS = int(dbutils.widgets.get("shards"))
 FROZEN_CARDS = dbutils.widgets.get("frozen_cards").strip()
+PATCHES = dbutils.widgets.get("patches_table").strip()
 SHARD_TABLES = [f"{STAGING}_{k}" for k in range(SHARDS)]
 T0 = time.time()
 
@@ -148,11 +151,25 @@ if left:
     raise RuntimeError(f"{left:,} queued strings not answered yet (matcher time budget); the next run resumes")
 RUN = "sweep-" + time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 ID_ARRAY = "array(" + ",".join(f"CAST({i} AS BIGINT)" for i in sorted(ids)) + ")"
+# Hand patches (#1395) live in the answers table, and the matcher never reproduces them: a sweep answer for a patched
+# string keeps each patch's net effect (ids the patches added stay, ids they removed stay out; first layer's before vs
+# last layer's after, so layers that touch the same string compose in order).
+if PATCHES and spark.catalog.tableExists(PATCHES):
+    spark.sql(f"""CREATE OR REPLACE TEMP VIEW sweep_patches AS
+SELECT raw_affiliation_string, array_except(last_after, first_before) AS add_ids, array_except(first_before, last_after) AS remove_ids
+FROM (SELECT raw_affiliation_string, min_by(before_ids, layer) AS first_before, max_by(after_ids, layer) AS last_after
+      FROM {PATCHES} GROUP BY raw_affiliation_string)""")
+else:
+    log(f"no patches table {PATCHES!r}: sweep answers are written as the matcher gives them")
+    spark.sql("""CREATE OR REPLACE TEMP VIEW sweep_patches AS SELECT CAST(NULL AS STRING) AS raw_affiliation_string,
+                 CAST(NULL AS ARRAY<BIGINT>) AS add_ids, CAST(NULL AS ARRAY<BIGINT>) AS remove_ids WHERE FALSE""")
 # materialized: after the MERGE below, a view would compare the new answers with themselves
 spark.sql(f"""
 CREATE OR REPLACE TABLE {CHANGES} AS
 WITH cur AS (
-  SELECT s.raw_affiliation_string, s.institution_ids AS new_ids, s.scores, s.decider, s.matcher_version, a.tier AS old_tier,
+  SELECT s.raw_affiliation_string,
+         array_except(array_distinct(concat(s.institution_ids, coalesce(p.add_ids, array()))), coalesce(p.remove_ids, array())) AS new_ids,
+         s.scores, s.decider, s.matcher_version, a.tier AS old_tier,
          CASE WHEN a.raw_affiliation_string IS NOT NULL THEN a.institution_ids
               WHEN l.institution_ids_override != array() THEN l.institution_ids_override
               WHEN SIZE(l.institution_ids) > 0 AND l.institution_ids[0] IS NULL THEN array()
@@ -160,12 +177,13 @@ WITH cur AS (
   FROM {STAGING} s
   LEFT JOIN {ANSWERS} a ON a.raw_affiliation_string = s.raw_affiliation_string
   LEFT JOIN openalex.institutions.affiliation_strings_lookup l ON l.raw_affiliation_string = s.raw_affiliation_string
+  LEFT JOIN sweep_patches p ON p.raw_affiliation_string = s.raw_affiliation_string
   WHERE s.decider <> 'no_swept_candidate' AND arrays_overlap(s.institution_ids, {ID_ARRAY})
 )
 SELECT '{RUN}' AS sweep_run, c.*, array_intersect(c.new_ids, {ID_ARRAY}) AS swept_ids, coalesce(w.works_count, 0) AS works_count
 FROM cur c
 LEFT JOIN openalex.institutions.affiliation_strings_lookup_with_counts w ON w.raw_affiliation_string = c.raw_affiliation_string
-WHERE array_sort(c.new_ids) <> array_sort(coalesce(c.old_ids, array()))
+WHERE array_sort(c.new_ids) <> array_sort(coalesce(c.old_ids, array())) AND arrays_overlap(c.new_ids, {ID_ARRAY})
 """)
 agg = spark.sql(f"SELECT count(*) AS strings, coalesce(sum(works_count), 0) AS works FROM {CHANGES}").collect()[0]
 n_inst = spark.sql(f"SELECT count(DISTINCT x) AS n FROM {CHANGES} LATERAL VIEW explode(swept_ids) t AS x").collect()[0].n
