@@ -91,13 +91,14 @@ def wait_task(run_id, key):
     last = None
     while time.time() < DEADLINE:
         run = w.jobs.get_run(run_id)
-        t = next((t for t in run.tasks if t.task_key == key), None)
+        # BLOCKED = waiting on upstream tasks, not done; a retried task has one entry per attempt, the latest counts.
+        t = max((t for t in run.tasks if t.task_key == key), key=lambda t: t.attempt_number or 0, default=None)
         lc = t.state.life_cycle_state.value if t and t.state and t.state.life_cycle_state else None
         res = t.state.result_state.value if t and t.state and t.state.result_state else None
         if (lc, res) != last:
             log(f"  {key}: {lc} {res or ''}")
             last = (lc, res)
-        if lc in ("TERMINATED", "SKIPPED", "INTERNAL_ERROR", "BLOCKED"):
+        if lc in ("TERMINATED", "SKIPPED", "INTERNAL_ERROR"):
             return res
         run_lc = run.state.life_cycle_state.value if run.state and run.state.life_cycle_state else None
         if run_lc in ("TERMINATED", "INTERNAL_ERROR", "SKIPPED"):
