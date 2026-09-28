@@ -480,3 +480,45 @@ def student_answer_row(w: dict, probs: dict, is_rct: float, human: float) -> dic
 
 def sql_versions() -> str:
     return ", ".join(f"'{v}'" for v in TAGGER_VERSIONS)
+
+
+# ---------------------------------------------------------------------------
+# Served thresholds (oxjob #1312 step 12, 2026-09-28)
+# ---------------------------------------------------------------------------
+
+# Stricter than the tagging thresholds for three values. The development set (mostly biomedical, pools picked by
+# Jev's own predictions) overstated precision on the works we actually tag; a population-weighted benchmark of
+# 7,742 works (Opus 5.5 judge) put Clinical Trial at 0.92, Study Protocol at 0.81 (the student's protocol tags
+# outside MEDLINE at 0.72) and RCT outside MEDLINE at 0.985. These cuts were chosen on that sample and certified on
+# a fresh one. They apply when the served table is built, from the stored `scores`, so nothing is re-tagged and
+# TAGGER_VERSION does not change; `tagger_values` keeps the certified tagging output.
+SERVED_THRESHOLDS = {**THRESHOLDS, "rct": 0.95, "clinical_trial": 0.97, "protocol": 0.95}
+STUDENT_SERVED_THRESHOLDS = {**STUDENT_TAU_POS, "clinical_trial": 0.97, "protocol": 0.95}
+SCORE_EPS = 1e-6   # `scores` is map<string,float>: a stored 0.82 reads back as 0.8199999 and must still pass 0.82
+
+
+def served_classes(scores: dict, student: bool = False) -> list[str]:
+    """Served class names (PubMed's vocabulary only), parents added, in CLASSES order. The student never serves RCT."""
+    t = STUDENT_SERVED_THRESHOLDS if student else SERVED_THRESHOLDS
+    hit = {c for c in SERVED_CLASSES if c in t and not (student and c == "rct") and scores.get(c, 0.0) >= t[c] - SCORE_EPS}
+    for c in list(hit):
+        if c in PARENT:
+            hit.add(PARENT[c])
+    return [c for c in CLASSES if c in hit]
+
+
+def sql_served_values() -> str:
+    """served_classes() as a SQL expression over a tagger row's `scores` and `tagger_version`, as API value ids."""
+    stu = f"tagger_version = '{STUDENT_VERSION}'"
+    def cond(c):
+        j = f"scores['{c}'] >= {SERVED_THRESHOLDS[c]} - {SCORE_EPS}"
+        if c == "rct":
+            return f"(NOT ({stu}) AND {j})"
+        s = f"scores['{c}'] >= {STUDENT_SERVED_THRESHOLDS[c]} - {SCORE_EPS}"
+        return f"(CASE WHEN {stu} THEN {s} ELSE {j} END)"
+    child = {p: c for c, p in PARENT.items()}
+    parts = []
+    for c in SERVED_CLASSES:
+        e = cond(c) + (f" OR {cond(child[c])}" if c in child else "")
+        parts.append(f"CASE WHEN {e} THEN '{VALUE_ID[c]}' END")
+    return "filter(array(" + ", ".join(parts) + "), x -> x IS NOT NULL)"

@@ -156,3 +156,14 @@ re-threshold, change the tau tables, bump `STUDENT_VERSION`, and rebuild from
 window) is a new `STUDENT_ARM`, re-certified with `oxjobs #1335
 scratch/score_student.py` and `cascade.py` before it ships.
 
+## Served thresholds (2026-09-28, oxjob #1312 step 12)
+
+`works_study_design.study_designs` applies stricter served thresholds than the tagger's own (`sd.SERVED_THRESHOLDS`,
+`sd.STUDENT_SERVED_THRESHOLDS`): RCT 0.95 (was 0.90), Clinical Trial 0.97 (Jev 0.90, student 0.86), Study Protocol
+0.95 (Jev 0.90, student 0.65); the other values are unchanged. `BuildStudyDesignServed` computes them from the stored
+`scores` (`sd.sql_served_values()`), so nothing is re-tagged and `TAGGER_VERSION` is unchanged; `tagger_values` keeps
+the tagging output. Why: the development set (mostly biomedical, pools picked by Jev's own predictions) overstated
+precision on the works we tag; a population-weighted benchmark (7,742 works, Opus 5.5 judge) found Clinical Trial 0.92,
+Study Protocol 0.81 (the student's protocol tags outside MEDLINE 0.72), RCT outside MEDLINE 0.985. Effect: 1,347,097
+works change (RCT 840K -> 629K, Clinical Trial 2.93M -> 1.88M, Study Protocol 200K -> 107K); 1,143,253 lose every value.
+Public benchmark and code: github.com/ourresearch/openalex-study-designs.
