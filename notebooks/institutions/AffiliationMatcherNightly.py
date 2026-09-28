@@ -48,6 +48,7 @@ dbutils.widgets.text("max_strings", "60000", "queue cap per run (a backlog drain
 dbutils.widgets.text("max_minutes", "26", "stop starting chunks after this many minutes: End 2 End has ≈ 37 min of slack including cluster start")
 dbutils.widgets.text("chunk_strings", "20000", "strings per chunk (one MERGE each)")
 dbutils.widgets.text("artifacts", "/Volumes/openalex/works/models/affiliation_matcher/v1", "chooser JSON + name-embedding cache")
+dbutils.widgets.text("live_works_counts", "frozen", "with cards=live: frozen = institutions in the frozen snapshot keep its works_count (the chooser's training distribution), new ones take their live count; live = every count live")
 dbutils.widgets.text("cards", "frozen", "frozen = the decider's institutions + lineage snapshot (#1363 FROZEN_DECIDER.md); live = rebuild from walden tables")
 dbutils.widgets.text("decider_mode", "student", "student = #1363 decider v1 (student p + v1 chooser) first; no_model = the no-Jev chooser first")
 dbutils.widgets.text("jev", "true", "false = first-pass chooser only")
@@ -154,7 +155,10 @@ os.makedirs(WORK, exist_ok=True)
 if CARDS_MODE == "live":
     # oxjob #1393: ROR relationships go live with the cards, or a new record would get no ROR features
     CARDS, LINEAGE, ROR_REL = f"{WORK}/institutions.jsonl.gz", f"{WORK}/lineage.jsonl.gz", f"{WORK}/ror_rel.jsonl.gz"
-    log(f"live cards: {nm.write_cards(spark, CARDS):,}; lineage rows: {nm.write_lineage(spark, LINEAGE):,}; "
+    LIVE_COUNTS = dbutils.widgets.get("live_works_counts").strip().lower()
+    assert LIVE_COUNTS in ("frozen", "live"), LIVE_COUNTS
+    log(f"live cards ({LIVE_COUNTS} works counts): "
+        f"{nm.write_cards(spark, CARDS, f'{ART}/institutions.jsonl.gz' if LIVE_COUNTS == 'frozen' else None):,}; lineage rows: {nm.write_lineage(spark, LINEAGE):,}; "
         f"ROR relationship rows: {nm.write_ror_rel(spark, ROR_REL):,}")
 else:
     CARDS, LINEAGE, ROR_REL = f"{ART}/institutions.jsonl.gz", f"{ART}/lineage.jsonl.gz", f"{ART}/ror_rel.jsonl.gz"
@@ -183,7 +187,7 @@ if DECIDER_MODE == "student":
     student = st.load(f"{ART}/student_me5b_full", base_dir=f"{ART}/base_multilingual-e5-base")
     log(f"student loaded on {student[2]}")
 chooser_sha = hashlib.sha256(open(f"{ART}/{JEV_CHOOSER}.json", "rb").read() + open(f"{ART}/{FIRST}.json", "rb").read()).hexdigest()[:10]
-MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "") + ("/legacyvotes" if VOTE_IDS == "legacy" else "")
+MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "") + ("/livecounts" if CARDS_MODE == "live" and dbutils.widgets.get("live_works_counts").strip().lower() == "live" else "") + ("/legacyvotes" if VOTE_IDS == "legacy" else "")
 log(f"index: {len(ix.inst):,} institutions, {len(ix.variants):,} name variants; matcher_version {MATCHER_VERSION}")
 
 names = nm.names_for_dense(ix)
