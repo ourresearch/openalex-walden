@@ -258,10 +258,30 @@ resources:
             notebook_path: notebooks/end2end/UpdateWorkAuthors
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        # oxjob #1401 / #1348: vector matcher for tonight's new seats (seat-vector band + Claude Sonnet 5.5 zone judge) ->
+        # openalex.authors.vector_match_decisions, which MatchAuthors cell 9 LEFT JOINs. Stopgap judge (~$540/night; charter § 6).
+        - task_key: Vector_Matcher
+          depends_on:
+            - task_key: Author_Affiliations
+            - task_key: Topics
+          run_job_task:
+            job_id: ${resources.jobs.Vector_Matcher_Nightly.id}
+          timeout_seconds: 5400
+        # Passes whether the vector matcher succeeded, failed or timed out: Author_Matching then runs on the name cascade alone.
+        - task_key: Vector_Matcher_Gate
+          depends_on:
+            - task_key: Vector_Matcher
+          run_if: ALL_DONE
+          condition_task:
+            op: EQUAL_TO
+            left: "1"
+            right: "1"
         - task_key: Author_Matching
           depends_on:
             - task_key: Author_Affiliations
             - task_key: Topics
+            - task_key: Vector_Matcher_Gate
+              outcome: "true"   # the gate always evaluates true; the API requires an outcome on a condition dependency
           notebook_task:
             notebook_path: notebooks/end2end/MatchAuthors
             source: GIT
