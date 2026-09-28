@@ -20,6 +20,7 @@ include:
   - jobs/institutions.yaml
   - jobs/institutions_frontfill.yaml
   - jobs/affiliation_matcher_nightly.yaml
+  - jobs/affiliation_matcher_sweep.yaml
   - jobs/sync_all_works_to_elasticsearch.yaml
   - jobs/sync_authors_to_elasticsearch.yaml
   - jobs/sync_awards_to_elasticsearch.yaml
