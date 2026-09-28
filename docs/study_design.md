@@ -167,3 +167,12 @@ precision on the works we tag; a population-weighted benchmark (7,742 works, Opu
 Study Protocol 0.81 (the student's protocol tags outside MEDLINE 0.72), RCT outside MEDLINE 0.985. Effect: 1,347,097
 works change (RCT 840K -> 629K, Clinical Trial 2.93M -> 1.88M, Study Protocol 200K -> 107K); 1,143,253 lose every value.
 Public benchmark and code: github.com/ourresearch/openalex-study-designs.
+
+## RCT check (2026-09-28, oxjob #1312 step 12)
+
+`openalex.works.works_study_design_rct_check` (one row per work: `own_trial_report`, `reason`, `model`, `checked_at`)
+holds a second opinion from Claude Sonnet 5 on every work served as a randomized controlled trial: is this the trial's
+own report? Where it says no, `BuildStudyDesignServed` drops RCT and Clinical Trial. Measured on 2,119 judged
+RCT-tagged works: it removes 43 of 58 wrong tags and 11 of 2,054 right ones. Written from desk (plexus task
+`study-design-rct-check.sh`, hourly: works served as RCT with no check row); unchecked works are served as tagged
+until the next rebuild. Prompt and CLI: github.com/ourresearch/openalex-study-designs `tagger/rct_check.py`.

@@ -39,11 +39,19 @@ dbutils.widgets.text("schema", "openalex.works", "target schema")
 SCHEMA = dbutils.widgets.get("schema").strip()
 TAGGER = f"{SCHEMA}.works_study_design_tagger"
 SERVED = f"{SCHEMA}.works_study_design"
+RCT_CHECK = f"{SCHEMA}.works_study_design_rct_check"   # one row per work; written from desk (oxjob #1312 step 12)
 
 CANON = ", ".join(f"'{sd.VALUE_ID[c]}'" for c in sd.SERVED_CLASSES)   # served values, canonical order
 RCT, CT, MA, SR = (sd.VALUE_ID[c] for c in ("rct", "clinical_trial", "meta_analysis", "systematic_review"))
 
 # COMMAND ----------
+
+# The RCT check: a second model (Claude Sonnet 5) reads every work the tagger serves as a randomized controlled trial
+# and says whether it is the trial's own report. Where it says no (digests, commentaries and journal-club pieces that
+# reprint another trial's abstract; protocols; secondary analyses; non-human units), neither RCT nor Clinical Trial
+# is served. Works not yet checked are served as tagged; the desk task checks new ones after each rebuild.
+spark.sql(f"""CREATE TABLE IF NOT EXISTS {RCT_CHECK} (work_id BIGINT, own_trial_report BOOLEAN, reason STRING,
+  model STRING, checked_at TIMESTAMP) USING DELTA CLUSTER BY (work_id)""")
 
 t0 = time.time()
 spark.sql(f"""
@@ -78,12 +86,17 @@ w_pm AS (
 tag AS (
   -- tagger_values keeps the tagger's full output (incl. other-primary-research, for oxjob #1362); study_designs
   -- serves PubMed's vocabulary only (served_values)
-  -- served_values applies the stricter served thresholds to the stored scores (sd.SERVED_THRESHOLDS, oxjob #1312 step 12)
-  SELECT work_id, tagger_values, {sd.sql_served_values()} AS served_values,
-         tagger_version, updated_at AS tagged_at FROM (
-    SELECT *, row_number() OVER (PARTITION BY work_id ORDER BY updated_at DESC) AS rn
-    FROM {TAGGER} WHERE tagger_version IN ({sd.sql_versions()}))
-  WHERE rn = 1
+  -- served_values applies the stricter served thresholds to the stored scores (sd.SERVED_THRESHOLDS, oxjob #1312 step 12),
+  -- then drops RCT and Clinical Trial where the RCT check said the work is not the trial's own report
+  SELECT t.work_id, t.tagger_values,
+         CASE WHEN c.own_trial_report = false THEN filter(t.sv, v -> v NOT IN ('{RCT}', '{CT}')) ELSE t.sv END AS served_values,
+         t.tagger_version, t.tagged_at
+  FROM (
+    SELECT work_id, tagger_values, {sd.sql_served_values()} AS sv, tagger_version, updated_at AS tagged_at FROM (
+      SELECT *, row_number() OVER (PARTITION BY work_id ORDER BY updated_at DESC) AS rn
+      FROM {TAGGER} WHERE tagger_version IN ({sd.sql_versions()}))
+    WHERE rn = 1) t
+  LEFT JOIN {RCT_CHECK} c ON c.work_id = t.work_id
 )
 SELECT coalesce(t.work_id, p.work_id) AS work_id,
        CASE WHEN t.tagger_values IS NOT NULL THEN t.served_values ELSE p.pubmed_values END AS study_designs,
