@@ -54,7 +54,7 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature"])
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version"])
 dbutils.widgets.text("tiers", "1,2")
 dbutils.widgets.text("title_jaccard_min", "0.9")
 dbutils.widgets.text("abstract_jaccard_min", "0.6")
@@ -132,6 +132,8 @@ def class_sql():
         return same_doi_class_sql()
     if CLASS_MODE == "exact_signature":
         return exact_signature_class_sql()
+    if CLASS_MODE == "declared_version":
+        return declared_version_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -355,7 +357,14 @@ def exact_signature_class_sql():
              CASE WHEN db IS NOT NULL AND da IS NULL THEN a ELSE b END AS loser_work_id
       FROM f
       WHERE title_same AND year_same AND NOT digit_title
-        AND (da IS NULL OR db IS NULL OR da = db)),
+        AND (da IS NULL OR db IS NULL OR da = db)),""" + pair_class_tail(EXACT_SIGNATURE_SIGNALS, EXACT_SIGNATURE_HOLD)
+
+
+def pair_class_tail(signals, hold):
+    """Shared tail of the pair classes (exact_signature, declared_version): `r1` (one row per pair with a, b, da, db, ya, yb,
+    ca, cb, ta_type, tb_type, biblio_differs, src_same, winner_work_id, loser_work_id) -> the target's columns, with the
+    mechanical holds (multi_winner, chained, loser_key_shared) available to `hold` as mu / wn / sh."""
+    return f"""
     lm AS (SELECT work_id, COUNT(*) AS n_locations,
                   MAX(CASE WHEN provenance NOT IN ('repo', 'repo_backfill') THEN 1 ELSE 0 END) = 0 AS repo_only
            FROM {LM} WHERE work_id IS NOT NULL GROUP BY work_id),
@@ -394,10 +403,19 @@ def exact_signature_class_sql():
            CASE WHEN r.loser_work_id = r.a THEN r.ta_type ELSE r.tb_type END AS loser_type,
            'same' AS year_cls, TRUE AS full_title_same, 1.0D AS title_jaccard, r.biblio_differs, r.src_same,
            1 AS tier, CAST(NULL AS STRING) AS exclusion,
-           concat_ws('+', CASE WHEN r.s_abstract THEN 'abstract' END, CASE WHEN r.s_authors THEN 'authors' END,
-                          CASE WHEN r.s_biblio THEN 'biblio' END, CASE WHEN r.s_arxiv THEN 'arxiv' END) AS signals,
+           {signals} AS signals,
            CAST(NULL AS STRING) AS base_hold, CAST(NULL AS STRING) AS rescue,
-           CASE WHEN NOT r.type_ok THEN 'version_types'
+           {hold} AS hold_reason
+    FROM r1 r
+    LEFT JOIN lm ON lm.work_id = r.loser_work_id
+    LEFT JOIN multi mu ON mu.loser_work_id = r.loser_work_id
+    LEFT JOIN winners wn ON wn.winner_work_id = r.loser_work_id
+    LEFT JOIN shared sh ON sh.loser_work_id = r.loser_work_id
+    """
+
+EXACT_SIGNATURE_SIGNALS = """concat_ws('+', CASE WHEN r.s_abstract THEN 'abstract' END, CASE WHEN r.s_authors THEN 'authors' END,
+                          CASE WHEN r.s_biblio THEN 'biblio' END, CASE WHEN r.s_arxiv THEN 'arxiv' END)"""
+EXACT_SIGNATURE_HOLD = """CASE WHEN NOT r.type_ok THEN 'version_types'
                 WHEN r.biblio_differs THEN 'biblio_differs'
                 WHEN r.s_biblio AND NOT (r.s_abstract OR r.s_authors OR r.s_arxiv) AND r.authors_disjoint THEN 'biblio_only_authors_disjoint'
                 WHEN r.tg = 'other_type' THEN 'other_type'
@@ -405,13 +423,44 @@ def exact_signature_class_sql():
                 WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
                 WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
                 WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
-                END AS hold_reason
-    FROM r1 r
-    LEFT JOIN lm ON lm.work_id = r.loser_work_id
-    LEFT JOIN multi mu ON mu.loser_work_id = r.loser_work_id
-    LEFT JOIN winners wn ON wn.winner_work_id = r.loser_work_id
-    LEFT JOIN shared sh ON sh.loser_work_id = r.loser_work_id
-    """
+                END"""
+
+
+def declared_version_class_sql():
+    """Declared-version class (oxjob #1256, 2026-09-28; Casey: a preprint and its published article are ONE work): an arXiv
+    preprint work whose DataCite record declares `IsVersionOf` exactly one non-arXiv DOI, and the live work holding that DOI
+    typed article / conference-paper / book-chapter. The published side always wins. Blind-labelled 150 pairs: normalized
+    titles identical 100/100 same; titles differing 47/50 (one bad declaration: an author's unrelated earlier paper) ->
+    held as `title_differs`. arXiv's own DOI is the loser's key, so execute re-keys it onto the winner like exact_signature;
+    `ta` = 'ver:<winner id>'. Mechanical holds as exact_signature (a MAG-era arXiv record holding the same arXiv id makes
+    a triple: loser_key_shared)."""
+    norm = "regexp_replace(lower({c}), '[^\\\\p{{L}}\\\\p{{N}}]', '')"
+    doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx\\\\.)?doi\\\\.org/|doi:)', ''), '[^a-z0-9./-]', '')"
+    return f"""
+    WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
+    rel AS (
+      SELECT DISTINCT l.work_id AS a, {doi_clean.format(c='i.id')} AS target_doi
+      FROM {LM} l LATERAL VIEW explode(l.ids) e AS i
+      WHERE l.work_id IS NOT NULL AND l.provenance = 'datacite' AND l.native_id LIKE '10.48550/%'
+        AND i.relationship = 'IsVersionOf' AND lower(COALESCE(i.namespace, 'doi')) = 'doi' AND lower(i.id) NOT LIKE '%10.48550/%'),
+    one_target AS (SELECT a, MIN(target_doi) AS target_doi FROM rel GROUP BY a HAVING COUNT(DISTINCT target_doi) = 1),
+    wf AS (SELECT id, {doi_clean.format(c='doi')} AS d, publication_year AS yr, type, primary_location.source.id AS src,
+                  {norm.format(c='title')} AS tn, ids['pmid'] AS pmid, COALESCE(cited_by_count, 0) AS cites FROM live),
+    r1 AS (
+      SELECT x.id AS a, y.id AS b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb,
+             x.type AS ta_type, y.type AS tb_type, FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
+             x.tn = y.tn AS title_same, (x.pmid IS NOT NULL AND y.pmid IS NOT NULL AND x.pmid <> y.pmid) AS pmid_conflict,
+             y.id AS winner_work_id, x.id AS loser_work_id
+      FROM one_target o JOIN wf x ON x.id = o.a JOIN wf y ON y.d = o.target_doi
+      WHERE x.type = 'preprint' AND y.type IN ('article', 'conference-paper', 'book-chapter') AND x.id <> y.id),""" + pair_class_tail(DECLARED_VERSION_SIGNALS, DECLARED_VERSION_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('ver:', r.winner_work_id)")
+
+DECLARED_VERSION_SIGNALS = "'declared_is_version_of'"
+DECLARED_VERSION_HOLD = """CASE WHEN NOT r.title_same THEN 'title_differs'
+                WHEN r.pmid_conflict THEN 'pmid_conflict'
+                WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
+                WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
+                WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
+                END"""
 
 
 def prior_exclusion():
@@ -531,7 +580,7 @@ if MODE == "execute":
     pins = spark.sql(f"""DELETE FROM {REGISTRY} r WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'pin'
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
-    if CLASS_MODE == "exact_signature":
+    if CLASS_MODE in ("exact_signature", "declared_version"):
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
         ALIASES = f"{TARGET}_wave{WAVE}_aliases"
