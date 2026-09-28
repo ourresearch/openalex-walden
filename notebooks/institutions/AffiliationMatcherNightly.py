@@ -61,6 +61,8 @@ dbutils.widgets.text("dry_run", "false", "true = write to <answers_table>_dryrun
 dbutils.widgets.text("queue_table", "", "answer the strings in this table (column raw_affiliation_string) instead of the nightly queue; needs target_table")
 dbutils.widgets.text("shard", "", "with queue_table: k/n answers only the strings with pmod(xxhash64(string), n) = k (the sweep runs n shards on n clusters)")
 dbutils.widgets.text("target_table", "", "with queue_table: where answers go (never the answers table); strings already there are skipped (restart-safe)")
+dbutils.widgets.text("vote_ids", "final", "ES neighbour votes: final = each neighbour's institution_ids_final (live answers); legacy = pre-swap ids from vote_ids_table for the strings the swap changed (#1386 charter NOW row 7)")
+dbutils.widgets.text("vote_ids_table", "openalex.institutions.oxjob1386_legacy_vote_ids", "with vote_ids=legacy: raw_affiliation_string -> institution_ids voted instead")
 dbutils.widgets.text("cards_exclude_table", "", "simulation only (#1393): drop these institutions (column institution_id) from the cards, e.g. to rebuild the world before a ROR dump")
 dbutils.widgets.text("sweep_ids_table", "", "with queue_table: new-card sweep (#1393) — institutions being swept (column institution_id); a string none of them reaches in lex2/dense is written with decider 'no_swept_candidate' and not matched further")
 
@@ -71,6 +73,9 @@ MAX_MINUTES = float(dbutils.widgets.get("max_minutes"))
 CHUNK = int(dbutils.widgets.get("chunk_strings"))
 ART = dbutils.widgets.get("artifacts").rstrip("/")
 CARDS_MODE = dbutils.widgets.get("cards").strip().lower()
+VOTE_IDS = dbutils.widgets.get("vote_ids").strip().lower()
+VOTE_IDS_TABLE = dbutils.widgets.get("vote_ids_table").strip()
+assert VOTE_IDS in ("final", "legacy"), VOTE_IDS
 USE_JEV = dbutils.widgets.get("jev").strip().lower() == "true"
 DECIDER_MODE = dbutils.widgets.get("decider_mode").strip().lower()
 assert DECIDER_MODE in ("student", "no_model"), DECIDER_MODE
@@ -178,7 +183,7 @@ if DECIDER_MODE == "student":
     student = st.load(f"{ART}/student_me5b_full", base_dir=f"{ART}/base_multilingual-e5-base")
     log(f"student loaded on {student[2]}")
 chooser_sha = hashlib.sha256(open(f"{ART}/{JEV_CHOOSER}.json", "rb").read() + open(f"{ART}/{FIRST}.json", "rb").read()).hexdigest()[:10]
-MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "")
+MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "") + ("/legacyvotes" if VOTE_IDS == "legacy" else "")
 log(f"index: {len(ix.inst):,} institutions, {len(ix.variants):,} name variants; matcher_version {MATCHER_VERSION}")
 
 names = nm.names_for_dense(ix)
@@ -214,6 +219,17 @@ if SWEEP is not None:
 
 # COMMAND ----------
 
+def legacy_ids_of(names):
+    """vote_ids=legacy: the pre-swap ids of the listed neighbour strings (runs in the neighbour thread, beside lex2/dense)."""
+    from pyspark.sql import functions as F
+    t = time.time()
+    df = spark.createDataFrame([(n,) for n in names], "raw_affiliation_string STRING")
+    rows = spark.table(VOTE_IDS_TABLE).join(F.broadcast(df), "raw_affiliation_string").collect()
+    out = {r.raw_affiliation_string: [int(i) for i in (r.institution_ids or [])] for r in rows}
+    log(f"  legacy votes: {len(out):,} of {len(names):,} neighbour strings changed at the swap ({time.time() - t:.0f}s)")
+    return out
+
+
 ctx = mp.get_context("fork")
 n_proc = max(1, (os.cpu_count() or 2) - 1)
 nm._IX = ix  # forked workers share the driver's index (copy-on-write) instead of rebuilding it
@@ -233,7 +249,7 @@ for c0 in range(0, len(strings), CHUNK):
     # ES neighbours (network-bound threads) run beside lexical (CPU processes) and dense (GPU); in a sweep too (for
     # strings the filter below drops they are wasted, ≈ 17%, but waiting for the filter cost 100-180 s per 10K).
     t = time.time()
-    nb_future = bg.submit(nm.neighbour_all, S, ES_URL, 32)
+    nb_future = bg.submit(nm.neighbour_all, S, ES_URL, 32, legacy_ids_of if VOTE_IDS == "legacy" else None)
     lex = lex_pool.map(nm.lex2, S, chunksize=100)
     log(f"chunk {c0 // CHUNK}: {len(S):,} strings; lex2 {time.time() - t:.0f}s")
     t = time.time()
