@@ -2,9 +2,9 @@
 # Author_Affiliations + Topics and before Author_Matching; MatchAuthors cell 9 LEFT JOINs openalex.authors.vector_match_decisions
 # for today's run_date, so if any task here fails, Author_Matching simply runs on the name cascade alone (the E2E gate is ALL_DONE).
 #   Cards (seats MatchAuthors will match tonight) -> Embed (GPU, seat-base-v2 + e5, #1342's PCA bases) -> Pool (candidate profiles'
-#   stored seats) -> Decide (band small 0.93 / medium 0.95 + hub-pref + centroid) -> Zone cards -> Sonnet (Claude Sonnet 5.5 picks one
-#   of the top-3 vector candidates or new_person; auto at high confidence; spend cap per night). Mega blocks stay on the cascade.
-# Stopgap by design (Jason, 2026-09-28): ~$540/night of Sonnet; a cheaper distilled judge replaces it later (charter § 6).
+#   stored seats) -> Decide (band small 0.93 / medium 0.95 + hub-pref + centroid) -> Zone cards -> (zone seats: name cascade).
+#   Mega blocks stay on the cascade.
+# The Sonnet zone judge ran 2026-09-28/29 only; removed 2026-09-29 while the matching strategy is rethought.
 resources:
   jobs:
     Vector_Matcher_Nightly:
@@ -16,11 +16,6 @@ resources:
         no_alert_for_skipped_runs: true
       timeout_seconds: 9000
       max_concurrent_runs: 1
-      parameters:
-        - name: max_usd
-          default: "1500"
-        - name: sonnet_concurrency
-          default: "128"
       tasks:
         - task_key: Vector_Cards
           sql_task:
@@ -72,21 +67,7 @@ resources:
               path: notebooks/end2end/vector_match/vector_zone_cards.sql
               source: GIT
           timeout_seconds: 1800
-        - task_key: Vector_Sonnet
-          depends_on:
-            - task_key: Vector_Zone_Cards
-          spark_python_task:
-            python_file: notebooks/end2end/vector_match/nightly_sonnet.py
-            source: GIT
-            parameters: ["/Volumes/openalex/authors/oxjob_tmp/oxjob1401", "--date", "{{job.start_time.iso_date}}",
-                         "--out-table", "openalex.authors.vector_match_decisions", "--zone-cards-table", "openalex.authors.vector_match_zone_cards",
-                         "--card", "full", "--per-cand", "8", "--effort", "medium",
-                         "--concurrency", "{{job.parameters.sonnet_concurrency}}", "--max-usd", "{{job.parameters.max_usd}}"]
-          job_cluster_key: vector_cpu
-          libraries:
-            - pypi:
-                package: anthropic
-          timeout_seconds: 5400
+        # Vector_Sonnet (Claude Sonnet 5.5 zone judge) removed 2026-09-29 (Jason: not worth the money). Zone seats fall to the name cascade.
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
