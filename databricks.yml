@@ -19,6 +19,7 @@ include:
   - jobs/concepts.yaml
   - jobs/institutions.yaml
   - jobs/institutions_frontfill.yaml
+  - jobs/hal_api_affiliations.yaml
   - jobs/affiliation_matcher_nightly.yaml
   - jobs/affiliation_matcher_sweep.yaml
   - jobs/sync_all_works_to_elasticsearch.yaml
