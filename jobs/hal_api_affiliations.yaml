@@ -22,22 +22,17 @@ resources:
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13
-            spark_conf:
-              spark.master: local[*, 4]
-              spark.databricks.cluster.profile: singleNode
             aws_attributes:
               first_on_demand: 1
               availability: SPOT_WITH_FALLBACK
               zone_id: us-east-1f
               spot_bid_price_percent: 100
-            node_type_id: m5d.2xlarge
-            driver_node_type_id: m5d.2xlarge
-            custom_tags:
-              ResourceClass: SingleNode
+            node_type_id: r5d.2xlarge
+            driver_node_type_id: r5d.2xlarge
             enable_elastic_disk: true
             data_security_mode: SINGLE_USER
-            runtime_engine: STANDARD
-            num_workers: 0
+            runtime_engine: PHOTON
+            num_workers: 4
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
