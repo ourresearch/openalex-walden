@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.29-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.30-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -18,17 +18,21 @@ from openalex.dlt.transform import apply_initial_processing, apply_final_merge_k
 from openalex.dlt.repo_types import best_type_udf
 from openalex.dlt.repo_filters import apply_repo_policy_filters, apply_endpoint_filters
 from openalex.dlt.repo_ids import extract_ids_udf
+from openalex.dlt.oai_ids import read_endpoint_id_hosts, with_rekeyed_native_id
 
 # oxjob #933: repositories that host only open content attest OA on their own. OSTI is
 # the origin of its reports (10.2172) and DOE data-centre DOIs, but a record carrying a
 # publisher's DOI is a pointer at a paywalled article; those get OA only from a PDF the
 # PDF pipeline actually fetched (composed in CreateSuperLocations).
 OSTI_ORIGIN_DOI_PREFIXES = "2172|25582|17188|11578|5439|18429|15121|21947|25585|17190|17182|15485|18141|15473|34664|7910"
+# oxjob #1407: reads oai_identifier, the RAW header id. native_id may be re-keyed from a placeholder
+# host to the endpoint's own host, and an unanchored RLIKE on that host ('osti', 'zenodo') must not
+# flip is_oa. Keep byte-identical with RepoBackfill.py.
 TRUSTED_HOST_IS_OA_EXPR = f"""
-    size(split(native_id, ':')) >= 2 AND (
-      lower(split(native_id, ':')[1]) RLIKE 'arxiv|pubmedcentral|europepmc|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
+    size(split(oai_identifier, ':')) >= 2 AND (
+      lower(split(oai_identifier, ':')[1]) RLIKE 'arxiv|pubmedcentral|europepmc|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
       OR (
-        lower(split(native_id, ':')[1]) RLIKE 'osti'
+        lower(split(oai_identifier, ':')[1]) RLIKE 'osti'
         AND NOT exists(ids, x -> x.namespace = 'doi'
                              AND NOT lower(x.id) RLIKE '(^|doi\\\\.org/)10\\\\.({OSTI_ORIGIN_DOI_PREFIXES})/')
       )
@@ -39,9 +43,9 @@ TRUSTED_HOST_IS_OA_EXPR = f"""
 # ~2.9M works. The set names the kind of deposit: funder author-manuscript sets (>=99.6% carry a
 # PubMed NIHMS/UKMS/CAMS/HALMS manuscript id; gatesmanu 63/110), preprint sets, or a journal set
 # (publisher deposit). NULL for non-PMC records and PMC records with no setSpec -> the regex
-# decides, as before. Keep byte-identical with the other ingest notebook.
+# decides, as before. Keep byte-identical with the other ingest notebook. Reads the RAW id (oxjob #1407).
 PMC_VERSION_FROM_SET_SPEC_EXPR = """
-    CASE WHEN (lower(native_id) LIKE 'oai:pubmedcentral.nih.gov:%' OR lower(native_id) LIKE 'oai:europepmc.org:%')
+    CASE WHEN (lower(oai_identifier) LIKE 'oai:pubmedcentral.nih.gov:%' OR lower(oai_identifier) LIKE 'oai:europepmc.org:%')
               AND size(set_spec) > 0 THEN
       CASE WHEN arrays_overlap(set_spec, array('nihpa','wtpa','hhspa','epapa','nistpa','vapa','capmc','nasapa',
                                                 'hhmipa','hal','hrams','dhspa','asms','gatesmanu','manusctipt'))
@@ -333,9 +337,20 @@ def repo_items():
   name="repo_parsed"
 )
 def repo_parsed():
+  # oxjob #1407: endpoints listed in openalex.repo.endpoint_id_host get their placeholder-host ids
+  # (ojs.pkp.sfu.ca, generic.eprints.org, localhost, ojs.localhost) keyed on their own host,
+  # read once per pipeline update and inlined as a literal lookup (no join, so no stateful-plan change).
+  id_hosts = read_endpoint_id_hosts(spark)
   return (dlt.read_stream("repo_items")
     .filter(F.col("ns0:metadata").isNotNull())  # doaj deleted articles have no metadata
-    .withColumn("native_id", F.col("`ns0:header`.`ns0:identifier`"))
+    # oxjob #1407: native_id is the OAI header id, except that a placeholder host is replaced by the
+    # endpoint's own host: oai:ojs.pkp.sfu.ca:article/1 -> oai:et.ippt.pan.pl:article/1. Without it,
+    # journals that never set their repository identifier share one id space and apply_changes keeps
+    # one record per id. Done BEFORE dropDuplicates so two journals' records with the same datestamp
+    # don't drop each other. The raw id stays in oai_identifier for everything that parses the OAI
+    # host; it is not carried past this table.
+    .withColumn("oai_identifier", F.col("`ns0:header`.`ns0:identifier`"))
+    .transform(lambda df: with_rekeyed_native_id(df, id_hosts, "repository_id"))
     .withColumn("updated_date", F.col("`ns0:header`.`ns0:datestamp`"))
     .dropDuplicates(["native_id", "updated_date"])
     .withColumn("native_id_namespace", F.lit("pmh"))
@@ -392,7 +407,7 @@ def repo_parsed():
     .withColumn("metadata_string", F.col("`ns0:metadata`").cast("string"))
     .withColumn("version", F.coalesce(
         F.expr(PMC_VERSION_FROM_SET_SPEC_EXPR),
-        detect_version_udf(F.col("metadata_string"), F.col("native_id"))
+        detect_version_udf(F.col("metadata_string"), F.col("oai_identifier"))  # raw id, oxjob #1407
     ))
     .withColumn(
         "raw_license",
@@ -528,8 +543,9 @@ def repo_parsed():
     )
     # oxjob #945: the two halves of the OAI identifier, used to test whether a dc:relation
     # URL is this record's own page. oai:eprints.lancs.ac.uk:11007 -> host, local id.
-    .withColumn("_oai_host", F.regexp_extract(F.col("native_id"), r"^oai:([^:]+):", 1))
-    .withColumn("_oai_local", F.regexp_extract(F.col("native_id"), r"([^:]+)$", 1))
+    # oxjob #1407: from the RAW id, so a re-keyed record's dc:relation handling is unchanged.
+    .withColumn("_oai_host", F.regexp_extract(F.col("oai_identifier"), r"^oai:([^:]+):", 1))
+    .withColumn("_oai_local", F.regexp_extract(F.col("oai_identifier"), r"([^:]+)$", 1))
     .withColumn(
         "_identifier_urls",
         F.filter(
