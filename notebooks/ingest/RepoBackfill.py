@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.29-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.30-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -15,14 +15,18 @@ from openalex.dlt.repo_types import best_type_udf
 from openalex.dlt.repo_filters import apply_repo_policy_filters
 from openalex.dlt.sequencing import dedupe_by_sequence
 from openalex.dlt.repo_ids import extract_ids_udf
+from openalex.dlt.oai_ids import (
+    ENDPOINT_ID_HOST_TABLE, REKEY_MAP_TABLE, REPLAY_TABLE, is_placeholder_id_sql, to_replay_rows,
+    with_rekeyed_native_id)
 
 # oxjob #933: same trusted-host rule as notebooks/ingest/Repo.py -- keep byte-identical.
+# oxjob #1407: both expressions read oai_identifier (the RAW header id), not the re-keyed native_id.
 OSTI_ORIGIN_DOI_PREFIXES = "2172|25582|17188|11578|5439|18429|15121|21947|25585|17190|17182|15485|18141|15473|34664|7910"
 TRUSTED_HOST_IS_OA_EXPR = f"""
-    size(split(native_id, ':')) >= 2 AND (
-      lower(split(native_id, ':')[1]) RLIKE 'arxiv|pubmedcentral|europepmc|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
+    size(split(oai_identifier, ':')) >= 2 AND (
+      lower(split(oai_identifier, ':')[1]) RLIKE 'arxiv|pubmedcentral|europepmc|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
       OR (
-        lower(split(native_id, ':')[1]) RLIKE 'osti'
+        lower(split(oai_identifier, ':')[1]) RLIKE 'osti'
         AND NOT exists(ids, x -> x.namespace = 'doi'
                              AND NOT lower(x.id) RLIKE '(^|doi\\\\.org/)10\\\\.({OSTI_ORIGIN_DOI_PREFIXES})/')
       )
@@ -35,7 +39,7 @@ TRUSTED_HOST_IS_OA_EXPR = f"""
 # (publisher deposit). NULL for non-PMC records and PMC records with no setSpec -> the regex
 # decides, as before. Keep byte-identical with the other ingest notebook.
 PMC_VERSION_FROM_SET_SPEC_EXPR = """
-    CASE WHEN (lower(native_id) LIKE 'oai:pubmedcentral.nih.gov:%' OR lower(native_id) LIKE 'oai:europepmc.org:%')
+    CASE WHEN (lower(oai_identifier) LIKE 'oai:pubmedcentral.nih.gov:%' OR lower(oai_identifier) LIKE 'oai:europepmc.org:%')
               AND size(set_spec) > 0 THEN
       CASE WHEN arrays_overlap(set_spec, array('nihpa','wtpa','hhspa','epapa','nistpa','vapa','capmc','nasapa',
                                                 'hhmipa','hal','hrams','dhspa','asms','gatesmanu','manusctipt'))
@@ -74,7 +78,18 @@ from openalex.dlt.normalize import normalize_title_udf
 # and this is driven by the job's base_parameters (jobs/repo_backfill.yaml).
 dbutils.widgets.text("rebuild", "false", "Full rebuild (overwrite)")
 REBUILD = dbutils.widgets.get("rebuild").strip().lower() in ("true", "1", "yes")
-print(f"RepoBackfill mode: {'REBUILD (overwrite)' if REBUILD else 'MERGE (incremental)'}")
+# oxjob #1407 -- REPLAY MODE. Default empty; normal runs leave it empty.
+# Set to a job tag (e.g. 'oxjob1407') to re-parse ONLY the records whose OAI id carries a
+# placeholder host (ojs.pkp.sfu.ca, generic.eprints.org, localhost, ojs.localhost), re-keyed by
+# endpoint_id_host, and APPEND them to openalex.repo.repo_replay as upserts with backfill
+# provenance. repo_works_backfill is not touched and no MERGE runs. This recovers backfill records
+# that lost the id collision: repo_works_backfill already collapsed them (dedupe on native_id).
+# Run by notebooks/maintenance/RekeyPlaceholderOaiIds.py's cutover, after endpoint_id_host is filled.
+dbutils.widgets.text("replay_job", "", "Replay placeholder-host records to repo_replay (job tag)")
+REPLAY_JOB = dbutils.widgets.get("replay_job").strip()
+if REPLAY_JOB and REBUILD:
+    raise ValueError("replay_job and rebuild are mutually exclusive")
+print(f"RepoBackfill mode: {'REPLAY ' + REPLAY_JOB if REPLAY_JOB else 'REBUILD (overwrite)' if REBUILD else 'MERGE (incremental)'}")
 
 # COMMAND ----------
 
@@ -89,6 +104,8 @@ print(f"RepoBackfill mode: {'REBUILD (overwrite)' if REBUILD else 'MERGE (increm
 
 # second run
 df = spark.table("openalex.repo.repo_items_backfill")
+if REPLAY_JOB:
+    df = df.filter(expr(is_placeholder_id_sql("pmh_id")))
 
 # COMMAND ----------
 
@@ -374,8 +391,12 @@ spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
 # Both are dropped again before repo_works via except_column_list in Repo.py, so they never
 # enter the cross-source union where repo_works is the canonical schema donor.
 
+# oxjob #1407: native_id is the header id with a placeholder host replaced by the endpoint's own
+# host -- the same shared function as Repo.py, so live and backfill copies of one record keep one
+# key. The raw id stays in oai_identifier for the host-parsing expressions; it is not selected below.
 parsed_df = clean_df \
-    .withColumn("native_id", regexp_extract(col("cleaned_xml"), r"<identifier>(.*?)</identifier>", 1)) \
+    .withColumn("oai_identifier", regexp_extract(col("cleaned_xml"), r"<identifier>(.*?)</identifier>", 1)) \
+    .transform(lambda d: with_rekeyed_native_id(d, spark.read.table(ENDPOINT_ID_HOST_TABLE), "endpoint_id")) \
     .withColumn("native_id_namespace", lit("pmh")) \
     .withColumn("title", substring(regexp_extract(col("cleaned_xml"), r"<dc:title.*?>(.*?)</dc:title>", 1), 0, MAX_TITLE_LENGTH)) \
     .withColumn("normalized_title", normalize_title_udf(col("title"))) \
@@ -418,7 +439,7 @@ parsed_df = clean_df \
         )) \
     .withColumn("version", coalesce(
         expr(PMC_VERSION_FROM_SET_SPEC_EXPR),
-        detect_version_udf(col("cleaned_xml"), col("native_id")))) \
+        detect_version_udf(col("cleaned_xml"), col("oai_identifier")))) \
     .withColumn("language", normalize_language_code_udf(regexp_extract(col("cleaned_xml"), r"<dc:language.*?>(.*?)</dc:language>", 1))) \
     .withColumn("published_date",
         expr("""
@@ -596,6 +617,25 @@ parsed_df = dedupe_by_sequence(
 # feed, so it breaks the readChangeFeed stream and forces a DLT full refresh on EVERY run. This
 # keeps the pipeline incremental.
 target_table = "openalex.repo.repo_works_backfill"
+
+if REPLAY_JOB:
+    # Records that held their key in repo_works (incumbents, in the rekey map) keep ingested_at: their
+    # sidecars travel through the pmh crosswalk. Recovered records were never stored or fetched, so they
+    # get ingested_at = now and taxicab's ingested_at window seeds them.
+    _incumbent_keys = (spark.table(REKEY_MAP_TABLE)
+                       .filter(col("job") == REPLAY_JOB)
+                       .select(col("new_native_id").alias("native_id"), lit(True).alias("_incumbent"))
+                       .distinct())
+    parsed_df = (parsed_df.join(_incumbent_keys, "native_id", "left")
+                 .withColumn("ingested_at", when(col("_incumbent"), col("ingested_at")).otherwise(current_timestamp()))
+                 .drop("_incumbent"))
+    _replay = to_replay_rows(parsed_df, spark.table(REPLAY_TABLE).schema,
+                             REPLAY_JOB, "upsert", "repo_backfill")
+    _replay.write.format("delta").mode("append").saveAsTable(REPLAY_TABLE)
+    _n = spark.table(REPLAY_TABLE).filter(
+        (col("replay_job") == REPLAY_JOB) & (col("replay_provenance") == "repo_backfill")).count()
+    print(f"REPLAY {REPLAY_JOB}: {REPLAY_TABLE} now holds {_n:,} backfill-provenance rows for this job")
+    dbutils.notebook.exit(f"replay {REPLAY_JOB}: {_n} rows")
 
 from delta.tables import DeltaTable
 

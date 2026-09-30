@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.29-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.30-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -18,17 +18,36 @@ from openalex.dlt.transform import apply_initial_processing, apply_final_merge_k
 from openalex.dlt.repo_types import best_type_udf
 from openalex.dlt.repo_filters import apply_repo_policy_filters, apply_endpoint_filters
 from openalex.dlt.repo_ids import extract_ids_udf
+from openalex.dlt.oai_ids import ENDPOINT_ID_HOST_TABLE, REPLAY_TABLE, with_rekeyed_native_id
+
+
+def _src(key, default):
+    """Where this pipeline reads from. Production uses the defaults; a dev copy of the pipeline sets
+    `repo.<key>` in its configuration to point at a few endpoint folders and scratch tables
+    (oxjob #1407 validation). Never set these on the production pipeline."""
+    return spark.conf.get(f"repo.{key}", default)
+
+
+REPO_ITEMS_PATH = _src("items_path", "s3a://openalex-ingest/repositories/")
+REPO_ITEMS_SCHEMA_LOCATION = _src("items_schema_location", "dbfs:/pipelines/repo/schema")
+REPO_BACKFILL_TABLE = _src("backfill_table", "openalex.repo.repo_works_backfill")
+REPO_IRDB_TABLE = _src("irdb_table", "openalex.repo.irdb_parsed")
+REPO_ENDPOINT_ID_HOST_TABLE = _src("endpoint_id_host_table", ENDPOINT_ID_HOST_TABLE)
+REPO_REPLAY_TABLE = _src("replay_table", REPLAY_TABLE)
 
 # oxjob #933: repositories that host only open content attest OA on their own. OSTI is
 # the origin of its reports (10.2172) and DOE data-centre DOIs, but a record carrying a
 # publisher's DOI is a pointer at a paywalled article; those get OA only from a PDF the
 # PDF pipeline actually fetched (composed in CreateSuperLocations).
 OSTI_ORIGIN_DOI_PREFIXES = "2172|25582|17188|11578|5439|18429|15121|21947|25585|17190|17182|15485|18141|15473|34664|7910"
+# oxjob #1407: reads oai_identifier, the RAW header id. native_id may be re-keyed from a placeholder
+# host to the endpoint's own host, and an unanchored RLIKE on that host ('osti', 'zenodo') must not
+# flip is_oa. Keep byte-identical with RepoBackfill.py.
 TRUSTED_HOST_IS_OA_EXPR = f"""
-    size(split(native_id, ':')) >= 2 AND (
-      lower(split(native_id, ':')[1]) RLIKE 'arxiv|pubmedcentral|europepmc|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
+    size(split(oai_identifier, ':')) >= 2 AND (
+      lower(split(oai_identifier, ':')[1]) RLIKE 'arxiv|pubmedcentral|europepmc|biorxiv|medrxiv|zenodo|open-science\\\\.canada'
       OR (
-        lower(split(native_id, ':')[1]) RLIKE 'osti'
+        lower(split(oai_identifier, ':')[1]) RLIKE 'osti'
         AND NOT exists(ids, x -> x.namespace = 'doi'
                              AND NOT lower(x.id) RLIKE '(^|doi\\\\.org/)10\\\\.({OSTI_ORIGIN_DOI_PREFIXES})/')
       )
@@ -39,9 +58,9 @@ TRUSTED_HOST_IS_OA_EXPR = f"""
 # ~2.9M works. The set names the kind of deposit: funder author-manuscript sets (>=99.6% carry a
 # PubMed NIHMS/UKMS/CAMS/HALMS manuscript id; gatesmanu 63/110), preprint sets, or a journal set
 # (publisher deposit). NULL for non-PMC records and PMC records with no setSpec -> the regex
-# decides, as before. Keep byte-identical with the other ingest notebook.
+# decides, as before. Keep byte-identical with the other ingest notebook. Reads the RAW id (oxjob #1407).
 PMC_VERSION_FROM_SET_SPEC_EXPR = """
-    CASE WHEN (lower(native_id) LIKE 'oai:pubmedcentral.nih.gov:%' OR lower(native_id) LIKE 'oai:europepmc.org:%')
+    CASE WHEN (lower(oai_identifier) LIKE 'oai:pubmedcentral.nih.gov:%' OR lower(oai_identifier) LIKE 'oai:europepmc.org:%')
               AND size(set_spec) > 0 THEN
       CASE WHEN arrays_overlap(set_spec, array('nihpa','wtpa','hhspa','epapa','nistpa','vapa','capmc','nasapa',
                                                 'hhmipa','hal','hrams','dhspa','asms','gatesmanu','manusctipt'))
@@ -306,17 +325,17 @@ def repo_items():
       .option("compression", "gzip")
       .option("ignorMissingFiles", "true")
       .schema(repository_schema)
-      .option("cloudFiles.schemaLocation", "dbfs:/pipelines/repo/schema")
+      .option("cloudFiles.schemaLocation", REPO_ITEMS_SCHEMA_LOCATION)
       # Discovery via UC managed file events on the openalex-ingest external location
       # (millions of tiny per-record gzips make directory listing take hours).
-      .option("cloudFiles.useManagedFileEvents", "true")
+      .option("cloudFiles.useManagedFileEvents", _src("items_use_file_events", "true"))
       # oxjob #911: the default rate limit (maxFilesPerTrigger=1000) caps ingest at
       # ~600 files/s regardless of cluster size -- micro-batches complete every ~1.5-2s,
       # so 1000-file batches leave the executors idle (measured: identical ~12K rows/s
       # on 20 and 60 nodes). 50K-file batches amortize the per-batch overhead; steady
       # state nightly volume never approaches this, so it only matters for refreshes.
       .option("cloudFiles.maxFilesPerTrigger", "50000")
-      .load("s3a://openalex-ingest/repositories/")
+      .load(REPO_ITEMS_PATH)
       # Named repository_id historically; renamed to endpoint_id in repo_parsed.
       # Kept here to avoid re-ingesting the entire streaming table.
       .withColumn("repository_id",
@@ -335,7 +354,18 @@ def repo_items():
 def repo_parsed():
   return (dlt.read_stream("repo_items")
     .filter(F.col("ns0:metadata").isNotNull())  # doaj deleted articles have no metadata
-    .withColumn("native_id", F.col("`ns0:header`.`ns0:identifier`"))
+    # oxjob #1407: native_id is the OAI header id, except that a placeholder host
+    # (ojs.pkp.sfu.ca, generic.eprints.org, localhost, ojs.localhost -- installs that never set
+    # their repository identifier) is replaced by the endpoint's own host from the frozen
+    # endpoint_id_host table: oai:ojs.pkp.sfu.ca:article/1 -> oai:et.ippt.pan.pl:article/1.
+    # Without it 198 journals share one id space and apply_changes keeps one record per id
+    # (~335K records lost, 2026-09-28). Done BEFORE dropDuplicates so two journals' records with
+    # the same datestamp no longer drop each other. The stream-static join is stateless and the
+    # dedup key names are unchanged, so the streaming state stays compatible. The raw id stays in
+    # oai_identifier for everything that parses the OAI host; it is not carried past this table.
+    .withColumn("oai_identifier", F.col("`ns0:header`.`ns0:identifier`"))
+    .transform(lambda df: with_rekeyed_native_id(
+        df, spark.read.table(REPO_ENDPOINT_ID_HOST_TABLE), "repository_id"))
     .withColumn("updated_date", F.col("`ns0:header`.`ns0:datestamp`"))
     .dropDuplicates(["native_id", "updated_date"])
     .withColumn("native_id_namespace", F.lit("pmh"))
@@ -392,7 +422,7 @@ def repo_parsed():
     .withColumn("metadata_string", F.col("`ns0:metadata`").cast("string"))
     .withColumn("version", F.coalesce(
         F.expr(PMC_VERSION_FROM_SET_SPEC_EXPR),
-        detect_version_udf(F.col("metadata_string"), F.col("native_id"))
+        detect_version_udf(F.col("metadata_string"), F.col("oai_identifier"))  # raw id, oxjob #1407
     ))
     .withColumn(
         "raw_license",
@@ -528,8 +558,9 @@ def repo_parsed():
     )
     # oxjob #945: the two halves of the OAI identifier, used to test whether a dc:relation
     # URL is this record's own page. oai:eprints.lancs.ac.uk:11007 -> host, local id.
-    .withColumn("_oai_host", F.regexp_extract(F.col("native_id"), r"^oai:([^:]+):", 1))
-    .withColumn("_oai_local", F.regexp_extract(F.col("native_id"), r"([^:]+)$", 1))
+    # oxjob #1407: from the RAW id, so a re-keyed record's dc:relation handling is unchanged.
+    .withColumn("_oai_host", F.regexp_extract(F.col("oai_identifier"), r"^oai:([^:]+):", 1))
+    .withColumn("_oai_local", F.regexp_extract(F.col("oai_identifier"), r"([^:]+)$", 1))
     .withColumn(
         "_identifier_urls",
         F.filter(
@@ -660,12 +691,12 @@ def repo_parsed():
     comment="Streaming read of repo backfill using CDF (automatically incremental in DLT)"
 )
 def repo_parsed_backfill():
-    repo_schema = spark.table("openalex.repo.repo_works_backfill").schema
+    repo_schema = spark.table(REPO_BACKFILL_TABLE).schema
     return (
         spark.readStream
             .option("readChangeFeed", "true")
             .schema(repo_schema)
-            .table("openalex.repo.repo_works_backfill")
+            .table(REPO_BACKFILL_TABLE)
             # oxjob #881: 'delete' is now FORWARDED, not dropped. Without it a record removed
             # from the source could never leave repo_works -- the pipeline had no delete path at
             # all. update_preimage stays excluded (it is the stale half of an update).
@@ -680,12 +711,12 @@ def repo_parsed_backfill():
     comment="Streaming read of IRDB parsed records using CDF (automatically incremental in DLT)"
 )
 def repo_parsed_irdb():
-    irdb_schema = spark.table("openalex.repo.irdb_parsed").schema
+    irdb_schema = spark.table(REPO_IRDB_TABLE).schema
     return (
         spark.readStream
             .option("readChangeFeed", "true")
             .schema(irdb_schema)
-            .table("openalex.repo.irdb_parsed")
+            .table(REPO_IRDB_TABLE)
             # oxjob #881: 'delete' is now FORWARDED, not dropped. Without it a record removed
             # from the source could never leave repo_works -- the pipeline had no delete path at
             # all. update_preimage stays excluded (it is the stale half of an update).
@@ -694,81 +725,67 @@ def repo_parsed_irdb():
     )
 
 
-@dlt.table(name="repo_enriched",
-           comment="repo data after full parsing and author/feature enrichment.")
-def repo_enriched():
-    df_parsed_backfill = dlt.read_stream("repo_parsed_backfill")
-    df_parsed_input = dlt.read_stream("repo_parsed")
-    df_parsed_irdb = dlt.read_stream("repo_parsed_irdb")
-    
-    walden_works_schema_with_raw_type = StructType([
-        StructField("provenance", StringType(), True), StructField("native_id", StringType(), True),
-        StructField("native_id_namespace", StringType(), True), StructField("title", StringType(), True),
-        StructField("normalized_title", StringType(), True),
-        StructField("authors", ArrayType(StructType([
-            StructField("given", StringType(), True), StructField("family", StringType(), True),
-            StructField("name", StringType(), True), StructField("orcid", StringType(), True),
-            StructField("affiliations", ArrayType(StructType([
-                StructField("name", StringType(), True), StructField("department", StringType(), True),
-                StructField("ror_id", StringType(), True)])), True),
-            StructField("is_corresponding", BooleanType(), True)
-        ])), True),
-        StructField("ids", ArrayType(StructType([
-            StructField("id", StringType(), True), StructField("namespace", StringType(), True),
-            StructField("relationship", StringType(), True)])), True),
-        StructField("raw_native_type", StringType(), True), StructField("type", StringType(), True), StructField("version", StringType(), True),
-        StructField("license", StringType(), True), StructField("language", StringType(), True),
-        StructField("published_date", DateType(), True), StructField("created_date", DateType(), True),
-        StructField("updated_date", DateType(), True), StructField("issue", StringType(), True),
-        StructField("volume", StringType(), True), StructField("first_page", StringType(), True),
-        StructField("last_page", StringType(), True), StructField("is_retracted", BooleanType(), True),
-        StructField("abstract", StringType(), True), StructField("source_name", StringType(), True),
-        StructField("publisher", StringType(), True),
-        StructField("funders", ArrayType(StructType([
-            StructField("doi", StringType(), True), StructField("ror", StringType(), True),
-            StructField("name", StringType(), True), StructField("awards", ArrayType(StringType(), True), True)
-        ])), True),
-        StructField("references", ArrayType(StructType([
-            StructField("doi", StringType(), True), StructField("pmid", StringType(), True),
-            StructField("arxiv", StringType(), True), StructField("title", StringType(), True),
-            StructField("authors", StringType(), True), StructField("year", StringType(), True),
-            StructField("raw", StringType(), True)
-        ])), True),
-        StructField("urls", ArrayType(StructType([
-            StructField("url", StringType(), True), StructField("content_type", StringType(), True)
-        ])), True),
-        StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
-        StructField("endpoint_id", StringType(), True),
-        StructField("ingested_at", TimestampType(), True),
-        # oxjob #881: repo-local only. This is NOT the shared walden schema -- crossref, datacite,
-        # pubmed and the rest are untouched. Sources that lack these get typed NULLs from
-        # apply_walden_schema (transform.py:132), so backfill and irdb need no change until
-        # RepoBackfill.py is re-run.
-        StructField("set_spec", ArrayType(StringType()), True),
-        StructField("dc_format", ArrayType(StringType()), True),
-        # oxjob #881: drives apply_as_deletes below; dropped before repo_works
-        StructField("_change_type", StringType(), True),
-        # oxjob #837/#880: CDF commit version of the backfill/IRDB source row (NULL -> 0 for
-        # repo_parsed); a re-emitted row must outrank the stored one. Dropped before repo_works.
-        StructField("_commit_version", LongType(), True)
-    ])
+REPO_WALDEN_SCHEMA = StructType([
+    StructField("provenance", StringType(), True), StructField("native_id", StringType(), True),
+    StructField("native_id_namespace", StringType(), True), StructField("title", StringType(), True),
+    StructField("normalized_title", StringType(), True),
+    StructField("authors", ArrayType(StructType([
+        StructField("given", StringType(), True), StructField("family", StringType(), True),
+        StructField("name", StringType(), True), StructField("orcid", StringType(), True),
+        StructField("affiliations", ArrayType(StructType([
+            StructField("name", StringType(), True), StructField("department", StringType(), True),
+            StructField("ror_id", StringType(), True)])), True),
+        StructField("is_corresponding", BooleanType(), True)
+    ])), True),
+    StructField("ids", ArrayType(StructType([
+        StructField("id", StringType(), True), StructField("namespace", StringType(), True),
+        StructField("relationship", StringType(), True)])), True),
+    StructField("raw_native_type", StringType(), True), StructField("type", StringType(), True), StructField("version", StringType(), True),
+    StructField("license", StringType(), True), StructField("language", StringType(), True),
+    StructField("published_date", DateType(), True), StructField("created_date", DateType(), True),
+    StructField("updated_date", DateType(), True), StructField("issue", StringType(), True),
+    StructField("volume", StringType(), True), StructField("first_page", StringType(), True),
+    StructField("last_page", StringType(), True), StructField("is_retracted", BooleanType(), True),
+    StructField("abstract", StringType(), True), StructField("source_name", StringType(), True),
+    StructField("publisher", StringType(), True),
+    StructField("funders", ArrayType(StructType([
+        StructField("doi", StringType(), True), StructField("ror", StringType(), True),
+        StructField("name", StringType(), True), StructField("awards", ArrayType(StringType(), True), True)
+    ])), True),
+    StructField("references", ArrayType(StructType([
+        StructField("doi", StringType(), True), StructField("pmid", StringType(), True),
+        StructField("arxiv", StringType(), True), StructField("title", StringType(), True),
+        StructField("authors", StringType(), True), StructField("year", StringType(), True),
+        StructField("raw", StringType(), True)
+    ])), True),
+    StructField("urls", ArrayType(StructType([
+        StructField("url", StringType(), True), StructField("content_type", StringType(), True)
+    ])), True),
+    StructField("mesh", StringType(), True), StructField("is_oa", BooleanType(), True),
+    StructField("endpoint_id", StringType(), True),
+    StructField("ingested_at", TimestampType(), True),
+    # oxjob #881: repo-local only. This is NOT the shared walden schema -- crossref, datacite,
+    # pubmed and the rest are untouched. Sources that lack these get typed NULLs from
+    # apply_walden_schema (transform.py:132), so backfill and irdb need no change until
+    # RepoBackfill.py is re-run.
+    StructField("set_spec", ArrayType(StringType()), True),
+    StructField("dc_format", ArrayType(StringType()), True),
+    # oxjob #881: drives apply_as_deletes below; dropped before repo_works
+    StructField("_change_type", StringType(), True),
+    # oxjob #837/#880: CDF commit version of the backfill/IRDB source row (NULL -> 0 for
+    # repo_parsed); a re-emitted row must outrank the stored one. Dropped before repo_works.
+    StructField("_commit_version", LongType(), True)
+])
 
-    # Apply consistent schema and transformations
-    df_walden_works = apply_initial_processing(df_parsed_input, "repo", walden_works_schema_with_raw_type)
-    df_backfill_walden_works = apply_initial_processing(df_parsed_backfill, "repo_backfill", walden_works_schema_with_raw_type)
-    df_irdb_walden_works = apply_initial_processing(df_parsed_irdb, "repo", walden_works_schema_with_raw_type)
 
-    # Combine all three streams
-    combined_df = (
-        df_walden_works
-        .unionByName(df_backfill_walden_works, allowMissingColumns=True)
-        .unionByName(df_irdb_walden_works, allowMissingColumns=True)
-    )
-
+def _finish_repo_union(combined_df):
+    """Everything between the source union and apply_changes: gates, date clamps, _sequence,
+    enrichment, merge key. Shared by repo_enriched and the replay flow (oxjob #1407) so a replayed
+    record is processed exactly like a live one."""
     # oxjob #881: THE gate. repo_parsed_backfill and repo_parsed_irdb are raw CDF passthroughs
     # with no filtering of their own, so 20,874,419 records reached repo_works past rules we had
     # already agreed to -- 20,872,994 of them (99.99%) from backfill. Applying it on the union
-    # covers all three streams and any stream added later.
+    # covers all three streams, the replay flow (oxjob #1407) and any stream added later.
     # oxjob #881: _IS_DELETE bypasses every filter between here and apply_changes. A delete event
     # carries the pre-image of a record we are removing *because* it is junk, so it fails these
     # very rules -- filter it and the deletion silently never happens.
@@ -818,12 +835,36 @@ def repo_enriched():
     # native_id+'repo' form; existing locations_mapped keys were renamed in
     # place to match, preserving work_ids. (First attempt at this restamp
     # re-minted 14.7M works because locations_mapped still had the old keys.)
+    # Since oxjob #880 merge_key no longer contains native_id at all (normalize.create_merge_column);
+    # work identity per native_id lives in openalex.works.location_work_ids.
     combined_df = combined_df.withColumn("provenance", F.lit("repo"))
 
     # Apply enrichment (with fast Pandas UDFs)
     df_enriched = enrich_with_features_and_author_keys(combined_df)
 
     return apply_final_merge_key_and_filter(df_enriched, keep_when=_IS_DELETE)
+
+@dlt.table(name="repo_enriched",
+           comment="repo data after full parsing and author/feature enrichment.")
+def repo_enriched():
+    df_parsed_backfill = dlt.read_stream("repo_parsed_backfill")
+    df_parsed_input = dlt.read_stream("repo_parsed")
+    df_parsed_irdb = dlt.read_stream("repo_parsed_irdb")
+
+    # Apply consistent schema and transformations
+    df_walden_works = apply_initial_processing(df_parsed_input, "repo", REPO_WALDEN_SCHEMA)
+    df_backfill_walden_works = apply_initial_processing(df_parsed_backfill, "repo_backfill", REPO_WALDEN_SCHEMA)
+    df_irdb_walden_works = apply_initial_processing(df_parsed_irdb, "repo", REPO_WALDEN_SCHEMA)
+
+    # Combine all three streams
+    combined_df = (
+        df_walden_works
+        .unionByName(df_backfill_walden_works, allowMissingColumns=True)
+        .unionByName(df_irdb_walden_works, allowMissingColumns=True)
+    )
+
+    return _finish_repo_union(combined_df)
+
 
 dlt.create_streaming_table(
     name="repo_works",
@@ -849,6 +890,57 @@ dlt.apply_changes(
     sequence_by="_sequence",
     # oxjob #881: the pipeline can finally express "this record went away". Previously deletes
     # were dropped in three separate places, so a record could never leave repo_works.
+    apply_as_deletes=F.expr("_change_type = 'delete'"),
+    except_column_list=["_sequence", "set_spec", "dc_format", "_change_type", "_commit_version"]
+)
+
+# COMMAND ----------
+
+# oxjob #1407: the replay flow. One-off corrections that must move records already stored in
+# repo_works -- the placeholder-host re-key (re-keyed rows plus one delete per old key), later
+# #1418's install splits -- are written as rows to openalex.repo.repo_replay by a maintenance
+# notebook (notebooks/maintenance/RekeyPlaceholderOaiIds.py) and stream in here through CDF.
+#
+# A second, NAMED apply_changes flow into the same target, not a fourth input to repo_enriched's
+# union: adding a source to that union changes a running streaming query and would force a full
+# refresh of repo_enriched. A named flow has its own checkpoint and leaves the existing one alone.
+# Rows are processed by the same _finish_repo_union as live records, so gates, enrichment and
+# _sequence are identical; ordering against stored rows is the usual _sequence comparison.
+#
+# repo_replay columns: repo_parsed's output columns (minus _change_type, a CDF-reserved name) plus
+#   replay_job        who wrote the row ('oxjob1407', ...)
+#   replay_op         'upsert' | 'delete'  -> becomes _change_type
+#   replay_provenance 'repo' | 'repo_backfill' -> the provenance rank in _sequence
+#   replay_loaded_at  when the maintenance notebook wrote it
+# Only CDF inserts are read: the table is append-only by contract.
+@dlt.view(name="repo_replay_enriched",
+          comment="oxjob #1407: one-off corrections to repo_works, processed like live records")
+def repo_replay_enriched():
+    replay = (
+        spark.readStream
+            .option("readChangeFeed", "true")
+            .table(REPO_REPLAY_TABLE)
+            .filter(F.col("_change_type") == "insert")
+            .withColumn("_change_type",
+                        F.when(F.col("replay_op") == "delete", F.lit("delete")).otherwise(F.lit("upsert")))
+            .drop("_commit_timestamp")
+    )
+    combined_df = (
+        apply_initial_processing(replay.filter(F.col("replay_provenance") != "repo_backfill"),
+                                 "repo", REPO_WALDEN_SCHEMA)
+        .unionByName(
+            apply_initial_processing(replay.filter(F.col("replay_provenance") == "repo_backfill"),
+                                     "repo_backfill", REPO_WALDEN_SCHEMA),
+            allowMissingColumns=True)
+    )
+    return _finish_repo_union(combined_df)
+
+dlt.apply_changes(
+    target="repo_works",
+    source="repo_replay_enriched",
+    name="repo_works_replay",
+    keys=["native_id"],
+    sequence_by="_sequence",
     apply_as_deletes=F.expr("_change_type = 'delete'"),
     except_column_list=["_sequence", "set_spec", "dc_format", "_change_type", "_commit_version"]
 )
