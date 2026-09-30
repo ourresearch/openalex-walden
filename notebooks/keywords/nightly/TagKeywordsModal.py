@@ -9,7 +9,8 @@
 # MAGIC `keywords` + per-keyword mean token log-prob `lp`, exactly as the corpus retag wrote them).
 # MAGIC
 # MAGIC Spend guard: refuses to start if the estimate for the queue is over `max_usd`. A retry never starts a second GPU run:
-# MAGIC the call id is kept in `<volume_dir>/<build_id>/_call_id.txt` and polled again; a build already loaded is skipped.
+# MAGIC the call id is kept in `<volume_dir>/<build_id>/_call_id.txt` and polled again (dropped when the call failed, so the retry
+# MAGIC starts a fresh one); a build already loaded is skipped.
 
 # COMMAND ----------
 
@@ -95,6 +96,7 @@ while True:
     if s["state"] == "done":
         res = s["result"]; break
     if s["state"] == "failed":
+        dbutils.fs.rm(call_file)   # so a retry starts a fresh call instead of re-reading this failure
         raise RuntimeError(f"Modal call {call_id} failed: {s.get('error')}")
     if time.time() - t0 > MAX_MIN * 60:
         raise TimeoutError(f"Modal call {call_id} not done after {MAX_MIN} min (a retry resumes polling it)")
@@ -104,6 +106,7 @@ while True:
 log(f"Modal done: {res['shards_done']}/{res['shards']} shards, {res['works']:,} works, {res['shard_seconds']:.0f} shard-s, "
     f"~${res['usd_est']:.2f} (excl. cold starts), wall {res['wall_s']:.0f} s, errors {len(res['errors'])}")
 if res["errors"] or res["shards_done"] != len(shards) or res["works"] != n:
+    dbutils.fs.rm(call_file)   # a retry re-runs every shard (files are overwritten)
     raise RuntimeError(f"incomplete tagging: {json.dumps({k: v for k, v in res.items() if k != 'results'})[:2000]}")
 
 # COMMAND ----------

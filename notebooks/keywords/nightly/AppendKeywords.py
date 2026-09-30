@@ -6,7 +6,8 @@
 # MAGIC keyword id + name in `openalex.common.keywords_v2`, every work in this build's queue) and only then INSERTs the new
 # MAGIC work_ids into `target` (append-only, the #1312 rule; rows already there are never touched). Any failed check fails the task
 # MAGIC and appends nothing. After the append, every work of the build (with or without keywords) goes into the tagged-ids record
-# MAGIC `<state_prefix>tagged`, so it is never queued again, and one line goes into `<state_prefix>runs`.
+# MAGIC `<state_prefix>tagged`, so it is never queued again, and one line goes into `<state_prefix>runs`. A repair after a
+# MAGIC successful INSERT finds every row already served with the same keywords and only records the tagged ids.
 # MAGIC The next End 2 End merges the appended keywords into `openalex_works` (one re-stamp per new work).
 
 # COMMAND ----------
@@ -64,26 +65,34 @@ if tagged_n != n:
 
 res = {k: spark.sql(sql).collect()[0].asDict() for k, sql in kn.check_statements(ROWS, TARGET, QUEUE).items()}
 print(json.dumps(res, indent=1, default=str))
-ok, bad = kn.checks_pass(res)
-if not ok:
-    raise RuntimeError("pre-append checks failed, NOTHING appended: " + "; ".join(bad))
-rows_n = int(res["shape"]["works"])
-log(f"checks pass: {rows_n:,} rows for build {build_id}")
+rows_n, already = int(res["shape"]["works"]), int(res["already_in_target"]["n"])
+if rows_n and already == rows_n:
+    # a repair of this task after its INSERT went through: every row is already served; accept only if the served rows are these rows
+    same = spark.sql(f"SELECT count(*) AS n FROM {ROWS} r JOIN {TARGET} t ON t.work_id = r.work_id AND to_json(t.keywords) = to_json(r.keywords)").collect()[0].n
+    if same != rows_n:
+        raise RuntimeError(f"all {rows_n:,} work_ids are already in {TARGET} but only {same:,} with these keywords; NOTHING appended")
+    log(f"all {rows_n:,} rows of build {build_id} are already in {TARGET} (an earlier attempt appended them); recording the tagged ids only")
+    appended = 0
+else:
+    ok, bad = kn.checks_pass(res)
+    if not ok:
+        raise RuntimeError("pre-append checks failed, NOTHING appended: " + "; ".join(bad))
+    log(f"checks pass: {rows_n:,} rows for build {build_id}")
+    before = spark.table(TARGET).count()
+    spark.sql(f"""INSERT INTO {TARGET} (work_id, keywords, tagger_version, updated_at)
+    SELECT r.work_id, r.keywords, r.tagger_version, current_timestamp() FROM {ROWS} r LEFT ANTI JOIN {TARGET} t ON t.work_id = r.work_id""")
+    after = spark.table(TARGET).count()
+    appended = after - before
+    log(f"appended {appended:,} rows to {TARGET} ({before:,} -> {after:,})")
+    if appended != rows_n:
+        raise RuntimeError(f"expected {rows_n:,} new rows in {TARGET}, got {appended:,} (another writer?)")
 
 # COMMAND ----------
-
-before = spark.table(TARGET).count()
-spark.sql(f"""INSERT INTO {TARGET} (work_id, keywords, tagger_version, updated_at)
-SELECT r.work_id, r.keywords, r.tagger_version, current_timestamp() FROM {ROWS} r LEFT ANTI JOIN {TARGET} t ON t.work_id = r.work_id""")
-after = spark.table(TARGET).count()
-log(f"appended {after - before:,} rows to {TARGET} ({before:,} -> {after:,})")
-if after - before != rows_n:
-    raise RuntimeError(f"expected {rows_n:,} new rows in {TARGET}, got {after - before:,} (another writer?)")
 
 spark.sql(f"""INSERT INTO {TAGGED} (work_id, tagger_version, tagged_at, run)
 SELECT DISTINCT CAST(substr(r.id, 2) AS BIGINT), r.tagger_version, r.tagged_at, r.build_id FROM {RAW} r
 LEFT ANTI JOIN {TAGGED} t ON t.work_id = CAST(substr(r.id, 2) AS BIGINT) WHERE r.build_id = '{build_id}'""")
 a = spark.sql(f"SELECT sum(size(keywords)) AS s FROM {ROWS}").collect()[0].s or 0
-spark.sql(f"""INSERT INTO {RUNS} VALUES ('{build_id}', {n}, {tagged_n}, {after - before}, {n - rows_n}, {a},
+spark.sql(f"""INSERT INTO {RUNS} VALUES ('{build_id}', {n}, {tagged_n}, {appended}, {n - rows_n}, {a},
   {float(task_value('tag', 'usd_est', 0.0))}, {float(task_value('tag', 'modal_wall_s', 0.0))}, '{TARGET}', current_timestamp())""")
 log(f"build {build_id}: {n:,} queued, {rows_n:,} appended, {n - rows_n:,} with no keywords, recorded in {TAGGED}")
