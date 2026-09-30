@@ -328,7 +328,7 @@ def repo_items():
       .option("cloudFiles.schemaLocation", REPO_ITEMS_SCHEMA_LOCATION)
       # Discovery via UC managed file events on the openalex-ingest external location
       # (millions of tiny per-record gzips make directory listing take hours).
-      .option("cloudFiles.useManagedFileEvents", "true")
+      .option("cloudFiles.useManagedFileEvents", _src("items_use_file_events", "true"))
       # oxjob #911: the default rate limit (maxFilesPerTrigger=1000) caps ingest at
       # ~600 files/s regardless of cluster size -- micro-batches complete every ~1.5-2s,
       # so 1000-file batches leave the executors idle (measured: identical ~12K rows/s
