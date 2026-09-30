@@ -3001,8 +3001,28 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: Beijing_BMSTC_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateBeijingBMSTCAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Beijing_NSF_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateBeijingNSFAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
+            - task_key: Beijing_NSF_Awards
+            - task_key: Beijing_BMSTC_Awards
             - task_key: UeharaFoundation_Awards
             - task_key: NaitoFoundation_Awards
             - task_key: MHLWGrants_Awards
