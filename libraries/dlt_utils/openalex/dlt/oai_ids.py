@@ -55,7 +55,9 @@ _LOCAL_RE = "(?i)^oai:[^:]+:(.*)$"
 
 # What may appear inside the endpoint -> host map.
 _ENDPOINT_ID_PY = re.compile(r"^[A-Za-z0-9_-]+$")
-_ID_HOST_PY = re.compile(r"^[a-z0-9-]+([.][a-z0-9-]+)+$")
+_ID_HOST_PY = re.compile(r"^[a-z0-9-]+([.][a-z0-9-]+)+(/[a-z0-9._~-]+)*$")
+_URL_HOST_RE = "^[A-Za-z][A-Za-z0-9+.-]*://([^/:?#]+)"
+_URL_PATH_RE = "^[A-Za-z][A-Za-z0-9+.-]*://[^/?#]*([^?#]*)"
 
 
 def _sql_str_list(values):
@@ -85,17 +87,12 @@ def rekey_native_id_sql(id_sql, id_host_sql, keep_placeholder_sql="false"):
 
 
 def pmh_url_id_host_sql(pmh_url_sql):
-    """SQL: the id_host for an endpoint's pmh_url -- lowercased host, no scheme, port or leading www.
-
-    Host only, not path: journal-scoped and install-wide endpoints of one install
-    (id-press.eu /mjms vs /index) share ids that are the same records, and a path key would split
-    them. A host running two independent installs at different paths needs a hand-set `host/path`
-    id_host instead (oxjob #1407 PLAN A4).
-    """
-    return (
-        f"regexp_replace(lower(regexp_extract(trim({pmh_url_sql}), "
-        f"'^[A-Za-z][A-Za-z0-9+.-]*://([^/:?#]+)', 1)), '^www[.]', '')"
-    )
+    """SQL: the id_host for an endpoint's pmh_url. See pmh_url_id_host_py; the two must agree."""
+    u = f"trim({pmh_url_sql})"
+    host = f"regexp_replace(lower(regexp_extract({u}, '{_URL_HOST_RE}', 1)), '^www[.]', '')"
+    install = (f"lower(regexp_replace(regexp_extract(regexp_extract({u}, '{_URL_PATH_RE}', 1), "
+               f"'(?i)^(.*?)/index[.]php(/|$)', 1), '^/+|/+$', ''))")
+    return f"concat({host}, CASE WHEN {install} <> '' THEN concat('/', {install}) ELSE '' END)"
 
 
 def endpoint_hosts(pmh_urls, excluded=PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS):
@@ -158,8 +155,24 @@ def rekey_native_id_py(native_id, id_host, keep_placeholder_host=False):
 
 
 def pmh_url_id_host_py(pmh_url):
+    """The key host for an endpoint: its pmh_url host (lowercased, no port or leading www.), plus the
+    OJS install path when the install does not sit at the root -- the part before /index.php:
+
+        https://et.ippt.pan.pl/index.php/index/oai            -> et.ippt.pan.pl
+        https://journals.sbmu.ac.ir/urolj/index.php/index/oai -> journals.sbmu.ac.ir/urolj
+
+    One host can run several independent OJS installs (journals.sbmu.ac.ir: the root plus /aaem,
+    /ghfbb, /urolj, ... most on ojs.pkp.sfu.ca), whose article numbers overlap; host alone would
+    merge them. Journal-scoped and install-wide URLs of ONE install share the prefix, so they
+    still share keys.
+    """
     if pmh_url is None:
         return None
-    m = re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://([^/:?#]+)", pmh_url.strip())
-    host = (m.group(1) if m else "").lower()
-    return re.sub(r"^www[.]", "", host)
+    u = pmh_url.strip()
+    m = re.match(_URL_HOST_RE, u)
+    host = re.sub(r"^www[.]", "", (m.group(1) if m else "").lower())
+    path = re.match(_URL_PATH_RE, u)
+    path = path.group(1) if path else ""
+    i = re.match(r"(?i)^(.*?)/index[.]php(/|$)", path)
+    install = (i.group(1) if i else "").strip("/").lower()
+    return f"{host}/{install}" if install else host

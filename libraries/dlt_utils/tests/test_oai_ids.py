@@ -15,7 +15,7 @@ CASES = [
     ("oai:OJS.PKP.SFU.CA:article/5", "oai.lareferencia.info", "oai:oai.lareferencia.info/ojs.pkp.sfu.ca:article/5", True),
     ("oai:hal.science:x", "hal.science", "oai:hal.science:x", True),
     ("oai:ojs.pkp.sfu.ca:article/1", "et.ippt.pan.pl", "oai:et.ippt.pan.pl:article/1"),
-    ("oai:ojs.pkp.sfu.ca:article/1", "journals.sbmu.ac.ir", "oai:journals.sbmu.ac.ir:article/1"),
+    ("oai:ojs.pkp.sfu.ca:article/1", "journals.sbmu.ac.ir/urolj", "oai:journals.sbmu.ac.ir/urolj:article/1"),
     ("OAI:OJS.PKP.SFU.CA:article/7", "a.org", "oai:a.org:article/7"),  # case-insensitive host/scheme
     ("oai:generic.eprints.org:21464", "irep.iium.edu.my", "oai:irep.iium.edu.my:21464"),
     ("oai:localhost:123456789/42", "open.uct.ac.za", "oai:open.uct.ac.za:123456789/42"),
@@ -34,7 +34,12 @@ CASES = [
 
 URL_CASES = [
     ("https://et.ippt.pan.pl/index.php/index/oai", "et.ippt.pan.pl"),
-    ("https://journals.sbmu.ac.ir/urolj/index.php/index/oai", "journals.sbmu.ac.ir"),
+    ("https://journals.sbmu.ac.ir/urolj/index.php/index/oai", "journals.sbmu.ac.ir/urolj"),
+    ("https://journals.sbmu.ac.ir/index.php/index/oai", "journals.sbmu.ac.ir"),
+    ("https://id-press.eu/index.php/mjms/oai", "id-press.eu"),  # journal-scoped URL of a root install
+    ("https://x.org/Journals/Index.PHP/index/oai/", "x.org/journals"),
+    ("https://x.org:8443/ojs/index.php", "x.org/ojs"),
+    ("http://repo.x.org/cgi/oai2", "repo.x.org"),  # no /index.php: host only
     ("http://www.polibotanica.mx/index.php/polibotanica/oai", "polibotanica.mx"),
     ("http://dspace.bracu.ac.bd:8080/oai/request", "dspace.bracu.ac.bd"),
     ("  HTTP://Journals.KU.edu/index.php/index/oai ", "journals.ku.edu"),
@@ -117,6 +122,10 @@ def warehouse_check_sql():
 
 def test_endpoint_hosts_skips_excluded_and_unusable():
     from openalex.dlt.oai_ids import endpoint_hosts
+    assert endpoint_hosts([("u", "https://journals.sbmu.ac.ir/urolj/index.php/index/oai"),
+                           ("r", "https://journals.sbmu.ac.ir/index.php/index/oai"),
+                           ("a", "https://journals.sbmu.ac.ir/aaem/index.php/index/oai")],
+                          excluded={"r"}) == {"u": "journals.sbmu.ac.ir/urolj", "a": "journals.sbmu.ac.ir/aaem"}
     got = endpoint_hosts([("ep1", "https://www.ET.ippt.pan.pl:443/index.php/index/oai"),
                           ("ep2", "https://x.org/oai"), ("ep3", "not a url"), ("ep4", None),
                           ("bad'id", "https://y.org/oai"),
