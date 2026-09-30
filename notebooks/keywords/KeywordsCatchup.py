@@ -11,6 +11,12 @@
 # MAGIC - `wait_lakebase`: wait until the run's own Sync_Works_to_Lakebase is done.
 # MAGIC - `restore_replicas`: replicas back to 1, refresh.
 # MAGIC
+# MAGIC Re-run with replicas kept on (oxjob #1443: the replicas-0 run took API search down on 2026-09-30):
+# MAGIC - `prepare_live`: replicas 1; wait until the cluster is green and every data node holds works shards; merge threads 4.
+# MAGIC - `watchdog`: alongside the chunks; if any data node's search queue stays above `queue_limit`, merge threads back
+# MAGIC   to 8 and cancel the run (repair the run later to resume the unfinished chunks).
+# MAGIC - `finish`: merge threads back to 8, refresh.
+# MAGIC
 # MAGIC Adapted from AffiliationSwapCatchup (oxjob #1386). Jason asked 2026-09-29 18:18 CT to get keywords fully into the API ASAP.
 
 # COMMAND ----------
@@ -31,8 +37,14 @@ dbutils.widgets.text("run_start_utc", "2026-09-30 05:00:00")
 dbutils.widgets.text("warehouse_id", "3996dc0a9b183ce3")
 dbutils.widgets.text("dry_run", "false")      # test: never touch replicas
 dbutils.widgets.text("max_wait_hours", "30")
+dbutils.widgets.text("job_run_id", "")        # watchdog: {{job.run_id}}
+dbutils.widgets.text("queue_limit", "50")
+dbutils.widgets.text("strikes", "3")          # consecutive 60 s checks over the limit
 
 MODE = dbutils.widgets.get("mode").strip()
+JOB_RUN_ID = dbutils.widgets.get("job_run_id").strip()
+QUEUE_LIMIT = int(dbutils.widgets.get("queue_limit"))
+STRIKES = int(dbutils.widgets.get("strikes"))
 RUN_START = dt.datetime.strptime(dbutils.widgets.get("run_start_utc"), "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
 WH = dbutils.widgets.get("warehouse_id").strip()
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
@@ -127,6 +139,55 @@ elif MODE == "restore_replicas":
         c.indices.put_settings(index=INDEX, body={"index": {"number_of_replicas": 1}})
         c.indices.refresh(index=INDEX)
         log(f"{INDEX}: replicas back to 1, refreshed")
+
+elif MODE == "prepare_live":
+    c = es()
+    if not DRY:
+        c.indices.put_settings(index=INDEX, body={"index": {"number_of_replicas": 1}})
+    while time.time() < DEADLINE:
+        h = c.cluster.health()
+        data_nodes = {n["name"] for n in c.cat.nodes(format="json", h="name,node.role") if "d" in n["node.role"] or "h" in n["node.role"]}
+        holding = {s["node"] for s in c.cat.shards(index=INDEX, format="json", h="node,state") if s["state"] == "STARTED"}
+        idle = sorted(data_nodes - holding)
+        busy = h["relocating_shards"] + h["initializing_shards"] + h["unassigned_shards"]
+        log(f"health {h['status']}, relocating/initializing/unassigned {busy}, data nodes without {INDEX}: {len(idle)}")
+        if h["status"] == "green" and busy == 0 and not idle:
+            break
+        time.sleep(300)
+    else:
+        raise TimeoutError("cluster not balanced by the deadline")
+    if DRY:
+        log("DRY: would set merge threads 4")
+    else:
+        c.indices.put_settings(index=INDEX, body={"index": {"merge.scheduler.max_thread_count": 4}})
+        log(f"{INDEX}: replicas 1, merge threads 4; chunks may start")
+
+elif MODE == "watchdog":
+    c = es()
+    strikes = 0
+    while True:
+        run = w.jobs.get_run(int(JOB_RUN_ID))
+        chunks = [t for t in run.tasks if t.task_key.startswith("es_chunk_")]
+        if chunks and all(t.state and t.state.life_cycle_state and t.state.life_cycle_state.value in ("TERMINATED", "SKIPPED", "INTERNAL_ERROR") for t in chunks):
+            log("all chunks finished; watchdog done")
+            break
+        pools = c.nodes.stats(metric="thread_pool")["nodes"].values()
+        worst = max(((n["thread_pool"]["search"]["queue"], n["name"]) for n in pools), default=(0, ""))
+        strikes = strikes + 1 if worst[0] > QUEUE_LIMIT else 0
+        if strikes:
+            log(f"search queue {worst[0]} on {worst[1]} (> {QUEUE_LIMIT}), strike {strikes}/{STRIKES}")
+        if strikes >= STRIKES:
+            c.indices.put_settings(index=INDEX, body={"index": {"merge.scheduler.max_thread_count": 8}})
+            log("search saturating: merge threads back to 8, cancelling the run (repair it later to resume)")
+            w.jobs.cancel_run(int(JOB_RUN_ID))
+            break
+        time.sleep(60)
+
+elif MODE == "finish":
+    c = es()
+    c.indices.put_settings(index=INDEX, body={"index": {"merge.scheduler.max_thread_count": 8}})
+    c.indices.refresh(index=INDEX)
+    log(f"{INDEX}: merge threads back to 8, refreshed")
 
 else:
     raise ValueError(f"unknown mode {MODE!r}")
