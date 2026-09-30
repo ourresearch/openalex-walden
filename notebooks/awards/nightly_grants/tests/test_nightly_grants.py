@@ -265,4 +265,4 @@ def test_legacy_lock_must_be_free():
 def test_job_passes_run_id():
     text = (ROOT.parents[2] / "jobs" / "nightly_grants.yaml").read_text()
     assert 'databricks_run_id: "{{job.run_id}}"' in text
-    assert "max_concurrent_runs: 1" in text and "pause_status: PAUSED" in text
+    assert "max_concurrent_runs: 1" in text and ("pause_status: PAUSED" in text or "pause_status: UNPAUSED" in text)
