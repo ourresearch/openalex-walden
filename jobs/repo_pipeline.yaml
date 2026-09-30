@@ -14,6 +14,12 @@ resources:
   pipelines:
     repo_pipeline:
       name: Repo
+      # Pin the owner to the CI deploy service principal (github-actions-deploy).
+      # Without this the CLI makes whoever runs `bundle deploy` the owner, and only
+      # metastore admins can change a pipeline owner, so a local deploy breaks CI.
+      permissions:
+        - service_principal_name: 321056ec-06df-41ad-8227-2c238f818596
+          level: IS_OWNER
       catalog: openalex
       target: repo
       # FULL-REFRESH PROFILE -- swap `serverless: true` for the block below AND set
