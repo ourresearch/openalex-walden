@@ -11,7 +11,7 @@
 resources:
   jobs:
     Vector_Refresh_Oxjob1433:
-      name: Semantic index filter-field refresh, paced nightly (oxjob #1433)
+      name: "Semantic index filter-field refresh, paced nightly (oxjob #1433)"
       description: |
         Re-sends the 160.4M works whose semantic-search filter fields went stale (oxjob #1433) in small nightly batches,
         guarded by merge count and kNN latency on works-vectors-v2. Resumes from its checkpoint; safe to re-run.
