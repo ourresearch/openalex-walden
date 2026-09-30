@@ -356,6 +356,18 @@ def main() -> None:
         a if isinstance(a, str) and a else f"MDA-NID-{n}"
         for a, n in zip(df["crossref_award_number"], df["nid"])
     ]
+    # The view also lists some grants twice under two node ids with no DOI on
+    # one copy (e.g. nids 549575/549605, legacy 1084/1085). Same title, PI
+    # family name, dates and amount = same grant: keep the copy carrying the
+    # Crossref award number, else the lowest node id.
+    df["_has_award"] = df["crossref_award_number"].notna()
+    df["_nid"] = df["nid"].astype(int)
+    df = df.sort_values(["_has_award", "_nid"], ascending=[False, True])
+    sig = ["display_title", "lead_family_name", "start_date", "end_date", "amount"]
+    same_grant = df.duplicated(subset=sig, keep="first")
+    for n, t in zip(df.loc[same_grant, "nid"], df.loc[same_grant, "display_title"]):
+        log(f"  duplicate listing nid {n} ({t[:60]}); dropped")
+    df = df[~same_grant].drop(columns=["_has_award", "_nid"]).sort_index().reset_index(drop=True)
     # The view lists a few grants twice under two node ids (same DOI, title
     # and grantee); keep the first (newest node). Same-DOI rows that differ
     # in title or grantee still fail below.
