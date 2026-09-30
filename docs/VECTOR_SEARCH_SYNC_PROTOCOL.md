@@ -26,7 +26,8 @@ The gte-large-en stack (`work_embeddings_v2`, `works_for_embedding`, `works-vect
    Returns a JSON summary (`dbutils.notebook.exit`).
 2. **stage** (SQL-file task on the serverless warehouse `69a583ace3bdc8d0`, `notebooks/elastic/stage_vector_sync_qwen3.sql`):
    builds `vector_sync_staging_qwen3` (10 batches) from every work with a vector that was **embedded** in the last
-   2 days, whose 14 filter fields **changed** (their `xxhash64` differs from the mirror
+   2 days. **Parked since 2026-09-29 (walden `fbf81eb9`):** the filter-field diff below (in `996ab8a5`) comes back with a
+   per-night cap once the one-off refresh is done. With the diff, it also stages every work 14 filter fields **changed** (their `xxhash64` differs from the mirror
    `openalex.vector_search.vector_filter_fields_sent`), or that is **unmirrored**; and `vector_sync_deletes_qwen3`
    (mirror ids whose work no longer exists). Fails if more than 5M works are unmirrored (the mirror is broken).
    Runs on the warehouse on purpose: the same query stalled for hours on the job cluster.
@@ -45,6 +46,18 @@ every work once.
 
 Typical night: ~300K works, ~25 min wall, ≈$1 of endpoint. Failure emails jason@ourresearch.org; a failed run is
 simply re-run (every step is idempotent).
+
+## Big re-sends: pace them (oxjob #1433)
+
+The vector cluster (2 nodes, 1.7 TB index, no replica) serves kNN from the page cache. Overwriting tens of millions
+of docs in place sets off merges that evict it: on 2026-09-29 ≈ 40M docs in one evening made semantic search fail
+60-78% of requests, and recovery took ≈ 90 min after the writes stopped (the damage lags the writes). So any re-send
+bigger than a normal night goes through the sync notebook's pacing widgets: `max_batches` (per run), `max_minutes`,
+and the guard (`knn_guard_ms` > 0: before each batch wait for ≤ `max_merges` merges on the index and a direct kNN probe
+≤ `knn_guard_ms`, else stop). A run that leaves batches undone skips the deletes, the mirror and the cleanup; the next
+run with `resume=true` carries on. Example: `jobs/vector_refresh_oxjob1433.yaml` (00:45 CT nightly, 2 workers,
+`spark.task.cpus=4`). Watch direct kNN (0.1-0.3 s healthy) and the Analytics Engine semantic 5xx rate, which was
+already 5-15% an hour before any re-send.
 
 ## Full rebuild (only if the model or the text format changes)
 
