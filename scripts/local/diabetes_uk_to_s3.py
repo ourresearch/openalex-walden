@@ -85,6 +85,7 @@ HEADERS = {"User-Agent": "openalex-walden/1.0 (+https://openalex.org; team@ourre
 REQUEST_DELAY = 0.5
 RETRIES = 4
 MAX_CONSECUTIVE_EMPTY = 3
+QUERY_VARIANTS = ['ga:"Diabetes UK"', 'ga:"diabetes uk"', 'ga:"DIABETES UK"', 'ga:"Diabetes uk"']
 
 
 def log(msg: str) -> None:
@@ -105,10 +106,10 @@ def get_json(url: str) -> dict:
     raise RuntimeError(f"GET {url} failed after {RETRIES} tries: {last_err}")
 
 
-def fetch_grist(limit: int | None) -> list[dict]:
+def fetch_grist(query: str, limit: int | None) -> tuple[int, list[dict]]:
     """Page through GRIST until the reported HitCount is reached. Empty pages
     before that are logged and skipped (runbook Step 1: empty page != EOF)."""
-    q = urllib.parse.quote(f'ga:"{AGENCY}"')
+    q = urllib.parse.quote(query)
     records, page, hit_count, empty = [], 1, None, 0
     while True:
         d = get_json(GRIST.format(q=q, p=page))
@@ -131,30 +132,35 @@ def fetch_grist(limit: int | None) -> list[dict]:
         time.sleep(REQUEST_DELAY)
     if not limit and len(records) < hit_count:
         raise RuntimeError(f"GRIST returned {len(records)} of {hit_count} records; refusing a partial corpus")
-    return records
+    return hit_count, records
 
 
-def fetch_all(limit: int | None, max_passes: int = 8) -> list[dict]:
-    """GRIST's page ordering is NOT stable between requests: one full pass
-    returns HitCount records but some are repeats and others are silently
-    skipped (2026-09-30: two passes gave 577 vs 573 distinct grant ids). So
-    page through repeatedly and union the distinct records until two
-    consecutive passes add nothing new."""
+def fetch_union(limit: int | None, max_rounds: int = 6) -> list[dict]:
+    """GRIST paging is NOT stable: a full pass returns HitCount records but
+    repeats some and silently skips others, and repeating the SAME query
+    tends to skip the same ones (2026-09-30: three identical passes all
+    missed the same 5 grants). Different spellings of the query (case,
+    alias) page in a different order, so union full passes over several
+    query variants until the distinct-record count reaches HitCount.
+    Tolerates a <=1% shortfall (genuinely identical duplicate records can
+    never be counted twice); anything bigger raises."""
     if limit:
-        return fetch_grist(limit)
+        return fetch_grist(QUERY_VARIANTS[0], limit)[1]
     seen: dict[str, dict] = {}
-    stable = 0
-    for n in range(1, max_passes + 1):
-        before = len(seen)
-        for r in fetch_grist(None):
-            seen.setdefault(json.dumps(r, sort_keys=True, ensure_ascii=False), r)
-        added = len(seen) - before
-        ids = {(r.get("Grant") or {}).get("Id") for r in seen.values()}
-        log(f"Pass {n}: +{added} new records -> {len(seen)} distinct records, {len(ids)} grant ids")
-        stable = stable + 1 if added == 0 else 0
-        if stable >= 2:
-            return list(seen.values())
-    raise RuntimeError(f"GRIST record set still growing after {max_passes} passes")
+    hit_count = 0
+    for rnd in range(1, max_rounds + 1):
+        for q in QUERY_VARIANTS:
+            hit_count, recs = fetch_grist(q, None)
+            before = len(seen)
+            for r in recs:
+                seen.setdefault(json.dumps(r, sort_keys=True, ensure_ascii=False), r)
+            log(f"GRIST round {rnd} [{q}]: +{len(seen) - before} -> {len(seen)}/{hit_count} distinct records")
+            if len(seen) >= hit_count:
+                return list(seen.values())
+    if len(seen) >= 0.99 * hit_count:
+        log(f"WARNING: {len(seen)}/{hit_count} distinct records after {max_rounds} rounds; proceeding (<=1% short)")
+        return list(seen.values())
+    raise RuntimeError(f"GRIST: only {len(seen)}/{hit_count} distinct records after {max_rounds} rounds")
 
 
 def clean(s) -> str | None:
@@ -258,7 +264,7 @@ def main() -> None:
     ap.add_argument("--allow-shrink", action="store_true", help="override the §1.4 shrink guard")
     args = ap.parse_args()
 
-    records = fetch_all(args.limit)
+    records = fetch_union(args.limit)
     log(f"GRIST: {len(records)} source records")
     rows = build_rows(records)
     df = pd.DataFrame(rows)
