@@ -44,8 +44,13 @@ DEFAULT_OAI_HOSTS = (
 )
 
 from openalex.dlt.oai_ids_excluded import PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS
+from openalex.dlt.oai_ids_overrides import KEEP_PLACEHOLDER_ENDPOINTS, KEY_HOST_OVERRIDES
 
 ENDPOINT_REGISTRY_TABLE = "openalex_sources.public.oai_pmh_endpoint"
+# Phase B (moving stored keys): old -> new key map and the append-only replay table the Repo
+# pipeline streams into repo_works. Written by maintenance/RekeyPlaceholderOaiIds.py.
+REKEY_MAP_TABLE = "openalex.repo.native_id_rekey_map"
+REPLAY_TABLE = "openalex.repo.repo_replay"
 
 # Java regex, case-insensitive on the "oai:" scheme and the host. No backslashes on purpose:
 # these strings are embedded in Spark SQL literals from Python notebooks, where escape
@@ -95,30 +100,34 @@ def pmh_url_id_host_sql(pmh_url_sql):
     return f"concat({host}, CASE WHEN {install} <> '' THEN concat('/', {install}) ELSE '' END)"
 
 
-def endpoint_hosts(pmh_urls, excluded=PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS):
-    """{endpoint_id: host} for re-keying, from (endpoint_id, pmh_url) pairs.
+def endpoint_hosts(pmh_urls, excluded=PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS, overrides=KEY_HOST_OVERRIDES):
+    """{endpoint_id: host} for re-keying, from (endpoint_id, pmh_url) pairs. `overrides` replace the
+    derived host for the endpoints they name (oai_ids_overrides).
 
     Left out (their ids stay unchanged): excluded endpoints; any endpoint on the same host as an
     excluded one, since it serves the same install whose records are stored under the placeholder
     keys (a set-scoped endpoint split off an install-wide one, oxjob #1418); and endpoints whose
     pmh_url yields no usable host.
     """
-    pairs = [(e, pmh_url_id_host_py(u)) for e, u in pmh_urls]
+    pairs = [(e, overrides.get(e) or pmh_url_id_host_py(u)) for e, u in pmh_urls]
     held_hosts = {h for e, h in pairs if e in excluded and h}
     return {e: h for e, h in pairs
             if e not in excluded and _ENDPOINT_ID_PY.match(e or "")
             and h and _ID_HOST_PY.match(h) and h not in held_hosts}
 
 
-def read_endpoint_hosts(spark, table=ENDPOINT_REGISTRY_TABLE):
+def read_endpoint_hosts(spark, table=ENDPOINT_REGISTRY_TABLE, excluded=PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS):
     """endpoint_hosts() over the endpoint registry, read once (a few thousand rows). Fails loudly if
     the registry can't be read: running without it would store new records under placeholder keys."""
-    return endpoint_hosts((r.id, r.pmh_url) for r in spark.read.table(table).select("id", "pmh_url").collect())
+    return endpoint_hosts(((r.id, r.pmh_url) for r in spark.read.table(table).select("id", "pmh_url").collect()),
+                          excluded=excluded)
 
 
-def with_rekeyed_native_id(df, hosts, endpoint_col, raw_id_col="oai_identifier"):
+def with_rekeyed_native_id(df, hosts, endpoint_col, raw_id_col="oai_identifier",
+                           keep=KEEP_PLACEHOLDER_ENDPOINTS):
     """Set native_id from `raw_id_col`, re-keyed with `hosts` ({endpoint_id: host},
-    read_endpoint_hosts). The raw id stays in `raw_id_col` for code that parses the OAI host.
+    read_endpoint_hosts); endpoints in `keep` keep the placeholder inside the host part. The raw
+    id stays in `raw_id_col` for code that parses the OAI host.
 
     The map is a literal, looked up only for placeholder ids: in a streaming query this is a plain
     projection, so it never changes the query's stateful plan (checked against an existing
@@ -131,11 +140,41 @@ def with_rekeyed_native_id(df, hosts, endpoint_col, raw_id_col="oai_identifier")
     host_map = F.map_from_arrays(F.lit(keys), F.lit([hosts[k] for k in keys]))
     id_host = F.when(F.expr(is_placeholder_id_sql(f"`{raw_id_col}`")),
                      F.try_element_at(host_map, F.col(endpoint_col)))
+    keep_sql = ("`" + endpoint_col + "` IN (" + _sql_str_list(sorted(k for k in keep if k in hosts)) + ")"
+                if any(k in hosts for k in keep) else "false")
     return (
         df.withColumn("_id_host", id_host)
-          .withColumn("native_id", F.expr(rekey_native_id_sql(f"`{raw_id_col}`", "_id_host")))
+          .withColumn("native_id", F.expr(rekey_native_id_sql(f"`{raw_id_col}`", "_id_host", keep_sql)))
           .drop("_id_host")
     )
+
+
+REPLAY_CONTROL_COLUMNS = ("replay_job", "replay_op", "replay_provenance", "replay_loaded_at")
+
+
+def to_replay_rows(df, replay_schema, job, op, provenance):
+    """Shape `df` into REPLAY_TABLE rows: its columns in the table's order, typed NULL where
+    missing, and the replay control columns set. `op` is 'upsert' or 'delete'; `provenance` is
+    'repo' or 'repo_backfill' (the _sequence provenance rank the row is processed with).
+    """
+    assert op in ("upsert", "delete"), op
+    assert provenance in ("repo", "repo_backfill"), provenance
+    control = {
+        "replay_job": F.lit(job),
+        "replay_op": F.lit(op),
+        "replay_provenance": F.lit(provenance),
+        "replay_loaded_at": F.current_timestamp(),
+    }
+    have = set(df.columns)
+    cols = []
+    for f in replay_schema.fields:
+        if f.name in control:
+            cols.append(control[f.name].cast(f.dataType).alias(f.name))
+        elif f.name in have:
+            cols.append(F.col(f.name).cast(f.dataType).alias(f.name))
+        else:
+            cols.append(F.lit(None).cast(f.dataType).alias(f.name))
+    return df.select(*cols)
 
 
 # --- pure-Python reference, for tests and for checking the SQL against a warehouse ---------
