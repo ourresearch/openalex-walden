@@ -1,0 +1,38 @@
+# DNRF grant-number crosswalk for dnrf_to_s3.py (runbook 2.1.1).
+# dg.dk never prints the "DNRF<n>" grant number that grantees cite, so this maps a scraped
+# grant (source_key, as emitted by dnrf_to_s3.py) to its DNRF number using acknowledgement
+# strings already in openalex.awards.openalex_awards_raw for funder 4320320943 (crossref /
+# europepmc / datacite work-funder shells, snapshot 2026-09-30) that name BOTH the center
+# (acronym or title) AND a DNRF number. A row is kept only when every matching string gives
+# the same number and no other grant claims that number. 28 of 174 grants; numbers rise
+# monotonically with application round (DNRF78 CREATES 2007 ... DNRF168 VOLT 2023).
+# Rows NOT listed here ship with a synthetic DG-<programme>-<key> funder_award_id.
+source_key,acronym,dnrf_number,n_ack_strings,example
+rest-55321,VOLT,DNRF168,3,DNRF168 – VOLT
+rest-55107,CiViA,DNRF164,1,DNRF 164; CiViA
+rest-53742,POLIMA,DNRF165,1,"Project No. DNRF165, POLIMA"
+rest-46168,HADAL,DNRF145,2,DNRF145(HADAL)
+rest-45688,InterCat,DNRF150,2,DNRF150 Intercat
+rest-45368,NanoPhoton,DNRF147,6,DNRF147 - NanoPhoton
+rest-45330,GeoTop,DNRF151,4,CPH- GEOTOP-DNRF151
+rest-43693,CHEAC,DNRF149,6,"CHEAC, DNRF-149"
+rest-43672,CEH,DNRF143,4,CEH - DNRF143
+rest-28664,PROMEMO,DNRF133,1,PROMEMO DNRF133
+rest-28635,CellPAT,DNRF135,1,CellPAT DNRF135
+rest-28622,CEM,DNRF136,1,"Center for Electromicrobiology, DNRF136"
+rest-28590,bigQ,DNRF142,3,bigQ DNRF 142
+rest-28567,Hy-Q,DNRF139,3,Center of Excellence Hy-Q DNRF139
+rest-28549,DAWN,DNRF140,1,Cosmic Dawn Center (DAWN) grant no. 140
+rest-490,CeMiSt,DNRF137,1,CeMiSt DNRF137
+former-2015-spoc,SPOC,DNRF123,2,DNRF123 SPOC
+former-2015-center-for-intelligent-drug-delivery-and-sensing-using-micro,,DNRF122,1,IDUN DNRF122
+former-2015-mib,MIB,DNRF117,1,MiB is funded by DNRF117
+former-2015-card,CARD,DNRF125,5,CARD DNRF125
+former-2015-persimune,PERSIMUNE,DNRF126,1,"DNRF126, CHIP & PERSIMUNE"
+former-2015-stemphys,STEMPHYS,DNRF116,1,"DNRF116 (StemPhys),"
+former-2015-basp,BASP,DNRF120,3,BASP (DNRF120)
+former-2012-cng,CNG,DNRF103,1,DNRF103 CNG
+former-2012-cenperm,CENPERM,DNRF100,6,CENPERM (DNRF 100)
+former-2009-sym,SYM,DNRF92,1,CPH-SYM-DNRF92
+former-2007-creates,CREATES,DNRF78,2,CREATES (DNRF78)
+former-2007-pumpkin,PUMPKIN,DNRF85,1,PUMPKIN DNRF85
