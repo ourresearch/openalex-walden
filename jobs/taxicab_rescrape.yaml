@@ -20,6 +20,7 @@ resources:
               harvest_workers: "600"
               queue_table: "openalex.taxicab.rescrape_queue"
               max_per_host: "10"
+              doi_host_key: "host"
           job_cluster_key: Taxicab_Rescrape_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_Rescrape_job_cluster
@@ -59,3 +60,5 @@ resources:
           default: "openalex.taxicab.rescrape_queue"
         - name: max_per_host
           default: "10"
+        - name: doi_host_key
+          default: "host"
