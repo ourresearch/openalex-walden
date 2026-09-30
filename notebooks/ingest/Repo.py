@@ -20,6 +20,21 @@ from openalex.dlt.repo_filters import apply_repo_policy_filters, apply_endpoint_
 from openalex.dlt.repo_ids import extract_ids_udf
 from openalex.dlt.oai_ids import ENDPOINT_ID_HOST_TABLE, REPLAY_TABLE, with_rekeyed_native_id
 
+
+def _src(key, default):
+    """Where this pipeline reads from. Production uses the defaults; a dev copy of the pipeline sets
+    `repo.<key>` in its configuration to point at a few endpoint folders and scratch tables
+    (oxjob #1407 validation). Never set these on the production pipeline."""
+    return spark.conf.get(f"repo.{key}", default)
+
+
+REPO_ITEMS_PATH = _src("items_path", "s3a://openalex-ingest/repositories/")
+REPO_ITEMS_SCHEMA_LOCATION = _src("items_schema_location", "dbfs:/pipelines/repo/schema")
+REPO_BACKFILL_TABLE = _src("backfill_table", "openalex.repo.repo_works_backfill")
+REPO_IRDB_TABLE = _src("irdb_table", "openalex.repo.irdb_parsed")
+REPO_ENDPOINT_ID_HOST_TABLE = _src("endpoint_id_host_table", ENDPOINT_ID_HOST_TABLE)
+REPO_REPLAY_TABLE = _src("replay_table", REPLAY_TABLE)
+
 # oxjob #933: repositories that host only open content attest OA on their own. OSTI is
 # the origin of its reports (10.2172) and DOE data-centre DOIs, but a record carrying a
 # publisher's DOI is a pointer at a paywalled article; those get OA only from a PDF the
@@ -310,7 +325,7 @@ def repo_items():
       .option("compression", "gzip")
       .option("ignorMissingFiles", "true")
       .schema(repository_schema)
-      .option("cloudFiles.schemaLocation", "dbfs:/pipelines/repo/schema")
+      .option("cloudFiles.schemaLocation", REPO_ITEMS_SCHEMA_LOCATION)
       # Discovery via UC managed file events on the openalex-ingest external location
       # (millions of tiny per-record gzips make directory listing take hours).
       .option("cloudFiles.useManagedFileEvents", "true")
@@ -320,7 +335,7 @@ def repo_items():
       # on 20 and 60 nodes). 50K-file batches amortize the per-batch overhead; steady
       # state nightly volume never approaches this, so it only matters for refreshes.
       .option("cloudFiles.maxFilesPerTrigger", "50000")
-      .load("s3a://openalex-ingest/repositories/")
+      .load(REPO_ITEMS_PATH)
       # Named repository_id historically; renamed to endpoint_id in repo_parsed.
       # Kept here to avoid re-ingesting the entire streaming table.
       .withColumn("repository_id",
@@ -350,7 +365,7 @@ def repo_parsed():
     # oai_identifier for everything that parses the OAI host; it is not carried past this table.
     .withColumn("oai_identifier", F.col("`ns0:header`.`ns0:identifier`"))
     .transform(lambda df: with_rekeyed_native_id(
-        df, spark.read.table(ENDPOINT_ID_HOST_TABLE), "repository_id"))
+        df, spark.read.table(REPO_ENDPOINT_ID_HOST_TABLE), "repository_id"))
     .withColumn("updated_date", F.col("`ns0:header`.`ns0:datestamp`"))
     .dropDuplicates(["native_id", "updated_date"])
     .withColumn("native_id_namespace", F.lit("pmh"))
@@ -676,12 +691,12 @@ def repo_parsed():
     comment="Streaming read of repo backfill using CDF (automatically incremental in DLT)"
 )
 def repo_parsed_backfill():
-    repo_schema = spark.table("openalex.repo.repo_works_backfill").schema
+    repo_schema = spark.table(REPO_BACKFILL_TABLE).schema
     return (
         spark.readStream
             .option("readChangeFeed", "true")
             .schema(repo_schema)
-            .table("openalex.repo.repo_works_backfill")
+            .table(REPO_BACKFILL_TABLE)
             # oxjob #881: 'delete' is now FORWARDED, not dropped. Without it a record removed
             # from the source could never leave repo_works -- the pipeline had no delete path at
             # all. update_preimage stays excluded (it is the stale half of an update).
@@ -696,12 +711,12 @@ def repo_parsed_backfill():
     comment="Streaming read of IRDB parsed records using CDF (automatically incremental in DLT)"
 )
 def repo_parsed_irdb():
-    irdb_schema = spark.table("openalex.repo.irdb_parsed").schema
+    irdb_schema = spark.table(REPO_IRDB_TABLE).schema
     return (
         spark.readStream
             .option("readChangeFeed", "true")
             .schema(irdb_schema)
-            .table("openalex.repo.irdb_parsed")
+            .table(REPO_IRDB_TABLE)
             # oxjob #881: 'delete' is now FORWARDED, not dropped. Without it a record removed
             # from the source could never leave repo_works -- the pipeline had no delete path at
             # all. update_preimage stays excluded (it is the stale half of an update).
@@ -904,7 +919,7 @@ def repo_replay_enriched():
     replay = (
         spark.readStream
             .option("readChangeFeed", "true")
-            .table(REPLAY_TABLE)
+            .table(REPO_REPLAY_TABLE)
             .filter(F.col("_change_type") == "insert")
             .withColumn("_change_type",
                         F.when(F.col("replay_op") == "delete", F.lit("delete")).otherwise(F.lit("upsert")))

@@ -16,7 +16,8 @@ from openalex.dlt.repo_filters import apply_repo_policy_filters
 from openalex.dlt.sequencing import dedupe_by_sequence
 from openalex.dlt.repo_ids import extract_ids_udf
 from openalex.dlt.oai_ids import (
-    ENDPOINT_ID_HOST_TABLE, REPLAY_TABLE, is_placeholder_id_sql, to_replay_rows, with_rekeyed_native_id)
+    ENDPOINT_ID_HOST_TABLE, REKEY_MAP_TABLE, REPLAY_TABLE, is_placeholder_id_sql, to_replay_rows,
+    with_rekeyed_native_id)
 
 # oxjob #933: same trusted-host rule as notebooks/ingest/Repo.py -- keep byte-identical.
 # oxjob #1407: both expressions read oai_identifier (the RAW header id), not the re-keyed native_id.
@@ -618,6 +619,16 @@ parsed_df = dedupe_by_sequence(
 target_table = "openalex.repo.repo_works_backfill"
 
 if REPLAY_JOB:
+    # Records that held their key in repo_works (incumbents, in the rekey map) keep ingested_at: their
+    # sidecars travel through the pmh crosswalk. Recovered records were never stored or fetched, so they
+    # get ingested_at = now and taxicab's ingested_at window seeds them.
+    _incumbent_keys = (spark.table(REKEY_MAP_TABLE)
+                       .filter(col("job") == REPLAY_JOB)
+                       .select(col("new_native_id").alias("native_id"), lit(True).alias("_incumbent"))
+                       .distinct())
+    parsed_df = (parsed_df.join(_incumbent_keys, "native_id", "left")
+                 .withColumn("ingested_at", when(col("_incumbent"), col("ingested_at")).otherwise(current_timestamp()))
+                 .drop("_incumbent"))
     _replay = to_replay_rows(parsed_df, spark.table(REPLAY_TABLE).schema,
                              REPLAY_JOB, "upsert", "repo_backfill")
     _replay.write.format("delta").mode("append").saveAsTable(REPLAY_TABLE)
