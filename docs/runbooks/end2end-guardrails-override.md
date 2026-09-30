@@ -40,7 +40,7 @@ The nightly runs at its usual time and clears its own gate. No manual run, no pa
 cancel, no collision with the schedule, and a bundle deploy cannot undo it.
 
 How it works: every override gate in `walden_end2end` (Guardrails, the curation-decline gate in
-SyncWorkAuthorCurations, the disappearance gate in CreateWorkAuthors, the row-count gate in
+SyncWorkAuthorCurations, the row-count gate in
 BuildLakebaseWorksDocs, TrackDeleted* / delete_*, the Wunpaywall feed caps) resolves its flag
 through `openalex.works.e2e_override_active(flag, param)`: true when the job parameter is
 `"true"` OR `openalex.works.e2e_overrides` holds a row for that flag whose
