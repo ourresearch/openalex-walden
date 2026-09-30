@@ -1,11 +1,13 @@
-"""Endpoints NOT re-keyed yet (oxjob #1407). TEMPORARY: shrinks to empty as Phase B moves them, then goes.
+"""Endpoints NOT re-keyed (oxjob #1407). Permanent, by decision (Casey, 2026-09-30).
 
 Every endpoint that had a placeholder-host OAI id (ojs.pkp.sfu.ca, generic.eprints.org, localhost,
 ojs.localhost) harvested or stored on 2026-09-30: repo_items, repo_items_backfill or repo_works
 (353 endpoints, 2,378,303 records; scratch copy openalex_dev.sources.oxjob1407_placeholder_endpoints).
-Their records are already stored under the placeholder keys, so re-keying their new harvests would
-split each of them across two keys. Phase B moves an endpoint's stored keys and removes it from here
-in the same change. Never ADD an endpoint here.
+Their records are stored under the placeholder keys, so re-keying their new harvests would split each
+of them across two keys. Moving the stored keys (Phase B: pin copies, a replay flow, a cutover) was
+built, then dropped as too much machinery for what it recovers: these endpoints keep colliding among
+themselves (~335K records unindexed), and no new endpoint joins them. Never ADD an endpoint here; a
+new journal with a placeholder id is keyed on its own host automatically.
 """
 
 PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS = frozenset({

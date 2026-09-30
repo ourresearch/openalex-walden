@@ -137,16 +137,3 @@ def test_excluded_endpoints_are_plain_ids():
     from openalex.dlt.oai_ids_excluded import PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS as E
     import re
     assert E and all(re.match(r"^[A-Za-z0-9_-]+$", e) for e in E)
-
-
-def test_overrides_and_keep_constants():
-    import re
-    from openalex.dlt.oai_ids import _ID_HOST_PY, endpoint_hosts
-    from openalex.dlt.oai_ids_overrides import KEY_HOST_OVERRIDES, KEEP_PLACEHOLDER_ENDPOINTS
-    from openalex.dlt.oai_ids_excluded import PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS as E
-    assert all(_ID_HOST_PY.match(h) for h in KEY_HOST_OVERRIDES.values())
-    assert len(set(KEY_HOST_OVERRIDES.values())) == len(KEY_HOST_OVERRIDES)
-    assert KEEP_PLACEHOLDER_ENDPOINTS <= E and set(KEY_HOST_OVERRIDES) <= E  # all still excluded today
-    got = endpoint_hosts([("c5cd470d65f13852e6e", "http://js.vnu.edu.vn/index.php/EES/oai"),
-                          ("x", "http://js.vnu.edu.vn/index.php/XX/oai")], excluded=set())
-    assert got == {"c5cd470d65f13852e6e": "js.vnu.edu.vn/ees", "x": "js.vnu.edu.vn"}
