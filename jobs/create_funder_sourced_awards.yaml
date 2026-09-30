@@ -2911,8 +2911,28 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: OntarioResearchFunding_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateOntarioResearchFundingAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: AragonResearchGroups_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateAragonResearchGroupsAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
+            - task_key: AragonResearchGroups_Awards
+            - task_key: OntarioResearchFunding_Awards
             - task_key: PRIN_Awards
             - task_key: HFRI_Awards
             - task_key: TakedaScienceFoundation_Awards
