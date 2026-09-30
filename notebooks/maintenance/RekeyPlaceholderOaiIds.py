@@ -46,6 +46,11 @@ dbutils.widgets.text("host_move_prefixes", "")
 dbutils.widgets.text("host_move_csv", "")
 dbutils.widgets.text("host_move_requested_by", "")
 dbutils.widgets.text("confirm", "no")
+# Validation only: write every table this notebook creates or changes into openalex.<schema_override>
+# instead of production (sources such as repo_items, oai_pmh_endpoint and curations are still read from
+# production), and restrict `stage` to `only_endpoints`. Leave both empty for the real run.
+dbutils.widgets.text("schema_override", "")
+dbutils.widgets.text("only_endpoints", "")
 
 MODE = dbutils.widgets.get("mode")
 JOB = dbutils.widgets.get("job").strip()
@@ -71,15 +76,29 @@ ENRICH = "openalex.works.location_enrichments"
 DENYLIST = "openalex.works.location_denylist"
 CURATIONS = "openalex.curations.approved_curations"
 
-STAGE_HOSTS = f"openalex.repo.{JOB}_endpoint_id_host_stage"
-STAGE_MAP = f"openalex.repo.{JOB}_map"
-SOURCE_IDS = f"openalex.repo.{JOB}_source_ids"
-AUDIT = {t: f"openalex.repo.{JOB}_audit_{t.split('.')[-1]}" for t in (REGISTRY, ENRICH, DENYLIST)}
+OVERRIDE = dbutils.widgets.get("schema_override").strip()
+ONLY_ENDPOINTS = [x.strip() for x in dbutils.widgets.get("only_endpoints").split(",") if x.strip()]
+WORK_SCHEMA = f"openalex.{OVERRIDE}" if OVERRIDE else "openalex.repo"
+if OVERRIDE:
+    assert OVERRIDE.startswith("repo_dev_"), "schema_override must name a repo_dev_* scratch schema"
+    _dev = lambda t: f"openalex.{OVERRIDE}.{t.split('.')[-1]}"
+    (ENDPOINT_ID_HOST_TABLE, REKEY_MAP_TABLE, REPLAY_TABLE, HOST_MOVE_TABLE, SIDECAR_VIEW, REPO_WORKS,
+     REPO_PARSED, REGISTRY, ENRICH, DENYLIST) = map(_dev, (
+        ENDPOINT_ID_HOST_TABLE, REKEY_MAP_TABLE, REPLAY_TABLE, HOST_MOVE_TABLE, SIDECAR_VIEW, REPO_WORKS,
+        REPO_PARSED, REGISTRY, ENRICH, DENYLIST))
+    print("VALIDATION RUN: writing to", WORK_SCHEMA)
+ENDPOINT_FILTER = ("endpoint_id IN (" + ", ".join(f"'{x}'" for x in ONLY_ENDPOINTS) + ")") if ONLY_ENDPOINTS else "true"
+
+STAGE_HOSTS = f"{WORK_SCHEMA}.{JOB}_endpoint_id_host_stage"
+STAGE_MAP = f"{WORK_SCHEMA}.{JOB}_map"
+SOURCE_IDS = f"{WORK_SCHEMA}.{JOB}_source_ids"
+AUDIT = {t: f"{WORK_SCHEMA}.{JOB}_audit_{t.split('.')[-1]}" for t in (REGISTRY, ENRICH, DENYLIST)}
 PLACEHOLDER = is_placeholder_id_sql
 # the registry/enrichment/denylist key for a repo location (UnionAll maps repo_backfill -> 'repo')
 REPO_KEY = "provenance = 'repo' AND native_id_namespace = 'pmh'"
 
-print({"mode": MODE, "job": JOB, "confirm": CONFIRM, "placeholder_hosts": DEFAULT_OAI_HOSTS})
+print({"mode": MODE, "job": JOB, "confirm": CONFIRM, "schema_override": OVERRIDE, "only_endpoints": ONLY_ENDPOINTS,
+       "placeholder_hosts": DEFAULT_OAI_HOSTS})
 
 
 def rows(sql):
@@ -98,7 +117,7 @@ def require_confirm_outside_nightly():
     if not CONFIRM:
         raise Exception(f"mode={MODE} writes production tables: set confirm=yes")
     h = datetime.datetime.now(datetime.timezone.utc).hour
-    if 3 <= h < 8:
+    if not OVERRIDE and 3 <= h < 8:
         raise Exception(f"{h:02d}h UTC is inside the 03:00-08:00 End 2 End window; run before 03:00 or after 08:00")
 
 # COMMAND ----------
@@ -259,20 +278,22 @@ if MODE == "stage":
       CREATE OR REPLACE TABLE {SOURCE_IDS} AS
       SELECT DISTINCT repository_id AS endpoint_id, `ns0:header`.`ns0:identifier` AS raw_id
       FROM openalex.repo.repo_items WHERE {PLACEHOLDER('`ns0:header`.`ns0:identifier`')}
+        AND {ENDPOINT_FILTER.replace('endpoint_id', 'repository_id')}
       UNION
       SELECT DISTINCT endpoint_id, pmh_id FROM openalex.repo.repo_items_backfill WHERE {PLACEHOLDER('pmh_id')}
+        AND {ENDPOINT_FILTER}
       UNION
-      SELECT DISTINCT endpoint_id, native_id FROM {REPO_WORKS} WHERE {PLACEHOLDER('native_id')}""")
+      SELECT DISTINCT endpoint_id, native_id FROM {REPO_WORKS} WHERE {PLACEHOLDER('native_id')} AND {ENDPOINT_FILTER}""")
     eps = f"SELECT DISTINCT endpoint_id FROM {SOURCE_IDS}" + "".join(
         f" UNION SELECT '{x}'" for x in endpoint_list())
-    spark.sql(f"CREATE OR REPLACE TABLE openalex.repo.{JOB}_hosts_plain AS {endpoint_hosts_sql(eps)}")
+    spark.sql(f"CREATE OR REPLACE TABLE {WORK_SCHEMA}.{JOB}_hosts_plain AS {endpoint_hosts_sql(eps)}")
     # rows already frozen in endpoint_id_host (Phase A) win over anything derived now
     spark.sql(f"""
       CREATE OR REPLACE TABLE {STAGE_HOSTS} AS
       WITH plain AS (
         SELECT h.endpoint_id, coalesce(f.id_host, h.id_host) AS id_host, h.id_host_source,
                f.keep_placeholder_host AS frozen_keep, f.endpoint_id IS NOT NULL AS frozen
-        FROM openalex.repo.{JOB}_hosts_plain h LEFT JOIN {ENDPOINT_ID_HOST_TABLE} f USING (endpoint_id)),
+        FROM {WORK_SCHEMA}.{JOB}_hosts_plain h LEFT JOIN {ENDPOINT_ID_HOST_TABLE} f USING (endpoint_id)),
       k AS (SELECT s.endpoint_id, s.raw_id, {rekey_native_id_sql('s.raw_id', 'p.id_host', 'false')} AS nk
             FROM {SOURCE_IDS} s JOIN plain p USING (endpoint_id)),
       merging AS (SELECT nk FROM k GROUP BY nk HAVING count(DISTINCT raw_id) > 1),
@@ -431,7 +452,10 @@ if MODE == "execute":
         to_replay_rows(df, replay_schema, JOB, op, "repo").write.format("delta").mode("append").saveAsTable(REPLAY_TABLE)
 
     # 5. backfill-origin records: RepoBackfill's own parser, placeholder records only
-    print(dbutils.notebook.run("../ingest/RepoBackfill", 4 * 3600, {"replay_job": JOB, "rebuild": "false"}))
+    if OVERRIDE:
+        print("VALIDATION RUN: skipping the RepoBackfill replay (it writes the production replay table)")
+    else:
+        print(dbutils.notebook.run("../ingest/RepoBackfill", 4 * 3600, {"replay_job": JOB, "rebuild": "false"}))
 
     show(f"""SELECT replay_op, replay_provenance, count(*) n FROM {REPLAY_TABLE}
              WHERE replay_job = '{JOB}' GROUP BY 1,2 ORDER BY 1,2""")
