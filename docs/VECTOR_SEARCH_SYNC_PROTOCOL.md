@@ -1,6 +1,6 @@
 # Semantic-search vectors: how they are built and kept current
 
-Status 2026-09-24 (oxjob #1275). Replaces the old protocol for the Databricks Vector Search index behind
+Status 2026-09-29 (oxjobs #1275, #1433). Replaces the old protocol for the Databricks Vector Search index behind
 `/find/works`, which no longer exists (endpoint 404, no vector-search endpoints in the workspace).
 
 ## The stack
@@ -25,11 +25,23 @@ The gte-large-en stack (`work_embeddings_v2`, `works_for_embedding`, `works-vect
    blind appends. Refuses to run past `max_works` (50M) so a text-format change cannot re-embed the corpus unattended.
    Returns a JSON summary (`dbutils.notebook.exit`).
 2. **stage** (SQL-file task on the serverless warehouse `69a583ace3bdc8d0`, `notebooks/elastic/stage_vector_sync_qwen3.sql`):
-   rows embedded in the last 2 days joined to their 14 filter fields → `vector_sync_staging_qwen3` (10 batches).
-   This runs on the warehouse on purpose: the same query stalled for hours on the job cluster.
-3. **sync** (`sync_vector_index_qwen3.ipynb`, `is_full_sync=false`, 2-worker job cluster): reuses the staging table
-   and bulk-indexes it into `works-vectors-v2` (`index` ops, so re-sending is safe), checkpointing per batch, then
-   drops the staging/checkpoint tables.
+   builds `vector_sync_staging_qwen3` (10 batches) from every work with a vector that was **embedded** in the last
+   2 days, whose 14 filter fields **changed** (their `xxhash64` differs from the mirror
+   `openalex.vector_search.vector_filter_fields_sent`), or that is **unmirrored**; and `vector_sync_deletes_qwen3`
+   (mirror ids whose work no longer exists). Fails if more than 5M works are unmirrored (the mirror is broken).
+   Runs on the warehouse on purpose: the same query stalled for hours on the job cluster.
+3. **sync** (`sync_vector_index_qwen3.ipynb`, `is_full_sync=false`, 2–8-worker job cluster): bulk-indexes the staging
+   table into `works-vectors-v2` (`index` ops, so re-sending is safe), checkpointing per batch; deletes the gone works
+   (refuses above `max_deletes`, default 1M); after a clean run MERGEs the staged hashes into the mirror; then drops
+   the staging/checkpoint/deletes tables.
+
+**Why the filter-field diff (oxjob #1433):** semantic search pre-filters kNN on this index's own copy of the filter
+fields. Until 2026-09-29 only works whose text changed were re-sent, so every metadata change (the 2026-09-27
+affiliation swap, author moves, citations) left the copy stale: ≈ 10% of works had stale institutions. The API now
+also re-checks filters on works-v34 when it hydrates hits (elastic-api `core/vector_index.py`), which stops wrong
+hits but not misses. The mirror was seeded on 2026-09-29 from `openalex_works` version 16676, the version the
+one-off refresh sent. **The stage file's projection and hash must match the mirror's:** changing either re-sends
+every work once.
 
 Typical night: ~300K works, ~25 min wall, ≈$1 of endpoint. Failure emails jason@ourresearch.org; a failed run is
 simply re-run (every step is idempotent).
