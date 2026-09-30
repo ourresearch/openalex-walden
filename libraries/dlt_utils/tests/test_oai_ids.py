@@ -114,10 +114,17 @@ def warehouse_check_sql():
     )
 
 
-def test_with_rekeyed_native_id_rejects_bad_rows():
-    import pytest
-    from openalex.dlt.oai_ids import with_rekeyed_native_id
-    for rows in ([("ep1", "Bad Host", False)], [("ep'1", "a.org", False)],
-                 [("ep1", "a.org", False), ("ep1", "b.org", False)]):
-        with pytest.raises(ValueError):
-            with_rekeyed_native_id(None, rows, "endpoint_id")
+
+def test_endpoint_hosts_skips_excluded_and_unusable():
+    from openalex.dlt.oai_ids import endpoint_hosts
+    got = endpoint_hosts([("ep1", "https://www.ET.ippt.pan.pl:443/index.php/index/oai"),
+                          ("ep2", "https://x.org/oai"), ("ep3", "not a url"), ("ep4", None),
+                          ("bad'id", "https://y.org/oai"),
+                          ("ep5", "https://x.org/index.php/journal/oai")], excluded={"ep2"})
+    assert got == {"ep1": "et.ippt.pan.pl"}  # ep5 shares ep2's (excluded) install
+
+
+def test_excluded_endpoints_are_plain_ids():
+    from openalex.dlt.oai_ids_excluded import PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS as E
+    import re
+    assert E and all(re.match(r"^[A-Za-z0-9_-]+$", e) for e in E)

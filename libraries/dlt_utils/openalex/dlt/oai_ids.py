@@ -6,21 +6,21 @@ identifier emit the platform default, so unrelated journals emit identical ids
 Measured 2026-09-28: 335 endpoints, 1,267,040 harvested records collapsing onto 886,136 ids,
 ~335K distinct records lost.
 
-The fix: for an endpoint listed in ENDPOINT_ID_HOST_TABLE, an id whose host is one of
-DEFAULT_OAI_HOSTS gets the endpoint's own host instead (`id_host`, the lowercased pmh_url host,
-frozen once assigned):
+The fix: an id whose host is one of DEFAULT_OAI_HOSTS gets the endpoint's own host instead (the
+lowercased host of its registered pmh_url, ENDPOINT_REGISTRY_TABLE):
 
     oai:ojs.pkp.sfu.ca:article/1  --(endpoint https://et.ippt.pan.pl/index.php/index/oai)-->
     oai:et.ippt.pan.pl:article/1
 
-Every other id, and every id of an endpoint with no row, passes through unchanged. A row must be
-written BEFORE the endpoint's first harvest: an endpoint whose placeholder records are already
-stored would have them split across the old and new keys (moving stored keys is oxjob #1407 Phase B).
+Automatic for every endpoint except oai_ids_excluded.PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS (TEMPORARY:
+the endpoints whose placeholder records were already stored on 2026-09-30; re-keying their new
+harvests would split them until Phase B moves their stored keys). Every other id passes through
+unchanged. The host follows the pmh_url: an endpoint that moves domain re-keys, exactly as a
+correctly configured install's own ids do when it moves.
 
-`keep_placeholder_host` (per endpoint, default false) keeps the placeholder inside the new host
-part -- oai:<id_host>/<placeholder>:<local> -- for aggregators that re-emit two placeholder hosts
-with the same local ids for different articles (LA Referencia: ojs.localhost:article/N and
-ojs.pkp.sfu.ca:article/N), where dropping it would merge two records.
+`keep_placeholder_host` (rekey_native_id_sql, default false) keeps the placeholder inside the new
+host part -- oai:<id_host>/<placeholder>:<local> -- for aggregators that re-emit two placeholder
+hosts with the same local ids for different articles (LA Referencia); Phase B needs it.
 
 ONE implementation, imported by every call site (Repo.py, RepoBackfill.py). A gate that
 disagrees between call sites splits one record across two keys (the #801 lesson), so nothing may
@@ -43,7 +43,9 @@ DEFAULT_OAI_HOSTS = (
     "ojs.localhost",        # OJS installs configured against localhost
 )
 
-ENDPOINT_ID_HOST_TABLE = "openalex.repo.endpoint_id_host"
+from openalex.dlt.oai_ids_excluded import PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS
+
+ENDPOINT_REGISTRY_TABLE = "openalex_sources.public.oai_pmh_endpoint"
 
 # Java regex, case-insensitive on the "oai:" scheme and the host. No backslashes on purpose:
 # these strings are embedded in Spark SQL literals from Python notebooks, where escape
@@ -51,9 +53,9 @@ ENDPOINT_ID_HOST_TABLE = "openalex.repo.endpoint_id_host"
 _HOST_RE = "(?i)^oai:([^:]+):"
 _LOCAL_RE = "(?i)^oai:[^:]+:(.*)$"
 
-# What may appear inside the generated SQL literals.
+# What may appear inside the endpoint -> host map.
 _ENDPOINT_ID_PY = re.compile(r"^[A-Za-z0-9_-]+$")
-_ID_HOST_PY = re.compile(r"^[a-z0-9.-]+(/[a-z0-9._~-]+)*$")
+_ID_HOST_PY = re.compile(r"^[a-z0-9-]+([.][a-z0-9-]+)+$")
 
 
 def _sql_str_list(values):
@@ -96,43 +98,46 @@ def pmh_url_id_host_sql(pmh_url_sql):
     )
 
 
-def read_endpoint_id_hosts(spark, table=ENDPOINT_ID_HOST_TABLE):
-    """The endpoint -> (id_host, keep_placeholder_host) rows, collected (a few hundred at most)."""
-    return [(r.endpoint_id, r.id_host, bool(r.keep_placeholder_host))
-            for r in spark.read.table(table).select("endpoint_id", "id_host", "keep_placeholder_host").collect()]
+def endpoint_hosts(pmh_urls, excluded=PLACEHOLDER_REKEY_EXCLUDED_ENDPOINTS):
+    """{endpoint_id: host} for re-keying, from (endpoint_id, pmh_url) pairs.
 
-
-def _lookup_sql(endpoint_sql, pairs, default):
-    whens = " ".join(f"WHEN '{k}' THEN {v}" for k, v in pairs)
-    return f"CASE {endpoint_sql} {whens} ELSE {default} END"
-
-
-def with_rekeyed_native_id(df, id_hosts, endpoint_col, raw_id_col="oai_identifier"):
-    """Set native_id from `raw_id_col`, re-keyed for the endpoints in `id_hosts`
-    (read_endpoint_id_hosts). The raw id stays in `raw_id_col` for code that parses the OAI host.
-
-    The endpoint lookup is inlined as a literal CASE, not a join: in a streaming query this is a
-    plain projection, so adding it (or a new row, picked up when the next pipeline update starts)
-    never changes the query's stateful plan.
+    Left out (their ids stay unchanged): excluded endpoints; any endpoint on the same host as an
+    excluded one, since it serves the same install whose records are stored under the placeholder
+    keys (a set-scoped endpoint split off an install-wide one, oxjob #1418); and endpoints whose
+    pmh_url yields no usable host.
     """
-    seen = set()
-    for endpoint_id, id_host, _ in id_hosts:
-        if not _ENDPOINT_ID_PY.match(endpoint_id or "") or not _ID_HOST_PY.match(id_host or ""):
-            raise ValueError(f"{ENDPOINT_ID_HOST_TABLE}: bad row {endpoint_id!r} -> {id_host!r}")
-        if endpoint_id in seen:
-            raise ValueError(f"{ENDPOINT_ID_HOST_TABLE}: endpoint {endpoint_id} has more than one row")
-        seen.add(endpoint_id)
-    if not id_hosts:
-        return df.withColumn("native_id", F.col(raw_id_col))
-    ep = f"`{endpoint_col}`"
-    host_sql = _lookup_sql(ep, [(e, f"'{h}'") for e, h, _ in id_hosts], "CAST(NULL AS STRING)")
-    keep = [(e, "true") for e, _, k in id_hosts if k]
-    keep_sql = _lookup_sql(ep, keep, "false") if keep else "false"
+    pairs = [(e, pmh_url_id_host_py(u)) for e, u in pmh_urls]
+    held_hosts = {h for e, h in pairs if e in excluded and h}
+    return {e: h for e, h in pairs
+            if e not in excluded and _ENDPOINT_ID_PY.match(e or "")
+            and h and _ID_HOST_PY.match(h) and h not in held_hosts}
+
+
+def read_endpoint_hosts(spark, table=ENDPOINT_REGISTRY_TABLE):
+    """endpoint_hosts() over the endpoint registry, read once (a few thousand rows). Fails loudly if
+    the registry can't be read: running without it would store new records under placeholder keys."""
+    return endpoint_hosts((r.id, r.pmh_url) for r in spark.read.table(table).select("id", "pmh_url").collect())
+
+
+def with_rekeyed_native_id(df, hosts, endpoint_col, raw_id_col="oai_identifier"):
+    """Set native_id from `raw_id_col`, re-keyed with `hosts` ({endpoint_id: host},
+    read_endpoint_hosts). The raw id stays in `raw_id_col` for code that parses the OAI host.
+
+    The map is a literal, looked up only for placeholder ids: in a streaming query this is a plain
+    projection, so it never changes the query's stateful plan (checked against an existing
+    dropDuplicates checkpoint on Spark 4.2), and registry changes apply from the next update.
+    """
+    raw = F.col(raw_id_col)
+    if not hosts:
+        return df.withColumn("native_id", raw)
+    keys = sorted(hosts)
+    host_map = F.map_from_arrays(F.lit(keys), F.lit([hosts[k] for k in keys]))
+    id_host = F.when(F.expr(is_placeholder_id_sql(f"`{raw_id_col}`")),
+                     F.try_element_at(host_map, F.col(endpoint_col)))
     return (
-        df.withColumn("_id_host", F.expr(host_sql))
-          .withColumn("_keep_placeholder_host", F.expr(keep_sql))
-          .withColumn("native_id", F.expr(rekey_native_id_sql(f"`{raw_id_col}`", "_id_host", "_keep_placeholder_host")))
-          .drop("_id_host", "_keep_placeholder_host")
+        df.withColumn("_id_host", id_host)
+          .withColumn("native_id", F.expr(rekey_native_id_sql(f"`{raw_id_col}`", "_id_host")))
+          .drop("_id_host")
     )
 
 

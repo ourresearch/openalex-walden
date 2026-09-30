@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.30-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.31-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -18,7 +18,7 @@ from openalex.dlt.transform import apply_initial_processing, apply_final_merge_k
 from openalex.dlt.repo_types import best_type_udf
 from openalex.dlt.repo_filters import apply_repo_policy_filters, apply_endpoint_filters
 from openalex.dlt.repo_ids import extract_ids_udf
-from openalex.dlt.oai_ids import read_endpoint_id_hosts, with_rekeyed_native_id
+from openalex.dlt.oai_ids import read_endpoint_hosts, with_rekeyed_native_id
 
 # oxjob #933: repositories that host only open content attest OA on their own. OSTI is
 # the origin of its reports (10.2172) and DOE data-centre DOIs, but a record carrying a
@@ -337,10 +337,11 @@ def repo_items():
   name="repo_parsed"
 )
 def repo_parsed():
-  # oxjob #1407: endpoints listed in openalex.repo.endpoint_id_host get their placeholder-host ids
-  # (ojs.pkp.sfu.ca, generic.eprints.org, localhost, ojs.localhost) keyed on their own host,
-  # read once per pipeline update and inlined as a literal lookup (no join, so no stateful-plan change).
-  id_hosts = read_endpoint_id_hosts(spark)
+  # oxjob #1407: placeholder-host ids (ojs.pkp.sfu.ca, generic.eprints.org, localhost, ojs.localhost)
+  # are keyed on the endpoint's own pmh_url host, from the endpoint registry read once per update and
+  # inlined as a literal map (no join, so no stateful-plan change). Endpoints whose placeholder
+  # records were already stored are excluded until Phase B moves them (oai_ids_excluded).
+  id_hosts = read_endpoint_hosts(spark)
   return (dlt.read_stream("repo_items")
     .filter(F.col("ns0:metadata").isNotNull())  # doaj deleted articles have no metadata
     # oxjob #1407: native_id is the OAI header id, except that a placeholder host is replaced by the

@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.30-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.31-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -15,7 +15,7 @@ from openalex.dlt.repo_types import best_type_udf
 from openalex.dlt.repo_filters import apply_repo_policy_filters
 from openalex.dlt.sequencing import dedupe_by_sequence
 from openalex.dlt.repo_ids import extract_ids_udf
-from openalex.dlt.oai_ids import read_endpoint_id_hosts, with_rekeyed_native_id
+from openalex.dlt.oai_ids import read_endpoint_hosts, with_rekeyed_native_id
 
 # oxjob #933: same trusted-host rule as notebooks/ingest/Repo.py -- keep byte-identical.
 # oxjob #1407: both expressions read oai_identifier (the RAW header id), not the re-keyed native_id.
@@ -381,7 +381,7 @@ spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
 # key. The raw id stays in oai_identifier for the host-parsing expressions; it is not selected below.
 parsed_df = clean_df \
     .withColumn("oai_identifier", regexp_extract(col("cleaned_xml"), r"<identifier>(.*?)</identifier>", 1)) \
-    .transform(lambda d: with_rekeyed_native_id(d, read_endpoint_id_hosts(spark), "endpoint_id")) \
+    .transform(lambda d: with_rekeyed_native_id(d, read_endpoint_hosts(spark), "endpoint_id")) \
     .withColumn("native_id_namespace", lit("pmh")) \
     .withColumn("title", substring(regexp_extract(col("cleaned_xml"), r"<dc:title.*?>(.*?)</dc:title>", 1), 0, MAX_TITLE_LENGTH)) \
     .withColumn("normalized_title", normalize_title_udf(col("title"))) \
