@@ -12,7 +12,8 @@
 # MAGIC - `restore_replicas`: replicas back to 1, refresh.
 # MAGIC
 # MAGIC Re-run with replicas kept on (oxjob #1443: the replicas-0 run took API search down on 2026-09-30):
-# MAGIC - `prepare_live`: replicas 1; wait until the cluster is green and every data node holds works shards; merge threads 4.
+# MAGIC - `prepare_live`: replicas 1; wait until the cluster is green (and, with `wait_balanced`, settled with works shards on every
+# MAGIC   data node); merge threads 4.
 # MAGIC - `watchdog`: alongside the chunks; if any data node's search queue stays above `queue_limit`, merge threads back
 # MAGIC   to 8 and cancel the run (repair the run later to resume the unfinished chunks).
 # MAGIC - `finish`: merge threads back to 8, refresh.
@@ -40,11 +41,13 @@ dbutils.widgets.text("max_wait_hours", "30")
 dbutils.widgets.text("job_run_id", "")        # watchdog: {{job.run_id}}
 dbutils.widgets.text("queue_limit", "50")
 dbutils.widgets.text("strikes", "3")          # consecutive 60 s checks over the limit
+dbutils.widgets.text("wait_balanced", "false")  # prepare_live: also wait for relocations to finish and works shards on every data node
 
 MODE = dbutils.widgets.get("mode").strip()
 JOB_RUN_ID = dbutils.widgets.get("job_run_id").strip()
 QUEUE_LIMIT = int(dbutils.widgets.get("queue_limit"))
 STRIKES = int(dbutils.widgets.get("strikes"))
+WAIT_BALANCED = dbutils.widgets.get("wait_balanced").strip().lower() == "true"
 RUN_START = dt.datetime.strptime(dbutils.widgets.get("run_start_utc"), "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
 WH = dbutils.widgets.get("warehouse_id").strip()
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
@@ -151,7 +154,7 @@ elif MODE == "prepare_live":
         idle = sorted(data_nodes - holding)
         busy = h["relocating_shards"] + h["initializing_shards"] + h["unassigned_shards"]
         log(f"health {h['status']}, relocating/initializing/unassigned {busy}, data nodes without {INDEX}: {len(idle)}")
-        if h["status"] == "green" and busy == 0 and not idle:
+        if h["status"] == "green" and (not WAIT_BALANCED or (busy == 0 and not idle)):
             break
         time.sleep(300)
     else:
