@@ -78,7 +78,7 @@ MAX_CONSECUTIVE_NON200 = 5
 
 MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
-SEASON_MONTH = {"winter": 1, "spring": 4, "summer": 7, "fall": 10, "autumn": 10}
+SEASON_MONTH = {"winter": 1, "spring": 4, "sping": 4, "summer": 7, "fall": 10, "autumn": 10}
 
 
 def log(msg: str) -> None:
@@ -137,7 +137,8 @@ def split_name(name: str | None) -> tuple[str | None, str | None]:
 
 # legacy grantee "CMT - Daniel Summers, Ph.D." / "ALS – Udai Pandey" / "FSHD: Scott Harper"
 PREFIX_SEP_RE = re.compile(r"\s+-\s+|\s*[–—]\s*|:\s+")
-LEGACY_TITLE_RE = re.compile(r"^Grant\s*-\s*(Winter|Spring|Summer|Fall|Autumn)?\s*(\d{4})\s*-\s*(.*)$", re.I)
+LEGACY_TITLE_RE = re.compile(
+    r"^Grant\s*[-–—]\s*(Winter|Spring|Sping|Summer|Fall|Autumn|Additional Grants?)?\s*(\d{4})\s*[-–—]\s*(.*)$", re.I)
 
 
 def field(row: str, cls: str) -> str | None:
@@ -173,7 +174,8 @@ def parse_row(row: str) -> dict | None:
     if lm:
         # "Grant - Summer 2015 - CMT - Daniel Summers, Ph.D." is a placeholder, not a title
         title = None
-        legacy_round = " ".join(x for x in (lm.group(1), lm.group(2)) if x)
+        rnd = {"sping": "Spring", "additional grant": "Additional Grants"}.get((lm.group(1) or "").lower(), lm.group(1))
+        legacy_round = " ".join(x for x in (rnd, lm.group(2)) if x)
         if not start:
             began = re.search(r"began\s+([A-Z][a-z]{2})[a-z]*\.?\s+(\d{1,2}),\s+(\d{4})", desc or "")
             if began and began.group(1).lower() in MONTHS:
