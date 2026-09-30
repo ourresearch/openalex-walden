@@ -56,6 +56,9 @@ def send_partition_to_elastic(partition, index_name):
     except Exception as e:
         log.error(f"Error indexing documents to {index_name}: {e}", stack_info=True, exc_info=True)
         print(f"Error indexing documents to {index_name}: {e}")
+        # re-raise: a swallowed partition failure left the job green while only part of the
+        # index was refreshed (daily since 2026-09-25, oxjob #1424)
+        raise
 
 # COMMAND ----------
 
@@ -66,7 +69,9 @@ try:
         .withColumn("id", F.concat(F.lit("https://openalex.org/S"), F.col("id")))
         .select("id", F.struct(F.col("*")).alias("_source"))
     )
-    df = df.repartition(32)
+    # ~4.5 GB of source docs: 32 partitions put ~140 MB through each Python worker and OOM'd
+    # serverless daily from 2026-09-25; 256 keeps each near 17 MB (oxjob #1424)
+    df = df.repartition(256)
     print(f"Total records to process: {df.count()}")
 
     def send_partition_wrapper(partition):
@@ -82,6 +87,7 @@ try:
 except Exception as e:
     print(f"Failed to process {CONFIG['table_name']}: {e}")
     log.error(f"Failed to process {CONFIG['table_name']}: {e}", stack_info=True, exc_info=True)
+    raise  # fail the task: a partial sync must not report SUCCESS (oxjob #1424)
 
 print("\nIndexing operation completed!")
 display(df)
