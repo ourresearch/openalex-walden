@@ -142,7 +142,10 @@ def fetch_union(limit: int | None, max_rounds: int = 6) -> list[dict]:
     missed the same 5 grants). Different spellings of the query (case,
     alias) page in a different order, so union full passes over several
     query variants until the distinct-record count reaches HitCount.
-    Tolerates a <=1% shortfall (genuinely identical duplicate records can
+    Tolerates a <=2% shortfall (GRIST ordering varies over time: on
+    2026-09-30 one Diabetes UK run reached 587/587 in 3 passes, a later one
+    stalled at 578/587 after 24; the §1.4 shrink guard then refuses to
+    overwrite a fuller earlier upload). Genuinely identical records can
     never be counted twice); anything bigger raises."""
     if limit:
         return fetch_grist(QUERY_VARIANTS[0], limit)[1]
@@ -157,8 +160,8 @@ def fetch_union(limit: int | None, max_rounds: int = 6) -> list[dict]:
             log(f"GRIST round {rnd} [{q}]: +{len(seen) - before} -> {len(seen)}/{hit_count} distinct records")
             if len(seen) >= hit_count:
                 return list(seen.values())
-    if len(seen) >= 0.99 * hit_count:
-        log(f"WARNING: {len(seen)}/{hit_count} distinct records after {max_rounds} rounds; proceeding (<=1% short)")
+    if len(seen) >= 0.98 * hit_count:
+        log(f"WARNING: {len(seen)}/{hit_count} distinct records after {max_rounds} rounds; proceeding (<=2% short; the §1.4 shrink guard still refuses a smaller corpus than the last upload)")
         return list(seen.values())
     raise RuntimeError(f"GRIST: only {len(seen)}/{hit_count} distinct records after {max_rounds} rounds")
 
