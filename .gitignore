@@ -147,3 +147,4 @@ kaken_data/
 
 # Exception for maintenance utilities
 !notebooks/maintenance/lib/
+!notebooks/awards/nightly_grants/lib/
