@@ -1,0 +1,115 @@
+resources:
+  jobs:
+    Keywords_Nightly:
+      name: Keywords nightly
+      description: |
+        Keywords for new works (oxjob #1322): tags every work in openalex_works that has never been
+        tagged with the student tagger that built work_keywords_v2, and appends the results.
+        Four tasks: build_queue (works absent from the tagged-ids record and from work_keywords_v2;
+        waits for today's End 2 End to pass Guardrails), tag (the queue on Modal, app
+        oxjob1322-keywords-nightly, at most 10 B200s, via a bearer-token endpoint; vLLM will not run on
+        Databricks), normalize (the shipped closed-vocabulary rules, utils/keywords_nightly.py; nothing is
+        added to the vocabulary), append (checks, then INSERT of new work_ids only into
+        openalex.works.work_keywords_v2; a failed check appends nothing). Every tagged work goes into
+        openalex.works.work_keywords_v2_tagged, so a work that came out with no keywords is never
+        re-tagged. New works get keywords on night N+1 (the next End 2 End merges them). About 110K
+        works a night, about $2 of Modal GPU. State tables: openalex.works.work_keywords_v2_{queue, raw,
+        tagged, runs, nrm_*, append_rows}. Rule tables: openalex.common.keywords_v2_{fold, synmap,
+        purge, country_kids, boiler, templated} + UDF openalex.common.keywords_v2_kid0.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        # 18:00 UTC: after End 2 End has written openalex_works (Guardrails ends 07:15-19:15 UTC, usually by
+        # 10:00); build_queue waits up to wait_e2e_hours for a late run. Before Study Design (19:00 UTC).
+        quartz_cron_expression: 0 0 18 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      timeout_seconds: 43200
+      parameters:
+        - name: state_prefix
+          default: openalex.works.work_keywords_v2_
+        - name: target
+          default: openalex.works.work_keywords_v2
+        - name: rules_prefix
+          default: openalex.common.keywords_v2_
+        - name: synmap
+          default: openalex.common.keywords_v2_synmap
+        - name: kid0_udf
+          default: openalex.common.keywords_v2_kid0
+        - name: max_works
+          # newest first beyond this; the rest waits for the next run (a bulk arrival of millions: raise it by hand)
+          default: "2000000"
+        - name: shard_works
+          # works per Modal shard (one GPU container each, max 10 at once): ~110K/night -> 5 GPUs
+          default: "25000"
+        - name: min_tagged_rows
+          # refuse to queue if the tagged-ids record is not seeded (else ~53M tagged-but-empty works re-queue)
+          default: "400000000"
+        - name: force_ids_table
+          # tests / backfills only: queue exactly the works in this table (column id)
+          default: ""
+        - name: wait_e2e_hours
+          default: "6"
+        - name: e2e_job_id
+          default: "616701029470182"
+        - name: volume_dir
+          default: /Volumes/openalex/authors/oxjob_tmp/oxjob1322_god/nightly
+        - name: endpoint
+          default: https://wordslikethis--oxjob1322-keywords-nightly-api.modal.run
+        - name: secret_scope
+          default: modal
+        - name: secret_key
+          default: kw1322_nightly_token
+        - name: warehouse_id
+          # the warehouse the Modal workers read their shard through (DEV-WH, X-Large serverless)
+          default: 3996dc0a9b183ce3
+        - name: max_usd
+          # the tag task refuses to start a queue whose estimate is over this
+          default: "60"
+        - name: max_minutes
+          default: "120"
+        - name: dry_run
+          default: "false"
+      tasks:
+        - task_key: build_queue
+          notebook_task:
+            notebook_path: notebooks/keywords/nightly/BuildKeywordQueue
+            source: GIT
+          environment_key: Default
+        - task_key: tag
+          depends_on:
+            - task_key: build_queue
+          notebook_task:
+            notebook_path: notebooks/keywords/nightly/TagKeywordsModal
+            source: GIT
+          environment_key: Default
+          # A retry polls the same Modal call (its id is in <volume_dir>/<build_id>/_call_id.txt), never starts a second GPU run.
+          max_retries: 2
+          min_retry_interval_millis: 300000
+        - task_key: normalize
+          depends_on:
+            - task_key: tag
+          notebook_task:
+            notebook_path: notebooks/keywords/nightly/NormalizeKeywords
+            source: GIT
+          environment_key: Default
+        - task_key: append
+          depends_on:
+            - task_key: normalize
+          notebook_task:
+            notebook_path: notebooks/keywords/nightly/AppendKeywords
+            source: GIT
+          environment_key: Default
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
