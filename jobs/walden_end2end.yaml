@@ -395,7 +395,7 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 300000
         # oxjob #784: the ES delete path sync_works lacks — consumes the
-        # deleted_works ledger and removes the stale docs from works-v34.
+        # deleted_works ledger and removes the stale docs from the works index (the `works` alias).
         - task_key: Delete_Works_from_Elasticsearch
           depends_on:
             - task_key: Sync_to_Elasticsearch
