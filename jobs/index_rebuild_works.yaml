@@ -34,7 +34,7 @@ resources:
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
-        git_branch: es-rebuild-1456  # >>> main once the branch is merged
+        git_branch: main
       parameters:
         - name: source_version
           default: "SET_ME"  # Delta version V (IndexRebuild mode=plan); tasks refuse to run until it is a number
@@ -53,7 +53,7 @@ resources:
             # >>> WRITERS. sync_works opens one ES bulk stream per Spark core, so writers = num_workers x 32
             # >>> (rd-fleet.8xlarge = 32 vCPU), shared by the 4 lanes: 2 = 64 writers, 4 = 128, 8 = 256.
             # >>> Set it to the level calibration picked (PLAYBOOK step 3) before creating the job.
-            num_workers: 2
+            num_workers: 8
             aws_attributes:
               availability: ON_DEMAND
               first_on_demand: 1
