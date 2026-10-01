@@ -149,7 +149,7 @@ def split_family_first(name: str) -> tuple[str | None, str | None]:
     """2025+ lists print 'Family Given' ('Jansson Sigfrids Fanny', 'Gahmberg
     Carl G.', 'von Bahr Joar'): given = last token (two when the last is an
     initial), family = the rest."""
-    toks = re.split(r"s+", name.strip())  # family-first layout, not the naive given-first split
+    toks = re.split(r"\s+", name.strip())  # family-first layout, not the naive given-first split
     if len(toks) < 2:
         return None, name or None
     k = 2 if len(toks) >= 3 and re.fullmatch(r"[A-ZÅÄÖ]\.", toks[-1]) else 1
