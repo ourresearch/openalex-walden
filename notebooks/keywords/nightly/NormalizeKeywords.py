@@ -28,7 +28,8 @@ from utils import keywords_nightly as kn  # noqa: E402
 
 for name, default in [("state_prefix", "openalex.works.work_keywords_v2_"), ("target", "openalex.works.work_keywords_v2"),
                       ("rules_prefix", "openalex.common.keywords_v2_"), ("synmap", "openalex.common.keywords_v2_synmap"),
-                      ("kid0_udf", "openalex.common.keywords_v2_kid0"), ("senses", kn.SENSES), ("work_senses", kn.WORK_SENSES), ("dry_run", "false")]:
+                      ("kid0_udf", "openalex.common.keywords_v2_kid0"), ("senses", kn.SENSES), ("work_senses", kn.WORK_SENSES), ("sense_max_pairs", "500000"),
+                      ("jev_threads", "64"), ("jev_rps", "150"), ("dry_run", "false")]:
     dbutils.widgets.text(name, default)
 P = dbutils.widgets.get("state_prefix").strip()
 TARGET = dbutils.widgets.get("target").strip()
@@ -61,10 +62,47 @@ for step, sql in kn.normalise_statements(values):
     spark.sql(sql)
     log(f"{step} done in {time.time() - t0:.0f} s")
 
-# homonym senses (oxjob #1476): a keyword with distinct meanings moves to its sense heading where a per-work decision exists
-# ("inflation" on a cosmology paper -> "inflation (cosmology)"). Skipped while the sense tables don't exist.
+# homonym senses (oxjob #1476): a keyword with distinct meanings moves to its sense heading where a per-work decision says so
+# ("inflation" on a cosmology paper -> "inflation (cosmology)"). First Jev classifies tonight's (work, split keyword) pairs that have no
+# decision yet (same question as the validated corpus run), then the rows are rewritten. Skipped while the sense tables don't exist.
 SENSES, WORK_SENSES = dbutils.widgets.get("senses").strip(), dbutils.widgets.get("work_senses").strip()
 if spark.catalog.tableExists(SENSES) and spark.catalog.tableExists(WORK_SENSES) and spark.catalog.tableExists(ROWS):
+    import concurrent.futures as cf
+    from utils import study_design as sd  # noqa: E402  (JevClient: paced, retrying, pinned jev-1.13.0)
+    t0 = time.time()
+    spark.sql(kn.sense_pairs_statement(ROWS, QUEUE, f"{P}nrm_sense_pairs", WORK_SENSES, SENSES))
+    pairs = spark.table(f"{P}nrm_sense_pairs").collect()
+    cap = int(dbutils.widgets.get("sense_max_pairs"))
+    if len(pairs) > cap:
+        log(f"senses: {len(pairs):,} undecided pairs > cap {cap:,}; classifying the first {cap:,}, the rest keep the main sense")
+        pairs = pairs[:cap]
+    opts = {}
+    for r in spark.table(SENSES).orderBy("heading", "opt").collect():
+        opts.setdefault(r.heading, []).append(r)
+    for h in opts:
+        opts[h].sort(key=lambda r: int(r.opt[1:]))
+    client = sd.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=int(dbutils.widgets.get("jev_threads")),
+                          rps=float(dbutils.widgets.get("jev_rps")))
+
+    def classify(r):
+        o = opts[r.heading]
+        res = client.decide(kn.sense_state(r.heading, r.title, r.abstract, r.venue), kn.sense_question([x.label for x in o]))
+        if not res["ok"]:
+            return None
+        opt, prob = kn.sense_decision(res["answers"]["sense"]["probabilities"])
+        moved = opt not in ("s0", "none") and prob >= kn.SENSE_T
+        sid = next((x.sense_id for x in o if x.opt == opt), None) if moved else None
+        return (int(r.work_id), r.heading, opt, prob, sid, res.get("model"))
+
+    with cf.ThreadPoolExecutor(int(dbutils.widgets.get("jev_threads"))) as ex:
+        dec = [d for d in ex.map(classify, pairs) if d is not None]
+    if dec:
+        spark.createDataFrame(dec, "work_id bigint, heading string, opt string, prob double, sense_id string, model string") \
+             .createOrReplaceTempView("new_sense_decisions")
+        spark.sql(f"""INSERT INTO {WORK_SENSES} (work_id, heading, opt, prob, sense_id, model, decided_at)
+                      SELECT work_id, heading, opt, prob, sense_id, model, current_timestamp() FROM new_sense_decisions""")
+    log(f"senses: {len(dec):,} of {len(pairs):,} pairs classified ({len(pairs) - len(dec):,} failed, keep the main sense), "
+        f"{sum(d[4] is not None for d in dec):,} move; Jev ${client.usd:.2f}; {time.time() - t0:.0f} s")
     t0 = time.time()
     spark.sql(kn.sense_statement(ROWS, f"{P}nrm_sensed", WORK_SENSES, SENSES))
     spark.sql(f"CREATE OR REPLACE TABLE {ROWS} AS SELECT * FROM {P}nrm_sensed")
