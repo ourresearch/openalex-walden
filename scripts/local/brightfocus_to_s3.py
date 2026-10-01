@@ -174,24 +174,27 @@ DEGREE_TOKENS = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", 
 
 
 def split_name(name: str) -> tuple[str | None, str | None]:
-    """Canonical runbook §2.4.1 helper (wolf_to_s3.py: suffixes = {"phd", "md",
-    "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}), with
-    the degree set extended for BrightFocus's "Name, MD, PhD" style and a
-    leading-honorific strip. Everything after the first comma that is a degree
-    list is dropped first ("Sarah Palko, PhD" -> "Sarah Palko")."""
+    """Canonical runbook §2.4.1 helper (wolf_to_s3.py), adapted to this site's
+    "First Last, DEGREES" style: everything after the first comma is degrees /
+    suffixes ("Jason Miller, MD, PhD", "Ganesh Babulal, MSCI, OTD, PhD",
+    "Emanuel F. Petricoin, III, PhD") and is dropped; a leading honorific is
+    stripped ("Dr.", "Prof."); then trailing suffix tokens are stripped as in
+    wolf_to_s3.py, never the last remaining token, and never surname-like
+    abbreviations ("Eric Ma", "Tao Do") - only the canonical set plus degree
+    tokens that cannot be surnames ("Devraj Basu MD", "A James Hudspeth MD/PhD")."""
     if not name:
         return None, None
-    parts = re.split(r"\s*,\s*", name.strip())  # comma chunks: name, then degree lists
-    # keep comma-separated chunks until the first chunk made only of degree tokens
-    kept = [parts[0]]
-    for p in parts[1:]:
-        toks = [t.lower().strip(".") for t in re.split(r"[\s/]+", p) if t]
-        if toks and all(t in DEGREE_TOKENS or t.replace(".", "") in DEGREE_TOKENS for t in toks):
-            break
-        kept.append(p)
-    tokens = HONORIFIC_RE.sub("", " ".join(kept).strip()).split()
-    suffixes = DEGREE_TOKENS
-    while tokens and tokens[-1].lower().strip(",.") in suffixes:
+    base = name.partition(",")[0]
+    tokens = HONORIFIC_RE.sub("", base.strip()).split()
+    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    suffixes |= {"mph", "msc", "pharmd", "dds", "dvm", "mbbs", "mbchb", "facs", "frcpc", "frcp", "mmed",
+                 "dr", "med", "dipl", "frs", "fmedsci"}
+
+    def is_suffix(tok: str) -> bool:
+        parts = [x.strip(".") for x in tok.lower().strip(",.()").split("/")]
+        return all(x in suffixes for x in parts if x) and any(parts)
+
+    while len(tokens) > 1 and is_suffix(tokens[-1]):
         tokens.pop()
     if not tokens:
         return None, None
