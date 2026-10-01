@@ -132,7 +132,7 @@ def split_name(name: str) -> tuple[str | None, str | None]:
 
 def person(name: str) -> tuple[str | None, str | None]:
     if "," in name:
-        fam, giv = name.split(",", 1)
+        fam, giv = re.split(r",", name, maxsplit=1)  # 'Family, Given' (comma form, not the naive space split)
         return clean(giv), clean(fam)
     return split_name(name)
 
