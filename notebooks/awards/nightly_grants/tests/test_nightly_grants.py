@@ -266,3 +266,47 @@ def test_job_passes_run_id():
     text = (ROOT.parents[2] / "jobs" / "nightly_grants.yaml").read_text()
     assert 'databricks_run_id: "{{job.run_id}}"' in text
     assert "max_concurrent_runs: 1" in text and ("pause_status: PAUSED" in text or "pause_status: UNPAUSED" in text)
+
+
+# ---------- per-source completeness on raw rows (F1, 10-01) ----------
+class ReceiptSpark(FakeSpark):
+    def __init__(self, last_run=None, unreadable=False):
+        super().__init__()
+        self.last_run, self.unreadable = last_run, unreadable
+
+    def sql(self, statement, args=None):
+        self.statements.append((statement, dict(args or {})))
+        if "FROM dev.lab.ngr_award_nightly_runs WHERE status LIKE 'SUCCEEDED%'" in statement:
+            return Result([types.SimpleNamespace(details_json=self.last_run)] if self.last_run else [])
+        if statement.startswith("SELECT count(*) FROM (") and self.unreadable:
+            raise Exception("DELTA_UNSUPPORTED_TIME_TRAVEL_BEYOND_DELETED_FILE_RETENTION_DURATION")
+        return Result()
+
+
+def receipts_sql(spark):
+    return next(s for s, _ in spark.statements if "ngr_s_receipts" in s and s.startswith("CREATE"))
+
+
+def test_receipts_count_raw_rows_against_last_runs_versions():
+    import json
+    run = json.dumps(dict(versions=dict(raw=dict(relation="a.b.raw", version=7), gtr=dict(relation="a.b.gtr", version=3))))
+    spark = ReceiptSpark(last_run=run)
+    c = Nightly(spark, config())
+    c.family_receipts()
+    q = receipts_sql(spark)
+    assert "SELECT provenance family,count(*) cur_n FROM raw_v GROUP BY 1" in q
+    assert "FROM a.b.raw VERSION AS OF 7 GROUP BY 1" in q and "FROM a.b.gtr VERSION AS OF 3 WHERE work_id IS NOT NULL" in q
+    assert "observations o" not in q                      # never the deduplicated observation count
+    assert "coalesce(cur_n,0)>=0.98*coalesce(prev_n,0) coverage_complete" in q
+    assert c.counts["_source_baseline"] == "raw v7, gtr v3"
+
+
+def test_no_baseline_skips_the_ratio_and_records_why():
+    import json
+    for last, unreadable, why in ((None, False, "none: no successful run yet"),
+                                  (json.dumps(dict(versions=dict(raw=dict(relation="a.b.raw", version=7), gtr=dict(relation="a.b.gtr", version=3)))), True, "unavailable")):
+        spark = ReceiptSpark(last_run=last, unreadable=unreadable)
+        c = Nightly(spark, config())
+        c.family_receipts()
+        assert "true coverage_complete" in receipts_sql(spark)
+        assert c.counts["_source_baseline"].startswith(why)

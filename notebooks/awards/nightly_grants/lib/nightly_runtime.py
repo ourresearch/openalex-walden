@@ -15,8 +15,6 @@ from pathlib import Path
 from stable_award_ids import compact, ident, literal, sha, short
 from capture_support import verify_body
 
-# one completeness unit per producer: the raw row's provenance, else the adapter family (gtr, ...)
-SOURCE_SQL = "coalesce(o.payload.provenance,o.family)"
 MAINTENANCE = ("OPTIMIZE", "VACUUM START", "VACUUM END", "COMPUTE STATISTICS")
 PARAM = re.compile(r":(rid|ts)\b")
 WRITE_TARGET = re.compile(r"\s*(?:CREATE (?:OR REPLACE )?TABLE|MERGE INTO|UPDATE|INSERT INTO|DELETE FROM)\s+(\S+)", re.I)
@@ -30,6 +28,12 @@ REQUIRED_INPUTS = {
 }
 DERIVED = {"crossref_records", "datacite_records", "funder_map", "normalization", "normalization_work", "continuity",
            "receipts", "previous_bindings", "last_state", "merge_doi_pairs"}
+
+
+def raw_source_counts(raw, gtr, col):
+    """Rows per source: raw award rows by provenance, and GtR rows (bound to works) as gtr_legacy."""
+    return (f"SELECT provenance family,count(*) {col} FROM {raw} GROUP BY 1 "
+            f"UNION ALL SELECT 'gtr_legacy',count(*) FROM {gtr} WHERE work_id IS NOT NULL")
 
 
 class Nightly:
@@ -305,30 +309,48 @@ class Nightly:
         z("DATACITE_DOI_IN_RECORDS", f"SELECT d.* FROM datacite_v d LEFT ANTI JOIN {r}datacite_records x ON lower(trim(d.doi))=concat('https://doi.org/',lower(trim(x.record_id))) WHERE d.doi IS NOT NULL")
 
     def family_receipts(self):
-        """Replaces CaptureD0's hard-coded receipts (CaptureD0.r1.py:219): a source family counts as complete when today's
-        observations are at least `family_min_ratio` of the observations bound for it by the last successful run."""
+        """Per-source completeness (replaces CaptureD0's hard-coded receipts, CaptureD0.r1.py:219). Counted on each source's RAW
+        rows (raw award rows by provenance; GtR rows as gtr_legacy), not on deduplicated observations: sources share observation
+        keys and the newest row wins, so an observation count swings between sources whenever one job rewrites its rows
+        (10-01: DataCite 126,394 -> ~68k with nothing lost). A source is complete when today's rows are >= family_min_ratio of the
+        rows the last successful run read, measured on that run's own raw/GtR versions. If those versions can no longer be read,
+        the ratio is skipped for the night and recorded (`_source_baseline`)."""
         r, ratio = self.r, float(self.config.get("family_min_ratio", 0.98))
         overrides = self.config.get("source_min_ratio_overrides", {})
         floor = " ".join(f"WHEN {literal(k)} THEN {float(v)}" for k, v in overrides.items())
         ratio_sql = f"CASE family {floor} ELSE {ratio} END" if overrides else str(ratio)
-        self.view("receipts", self.artifact("receipts", f"""WITH cur AS (SELECT {SOURCE_SQL} family,count(*) cur_n FROM {r}observations o GROUP BY 1),
-            prev AS (SELECT family,prev_n FROM {self.baseline_sql()})
+        prev = self.baseline_sql()
+        prev_sql = prev or "(SELECT CAST(NULL AS STRING) family,CAST(NULL AS BIGINT) prev_n WHERE false)"
+        complete = f"coalesce(cur_n,0)>={ratio_sql}*coalesce(prev_n,0)" if prev else "true"
+        self.view("receipts", self.artifact("receipts", f"""WITH cur AS ({raw_source_counts('raw_v', 'gtr_v', 'cur_n')}),
+            prev AS (SELECT family,prev_n FROM {prev_sql})
           SELECT family,coalesce(cur_n,0) observations,coalesce(prev_n,0) previous_observations,
-            true success,true parser_ok,coalesce(cur_n,0)>={ratio_sql}*coalesce(prev_n,0) coverage_complete FROM prev FULL JOIN cur USING(family)"""))
+            true success,true parser_ok,{complete} coverage_complete FROM prev FULL JOIN cur USING(family)"""))
         for row in self.sql(f"SELECT * FROM {r}receipts").collect():
             self.counts["source_" + str(row.family)] = int(row.observations)
             if not row.coverage_complete:
                 self.counts.setdefault("_sources_below_ratio", []).append(dict(source=row.family, now=int(row.observations), before=int(row.previous_observations)))
 
     def baseline_sql(self):
+        """Raw/GtR row counts per source at the versions the last successful run read; None if unavailable."""
         rows = self.sql(f"""SELECT details_json FROM {self.p}award_nightly_runs WHERE status LIKE 'SUCCEEDED%' AND details_json IS NOT NULL
             ORDER BY started_at DESC LIMIT 1""").collect()
-        if rows:
-            counts = json.loads(rows[0].details_json).get("counts", {})
-            vals = [f"({literal(k[len('source_'):])},{int(v)})" for k, v in counts.items() if k.startswith("source_")]
-            if vals:
-                return f"(SELECT * FROM VALUES {','.join(vals)} AS t(family,prev_n))"
-        return "(SELECT source family,count(*) prev_n FROM previous_bindings_v GROUP BY 1)"
+        if not rows:
+            self.counts["_source_baseline"] = "none: no successful run yet"
+            return None
+        v = json.loads(rows[0].details_json).get("versions", {})
+        raw, gtr = v.get("raw") or {}, v.get("gtr") or {}
+        if "version" not in raw or "version" not in gtr:
+            self.counts["_source_baseline"] = "none: last run did not record raw/gtr versions"
+            return None
+        sql = f"({raw_source_counts(ident(raw['relation']) + ' VERSION AS OF ' + str(int(raw['version'])), ident(gtr['relation']) + ' VERSION AS OF ' + str(int(gtr['version'])), 'prev_n')})"
+        try:
+            self.sql(f"SELECT count(*) FROM {sql} b").collect()
+        except Exception as exc:                          # e.g. versions past the 7-day retention
+            self.counts["_source_baseline"] = "unavailable: " + str(exc)[:200]
+            return None
+        self.counts["_source_baseline"] = f"raw v{raw['version']}, gtr v{gtr['version']}"
+        return sql
 
     # ---------- publish ----------
     def swap(self, mapping):
