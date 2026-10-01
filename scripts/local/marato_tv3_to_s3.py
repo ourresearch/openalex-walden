@@ -210,15 +210,23 @@ def parse_people(autor_html: str) -> list[dict]:
 
 
 def parse_amount(s: str | None) -> float | None:
-    # "398.836 €", "445.312,50 €", "€199.750,00" -- European format, euros
+    # Euros, in mixed formats: "398.836 €", "445.312,50 €", "€199.750,00" (European),
+    # "€ 300,000.00" (English, edition 2018), "€ 299.450.00" (typo). A separator
+    # followed by 1-2 trailing digits is the decimal mark; every other one groups thousands.
     if not s:
         return None
-    digits = re.sub(r"[^\d,.]", "", s)
+    digits = re.sub(r"[^\d,.]", "", s).strip(",.")
     if not digits:
         return None
-    digits = digits.replace(".", "").replace(",", ".")
+    if "," in digits and "." in digits and digits[-1].isdigit():
+        # both marks present ("199.989,375 €", "€ 300,000.00"): the last one is decimal
+        m = re.search(r"[.,](\d+)$", digits)
+    else:
+        m = re.search(r"[.,](\d{1,2})$", digits)
+    whole = digits[: m.start()] if m else digits
+    whole = re.sub(r"[.,]", "", whole)
     try:
-        return float(digits)
+        return float(f"{whole}.{m.group(1)}" if m else whole)
     except ValueError:
         return None
 
