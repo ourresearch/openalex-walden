@@ -113,7 +113,7 @@ def page_lines(page: str) -> list[str]:
 
 
 GRANT_RE = re.compile(
-    r"^(?P<head>.+?)[,.]?\s+(?P<amt>\d{1,3}(?:[ .]\d{3})+|\d+)\s*(?:kronor|kr|SEK)(?=\W|till|för|$)\.?\s*(?P<rest>.*)$")
+    r"^(?P<head>.+?)[,.]?[\s,]+(?P<amt>\d{1,3}(?:[ .]\d{3})+|\d+)\s*(?:kronor|kr|SEK)(?=\W|till|för|$)\.?\s*(?P<rest>.*)$")
 SECTION_RE = re.compile(
     r"(?i)(projekts?anslag|reseanslag|apparaturanslag|anslag)\b.*?(?:(" + MONTHS + r")\s+)?(\d{4})\s*$")
 TRAVEL_NOKR_RE = re.compile(r"^(?P<head>.+?),\s+(?P<amt>\d{1,3}(?:[ .]\d{3})+),\s*(?P<rest>.+)$")
