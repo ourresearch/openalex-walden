@@ -604,7 +604,7 @@ def main() -> None:
     df = pd.DataFrame(rows)
     df["_k"] = df["title"].map(norm) + "|" + df["amount"].fillna("") + "|" + df["start_date"].fillna("")
     df["_rank"] = (df["application_numbers"].isna().astype(int) * 4 + df["description"].isna().astype(int) * 2
-                   + df["slug"].str.contains(r"-\d+$").astype(int))
+                   + df["slug"].str.contains(r"-\d+$|^\d+$").astype(int))
     before = len(df)
     df = df.sort_values(["_k", "_rank", "slug"]).drop_duplicates("_k", keep="first").sort_index()
     log(f"  removed {before - len(df)} duplicate project pages (same title, amount and start date)")
@@ -620,14 +620,17 @@ def main() -> None:
         cdf["award_id_source"] = "cohort_slug"
 
     single = df["application_numbers"].notna() & ~df["application_numbers"].fillna("").str.contains(";")
-    df["funder_award_id"] = df["slug"].where(~single, df["application_numbers"])
+    # a purely numeric WordPress slug ("/projects/30830/") would read like a grant number:
+    # ship it as its URL path instead
+    public_ref = df["slug"].where(~df["slug"].str.fullmatch(r"\d+"), "projects/" + df["slug"])
+    df["funder_award_id"] = public_ref.where(~single, df["application_numbers"])
     df["award_id_source"] = single.map({True: "application_number", False: "slug"})
     dupes = df["funder_award_id"].str.lower().duplicated(keep=False)
     if dupes.any():
         # two projects sharing one application number (e.g. phases) -> fall back to slug for those
         log(f"  {dupes.sum()} rows share an application number; using slug for them: "
             f"{df.loc[dupes, 'funder_award_id'].unique().tolist()[:10]}")
-        df.loc[dupes, "funder_award_id"] = df.loc[dupes, "slug"]
+        df.loc[dupes, "funder_award_id"] = public_ref[dupes]
         df.loc[dupes, "award_id_source"] = "slug"
     df = pd.concat([df.drop(columns=["_k", "_rank"]), cdf], ignore_index=True)
     dupes = df["funder_award_id"].str.lower().duplicated(keep=False)
