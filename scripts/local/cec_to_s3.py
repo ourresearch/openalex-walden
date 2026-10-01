@@ -118,6 +118,14 @@ RESEARCH_TAG_RE = re.compile(r"\bEPIC\b|\bPIER\b|Electric Program Investment Cha
 RESEARCH_PREFIX_RE = re.compile(r"^(EPC|PIR|CRI)-")
 FLAG_TAG_RE = re.compile(r"\bLDES\b|Long[- ]Duration|INDIGO|Geothermal Resources Development", re.I)
 FLAG_PREFIX_RE = re.compile(r"^(LDS|IND|GEO)-")
+PROGRAMMES = {
+    "EPC": "Electric Program Investment Charge (EPIC)",
+    "PIR": "PIER Natural Gas Research and Development",
+    "CRI": "Carbon Removal Innovation Support Program (CRISP)",
+    "LDS": "Long-Duration Energy Storage Program",
+    "IND": "Industrial Decarbonization and Improvement of Grid Operations (INDIGO)",
+    "GEO": "Geothermal Grant and Loan Program (Geothermal Resources Development Account)",
+}
 
 
 def log(msg: str) -> None:
@@ -354,6 +362,9 @@ def main() -> None:
     df["title"] = [(n[:1].upper() + n[1:]) if n else (title_from(a) or title_from(p))
                    for n, a, p in zip(df["project_name"], df["post_ceqa_text"], df["purpose_clause"])]
     df["funder_award_id"] = df["agreement_number"]
+    # programme from the agreement-number prefix (the parsed funding tag is kept for audit, but a
+    # sub-item without its own tag can inherit a neighbouring item's tag)
+    df["programme"] = df["agreement_number"].str.split("-").str[0].map(PROGRAMMES)
     if df["funder_award_id"].str.lower().duplicated().any():
         raise SystemExit("duplicate agreement numbers after dedup")
     log(f"{len(df)} distinct new agreements; in scope {int(df['in_scope'].sum())}")
