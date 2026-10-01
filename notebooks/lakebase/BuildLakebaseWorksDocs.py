@@ -375,6 +375,8 @@ df_transformed = (
         F.col("primary_location"),
         F.col("best_oa_location"),
         F.coalesce(F.col("sustainable_development_goals"), empty_sdg_array).alias("sustainable_development_goals"),
+        # DEPRECATED (oxjob #1300): Aurora's frozen SDG tags, same as sync_works; removed about a month after the swap.
+        F.coalesce(F.col("sustainable_development_goals_aurora"), empty_sdg_array).alias("sustainable_development_goals_aurora"),
         F.coalesce(F.col("study_designs"), empty_study_design_array).alias("study_designs"),
         F.col("awards"),
         F.col("funders"),

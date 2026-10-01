@@ -226,13 +226,8 @@ resources:
             job_id: 637771147662119
           max_retries: 2
           min_retry_interval_millis: 600000
-        - task_key: SDG_Frontfill
-          depends_on:
-            - task_key: Works_Base
-          run_job_task:
-            job_id: 27479127407344
-          max_retries: 2
-          min_retry_interval_millis: 600000
+        # oxjob #1300: SDG_Frontfill (Aurora on the sdg-classifier endpoint, job 27479127407344) removed. The
+        # Jev-trained head replaced Aurora; new works are scored by task sdg_score of Embed_Qwen3_Nightly.
         - task_key: Topics
           depends_on:
             - task_key: Works_Base
@@ -304,7 +299,6 @@ resources:
         - task_key: Works_Enriched
           depends_on:
             - task_key: Authorships
-            - task_key: SDG_Frontfill
             - task_key: Concepts
             - task_key: Works_Fulltext
             # referenced_works merge (cell 5) reads its output; Works_Base does not
