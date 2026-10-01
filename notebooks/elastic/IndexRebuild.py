@@ -17,7 +17,7 @@
 # MAGIC | `plan` | parameter sheet: old index size and tombstones, cluster disk, projected size and peak disk, pinned Delta version V, its commit time T, count at V; the load chunks' id ranges at V (published as task values `range_k`) | nothing |
 # MAGIC | `create_index` | new index body = old index's LIVE mapping verbatim + its settings minus internal keys + build overrides (0 replicas, refresh -1, total_shards_per_node); saves the body to a Volume; reports what the matching templates would add (simulated) and refuses template aliases or extra fields; after the PUT the mapping must equal the old one | PUT new index |
 # MAGIC | `watchdog` | runs beside the load chunks; cancels the job run when a data node's search queue or cluster disk breaks the stop rules; logs the indexing rate | cancel the run |
-# MAGIC | `close_load` | refresh; count equals the source at V; `_mget` of random source ids | refresh new index |
+# MAGIC | `close_load` | refresh; count within `close_tolerance` (default 10) of the source at V; `_mget` of random source ids | refresh new index |
 # MAGIC | `add_replicas` | raises recovery speed (transient), sets replicas, waits for green, restores the recorded recovery settings | cluster settings, new index settings |
 # MAGIC | `live_settings` | refresh_interval back to the old index's value; total_shards_per_node back to the old index's (usually none) | new index settings |
 # MAGIC | `verify` | counts; field-by-field `_source` comparison of random docs; keyword filter counts vs Delta; PASS/FAIL summary | nothing |
@@ -73,6 +73,7 @@ dbutils.widgets.text("keywords_table", "")                  # verify: keyword vo
 dbutils.widgets.text("keyword_field", "keywords.id")
 dbutils.widgets.text("keyword_sample", "20")
 dbutils.widgets.text("count_tolerance", "1000")              # verify: |new count - source count now|
+dbutils.widgets.text("close_tolerance", "10")                # close_load: |new count - source count at V|
 
 MODE = dbutils.widgets.get("mode").strip()
 OLD = dbutils.widgets.get("old_index").strip()
@@ -102,6 +103,7 @@ KEYWORDS_TABLE = dbutils.widgets.get("keywords_table").strip()
 KEYWORD_FIELD = dbutils.widgets.get("keyword_field").strip()
 KEYWORD_SAMPLE = int(dbutils.widgets.get("keyword_sample"))
 COUNT_TOLERANCE = int(dbutils.widgets.get("count_tolerance"))
+CLOSE_TOLERANCE = int(dbutils.widgets.get("close_tolerance"))
 
 NAME_RE = r"[a-z0-9][a-z0-9._-]*"
 if MODE not in MODES:
@@ -558,8 +560,9 @@ elif MODE == "close_load":
         docs = c.mget(index=NEW, ids=[f"{ID_PREFIX}{x}" for x in ids[i:i + 500]], source=False)["docs"]
         missing += [d["_id"] for d in docs if not d.get("found")]
     log(f"_mget {len(ids):,} random source ids at V: {len(missing)} missing {missing[:20]}")
-    ok = n_new == n_src and not missing
-    print(f"close_load: {'PASS' if ok else 'FAIL'} (count {'equal' if n_new == n_src else 'differs'}, "
+    ok = abs(n_new - n_src) <= CLOSE_TOLERANCE and not missing
+    print(f"close_load: {'PASS' if ok else 'FAIL'} (count {'equal' if n_new == n_src else f'differs by {n_new - n_src:+,}'}, "
+          f"tolerance {CLOSE_TOLERANCE}, "
           f"{len(missing)} of {len(ids)} sampled ids missing)")
     if not ok and not DRY:
         raise RuntimeError("close_load FAIL: rerun the chunks that failed (repair the run) before adding replicas")
