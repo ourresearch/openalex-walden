@@ -256,7 +256,7 @@ def parse_detail(page: str) -> dict:
         "detail_institution": text(fields.get("Institution")),
         "detail_title": text(fields.get("Project title")),
         "detail_status": text(fields.get("Status")),
-        "grant_doi": grant_id.lower() if grant_id and grant_id.startswith("10.") else None,
+        "detail_grant_id": grant_id.lower() if grant_id and grant_id.startswith("10.") else None,
         "detail_amount_text": text(fields.get("Funding volume")),
         "co_investigators": co,
         "description": text(body.group(1)) if body else None,
@@ -363,12 +363,12 @@ def main() -> None:
         log(f"  amount mismatch {n}: csv {a} vs detail {b}; keeping csv")
     df["amount"] = df["amount"].where(df["amount"].notna(), det_amt)
 
-    # Grant DOI: WWTF's own Crossref deposits (award == project number), else the
-    # GrantID printed on the detail page.
+    # Grant DOI: only WWTF's own Crossref deposits (award == project number).
+    # Newer projects print a GrantID (10.47379/LS25090) on the detail page before
+    # it is registered (doi.org 404), so that value is kept as detail_grant_id only.
     xref = crossref_awards()
     log(f"Crossref: {len(xref)} WWTF grant deposits")
-    df["grant_doi"] = [xref.get(n.upper(), d if isinstance(d, str) else None)
-                       for n, d in zip(df["project_number"], df["grant_doi"])]
+    df["grant_doi"] = [xref.get(n.upper()) for n in df["project_number"]]
     log(f"  Crossref deposits not in CSV: {sorted(set(xref) - set(df['project_number'].str.upper()))[:20]}")
     df["currency"] = df["amount"].map(lambda a: "EUR" if pd.notna(a) else None)
     df["title"] = df["project_title"].where(df["project_title"].notna(), df.get("detail_title"))
