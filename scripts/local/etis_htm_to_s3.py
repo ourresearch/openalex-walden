@@ -30,6 +30,12 @@ Routing of projects with an HTM financier (every rule is logged):
     CEF, ...) -> NOT routed here (EU-led)
   * another financier has a larger published Proportion -> NOT routed here
 
+Roof/sub-projects: Centres of Excellence (TKnnn) and some consortia have a roof
+record plus one record per partner (TKnnnUk) whose amounts sum to the roof's.
+All records are shipped (partners carry their own PI/institution), but partner
+records under a shipped roof have amount NULL (own share kept in
+project_total_eur) so the ministry's total is not double counted.
+
 Scope (Kyle 2026-10-01: keep every research pathway, drop only money that is
 clearly not research): every routed project is written to the parquet with an
 `in_scope` flag. ETIS project type "Õppearendusprojekt" (teaching/study-
@@ -46,7 +52,8 @@ write (e.g. targeted-financing themes SF0180089s08, Centres of Excellence TK117,
 national programme EKKM14-300). It is used when it looks like an identifier
 (no whitespace/lists, not a bare year); a leading "Nr"/"Lepingu nr" is stripped.
 When the number is missing, free text (contract/decision registrations such as
-"EMÜ nõukogu otsus 26.01.2018 nr 1-4/10"), or shared by several in-scope ETIS
+"EMÜ nõukogu otsus 26.01.2018 nr 1-4/10", or a bare word like
+"Töövõtuleping"), or shared by several in-scope ETIS
 records, the record gets the synthetic key HTM-ETIS-{ETIS project GUID} (for a
 shared number, the record with the largest amount keeps the number). The raw
 number is kept in `financier_project_nr`.
@@ -247,6 +254,8 @@ def nr_candidate(raw):
         return None
     if re.fullmatch(r"\d{1,4}", s):  # bare year / tiny registry number, not an award id
         return None
+    if not re.search(r"\d", s):  # a word, e.g. "Töövõtuleping" (= contract for services)
+        return None
     return s
 
 
@@ -276,8 +285,10 @@ def to_record(doc, route_label, htm_fi):
     in_scope = not (ptype in NON_RESEARCH_TYPES or (ptype == "Muu" and clean(doc.get("ProgrammeCode")) == "200"))
     if title_en in KEEP_OVERRIDE:
         in_scope = True
+    roof = next((r.get("Guid") for r in (doc.get("RoofProjects") or []) if r.get("Guid") != doc["Guid"]), None)
     return {
         "etis_guid": doc["Guid"],
+        "roof_guid": roof,
         "route": route_label,
         "in_scope": in_scope,
         "financier_project_nr": clean(doc.get("FinancierProjectNr")),
@@ -390,6 +401,17 @@ def main() -> None:
         raise SystemExit("no HTM-financed projects found")
 
     df = pd.DataFrame(rows)
+    # Roof/sub-project structures (Centres of Excellence TKnnn -> TKnnnUk partner
+    # records, HARTA consortia): the roof's amount is the sum of its partners'
+    # shares. When the roof itself is shipped, the partner records keep their own
+    # share only in project_total_eur and ship amount NULL, so funder totals are
+    # not double counted.
+    shipped_amt = {g: a for g, a, sc in zip(df["etis_guid"], df["amount"], df["in_scope"]) if sc and a}
+    in_roof = df["roof_guid"].map(lambda g: g in shipped_amt if g else False) & df["in_scope"]
+    df.loc[in_roof, "amount"] = None
+    df.loc[in_roof, "currency"] = None
+    df.loc[in_roof, "amount_basis"] = "included_in_roof_project"
+    log(f"Sub-project records whose amount is already in a shipped roof project: {int(in_roof.sum())}")
     log(f"HTM-routed projects: {len(df)}; in_scope {int(df['in_scope'].sum())}, "
         f"out of scope {int((~df['in_scope']).sum())} (teaching-development / education delivery)")
     df = assign_award_ids(df)
