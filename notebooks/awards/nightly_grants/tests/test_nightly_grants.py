@@ -310,3 +310,48 @@ def test_no_baseline_skips_the_ratio_and_records_why():
         c.family_receipts()
         assert "true coverage_complete" in receipts_sql(spark)
         assert c.counts["_source_baseline"].startswith(why)
+
+# ---------- new funders added after the basis (auto-add, 10-01) ----------
+class FunderSpark(FakeSpark):
+    """Basis has columns funder_id, merge_into_id, display_name, ror_id; live lacks ror_id."""
+    def __init__(self):
+        super().__init__()
+        self.views = {}
+
+    def table(self, name):
+        cols = {"funders_v": ["funder_id", "merge_into_id", "display_name", "ror_id"],
+                "live_funders_v": ["funder_id", "merge_into_id", "display_name"]}[name]
+        return types.SimpleNamespace(schema=types.SimpleNamespace(fields=[types.SimpleNamespace(name=c) for c in cols]))
+
+    def sql(self, statement, args=None):
+        self.statements.append((statement, dict(args or {})))
+        if "DESCRIBE HISTORY" in statement:
+            return Result([types.SimpleNamespace(version=7, timestamp="t", operation="WRITE")])
+        if statement.startswith("SELECT count(*) n"):
+            return Result([types.SimpleNamespace(n=0)])
+        view = self
+
+        class Frame(Result):
+            def createOrReplaceTempView(self, name):
+                view.views[name] = statement
+        return Frame()
+
+
+def test_new_unmerged_funders_are_added_and_nothing_else():
+    spark = FunderSpark()
+    c = Nightly(spark, config(live_funders="openalex.funders.funders"))
+    c.versions["funders"] = dict(relation="openalex.awards.award_funders_basis", version=34)
+    c.add_new_funders()
+    added = next(s for s, _ in spark.statements if "ngr_s_funder_additions" in s and s.startswith("CREATE"))
+    assert "LEFT ANTI JOIN openalex.awards.award_funders_basis VERSION AS OF 34 b ON b.funder_id=l.funder_id" in added
+    assert "WHERE l.merge_into_id IS NULL" in added           # a merged new row is never added (merges need review)
+    assert "NULL AS ror_id" in added and "l.display_name" in added
+    assert spark.views["funders_v"] == ("SELECT * FROM openalex.awards.award_funders_basis VERSION AS OF 34 "
+                                        "UNION ALL SELECT * FROM dev.lab.ngr_s_funder_additions")
+    assert "funders_auto_added" in c.counts and "funder_merges_pending_basis_update" in c.counts
+
+
+def test_without_live_funders_the_basis_is_used_alone():
+    import inspect
+    src = inspect.getsource(Nightly.derive_inputs)
+    assert 'if self.config.get("live_funders"):\n            self.add_new_funders()' in src

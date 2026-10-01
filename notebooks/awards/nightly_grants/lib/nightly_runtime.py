@@ -216,11 +216,8 @@ class Nightly:
         r, p = self.r, self.p
         self.verify_udfs()
         sharp = ",".join(str(int(x)) for x in json.loads(self.identity_file("sharp_funders.json"))["sharp_funders"])
-        live = self.config.get("live_funders")
-        if live:
-            n = self.sql(f"""SELECT count(*) n FROM funders_v b FULL JOIN {ident(live)} l ON l.funder_id=b.funder_id
-                WHERE NOT(b.merge_into_id <=> l.merge_into_id) OR b.funder_id IS NULL OR l.funder_id IS NULL""").collect()[0].n
-            self.counts["funder_merges_pending_basis_update"] = int(n)
+        if self.config.get("live_funders"):
+            self.add_new_funders()
         self.view("crossref_records", self.artifact("crossref_records", "SELECT DOI record_doi,URL record_url,type record_type FROM crossref_grants_v"))
         self.view("datacite_records", self.artifact("datacite_records", "SELECT id record_id,attributes.types.resourceTypeGeneral resource_type FROM datacite_items_v"))
         self.view("funder_map", self.artifact("funder_map", """WITH RECURSIVE p(source_funder_id,current_id,next_id,depth) AS (
@@ -279,6 +276,27 @@ class Nightly:
         self.sql(f"""SELECT e.stable_id,CASE WHEN a.id IS NOT NULL THEN 'ACTIVE' WHEN e.status='ACTIVE' THEN 'UNPUBLISHED' ELSE e.status END status,e.redirect_to
             FROM {p}award_entities e LEFT JOIN (SELECT DISTINCT id FROM awards_v) a ON a.id=e.stable_id""").createOrReplaceTempView("last_state")
         self.zero("PUBLIC_ID_IN_REGISTRY", f"SELECT a.id FROM awards_v a LEFT ANTI JOIN {p}award_entities e ON e.stable_id=a.id")
+
+    def add_new_funders(self):
+        """Funders created in the live table after the basis snapshot are added to this run's funder view, if unmerged.
+        A new funder id cannot own, redirect or re-canonicalise any existing grant (nothing in the basis points to it), so
+        this can't move an existing id; it only stops a new funder's first grants/links from failing MISSING_FUNDER.
+        Merges, deletes and edits of existing funders still reach grants only through the reviewed basis refresh."""
+        self.bind("live_funders", self.config["live_funders"])
+        v = self.versions["funders"]
+        basis = f"{v['relation']} VERSION AS OF {v['version']}" if "version" in v else v["copied_to"]
+        cols = [f.name for f in self.spark.table("funders_v").schema.fields]
+        live_cols = {f.name for f in self.spark.table("live_funders_v").schema.fields}
+        self.require({"funder_id", "merge_into_id"} <= live_cols, "LIVE_FUNDERS_SCHEMA")
+        pick = ",".join(f"l.{c}" if c in live_cols else f"NULL AS {c}" for c in cols)
+        added = self.artifact("funder_additions", f"""SELECT {pick} FROM live_funders_v l LEFT ANTI JOIN {basis} b ON b.funder_id=l.funder_id
+            WHERE l.merge_into_id IS NULL""")
+        self.counts["funders_auto_added"] = self.count("funder_additions", added)
+        self.sql(f"SELECT * FROM {basis} UNION ALL SELECT * FROM {added}").createOrReplaceTempView("funders_v")
+        n = self.sql(f"""SELECT count(*) n FROM {basis} b FULL JOIN live_funders_v l ON l.funder_id=b.funder_id
+            WHERE (b.funder_id IS NOT NULL AND l.funder_id IS NOT NULL AND NOT(b.merge_into_id <=> l.merge_into_id))
+               OR (b.funder_id IS NULL AND l.merge_into_id IS NOT NULL)""").collect()[0].n
+        self.counts["funder_merges_pending_basis_update"] = int(n)    # merges not yet reviewed into the basis
 
     def has_extra(self, name):
         return name in self.config.get("extra_inputs", {})
