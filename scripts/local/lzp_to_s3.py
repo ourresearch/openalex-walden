@@ -237,7 +237,8 @@ def parse_project(url: str, page: str) -> dict:
     n_numbers = len({t.lower() for t in re.findall(r"\b(?:lzp-?)?\d{4}/\d-\d{3,5}\b", text, re.I)})
     amount_raw = after_label(text, r"(?:Platformas\s+kopējais\s+finansējums|Projekta\s+finansējums|Piešķirtais finansējums|Kopējais finansējums|Finansējums)")
     pi = strip_contact(after_label(text, r"(?:Projekta|Platformas)\s+vadītāj[sa]"))
-    inst = strip_contact(after_label(text, r"(?:(?:Projektu|Projekta)\s+(?:īstenotāj[si]|īsteno)(?![a-zāēī])|Platformas\s+vadošais\s+partneris)"))
+    inst = strip_contact(after_label(text, r"(?:(?:Projektu|Projekta)\s+(?:īstenotāj[si]|īsteno)(?![a-zāēī])(?!\s*tīmekļa)|Platformas\s+vadošais\s+partneris|"
+                                           r"Projektu\s+realizējoš\w*\s+institūcij\w*\b(?!\s+tīmekļa))"))
     partners = strip_contact(after_label(text, r"(?:Projekta\s+sadarbības\s+partner[ia]s?|Sadarbības partneri|Partneri)"))
     field_group = after_label(text, r"Zinātnes nozaru grupa")
     field_main = after_label(text, r"(?:Projekta pamata zinātnes nozare|Zinātnes nozare)")
@@ -252,8 +253,11 @@ def parse_project(url: str, page: str) -> dict:
     return {
         "url": url,
         "slug": url.rsplit("/", 1)[-1],
-        "title_lv": named_title or title,
+        # the page heading is authoritative; a "Projekta nosaukums" label further down can name a
+        # different (parent/related) project on some VPP pages
+        "title_lv": title or named_title,
         "page_title": title,
+        "labelled_title": named_title,
         "n_project_numbers_on_page": n_numbers,
         "categories": "; ".join(cats) or None,
         "status": status.group(1).strip() if status else None,
