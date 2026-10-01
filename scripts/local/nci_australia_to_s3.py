@@ -278,7 +278,10 @@ def anumas() -> tuple[list[dict], dict]:
     for code, g in groups.items():
         g = sorted(g, key=lambda x: x["year"])
         last = g[-1]
-        title = next((x["title"] for x in reversed(g) if x.get("title")), None)
+        # titles exist only for 2020-2021; codes can change hands (y89: 2020 lead != 2026 lead),
+        # so reuse an old title only when it was published under the same lead CI as the latest year
+        title = next((x["title"] for x in reversed(g) if x.get("title")
+                      and person_key(x["lead_ci"]) == person_key(last["lead_ci"])), None)
         parts = [f"ANUMAS {x['year']}: NCI Gadi {fmt(x['ksu'])} kSU" + (" (as a new project)" if x.get("was_new") else "") for x in g]
         out.append({
             "scheme": "ANUMAS", "funder_award_id": code, "years": sorted({x["year"] for x in g}), "lead_ci": last["lead_ci"],
