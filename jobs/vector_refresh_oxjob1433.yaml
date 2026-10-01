@@ -23,12 +23,12 @@ resources:
       schedule:
         quartz_cron_expression: "0 45 0 * * ?"   # 00:45 Central, quiet hours
         timezone_id: America/Chicago
-        pause_status: PAUSED   # unpaused after the calibration night sets max_batches
+        pause_status: UNPAUSED   # calibrated 1 Oct: ≈ 6 batches/h under the guard, semantic 5xx 0-6% per 5 min
       parameters:
         - name: max_batches
-          default: "2"
+          default: "20"    # ≈ 32M docs; 62 batches left after 1 Oct → 4 nights (Fri 2 – Mon 5 Oct)
         - name: max_minutes
-          default: "180"
+          default: "210"   # no batch starts after ≈ 04:15 CT
         - name: knn_guard_ms
           default: "600"
         - name: max_merges
