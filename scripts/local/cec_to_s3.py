@@ -275,7 +275,7 @@ def parse_agreements(text: str, meeting: dict) -> list[dict]:
             recipient = wm.group(1).strip() if wm else None
             if header and len(hits) == 1 and not re.match(r"^(Proposed|Consideration|Possible)", header.group(1)):
                 recipient = header.group(1).strip()
-                dup = re.fullmatch(r"(.+?)\.?\s+\1", recipient)  # "Indian Energy LLC. Indian Energy LLC"
+                dup = re.fullmatch(r"(.+?)\.\s+\1", recipient)  # "Indian Energy LLC. Indian Energy LLC"
                 if dup:
                     recipient = dup.group(1).strip()
             out.append({
