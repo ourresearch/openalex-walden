@@ -291,6 +291,9 @@ MAPPING_OVERRIDES = {
         # oxjob #1474: author position paired with author, institution and country (filled by sync_works)
         **{f"{position}_author{suffix}": KL for position in ("first", "last")
            for suffix in ("_ids", "_institution_ids", "_countries")},
+        # oxjob #1473: MeSH headings become filterable (v34: flattened, index false). Mapping only; docs unchanged.
+        "mesh": {"properties": {"descriptor_ui": KL, "descriptor_name": KL, "qualifier_ui": KL, "qualifier_name": KL,
+                                "is_major_topic": {"type": "boolean"}}},
     }},
 }
 
