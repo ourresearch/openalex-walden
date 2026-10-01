@@ -258,6 +258,7 @@ def main() -> None:
 
     df = pd.DataFrame(rows)
     df["amount_parts"] = df["amount_parts"].map(lambda xs: " / ".join(xs))
+    df["cohort_end_year"] = df["cohort_end_year"].astype("Int64")  # '2027', not '2027.0', after astype(string)
     keys, used = [], {}
     for r in df.itertuples():
         k = f"FLS-{r.cohort_start_year}-{r.category_code}-{slug(r.recipient_raw)}"
