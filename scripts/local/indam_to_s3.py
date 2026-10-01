@@ -179,7 +179,7 @@ def ranking_families(cache_dir: Path | None) -> list[set[str]]:
 
 
 def split_with_caps(name: str, families: list[set[str]]) -> tuple[str | None, str | None] | None:
-    toks = name.split()
+    toks = re.split(r"\s+", name.strip())
     folded = [fold(t) for t in toks]
     best = None
     for caps in families:
