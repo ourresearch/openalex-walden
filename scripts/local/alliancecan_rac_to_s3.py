@@ -156,10 +156,25 @@ def split_name(name: str) -> tuple[str | None, str | None]:
     return " ".join(tokens[:-1]), tokens[-1]
 
 
+MOJIBAKE = re.compile("‚Ä|Œ|√|¬")   # MacRoman-decoded UTF-8 markers
+
+
+def demojibake(s: str) -> str:
+    """Some sheet cells (mostly RAC 2021) hold UTF-8 text that was decoded as MacRoman
+    (e.g. "high‚Äêperformance" for "high-performance"). Reverse it only when
+    the whole cell round-trips; otherwise keep the cell as published."""
+    if not MOJIBAKE.search(s):
+        return s
+    try:
+        return s.encode("mac_roman").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return s
+
+
 def clean(v) -> str | None:
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return None
-    s = re.sub(r"\s+", " ", str(v).replace("\xa0", " ")).strip()
+    s = re.sub(r"\s+", " ", demojibake(str(v)).replace("\xa0", " ")).strip()
     return s or None
 
 
