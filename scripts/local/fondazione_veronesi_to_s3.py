@@ -92,6 +92,9 @@ REQUEST_DELAY = 0.5
 RETRIES = 4
 MAX_CONSECUTIVE_NON200 = 5
 
+QA_TITLE_RE = re.compile(r"^\s*(progetto\s*$|se ti dico ricerca|secondo te perch|perch[eèé] hai scelto)", re.I)
+QA_START_RE = re.compile(r"(se ti dico ricerca|secondo te perch|perch[eèé] hai scelto)", re.I)
+
 PARTICLES = {"de", "di", "del", "della", "dello", "dei", "degli", "delle", "da", "dal", "dalla",
              "dalle", "lo", "la", "li", "le", "van", "von", "der", "den", "dos", "das", "du", "mc", "san", "st."}
 
@@ -267,6 +270,7 @@ def main() -> None:
                 "name_split_method": method,
                 "biography": text(prof["acf"].get("biography")),
                 "title": text(p.get("title")),
+                "title_raw": None,
                 "description": text(p.get("description")),
                 "years": json.dumps(yrs),
                 "first_year": str(yrs[0]) if yrs else None,
@@ -293,6 +297,39 @@ def main() -> None:
             df.at[i, "lead_given_name"] = " ".join(toks[:-1])
             df.at[i, "lead_family_name"] = toks[-1]
             df.at[i, "name_split_method"] = "given_first_lexicon"
+    # 2016-2017 profiles were migrated with an interview block in the project
+    # fields: the "title" is a question ("Se ti dico ricerca, cosa ti viene in
+    # mente?") or the word "Progetto", "where" holds the answer (or, for
+    # "Progetto", the real project title) and the description starts with the
+    # project title followed by the question. Recover the title; drop the
+    # interview text from where/description.
+    qa = df["title"].fillna("").str.match(QA_TITLE_RE)
+    for i in df.index[qa]:
+        t, w, d = df.at[i, "title"], df.at[i, "where"], df.at[i, "description"] or ""
+        marker = d.rfind("PROGETTO ")
+        m = QA_START_RE.search(d)
+        if marker >= 0:  # "...answer... PROGETTO <title>"
+            real = d[marker + len("PROGETTO "):].strip(" .:")
+        elif m and m.start() > 0:  # "<title> <question> <answer>"
+            real = d[: m.start()].strip(" .:")
+        elif t.strip().lower() == "progetto":
+            real = w
+        else:
+            real = None
+        df.at[i, "title_raw"] = t
+        df.at[i, "title"] = real or None
+        df.at[i, "where"] = None
+        df.at[i, "description"] = None
+    df["qa_repaired"] = qa.map(lambda x: "true" if x else None)
+    log(f"repaired {int(qa.sum())} interview-style project entries "
+        f"({int(df.loc[qa, 'title'].notna().sum())} with a recovered title)")
+    # A few profiles list the same project-year twice; keep one (prefer the copy with a host)
+    df["_has_where"] = df["where"].notna()
+    df = df.sort_values(["researcher_post_id", "first_year", "_has_where"], ascending=[True, True, False])
+    key = df["researcher_post_id"] + "|" + df["first_year"].fillna("") + "|" + df["title"].fillna("").str.lower().str.strip()
+    before = len(df)
+    df = df[~key.duplicated(keep="first")].drop(columns="_has_where").sort_index()
+    log(f"dropped {before - len(df)} duplicate project-years within a profile")
     # funder_award_id: FUV-{post id}-{first year}, "-{n}" only for a same-year second project
     base = "FUV-" + df["researcher_post_id"] + "-" + df["first_year"].fillna("na")
     n = base.groupby(base).cumcount()
