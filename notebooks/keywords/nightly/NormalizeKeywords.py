@@ -28,7 +28,7 @@ from utils import keywords_nightly as kn  # noqa: E402
 
 for name, default in [("state_prefix", "openalex.works.work_keywords_v2_"), ("target", "openalex.works.work_keywords_v2"),
                       ("rules_prefix", "openalex.common.keywords_v2_"), ("synmap", "openalex.common.keywords_v2_synmap"),
-                      ("kid0_udf", "openalex.common.keywords_v2_kid0"), ("dry_run", "false")]:
+                      ("kid0_udf", "openalex.common.keywords_v2_kid0"), ("senses", kn.SENSES), ("work_senses", kn.WORK_SENSES), ("dry_run", "false")]:
     dbutils.widgets.text(name, default)
 P = dbutils.widgets.get("state_prefix").strip()
 TARGET = dbutils.widgets.get("target").strip()
@@ -60,6 +60,15 @@ for step, sql in kn.normalise_statements(values):
     t0 = time.time()
     spark.sql(sql)
     log(f"{step} done in {time.time() - t0:.0f} s")
+
+# homonym senses (oxjob #1476): a keyword with distinct meanings moves to its sense heading where a per-work decision exists
+# ("inflation" on a cosmology paper -> "inflation (cosmology)"). Skipped while the sense tables don't exist.
+SENSES, WORK_SENSES = dbutils.widgets.get("senses").strip(), dbutils.widgets.get("work_senses").strip()
+if spark.catalog.tableExists(SENSES) and spark.catalog.tableExists(WORK_SENSES) and spark.catalog.tableExists(ROWS):
+    t0 = time.time()
+    spark.sql(kn.sense_statement(ROWS, f"{P}nrm_sensed", WORK_SENSES, SENSES))
+    spark.sql(f"CREATE OR REPLACE TABLE {ROWS} AS SELECT * FROM {P}nrm_sensed")
+    log(f"senses done in {time.time() - t0:.0f} s")
 
 # COMMAND ----------
 

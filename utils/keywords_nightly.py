@@ -120,6 +120,31 @@ def normalise_statements(values):
     return [(name, render(sql, values)) for name, sql in NORMALISE_STEPS]
 
 
+SENSES = "openalex.common.keywords_v2_senses"          # homonym senses (oxjob #1476): heading, sense_id, sense_name (the sense headings)
+WORK_SENSES = "openalex.works.work_keyword_senses"      # per-work decisions: work_id, heading, sense_id, prob, model (only works that move)
+
+
+def sense_statement(rows_in, rows_out, work_senses=WORK_SENSES, senses=SENSES):
+    """Homonym senses (oxjob #1476): rows in the work_keywords_v2 shape -> the same rows with each keyword that has a per-work sense decision
+    (work_senses: work_id, heading, sense_id) replaced by its sense heading (id + display name from `senses`). Everything else is unchanged:
+    order, scores, tagger_version, updated_at. A work with no decision keeps the main sense. If a work ends up with the same id twice (it
+    already carried the sense heading), the first position wins."""
+    return f"""CREATE OR REPLACE TABLE {rows_out} AS
+WITH e AS (SELECT r.work_id, r.tagger_version, r.updated_at, p.pos, p.x FROM {rows_in} r LATERAL VIEW posexplode(r.keywords) p AS pos, x),
+d0 AS (SELECT ws.work_id, concat('https://openalex.org/keywords/', ws.heading) AS hid, s.sense_id, s.sense_name
+       FROM {work_senses} ws JOIN (SELECT DISTINCT sense_id, sense_name FROM {senses}) s ON s.sense_id = ws.sense_id
+       WHERE ws.work_id IN (SELECT work_id FROM {rows_in})),
+m AS (SELECT e.work_id, e.tagger_version, e.updated_at, e.pos, e.x.score AS score,
+             COALESCE(concat('https://openalex.org/keywords/', d0.sense_id), e.x.id) AS id, COALESCE(d0.sense_name, e.x.display_name) AS display_name
+      FROM e LEFT JOIN d0 ON d0.work_id = e.work_id AND d0.hid = e.x.id),
+d AS (SELECT *, row_number() OVER (PARTITION BY work_id, id ORDER BY pos) AS k FROM m)
+SELECT work_id,
+       TRANSFORM(ARRAY_SORT(COLLECT_LIST(NAMED_STRUCT('pos', pos, 'id', id, 'display_name', display_name, 'score', score))),
+                 y -> NAMED_STRUCT('id', y.id, 'display_name', y.display_name, 'score', y.score)) AS keywords,
+       FIRST(tagger_version) AS tagger_version, FIRST(updated_at) AS updated_at
+FROM d WHERE k = 1 GROUP BY work_id"""
+
+
 def check_statements(rows, target, queue, vocab_table="openalex.common.keywords_v2"):
     """Pre-append checks on the output rows; each returns one row, 'ok' says pass."""
     return {
