@@ -66,7 +66,8 @@
  "require_databricks_run_id": true,
  "gone_fuse": 5000,
  "extra_inputs": {
-  "award_relations_raw": "openalex.awards.award_relations_raw"
+  "award_relations_raw": "openalex.awards.award_relations_raw",
+  "migration_manifest": "openalex.awards.award_migration_manifest"
  },
  "relations_drop_fuse": 0.01
 }
