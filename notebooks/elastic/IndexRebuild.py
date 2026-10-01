@@ -15,7 +15,7 @@
 # MAGIC | mode | does | writes when dry_run=false |
 # MAGIC |---|---|---|
 # MAGIC | `plan` | parameter sheet: old index size and tombstones, cluster disk, projected size and peak disk, pinned Delta version V, its commit time T, count at V; the load chunks' id ranges at V (published as task values `range_k`) | nothing |
-# MAGIC | `create_index` | new index body = old index's LIVE mapping verbatim + its settings minus internal keys + build overrides (0 replicas, refresh -1, total_shards_per_node); saves the body to a Volume; reports what the matching templates would add (simulated) and refuses template aliases or extra fields; after the PUT the mapping must equal the old one | PUT new index |
+# MAGIC | `create_index` | new index body = old index's LIVE mapping + the MAPPING_OVERRIDES for the new index (new or retyped fields) + its settings minus internal keys + build overrides (0 replicas, refresh -1, total_shards_per_node); saves the body to a Volume; reports what the matching templates would add (simulated) and refuses template aliases or extra fields; after the PUT the mapping must equal old + overrides | PUT new index |
 # MAGIC | `watchdog` | runs beside the load chunks; cancels the job run when a data node's search queue or cluster disk breaks the stop rules; logs the indexing rate | cancel the run |
 # MAGIC | `close_load` | refresh; count equals the source at V; `_mget` of random source ids | refresh new index |
 # MAGIC | `add_replicas` | raises recovery speed (transient), sets replicas, waits for green, restores the recorded recovery settings | cluster settings, new index settings |
@@ -31,6 +31,7 @@
 
 # COMMAND ----------
 
+import copy
 import datetime as dt
 import json
 import math
@@ -281,6 +282,40 @@ def build_settings(old, data_node_count):
     return {**kept, **overrides}, dropped, overrides
 
 
+# Mapping changes a rebuild carries, by new index name: the only way to retype a field (ES can't in place) and the
+# clean way to add one, since the load writes every document. House shape for a filterable id or code is keyword +
+# a `lower` subfield. Keep each entry's oxjob next to it; verify needs every added field in expect_diff.
+KL = {"type": "keyword", "fields": {"lower": {"type": "keyword", "normalizer": "lower"}}}
+MAPPING_OVERRIDES = {
+    "works-v35": {"properties": {
+        # oxjob #1474: author position paired with author, institution and country (filled by sync_works)
+        **{f"{position}_author{suffix}": KL for position in ("first", "last")
+           for suffix in ("_ids", "_institution_ids", "_countries")},
+        # oxjob #1473: MeSH headings become filterable (v34: flattened, index false). Mapping only; docs unchanged.
+        "mesh": {"properties": {"descriptor_ui": KL, "descriptor_name": KL, "qualifier_ui": KL, "qualifier_name": KL,
+                                "is_major_topic": {"type": "boolean"}}},
+    }},
+}
+
+
+def merge_mapping(old, override):
+    """Old mapping with the override applied. A field in the override replaces the old field whole, unless both are
+    objects with `properties` and the same type, which merge field by field. Neither input is changed."""
+    out = copy.deepcopy(old)
+    props = out.setdefault("properties", {})
+    for name, field in (override.get("properties") or {}).items():
+        cur = props.get(name)
+        if cur is not None and "properties" in cur and "properties" in field and cur.get("type") == field.get("type"):
+            props[name] = merge_mapping(cur, field)
+        else:
+            props[name] = copy.deepcopy(field)
+    return out
+
+
+def same_mapping(a, b):
+    return json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+
+
 # Mapping parameters ES fills in when absent (8.x): stripped before comparing the verbose template with the compact
 # GET _mapping form. A report aid only; the post-create check compares real GET _mapping output, which is exact.
 _NUMERIC = {"coerce": True, "doc_values": True, "ignore_malformed": False, "index": True, "store": False}
@@ -422,18 +457,25 @@ if MODE == "plan":
 elif MODE == "create_index":
     c = es()
     if exists(c, NEW) and IF_EXISTS != "reuse":
-        raise ValueError(f"{NEW} already exists; use if_exists=reuse to accept it (its mapping must equal {OLD}'s)")
+        raise ValueError(f"{NEW} already exists; use if_exists=reuse to accept it (its mapping must equal {OLD}'s "
+                         f"plus the overrides)")
     if SOURCE_VERSION:
         v, t, op = pinned()
         log(f"source pinned at version {v} ({op}, {t} UTC); the load chunks read {src(v)}")
     old_settings = flat_settings(c, OLD)
     old_mapping = get_mapping(c, OLD)
+    mapping_override = MAPPING_OVERRIDES.get(NEW, {})
+    target_mapping = merge_mapping(old_mapping, mapping_override)
     nodes = data_nodes(c)
     settings, dropped, overrides = build_settings(old_settings, len(nodes))
-    body = {"settings": settings, "mappings": old_mapping}
+    body = {"settings": settings, "mappings": target_mapping}
     show("Copied from the old index", {k: v for k, v in settings.items() if k not in overrides})
     show("Dropped (internal to the old index, or replaced by an override)", dropped)
     show("Build overrides", {k: f"{old_settings.get(k, '(unset)')} -> {v}" for k, v in overrides.items()})
+    old_props = old_mapping.get("properties", {})
+    show("Mapping overrides (new or replaced fields)",
+         {k: f"{json.dumps(old_props[k]) if k in old_props else '(new)'} -> {json.dumps(v)}"
+          for k, v in (mapping_override.get("properties") or {}).items()})
 
     # Whatever templates match the new name are applied at creation: their settings fill gaps, their mappings are
     # MERGED, their aliases are ADDED. simulate_index_template shows exactly that. Report it; never change it here.
@@ -468,9 +510,9 @@ elif MODE == "create_index":
 
     if exists(c, NEW):
         new_mapping = get_mapping(c, NEW)
-        same = json.dumps(new_mapping, sort_keys=True) == json.dumps(old_mapping, sort_keys=True)
+        same = same_mapping(new_mapping, target_mapping)
         ns = flat_settings(c, NEW)
-        log(f"{NEW} exists (if_exists=reuse): mapping {'equals' if same else 'DIFFERS FROM'} {OLD}'s; "
+        log(f"{NEW} exists (if_exists=reuse): mapping {'equals' if same else 'DIFFERS FROM'} {OLD}'s + overrides; "
             f"shards {ns.get('index.number_of_shards')}, replicas {ns.get('index.number_of_replicas')}, "
             f"refresh {ns.get('index.refresh_interval')}")
         if not same or ns.get("index.number_of_shards") != old_settings["index.number_of_shards"]:
@@ -478,17 +520,17 @@ elif MODE == "create_index":
     elif DRY:
         log(f"DRY: would PUT {NEW} with the body above (saved to the Volume); nothing created")
     else:
-        c.options(request_timeout=300).indices.create(index=NEW, settings=settings, mappings=old_mapping)
+        c.options(request_timeout=300).indices.create(index=NEW, settings=settings, mappings=target_mapping)
         log(f"created {NEW}")
         deadline = time.time() + 600
         while health(c, NEW) != "green" and time.time() < deadline:
             time.sleep(10)
         log(f"{NEW} health {health(c, NEW)}")
         new_mapping = get_mapping(c, NEW)
-        if json.dumps(new_mapping, sort_keys=True) != json.dumps(old_mapping, sort_keys=True):
+        if not same_mapping(new_mapping, target_mapping):
             save("created_mapping.json", new_mapping)
-            raise RuntimeError(f"{NEW}'s mapping differs from {OLD}'s after creation (saved); do not load it")
-        log(f"{NEW} mapping equals {OLD}'s (empty diff)")
+            raise RuntimeError(f"{NEW}'s mapping differs from {OLD}'s + overrides after creation (saved); do not load it")
+        log(f"{NEW} mapping equals {OLD}'s + overrides (empty diff)")
         per_node = {}
         for s in c.cat.shards(index=NEW, format="json", h="node,prirep,state"):
             per_node[s["node"]] = per_node.get(s["node"], 0) + 1
