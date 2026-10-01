@@ -53,7 +53,7 @@ resources:
             # >>> WRITERS. sync_works opens one ES bulk stream per Spark core, so writers = num_workers x 32
             # >>> (rd-fleet.8xlarge = 32 vCPU), shared by the 4 lanes: 2 = 64 writers, 4 = 128, 8 = 256.
             # >>> Set it to the level calibration picked (PLAYBOOK step 3) before creating the job.
-            num_workers: 8
+            num_workers: 4
             aws_attributes:
               availability: ON_DEMAND
               first_on_demand: 1
