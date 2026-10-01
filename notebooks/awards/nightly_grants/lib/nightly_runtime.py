@@ -331,13 +331,20 @@ class Nightly:
         rows (raw award rows by provenance; GtR rows as gtr_legacy), not on deduplicated observations: sources share observation
         keys and the newest row wins, so an observation count swings between sources whenever one job rewrites its rows
         (10-01: DataCite 126,394 -> ~68k with nothing lost). A source is complete when today's rows are >= family_min_ratio of the
-        rows the last successful run read, measured on that run's own raw/GtR versions. If those versions can no longer be read,
-        the ratio is skipped for the night and recorded (`_source_baseline`)."""
+        rows the last successful run read, measured on that run's own raw/GtR versions. Before the first successful run there is
+        no baseline and the ratio is skipped (recorded in `_source_baseline`). When a successful run exists but its versions can't
+        be read (not recorded, or past the 7-day retention), the night STOPS (SOURCE_BASELINE_UNREADABLE) unless the run is
+        given "allow_missing_source_baseline": true (overrides_json, one night). The effective ratios go into counts."""
         r, ratio = self.r, float(self.config.get("family_min_ratio", 0.98))
         overrides = self.config.get("source_min_ratio_overrides", {})
         floor = " ".join(f"WHEN {literal(k)} THEN {float(v)}" for k, v in overrides.items())
         ratio_sql = f"CASE family {floor} ELSE {ratio} END" if overrides else str(ratio)
         prev = self.baseline_sql()
+        allow = bool(self.config.get("allow_missing_source_baseline", False))
+        self.counts["_source_ratio"] = dict(default=ratio, overrides={k: float(v) for k, v in overrides.items()},
+                                            allow_missing_source_baseline=allow)
+        if prev is None and self.counts["_source_baseline"] != "none: no successful run yet":
+            self.require(allow, "SOURCE_BASELINE_UNREADABLE: " + self.counts["_source_baseline"])
         prev_sql = prev or "(SELECT CAST(NULL AS STRING) family,CAST(NULL AS BIGINT) prev_n WHERE false)"
         complete = f"coalesce(cur_n,0)>={ratio_sql}*coalesce(prev_n,0)" if prev else "true"
         self.view("receipts", self.artifact("receipts", f"""WITH cur AS ({raw_source_counts('raw_v', 'gtr_v', 'cur_n')}),

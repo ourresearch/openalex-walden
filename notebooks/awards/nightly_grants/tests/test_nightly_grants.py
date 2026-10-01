@@ -301,15 +301,41 @@ def test_receipts_count_raw_rows_against_last_runs_versions():
     assert c.counts["_source_baseline"] == "raw v7, gtr v3"
 
 
-def test_no_baseline_skips_the_ratio_and_records_why():
+def test_no_successful_run_yet_skips_the_ratio_and_records_why():
+    spark = ReceiptSpark(last_run=None)
+    c = Nightly(spark, config())
+    c.family_receipts()
+    assert "true coverage_complete" in receipts_sql(spark)
+    assert c.counts["_source_baseline"] == "none: no successful run yet"
+    assert c.counts["_source_ratio"] == dict(default=0.98, overrides={}, allow_missing_source_baseline=False)
+
+
+def test_unreadable_baseline_stops_the_night_unless_allowed():
     import json
-    for last, unreadable, why in ((None, False, "none: no successful run yet"),
-                                  (json.dumps(dict(versions=dict(raw=dict(relation="a.b.raw", version=7), gtr=dict(relation="a.b.gtr", version=3)))), True, "unavailable")):
+    good = json.dumps(dict(versions=dict(raw=dict(relation="a.b.raw", version=7), gtr=dict(relation="a.b.gtr", version=3))))
+    for last, unreadable, why in ((good, True, "unavailable"), (json.dumps(dict(versions={})), False, "none: last run did not record")):
         spark = ReceiptSpark(last_run=last, unreadable=unreadable)
         c = Nightly(spark, config())
+        try:
+            c.family_receipts()
+            raise AssertionError("expected SOURCE_BASELINE_UNREADABLE")
+        except RuntimeError as exc:
+            assert str(exc).startswith("SOURCE_BASELINE_UNREADABLE: " + why)
+        spark = ReceiptSpark(last_run=last, unreadable=unreadable)
+        c = Nightly(spark, config(allow_missing_source_baseline=True))
         c.family_receipts()
         assert "true coverage_complete" in receipts_sql(spark)
-        assert c.counts["_source_baseline"].startswith(why)
+        assert c.counts["_source_ratio"]["allow_missing_source_baseline"] is True
+
+
+def test_effective_ratios_are_recorded():
+    import json
+    run = json.dumps(dict(versions=dict(raw=dict(relation="a.b.raw", version=7), gtr=dict(relation="a.b.gtr", version=3))))
+    spark = ReceiptSpark(last_run=run)
+    c = Nightly(spark, config(source_min_ratio_overrides={"gtr_legacy": 0.95}))
+    c.family_receipts()
+    assert c.counts["_source_ratio"] == dict(default=0.98, overrides={"gtr_legacy": 0.95}, allow_missing_source_baseline=False)
+    assert "CASE family WHEN 'gtr_legacy' THEN 0.95 ELSE 0.98 END" in receipts_sql(spark)
 
 # ---------- new funders added after the basis (auto-add, 10-01) ----------
 class FunderSpark(FakeSpark):
@@ -355,3 +381,23 @@ def test_without_live_funders_the_basis_is_used_alone():
     import inspect
     src = inspect.getsource(Nightly.derive_inputs)
     assert 'if self.config.get("live_funders"):\n            self.add_new_funders()' in src
+
+
+# ---------- sub-award search mapping preflight (10-01, Codex validation) ----------
+def _field_mapping(overrides=None):
+    resp = {"awards-v4": {"mappings": {}}}
+    for f, m in sync_awards.AWARD_FIELD_MAPPINGS.items():
+        m = dict(m, **(overrides or {}).get(f, {}))
+        resp["awards-v4"]["mappings"][f] = {"full_name": f, "mapping": {f.split(".")[-1]: m}}
+    return resp
+
+
+def test_award_mapping_matches_the_provisioned_index():
+    assert sync_awards.mapping_mismatches(_field_mapping(), "awards-v4") == []
+    assert len(sync_awards.AWARD_FIELD_MAPPINGS) == 25
+
+
+def test_award_mapping_mismatch_or_missing_field_is_reported():
+    resp = _field_mapping({"sub_awards_full.id": {"type": "text"}})
+    del resp["awards-v4"]["mappings"]["sub_awards_count"]
+    assert sync_awards.mapping_mismatches(resp, "awards-v4") == ["sub_awards_count", "sub_awards_full.id"]
