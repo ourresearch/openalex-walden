@@ -13,13 +13,15 @@
   "openalex.awards.award_id_aliases",
   "openalex.awards.work_awards",
   "openalex.awards.awards_api",
-  "openalex.awards.award_registry_lock"
+  "openalex.awards.award_registry_lock",
+  "openalex.awards.award_relations"
  ],
  "outputs": {
   "awards": "openalex.awards.openalex_awards",
   "aliases": "openalex.awards.award_id_aliases",
   "work_awards": "openalex.awards.work_awards",
-  "api": "openalex.awards.awards_api"
+  "api": "openalex.awards.awards_api",
+  "relations": "openalex.awards.award_relations"
  },
  "inputs": {
   "raw": "openalex.awards.openalex_awards_raw",
@@ -62,5 +64,9 @@
  "live_funders": "openalex.funders.funders",
  "legacy_lock": "openalex.awards.award_registry_lock",
  "require_databricks_run_id": true,
- "gone_fuse": 5000
+ "gone_fuse": 5000,
+ "extra_inputs": {
+  "award_relations_raw": "openalex.awards.award_relations_raw"
+ },
+ "relations_drop_fuse": 0.01
 }

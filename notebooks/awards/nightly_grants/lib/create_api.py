@@ -13,8 +13,12 @@ def run(c):
     template=template.replace('{AWARDS}',r+'awards_candidate')
     c.artifact('api_payload',f'SELECT a.*,:rid release_id FROM ({template}) a')
     prev='previous_api_v'   # yesterday's published awards_api, bound at run start (was the release's api_final pin)
-    expression=(Path(c.config['package_root'])/'sql/api_hash_expression.sql').read_text().strip()
-    c.artifact('previous_api_hash',f'SELECT id,updated_date,{expression} content_hash FROM {prev}')
+    base=(Path(c.config['package_root'])/'sql/api_hash_expression.sql').read_text().strip()
+    # Sub-award links: an award with none hashes exactly as before; yesterday's table may predate the columns.
+    expression=(f"CASE WHEN coalesce(size(parent_awards_full),0)=0 AND coalesce(size(sub_awards_full),0)=0 THEN {base} "
+                f"ELSE xxhash64(concat_ws('|',CAST({base} AS STRING),to_json(parent_awards_full),to_json(sub_awards_full))) END")
+    has_links=set(c.sql(f'SELECT * FROM {prev} LIMIT 0').columns)>={'parent_awards_full','sub_awards_full'}
+    c.artifact('previous_api_hash',f'SELECT id,updated_date,{expression if has_links else base} content_hash FROM {prev}')
     c.zero('PREVIOUS_API_HASH_UNIQUE',f'SELECT id FROM {r}previous_api_hash GROUP BY id HAVING count(*)<>1')
     c.artifact('new_api_hash',f'SELECT id,{expression} content_hash FROM {r}api_payload')
     c.artifact('api_candidate',f"""SELECT a.* EXCEPT(updated_date),

@@ -49,7 +49,7 @@ class Nightly:
         self.fence = tuple(config["write_fence"])             # every write target must start with one of these
         self.require(len(self.fence) > 0, "WRITE_FENCE_REQUIRED")
         self.outputs = {k: ident(v) for k, v in config["outputs"].items()}
-        self.require(set(self.outputs) == {"awards", "aliases", "work_awards", "api"}, "OUTPUT_SET")
+        self.require(set(self.outputs) - {"relations"} == {"awards", "aliases", "work_awards", "api"}, "OUTPUT_SET")   # relations: optional (award_relations.py)
         self.versions, self.counts, self.checks, self.log = {}, {}, {}, []
         self.locked = False
         if config.get("require_databricks_run_id"):
@@ -273,7 +273,7 @@ class Nightly:
         self.bind("state_transitions", p + "award_state_transitions")
         # optional approved inputs, e.g. {"migration_manifest": "<relation>"} for an approved duplicate-retirement batch
         for view, relation in self.config.get("extra_inputs", {}).items():
-            self.require(view in ("migration_manifest",), "UNKNOWN_EXTRA_INPUT: " + view)
+            self.require(view in ("migration_manifest", "award_relations_raw"), "UNKNOWN_EXTRA_INPUT: " + view)
             self.bind(view, relation)
         # yesterday's public state: ids in the live awards table are ACTIVE; everything else as the registry says
         self.sql(f"""SELECT e.stable_id,CASE WHEN a.id IS NOT NULL THEN 'ACTIVE' WHEN e.status='ACTIVE' THEN 'UNPUBLISHED' ELSE e.status END status,e.redirect_to

@@ -104,6 +104,12 @@ SELECT
   -- authorships/authorships_full pattern.
   COALESCE(iap.institution_awarded, ARRAY()) AS institution_awarded_full,
   oa.primary_topic AS primary_topic_full,
-  oa.topics AS topics_full
+  oa.topics AS topics_full,
+  -- Sub-award links (award_relations.py). *_full = uncapped object siblings for search filters.
+  oa.parent_awards,
+  oa.sub_awards,
+  oa.sub_awards_count,
+  oa.parent_awards_full,
+  oa.sub_awards_full
 FROM {AWARDS} oa
 LEFT JOIN institution_awarded_per_award iap ON oa.id = iap.award_id
