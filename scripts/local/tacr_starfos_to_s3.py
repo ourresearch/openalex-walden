@@ -249,9 +249,9 @@ def split_name(name: str) -> tuple[str | None, str | None]:
     which can sit on both sides of the name."""
     if not name:
         return None, None
-    name = re.sub(r"Ph\s*[.:]\s*D\s*[.:]?", "Ph.D.", HONORIS_RE.sub(" ", name))  # "Ph. D." / "Ph:D:"
-    name = re.sub(r",(?=\S)", ", ", name)                                           # "PhD.,MSc."
-    tokens = [t.strip(",") for t in name.split() if not is_title(t)]
+    cleaned = re.sub(r"Ph\s*[.:]\s*D\s*[.:]?", "Ph.D.", HONORIS_RE.sub(" ", name))  # "Ph. D." / "Ph:D:"
+    cleaned = re.sub(r",(?=\S)", ", ", cleaned)                                     # "PhD.,MSc."
+    tokens = [t.strip(",") for t in cleaned.split() if not is_title(t)]
     tokens = [t for t in tokens if t]
     suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
     while tokens and tokens[-1].lower().strip(",.") in suffixes:
