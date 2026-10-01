@@ -262,7 +262,7 @@ class Nightly:
             CAST(NULL AS BIGINT) stable_id,CAST(NULL AS BIGINT) old_funder_id,CAST(NULL AS BIGINT) new_funder_id,
             CAST(NULL AS STRING) namespace,CAST(NULL AS STRING) source_record_id,CAST(NULL AS STRING) producer_code_sha,
             CAST(NULL AS STRING) evidence_uri WHERE false""").createOrReplaceTempView("continuity_v")   # empty: unproven corrections block
-        # carried state (written by the previous successful run; seeded once from n20260925)
+        # carried state (written by the previous successful run)
         for view, table in (("previous_bindings", "award_bindings_last"), ("merge_doi_pairs", "award_merge_doi_pairs")):
             self.bind(view, p + table)
         # withdrawal evidence is per SOURCE (raw provenance, or the adapter family): the deployed SQL joins on `family`

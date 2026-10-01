@@ -3,9 +3,9 @@ CREATE TABLE IF NOT EXISTS {P}award_nightly_runs (run_id STRING NOT NULL, databr
   finished_at TIMESTAMP, status STRING NOT NULL, details_json STRING, error STRING);
 CREATE TABLE IF NOT EXISTS {P}award_nightly_lock (lock_name STRING NOT NULL, holder STRING, databricks_run_id STRING, acquired_at TIMESTAMP);
 INSERT INTO {P}award_nightly_lock SELECT 'nightly',NULL,NULL,NULL WHERE NOT EXISTS (SELECT 1 FROM {P}award_nightly_lock WHERE lock_name='nightly');
--- carried state, seeded once from the last accepted release (n20260925)
-CREATE TABLE IF NOT EXISTS {P}award_bindings_last AS SELECT observation_key,stable_id,family,coalesce(payload.provenance,family) source FROM openalex.awards.n20260925_bindings_final;
-CREATE TABLE IF NOT EXISTS {P}award_merge_doi_pairs AS SELECT loser_id,target_id FROM openalex.awards.n20260925_merge_doi_pairs;
+-- carried state, written by each successful run (prod was seeded once from release n20260925 on 09-29; that release's tables are dropped)
+CREATE TABLE IF NOT EXISTS {P}award_bindings_last (observation_key STRING, stable_id BIGINT, family STRING, source STRING);
+CREATE TABLE IF NOT EXISTS {P}award_merge_doi_pairs (loser_id BIGINT, target_id BIGINT);
 CREATE TABLE IF NOT EXISTS {P}award_state_transitions (run_id STRING NOT NULL, stable_id BIGINT NOT NULL, old_status STRING, status STRING NOT NULL,
   redirect_to BIGINT, recorded_at TIMESTAMP NOT NULL);
 -- identity basis for funders: the version the deployed chain was pinned to (openalex.funders.funders v34 = current on 09-29).
