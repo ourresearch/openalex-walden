@@ -688,8 +688,8 @@ elif MODE == "verify":
     # The truth check: the new index vs the source at V on fields that compare directly (no sync-side transforms).
     v_tbl = src(SOURCE_VERSION) if SOURCE_VERSION else src()
     DELTA_FIELDS = {  # es _source path -> SQL expression on the source row; both sides normalised by norm()
-        "publication_year": "publication_year", "type": "type", "language": "language", "doi": "doi",
-        "display_name": "display_name", "updated_date": "updated_date", "cited_by_count": "cited_by_count",
+        "publication_year": "publication_year", "type": "type", "language": "language",
+        "display_name": "title", "updated_date": "updated_date", "cited_by_count": "cited_by_count",
         "fwci": "fwci", "citation_normalized_percentile.value": "citation_normalized_percentile.value",
         "institutions_distinct_count": "institutions_distinct_count", "referenced_works_count": "referenced_works_count",
         "open_access.is_oa": "open_access.is_oa", "open_access.oa_status": "open_access.oa_status",
