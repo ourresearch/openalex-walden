@@ -1,0 +1,19 @@
+# One row per (IATI publisher, OpenAlex funder). See iati_to_s3.py for how each column is used.
+#   publisher_ref         IATI Registry short name (or the IATI organisation identifier)
+#   openalex_funder_id    numeric OpenAlex funder id (openalex.funders.funders.funder_id)
+#   funder_name           display name, for humans only (the notebook reads the canonical row by id)
+#   research_filter       rule sets from iati_research_rules.csv, separated by ";". Blank = admit nothing.
+#   funder_org_refs       "|"-separated participating-org refs (roles 1-3) that route an activity to
+#                         this funder. Blank = this row takes every activity of the publisher.
+#                         Activities matching no row are parsed but never shipped.
+#   award_level           leaf = each activity that carries money is an award;
+#                         top  = each top-level activity is an award and its children roll up into it
+#   award_id_regex        one capture group taking the citable award number out of the iati-identifier
+#   landing_page_template {iati_identifier} {funder_award_id} {parent_or_self}, or `document_link`
+#   min_research_share    percent of the activity's DAC sector allocation that must be research codes
+#   amount_basis          order of preference, "|"-separated: commitment, budget, disbursement
+publisher_ref,openalex_funder_id,funder_name,research_filter,funder_org_refs,award_level,award_id_regex,landing_page_template,min_research_share,amount_basis
+sida,4320307875,Styrelsen för Internationellt Utvecklingssamarbete,dac_research;sida_programme,SE-6,top,^SE-0-SE-6-(.+)$,https://openaid.se/en/contributions/{iati_identifier},50,commitment|disbursement|budget
+norad,4320332589,Direktoratet for Utviklingssamarbeid,dac_research;norad_programme,NO-BRC-971277882,leaf,^NO-BRC-971277882-(.+)$,document_link,50,commitment|budget|disbursement
+norad,4320310117,Utenriksdepartementet,dac_research;norad_programme,NO-BRC-972417920|NO-BRC-972417920-1,leaf,^NO-BRC-971277882-(.+)$,document_link,50,commitment|budget|disbursement
+fcdo,4320330760,"Foreign, Commonwealth and Development Office",dac_research,GB-GOV-1|GB-1|GB-GOV-3,leaf,^GB-(?:GOV-)?1-(.+)$,https://devtracker.fcdo.gov.uk/programme/{parent_or_self}/summary,50,budget|commitment|disbursement

@@ -1,0 +1,14 @@
+rule_set,rule_id,field,qualifier,match,value,note
+dac_research,dac_11182,sector,1,exact,11182,Educational research
+dac_research,dac_12182,sector,1,exact,12182,Medical research
+dac_research,dac_12382,sector,1,exact,12382,Research for prevention and control of NCDs
+dac_research,dac_23182,sector,1,exact,23182,Energy research
+dac_research,dac_23082,sector,1,exact,23082,Energy research (withdrawn code; still present on older activities)
+dac_research,dac_31182,sector,1,exact,31182,Agricultural research
+dac_research,dac_31282,sector,1,exact,31282,Forestry research
+dac_research,dac_31382,sector,1,exact,31382,Fishery research
+dac_research,dac_32182,sector,1,exact,32182,Technological research and development
+dac_research,dac_41082,sector,1,exact,41082,Environmental research
+dac_research,dac_43082,sector,1,exact,43082,Research/scientific institutions
+sida_programme,sida_research_cooperation,extension,,regex,"""text"": ""Research cooperation [0-9]{4}",Sida strategy 'Research cooperation 2015-2022' / '2022-2028' (strategy codes 1140102 and 1140103)
+norad_programme,norad_norhed,title,,regex,(?i)\bNORHED\b,Norwegian Programme for Capacity Development in Higher Education and Research for Development (coded 11420 higher education)
