@@ -52,6 +52,9 @@
 # MAGIC (one Crossref work). Winner = the Crossref record's work; loser = the feed record's work. 98 % of these pairs are
 # MAGIC legacy pins MapWorkIds never re-resolves. Held: `default_oai_host` (native_id collisions, #1407),
 # MAGIC `loser_has_primary` (the loser carries its own Crossref/DataCite record: that needs a record move, not a merge),
+# MAGIC `year_differs` (the two works' publication years disagree: reprints, later editions, mis-pinned annual reports) and
+# MAGIC `loser_mixed` (the loser also carries non-repo records, e.g. a MAG-era book the feed's book review was pinned onto;
+# MAGIC the 2026-10-02 stage's wrong merges all sat in these two classes: 2,361 losers, 4 % of the wave, half its citations),
 # MAGIC `junk_type` on the title twin, and the mechanical holds. Keys differ (translated titles), so execute re-keys the
 # MAGIC loser's record keys onto the winner like exact_signature; `ta` = 'twin:<winner id>'.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
@@ -528,6 +531,8 @@ def feed_twin_class_sql():
 FEED_TWIN_SIGNALS = "r.twin"
 FEED_TWIN_HOLD = """CASE WHEN r.default_host THEN 'default_oai_host'
                 WHEN r.loser_has_primary THEN 'loser_has_primary'
+                WHEN r.ya IS NOT NULL AND r.yb IS NOT NULL AND r.ya <> r.yb THEN 'year_differs'
+                WHEN NOT COALESCE(lm.repo_only, FALSE) THEN 'loser_mixed'
                 WHEN r.twin = 'title' AND (r.ta_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')
                                            OR r.tb_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')) THEN 'junk_type'
                 WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
