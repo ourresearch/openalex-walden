@@ -27,14 +27,30 @@ RESEARCH FILTER (required): IATI is all aid, not just research. Only activities
 admitted by a rule in `iati_research_rules.csv` may go toward the public
 `/awards` corpus. The filter is data, not code: DAC research purpose codes plus
 per-publisher programme rules. Every activity records which rule(s) admitted
-it (`research_rule_ids`). By default ONLY research-admitted activities are
-written to the S3 parquet; the full parse stays local.
+it (`research_rule_ids`). ONLY research-admitted awards that route to an
+OpenAlex funder are written to the S3 parquet; the full parse stays local.
+
+FROM ACTIVITIES TO AWARDS (`derive_awards`): publishers split a grant across
+hierarchy levels differently, so the grain is a per-publisher setting
+(`award_level`: leaf or top), as are the citable award number
+(`award_id_regex`), the funder routing for files that carry several bodies
+(`funder_org_refs`), the landing page and the amount basis. Award-level
+columns: is_award, is_research, ship, funder_award_id, openalex_funder_id,
+award_amount / _currency / _basis, award_start_date / award_end_date,
+lead_org_name / _ref / _country, recipient_country_codes, parent_iati_identifier,
+parent_title, children_total_*.
 
 Outputs per publisher (slug = short name with non-alphanumerics -> "_"):
   <output-dir>/iati_<slug>_activities.parquet   every activity (local only)
-  <output-dir>/iati_<slug>_projects.parquet     research-admitted only
+  <output-dir>/iati_<slug>_projects.parquet     rows with ship = true only
   <output-dir>/iati_<slug>_summary.json         counts
   s3://openalex-ingest/awards/iati_<slug>/iati_<slug>_projects.parquet
+
+Usage:
+    python iati_to_s3.py --publisher sida norad fcdo        # parse + upload
+    python iati_to_s3.py --all                              # every row of iati_publishers.csv
+    python iati_to_s3.py --publisher fcdo --limit 500       # smoke test, never uploads
+    python iati_to_s3.py --publisher bmz --skip-upload      # local parse only
 
 Import use (no AWS/Databricks/pandas needed at import time):
     from iati_to_s3 import parse_activity, iter_activities, load_rules, apply_research_rules
@@ -756,6 +772,7 @@ PLACEHOLDER_ORG_NAMES = frozenset(x.lower() for x in [
     "Sida administrative activity implemented by procured partner",
     "Misc", "Miscellaneous", "Not applicable", "N/A", "NA", "None", "Undefined", "Unknown",
     "Unspecified", "Various", "Multiple", "Correction", "Redacted", "Withheld", "TBC", "TBD",
+    "Supplier Name Redacted", "Name Redacted", "Name withheld", "Not available", "Excluded",
 ])
 
 
