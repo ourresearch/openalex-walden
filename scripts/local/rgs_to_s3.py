@@ -3,35 +3,47 @@
 Royal Geographical Society (with IBG) grants to S3
 ==================================================
 
-The RGS-IBG grants programme funds fieldwork and expedition research (Small
-Research Grants, Postgraduate Research Awards, Monica Cole, Henrietta Hutton,
-Gilchrist Fieldwork, Ralph Brown Expedition, Gino Watkins Fund, Walters
-Kundert, Thesiger-Oman, RGS Explore, Neville Shulman Challenge, Ran and Ginny
-Fiennes, Journey in Audio, Frederick Soddy Postgraduate, Fieldwork
-Apprenticeships ...).
+Source (ladder item 0, the funder's own bulk export): "Full list of projects
+supported since 1953", linked from the Society's "Projects supported" page
+(https://www.rgs.org/exploration/grants/projects-supported) as
+https://doi.org/10.17605/OSF.IO/4TH85, an OSF project holding one spreadsheet,
+"RGS-IBG grant recipients_OSF_1953-2026.xlsx" (sheet "List": Name, Institution,
+Project title, Year, Grant, Research Location, Abstract; updated annually, last
+2026-09-09). It is downloaded from the OSF file's public download link
+(osf.io/download/mktsq/). api.osf.io disallows all crawling in its robots.txt,
+so the OSF API is NOT used; osf.io/download/ is allowed.
 
-Source: the Society's own "Projects supported" page,
-https://www.rgs.org/exploration/grants/projects-supported ("Grants awarded in
-YYYY": one <h3> per scheme, one <li> per award: <strong>Name</strong>
-(Institution), Project title [<em>named sub-award</em>]). The page only shows
-the current round, so earlier rounds are read from Internet Archive captures of
-the same page (discovered with the CDX API, fetched sequentially with backoff).
-Each "Grants awarded in YYYY" section is parsed once (the newest capture wins).
+"Grant" names the scheme (Small Research Grant, Postgraduate Research Award,
+Geographical Fieldwork Grant, Dudley Stamp Memorial Award, Monica Cole, Ralph
+Brown Expedition Award, Gino Watkins, Thesiger-Oman ...) or, for older rounds,
+the fund or sponsor that paid (Wolfson Fund, Barclays Bank, Mount Everest
+Foundation, abbreviations such as MAR / GMT / HRM ...); it is kept verbatim as
+funder_scheme. All rows are RGS-IBG grants (the sponsor funds were
+administered and awarded by the Society).
 
-Scope: expedition and fieldwork research grants are kept (batch brief).
-Excluded: "Frederick Soddy Schools Award" and any "Teaching"/"Schools" scheme
-(grants to schoolteachers for pupils' fieldwork trips: education, not
-research). Kept and flagged: "Journey in Audio" (place-based audio projects).
+Scope (batch brief: expedition and fieldwork research grants are kept):
+EXCLUDED: Frederick Soddy Schools Award and Innovative Geography Teaching
+Grant(s) (grants to schoolteachers for pupils' fieldwork: education, not
+research), the sheet's "TOTAL ..." summary row, and the one project marked
+"Asked to re-apply following reconnaissance" (not an award). Exact duplicate
+rows (same name, title, year, grant) are dropped. Kept and flagged:
+"Approval" (expeditions the Society approved and supported, 1970s-80s), Ray Y
+Gildea Jr Award (geography-education research), 'From the Field' awards,
+Journey in Audio.
 
-No grant number is printed (citing works write e.g. "SRG 23.13", "PRA 13.24",
-RGS's internal references, which are not published), so funder_award_id is
-synthetic: RGS-{year}-{scheme-code}-{name-slug}.
+Names: 'Name' can hold one person ('Dr J Darch'), several ('S.J. Sole, S. Lowe,
+...', 'A & B') or a team ('Derbyshire Himalayan Expedition 1961'). The first
+person is the lead (honorifics dropped), the second the co-lead; team names
+give no lead (kept in lead_raw).
+
+No grant reference is published (citing works quote RGS's internal refs such
+as "SRG 23.13", "PRA 13.24"), so funder_award_id is synthetic:
+RGS-{year}-{name-slug}-{title-slug}.
 
 Output: s3://openalex-ingest/awards/rgs/rgs_projects.parquet
 """
 
 import argparse
-import html
 import json
 import re
 import time
@@ -80,51 +92,45 @@ if _sys_utf8.platform == "win32":
 # --- end shim ---
 
 
-LIVE_URL = "https://www.rgs.org/exploration/grants/projects-supported"
-CDX = ("https://web.archive.org/cdx/search/cdx?url=rgs.org/exploration/grants/projects-supported"
-       "&fl=timestamp,statuscode&collapse=digest&filter=statuscode:200")
+XLSX_URL = "https://osf.io/download/mktsq/"  # OSF project 4th85 (doi:10.17605/OSF.IO/4TH85)
+LANDING = "https://doi.org/10.17605/OSF.IO/4TH85"
 S3_BUCKET = "openalex-ingest"
 S3_KEY = "awards/rgs/rgs_projects.parquet"
 HEADERS = {"User-Agent": "openalex-walden/1.0 (+https://openalex.org)"}
-EXCLUDE_SCHEME = re.compile(r"Schools?\b|Teach", re.I)
-FLAG_SCHEME = re.compile(r"Journey in Audio", re.I)
+MIN_ROWS = 3000  # the 2026-09 file has 3,462 rows
+
+EXCLUDE_GRANT = re.compile(r"Frederick Soddy Schools|Teaching Grant|^TOTAL\b|re-apply", re.I)
+FLAG_GRANT = re.compile(r"^Approval|Gildea|From the Field|Journey in Audio", re.I)
+TEAM_WORDS = re.compile(r"\b(?:Expedition|University|Society|School|Club|Team|College|Trust|Project|Association|"
+                        r"Polytechnic|Institute|Survey|Group|Navy|Army|Services|\d{4})\b", re.I)
+NOT_A_PERSON = re.compile(r"\b(?:students?|members?|others?|undergraduates?|pupils?|servicemen|academics?|team|"
+                          r"geologists?|TBC)\b", re.I)
+HONORIFICS = re.compile(r"^(?:(?:Dr|Mr|Mrs|Ms|Miss|Prof|Professor|Sir|Dame|Lord|Lady|Rev|Revd|Capt|Captain|Lt|Lieut|"
+                        r"Major|Maj|Col|Cdr|Commander|Sqn Ldr|Flt Lt|Brigadier|Gen|Hon)\.?\s+)+", re.I)
 
 
 def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def get(url: str, retries: int = 4, pause: float = 5.0) -> str:
+def fetch(url: str, retries: int = 3) -> bytes:
     last_err = None
     for attempt in range(retries):
         try:
-            r = requests.get(url, headers=HEADERS, timeout=120)
+            r = requests.get(url, headers=HEADERS, timeout=180)
             r.raise_for_status()
-            r.encoding = "utf-8"
-            return r.text
+            return r.content
         except Exception as e:  # noqa: BLE001
             last_err = e
-            time.sleep(pause * (attempt + 1))
+            time.sleep(5 * (attempt + 1))
     raise RuntimeError(f"GET {url} failed: {last_err}")
 
 
-def cached(cache_dir: Path | None, name: str, url: str, **kw) -> str:
-    path = cache_dir / name if cache_dir else None
-    if path and path.exists():
-        return path.read_text()
-    body = get(url, **kw)
-    if path:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(body)
-    return body
-
-
-def tidy(s: str | None) -> str | None:
-    if not s:
+def tidy(s) -> str | None:
+    if s is None or (isinstance(s, float) and s != s):
         return None
-    s = html.unescape(re.sub(r"<[^>]+>", " ", s)).replace("\xa0", " ").replace("​", "")
-    s = re.sub(r"\s+", " ", s).strip(" ,;:|")
-    return s or None
+    s = re.sub(r"\s+", " ", str(s).replace("\xa0", " ")).strip(" ,;:.")
+    return None if not s or s.lower() in ("na", "n/a", "nan", "none", "-") else s
 
 
 def slug(s: str) -> str:
@@ -134,11 +140,12 @@ def slug(s: str) -> str:
 
 def split_name(name: str) -> tuple[str | None, str | None]:
     """Canonical wolf_to_s3.py helper (runbook §2.4.1): strip trailing degree /
-    suffix tokens, last remaining token = family name."""
+    suffix tokens, last remaining token = family name; surname particles stay
+    with the family name ('Teun De Jong', 'Sobreiro e Cruz')."""
     if not name:
         return None, None
     tokens = [t for t in re.split(r"\s+", name.strip()) if t]
-    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr"}
+    suffixes = {"phd", "md", "dphil", "dsc", "scd", "jr.", "sr.", "ii", "iii", "iv", "jr", "sr", "obe", "mbe", "cbe"}
     while tokens and tokens[-1].lower().strip(",.") in suffixes:
         tokens.pop()
     if not tokens:
@@ -146,150 +153,93 @@ def split_name(name: str) -> tuple[str | None, str | None]:
     if len(tokens) == 1:
         return None, tokens[0]
     given, family = tokens[:-1], tokens[-1]
-    # surname particles stay with the family name ('Teun De Jong', 'Sobreiro e Cruz', 'El hichou')
     while len(given) > 1 and given[-1].lower() in {"de", "del", "della", "di", "da", "van", "von", "der", "la", "le",
                                                     "el", "al", "e", "dos", "das", "du"}:
         family = given.pop() + " " + family
     return " ".join(given), family
 
 
-SCHEME_CODES = {  # short codes for the synthetic key (RGS's own abbreviations where known)
-    "Small Research Grants": "SRG", "Postgraduate Research Awards": "PRA", "Monica Cole Research Grant": "MC",
-    "Henrietta Hutton Research Grant": "HH", "Gilchrist Fieldwork Award": "GFA", "Ralph Brown Expedition Award": "RBEA",
-    "Gino Watkins Fund Awards": "GW", "Walters Kundert Fellowship": "WKF", "Thesiger-Oman International Fellowships": "TOIF",
-    "RGS Explore Grants": "EXPLORE", "Neville Shulman Challenge Award": "NSCA", "Ran and Ginny Fiennes Award": "RGF",
-    "Journey in Audio": "AUDIO", "Frederick Soddy Postgraduate Award": "FSPA", "Fieldwork Apprenticeships": "FA",
-    "Geographical Fieldwork Grants": "GFG", "Geographical Club Award": "GCA", "Hong Kong Research Grant": "HK",
-    "Ray Y Gildea Jr Award": "RYG", "Peter Smith Award": "PSA", "Jasmin Leila Award": "JLA",
-}
-
-
-def parse_rounds(page: str) -> dict[int, list[dict]]:
-    """{year: [records]} for every 'Grants awarded in YYYY' section on the page."""
-    out = {}
-    parts = re.split(r"<h2[^>]*>\s*Grants awarded in (\d{4})\s*</h2>", page)
-    for k in range(1, len(parts), 2):
-        year, body = int(parts[k]), parts[k + 1]
-        body = re.split(r"<h2", body)[0]
-        recs = []
-        for m in re.finditer(r"<h3[^>]*>(.*?)</h3>\s*<ul[^>]*>(.*?)</ul>", body, re.S):
-            scheme = tidy(m.group(1))
-            for li in re.findall(r"<li[^>]*>(.*?)</li>", m.group(2), re.S):
-                strong = re.search(r"<strong>(.*?)</strong>", li, re.S)
-                bare = tidy(re.sub(r"</?em>", "", li)) or ""
-                if not strong and re.fullmatch(r"\[.*\]", bare) and recs and recs[-1]["scheme"] == scheme:
-                    # a named sub-award printed as its own bullet belongs to the award above it
-                    tag = tidy(bare.strip("[]"))
-                    recs[-1]["sub_award"] = "; ".join(x for x in [recs[-1]["sub_award"], tag] if x)
-                    continue
-                if not strong:
-                    continue
-                li_clean = re.sub(r"</?em>", "", li)
-                sub = [tidy(x) for x in re.findall(r"\[(.*?)\]", li_clean, re.S)]
-                li_clean = re.sub(r"\[.*?\]", " ", li_clean, flags=re.S)
-                # <strong>Names</strong> (Institution) [and <strong>Names</strong> (Institution)] Title
-                people, current, title_parts = [], [], []
-                for seg in re.split(r"(<strong>.*?</strong>)", li_clean, flags=re.S)[1:]:
-                    if seg.startswith("<strong>"):
-                        names = tidy(seg) or ""
-                        names = re.sub(r"\s*[-–—,:]\s*$", "", names)
-                        current = [{"name": n.strip(), "inst": None}
-                                   for n in re.split(r",\s*|\s+and\s+|\s*&\s*", names) if n.strip()]
-                        people.extend(current)
-                        continue
-                    txt = tidy(seg) or ""
-                    mi = re.match(r"^\((.*?)\)\s*(.*)$", txt, re.S)
-                    if mi:
-                        for p_ in current:
-                            p_["inst"] = tidy(mi.group(1))
-                        txt = mi.group(2)
-                    txt = re.sub(r"^(?:and\b|[,\-–—:])\s*", "", txt).strip()
-                    if txt and txt.lower() != "and":
-                        title_parts.append(txt)
-                title = tidy(" ".join(title_parts))
-                if not people or not title:
-                    continue
-                recs.append({"year": year, "scheme": scheme, "name": people[0]["name"],
-                             "institution": people[0]["inst"],
-                             "co_name": people[1]["name"] if len(people) > 1 else None,
-                             "co_institution": people[1]["inst"] if len(people) > 1 else None,
-                             "team_json": json.dumps(people, ensure_ascii=False) if len(people) > 1 else None,
-                             "title": title, "sub_award": "; ".join(x for x in sub if x) or None})
-        out[year] = recs
-    return out
+def people_of(raw: str | None) -> list[str]:
+    """Person names in a Name cell; [] for a team/expedition name."""
+    if not raw:
+        return []
+    raw = re.sub(r"\(.*?\)", " ", raw)
+    # 'X, plus five other team members' / 'X +13 servicemen' / 'rest of team TBC': keep the named people
+    raw = re.split(r"\bplus\b|\+|\brest of\b|\b(?:and|with)\s+(?:\w+\s+)?(?:other|additional)\b", raw, flags=re.I)[0]
+    if TEAM_WORDS.search(raw):
+        return []
+    parts = [HONORIFICS.sub("", p.strip(" .")) for p in re.split(r",|;|&|\band\b", raw)]
+    return [p for p in parts if p and len(p) > 1 and not re.search(r"\d", p) and not NOT_A_PERSON.search(p)]
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="RGS-IBG projects supported -> parquet -> S3")
-    p.add_argument("--limit", type=int, default=None, help="only N rows per round (smoke test)")
+    p = argparse.ArgumentParser(description="RGS-IBG grant recipients (OSF xlsx) -> parquet -> S3")
+    p.add_argument("--limit", type=int, default=None, help="only the first N rows (smoke test)")
     p.add_argument("--output-dir", type=Path, default=Path("/tmp"))
-    p.add_argument("--cache-dir", type=Path, default=None, help="cache pages here (re-runs skip fetch)")
-    p.add_argument("--live-only", action="store_true", help="skip Internet Archive captures")
+    p.add_argument("--cache-dir", type=Path, default=None, help="cache the xlsx here (re-runs skip fetch)")
     p.add_argument("--skip-upload", action="store_true")
     p.add_argument("--allow-shrink", action="store_true", help="override the §1.4 shrink guard")
     args = p.parse_args()
 
-    rounds: dict[int, tuple[str, list[dict]]] = {}
-    live = parse_rounds(cached(args.cache_dir, "projects_supported_live.html", LIVE_URL))
-    for y, recs in live.items():
-        rounds[y] = (LIVE_URL, recs)
-    log(f"live page: rounds {sorted(live)}")
-    caps = []
-    if not args.live_only:
-        try:
-            cdx = get(CDX, retries=3, pause=10)
-            caps = [l.split() for l in cdx.splitlines() if re.match(r"^\d{14} ", l)]
-        except RuntimeError as e:
-            # Archive outage: ship the live round; the §1.4 shrink guard keeps earlier rounds
-            # already in S3 from being overwritten by a smaller file.
-            log(f"WARNING: Internet Archive CDX unavailable ({str(e)[:120]})")
-            if args.cache_dir:  # captures fetched by an earlier run are still usable
-                caps = [[p_.stem[3:], "200"] for p_ in args.cache_dir.glob("wb_*.html")]
-                log(f"  using {len(caps)} cached captures")
-        log(f"Internet Archive: {len(caps)} distinct captures")
-        for ts, _ in sorted(caps, reverse=True):  # newest first: a round's newest capture wins
-            url = f"https://web.archive.org/web/{ts}id_/{LIVE_URL}"
-            try:
-                page = cached(args.cache_dir, f"wb_{ts}.html", url, retries=5, pause=15)
-            except RuntimeError as e:
-                log(f"  capture {ts}: {e}")
-                continue
-            for y, recs in parse_rounds(page).items():
-                if y not in rounds and recs:
-                    rounds[y] = (f"https://web.archive.org/web/{ts}/{LIVE_URL}", recs)
-                    log(f"  capture {ts}: round {y} ({len(recs)} awards)")
-            time.sleep(3)
+    path = (args.cache_dir or args.output_dir) / "rgs_grant_recipients.xlsx"
+    if not (args.cache_dir and path.exists()):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        body = fetch(XLSX_URL)
+        path.write_bytes(body)
+        log(f"downloaded {len(body) / 1e6:.1f} MB from {XLSX_URL}")
+    raw = pd.read_excel(path, sheet_name="List")
+    raw.columns = [str(c).strip() for c in raw.columns]
+    need = {"Name", "Institution", "Project title", "Year", "Grant"}
+    if not need <= set(raw.columns):
+        raise SystemExit(f"unexpected columns {raw.columns.tolist()}")
+    if len(raw) < MIN_ROWS:
+        raise SystemExit(f"only {len(raw)} rows (expected >= {MIN_ROWS}); file changed?")
+    log(f"sheet 'List': {len(raw)} rows, years {raw['Year'].min()}-{raw['Year'].max()}")
+    if args.limit:
+        raw = raw.head(args.limit)
 
     rows = []
-    for y, (src, recs) in sorted(rounds.items()):
-        for r in recs[: args.limit] if args.limit else recs:
-            rows.append(dict(r, source_url=src))
+    for r in raw.to_dict("records"):
+        grant = tidy(r.get("Grant"))
+        rec = {"name_raw": tidy(r.get("Name")), "institution": tidy(r.get("Institution")),
+               "title": tidy(r.get("Project title")), "year": str(int(r["Year"])) if r.get("Year") == r.get("Year") else None,
+               "grant": grant, "research_location": tidy(r.get("Research Location")),
+               "abstract": tidy(r.get("Abstract"))}
+        rows.append(rec)
     df = pd.DataFrame(rows)
-    excluded = df["scheme"].str.contains(EXCLUDE_SCHEME)
-    log(f"excluded {int(excluded.sum())} school/teaching awards: {df.loc[excluded, 'scheme'].value_counts().to_dict()}")
-    df = df[~excluded].copy()
-    df["flag"] = df["scheme"].map(lambda s: "kept_flagged_non_research_format" if FLAG_SCHEME.search(s or "") else None)
-    names = [split_name(n) for n in df["name"]]
-    df["lead_given_name"] = [g for g, _ in names]
-    df["lead_family_name"] = [f for _, f in names]
-    co = [split_name(n) if isinstance(n, str) else (None, None) for n in df["co_name"]]
+    excluded = df["grant"].fillna("").str.contains(EXCLUDE_GRANT)
+    log(f"excluded {int(excluded.sum())}: {df.loc[excluded, 'grant'].value_counts().to_dict()}")
+    df = df[~excluded & df["title"].notna()].copy()
+    before = len(df)
+    df = df.drop_duplicates(["name_raw", "title", "year", "grant"])
+    log(f"dropped {before - len(df)} exact duplicate rows")
+
+    ppl = [people_of(n) for n in df["name_raw"]]
+    lead = [split_name(x[0]) if x else (None, None) for x in ppl]
+    co = [split_name(x[1]) if len(x) > 1 else (None, None) for x in ppl]
+    df["lead_given_name"] = [g for g, _ in lead]
+    df["lead_family_name"] = [f for _, f in lead]
     df["co_given_name"] = [g for g, _ in co]
     df["co_family_name"] = [f for _, f in co]
-    df["investigators_json"] = [
-        json.dumps([dict(zip(("given", "family"), split_name(p_["name"])), inst=p_["inst"]) for p_ in json.loads(t)],
-                   ensure_ascii=False) if isinstance(t, str) else None
-        for t in df["team_json"]]
-    code = df["scheme"].map(lambda s: SCHEME_CODES.get(s) or slug(s).upper()[:20])
-    df["funder_award_id"] = [f"RGS-{y}-{c}-{slug(n)}" for y, c, n in zip(df["year"], code, df["name"])]
+    df["investigators_json"] = [json.dumps([dict(zip(("given", "family"), split_name(n))) for n in x], ensure_ascii=False)
+                                if len(x) > 1 else None for x in ppl]
+    df["flag"] = df["grant"].fillna("").map(lambda g: "kept_flagged" if FLAG_GRANT.search(g) else None)
+
+    base = [f"RGS-{y}-{slug(n or '')[:28]}-{slug(t)[:28]}".replace("--", "-")
+            for y, n, t in zip(df["year"], df["name_raw"], df["title"])]
+    df["funder_award_id"] = base
+    dup = df["funder_award_id"].str.lower().duplicated(keep=False)
+    df.loc[dup, "funder_award_id"] = df.loc[dup, "funder_award_id"] + "-" + df.loc[dup, "grant"].fillna("x").map(lambda g: slug(g)[:20])
     dup = df["funder_award_id"].str.lower().duplicated(keep=False)
     if dup.any():
-        df.loc[dup, "funder_award_id"] = df.loc[dup, "funder_award_id"] + "-" + df.loc[dup, "title"].map(lambda t: slug(t)[:24])
+        df.loc[dup, "funder_award_id"] = df.loc[dup, "funder_award_id"] + "-" + \
+            df.loc[dup].groupby("funder_award_id").cumcount().add(1).astype(str)
     if df["funder_award_id"].str.lower().duplicated().any():
         raise SystemExit("duplicate funder_award_id after disambiguation")
-    df["year"] = df["year"].astype(str)
+    df["source_url"] = LANDING
 
-    log(f"rows: {len(df)} across rounds {sorted(df['year'].unique())}; by scheme {df['scheme'].value_counts().to_dict()}")
-    for c in ["title", "lead_family_name", "institution", "sub_award"]:
+    log(f"rows: {len(df)}, years {df['year'].min()}-{df['year'].max()}, flagged {df['flag'].notna().sum()}")
+    for c in ["title", "lead_family_name", "institution", "grant", "abstract"]:
         log(f"  {c:18s} {df[c].notna().mean():6.1%}")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
