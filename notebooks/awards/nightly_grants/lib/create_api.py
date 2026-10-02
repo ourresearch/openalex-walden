@@ -1,6 +1,18 @@
 """API hydration ported from deployed stableid-r1-prod lib/create_api.py; content-hash expression preserved verbatim."""
 from pathlib import Path
 from stable_award_ids import ident
+import award_country
+
+EMPTY_ANSWERS='SELECT CAST(NULL AS STRING) raw_affiliation_string,CAST(NULL AS ARRAY<BIGINT>) institution_ids WHERE false'
+
+
+def answers_relation(c):
+    """The affiliation matcher's answers (optional input `affiliation_answers`, oxjob #1386): a string it has answered takes its
+    institution ids, every other string stays on the legacy lookup. Not configured = every string on the legacy lookup."""
+    if c.has_extra('affiliation_answers'):
+        c.zero('MATCHER_ANSWERS_UNIQUE','SELECT raw_affiliation_string FROM affiliation_answers_v GROUP BY raw_affiliation_string HAVING count(*)<>1')
+        return 'affiliation_answers_v'
+    return c.artifact('affiliation_answers_empty',EMPTY_ANSWERS)
 
 
 def run(c):
@@ -10,9 +22,14 @@ def run(c):
     c.zero('INSTITUTION_LOOKUP_UNIQUE','SELECT raw_affiliation_string FROM affiliation_lookup_v GROUP BY raw_affiliation_string HAVING count(*)<>1')
     c.zero('INSTITUTION_API_UNIQUE','SELECT id FROM institutions_api_v GROUP BY id HAVING count(*)<>1')
     template=(Path(c.config['package_root'])/'sql/api_payload.sql').read_text()
-    template=template.replace('{AWARDS}',r+'awards_candidate')
+    template=template.replace('{AWARDS}',r+'awards_candidate').replace('{ANSWERS}',answers_relation(c))
+    template=template.replace('{COUNTRY_LOOKUP}',award_country.lookup_relation_sql(c.config['package_root']))   # country/award_country_lookup.csv, validated
     c.artifact('api_payload',f'SELECT a.*,:rid release_id FROM ({template}) a')
     prev='previous_api_v'   # yesterday's published awards_api, bound at run start (was the release's api_final pin)
+    # The country guard only removes matches. A broken lookup or institutions table would remove most of them: stop instead.
+    fuse=float(c.config.get('institution_drop_fuse',0.10))
+    c.zero('INSTITUTION_AWARDED_DROP_FUSE',f"""SELECT now_n,prev_n FROM (SELECT (SELECT count(*) FROM {r}api_payload WHERE size(institution_awarded)>0) now_n,
+      (SELECT count(*) FROM {prev} WHERE size(institution_awarded)>0) prev_n) WHERE now_n<(1-{fuse})*prev_n""")
     base=(Path(c.config['package_root'])/'sql/api_hash_expression.sql').read_text().strip()
     # Sub-award links: an award with none hashes exactly as before; yesterday's table may predate the columns.
     expression=(f"CASE WHEN coalesce(size(parent_awards_full),0)=0 AND coalesce(size(sub_awards_full),0)=0 THEN {base} "

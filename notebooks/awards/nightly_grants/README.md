@@ -36,3 +36,19 @@ The migration-manifest retirement path stays, driven by an optional approved inp
   takes the latest merge; cycles skipped and counted; only to a served survivor), before the final (work, award) dedupe.
 - Never-public ACTIVE ids (minted by a run that failed before its swap) that nothing binds today become GONE (never served, nothing to renumber).
 - Write fence: every write target must start with a configured prefix (dev: openalex_dev.rohan_lab.ngr_).
+
+## Institution matching: country guard and affiliation-matcher answers (proposal, oxjob #1518 workstream D23)
+`sql/api_payload.sql` builds `institution_awarded` from the affiliation names on the award. Three changes:
+- **Country codes.** `country/award_country_lookup.csv` maps each source's free-text `affiliation.country` to ISO 3166-1 alpha-2
+  and says per source what the field means (its `*` row): the organisation's country, a US state (RWJF), the project's country
+  (IDRC), or a constant the ingest notebook wrote. Only sources whose field is the organisation's country give a code; a source
+  with no `*` row gives none. `lib/award_country.py` validates the file every run and inlines it into the query.
+  NIH intramural awards (activity code Z..) with no country count as US.
+- **Country guard.** A matched institution is dropped when the award's affiliation has a country code and the institution is in
+  another country (territories count as their sovereign state). No code on either side never drops a match.
+  `INSTITUTION_AWARDED_DROP_FUSE` stops the night if awards with an institution fall by more than `institution_drop_fuse` (10%).
+- **Matcher answers (optional input).** With `extra_inputs.affiliation_answers` set, a name the affiliation matcher has answered
+  (`openalex.institutions.affiliation_matcher_answers`, what works read since 09-28) takes its ids; other names keep the legacy
+  lookup. Remove the config line and every name is back on the legacy lookup; the guard works either way.
+Also: a NaN model score no longer passes the threshold (318 names were given the same five institutions).
+New source with a country field: add its `*` row to the CSV (see `country/build_country_lookup.py` for the columns) or it gets no codes.

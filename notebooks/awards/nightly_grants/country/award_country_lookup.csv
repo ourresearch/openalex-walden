@@ -1,0 +1,1417 @@
+value,provenance_scope,iso2,confidence,meaning,note
+abw,*,AW,high,organisation,ISO 3166-1 alpha-3
+ad,*,AD,high,organisation,ISO 3166-1 alpha-2
+ae,*,AE,high,organisation,ISO 3166-1 alpha-2
+af,*,AF,high,organisation,ISO 3166-1 alpha-2
+afg,*,AF,high,organisation,ISO 3166-1 alpha-3
+afghanistan,*,AF,high,organisation,ISO 3166-1 name
+afrique du sud,*,ZA,high,organisation,French
+ag,*,AG,high,organisation,ISO 3166-1 alpha-2
+ago,*,AO,high,organisation,ISO 3166-1 alpha-3
+ai,*,AI,high,organisation,ISO 3166-1 alpha-2
+aia,*,AI,high,organisation,ISO 3166-1 alpha-3
+al,*,AL,high,organisation,ISO 3166-1 alpha-2
+ala,*,AX,high,organisation,ISO 3166-1 alpha-3
+alb,*,AL,high,organisation,ISO 3166-1 alpha-3
+albania,*,AL,high,organisation,ISO 3166-1 name
+albanie,*,AL,high,organisation,French
+algeria,*,DZ,high,organisation,ISO 3166-1 name
+algérie,*,DZ,high,organisation,French
+allemagne,*,DE,high,organisation,French
+am,*,AM,high,organisation,ISO 3166-1 alpha-2
+american samoa,*,AS,high,organisation,ISO 3166-1 name
+and,*,AD,high,organisation,ISO 3166-1 alpha-3
+andorra,*,AD,high,organisation,ISO 3166-1 name
+angola,*,AO,high,organisation,ISO 3166-1 name
+anguilla,*,AI,high,organisation,ISO 3166-1 name
+antarctica,*,AQ,high,organisation,ISO 3166-1 name
+antigua and barbuda,*,AG,high,organisation,ISO 3166-1 name
+ao,*,AO,high,organisation,ISO 3166-1 alpha-2
+aq,*,AQ,high,organisation,ISO 3166-1 alpha-2
+ar,*,AR,high,organisation,ISO 3166-1 alpha-2
+arab republic of egypt,*,EG,high,organisation,ISO 3166-1 name
+arabie saoudite,*,SA,high,organisation,French
+are,*,AE,high,organisation,ISO 3166-1 alpha-3
+arg,*,AR,high,organisation,ISO 3166-1 alpha-3
+argentina,*,AR,high,organisation,ISO 3166-1 name
+argentine,*,AR,high,organisation,French
+argentine republic,*,AR,high,organisation,ISO 3166-1 name
+arm,*,AM,high,organisation,ISO 3166-1 alpha-3
+armenia,*,AM,high,organisation,ISO 3166-1 name
+aruba,*,AW,high,organisation,ISO 3166-1 name
+as,*,AS,high,organisation,ISO 3166-1 alpha-2
+asm,*,AS,high,organisation,ISO 3166-1 alpha-3
+at,*,AT,high,organisation,ISO 3166-1 alpha-2
+ata,*,AQ,high,organisation,ISO 3166-1 alpha-3
+atf,*,TF,high,organisation,ISO 3166-1 alpha-3
+atg,*,AG,high,organisation,ISO 3166-1 alpha-3
+au,*,AU,high,organisation,ISO 3166-1 alpha-2
+aus,*,AU,high,organisation,ISO 3166-1 alpha-3
+australia,*,AU,high,organisation,ISO 3166-1 name
+australie,*,AU,high,organisation,French
+austria,*,AT,high,organisation,ISO 3166-1 name
+austrália,*,AU,high,organisation,ISO 3166-1 name (variant spelling)
+aut,*,AT,high,organisation,ISO 3166-1 alpha-3
+autriche,*,AT,high,organisation,French
+aw,*,AW,high,organisation,ISO 3166-1 alpha-2
+award does not have an oda downstream partner,*,,low,not_a_country,"NIHR placeholder, not a country"
+ax,*,AX,high,organisation,ISO 3166-1 alpha-2
+az,*,AZ,high,organisation,ISO 3166-1 alpha-2
+aze,*,AZ,high,organisation,ISO 3166-1 alpha-3
+azerbaijan,*,AZ,high,organisation,ISO 3166-1 name
+ba,*,BA,high,organisation,ISO 3166-1 alpha-2
+bahamas,*,BS,high,organisation,ISO 3166-1 name
+bahrain,*,BH,high,organisation,ISO 3166-1 name
+bangladesh,*,BD,high,organisation,ISO 3166-1 name
+barbados,*,BB,high,organisation,ISO 3166-1 name
+bazil,*,BR,medium,organisation,typo for Brazil
+bb,*,BB,high,organisation,ISO 3166-1 alpha-2
+bd,*,BD,high,organisation,ISO 3166-1 alpha-2
+bdi,*,BI,high,organisation,ISO 3166-1 alpha-3
+be,*,BE,high,organisation,ISO 3166-1 alpha-2
+bel,*,BE,high,organisation,ISO 3166-1 alpha-3
+belarus,*,BY,high,organisation,ISO 3166-1 name
+belgique,*,BE,high,organisation,French
+belgium,*,BE,high,organisation,ISO 3166-1 name
+belize,*,BZ,high,organisation,ISO 3166-1 name
+ben,*,BJ,high,organisation,ISO 3166-1 alpha-3
+benin,*,BJ,high,organisation,ISO 3166-1 name
+bermuda,*,BM,high,organisation,ISO 3166-1 name
+bes,*,BQ,high,organisation,ISO 3166-1 alpha-3
+bf,*,BF,high,organisation,ISO 3166-1 alpha-2
+bfa,*,BF,high,organisation,ISO 3166-1 alpha-3
+bg,*,BG,high,organisation,ISO 3166-1 alpha-2
+bgd,*,BD,high,organisation,ISO 3166-1 alpha-3
+bgr,*,BG,high,organisation,ISO 3166-1 alpha-3
+bh,*,BH,high,organisation,ISO 3166-1 alpha-2
+bhr,*,BH,high,organisation,ISO 3166-1 alpha-3
+bhs,*,BS,high,organisation,ISO 3166-1 alpha-3
+bhutan,*,BT,high,organisation,ISO 3166-1 name
+bi,*,BI,high,organisation,ISO 3166-1 alpha-2
+bih,*,BA,high,organisation,ISO 3166-1 alpha-3
+bj,*,BJ,high,organisation,ISO 3166-1 alpha-2
+bl,*,BL,high,organisation,ISO 3166-1 alpha-2
+blm,*,BL,high,organisation,ISO 3166-1 alpha-3
+blr,*,BY,high,organisation,ISO 3166-1 alpha-3
+blz,*,BZ,high,organisation,ISO 3166-1 alpha-3
+bm,*,BM,high,organisation,ISO 3166-1 alpha-2
+bmu,*,BM,high,organisation,ISO 3166-1 alpha-3
+bn,*,BN,high,organisation,ISO 3166-1 alpha-2
+bo,*,BO,high,organisation,ISO 3166-1 alpha-2
+bol,*,BO,high,organisation,ISO 3166-1 alpha-3
+bolivarian republic of venezuela,*,VE,high,organisation,ISO 3166-1 name
+bolivia,*,BO,high,organisation,
+"bolivia, plurinational state of",*,BO,high,organisation,ISO 3166-1 name
+bolivie,*,BO,high,organisation,French
+"bonaire, sint eustatius and saba",*,BQ,high,organisation,ISO 3166-1 name
+bosnia and herzegovina,*,BA,high,organisation,ISO 3166-1 name
+bosnia-hercegovina,*,BA,high,organisation,
+bosnia-herzegovina,*,BA,high,organisation,
+botswana,*,BW,high,organisation,ISO 3166-1 name
+bouvet island,*,BV,high,organisation,ISO 3166-1 name
+bq,*,BQ,high,organisation,ISO 3166-1 alpha-2
+br,*,BR,high,organisation,ISO 3166-1 alpha-2
+bra,*,BR,high,organisation,ISO 3166-1 alpha-3
+brazil,*,BR,high,organisation,ISO 3166-1 name
+brb,*,BB,high,organisation,ISO 3166-1 alpha-3
+british indian ocean territory,*,IO,high,organisation,ISO 3166-1 name
+british virgin islands,*,VG,high,organisation,ISO 3166-1 name
+brn,*,BN,high,organisation,ISO 3166-1 alpha-3
+brunei,*,BN,high,organisation,
+brunei darussalam,*,BN,high,organisation,ISO 3166-1 name
+brésil,*,BR,high,organisation,French
+bs,*,BS,high,organisation,ISO 3166-1 alpha-2
+bt,*,BT,high,organisation,ISO 3166-1 alpha-2
+btn,*,BT,high,organisation,ISO 3166-1 alpha-3
+bulgaria,*,BG,high,organisation,ISO 3166-1 name
+bulgarie,*,BG,high,organisation,French
+burkina faso,*,BF,high,organisation,ISO 3166-1 name
+burma,*,MM,high,organisation,former name
+burundi,*,BI,high,organisation,ISO 3166-1 name
+bv,*,BV,high,organisation,ISO 3166-1 alpha-2
+bvt,*,BV,high,organisation,ISO 3166-1 alpha-3
+bw,*,BW,high,organisation,ISO 3166-1 alpha-2
+bwa,*,BW,high,organisation,ISO 3166-1 alpha-3
+by,*,BY,high,organisation,ISO 3166-1 alpha-2
+bz,*,BZ,high,organisation,ISO 3166-1 alpha-2
+bénin,*,BJ,high,organisation,ISO 3166-1 name (variant spelling)
+ca,*,CA,high,organisation,ISO 3166-1 alpha-2
+cabo verde,*,CV,high,organisation,ISO 3166-1 name
+caf,*,CF,high,organisation,ISO 3166-1 alpha-3
+california,*,US,medium,organisation,US state in a country field
+cambodge,*,KH,high,organisation,French
+cambodia,*,KH,high,organisation,ISO 3166-1 name
+cameroon,*,CM,high,organisation,ISO 3166-1 name
+cameroun,*,CM,high,organisation,French
+can,*,CA,high,organisation,ISO 3166-1 alpha-3
+canada,*,CA,high,organisation,ISO 3166-1 name
+canadá,*,CA,high,organisation,ISO 3166-1 name (variant spelling)
+cape verde,*,CV,high,organisation,
+cayman islands,*,KY,high,organisation,ISO 3166-1 name
+cc,*,CC,high,organisation,ISO 3166-1 alpha-2
+cck,*,CC,high,organisation,ISO 3166-1 alpha-3
+cd,*,CD,high,organisation,ISO 3166-1 alpha-2
+central african republic,*,CF,high,organisation,ISO 3166-1 name
+cf,*,CF,high,organisation,ISO 3166-1 alpha-2
+cg,*,CG,high,organisation,ISO 3166-1 alpha-2
+ch,*,CH,high,organisation,ISO 3166-1 alpha-2
+chad,*,TD,high,organisation,ISO 3166-1 name
+che,*,CH,high,organisation,ISO 3166-1 alpha-3
+chile,*,CL,high,organisation,ISO 3166-1 name
+chili,*,CL,high,organisation,French
+china,*,CN,high,organisation,ISO 3166-1 name
+chine,*,CN,high,organisation,French
+chl,*,CL,high,organisation,ISO 3166-1 alpha-3
+chn,*,CN,high,organisation,ISO 3166-1 alpha-3
+christmas island,*,CX,high,organisation,ISO 3166-1 name
+chypre,*,CY,high,organisation,French
+ci,*,CI,high,organisation,ISO 3166-1 alpha-2
+civ,*,CI,high,organisation,ISO 3166-1 alpha-3
+ck,*,CK,high,organisation,ISO 3166-1 alpha-2
+cl,*,CL,high,organisation,ISO 3166-1 alpha-2
+cm,*,CM,high,organisation,ISO 3166-1 alpha-2
+cmr,*,CM,high,organisation,ISO 3166-1 alpha-3
+cn,*,CN,high,organisation,ISO 3166-1 alpha-2
+co,*,CO,high,organisation,ISO 3166-1 alpha-2
+cocos (keeling) islands,*,CC,high,organisation,ISO 3166-1 name
+cod,*,CD,high,organisation,ISO 3166-1 alpha-3
+cog,*,CG,high,organisation,ISO 3166-1 alpha-3
+cok,*,CK,high,organisation,ISO 3166-1 alpha-3
+col,*,CO,high,organisation,ISO 3166-1 alpha-3
+colombia,*,CO,high,organisation,ISO 3166-1 name
+colombie,*,CO,high,organisation,French
+com,*,KM,high,organisation,ISO 3166-1 alpha-3
+commonwealth of dominica,*,DM,high,organisation,ISO 3166-1 name
+commonwealth of the bahamas,*,BS,high,organisation,ISO 3166-1 name
+commonwealth of the northern mariana islands,*,MP,high,organisation,ISO 3166-1 name
+comoros,*,KM,high,organisation,ISO 3166-1 name
+congo,*,CG,medium,organisation,ISO short name of the Republic of the Congo; some sources mean the DRC
+congo (brazzaville),*,CG,high,organisation,
+congo (dem. republic),*,CD,high,organisation,
+congo (kinshasa),*,CD,high,organisation,
+congo (république démocratique du),*,CD,high,organisation,French
+congo dem rep,*,CD,high,organisation,NIH spelling
+congo democratic republic (formerly zaire),*,CD,high,organisation,
+"congo, democratic republic of",*,CD,high,organisation,
+"congo, republic",*,CG,high,organisation,
+"congo, the democratic republic of the",*,CD,high,organisation,ISO 3166-1 name
+cook (îles),*,CK,high,organisation,French
+cook islands,*,CK,high,organisation,ISO 3166-1 name
+corée (république de),*,KR,high,organisation,French
+costa rica,*,CR,high,organisation,ISO 3166-1 name
+cote d'ivoire,*,CI,high,organisation,
+cote d'ivoire (ivory coast),*,CI,high,organisation,
+cpv,*,CV,high,organisation,ISO 3166-1 alpha-3
+cr,*,CR,high,organisation,ISO 3166-1 alpha-2
+cri,*,CR,high,organisation,ISO 3166-1 alpha-3
+croatia,*,HR,high,organisation,ISO 3166-1 name
+croatie,*,HR,high,organisation,French
+cu,*,CU,high,organisation,ISO 3166-1 alpha-2
+cub,*,CU,high,organisation,ISO 3166-1 alpha-3
+cuba,*,CU,high,organisation,ISO 3166-1 name
+curaçao,*,CW,high,organisation,ISO 3166-1 name
+cuw,*,CW,high,organisation,ISO 3166-1 alpha-3
+cv,*,CV,high,organisation,ISO 3166-1 alpha-2
+cw,*,CW,high,organisation,ISO 3166-1 alpha-2
+cx,*,CX,high,organisation,ISO 3166-1 alpha-2
+cxr,*,CX,high,organisation,ISO 3166-1 alpha-3
+cy,*,CY,high,organisation,ISO 3166-1 alpha-2
+cym,*,KY,high,organisation,ISO 3166-1 alpha-3
+cyp,*,CY,high,organisation,ISO 3166-1 alpha-3
+cyprus,*,CY,high,organisation,ISO 3166-1 name
+cz,*,CZ,high,organisation,ISO 3166-1 alpha-2
+cze,*,CZ,high,organisation,ISO 3166-1 alpha-3
+czech republic,*,CZ,high,organisation,
+czechia,*,CZ,high,organisation,ISO 3166-1 name
+côte d'ivoire,*,CI,high,organisation,ISO 3166-1 name
+côte divoire,*,CI,high,organisation,typo
+danemark,*,DK,high,organisation,French
+danmark,*,DK,high,organisation,Danish
+de,*,DE,high,organisation,ISO 3166-1 alpha-2
+democratic people's republic of korea,*,KP,high,organisation,ISO 3166-1 name
+democratic republic of sao tome and principe,*,ST,high,organisation,ISO 3166-1 name
+democratic republic of the congo,*,CD,high,organisation,
+democratic republic of timor-leste,*,TL,high,organisation,ISO 3166-1 name
+democratic socialist republic of sri lanka,*,LK,high,organisation,ISO 3166-1 name
+denmark,*,DK,high,organisation,ISO 3166-1 name
+deu,*,DE,high,organisation,ISO 3166-1 alpha-3
+deutschland,*,DE,high,organisation,German
+dj,*,DJ,high,organisation,ISO 3166-1 alpha-2
+dji,*,DJ,high,organisation,ISO 3166-1 alpha-3
+djibouti,*,DJ,high,organisation,ISO 3166-1 name
+dk,*,DK,high,organisation,ISO 3166-1 alpha-2
+dm,*,DM,high,organisation,ISO 3166-1 alpha-2
+dma,*,DM,high,organisation,ISO 3166-1 alpha-3
+dnk,*,DK,high,organisation,ISO 3166-1 alpha-3
+do,*,DO,high,organisation,ISO 3166-1 alpha-2
+dom,*,DO,high,organisation,ISO 3166-1 alpha-3
+dominica,*,DM,high,organisation,ISO 3166-1 name
+dominican rep,*,DO,high,organisation,NIH spelling
+dominican republic,*,DO,high,organisation,ISO 3166-1 name
+dz,*,DZ,high,organisation,ISO 3166-1 alpha-2
+dza,*,DZ,high,organisation,ISO 3166-1 alpha-3
+eastern republic of uruguay,*,UY,high,organisation,ISO 3166-1 name
+ec,*,EC,high,organisation,ISO 3166-1 alpha-2
+ecu,*,EC,high,organisation,ISO 3166-1 alpha-3
+ecuador,*,EC,high,organisation,ISO 3166-1 name
+ee,*,EE,high,organisation,ISO 3166-1 alpha-2
+eg,*,EG,high,organisation,ISO 3166-1 alpha-2
+egy,*,EG,high,organisation,ISO 3166-1 alpha-3
+egypt,*,EG,high,organisation,ISO 3166-1 name
+eh,*,EH,high,organisation,ISO 3166-1 alpha-2
+el,*,GR,high,organisation,European Commission code for Greece
+el salvador,*,SV,high,organisation,ISO 3166-1 name
+england,*,GB,high,organisation,constituent country
+equatorial guinea,*,GQ,high,organisation,ISO 3166-1 name
+er,*,ER,high,organisation,ISO 3166-1 alpha-2
+eri,*,ER,high,organisation,ISO 3166-1 alpha-3
+eritrea,*,ER,high,organisation,ISO 3166-1 name
+es,*,ES,high,organisation,ISO 3166-1 alpha-2
+esh,*,EH,high,organisation,ISO 3166-1 alpha-3
+eslovénia,*,SI,high,organisation,Portuguese
+esp,*,ES,high,organisation,ISO 3166-1 alpha-3
+espagne,*,ES,high,organisation,French
+est,*,EE,high,organisation,ISO 3166-1 alpha-3
+estonia,*,EE,high,organisation,ISO 3166-1 name
+eswatini,*,SZ,high,organisation,ISO 3166-1 name
+et,*,ET,high,organisation,ISO 3166-1 alpha-2
+etats-unis,*,US,high,organisation,French
+eth,*,ET,high,organisation,ISO 3166-1 alpha-3
+ethiopia,*,ET,high,organisation,ISO 3166-1 name
+eua,*,US,high,organisation,Portuguese abbreviation
+falkland islands (islas malvinas),*,FK,high,organisation,
+falkland islands (malvinas),*,FK,high,organisation,ISO 3166-1 name
+faroe islands,*,FO,high,organisation,ISO 3166-1 name
+fed micronesia,*,FM,high,organisation,NIH spelling
+federal democratic republic of ethiopia,*,ET,high,organisation,ISO 3166-1 name
+federal democratic republic of nepal,*,NP,high,organisation,ISO 3166-1 name
+federal republic of germany,*,DE,high,organisation,ISO 3166-1 name
+federal republic of nigeria,*,NG,high,organisation,ISO 3166-1 name
+federal republic of somalia,*,SO,high,organisation,ISO 3166-1 name
+federated states of micronesia,*,FM,high,organisation,ISO 3166-1 name
+federative republic of brazil,*,BR,high,organisation,ISO 3166-1 name
+fi,*,FI,high,organisation,ISO 3166-1 alpha-2
+fiji,*,FJ,high,organisation,ISO 3166-1 name
+fin,*,FI,high,organisation,ISO 3166-1 alpha-3
+finland,*,FI,high,organisation,ISO 3166-1 name
+finlande,*,FI,high,organisation,French
+fj,*,FJ,high,organisation,ISO 3166-1 alpha-2
+fji,*,FJ,high,organisation,ISO 3166-1 alpha-3
+fk,*,FK,high,organisation,ISO 3166-1 alpha-2
+flk,*,FK,high,organisation,ISO 3166-1 alpha-3
+fm,*,FM,high,organisation,ISO 3166-1 alpha-2
+fo,*,FO,high,organisation,ISO 3166-1 alpha-2
+fr,*,FR,high,organisation,ISO 3166-1 alpha-2
+fra,*,FR,high,organisation,ISO 3166-1 alpha-3
+france,*,FR,high,organisation,ISO 3166-1 name
+frankrike,*,FR,high,organisation,Norwegian
+french guiana,*,GF,high,organisation,ISO 3166-1 name
+french polynesia,*,PF,high,organisation,ISO 3166-1 name
+french republic,*,FR,high,organisation,ISO 3166-1 name
+french southern territories,*,TF,high,organisation,ISO 3166-1 name
+fro,*,FO,high,organisation,ISO 3166-1 alpha-3
+fsm,*,FM,high,organisation,ISO 3166-1 alpha-3
+ga,*,GA,high,organisation,ISO 3166-1 alpha-2
+gab,*,GA,high,organisation,ISO 3166-1 alpha-3
+gabon,*,GA,high,organisation,ISO 3166-1 name
+gabonese republic,*,GA,high,organisation,ISO 3166-1 name
+gambia,*,GM,high,organisation,ISO 3166-1 name
+gb,*,GB,high,organisation,ISO 3166-1 alpha-2
+gbr,*,GB,high,organisation,ISO 3166-1 alpha-3
+gd,*,GD,high,organisation,ISO 3166-1 alpha-2
+ge,*,GE,high,organisation,ISO 3166-1 alpha-2
+geo,*,GE,high,organisation,ISO 3166-1 alpha-3
+georgia,*,GE,high,organisation,ISO 3166-1 name
+germany,*,DE,high,organisation,ISO 3166-1 name
+gf,*,GF,high,organisation,ISO 3166-1 alpha-2
+gg,*,GG,high,organisation,ISO 3166-1 alpha-2
+ggy,*,GG,high,organisation,ISO 3166-1 alpha-3
+gh,*,GH,high,organisation,ISO 3166-1 alpha-2
+gha,*,GH,high,organisation,ISO 3166-1 alpha-3
+ghana,*,GH,high,organisation,ISO 3166-1 name
+gi,*,GI,high,organisation,ISO 3166-1 alpha-2
+gib,*,GI,high,organisation,ISO 3166-1 alpha-3
+gibraltar,*,GI,high,organisation,ISO 3166-1 name
+gin,*,GN,high,organisation,ISO 3166-1 alpha-3
+gl,*,GL,high,organisation,ISO 3166-1 alpha-2
+glp,*,GP,high,organisation,ISO 3166-1 alpha-3
+gm,*,GM,high,organisation,ISO 3166-1 alpha-2
+gmb,*,GM,high,organisation,ISO 3166-1 alpha-3
+gn,*,GN,high,organisation,ISO 3166-1 alpha-2
+gnb,*,GW,high,organisation,ISO 3166-1 alpha-3
+gnq,*,GQ,high,organisation,ISO 3166-1 alpha-3
+gp,*,GP,high,organisation,ISO 3166-1 alpha-2
+gq,*,GQ,high,organisation,ISO 3166-1 alpha-2
+gr,*,GR,high,organisation,ISO 3166-1 alpha-2
+grand duchy of luxembourg,*,LU,high,organisation,ISO 3166-1 name
+grc,*,GR,high,organisation,ISO 3166-1 alpha-3
+grd,*,GD,high,organisation,ISO 3166-1 alpha-3
+great britain,*,GB,high,organisation,
+great britain and northern ireland,*,GB,high,organisation,
+greece,*,GR,high,organisation,ISO 3166-1 name
+greenland,*,GL,high,organisation,ISO 3166-1 name
+grenada,*,GD,high,organisation,ISO 3166-1 name
+grl,*,GL,high,organisation,ISO 3166-1 alpha-3
+grèce,*,GR,high,organisation,French
+gs,*,GS,high,organisation,ISO 3166-1 alpha-2
+gt,*,GT,high,organisation,ISO 3166-1 alpha-2
+gtm,*,GT,high,organisation,ISO 3166-1 alpha-3
+gu,*,GU,high,organisation,ISO 3166-1 alpha-2
+guadeloupe,*,GP,high,organisation,ISO 3166-1 name
+guam,*,GU,high,organisation,ISO 3166-1 name
+guatemala,*,GT,high,organisation,ISO 3166-1 name
+guernsey,*,GG,high,organisation,ISO 3166-1 name
+guf,*,GF,high,organisation,ISO 3166-1 alpha-3
+guinea,*,GN,high,organisation,ISO 3166-1 name
+guinea-bissau,*,GW,high,organisation,ISO 3166-1 name
+guinée,*,GN,high,organisation,French
+gum,*,GU,high,organisation,ISO 3166-1 alpha-3
+guy,*,GY,high,organisation,ISO 3166-1 alpha-3
+guyana,*,GY,high,organisation,ISO 3166-1 name
+guyane française,*,GF,high,organisation,French
+gw,*,GW,high,organisation,ISO 3166-1 alpha-2
+gy,*,GY,high,organisation,ISO 3166-1 alpha-2
+haiti,*,HT,high,organisation,ISO 3166-1 name
+hashemite kingdom of jordan,*,JO,high,organisation,ISO 3166-1 name
+heard island and mcdonald islands,*,HM,high,organisation,ISO 3166-1 name
+hellenic republic,*,GR,high,organisation,ISO 3166-1 name
+hk,*,HK,high,organisation,ISO 3166-1 alpha-2
+hkg,*,HK,high,organisation,ISO 3166-1 alpha-3
+hm,*,HM,high,organisation,ISO 3166-1 alpha-2
+hmd,*,HM,high,organisation,ISO 3166-1 alpha-3
+hn,*,HN,high,organisation,ISO 3166-1 alpha-2
+hnd,*,HN,high,organisation,ISO 3166-1 alpha-3
+holy see (vatican city state),*,VA,high,organisation,ISO 3166-1 name
+honduras,*,HN,high,organisation,ISO 3166-1 name
+hong kong,*,HK,high,organisation,ISO 3166-1 name
+hong kong special administrative region of china,*,HK,high,organisation,ISO 3166-1 name
+hongkong,*,HK,high,organisation,
+hongrie,*,HU,high,organisation,French
+howland island,*,UM,medium,organisation,US Minor Outlying Islands
+hr,*,HR,high,organisation,ISO 3166-1 alpha-2
+hrv,*,HR,high,organisation,ISO 3166-1 alpha-3
+ht,*,HT,high,organisation,ISO 3166-1 alpha-2
+hti,*,HT,high,organisation,ISO 3166-1 alpha-3
+hu,*,HU,high,organisation,ISO 3166-1 alpha-2
+hun,*,HU,high,organisation,ISO 3166-1 alpha-3
+hungary,*,HU,high,organisation,ISO 3166-1 name
+hungria,*,HU,high,organisation,Portuguese
+iceland,*,IS,high,organisation,ISO 3166-1 name
+id,*,ID,high,organisation,ISO 3166-1 alpha-2
+idn,*,ID,high,organisation,ISO 3166-1 alpha-3
+ie,*,IE,high,organisation,ISO 3166-1 alpha-2
+il,*,IL,high,organisation,ISO 3166-1 alpha-2
+im,*,IM,high,organisation,ISO 3166-1 alpha-2
+imn,*,IM,high,organisation,ISO 3166-1 alpha-3
+in,*,IN,high,organisation,ISO 3166-1 alpha-2
+ind,*,IN,high,organisation,ISO 3166-1 alpha-3
+inde,*,IN,high,organisation,French
+independent state of papua new guinea,*,PG,high,organisation,ISO 3166-1 name
+independent state of samoa,*,WS,high,organisation,ISO 3166-1 name
+india,*,IN,high,organisation,ISO 3166-1 name
+indonesia,*,ID,high,organisation,ISO 3166-1 name
+indonésie,*,ID,high,organisation,French
+io,*,IO,high,organisation,ISO 3166-1 alpha-2
+iot,*,IO,high,organisation,ISO 3166-1 alpha-3
+iq,*,IQ,high,organisation,ISO 3166-1 alpha-2
+ir,*,IR,high,organisation,ISO 3166-1 alpha-2
+iran,*,IR,high,organisation,
+iran isl. rep.,*,IR,high,organisation,
+"iran, islamic republic of",*,IR,high,organisation,ISO 3166-1 name
+iraq,*,IQ,high,organisation,ISO 3166-1 name
+ireland,*,IE,high,organisation,ISO 3166-1 name
+irl,*,IE,high,organisation,ISO 3166-1 alpha-3
+irlande,*,IE,high,organisation,French
+irn,*,IR,high,organisation,ISO 3166-1 alpha-3
+irq,*,IQ,high,organisation,ISO 3166-1 alpha-3
+is,*,IS,high,organisation,ISO 3166-1 alpha-2
+isl,*,IS,high,organisation,ISO 3166-1 alpha-3
+islamic republic of afghanistan,*,AF,high,organisation,ISO 3166-1 name
+islamic republic of iran,*,IR,high,organisation,ISO 3166-1 name
+islamic republic of mauritania,*,MR,high,organisation,ISO 3166-1 name
+islamic republic of pakistan,*,PK,high,organisation,ISO 3166-1 name
+island,*,IS,medium,organisation,Norwegian for Iceland (holberg_wp_rest)
+islande,*,IS,high,organisation,French
+isle of man,*,IM,high,organisation,ISO 3166-1 name
+isr,*,IL,high,organisation,ISO 3166-1 alpha-3
+israel,*,IL,high,organisation,ISO 3166-1 name
+israël,*,IL,high,organisation,ISO 3166-1 name (variant spelling)
+it,*,IT,high,organisation,ISO 3166-1 alpha-2
+ita,*,IT,high,organisation,ISO 3166-1 alpha-3
+italian republic,*,IT,high,organisation,ISO 3166-1 name
+italie,*,IT,high,organisation,French
+italy,*,IT,high,organisation,ISO 3166-1 name
+ivory coast,*,CI,high,organisation,
+jam,*,JM,high,organisation,ISO 3166-1 alpha-3
+jamaica,*,JM,high,organisation,ISO 3166-1 name
+japan,*,JP,high,organisation,ISO 3166-1 name
+japon,*,JP,high,organisation,French
+japão,*,JP,high,organisation,Portuguese
+je,*,JE,high,organisation,ISO 3166-1 alpha-2
+jersey,*,JE,high,organisation,ISO 3166-1 name
+jey,*,JE,high,organisation,ISO 3166-1 alpha-3
+jm,*,JM,high,organisation,ISO 3166-1 alpha-2
+jo,*,JO,high,organisation,ISO 3166-1 alpha-2
+jor,*,JO,high,organisation,ISO 3166-1 alpha-3
+jordan,*,JO,high,organisation,ISO 3166-1 name
+jordanie,*,JO,high,organisation,French
+jp,*,JP,high,organisation,ISO 3166-1 alpha-2
+jpn,*,JP,high,organisation,ISO 3166-1 alpha-3
+kaz,*,KZ,high,organisation,ISO 3166-1 alpha-3
+kazakhstan,*,KZ,high,organisation,ISO 3166-1 name
+kazakstan,*,KZ,high,organisation,old spelling
+ke,*,KE,high,organisation,ISO 3166-1 alpha-2
+ken,*,KE,high,organisation,ISO 3166-1 alpha-3
+kenya,*,KE,high,organisation,ISO 3166-1 name
+kg,*,KG,high,organisation,ISO 3166-1 alpha-2
+kgz,*,KG,high,organisation,ISO 3166-1 alpha-3
+kh,*,KH,high,organisation,ISO 3166-1 alpha-2
+khm,*,KH,high,organisation,ISO 3166-1 alpha-3
+ki,*,KI,high,organisation,ISO 3166-1 alpha-2
+kingdom of bahrain,*,BH,high,organisation,ISO 3166-1 name
+kingdom of belgium,*,BE,high,organisation,ISO 3166-1 name
+kingdom of bhutan,*,BT,high,organisation,ISO 3166-1 name
+kingdom of cambodia,*,KH,high,organisation,ISO 3166-1 name
+kingdom of denmark,*,DK,high,organisation,ISO 3166-1 name
+kingdom of eswatini,*,SZ,high,organisation,ISO 3166-1 name
+kingdom of lesotho,*,LS,high,organisation,ISO 3166-1 name
+kingdom of morocco,*,MA,high,organisation,ISO 3166-1 name
+kingdom of norway,*,NO,high,organisation,ISO 3166-1 name
+kingdom of saudi arabia,*,SA,high,organisation,ISO 3166-1 name
+kingdom of spain,*,ES,high,organisation,ISO 3166-1 name
+kingdom of sweden,*,SE,high,organisation,ISO 3166-1 name
+kingdom of thailand,*,TH,high,organisation,ISO 3166-1 name
+kingdom of the netherlands,*,NL,high,organisation,ISO 3166-1 name
+kingdom of tonga,*,TO,high,organisation,ISO 3166-1 name
+kir,*,KI,high,organisation,ISO 3166-1 alpha-3
+kirghizistan,*,KG,high,organisation,French
+kiribati,*,KI,high,organisation,ISO 3166-1 name
+km,*,KM,high,organisation,ISO 3166-1 alpha-2
+kn,*,KN,high,organisation,ISO 3166-1 alpha-2
+kna,*,KN,high,organisation,ISO 3166-1 alpha-3
+kor,*,KR,high,organisation,ISO 3166-1 alpha-3
+korea,*,KR,medium,organisation,assumed South Korea
+korea (republic of),*,KR,high,organisation,
+korea (south),*,KR,high,organisation,
+korea rep of,*,KR,high,organisation,NIH spelling
+"korea, democratic people's republic of",*,KP,high,organisation,ISO 3166-1 name
+"korea, republic of",*,KR,high,organisation,ISO 3166-1 name
+"korea, south",*,KR,high,organisation,
+korean republic (south korea),*,KR,high,organisation,
+kosovo,*,XK,high,organisation,Kosovo: user-assigned code
+koweït,*,KW,high,organisation,French
+kp,*,KP,high,organisation,ISO 3166-1 alpha-2
+kr,*,KR,high,organisation,ISO 3166-1 alpha-2
+kuwait,*,KW,high,organisation,ISO 3166-1 name
+kw,*,KW,high,organisation,ISO 3166-1 alpha-2
+kwt,*,KW,high,organisation,ISO 3166-1 alpha-3
+ky,*,KY,high,organisation,ISO 3166-1 alpha-2
+kyrgyz republic,*,KG,high,organisation,ISO 3166-1 name
+kyrgyzstan,*,KG,high,organisation,ISO 3166-1 name
+kz,*,KZ,high,organisation,ISO 3166-1 alpha-2
+la,*,LA,high,organisation,ISO 3166-1 alpha-2
+lao,*,LA,high,organisation,ISO 3166-1 alpha-3
+lao people's democratic republic,*,LA,high,organisation,ISO 3166-1 name
+laos,*,LA,high,organisation,
+latvia,*,LV,high,organisation,ISO 3166-1 name
+lb,*,LB,high,organisation,ISO 3166-1 alpha-2
+lbn,*,LB,high,organisation,ISO 3166-1 alpha-3
+lbr,*,LR,high,organisation,ISO 3166-1 alpha-3
+lby,*,LY,high,organisation,ISO 3166-1 alpha-3
+lc,*,LC,high,organisation,ISO 3166-1 alpha-2
+lca,*,LC,high,organisation,ISO 3166-1 alpha-3
+lebanese republic,*,LB,high,organisation,ISO 3166-1 name
+lebanon,*,LB,high,organisation,ISO 3166-1 name
+lesotho,*,LS,high,organisation,ISO 3166-1 name
+lettonie,*,LV,high,organisation,French
+li,*,LI,high,organisation,ISO 3166-1 alpha-2
+liban,*,LB,high,organisation,French
+liberia,*,LR,high,organisation,ISO 3166-1 name
+libya,*,LY,high,organisation,ISO 3166-1 name
+lie,*,LI,high,organisation,ISO 3166-1 alpha-3
+liechtenstein,*,LI,high,organisation,ISO 3166-1 name
+lithuania,*,LT,high,organisation,ISO 3166-1 name
+lituanie,*,LT,high,organisation,French
+lituânia,*,LT,high,organisation,Portuguese
+lk,*,LK,high,organisation,ISO 3166-1 alpha-2
+lka,*,LK,high,organisation,ISO 3166-1 alpha-3
+lr,*,LR,high,organisation,ISO 3166-1 alpha-2
+ls,*,LS,high,organisation,ISO 3166-1 alpha-2
+lso,*,LS,high,organisation,ISO 3166-1 alpha-3
+lt,*,LT,high,organisation,ISO 3166-1 alpha-2
+ltu,*,LT,high,organisation,ISO 3166-1 alpha-3
+lu,*,LU,high,organisation,ISO 3166-1 alpha-2
+lux,*,LU,high,organisation,ISO 3166-1 alpha-3
+luxembourg,*,LU,high,organisation,ISO 3166-1 name
+lv,*,LV,high,organisation,ISO 3166-1 alpha-2
+lva,*,LV,high,organisation,ISO 3166-1 alpha-3
+ly,*,LY,high,organisation,ISO 3166-1 alpha-2
+ma,*,MA,high,organisation,ISO 3166-1 alpha-2
+mac,*,MO,high,organisation,ISO 3166-1 alpha-3
+macao,*,MO,high,organisation,ISO 3166-1 name
+macao special administrative region of china,*,MO,high,organisation,ISO 3166-1 name
+macau,*,MO,high,organisation,
+macedonia,*,MK,high,organisation,
+"macedonia,former yugoslav rep.",*,MK,high,organisation,
+madagascar,*,MG,high,organisation,ISO 3166-1 name
+maf,*,MF,high,organisation,ISO 3166-1 alpha-3
+malaisie,*,MY,high,organisation,French
+malawi,*,MW,high,organisation,ISO 3166-1 name
+malaysia,*,MY,high,organisation,ISO 3166-1 name
+maldives,*,MV,high,organisation,ISO 3166-1 name
+mali,*,ML,high,organisation,ISO 3166-1 name
+malta,*,MT,high,organisation,ISO 3166-1 name
+malte,*,MT,high,organisation,French
+mar,*,MA,high,organisation,ISO 3166-1 alpha-3
+maroc,*,MA,high,organisation,French
+marshall islands,*,MH,high,organisation,ISO 3166-1 name
+martinique,*,MQ,high,organisation,ISO 3166-1 name
+massachusetts,*,US,medium,organisation,US state in a country field
+mauritania,*,MR,high,organisation,ISO 3166-1 name
+mauritius,*,MU,high,organisation,ISO 3166-1 name
+mayotte,*,YT,high,organisation,ISO 3166-1 name
+mc,*,MC,high,organisation,ISO 3166-1 alpha-2
+mco,*,MC,high,organisation,ISO 3166-1 alpha-3
+md,*,MD,high,organisation,ISO 3166-1 alpha-2
+mda,*,MD,high,organisation,ISO 3166-1 alpha-3
+mdg,*,MG,high,organisation,ISO 3166-1 alpha-3
+mdv,*,MV,high,organisation,ISO 3166-1 alpha-3
+me,*,ME,high,organisation,ISO 3166-1 alpha-2
+mex,*,MX,high,organisation,ISO 3166-1 alpha-3
+mexico,*,MX,high,organisation,ISO 3166-1 name
+mexico and egypt,*,,low,not_a_country,two countries
+mexique,*,MX,high,organisation,French
+mf,*,MF,high,organisation,ISO 3166-1 alpha-2
+mg,*,MG,high,organisation,ISO 3166-1 alpha-2
+mh,*,MH,high,organisation,ISO 3166-1 alpha-2
+mhl,*,MH,high,organisation,ISO 3166-1 alpha-3
+micronesia,*,FM,high,organisation,
+"micronesia, federated states of",*,FM,high,organisation,ISO 3166-1 name
+mk,*,MK,high,organisation,ISO 3166-1 alpha-2
+mkd,*,MK,high,organisation,ISO 3166-1 alpha-3
+ml,*,ML,high,organisation,ISO 3166-1 alpha-2
+mli,*,ML,high,organisation,ISO 3166-1 alpha-3
+mlt,*,MT,high,organisation,ISO 3166-1 alpha-3
+mm,*,MM,high,organisation,ISO 3166-1 alpha-2
+mmr,*,MM,high,organisation,ISO 3166-1 alpha-3
+mn,*,MN,high,organisation,ISO 3166-1 alpha-2
+mne,*,ME,high,organisation,ISO 3166-1 alpha-3
+mng,*,MN,high,organisation,ISO 3166-1 alpha-3
+mnp,*,MP,high,organisation,ISO 3166-1 alpha-3
+mo,*,MO,high,organisation,ISO 3166-1 alpha-2
+moldova,*,MD,high,organisation,
+"moldova, republic of",*,MD,high,organisation,ISO 3166-1 name
+monaco,*,MC,high,organisation,ISO 3166-1 name
+mongolia,*,MN,high,organisation,ISO 3166-1 name
+montenegro,*,ME,high,organisation,ISO 3166-1 name
+montserrat,*,MS,high,organisation,ISO 3166-1 name
+morocco,*,MA,high,organisation,ISO 3166-1 name
+moz,*,MZ,high,organisation,ISO 3166-1 alpha-3
+mozambique,*,MZ,high,organisation,ISO 3166-1 name
+mp,*,MP,high,organisation,ISO 3166-1 alpha-2
+mq,*,MQ,high,organisation,ISO 3166-1 alpha-2
+mr,*,MR,high,organisation,ISO 3166-1 alpha-2
+mrt,*,MR,high,organisation,ISO 3166-1 alpha-3
+ms,*,MS,high,organisation,ISO 3166-1 alpha-2
+msr,*,MS,high,organisation,ISO 3166-1 alpha-3
+mt,*,MT,high,organisation,ISO 3166-1 alpha-2
+mtq,*,MQ,high,organisation,ISO 3166-1 alpha-3
+mu,*,MU,high,organisation,ISO 3166-1 alpha-2
+mus,*,MU,high,organisation,ISO 3166-1 alpha-3
+mv,*,MV,high,organisation,ISO 3166-1 alpha-2
+mw,*,MW,high,organisation,ISO 3166-1 alpha-2
+mwi,*,MW,high,organisation,ISO 3166-1 alpha-3
+mx,*,MX,high,organisation,ISO 3166-1 alpha-2
+my,*,MY,high,organisation,ISO 3166-1 alpha-2
+myanmar,*,MM,high,organisation,ISO 3166-1 name
+mys,*,MY,high,organisation,ISO 3166-1 alpha-3
+myt,*,YT,high,organisation,ISO 3166-1 alpha-3
+mz,*,MZ,high,organisation,ISO 3166-1 alpha-2
+na,*,NA,high,organisation,ISO 3166-1 alpha-2
+nam,*,NA,high,organisation,ISO 3166-1 alpha-3
+namibia,*,NA,high,organisation,ISO 3166-1 name
+nauru,*,NR,high,organisation,ISO 3166-1 name
+nc,*,NC,high,organisation,ISO 3166-1 alpha-2
+ncl,*,NC,high,organisation,ISO 3166-1 alpha-3
+ne,*,NE,high,organisation,ISO 3166-1 alpha-2
+nepal,*,NP,high,organisation,ISO 3166-1 name
+ner,*,NE,high,organisation,ISO 3166-1 alpha-3
+netherlands,*,NL,high,organisation,ISO 3166-1 name
+netherlands antilles,*,,low,not_a_country,"dissolved (2010): CW, SX or BQ"
+new caledonia,*,NC,high,organisation,ISO 3166-1 name
+new zealand,*,NZ,high,organisation,ISO 3166-1 name
+nf,*,NF,high,organisation,ISO 3166-1 alpha-2
+nfk,*,NF,high,organisation,ISO 3166-1 alpha-3
+ng,*,NG,high,organisation,ISO 3166-1 alpha-2
+nga,*,NG,high,organisation,ISO 3166-1 alpha-3
+ni,*,NI,high,organisation,ISO 3166-1 alpha-2
+nic,*,NI,high,organisation,ISO 3166-1 alpha-3
+nicaragua,*,NI,high,organisation,ISO 3166-1 name
+niger,*,NE,high,organisation,ISO 3166-1 name
+nigeria,*,NG,high,organisation,ISO 3166-1 name
+niu,*,NU,high,organisation,ISO 3166-1 alpha-3
+niue,*,NU,high,organisation,ISO 3166-1 name
+nl,*,NL,high,organisation,ISO 3166-1 alpha-2
+nld,*,NL,high,organisation,ISO 3166-1 alpha-3
+no,*,NO,high,organisation,ISO 3166-1 alpha-2
+nor,*,NO,high,organisation,ISO 3166-1 alpha-3
+norfolk island,*,NF,high,organisation,ISO 3166-1 name
+norge,*,NO,high,organisation,Norwegian
+north carolina,*,US,medium,organisation,US state in a country field
+north korea,*,KP,high,organisation,ISO 3166-1 name
+north macedonia,*,MK,high,organisation,ISO 3166-1 name
+northern ireland,*,GB,high,organisation,constituent country
+northern mariana islands,*,MP,high,organisation,ISO 3166-1 name
+norvège,*,NO,high,organisation,French
+norway,*,NO,high,organisation,ISO 3166-1 name
+nouvelle-calédonie,*,NC,high,organisation,French
+nouvelle-zélande,*,NZ,high,organisation,French
+nova zelândia,*,NZ,high,organisation,Portuguese
+np,*,NP,high,organisation,ISO 3166-1 alpha-2
+npl,*,NP,high,organisation,ISO 3166-1 alpha-3
+nr,*,NR,high,organisation,ISO 3166-1 alpha-2
+nru,*,NR,high,organisation,ISO 3166-1 alpha-3
+nu,*,NU,high,organisation,ISO 3166-1 alpha-2
+nz,*,NZ,high,organisation,ISO 3166-1 alpha-2
+nzl,*,NZ,high,organisation,ISO 3166-1 alpha-3
+om,*,OM,high,organisation,ISO 3166-1 alpha-2
+oman,*,OM,high,organisation,ISO 3166-1 name
+omn,*,OM,high,organisation,ISO 3166-1 alpha-3
+ontario,*,CA,medium,organisation,Canadian province in a country field
+ouganda,*,UG,high,organisation,French
+pa,*,PA,high,organisation,ISO 3166-1 alpha-2
+pak,*,PK,high,organisation,ISO 3166-1 alpha-3
+pakistan,*,PK,high,organisation,ISO 3166-1 name
+palau,*,PW,high,organisation,ISO 3166-1 name
+"palestine, state of",*,PS,high,organisation,ISO 3166-1 name
+palestinian territories,*,PS,high,organisation,
+pan,*,PA,high,organisation,ISO 3166-1 alpha-3
+panama,*,PA,high,organisation,ISO 3166-1 name
+papua n guinea,*,PG,high,organisation,NIH spelling
+papua new guinea,*,PG,high,organisation,ISO 3166-1 name
+papuanew guinea,*,PG,high,organisation,typo
+paraguay,*,PY,high,organisation,ISO 3166-1 name
+pays-bas,*,NL,high,organisation,French
+pcn,*,PN,high,organisation,ISO 3166-1 alpha-3
+pe,*,PE,high,organisation,ISO 3166-1 alpha-2
+people's democratic republic of algeria,*,DZ,high,organisation,ISO 3166-1 name
+people's republic of bangladesh,*,BD,high,organisation,ISO 3166-1 name
+people's republic of china,*,CN,high,organisation,ISO 3166-1 name
+per,*,PE,high,organisation,ISO 3166-1 alpha-3
+peru,*,PE,high,organisation,ISO 3166-1 name
+pf,*,PF,high,organisation,ISO 3166-1 alpha-2
+pg,*,PG,high,organisation,ISO 3166-1 alpha-2
+ph,*,PH,high,organisation,ISO 3166-1 alpha-2
+philippines,*,PH,high,organisation,ISO 3166-1 name
+phl,*,PH,high,organisation,ISO 3166-1 alpha-3
+pitcairn,*,PN,high,organisation,ISO 3166-1 name
+pk,*,PK,high,organisation,ISO 3166-1 alpha-2
+pl,*,PL,high,organisation,ISO 3166-1 alpha-2
+plurinational state of bolivia,*,BO,high,organisation,ISO 3166-1 name
+plw,*,PW,high,organisation,ISO 3166-1 alpha-3
+pm,*,PM,high,organisation,ISO 3166-1 alpha-2
+pn,*,PN,high,organisation,ISO 3166-1 alpha-2
+png,*,PG,high,organisation,ISO 3166-1 alpha-3
+pol,*,PL,high,organisation,ISO 3166-1 alpha-3
+poland,*,PL,high,organisation,ISO 3166-1 name
+pologne,*,PL,high,organisation,French
+polynésie française,*,PF,high,organisation,French
+portugal,*,PT,high,organisation,ISO 3166-1 name
+portuguese republic,*,PT,high,organisation,ISO 3166-1 name
+pr,*,PR,high,organisation,ISO 3166-1 alpha-2
+pri,*,PR,high,organisation,ISO 3166-1 alpha-3
+principality of andorra,*,AD,high,organisation,ISO 3166-1 name
+principality of liechtenstein,*,LI,high,organisation,ISO 3166-1 name
+principality of monaco,*,MC,high,organisation,ISO 3166-1 name
+prk,*,KP,high,organisation,ISO 3166-1 alpha-3
+prt,*,PT,high,organisation,ISO 3166-1 alpha-3
+pry,*,PY,high,organisation,ISO 3166-1 alpha-3
+ps,*,PS,high,organisation,ISO 3166-1 alpha-2
+pse,*,PS,high,organisation,ISO 3166-1 alpha-3
+pt,*,PT,high,organisation,ISO 3166-1 alpha-2
+puerto rico,*,PR,high,organisation,ISO 3166-1 name
+pw,*,PW,high,organisation,ISO 3166-1 alpha-2
+py,*,PY,high,organisation,ISO 3166-1 alpha-2
+pyf,*,PF,high,organisation,ISO 3166-1 alpha-3
+qa,*,QA,high,organisation,ISO 3166-1 alpha-2
+qat,*,QA,high,organisation,ISO 3166-1 alpha-3
+qatar,*,QA,high,organisation,ISO 3166-1 name
+re,*,RE,high,organisation,ISO 3166-1 alpha-2
+republic of albania,*,AL,high,organisation,ISO 3166-1 name
+republic of angola,*,AO,high,organisation,ISO 3166-1 name
+republic of armenia,*,AM,high,organisation,ISO 3166-1 name
+republic of austria,*,AT,high,organisation,ISO 3166-1 name
+republic of azerbaijan,*,AZ,high,organisation,ISO 3166-1 name
+republic of belarus,*,BY,high,organisation,ISO 3166-1 name
+republic of benin,*,BJ,high,organisation,ISO 3166-1 name
+republic of bosnia and herzegovina,*,BA,high,organisation,ISO 3166-1 name
+republic of botswana,*,BW,high,organisation,ISO 3166-1 name
+republic of bulgaria,*,BG,high,organisation,ISO 3166-1 name
+republic of burundi,*,BI,high,organisation,ISO 3166-1 name
+republic of cabo verde,*,CV,high,organisation,ISO 3166-1 name
+republic of cameroon,*,CM,high,organisation,ISO 3166-1 name
+republic of chad,*,TD,high,organisation,ISO 3166-1 name
+republic of chile,*,CL,high,organisation,ISO 3166-1 name
+republic of colombia,*,CO,high,organisation,ISO 3166-1 name
+republic of costa rica,*,CR,high,organisation,ISO 3166-1 name
+republic of croatia,*,HR,high,organisation,ISO 3166-1 name
+republic of cuba,*,CU,high,organisation,ISO 3166-1 name
+republic of cyprus,*,CY,high,organisation,ISO 3166-1 name
+republic of côte d'ivoire,*,CI,high,organisation,ISO 3166-1 name
+republic of djibouti,*,DJ,high,organisation,ISO 3166-1 name
+republic of ecuador,*,EC,high,organisation,ISO 3166-1 name
+republic of el salvador,*,SV,high,organisation,ISO 3166-1 name
+republic of equatorial guinea,*,GQ,high,organisation,ISO 3166-1 name
+republic of estonia,*,EE,high,organisation,ISO 3166-1 name
+republic of fiji,*,FJ,high,organisation,ISO 3166-1 name
+republic of finland,*,FI,high,organisation,ISO 3166-1 name
+republic of ghana,*,GH,high,organisation,ISO 3166-1 name
+republic of guatemala,*,GT,high,organisation,ISO 3166-1 name
+republic of guinea,*,GN,high,organisation,ISO 3166-1 name
+republic of guinea-bissau,*,GW,high,organisation,ISO 3166-1 name
+republic of guyana,*,GY,high,organisation,ISO 3166-1 name
+republic of haiti,*,HT,high,organisation,ISO 3166-1 name
+republic of honduras,*,HN,high,organisation,ISO 3166-1 name
+republic of iceland,*,IS,high,organisation,ISO 3166-1 name
+republic of india,*,IN,high,organisation,ISO 3166-1 name
+republic of indonesia,*,ID,high,organisation,ISO 3166-1 name
+republic of iraq,*,IQ,high,organisation,ISO 3166-1 name
+republic of kazakhstan,*,KZ,high,organisation,ISO 3166-1 name
+republic of kenya,*,KE,high,organisation,ISO 3166-1 name
+republic of kiribati,*,KI,high,organisation,ISO 3166-1 name
+republic of korea,*,KR,high,organisation,
+republic of latvia,*,LV,high,organisation,ISO 3166-1 name
+republic of liberia,*,LR,high,organisation,ISO 3166-1 name
+republic of lithuania,*,LT,high,organisation,ISO 3166-1 name
+republic of madagascar,*,MG,high,organisation,ISO 3166-1 name
+republic of malawi,*,MW,high,organisation,ISO 3166-1 name
+republic of maldives,*,MV,high,organisation,ISO 3166-1 name
+republic of mali,*,ML,high,organisation,ISO 3166-1 name
+republic of malta,*,MT,high,organisation,ISO 3166-1 name
+republic of mauritius,*,MU,high,organisation,ISO 3166-1 name
+republic of moldova,*,MD,high,organisation,ISO 3166-1 name
+republic of mozambique,*,MZ,high,organisation,ISO 3166-1 name
+republic of myanmar,*,MM,high,organisation,ISO 3166-1 name
+republic of namibia,*,NA,high,organisation,ISO 3166-1 name
+republic of nauru,*,NR,high,organisation,ISO 3166-1 name
+republic of nicaragua,*,NI,high,organisation,ISO 3166-1 name
+republic of north macedonia,*,MK,high,organisation,ISO 3166-1 name
+republic of palau,*,PW,high,organisation,ISO 3166-1 name
+republic of panama,*,PA,high,organisation,ISO 3166-1 name
+republic of paraguay,*,PY,high,organisation,ISO 3166-1 name
+republic of peru,*,PE,high,organisation,ISO 3166-1 name
+republic of poland,*,PL,high,organisation,ISO 3166-1 name
+republic of san marino,*,SM,high,organisation,ISO 3166-1 name
+republic of senegal,*,SN,high,organisation,ISO 3166-1 name
+republic of serbia,*,RS,high,organisation,ISO 3166-1 name
+republic of seychelles,*,SC,high,organisation,ISO 3166-1 name
+republic of sierra leone,*,SL,high,organisation,ISO 3166-1 name
+republic of singapore,*,SG,high,organisation,ISO 3166-1 name
+republic of slovenia,*,SI,high,organisation,ISO 3166-1 name
+republic of south africa,*,ZA,high,organisation,ISO 3166-1 name
+republic of south sudan,*,SS,high,organisation,ISO 3166-1 name
+republic of suriname,*,SR,high,organisation,ISO 3166-1 name
+republic of tajikistan,*,TJ,high,organisation,ISO 3166-1 name
+republic of the congo,*,CG,high,organisation,ISO 3166-1 name
+republic of the gambia,*,GM,high,organisation,ISO 3166-1 name
+republic of the marshall islands,*,MH,high,organisation,ISO 3166-1 name
+republic of the niger,*,NE,high,organisation,ISO 3166-1 name
+republic of the philippines,*,PH,high,organisation,ISO 3166-1 name
+republic of the sudan,*,SD,high,organisation,ISO 3166-1 name
+republic of trinidad and tobago,*,TT,high,organisation,ISO 3166-1 name
+republic of tunisia,*,TN,high,organisation,ISO 3166-1 name
+republic of türkiye,*,TR,high,organisation,ISO 3166-1 name
+republic of uganda,*,UG,high,organisation,ISO 3166-1 name
+republic of uzbekistan,*,UZ,high,organisation,ISO 3166-1 name
+republic of vanuatu,*,VU,high,organisation,ISO 3166-1 name
+republic of yemen,*,YE,high,organisation,ISO 3166-1 name
+republic of zambia,*,ZM,high,organisation,ISO 3166-1 name
+republic of zimbabwe,*,ZW,high,organisation,ISO 3166-1 name
+república checa,*,CZ,high,organisation,Portuguese
+reu,*,RE,high,organisation,ISO 3166-1 alpha-3
+reunion,*,RE,high,organisation,ISO 3166-1 name (variant spelling)
+ri required,*,,low,not_a_country,"NSF placeholder, not a country"
+ro,*,RO,high,organisation,ISO 3166-1 alpha-2
+romania,*,RO,high,organisation,ISO 3166-1 name
+rou,*,RO,high,organisation,ISO 3166-1 alpha-3
+roumanie,*,RO,high,organisation,French
+royaume-uni,*,GB,high,organisation,French
+royaume-uni de grande-bretagne et d'irlande du nord,*,GB,high,organisation,French
+rs,*,RS,high,organisation,ISO 3166-1 alpha-2
+ru,*,RU,high,organisation,ISO 3166-1 alpha-2
+rus,*,RU,high,organisation,ISO 3166-1 alpha-3
+russia,*,RU,high,organisation,
+russian federation,*,RU,high,organisation,ISO 3166-1 name
+russie,*,RU,high,organisation,French
+rw,*,RW,high,organisation,ISO 3166-1 alpha-2
+rwa,*,RW,high,organisation,ISO 3166-1 alpha-3
+rwanda,*,RW,high,organisation,ISO 3166-1 name
+rwandese republic,*,RW,high,organisation,ISO 3166-1 name
+réunion,*,RE,high,organisation,ISO 3166-1 name
+sa,*,SA,high,organisation,ISO 3166-1 alpha-2
+saint barthélemy,*,BL,high,organisation,ISO 3166-1 name
+"saint helena, ascension and tristan da cunha",*,SH,high,organisation,ISO 3166-1 name
+saint kitts and nevis,*,KN,high,organisation,ISO 3166-1 name
+saint lucia,*,LC,high,organisation,ISO 3166-1 name
+saint martin (french part),*,MF,high,organisation,ISO 3166-1 name
+saint pierre and miquelon,*,PM,high,organisation,ISO 3166-1 name
+saint vincent and the grenadines,*,VC,high,organisation,ISO 3166-1 name
+samoa,*,WS,high,organisation,ISO 3166-1 name
+san marino,*,SM,high,organisation,ISO 3166-1 name
+sao tome and principe,*,ST,high,organisation,ISO 3166-1 name
+sau,*,SA,high,organisation,ISO 3166-1 alpha-3
+saudi arabia,*,SA,high,organisation,ISO 3166-1 name
+saudi arabia (nationality: tunisia),*,SA,medium,organisation,country of work; nationality in brackets
+sb,*,SB,high,organisation,ISO 3166-1 alpha-2
+sc,*,SC,high,organisation,ISO 3166-1 alpha-2
+scotland,*,GB,high,organisation,constituent country
+sd,*,SD,high,organisation,ISO 3166-1 alpha-2
+sdn,*,SD,high,organisation,ISO 3166-1 alpha-3
+se,*,SE,high,organisation,ISO 3166-1 alpha-2
+sen,*,SN,high,organisation,ISO 3166-1 alpha-3
+senegal,*,SN,high,organisation,ISO 3166-1 name
+serbia,*,RS,high,organisation,ISO 3166-1 name
+serbia and montenegro,*,,low,not_a_country,dissolved state (2006): Serbia or Montenegro
+serbie,*,RS,high,organisation,French
+serbien,*,RS,high,organisation,German
+seychelles,*,SC,high,organisation,ISO 3166-1 name
+sg,*,SG,high,organisation,ISO 3166-1 alpha-2
+sgp,*,SG,high,organisation,ISO 3166-1 alpha-3
+sgs,*,GS,high,organisation,ISO 3166-1 alpha-3
+sh,*,SH,high,organisation,ISO 3166-1 alpha-2
+shn,*,SH,high,organisation,ISO 3166-1 alpha-3
+si,*,SI,high,organisation,ISO 3166-1 alpha-2
+sierra leone,*,SL,high,organisation,ISO 3166-1 name
+singapore,*,SG,high,organisation,ISO 3166-1 name
+singapour,*,SG,high,organisation,French
+sint maarten (dutch part),*,SX,high,organisation,ISO 3166-1 name
+sj,*,SJ,high,organisation,ISO 3166-1 alpha-2
+sjm,*,SJ,high,organisation,ISO 3166-1 alpha-3
+sk,*,SK,high,organisation,ISO 3166-1 alpha-2
+sl,*,SL,high,organisation,ISO 3166-1 alpha-2
+slb,*,SB,high,organisation,ISO 3166-1 alpha-3
+sle,*,SL,high,organisation,ISO 3166-1 alpha-3
+slovak republic,*,SK,high,organisation,ISO 3166-1 name
+slovakia,*,SK,high,organisation,ISO 3166-1 name
+slovaquie,*,SK,high,organisation,French
+slovenia,*,SI,high,organisation,ISO 3166-1 name
+slovénie,*,SI,high,organisation,French
+slv,*,SV,high,organisation,ISO 3166-1 alpha-3
+sm,*,SM,high,organisation,ISO 3166-1 alpha-2
+smr,*,SM,high,organisation,ISO 3166-1 alpha-3
+sn,*,SN,high,organisation,ISO 3166-1 alpha-2
+so,*,SO,high,organisation,ISO 3166-1 alpha-2
+socialist republic of viet nam,*,VN,high,organisation,ISO 3166-1 name
+solomon islands,*,SB,high,organisation,ISO 3166-1 name
+som,*,SO,high,organisation,ISO 3166-1 alpha-3
+somalia,*,SO,high,organisation,ISO 3166-1 name
+south africa,*,ZA,high,organisation,ISO 3166-1 name
+south georgia and the south sandwich islands,*,GS,high,organisation,ISO 3166-1 name
+south korea,*,KR,high,organisation,
+south sudan,*,SS,high,organisation,ISO 3166-1 name
+southeast asia,*,,low,not_a_country,"region, not a country"
+spain,*,ES,high,organisation,ISO 3166-1 name
+spania,*,ES,high,organisation,Norwegian
+spm,*,PM,high,organisation,ISO 3166-1 alpha-3
+sr,*,SR,high,organisation,ISO 3166-1 alpha-2
+srb,*,RS,high,organisation,ISO 3166-1 alpha-3
+sri lanka,*,LK,high,organisation,ISO 3166-1 name
+ss,*,SS,high,organisation,ISO 3166-1 alpha-2
+ssd,*,SS,high,organisation,ISO 3166-1 alpha-3
+st,*,ST,high,organisation,ISO 3166-1 alpha-2
+st kitts/nevis,*,KN,high,organisation,NIH spelling
+st lucia,*,LC,high,organisation,NIH spelling
+state of israel,*,IL,high,organisation,ISO 3166-1 name
+state of kuwait,*,KW,high,organisation,ISO 3166-1 name
+state of qatar,*,QA,high,organisation,ISO 3166-1 name
+storbritannia,*,GB,high,organisation,Norwegian
+stp,*,ST,high,organisation,ISO 3166-1 alpha-3
+sudan,*,SD,high,organisation,ISO 3166-1 name
+suisse,*,CH,high,organisation,French
+sultanate of oman,*,OM,high,organisation,ISO 3166-1 name
+sur,*,SR,high,organisation,ISO 3166-1 alpha-3
+suriname,*,SR,high,organisation,ISO 3166-1 name
+suède,*,SE,high,organisation,French
+sv,*,SV,high,organisation,ISO 3166-1 alpha-2
+svalbard and jan mayen,*,SJ,high,organisation,ISO 3166-1 name
+sverige,*,SE,high,organisation,Swedish
+svk,*,SK,high,organisation,ISO 3166-1 alpha-3
+svn,*,SI,high,organisation,ISO 3166-1 alpha-3
+swaziland,*,SZ,high,organisation,former name
+swe,*,SE,high,organisation,ISO 3166-1 alpha-3
+sweden,*,SE,high,organisation,ISO 3166-1 name
+swiss confederation,*,CH,high,organisation,ISO 3166-1 name
+switzerland,*,CH,high,organisation,ISO 3166-1 name
+swizerland,*,CH,high,organisation,typo
+swz,*,SZ,high,organisation,ISO 3166-1 alpha-3
+sx,*,SX,high,organisation,ISO 3166-1 alpha-2
+sxm,*,SX,high,organisation,ISO 3166-1 alpha-3
+sy,*,SY,high,organisation,ISO 3166-1 alpha-2
+syc,*,SC,high,organisation,ISO 3166-1 alpha-3
+syr,*,SY,high,organisation,ISO 3166-1 alpha-3
+syria,*,SY,high,organisation,
+syrian arab republic,*,SY,high,organisation,ISO 3166-1 name
+sz,*,SZ,high,organisation,ISO 3166-1 alpha-2
+sénégal,*,SN,high,organisation,ISO 3166-1 name (variant spelling)
+sør-afrika,*,ZA,high,organisation,Norwegian
+taiwan,*,TW,high,organisation,
+"taiwan, china",*,TW,high,organisation,
+"taiwan, province of china",*,TW,high,organisation,ISO 3166-1 name
+tajikistan,*,TJ,high,organisation,ISO 3166-1 name
+tajikstan,*,TJ,high,organisation,typo
+tanzania,*,TZ,high,organisation,
+tanzania u rep,*,TZ,high,organisation,NIH spelling
+"tanzania, united republic of",*,TZ,high,organisation,ISO 3166-1 name
+taïwan,*,TW,high,organisation,ISO 3166-1 name (variant spelling)
+tc,*,TC,high,organisation,ISO 3166-1 alpha-2
+tca,*,TC,high,organisation,ISO 3166-1 alpha-3
+tcd,*,TD,high,organisation,ISO 3166-1 alpha-3
+tchéquie,*,CZ,high,organisation,French
+td,*,TD,high,organisation,ISO 3166-1 alpha-2
+tf,*,TF,high,organisation,ISO 3166-1 alpha-2
+tg,*,TG,high,organisation,ISO 3166-1 alpha-2
+tgo,*,TG,high,organisation,ISO 3166-1 alpha-3
+th,*,TH,high,organisation,ISO 3166-1 alpha-2
+tha,*,TH,high,organisation,ISO 3166-1 alpha-3
+thailand,*,TH,high,organisation,ISO 3166-1 name
+thaïlande,*,TH,high,organisation,French
+the netherlands,*,NL,high,organisation,
+the state of eritrea,*,ER,high,organisation,ISO 3166-1 name
+the state of palestine,*,PS,high,organisation,ISO 3166-1 name
+timor-leste,*,TL,high,organisation,ISO 3166-1 name
+tj,*,TJ,high,organisation,ISO 3166-1 alpha-2
+tjk,*,TJ,high,organisation,ISO 3166-1 alpha-3
+tk,*,TK,high,organisation,ISO 3166-1 alpha-2
+tkl,*,TK,high,organisation,ISO 3166-1 alpha-3
+tkm,*,TM,high,organisation,ISO 3166-1 alpha-3
+tl,*,TL,high,organisation,ISO 3166-1 alpha-2
+tls,*,TL,high,organisation,ISO 3166-1 alpha-3
+tm,*,TM,high,organisation,ISO 3166-1 alpha-2
+tn,*,TN,high,organisation,ISO 3166-1 alpha-2
+to,*,TO,high,organisation,ISO 3166-1 alpha-2
+togo,*,TG,high,organisation,ISO 3166-1 name
+togolese republic,*,TG,high,organisation,ISO 3166-1 name
+tokelau,*,TK,high,organisation,ISO 3166-1 name
+ton,*,TO,high,organisation,ISO 3166-1 alpha-3
+tonga,*,TO,high,organisation,ISO 3166-1 name
+tr,*,TR,high,organisation,ISO 3166-1 alpha-2
+trinidad & tobago,*,TT,high,organisation,
+trinidad and tobago,*,TT,high,organisation,ISO 3166-1 name
+trinidad/toba,*,TT,high,organisation,NIH spelling
+tt,*,TT,high,organisation,ISO 3166-1 alpha-2
+tto,*,TT,high,organisation,ISO 3166-1 alpha-3
+tun,*,TN,high,organisation,ISO 3166-1 alpha-3
+tunisia,*,TN,high,organisation,ISO 3166-1 name
+tunisie,*,TN,high,organisation,French
+tur,*,TR,high,organisation,ISO 3166-1 alpha-3
+turkey,*,TR,high,organisation,former English name
+turkmenistan,*,TM,high,organisation,ISO 3166-1 name
+turks and caicos islands,*,TC,high,organisation,ISO 3166-1 name
+turquie,*,TR,high,organisation,French
+tuv,*,TV,high,organisation,ISO 3166-1 alpha-3
+tuvalu,*,TV,high,organisation,ISO 3166-1 name
+tv,*,TV,high,organisation,ISO 3166-1 alpha-2
+tw,*,TW,high,organisation,ISO 3166-1 alpha-2
+twn,*,TW,high,organisation,ISO 3166-1 alpha-3
+tyskland,*,DE,high,organisation,Norwegian
+tz,*,TZ,high,organisation,ISO 3166-1 alpha-2
+tza,*,TZ,high,organisation,ISO 3166-1 alpha-3
+türkiye,*,TR,high,organisation,ISO 3166-1 name
+u.s.,*,US,high,organisation,
+u.s.a.,*,US,high,organisation,
+ua,*,UA,high,organisation,ISO 3166-1 alpha-2
+ug,*,UG,high,organisation,ISO 3166-1 alpha-2
+uga,*,UG,high,organisation,ISO 3166-1 alpha-3
+uganda,*,UG,high,organisation,ISO 3166-1 name
+uk,*,GB,high,organisation,common code for the United Kingdom (not ISO)
+ukr,*,UA,high,organisation,ISO 3166-1 alpha-3
+ukraine,*,UA,high,organisation,ISO 3166-1 name
+um,*,UM,high,organisation,ISO 3166-1 alpha-2
+umi,*,UM,high,organisation,ISO 3166-1 alpha-3
+union of the comoros,*,KM,high,organisation,ISO 3166-1 name
+united arab emirates,*,AE,high,organisation,ISO 3166-1 name
+united kingdom,*,GB,high,organisation,ISO 3166-1 name
+united kingdom of great britain and northern ireland,*,GB,high,organisation,ISO 3166-1 name
+united mexican states,*,MX,high,organisation,ISO 3166-1 name
+united republic of tanzania,*,TZ,high,organisation,ISO 3166-1 name
+united states,*,US,high,organisation,ISO 3166-1 name
+united states minor outlying islands,*,UM,high,organisation,ISO 3166-1 name
+united states of america,*,US,high,organisation,
+unknown,*,,low,not_a_country,placeholder
+uruguay,*,UY,high,organisation,ISO 3166-1 name
+ury,*,UY,high,organisation,ISO 3166-1 alpha-3
+us,*,US,high,organisation,ISO 3166-1 alpha-2
+usa,*,US,high,organisation,
+usa/finland,*,,low,not_a_country,two countries
+uy,*,UY,high,organisation,ISO 3166-1 alpha-2
+uz,*,UZ,high,organisation,ISO 3166-1 alpha-2
+uzb,*,UZ,high,organisation,ISO 3166-1 alpha-3
+uzbekistan,*,UZ,high,organisation,ISO 3166-1 name
+va,*,VA,high,organisation,ISO 3166-1 alpha-2
+vanuatu,*,VU,high,organisation,ISO 3166-1 name
+vat,*,VA,high,organisation,ISO 3166-1 alpha-3
+vatican state,*,VA,high,organisation,
+vc,*,VC,high,organisation,ISO 3166-1 alpha-2
+vct,*,VC,high,organisation,ISO 3166-1 alpha-3
+ve,*,VE,high,organisation,ISO 3166-1 alpha-2
+ven,*,VE,high,organisation,ISO 3166-1 alpha-3
+venezuela,*,VE,high,organisation,
+"venezuela, bolivarian republic of",*,VE,high,organisation,ISO 3166-1 name
+vg,*,VG,high,organisation,ISO 3166-1 alpha-2
+vgb,*,VG,high,organisation,ISO 3166-1 alpha-3
+vi,*,VI,high,organisation,ISO 3166-1 alpha-2
+viet nam,*,VN,high,organisation,ISO 3166-1 name
+vietnam,*,VN,high,organisation,
+vir,*,VI,high,organisation,ISO 3166-1 alpha-3
+virgin islands of the united states,*,VI,high,organisation,ISO 3166-1 name
+"virgin islands, british",*,VG,high,organisation,ISO 3166-1 name
+"virgin islands, u.s.",*,VI,high,organisation,ISO 3166-1 name
+vn,*,VN,high,organisation,ISO 3166-1 alpha-2
+vnm,*,VN,high,organisation,ISO 3166-1 alpha-3
+vu,*,VU,high,organisation,ISO 3166-1 alpha-2
+vut,*,VU,high,organisation,ISO 3166-1 alpha-3
+wales,*,GB,high,organisation,constituent country
+wallis and futuna,*,WF,high,organisation,ISO 3166-1 name
+western sahara,*,EH,high,organisation,ISO 3166-1 name
+wf,*,WF,high,organisation,ISO 3166-1 alpha-2
+wlf,*,WF,high,organisation,ISO 3166-1 alpha-3
+worldwide,*,,low,not_a_country,not a country
+ws,*,WS,high,organisation,ISO 3166-1 alpha-2
+wsm,*,WS,high,organisation,ISO 3166-1 alpha-3
+xk,*,XK,high,organisation,"Kosovo: user-assigned code, the one OpenAlex institutions use"
+ye,*,YE,high,organisation,ISO 3166-1 alpha-2
+yem,*,YE,high,organisation,ISO 3166-1 alpha-3
+yemen,*,YE,high,organisation,ISO 3166-1 name
+yt,*,YT,high,organisation,ISO 3166-1 alpha-2
+yugoslavia,*,,low,not_a_country,dissolved state
+za,*,ZA,high,organisation,ISO 3166-1 alpha-2
+zaf,*,ZA,high,organisation,ISO 3166-1 alpha-3
+zambia,*,ZM,high,organisation,ISO 3166-1 name
+zimbabwe,*,ZW,high,organisation,ISO 3166-1 name
+zm,*,ZM,high,organisation,ISO 3166-1 alpha-2
+zmb,*,ZM,high,organisation,ISO 3166-1 alpha-3
+zw,*,ZW,high,organisation,ISO 3166-1 alpha-2
+zwe,*,ZW,high,organisation,ISO 3166-1 alpha-3
+åland islands,*,AX,high,organisation,ISO 3166-1 name
+égypte,*,EG,high,organisation,French
+équateur,*,EC,high,organisation,French
+états-unis d'amérique,*,US,high,organisation,French
+éthiopie,*,ET,high,organisation,French
+*,aacr_funded_research,,high,organisation,29 countries recorded on 352 awards
+*,aas_arise_grantees,,high,organisation,38 countries recorded on 47 awards
+*,addf_portfolio,,high,organisation,21 countries recorded on 781 awards
+*,aes,,medium,assumed_domestic,one constant (US) on 169 awards; no organisation abroad seen next to it
+*,agaur_raisc_socrata,,medium,assumed_domestic,one constant (ES) on 3022 awards; no organisation abroad seen next to it
+*,aha_report_builder,,medium,assumed_domestic,one constant (US) on 10247 awards; no organisation abroad seen next to it
+*,ahmanson_grants_archive,,medium,assumed_domestic,one constant (US) on 7723 awards; no organisation abroad seen next to it
+*,alcohol_change_uk,,medium,assumed_domestic,one constant (GB) on 55 awards; no organisation abroad seen next to it
+*,alliancecan_rac,,medium,assumed_domestic,one constant (CA) on 3846 awards; no organisation abroad seen next to it
+*,alz_association,,high,organisation,56 countries recorded on 2396 awards
+*,alzheimer_nl,,medium,assumed_domestic,one constant (NL) on 98 awards; no organisation abroad seen next to it
+*,amed_amedfind,,medium,assumed_domestic,one constant (JP) on 11055 awards; no organisation abroad seen next to it
+*,andalucia,,medium,assumed_domestic,one constant (ES) on 4567 awards; no organisation abroad seen next to it
+*,anid_github,,medium,assumed_domestic,one constant (CL) on 46736 awards; no organisation abroad seen next to it
+*,anii_projects_portal,,medium,assumed_domestic,one constant (UY) on 2302 awards; no organisation abroad seen next to it
+*,anr_opendata,,high,organisation,100 countries recorded on 32826 awards
+*,apvv,,medium,assumed_domestic,one constant (SK) on 5431 awards; no organisation abroad seen next to it
+*,aragon_boa_research_groups,,medium,assumed_domestic,one constant (ES) on 727 awards; no organisation abroad seen next to it
+*,arc,,medium,assumed_domestic,one constant (AU) on 34471 awards; no organisation abroad seen next to it
+*,argentina_mincyt,,medium,assumed_domestic,one constant (AR) on 19266 awards; no organisation abroad seen next to it
+*,aris_ecris,,medium,assumed_domestic,one constant (SI) on 10785 awards; no organisation abroad seen next to it
+*,ash_award_recipients,,high,organisation,75 countries recorded on 713 awards
+*,autism_science_foundation,,medium,assumed_domestic,one constant (US) on 179 awards; no organisation abroad seen next to it
+*,autistica,,medium,assumed_domestic,one constant (GB) on 38 awards; no organisation abroad seen next to it
+*,axa_research_fund_projects,,high,organisation,38 countries recorded on 768 awards
+*,bacp,,medium,assumed_domestic,one constant (GB) on 2 awards; no organisation abroad seen next to it
+*,bbrf_narsad,,high,organisation,34 countries recorded on 6601 awards
+*,bcrf_researchers,,high,organisation,12 countries recorded on 210 awards
+*,bd2,,medium,assumed_domestic,one constant (US) on 18 awards; no organisation abroad seen next to it
+*,bdns_aei,,medium,assumed_domestic,one constant (ES) on 28835 awards; no organisation abroad seen next to it
+*,beijing_bmstc,,medium,assumed_domestic,one constant (CN) on 641 awards; no organisation abroad seen next to it
+*,beijing_nsf,,medium,assumed_domestic,one constant (CN) on 3393 awards; no organisation abroad seen next to it
+*,belspo_fris,,medium,assumed_domestic,one constant (BE) on 727 awards; no organisation abroad seen next to it
+*,bhf_annual_reports,,medium,assumed_domestic,one constant (GB) on 3929 awards; no organisation abroad seen next to it
+*,blood_cancer_uk,,medium,assumed_domestic,one constant (GB) on 120 awards; no organisation abroad seen next to it
+*,brace,,medium,assumed_domestic,one constant (GB) on 43 awards; no organisation abroad seen next to it
+*,brain_aneurysm,,medium,assumed_domestic,one constant (US) on 62 awards; no organisation abroad seen next to it
+*,brain_canada,,medium,assumed_domestic,one constant (CA) on 780 awards; no organisation abroad seen next to it
+*,brain_research_uk,,medium,assumed_domestic,one constant (GB) on 71 awards; no organisation abroad seen next to it
+*,brain_tumour_charity,,low,assumed,"one constant on every award; organisations abroad are named next to it (Harvard, Mayo Clinic, UCSF)"
+*,breast_cancer_now,,medium,assumed_domestic,one constant (GB) on 73 awards; no organisation abroad seen next to it
+*,brightfocus_grant_search,,high,organisation,22 countries recorded on 1527 awards
+*,btfc,,medium,assumed_domestic,one constant (CA) on 64 awards; no organisation abroad seen next to it
+*,capes_cooperacao_internacional,,medium,assumed_domestic,one constant (BR) on 2065 awards; no organisation abroad seen next to it
+*,cariplo,,medium,assumed_domestic,one constant (IT) on 1148 awards; no organisation abroad seen next to it
+*,carl_zeiss_stiftung,,medium,assumed_domestic,one constant (DE) on 227 awards; no organisation abroad seen next to it
+*,cdti_open_data,,medium,assumed_domestic,one constant (ES) on 5738 awards; no organisation abroad seen next to it
+*,cec_business_meeting_agendas,,medium,assumed_domestic,one constant (US) on 235 awards; no organisation abroad seen next to it
+*,cerc_chairholders,,medium,assumed_domestic,one constant (CA) on 69 awards; no organisation abroad seen next to it
+*,cfi_opendata,,medium,assumed_domestic,one constant (CA) on 13895 awards; no organisation abroad seen next to it
+*,cfref_competition_results,,medium,assumed_domestic,one constant (CA) on 29 awards; no organisation abroad seen next to it
+*,chongqing_nsf,,medium,assumed_domestic,one constant (CN) on 3429 awards; no organisation abroad seen next to it
+*,chss,,medium,assumed_domestic,one constant (GB) on 48 awards; no organisation abroad seen next to it
+*,cifar_wp_rest,,high,organisation,30 countries recorded on 738 awards
+*,cihr_opendata,,low,assumed,"`'Canada' as country` (CreateCIHRAwards cell 7); one constant on every award; organisations abroad are named next to it (Harvard, Stanford, Witwatersrand)"
+*,cirm,,medium,assumed_domestic,one constant (US) on 1575 awards; no organisation abroad seen next to it
+*,conahcyt_snii_ckan,,medium,assumed_domestic,one constant (MX) on 84067 awards; no organisation abroad seen next to it
+*,cordis,,high,organisation,86 countries recorded on 62583 awards
+*,costech_nfast_projects,,medium,assumed_domestic,one constant (TZ) on 421 awards; no organisation abroad seen next to it
+*,cottrell_scholars,,high,organisation,2 countries recorded on 612 awards
+*,cprit,,medium,assumed_domestic,one constant (US) on 2285 awards; no organisation abroad seen next to it
+*,crc_chairholders,,medium,assumed_domestic,one constant (CA) on 4085 awards; no organisation abroad seen next to it
+*,crohns_colitis_uk,,medium,assumed_domestic,one constant (GB) on 22 awards; no organisation abroad seen next to it
+*,crossref_work,,high,organisation,107 countries recorded on 7337 awards
+*,cruk,,medium,assumed_domestic,one constant (GB) on 154 awards; no organisation abroad seen next to it
+*,csa_canada_proactive,,high,organisation,4 countries recorded on 1559 awards
+*,czi_grants,,low,assumed,"one constant on every award; organisations abroad are named next to it (ANU, TU Delft, Leiden)"
+*,damon_runyon_drupal,,medium,assumed_domestic,one constant (US) on 862 awards; no organisation abroad seen next to it
+*,datos_gov_co_minciencias,,medium,assumed_domestic,one constant (CO) on 2868 awards; no organisation abroad seen next to it
+*,deutsche_krebshilfe,,medium,assumed_domestic,one constant (DE) on 90 awards; no organisation abroad seen next to it
+*,dimensions_cdmrp,,high,organisation,35 countries recorded on 23289 awards
+*,doe_sc,,low,assumed,"one constant on every award; organisations abroad are named next to it (Monash, Reading, Juelich)"
+*,doris_duke,,medium,assumed_domestic,one constant (US) on 288 awards; no organisation abroad seen next to it
+*,edctp_grants_portal,,high,organisation,44 countries recorded on 489 awards
+*,efsd_recipients,,high,organisation,26 countries recorded on 422 awards
+*,einstein_foundation_directory,,medium,assumed_domestic,one constant (DE) on 241 awards; no organisation abroad seen next to it
+*,ekfs,,medium,assumed_domestic,one constant (DE) on 639 awards; no organisation abroad seen next to it
+*,embo,,high,organisation,40 countries recorded on 878 awards
+*,erasmus_plus,,high,organisation,136 countries recorded on 326752 awards
+*,erc,,high,organisation,35 countries recorded on 17466 awards
+*,etis_etag,,medium,assumed_domestic,one constant (EE) on 2460 awards; no organisation abroad seen next to it
+*,etis_etf,,medium,assumed_domestic,one constant (EE) on 2193 awards; no organisation abroad seen next to it
+*,etis_htm,,medium,assumed_domestic,one constant (EE) on 1953 awards; no organisation abroad seen next to it
+*,fapemig_projetos_contratados,,medium,assumed_domestic,one constant (BR) on 23586 awards; no organisation abroad seen next to it
+*,fapesp_bv,,medium,assumed_domestic,one constant (BR) on 113347 awards; no organisation abroad seen next to it
+*,fct,,low,mixed,"FCT: Instituto Superior Tecnico carries Italy on 1,527 awards; Portugal sits next to Vigo, Utrecht, Amsterdam"
+*,ffg_projektdatenbank,,high,organisation,7 countries recorded on 7834 awards
+*,finep_funttel,,medium,assumed_domestic,one constant (BR) on 50 awards; no organisation abroad seen next to it
+*,fmfc,,medium,assumed_domestic,one constant (AU) on 113 awards; no organisation abroad seen next to it
+*,fnr_luxembourg,,medium,assumed_domestic,one constant (LU) on 122 awards; no organisation abroad seen next to it
+*,foerderkatalog,,high,organisation,14 countries recorded on 200677 awards
+*,foerderkatalog_bmel,,high,organisation,4 countries recorded on 8268 awards
+*,foerderkatalog_bmv,,high,organisation,12 countries recorded on 6288 awards
+*,foerderkatalog_bmwe,,high,organisation,5 countries recorded on 41418 awards
+*,fondation_arc,,medium,assumed_domestic,one constant (FR) on 707 awards; no organisation abroad seen next to it
+*,formas,,medium,assumed_domestic,one constant (SE) on 7289 awards; no organisation abroad seen next to it
+*,forskningsportal_dk,,high,organisation,7 countries recorded on 3798 awards
+*,forte,,medium,assumed_domestic,one constant (SE) on 2636 awards; no organisation abroad seen next to it
+*,fritz_thyssen_fundings,,low,assumed,"one constant on every award; organisations abroad are named next to it (Weizmann, Hebrew University, Central European University)"
+*,frqnt,,low,assumed,one constant on every award; organisations abroad are named next to it (KU Leuven)
+*,frqs,,low,assumed,one constant on every award; organisations abroad are named next to it (NYU)
+*,frqsc,,low,assumed,"one constant on every award; organisations abroad are named next to it (KU Leuven, NYU, LSE)"
+*,fujian_nsf,,medium,assumed_domestic,one constant (CN) on 7396 awards; no organisation abroad seen next to it
+*,fwo_fris,,medium,assumed_domestic,one constant (BE) on 23045 awards; no organisation abroad seen next to it
+*,gates_foundation,,high,organisation,126 countries recorded on 40137 awards
+*,georgia_ctsa_pilot_grants,,medium,assumed_domestic,one constant (US) on 111 awards; no organisation abroad seen next to it
+*,gepris,,medium,assumed_domestic,one constant (DE) on 29217 awards; no organisation abroad seen next to it
+*,gerber,,medium,assumed_domestic,one constant (US) on 56 awards; no organisation abroad seen next to it
+*,gla,,medium,assumed_domestic,one constant (US) on 6 awards; no organisation abroad seen next to it
+*,gomri,,medium,assumed_domestic,one constant (US) on 273 awards; no organisation abroad seen next to it
+*,grantconnect,,high,organisation,10 countries recorded on 3958 awards
+*,guangdong_nsf,,medium,assumed_domestic,one constant (CN) on 6620 awards; no organisation abroad seen next to it
+*,gulbenkian_projects,,medium,assumed_domestic,one constant (PT) on 128 awards; no organisation abroad seen next to it
+*,gva,,medium,assumed_domestic,one constant (ES) on 4800 awards; no organisation abroad seen next to it
+*,hainan_nsf,,medium,assumed_domestic,one constant (CN) on 4025 awards; no organisation abroad seen next to it
+*,hec_pakistan_nrpu,,medium,assumed_domestic,one constant (PK) on 1890 awards; no organisation abroad seen next to it
+*,heilongjiang_nsf,,medium,assumed_domestic,one constant (CN) on 2799 awards; no organisation abroad seen next to it
+*,helmsley_grants,,low,assumed,one constant on every award; organisations abroad are named next to it (Medizinische Hochschule Hannover)
+*,helse_sor_ost_tildelinger,,medium,assumed_domestic,one constant (NO) on 1408 awards; no organisation abroad seen next to it
+*,hertz_facetwp,,medium,assumed_domestic,one constant (US) on 1344 awards; no organisation abroad seen next to it
+*,hewlett_facetwp,,low,assumed,"one constant on every award; organisations abroad are named next to it (TrustAfrica, Senegal)"
+*,hfri_funding_lists,,medium,assumed_domestic,one constant (GR) on 921 awards; no organisation abroad seen next to it
+*,hfsp_awards_listing,,high,organisation,41 countries recorded on 4925 awards
+*,hk_itc_itf,,medium,assumed_domestic,one constant (HK) on 1763 awards; no organisation abroad seen next to it
+*,hmrf,,medium,assumed_domestic,one constant (HK) on 3950 awards; no organisation abroad seen next to it
+*,holberg_wp_rest,,high,organisation,14 countries recorded on 44 awards
+*,hrb_ireland,,low,assumed,"one constant on every award; organisations abroad are named next to it (Queen's University Belfast, Ulster)"
+*,hrc_research_repository,,medium,assumed_domestic,one constant (NZ) on 2293 awards; no organisation abroad seen next to it
+*,hrzz,,medium,assumed_domestic,one constant (HR) on 3601 awards; no organisation abroad seen next to it
+*,humboldt,,low,assumed,"`'Germany' as country` (CreateHumboldtAwards cell 6); the name is the fellow's institution abroad, 74% of legacy matches contradicted"
+*,hunan_nsf,,medium,assumed_domestic,one constant (CN) on 8985 awards; no organisation abroad seen next to it
+*,icmr_approved_projects,,medium,assumed_domestic,one constant (IN) on 1313 awards; no organisation abroad seen next to it
+*,idrc_iati,,low,project_country,"IDRC: `a.recipient_country as country` (CreateIDRCAwards cell 9); University of Alberta carries ZA, TH, CU, MW"
+*,ifau,,medium,assumed_domestic,one constant (SE) on 29 awards; no organisation abroad seen next to it
+*,imls_awarded_grants,,high,organisation,4 countries recorded on 21030 awards
+*,inca,,low,assumed,"one constant on every award; organisations abroad are named next to it (CIRMF Gabon, Hopital Charles Nicolle Tunis, Cancer Research UK)"
+*,indam_gnampa_progetti,,medium,assumed_domestic,one constant (IT) on 833 awards; no organisation abroad seen next to it
+*,indam_gncs_progetti,,medium,assumed_domestic,one constant (IT) on 273 awards; no organisation abroad seen next to it
+*,indam_gnfm_progetti_giovani,,medium,assumed_domestic,one constant (IT) on 39 awards; no organisation abroad seen next to it
+*,innovate_uk,,medium,assumed_domestic,one constant (GB) on 8790 awards; no organisation abroad seen next to it
+*,irc_awardees_database,,medium,assumed_domestic,one constant (IE) on 6745 awards; no organisation abroad seen next to it
+*,irish_cancer_society,,medium,assumed_domestic,one constant (IE) on 13 awards; no organisation abroad seen next to it
+*,isf_grant_search,,medium,assumed_domestic,one constant (IL) on 16194 awards; no organisation abroad seen next to it
+*,isvavai_cep,,medium,assumed_domestic,one constant (CZ) on 21558 awards; no organisation abroad seen next to it
+*,isvavai_cep_mpo,,high,organisation,3 countries recorded on 6519 awards
+*,isvavai_cep_mvcr,,medium,assumed_domestic,one constant (CZ) on 723 awards; no organisation abroad seen next to it
+*,isvavai_cep_mze,,medium,assumed_domestic,one constant (CZ) on 2052 awards; no organisation abroad seen next to it
+*,isvavai_msm,,medium,assumed_domestic,one constant (CZ) on 11341 awards; no organisation abroad seen next to it
+*,itf_hk,,medium,assumed_domestic,one constant (HK) on 1763 awards; no organisation abroad seen next to it
+*,kaken,,medium,assumed_domestic,one constant (JP) on 707489 awards; no organisation abroad seen next to it
+*,kauffman_foundation,,medium,assumed_domestic,one constant (US) on 337 awards; no organisation abroad seen next to it
+*,kavli_nextdata,,high,organisation,17 countries recorded on 73 awards
+*,kaw_wallenberg_projects,,medium,assumed_domestic,one constant (SE) on 633 awards; no organisation abroad seen next to it
+*,keck,,medium,assumed_domestic,one constant (US) on 156 awards; no organisation abroad seen next to it
+*,klingenstein_simons,,medium,assumed_domestic,one constant (US) on 443 awards; no organisation abroad seen next to it
+*,kruk,,medium,assumed_domestic,one constant (GB) on 53 awards; no organisation abroad seen next to it
+*,kwf,,medium,assumed_domestic,one constant (NL) on 1003 awards; no organisation abroad seen next to it
+*,la_borsf_rcs,,medium,assumed_domestic,one constant (US) on 101 awards; no organisation abroad seen next to it
+*,lcrf,,low,assumed,"one constant on every award; organisations abroad are named next to it (Manchester, Ottawa Hospital Research Institute)"
+*,leducq_website,,high,organisation,16 countries recorded on 102 awards
+*,lemelson_mit,,medium,assumed_domestic,one constant (US) on 118 awards; no organisation abroad seen next to it
+*,lister,,low,assumed,"one constant on every award; organisations abroad are named next to it (Aarhus, ANU, Caltech)"
+*,lloyds_register_foundation,,high,organisation,38 countries recorded on 507 awards
+*,lpdp_rispro_grantees,,medium,assumed_domestic,one constant (ID) on 713 awards; no organisation abroad seen next to it
+*,lumina_grant_database,,medium,assumed_domestic,one constant (US) on 200 awards; no organisation abroad seen next to it
+*,lzp_projects,,medium,assumed_domestic,one constant (LV) on 716 awards; no organisation abroad seen next to it
+*,macarthur_fellows,,high,organisation,28 countries recorded on 1174 awards
+*,marie_curie,,medium,assumed_domestic,one constant (GB) on 16 awards; no organisation abroad seen next to it
+*,marsden,,medium,assumed_domestic,one constant (NZ) on 1029 awards; no organisation abroad seen next to it
+*,maudsley_360giving,,medium,assumed_domestic,one constant (GB) on 355 awards; no organisation abroad seen next to it
+*,medical_research_scotland,,medium,assumed_domestic,one constant (GB) on 482 awards; no organisation abroad seen next to it
+*,mhrc,,medium,assumed_domestic,one constant (CA) on 117 awards; no organisation abroad seen next to it
+*,millennium_prize,,high,organisation,6 countries recorded on 13 awards
+*,min_sante_fr,,medium,assumed_domestic,one constant (FR) on 3689 awards; no organisation abroad seen next to it
+*,mitacs_projects,,medium,assumed_domestic,one constant (CA) on 30590 awards; no organisation abroad seen next to it
+*,mmw_wallenberg_grants,,medium,assumed_domestic,one constant (SE) on 107 awards; no organisation abroad seen next to it
+*,mnisw,,medium,assumed_domestic,one constant (PL) on 2728 awards; no organisation abroad seen next to it
+*,mott_grants,,low,assumed,"one constant on every award; organisations abroad are named next to it (Southern Africa Trust, CIVICUS, University of the Western Cape)"
+*,mq_mental_health,,high,organisation,13 countries recorded on 60 awards
+*,mrff,,medium,assumed_domestic,one constant (AU) on 1743 awards; no organisation abroad seen next to it
+*,mur_prin_portal,,medium,assumed_domestic,one constant (IT) on 11106 awards; no organisation abroad seen next to it
+*,nafosted,,medium,assumed_domestic,one constant (VN) on 7071 awards; no organisation abroad seen next to it
+*,ncbr,,medium,assumed_domestic,one constant (PL) on 3275 awards; no organisation abroad seen next to it
+*,ncn_ranking_lists,,medium,assumed_domestic,one constant (PL) on 23765 awards; no organisation abroad seen next to it
+*,neh_open_data,,high,organisation,33 countries recorded on 67759 awards
+*,nhmrc,,medium,assumed_domestic,one constant (AU) on 28503 awards; no organisation abroad seen next to it
+*,nih_exporter,,high,organisation,129 countries recorded on 2214628 awards
+*,nihr,,low,project_country,NIHR: the ODA partner country; the only value today is the sentinel 'Award does not have an ODA Downstream Partner' (CreateNIHRAwards cell 7)
+*,nihr_ods_dhsc,,low,assumed,one constant on every award; organisations abroad are named next to it (Malawi-Liverpool-Wellcome Programme)
+*,nij_awards_list,,medium,assumed_domestic,one constant (US) on 3627 awards; no organisation abroad seen next to it
+*,nserc_open_data,,high,organisation,41 countries recorded on 200862 awards
+*,nsf_award_search,,high,organisation,140 countries recorded on 171647 awards
+*,nsf_sri_lanka_gmis,,medium,assumed_domestic,one constant (LK) on 2103 awards; no organisation abroad seen next to it
+*,nsfc_kd,,medium,assumed_domestic,one constant (CN) on 230869 awards; no organisation abroad seen next to it
+*,ntap,,high,organisation,8 countries recorded on 83 awards
+*,nwopen,,low,assumed,"`'Netherlands' as country` (CreateNWOAwards cell 6); one constant on every award; organisations abroad are named next to it (Harvard, KU Leuven, Oxford, ETH)"
+*,ons_foundation,,medium,assumed_domestic,one constant (US) on 4 awards; no organisation abroad seen next to it
+*,ontario_mcu,,medium,assumed_domestic,one constant (CA) on 1774 awards; no organisation abroad seen next to it
+*,ontario_research_funding_summary,,medium,assumed_domestic,one constant (CA) on 5983 awards; no organisation abroad seen next to it
+*,ostersjostiftelsen,,medium,assumed_domestic,one constant (SE) on 30 awards; no organisation abroad seen next to it
+*,osti_facility,,medium,assumed_domestic,one constant (US) on 14255 awards; no organisation abroad seen next to it
+*,parkinsons_uk,,medium,assumed_domestic,one constant (GB) on 49 awards; no organisation abroad seen next to it
+*,pbtf,,medium,assumed_domestic,one constant (US) on 85 awards; no organisation abroad seen next to it
+*,pcaarrd_gia_projects,,medium,assumed_domestic,one constant (PH) on 2547 awards; no organisation abroad seen next to it
+*,pchrd_ongoing_projects,,medium,assumed_domestic,one constant (PH) on 184 awards; no organisation abroad seen next to it
+*,pcori,,medium,assumed_domestic,one constant (US) on 1272 awards; no organisation abroad seen next to it
+*,pew_biomed,,low,assumed,"one constant on every award; organisations abroad are named next to it (Cambridge, ETH Zurich, UBC)"
+*,pogo,,medium,assumed_domestic,one constant (CA) on 13 awards; no organisation abroad seen next to it
+*,portal_fis_isciii,,medium,assumed_domestic,one constant (ES) on 8771 awards; no organisation abroad seen next to it
+*,potter_foundation_grants,,high,organisation,12 countries recorded on 540 awards
+*,prostate_cancer_uk,,medium,assumed_domestic,one constant (GB) on 137 awards; no organisation abroad seen next to it
+*,ragnar_soderberg,,medium,assumed_domestic,one constant (SE) on 97 awards; no organisation abroad seen next to it
+*,research_council_norway_project_bank,,medium,assumed_domestic,one constant (NO) on 44316 awards; no organisation abroad seen next to it
+*,research_manitoba,,medium,assumed_domestic,one constant (CA) on 1152 awards; no organisation abroad seen next to it
+*,researchfi,,medium,assumed_domestic,one constant (FI) on 5396 awards; no organisation abroad seen next to it
+*,researchnb,,medium,assumed_domestic,one constant (CA) on 30 awards; no organisation abroad seen next to it
+*,rj_jubileumsfond_grants,,low,assumed,"one constant on every award; organisations abroad are named next to it (Oslo, Copenhagen, Helsinki)"
+*,royal_society_grants,,low,assumed,"one constant on every award; organisations abroad are named next to it (University of Cape Town, Tsinghua, Stellenbosch)"
+*,rpb,,medium,assumed_domestic,one constant (US) on 1657 awards; no organisation abroad seen next to it
+*,rwjf_grants_explorer,,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ak,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+al,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ar,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+as,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+az,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ca,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+co,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ct,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+dc,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+de,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+fl,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ga,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+gu,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+hi,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ia,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+id,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+il,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+in,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ks,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ky,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+la,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ma,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+md,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+me,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+mi,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+mn,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+mo,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+mp,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ms,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+mt,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+nc,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+nd,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ne,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+nh,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+nj,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+nm,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+nv,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ny,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+oh,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ok,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+or,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+pa,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+pr,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ri,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+sc,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+sd,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+tn,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+tx,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+um,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+ut,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+va,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+vi,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+vt,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+wa,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+wi,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+wv,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+wy,rwjf_grants_explorer,US,high,us_state,RWJF: US state or territory code in the country field (CreateRWJFAwards cell 9); foreign grantees carry a country name
+*,searle_scholars,,medium,assumed_domestic,one constant (US) on 105 awards; no organisation abroad seen next to it
+*,sepm_science_awards,,high,organisation,2 countries recorded on 7 awards
+*,sfi_open_data,,medium,assumed_domestic,one constant (IE) on 7269 awards; no organisation abroad seen next to it
+*,shandong_nsf,,medium,assumed_domestic,one constant (CN) on 4672 awards; no organisation abroad seen next to it
+*,shanghai_nsf,,medium,assumed_domestic,one constant (CN) on 5024 awards; no organisation abroad seen next to it
+*,shanghai_stcsm,,medium,assumed_domestic,one constant (CN) on 181 awards; no organisation abroad seen next to it
+*,shriners,,high,organisation,3 countries recorded on 93 awards
+*,sigrid_juselius_grant_lists,,medium,assumed_domestic,one constant (FI) on 858 awards; no organisation abroad seen next to it
+*,sloan_foundation,,high,organisation,13 countries recorded on 3396 awards
+*,smithsonian_sarf,,medium,assumed_domestic,one constant (US) on 101 awards; no organisation abroad seen next to it
+*,smri_treatment_trials,,high,organisation,30 countries recorded on 405 awards
+*,snsf,,low,mixed,"SNSF: non-Swiss values sit next to Swiss institutions (University of Berne with DE, RU, GB)"
+switzerland,snsf,CH,high,organisation,SNSF: Switzerland next to Swiss institutions is reliable (contradicted matches were wrong matches)
+*,sparks,,medium,assumed_domestic,one constant (GB) on 66 awards; no organisation abroad seen next to it
+*,sshrc_opendata,,medium,assumed_domestic,one constant (CA) on 114256 awards; no organisation abroad seen next to it
+*,starfos_tacr,,high,organisation,2 countries recorded on 5327 awards
+*,stockholm_water_prize,,high,organisation,19 countries recorded on 36 awards
+*,stroke_association,,medium,assumed_domestic,one constant (GB) on 124 awards; no organisation abroad seen next to it
+*,sumitomo_foundation_grant_lists,,high,organisation,21 countries recorded on 2700 awards
+*,swecris,,medium,assumed_domestic,one constant (SE) on 729 awards; no organisation abroad seen next to it
+*,swecris_vinnova,,medium,assumed_domestic,one constant (SE) on 23893 awards; no organisation abroad seen next to it
+*,sweden_america_foundation,,medium,assumed_domestic,one constant (US) on 46 awards; no organisation abroad seen next to it
+*,swedish_research_council,,medium,assumed_domestic,one constant (SE) on 22858 awards; no organisation abroad seen next to it
+*,telethon,,low,assumed,one constant on every award; organisations abroad are named next to it (University College London)
+*,tenovus,,medium,assumed_domestic,one constant (GB) on 30 awards; no organisation abroad seen next to it
+*,tourettes,,medium,assumed_domestic,one constant (GB) on 4 awards; no organisation abroad seen next to it
+*,trygfonden_donations_api,,medium,assumed_domestic,one constant (DK) on 8824 awards; no organisation abroad seen next to it
+*,tsc_alliance,,low,assumed,"one constant on every award; organisations abroad are named next to it (Cardiff, UCL, King's College London)"
+*,twas_awards,,high,organisation,19 countries recorded on 135 awards
+*,ugc_bd_icsetep_rdg,,medium,assumed_domestic,one constant (BD) on 20 awards; no organisation abroad seen next to it
+*,vaincre_alzheimer,,medium,assumed_domestic,one constant (FR) on 134 awards; no organisation abroad seen next to it
+*,vega_sk,,medium,assumed_domestic,one constant (SK) on 11885 awards; no organisation abroad seen next to it
+*,versus_arthritis,,medium,assumed_domestic,one constant (GB) on 61 awards; no organisation abroad seen next to it
+*,vilcek_foundation,,medium,assumed_domestic,one constant (US) on 175 awards; no organisation abroad seen next to it
+*,villum_veluxfonden,,high,organisation,4 countries recorded on 978 awards
+*,vivensa,,medium,assumed_domestic,one constant (GB) on 232 awards; no organisation abroad seen next to it
+*,vlaamse_regering_fris,,medium,assumed_domestic,one constant (BE) on 17216 awards; no organisation abroad seen next to it
+*,vlaio_fris,,medium,assumed_domestic,one constant (BE) on 4241 awards; no organisation abroad seen next to it
+*,wellcome_trust,,high,organisation,97 countries recorded on 19618 awards
+*,wolfson_foundation,,medium,assumed_domestic,one constant (GB) on 4254 awards; no organisation abroad seen next to it
+*,zhejiang_nsf,,medium,assumed_domestic,one constant (CN) on 13268 awards; no organisation abroad seen next to it
