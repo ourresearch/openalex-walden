@@ -28,3 +28,9 @@ fcdo,4320330760,"Foreign, Commonwealth and Development Office",dac_research,GB-G
 #danida,4320335604,Danish International Development Agency,dac_research,,leaf,,,50,
 #minbuza_nl,4320324643,Ministry of Foreign Affairs (Netherlands),dac_research,,leaf,,,50,
 #afd,4320326791,Agence Française de Développement,dac_research,,leaf,,,50,
+#
+# USAID, NOT ENABLED. Parsed locally on 2026-10-02 (56,577 activities; recipient country and
+# sector are on transactions only; 48 pass the research filter). 14,313 of its activities are the
+# same awards as the usaspending_usaid feed already in OpenAlex (award number = identifier without
+# "US-GOV-1-"), so enabling this row as it stands would ship those twice. Needs a decision first.
+#usaid,4320306115,United States Agency for International Development,dac_research,,leaf,^US-GOV-1-(.+)$,,50,
