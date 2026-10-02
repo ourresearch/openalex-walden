@@ -3595,8 +3595,78 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: Barncancerfonden_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateBarncancerfondenAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Parkinsonfonden_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateParkinsonfondenAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: FinskaLakaresallskapet_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateFinskaLakaresallskapetAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Fysiografen_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateFysiografenAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Wilhelm_Sander_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateWilhelmSanderAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Einstein_Foundation_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateEinsteinFoundationAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Fondazione_Veronesi_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateFondazioneVeronesiAwards
+            source: GIT
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
+            - task_key: Fondazione_Veronesi_Awards
+            - task_key: Einstein_Foundation_Awards
+            - task_key: Wilhelm_Sander_Awards
+            - task_key: Fysiografen_Awards
+            - task_key: FinskaLakaresallskapet_Awards
+            - task_key: Parkinsonfonden_Awards
+            - task_key: Barncancerfonden_Awards
             - task_key: GRA_Awards
             - task_key: GenomeBC_Awards
             - task_key: OCAST_Awards
