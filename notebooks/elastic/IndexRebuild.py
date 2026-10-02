@@ -20,7 +20,7 @@
 # MAGIC | `close_load` | refresh; count within `close_tolerance` (default 10) of the source at V; `_mget` of random source ids | refresh new index |
 # MAGIC | `add_replicas` | raises recovery speed (transient), sets replicas, waits for green, restores the recorded recovery settings | cluster settings, new index settings |
 # MAGIC | `live_settings` | refresh_interval back to the old index's value; total_shards_per_node back to the old index's (usually none) | new index settings |
-# MAGIC | `verify` | counts; field-by-field `_source` comparison of random docs; keyword filter counts vs Delta; PASS/FAIL summary | nothing |
+# MAGIC | `verify` | counts; random docs vs **Delta at V** on comparable fields (the FAIL check); old-vs-new `_source` diff (informational: the old index is stale on hash-excluded fields); keyword filter counts vs Delta; PASS/FAIL summary | nothing |
 # MAGIC | `swap` | one `_aliases` call moving `alias` from old to new; refuses unless new is green with the old replica count | alias |
 # MAGIC | `rollback` | the reverse; lifts the old index's write block first | old index settings, alias |
 # MAGIC | `block_old` | `index.blocks.write: true` on the old index; refuses while the alias still points at it | old index settings |
@@ -73,6 +73,7 @@ dbutils.widgets.text("keywords_table", "")                  # verify: keyword vo
 dbutils.widgets.text("keyword_field", "keywords.id")
 dbutils.widgets.text("keyword_sample", "20")
 dbutils.widgets.text("count_tolerance", "1000")              # verify: |new count - source count now|
+dbutils.widgets.text("delta_mismatch_pct", "1")              # verify: FAIL if more than this % of sampled docs differ from Delta at V
 dbutils.widgets.text("close_tolerance", "10")                # close_load: |new count - source count at V|
 
 MODE = dbutils.widgets.get("mode").strip()
@@ -103,6 +104,7 @@ KEYWORDS_TABLE = dbutils.widgets.get("keywords_table").strip()
 KEYWORD_FIELD = dbutils.widgets.get("keyword_field").strip()
 KEYWORD_SAMPLE = int(dbutils.widgets.get("keyword_sample"))
 COUNT_TOLERANCE = int(dbutils.widgets.get("count_tolerance"))
+DELTA_MISMATCH_PCT = float(dbutils.widgets.get("delta_mismatch_pct"))
 CLOSE_TOLERANCE = int(dbutils.widgets.get("close_tolerance"))
 
 NAME_RE = r"[a-z0-9][a-z0-9._-]*"
@@ -670,8 +672,72 @@ elif MODE == "verify":
          {f: f"{n} docs, e.g. {examples[f]}" + ("" if f in EXPECT_DIFF else "  <- UNEXPECTED")
           for f, n in sorted(field_diffs.items(), key=lambda x: -x[1])})
     pct = 100 * unexpected_docs / max(compared, 1)
-    results.append(("docs: unexpected field differences", "PASS" if pct <= 1.0 else "FAIL",
-                    f"{unexpected_docs} of {compared} docs ({pct:.1f}%; limit 1%) differ outside {sorted(EXPECT_DIFF)}"))
+    # Informational only (oxjob #1456): the old index is stale on every field the content hash excludes (fwci,
+    # citation percentiles, institutions_distinct_count, source.listed_in, location `updated`, transient updated_date
+    # bumps) and on null-vs-[] representation, so on 2026-10-01 88% of docs differed and every one matched Delta.
+    results.append(("docs: old vs new field differences (info)", "INFO",
+                    f"{unexpected_docs} of {compared} docs ({pct:.1f}%) differ outside {sorted(EXPECT_DIFF)}; "
+                    f"the FAIL check is 'docs: new vs Delta at V' below"))
+    # The truth check: the new index vs the source at V on fields that compare directly (no sync-side transforms).
+    v_tbl = src(SOURCE_VERSION) if SOURCE_VERSION else src()
+    DELTA_FIELDS = {  # es _source path -> SQL expression on the source row; both sides normalised by norm()
+        "publication_year": "publication_year", "type": "type", "language": "language", "doi": "doi",
+        "display_name": "display_name", "updated_date": "updated_date", "cited_by_count": "cited_by_count",
+        "fwci": "fwci", "citation_normalized_percentile.value": "citation_normalized_percentile.value",
+        "institutions_distinct_count": "institutions_distinct_count", "referenced_works_count": "referenced_works_count",
+        "open_access.is_oa": "open_access.is_oa", "open_access.oa_status": "open_access.oa_status",
+        "primary_location.source.id": "primary_location.source.id", "authorships_count": "size(authorships)",
+        "keywords_ids": "to_json(sort_array(transform(keywords, k -> k.id)))",
+        "topics_ids": "to_json(sort_array(transform(topics, t -> t.id)))",
+    }
+    def dig(doc, path):
+        for part in path.split("."):
+            doc = doc.get(part) if isinstance(doc, dict) else None
+        return doc
+    def es_value(doc, key):
+        if key == "authorships_count":
+            return len(doc.get("authorships") or [])
+        if key in ("keywords_ids", "topics_ids"):
+            return json.dumps(sorted(k.get("id") for k in (doc.get(key.split("_")[0]) or []) if k.get("id")))
+        return dig(doc, key)
+    def norm(v):
+        if v is None or v == "" or v == "[]":
+            return ""
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        if isinstance(v, float) or (isinstance(v, str) and re.fullmatch(r"-?\d+\.\d+(E-?\d+)?", v)):
+            return f"{float(v):.4g}"
+        v = str(v)
+        if re.match(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}", v):
+            return v[:19].replace("T", " ")  # timestamps: second precision, ignore T/space and zone
+        return v
+    sample_ids = [i for i in ids if i in docs_new]
+    delta_rows = {}
+    for i in range(0, len(sample_ids), 500):
+        batch = sample_ids[i:i + 500]
+        ints = ", ".join(x[len(ID_PREFIX):] for x in batch)
+        cols = ", ".join(f"{expr} AS c{n}" for n, expr in enumerate(DELTA_FIELDS.values()))
+        for r in sql(f"SELECT id, {cols} FROM {v_tbl} WHERE id IN ({ints})"):
+            delta_rows[f"{ID_PREFIX}{r[0]}"] = dict(zip(DELTA_FIELDS.keys(), r[1:]))
+    delta_diffs, delta_bad_docs, delta_examples = {}, 0, {}
+    for i in sample_ids:
+        row = delta_rows.get(i)
+        if row is None:
+            delta_diffs["(missing from Delta)"] = delta_diffs.get("(missing from Delta)", 0) + 1
+            delta_bad_docs += 1
+            continue
+        bad = [k for k in DELTA_FIELDS if norm(es_value(docs_new[i], k)) != norm(row[k])]
+        for k in bad:
+            delta_diffs[k] = delta_diffs.get(k, 0) + 1
+            delta_examples.setdefault(k, (i, es_value(docs_new[i], k), row[k]))
+        delta_bad_docs += bool(bad)
+    show(f"fields differing new vs Delta at V over {len(sample_ids)} docs",
+         {k: f"{n} docs, e.g. {delta_examples[k][0]} es={str(delta_examples[k][1])[:60]!r} delta={str(delta_examples[k][2])[:60]!r}"
+          for k, n in sorted(delta_diffs.items(), key=lambda x: -x[1])} if delta_diffs else {"(none)": "every compared field equal"})
+    dpct = 100 * delta_bad_docs / max(len(sample_ids), 1)
+    results.append(("docs: new vs Delta at V", "PASS" if dpct <= DELTA_MISMATCH_PCT else "FAIL",
+                    f"{delta_bad_docs} of {len(sample_ids)} docs ({dpct:.1f}%; limit {DELTA_MISMATCH_PCT}%) differ from "
+                    f"{v_tbl} on {len(DELTA_FIELDS)} comparable fields"))
 
     if KEYWORDS_TABLE:
         col = KEYWORD_FIELD.split(".")[0]
@@ -725,7 +791,8 @@ elif MODE == "verify":
     failed = [r for r in results if r[1] == "FAIL"]
     print(f"\nOVERALL: {'FAIL' if failed else 'PASS'} ({len(failed)} failed, "
           f"{sum(r[1] == 'SKIP' for r in results)} skipped)")
-    save("verify.json", {"results": results, "field_diffs": field_diffs, "examples": examples})
+    save("verify.json", {"results": results, "field_diffs": field_diffs, "examples": examples,
+                         "delta_diffs": delta_diffs, "delta_examples": {k: list(v) for k, v in delta_examples.items()}})
     if failed:
         raise RuntimeError(f"verify FAIL: {[r[0] for r in failed]}")
 
