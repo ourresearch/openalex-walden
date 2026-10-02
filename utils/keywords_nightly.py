@@ -155,7 +155,7 @@ def sense_pairs_statement(rows, queue, out, work_senses=WORK_SENSES, senses=SENS
 WITH e AS (SELECT r.work_id, substring_index(x.id, '/', -1) AS heading FROM {rows} r LATERAL VIEW explode(r.keywords) t AS x),
 p AS (SELECT DISTINCT e.work_id, e.heading FROM e JOIN (SELECT DISTINCT heading FROM {senses}) s ON s.heading = e.heading
       LEFT ANTI JOIN {work_senses} ws ON ws.work_id = e.work_id AND ws.heading = e.heading)
-SELECT p.work_id, p.heading, q.title, substr(q.abstract, 1, 1500) AS abstract, q.venue FROM p JOIN {queue} q ON q.id = p.work_id"""
+SELECT p.work_id, p.heading, q.title, substr(q.abstract, 1, 1500) AS abstract, q.journal AS venue FROM p JOIN {queue} q ON q.id = p.work_id"""
 
 
 def sense_statement(rows_in, rows_out, work_senses=WORK_SENSES, senses=SENSES):
