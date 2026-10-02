@@ -174,19 +174,30 @@ replicas before swap.
    count(*) FROM <source> WHERE updated_date > <last sync start>` and the delete ledger since T; if both are 0, skip.
 
 ### Step 8: verify
-`IndexRebuild verify` is read-only and can run any time after step 5. It checks: count vs the source now; 1,000 random
-ids present in the new index; a field-by-field `_source` diff of those docs between old and new; and for keyword-type
-changes, that sampled ids are all in the vocabulary and 20 filter counts match Delta.
+`IndexRebuild verify` is read-only and can run any time after step 5, and again after the swap or after retire (it
+skips the old-index checks when that index is gone). It checks: count vs the source now; 1,000 random ids present
+in the new index; **those docs vs Delta at V on 16 directly comparable fields** (year, type, language, title,
+updated_date, citation counts and percentiles, fwci, institutions_distinct_count, OA status, primary source,
+authorship count, keyword and topic id sets), FAIL above `delta_mismatch_pct` (default 1 %), with docs re-synced
+after V skipped; an old-vs-new `_source` diff (INFO only); and for keyword-type changes, that sampled ids are all in
+the vocabulary and 20 filter counts match Delta. Run it with `source_version=V`; after a nightly has moved the index,
+still pass V, since the Delta-now values of hash-excluded fields have moved on without a re-send. Works 2026-10-02:
+6 of 990 docs differed, all on `display_name` (the combining-mark bug below), PASS.
 
-**The old-vs-new document diff fails on every rebuild and that is expected.** The old index is stale relative to Delta
+**The old-vs-new document diff differs on most docs on every rebuild and that is expected.** The old index is stale relative to Delta
 on every field the content hash excludes, because the nightly never re-sent them: `citation_normalized_percentile`,
 `fwci`, `cited_by_percentile_year`, `institutions_distinct_count`, `source.listed_in`, location `updated` timestamps,
 and `updated_date` where the old index carries a transient bump Delta later lost (#679). It also differs on null vs
 empty-array representation (`study_designs`, `author.observed_orcids`, `source.issn`), which `exists` queries treat
 the same. On 2026-10-01, 882 of 1,000 docs differed, and every checked field in the new index equalled Delta at V.
-**Read the diff as "new = Delta?", not "new = old?"**; the oxjob's `scratch/tooling/diff_old_new.py` prints the
-sub-field paths so the differences can be classified in minutes. TODO: make `verify` compare new vs Delta at V directly,
-and build the 500-query replay set.
+The oxjob's `scratch/tooling/diff_old_new.py` prints the sub-field paths so the differences can be classified in
+minutes. TODO: build the 500-query replay set.
+
+**Known data bug surfaced by the Delta check (2026-10-02, not a rebuild issue):** `sanitize_name` in `sync_works`
+and `BuildLakebaseWorksDocs.py` strips every character outside `\p{L}\p{N}\p{P}\p{S}\p{Z}`, which removes Unicode
+combining marks (`\p{M}`): Thai vowels and tone marks, Devanagari matras, Arabic harakat, Hebrew points, and the
+accents of any Latin title stored in decomposed form ("Economía" → "Economia"). 1,477,228 source titles contain a
+combining mark. Both the ES `display_name` and the Lakebase doc are affected. Needs its own job.
 
 ### Step 9: warm (15–30 minutes)
 Run a sample of representative queries against the new index **by name** so its caches are hot: the default list sort,
@@ -262,7 +273,7 @@ in the API's `meta`, or `took` on a direct query): end-to-end timings from a lap
   The works table has Delta row tracking: `_metadata.row_commit_version > V` selects exactly the rows written after V.
   Add a `since_version` mode to `sync_works` before the next rebuild that follows a rebaseline.
 - **Calibration under-predicts the full load's pressure** (step 3). Start one level lower.
-- **The old index is not the truth** (step 8). Verify against Delta.
+- **The old index is not the truth** (step 8). Verify against Delta at V; `verify` does since 2026-10-02.
 - **Replica recovery at the default 40 MB/s is the slowest step by far**; at 250 MB/s it is minutes. Always set the
   transient recovery settings and clear them after green.
 - **The swap only helps once readers use the alias** (step 0). Without it the API keeps reading the old name and
