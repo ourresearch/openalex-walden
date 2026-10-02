@@ -735,7 +735,11 @@ elif MODE == "verify":
     for i in sample_ids:
         row = delta_rows.get(i)
         if row is None:
+            if SOURCE_VERSION:
+                resynced += 1  # sampled from the source now; created after V, so no row at V
+                continue
             delta_diffs["(missing from Delta)"] = delta_diffs.get("(missing from Delta)", 0) + 1
+            delta_examples.setdefault("(missing from Delta)", (i, "present in ES", "no row"))
             delta_bad_docs += 1
             continue
         if SOURCE_VERSION and norm(es_value(docs_new[i], "updated_date")) > norm(row["updated_date"]):
