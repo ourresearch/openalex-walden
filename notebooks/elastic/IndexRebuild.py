@@ -702,14 +702,19 @@ elif MODE == "verify":
             doc = doc.get(part) if isinstance(doc, dict) else None
         return doc
     def es_value(doc, key):
-        if key == "authorships_count":
-            return len(doc.get("authorships") or [])
+        if key == "authorships_count":  # `authorships` is truncated at 100 in ES; `authorships_full` is not
+            return len(doc.get("authorships_full") or doc.get("authorships") or [])
         if key in ("keywords_ids", "topics_ids"):
             return json.dumps(sorted(k.get("id") for k in (doc.get(key.split("_")[0]) or []) if k.get("id")))
         return dig(doc, key)
     def norm(v):
         if v is None or v == "" or v == "[]":
             return ""
+        if isinstance(v, str) and v.startswith("["):
+            try:
+                return json.dumps(json.loads(v), separators=(",", ":"), sort_keys=True)  # Spark and Python space JSON differently
+            except ValueError:
+                pass
         if isinstance(v, bool):
             return "true" if v else "false"
         if isinstance(v, float) or (isinstance(v, str) and re.fullmatch(r"-?\d+\.\d+(E-?\d+)?", v)):
@@ -726,12 +731,15 @@ elif MODE == "verify":
         cols = ", ".join(f"{expr} AS c{n}" for n, expr in enumerate(DELTA_FIELDS.values()))
         for r in sql(f"SELECT id, {cols} FROM {v_tbl} WHERE id IN ({ints})"):
             delta_rows[f"{ID_PREFIX}{r[0]}"] = dict(zip(DELTA_FIELDS.keys(), r[1:]))
-    delta_diffs, delta_bad_docs, delta_examples = {}, 0, {}
+    delta_diffs, delta_bad_docs, delta_examples, resynced = {}, 0, {}, 0
     for i in sample_ids:
         row = delta_rows.get(i)
         if row is None:
             delta_diffs["(missing from Delta)"] = delta_diffs.get("(missing from Delta)", 0) + 1
             delta_bad_docs += 1
+            continue
+        if SOURCE_VERSION and norm(es_value(docs_new[i], "updated_date")) > norm(row["updated_date"]):
+            resynced += 1  # re-sent by a sync after V (catch-up or nightly): newer than the pinned source, not comparable
             continue
         bad = [k for k in DELTA_FIELDS if norm(es_value(docs_new[i], k)) != norm(row[k])]
         for k in bad:
@@ -741,10 +749,11 @@ elif MODE == "verify":
     show(f"fields differing new vs Delta at V over {len(sample_ids)} docs",
          {k: f"{n} docs, e.g. {delta_examples[k][0]} es={str(delta_examples[k][1])[:60]!r} delta={str(delta_examples[k][2])[:60]!r}"
           for k, n in sorted(delta_diffs.items(), key=lambda x: -x[1])} if delta_diffs else {"(none)": "every compared field equal"})
-    dpct = 100 * delta_bad_docs / max(len(sample_ids), 1)
+    comparable = len(sample_ids) - resynced
+    dpct = 100 * delta_bad_docs / max(comparable, 1)
     results.append(("docs: new vs Delta at V", "PASS" if dpct <= DELTA_MISMATCH_PCT else "FAIL",
-                    f"{delta_bad_docs} of {len(sample_ids)} docs ({dpct:.1f}%; limit {DELTA_MISMATCH_PCT}%) differ from "
-                    f"{v_tbl} on {len(DELTA_FIELDS)} comparable fields"))
+                    f"{delta_bad_docs} of {comparable} docs ({dpct:.1f}%; limit {DELTA_MISMATCH_PCT}%) differ from "
+                    f"{v_tbl} on {len(DELTA_FIELDS)} comparable fields; {resynced} skipped as re-synced after V"))
 
     if KEYWORDS_TABLE:
         col = KEYWORD_FIELD.split(".")[0]
