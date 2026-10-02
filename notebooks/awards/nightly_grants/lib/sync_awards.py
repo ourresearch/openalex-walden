@@ -58,6 +58,26 @@ def partition_writer(host, index, mode, deleting=False, es=None):
     return write
 
 
+# Sub-award fields (award_relations.py) as provisioned on awards-v4 on 10-01. A rebuilt index that inferred other types
+# (dynamic mapping turns strings into text) would silently break the API's term filters, so the sync refuses to write.
+_LINK_FIELDS = {"id": {"type": "keyword"}, "relationship": {"type": "keyword"}, "asserted_by": {"type": "keyword"},
+                "funder.id": {"type": "keyword"},
+                "display_name": {"type": "keyword", "index": False, "doc_values": False},
+                "funder.display_name": {"type": "keyword", "index": False, "doc_values": False}}
+AWARD_FIELD_MAPPINGS = {"sub_awards_count": {"type": "long"},
+                        **{f"{arr}.{leaf}": m for arr in ("parent_awards", "parent_awards_full", "sub_awards", "sub_awards_full")
+                           for leaf, m in _LINK_FIELDS.items()}}
+
+
+def mapping_mismatches(field_mapping_response, index):
+    """Fields whose live mapping differs from AWARD_FIELD_MAPPINGS (missing counts as different)."""
+    live = {}
+    for f, m in field_mapping_response.get(index, {}).get("mappings", {}).items():
+        leaf = list(m["mapping"].values())[0]
+        live[f] = {k: v for k, v in leaf.items() if k in ("type", "index", "doc_values")}
+    return sorted(f for f, want in AWARD_FIELD_MAPPINGS.items() if live.get(f) != want)
+
+
 class Search:
     def __init__(self, c, dbutils):
         from elasticsearch import Elasticsearch, helpers
@@ -69,6 +89,8 @@ class Search:
         self.client = Elasticsearch(hosts=[self.host], request_timeout=180, max_retries=3)
         props = self.client.indices.get_mapping(index=self.redirects)[self.redirects]["mappings"]["properties"]
         c.require(all(props.get(k, {}).get("type") == "keyword" for k in ("id", "merge_into_id")), "REDIRECT_MAPPING_NOT_PROVISIONED")
+        bad = mapping_mismatches(self.client.indices.get_field_mapping(index=self.awards, fields=list(AWARD_FIELD_MAPPINGS)), self.awards)
+        c.require(not bad, "AWARD_MAPPING_NOT_PROVISIONED: " + ",".join(bad))
 
     def observed(self, kind, batch=200_000):
         """Full scroll of one index into a scratch table (helpers.scan raises on failed shards; the table is replaced whole)."""

@@ -2,6 +2,12 @@
 
 We document notable changes to the data in this file; it's in reverse chronological order (recent changes up top).
 
+## [Unreleased]
+### Changed
+* Works: `sustainable_development_goals` now comes from a new classifier: a per-goal head on the work's Qwen3 embedding, trained on 200K Jev (TypeSafe) judgments of the 17 goals and calibrated per goal. Same element shape (`id`, `display_name`, `score`); a goal is listed when its `score` (the classifier's confidence, 0-1, higher = surer) is at least 0.4, highest first. Works without an embedding have an empty list. Display names follow the UN wording: "Quality education", "Life on land", "Peace, justice, and strong institutions". Against a judge committee on 2,000 random works the new tags score F1 0.68 vs 0.29 for the previous model, and better on all 17 goals. (oxjob #1300)
+### Deprecated
+* Works: `sustainable_development_goals_aurora` holds the previous model's (Aurora SDG-BERT) tags, frozen on the switch date and no longer updated. API only, not in the snapshot; removed about a month after the switch. (oxjob #1300)
+
 ## [2026-08-18]
 ### Fixed
 * Authorships: raw affiliation strings with double-encoded UTF-8 (mojibake, e.g. `UniversitÃ©`) are repaired to their proper form (`Université`) — ~172K distinct strings on ~189K works, mostly publisher-deposited Crossref metadata; a garbled string and its clean twin on the same author collapse into one entry. Institution matching now keys on the repaired string: where the garbled form and its clean twin had been matched differently, the clean form's match stands (the garbled-text matches were systematically degraded), and garbled strings with no clean twin are re-matched on the clean text. Expect small institution works_count shifts (largest: junk institutions losing works, e.g. "Anna Needs Neuroblastoma Answers" −1K; real universities gaining, e.g. University of Concepción +1.2K). RAS curations keyed on a garbled string follow it to the repaired form. (oxjob #801)

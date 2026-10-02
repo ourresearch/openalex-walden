@@ -15,8 +15,6 @@ from pathlib import Path
 from stable_award_ids import compact, ident, literal, sha, short
 from capture_support import verify_body
 
-# one completeness unit per producer: the raw row's provenance, else the adapter family (gtr, ...)
-SOURCE_SQL = "coalesce(o.payload.provenance,o.family)"
 MAINTENANCE = ("OPTIMIZE", "VACUUM START", "VACUUM END", "COMPUTE STATISTICS")
 PARAM = re.compile(r":(rid|ts)\b")
 WRITE_TARGET = re.compile(r"\s*(?:CREATE (?:OR REPLACE )?TABLE|MERGE INTO|UPDATE|INSERT INTO|DELETE FROM)\s+(\S+)", re.I)
@@ -32,6 +30,12 @@ DERIVED = {"crossref_records", "datacite_records", "funder_map", "normalization"
            "receipts", "previous_bindings", "last_state", "merge_doi_pairs"}
 
 
+def raw_source_counts(raw, gtr, col):
+    """Rows per source: raw award rows by provenance, and GtR rows (bound to works) as gtr_legacy."""
+    return (f"SELECT provenance family,count(*) {col} FROM {raw} GROUP BY 1 "
+            f"UNION ALL SELECT 'gtr_legacy',count(*) FROM {gtr} WHERE work_id IS NOT NULL")
+
+
 class Nightly:
     def __init__(self, spark, config, databricks_run_id=None):
         self.spark, self.config = spark, config
@@ -45,7 +49,7 @@ class Nightly:
         self.fence = tuple(config["write_fence"])             # every write target must start with one of these
         self.require(len(self.fence) > 0, "WRITE_FENCE_REQUIRED")
         self.outputs = {k: ident(v) for k, v in config["outputs"].items()}
-        self.require(set(self.outputs) == {"awards", "aliases", "work_awards", "api"}, "OUTPUT_SET")
+        self.require(set(self.outputs) - {"relations"} == {"awards", "aliases", "work_awards", "api"}, "OUTPUT_SET")   # relations: optional (award_relations.py)
         self.versions, self.counts, self.checks, self.log = {}, {}, {}, []
         self.locked = False
         if config.get("require_databricks_run_id"):
@@ -212,11 +216,8 @@ class Nightly:
         r, p = self.r, self.p
         self.verify_udfs()
         sharp = ",".join(str(int(x)) for x in json.loads(self.identity_file("sharp_funders.json"))["sharp_funders"])
-        live = self.config.get("live_funders")
-        if live:
-            n = self.sql(f"""SELECT count(*) n FROM funders_v b FULL JOIN {ident(live)} l ON l.funder_id=b.funder_id
-                WHERE NOT(b.merge_into_id <=> l.merge_into_id) OR b.funder_id IS NULL OR l.funder_id IS NULL""").collect()[0].n
-            self.counts["funder_merges_pending_basis_update"] = int(n)
+        if self.config.get("live_funders"):
+            self.add_new_funders()
         self.view("crossref_records", self.artifact("crossref_records", "SELECT DOI record_doi,URL record_url,type record_type FROM crossref_grants_v"))
         self.view("datacite_records", self.artifact("datacite_records", "SELECT id record_id,attributes.types.resourceTypeGeneral resource_type FROM datacite_items_v"))
         self.view("funder_map", self.artifact("funder_map", """WITH RECURSIVE p(source_funder_id,current_id,next_id,depth) AS (
@@ -261,7 +262,7 @@ class Nightly:
             CAST(NULL AS BIGINT) stable_id,CAST(NULL AS BIGINT) old_funder_id,CAST(NULL AS BIGINT) new_funder_id,
             CAST(NULL AS STRING) namespace,CAST(NULL AS STRING) source_record_id,CAST(NULL AS STRING) producer_code_sha,
             CAST(NULL AS STRING) evidence_uri WHERE false""").createOrReplaceTempView("continuity_v")   # empty: unproven corrections block
-        # carried state (written by the previous successful run; seeded once from n20260925)
+        # carried state (written by the previous successful run)
         for view, table in (("previous_bindings", "award_bindings_last"), ("merge_doi_pairs", "award_merge_doi_pairs")):
             self.bind(view, p + table)
         # withdrawal evidence is per SOURCE (raw provenance, or the adapter family): the deployed SQL joins on `family`
@@ -269,12 +270,33 @@ class Nightly:
         self.bind("state_transitions", p + "award_state_transitions")
         # optional approved inputs, e.g. {"migration_manifest": "<relation>"} for an approved duplicate-retirement batch
         for view, relation in self.config.get("extra_inputs", {}).items():
-            self.require(view in ("migration_manifest",), "UNKNOWN_EXTRA_INPUT: " + view)
+            self.require(view in ("migration_manifest", "award_relations_raw"), "UNKNOWN_EXTRA_INPUT: " + view)
             self.bind(view, relation)
         # yesterday's public state: ids in the live awards table are ACTIVE; everything else as the registry says
         self.sql(f"""SELECT e.stable_id,CASE WHEN a.id IS NOT NULL THEN 'ACTIVE' WHEN e.status='ACTIVE' THEN 'UNPUBLISHED' ELSE e.status END status,e.redirect_to
             FROM {p}award_entities e LEFT JOIN (SELECT DISTINCT id FROM awards_v) a ON a.id=e.stable_id""").createOrReplaceTempView("last_state")
         self.zero("PUBLIC_ID_IN_REGISTRY", f"SELECT a.id FROM awards_v a LEFT ANTI JOIN {p}award_entities e ON e.stable_id=a.id")
+
+    def add_new_funders(self):
+        """Funders created in the live table after the basis snapshot are added to this run's funder view, if unmerged.
+        A new funder id cannot own, redirect or re-canonicalise any existing grant (nothing in the basis points to it), so
+        this can't move an existing id; it only stops a new funder's first grants/links from failing MISSING_FUNDER.
+        Merges, deletes and edits of existing funders still reach grants only through the reviewed basis refresh."""
+        self.bind("live_funders", self.config["live_funders"])
+        v = self.versions["funders"]
+        basis = f"{v['relation']} VERSION AS OF {v['version']}" if "version" in v else v["copied_to"]
+        cols = [f.name for f in self.spark.table("funders_v").schema.fields]
+        live_cols = {f.name for f in self.spark.table("live_funders_v").schema.fields}
+        self.require({"funder_id", "merge_into_id"} <= live_cols, "LIVE_FUNDERS_SCHEMA")
+        pick = ",".join(f"l.{c}" if c in live_cols else f"NULL AS {c}" for c in cols)
+        added = self.artifact("funder_additions", f"""SELECT {pick} FROM live_funders_v l LEFT ANTI JOIN {basis} b ON b.funder_id=l.funder_id
+            WHERE l.merge_into_id IS NULL""")
+        self.counts["funders_auto_added"] = self.count("funder_additions", added)
+        self.sql(f"SELECT * FROM {basis} UNION ALL SELECT * FROM {added}").createOrReplaceTempView("funders_v")
+        n = self.sql(f"""SELECT count(*) n FROM {basis} b FULL JOIN live_funders_v l ON l.funder_id=b.funder_id
+            WHERE (b.funder_id IS NOT NULL AND l.funder_id IS NOT NULL AND NOT(b.merge_into_id <=> l.merge_into_id))
+               OR (b.funder_id IS NULL AND l.merge_into_id IS NOT NULL)""").collect()[0].n
+        self.counts["funder_merges_pending_basis_update"] = int(n)    # merges not yet reviewed into the basis
 
     def has_extra(self, name):
         return name in self.config.get("extra_inputs", {})
@@ -305,30 +327,55 @@ class Nightly:
         z("DATACITE_DOI_IN_RECORDS", f"SELECT d.* FROM datacite_v d LEFT ANTI JOIN {r}datacite_records x ON lower(trim(d.doi))=concat('https://doi.org/',lower(trim(x.record_id))) WHERE d.doi IS NOT NULL")
 
     def family_receipts(self):
-        """Replaces CaptureD0's hard-coded receipts (CaptureD0.r1.py:219): a source family counts as complete when today's
-        observations are at least `family_min_ratio` of the observations bound for it by the last successful run."""
+        """Per-source completeness (replaces CaptureD0's hard-coded receipts, CaptureD0.r1.py:219). Counted on each source's RAW
+        rows (raw award rows by provenance; GtR rows as gtr_legacy), not on deduplicated observations: sources share observation
+        keys and the newest row wins, so an observation count swings between sources whenever one job rewrites its rows
+        (10-01: DataCite 126,394 -> ~68k with nothing lost). A source is complete when today's rows are >= family_min_ratio of the
+        rows the last successful run read, measured on that run's own raw/GtR versions. Before the first successful run there is
+        no baseline and the ratio is skipped (recorded in `_source_baseline`). When a successful run exists but its versions can't
+        be read (not recorded, or past the 7-day retention), the night STOPS (SOURCE_BASELINE_UNREADABLE) unless the run is
+        given "allow_missing_source_baseline": true (overrides_json, one night). The effective ratios go into counts."""
         r, ratio = self.r, float(self.config.get("family_min_ratio", 0.98))
         overrides = self.config.get("source_min_ratio_overrides", {})
         floor = " ".join(f"WHEN {literal(k)} THEN {float(v)}" for k, v in overrides.items())
         ratio_sql = f"CASE family {floor} ELSE {ratio} END" if overrides else str(ratio)
-        self.view("receipts", self.artifact("receipts", f"""WITH cur AS (SELECT {SOURCE_SQL} family,count(*) cur_n FROM {r}observations o GROUP BY 1),
-            prev AS (SELECT family,prev_n FROM {self.baseline_sql()})
+        prev = self.baseline_sql()
+        allow = bool(self.config.get("allow_missing_source_baseline", False))
+        self.counts["_source_ratio"] = dict(default=ratio, overrides={k: float(v) for k, v in overrides.items()},
+                                            allow_missing_source_baseline=allow)
+        if prev is None and self.counts["_source_baseline"] != "none: no successful run yet":
+            self.require(allow, "SOURCE_BASELINE_UNREADABLE: " + self.counts["_source_baseline"])
+        prev_sql = prev or "(SELECT CAST(NULL AS STRING) family,CAST(NULL AS BIGINT) prev_n WHERE false)"
+        complete = f"coalesce(cur_n,0)>={ratio_sql}*coalesce(prev_n,0)" if prev else "true"
+        self.view("receipts", self.artifact("receipts", f"""WITH cur AS ({raw_source_counts('raw_v', 'gtr_v', 'cur_n')}),
+            prev AS (SELECT family,prev_n FROM {prev_sql})
           SELECT family,coalesce(cur_n,0) observations,coalesce(prev_n,0) previous_observations,
-            true success,true parser_ok,coalesce(cur_n,0)>={ratio_sql}*coalesce(prev_n,0) coverage_complete FROM prev FULL JOIN cur USING(family)"""))
+            true success,true parser_ok,{complete} coverage_complete FROM prev FULL JOIN cur USING(family)"""))
         for row in self.sql(f"SELECT * FROM {r}receipts").collect():
             self.counts["source_" + str(row.family)] = int(row.observations)
             if not row.coverage_complete:
                 self.counts.setdefault("_sources_below_ratio", []).append(dict(source=row.family, now=int(row.observations), before=int(row.previous_observations)))
 
     def baseline_sql(self):
+        """Raw/GtR row counts per source at the versions the last successful run read; None if unavailable."""
         rows = self.sql(f"""SELECT details_json FROM {self.p}award_nightly_runs WHERE status LIKE 'SUCCEEDED%' AND details_json IS NOT NULL
             ORDER BY started_at DESC LIMIT 1""").collect()
-        if rows:
-            counts = json.loads(rows[0].details_json).get("counts", {})
-            vals = [f"({literal(k[len('source_'):])},{int(v)})" for k, v in counts.items() if k.startswith("source_")]
-            if vals:
-                return f"(SELECT * FROM VALUES {','.join(vals)} AS t(family,prev_n))"
-        return "(SELECT source family,count(*) prev_n FROM previous_bindings_v GROUP BY 1)"
+        if not rows:
+            self.counts["_source_baseline"] = "none: no successful run yet"
+            return None
+        v = json.loads(rows[0].details_json).get("versions", {})
+        raw, gtr = v.get("raw") or {}, v.get("gtr") or {}
+        if "version" not in raw or "version" not in gtr:
+            self.counts["_source_baseline"] = "none: last run did not record raw/gtr versions"
+            return None
+        sql = f"({raw_source_counts(ident(raw['relation']) + ' VERSION AS OF ' + str(int(raw['version'])), ident(gtr['relation']) + ' VERSION AS OF ' + str(int(gtr['version'])), 'prev_n')})"
+        try:
+            self.sql(f"SELECT count(*) FROM {sql} b").collect()
+        except Exception as exc:                          # e.g. versions past the 7-day retention
+            self.counts["_source_baseline"] = "unavailable: " + str(exc)[:200]
+            return None
+        self.counts["_source_baseline"] = f"raw v{raw['version']}, gtr v{gtr['version']}"
+        return sql
 
     # ---------- publish ----------
     def swap(self, mapping):

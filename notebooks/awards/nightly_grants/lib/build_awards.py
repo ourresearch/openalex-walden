@@ -3,10 +3,51 @@ Only the release wrapper and dead paths are removed; see build/PORT-NOTES.md for
 from stable_award_ids import compact, generic_sql, ident, key_match, literal, norm_doi_sql, short
 
 PUBLIC_DOI_CLASS='PUBLIC_DOI_EQUALS_TARGET_DOI'
+# 10-01: a public paper-only grant (shell) retired into a public shell twin of the same funder whose number differs only in
+# punctuation/case (e.g. 'HL-079457' vs 'HL079457'). Both are public, so the loser is allowed to be public.
+PUBLIC_SHELL_CLASS='PUBLIC_SHELL_SAME_NUMBER'
+PUBLIC_TWIN_CLASSES=(PUBLIC_DOI_CLASS,PUBLIC_SHELL_CLASS,'PUBLIC_GTR_LINEAGE_TWIN')
+import uk_lineage
 # a transition logged by a run that then failed before its swap (the only way a public id can already be moved in the registry)
 def latest_unfinished(p):
     return f"""SELECT t.* FROM (SELECT * FROM state_transitions_v QUALIFY row_number() OVER (PARTITION BY stable_id ORDER BY recorded_at DESC)=1) t
       JOIN {p}award_nightly_runs n ON n.run_id=t.run_id AND n.status NOT LIKE 'SUCCEEDED%'"""
+
+
+def tuple_sql(values):
+    return '(' + ','.join(literal(v) for v in values) + ')'
+
+
+def public_shell_filter(c,mm):
+    """PUBLIC_SHELL_SAME_NUMBER, re-proved every night on the pending pairs: loser and target are both shells (no direct
+    observation, SHELL in the plan), both served today, same canonical funder, and every observation of either carries ONE
+    normalized number (letters+digits, lowercase) with >= 4 characters, a digit, and not weak for that funder; the target is
+    not itself retiring by the rule. Inputs move daily (a feed can turn a shell into a funder record), so a pair that fails is
+    HELD: not retired tonight, counted, re-proved next night. PUBLIC_SHELL_HELD_FUSE stops the run if more than
+    max(100, 1%) of the pending pairs fail (a bad list, not drift). Returns the pending relation with held pairs removed."""
+    r=c.r; cls=literal(PUBLIC_SHELL_CLASS)
+    c.artifact('public_shell_pairs',f"SELECT loser_id,target_id FROM {mm} WHERE evidence_class={cls}")
+    c.artifact('public_shell_members',f"""SELECT loser_id,loser_id member_id FROM {r}public_shell_pairs
+      UNION SELECT loser_id,target_id FROM {r}public_shell_pairs""")
+    c.artifact('direct_ids',f"SELECT DISTINCT stable_id FROM {r}resolved_observations WHERE is_direct")
+    c.artifact('public_shell_numbers',f"""SELECT x.loser_id,count(DISTINCT o.nk) keys,min(o.nk) nk,bool_or(coalesce(n.is_weak,true)) any_weak
+      FROM {r}public_shell_members x JOIN {r}resolved_observations o ON o.stable_id=x.member_id
+      LEFT JOIN {r}normalization_lookup n ON n.funder_id<=>o.funder_id AND n.award_key<=>o.award_key AND n.is_direct=o.is_direct
+      GROUP BY x.loser_id""")
+    c.artifact('public_shell_held',f"""SELECT DISTINCT loser_id,reason FROM (
+        SELECT x.loser_id,'NOT_BOTH_SHELL' reason FROM {r}public_shell_members x LEFT JOIN {r}ownership_plan o ON o.stable_id=x.member_id
+          LEFT JOIN {r}direct_ids d ON d.stable_id=x.member_id WHERE NOT COALESCE(o.entity_kind='SHELL',false) OR d.stable_id IS NOT NULL
+        UNION ALL SELECT x.loser_id,'NOT_SERVED' FROM {r}public_shell_members x LEFT ANTI JOIN awards_v a ON a.id=x.member_id
+        UNION ALL SELECT m.loser_id,'NUMBER' FROM {r}public_shell_pairs m LEFT JOIN {r}public_shell_numbers n USING(loser_id)
+          WHERE NOT COALESCE(n.keys=1 AND length(n.nk)>=4 AND n.nk RLIKE '[0-9]' AND NOT n.any_weak,false)
+        UNION ALL SELECT m.loser_id,'FUNDER' FROM {r}public_shell_pairs m LEFT JOIN {r}ownership_plan a ON a.stable_id=m.loser_id
+          LEFT JOIN {r}ownership_plan b ON b.stable_id=m.target_id WHERE a.funder_id IS NULL OR NOT(a.funder_id<=>b.funder_id)
+        UNION ALL SELECT m.loser_id,'TARGET_RETIRING' FROM {r}public_shell_pairs m JOIN {r}retirements_rule t ON t.old_id=m.target_id)""")
+    held=c.count('public_shell_held',r+'public_shell_held'); pairs=c.count('public_shell_pairs',r+'public_shell_pairs')
+    for row in c.sql(f"SELECT reason,count(DISTINCT loser_id) n FROM {r}public_shell_held GROUP BY 1").collect():
+        c.counts['public_shell_held_'+row.reason.lower()]=int(row.n)
+    c.zero('PUBLIC_SHELL_HELD_FUSE',f"SELECT count(DISTINCT loser_id) n FROM {r}public_shell_held HAVING n>greatest(100,0.01*{pairs})")
+    return c.artifact('migration_proven',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}public_shell_held h ON h.loser_id=m.loser_id")
 
 
 def prepare(c):
@@ -224,7 +265,7 @@ def plan(c):
         # SHELL_TO_SERVED_SHELL_SAME_NUMBER: shell loser -> target that is served today (pinned awards) but has no direct observation.
         DOI_CLASS,SHELL_CLASS='DOI_EQUALS_TARGET_DOI','SHELL_TO_SERVED_SHELL_SAME_NUMBER'
         doi_classes=f"({literal(DOI_CLASS)},{literal(PUBLIC_DOI_CLASS)})"
-        c.zero('MIGRATION_EVIDENCE_CLASS',f"SELECT * FROM {mm} WHERE NOT COALESCE(evidence_class IN ('EXACT_FUNDER_NUMBER_SINGLE_TARGET_AGREEING',{literal(DOI_CLASS)},{literal(SHELL_CLASS)}) OR evidence_class={literal(PUBLIC_DOI_CLASS)},false)")
+        c.zero('MIGRATION_EVIDENCE_CLASS',f"SELECT * FROM {mm} WHERE NOT COALESCE(evidence_class IN ('EXACT_FUNDER_NUMBER_SINGLE_TARGET_AGREEING',{literal(DOI_CLASS)},{literal(SHELL_CLASS)}) OR evidence_class IN {tuple_sql(PUBLIC_TWIN_CLASSES)},false)")
         # op23: the manifest is idempotent. A pair whose loser is ALREADY REDIRECTED (by an earlier release, accepted or dev-abandoned after
         # APPLYING) is 'applied': it must already resolve to the manifest target (else MIGRATION_APPLIED_MISMATCH) and is excluded from the
         # loser/target gates and from this release's retirements. Only 'pending' pairs are retired here.
@@ -232,12 +273,14 @@ def plan(c):
         c.zero('MIGRATION_APPLIED_MISMATCH',f"SELECT a.* FROM {r}migration_applied a LEFT ANTI JOIN {r}resolve_before x ON x.owner_id=a.loser_id AND x.stable_id=a.target_id AND x.status='ACTIVE'")
         c.artifact('migration_pending',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}migration_applied a ON a.loser_id=m.loser_id")
         mm=f'{r}migration_pending'
+        mm=public_shell_filter(c,mm)   # 10-01: held pairs never reach the retirement gates
+        mm=uk_lineage.filter(c,mm)
         # loser: allocated by a registry release (origin NEW, id >= 9e9), never published, an ACTIVE entity, bound in this release, no NATIVE key
         c.zero('MIGRATION_LOSER_NEVER_PUBLIC',f"""SELECT m.* FROM {mm} m LEFT JOIN {r}entities_allocated e ON e.stable_id=m.loser_id
-          WHERE m.evidence_class<>{literal(PUBLIC_DOI_CLASS)} AND (e.stable_id IS NULL OR m.loser_id<9000000000 OR NOT COALESCE(e.origin='NEW',false) OR e.first_published_release IS NOT NULL OR e.first_published_at IS NOT NULL)""")
+          WHERE m.evidence_class NOT IN {tuple_sql(PUBLIC_TWIN_CLASSES)} AND (e.stable_id IS NULL OR m.loser_id<9000000000 OR NOT COALESCE(e.origin='NEW',false) OR e.first_published_release IS NOT NULL OR e.first_published_at IS NOT NULL)""")
         c.zero('MIGRATION_LOSER_ACTIVE_ENTITY',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}entities_allocated e ON e.stable_id=m.loser_id AND e.status='ACTIVE'")
         c.zero('MIGRATION_LOSER_BOUND',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}bindings b ON b.stable_id=m.loser_id")
-        c.zero('MIGRATION_LOSER_NO_NATIVE',f"SELECT m.* FROM {mm} m JOIN {p}award_keys k ON k.stable_id=m.loser_id AND k.key_type='NATIVE' WHERE m.evidence_class<>{literal(DOI_CLASS)} AND m.evidence_class<>{literal(PUBLIC_DOI_CLASS)}")
+        c.zero('MIGRATION_LOSER_NO_NATIVE',f"SELECT m.* FROM {mm} m JOIN {p}award_keys k ON k.stable_id=m.loser_id AND k.key_type='NATIVE' WHERE m.evidence_class NOT IN ({literal(DOI_CLASS)},{literal(PUBLIC_DOI_CLASS)},{literal(uk_lineage.LINEAGE_TWIN_CLASS)})")
         # DOI class proof: loser born NATIVE in crossref_grant, origin NEW; target carries a doi; EVERY native key of the loser normalizes to that doi.
         c.zero('MIGRATION_DOI_PROOF',f"""SELECT m.* FROM {mm} m JOIN {r}entities_allocated l ON l.stable_id=m.loser_id JOIN {r}entities_allocated t ON t.stable_id=m.target_id
           WHERE m.evidence_class IN {doi_classes} AND NOT COALESCE((l.origin='NEW' OR (m.evidence_class={literal(PUBLIC_DOI_CLASS)} AND l.origin='COLLISION_RECOVERY')) AND l.birth_key:type='NATIVE' AND l.birth_key:namespace='crossref_grant' AND t.doi IS NOT NULL
@@ -247,12 +290,12 @@ def plan(c):
             AND NOT COALESCE(k.namespace='crossref_grant' AND {norm_doi_sql('k.source_record_id')}={norm_doi_sql('t.doi')},false)""")
         c.zero('MIGRATION_PUBLIC_DOI_ONE_NATIVE',f"""SELECT m.* FROM {mm} m WHERE m.evidence_class={literal(PUBLIC_DOI_CLASS)}
           AND (SELECT count(*) FROM {p}award_keys k WHERE k.stable_id=m.loser_id AND k.key_type='NATIVE')<>1""")
-        c.zero('MIGRATION_PUBLIC_DOI_NO_PAPER_LINKS',f"""SELECT m.* FROM {mm} m JOIN work_awards_v w
+        c.zero('MIGRATION_PUBLIC_DOI_NO_PAPER_LINKS',f"""SELECT m.* FROM {mm} m JOIN {c.outputs['work_awards']} w
           ON w.award.id=concat('https://openalex.org/G',m.loser_id) WHERE m.evidence_class={literal(PUBLIC_DOI_CLASS)}""")
         # target: independently ACTIVE, bound, with a direct observation, same canonical funder (both sides must be present in the plan)
         c.zero('MIGRATION_TARGET_ACTIVE',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}entities_allocated e ON e.stable_id=m.target_id AND e.status='ACTIVE'")
         c.zero('MIGRATION_TARGET_BOUND',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}bindings b ON b.stable_id=m.target_id")
-        c.zero('MIGRATION_TARGET_DIRECT',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}resolved_observations b ON b.stable_id=m.target_id AND b.is_direct WHERE m.evidence_class<>{literal(SHELL_CLASS)}")
+        c.zero('MIGRATION_TARGET_DIRECT',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}resolved_observations b ON b.stable_id=m.target_id AND b.is_direct WHERE m.evidence_class NOT IN ({literal(SHELL_CLASS)},{literal(PUBLIC_SHELL_CLASS)})")
         # shell-class proof: loser is a SHELL, target is served today (pinned awards relation) and is not retired by the rule in this release.
         c.zero('MIGRATION_SHELL_TARGET_SERVED',f"""SELECT m.* FROM {mm} m LEFT JOIN awards_v a ON a.id=m.target_id LEFT JOIN {r}ownership_plan o ON o.stable_id=m.loser_id
           WHERE m.evidence_class={literal(SHELL_CLASS)} AND NOT COALESCE(a.id IS NOT NULL AND o.entity_kind='SHELL',false)""")
@@ -272,7 +315,7 @@ def plan(c):
     c.zero('RETIREMENT_UNIQUE',f'SELECT old_id FROM {r}retirements GROUP BY old_id HAVING count(DISTINCT canonical_id)<>1')
     c.zero('RETIREMENT_SAME_FUNDER',f'SELECT t.* FROM {r}retirements t JOIN {r}ownership_plan a ON a.stable_id=t.old_id JOIN {r}ownership_plan b ON b.stable_id=t.canonical_id WHERE a.funder_id IS NULL OR a.funder_id<>b.funder_id')
     # op24: a manifest pair of the shell class is the one sanctioned retirement into a non-direct (served) target.
-    shell_exempt=(f" LEFT ANTI JOIN {r}retirements_manifest s ON s.old_id=t.old_id AND s.canonical_id=t.canonical_id AND s.evidence_class='SHELL_TO_SERVED_SHELL_SAME_NUMBER'"
+    shell_exempt=(f" LEFT ANTI JOIN {r}retirements_manifest s ON s.old_id=t.old_id AND s.canonical_id=t.canonical_id AND s.evidence_class IN ('SHELL_TO_SERVED_SHELL_SAME_NUMBER',{literal(PUBLIC_SHELL_CLASS)})"
                   if c.has_extra('migration_manifest') else '')
     c.zero('RETIREMENT_DIRECT_TARGET',f"SELECT t.* FROM {r}retirements t LEFT ANTI JOIN {r}resolved_observations b ON b.stable_id=t.canonical_id AND b.is_direct"+shell_exempt)
     c.artifact('bindings_final',f"SELECT b.* EXCEPT(stable_id),b.stable_id original_terminal_id,coalesce(t.canonical_id,b.stable_id) stable_id FROM {r}bindings b LEFT JOIN {r}retirements t ON t.old_id=b.stable_id")
@@ -425,6 +468,7 @@ def project(c):
       FROM {r}keys_candidate k JOIN {r}resolve_candidate x ON x.owner_id=k.stable_id
       JOIN {r}awards_candidate a ON a.id=x.stable_id
       WHERE k.key_type='STAGING' AND (k.stable_id<>x.stable_id OR k.kind='ALIAS')""")
+    uk_lineage.winner_metadata(c)
     c.zero('CANDIDATE_UNIQUE',f'SELECT id FROM {r}awards_candidate GROUP BY id HAVING count(*)<>1 OR id IS NULL')
     c.zero('CANDIDATE_NONEMPTY',f'SELECT count(*) n FROM {r}awards_candidate HAVING n=0')
     c.zero('PROJECTED_SET_EQUAL',f'(SELECT id FROM {r}awards_candidate EXCEPT SELECT stable_id FROM {r}projected_ids) UNION ALL (SELECT stable_id FROM {r}projected_ids EXCEPT SELECT id FROM {r}awards_candidate)')

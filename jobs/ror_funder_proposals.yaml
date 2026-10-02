@@ -1,0 +1,39 @@
+# ROR funder proposals (propose only): each night after the ROR job (ROR lands ~20:09-20:19 UTC) it classifies every
+# funder-typed ROR record into ONE table, openalex.funders.ror_funder_proposals. It never writes openalex.funders.funders;
+# proposals are applied by hand (apply.sql). Standalone job: touches no other job or table.
+resources:
+  jobs:
+    ROR_Funder_Proposals:
+      name: ROR Funder Proposals (propose only)
+      schedule:
+        quartz_cron_expression: "0 30 21 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED   # deployed paused; unpause by changing this line to UNPAUSED in a later push (a UI unpause is reset by the next bundle deploy)
+      email_notifications:
+        on_failure:
+          - rohan@openalex.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      tasks:
+        - task_key: classify
+          notebook_task:
+            notebook_path: notebooks/funders/RorFunderProposals
+            source: GIT
+            base_parameters:
+              table: openalex.funders.ror_funder_proposals
+              run_id: "{{job.run_id}}"
+          environment_key: Default
+          timeout_seconds: 3000
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      environments:
+        - environment_key: Default
+          spec:
+            client: "2"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true

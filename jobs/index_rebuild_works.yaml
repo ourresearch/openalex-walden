@@ -1,0 +1,433 @@
+# One-off job: rebuild the works Elasticsearch index beside the live one (oxjob #1456, rebuild-and-swap playbook).
+#
+# NOT in databricks.yml `include:` on purpose: a bundle deploy never creates it. Create it by hand for one run
+# (commands in the oxjob's TOOLING.md), run it once, delete it after the swap.
+#
+# plan (parameter sheet; publishes the 16 id ranges at V as task values) -> create_index -> 16 load chunks
+# (sync_works id_range = {{tasks.plan.values.range_k}}, reading openalex_works VERSION AS OF source_version, writing
+# new_index by name; watermark, replicas and the live index untouched; a range prunes files, pmod would scan the whole
+# table per chunk) in 4 sequential lanes on ONE cluster, with the watchdog beside them -> close_load (refresh, count
+# at V, _mget sample).
+# add_replicas, the catch-up, verify and swap stay manual IndexRebuild / sync_works / delete_works runs: the owner
+# gates them. Nothing here runs on a schedule.
+#
+# Job parameters are pushed down to every task's same-named widget and beat base_parameters, so they are named
+# after the widgets that should receive them: source_version (sync_works and IndexRebuild), old_index / new_index /
+# alias (IndexRebuild). Never add a job parameter called mode, dry_run, target_index or id_range.
+resources:
+  jobs:
+    Index_Rebuild_Works:
+      name: Index rebuild - works (oxjob 1456, one-off)
+      description: |
+        oxjob #1456: load a fresh works index (new_index) from openalex_works VERSION AS OF source_version, beside
+        the live one. Set source_version to V from `IndexRebuild mode=plan` (the default SET_ME makes every task
+        refuse to start). Swap is never automatic.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      tags:
+        oxjob: "1456"
+      max_concurrent_runs: 1
+      timeout_seconds: 0
+      queue:
+        enabled: true
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      parameters:
+        - name: source_version
+          default: "SET_ME"  # Delta version V (IndexRebuild mode=plan); tasks refuse to run until it is a number
+        - name: old_index
+          default: works-v34
+        - name: new_index
+          default: works-v35
+        - name: alias
+          default: works
+      job_clusters:
+        - job_cluster_key: load
+          new_cluster:
+            spark_version: 16.4.x-scala2.13
+            node_type_id: rd-fleet.8xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            # >>> WRITERS. sync_works opens one ES bulk stream per Spark core, so writers = num_workers x 32
+            # >>> (rd-fleet.8xlarge = 32 vCPU), shared by the 4 lanes: 2 = 64 writers, 4 = 128, 8 = 256.
+            # >>> Set it to the level calibration picked (PLAYBOOK step 3) before creating the job.
+            num_workers: 4
+            aws_attributes:
+              availability: ON_DEMAND
+              first_on_demand: 1
+              zone_id: auto
+              ebs_volume_count: 0
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            custom_tags:
+              oxjob: "1456"
+        - job_cluster_key: control  # single node: IndexRebuild does its SQL on the warehouse, not in Spark
+          new_cluster:
+            spark_version: 16.4.x-scala2.13
+            node_type_id: m5d.2xlarge
+            driver_node_type_id: m5d.2xlarge
+            num_workers: 0
+            spark_conf:
+              spark.master: local[*, 4]
+              spark.databricks.cluster.profile: singleNode
+            aws_attributes:
+              availability: ON_DEMAND
+              first_on_demand: 1
+              zone_id: auto
+            enable_elastic_disk: false
+            data_security_mode: SINGLE_USER
+            custom_tags:
+              ResourceClass: SingleNode
+              oxjob: "1456"
+      tasks:
+        - task_key: plan
+          job_cluster_key: control
+          notebook_task:
+            notebook_path: notebooks/elastic/IndexRebuild
+            source: GIT
+            base_parameters:
+              mode: plan
+              chunks: "16"
+          max_retries: 0
+          timeout_seconds: 3600
+        - task_key: create_index
+          depends_on:
+            - task_key: plan
+          job_cluster_key: control
+          notebook_task:
+            notebook_path: notebooks/elastic/IndexRebuild
+            source: GIT
+            base_parameters:
+              mode: create_index
+              dry_run: "false"
+              if_exists: reuse  # a new_index created by hand for calibration is accepted if its mapping matches
+          max_retries: 0
+          timeout_seconds: 3600
+        - task_key: watchdog
+          depends_on:
+            - task_key: create_index
+          job_cluster_key: control
+          notebook_task:
+            notebook_path: notebooks/elastic/IndexRebuild
+            source: GIT
+            base_parameters:
+              mode: watchdog
+              dry_run: "false"
+              job_run_id: "{{job.run_id}}"
+              chunk_prefix: es_chunk_
+              queue_limit: "50"
+              strikes: "3"
+              max_disk_pct: "75"
+              max_wait_hours: "36"
+          max_retries: 0
+          timeout_seconds: 0
+        # lane 0: chunks 0, 4, 8, 12, one after another
+        - task_key: es_chunk_0
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: create_index
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_0}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        # lane 1: chunks 1, 5, 9, 13, one after another
+        - task_key: es_chunk_1
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: create_index
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_1}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        # lane 2: chunks 2, 6, 10, 14, one after another
+        - task_key: es_chunk_2
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: create_index
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_2}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        # lane 3: chunks 3, 7, 11, 15, one after another
+        - task_key: es_chunk_3
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: create_index
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_3}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_4
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_0
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_4}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_5
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_1
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_5}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_6
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_2
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_6}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_7
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_3
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_7}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_8
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_4
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_8}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_9
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_5
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_9}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_10
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_6
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_10}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_11
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_7
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_11}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_12
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_8
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_12}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_13
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_9
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_13}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_14
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_10
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_14}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: es_chunk_15
+          depends_on:
+            - task_key: plan  # direct dependency so the task-value reference below is always upstream
+            - task_key: es_chunk_11
+          job_cluster_key: load
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_works
+            source: GIT
+            base_parameters:
+              id_range: "{{tasks.plan.values.range_15}}"
+              is_full_sync: "false"
+              manage_replicas: "false"
+              target_index: "{{job.parameters.new_index}}"
+              source_version: "{{job.parameters.source_version}}"
+          max_retries: 2
+          min_retry_interval_millis: 300000
+          timeout_seconds: 43200
+        - task_key: close_load
+          depends_on:
+            - task_key: watchdog
+            - task_key: es_chunk_0
+            - task_key: es_chunk_1
+            - task_key: es_chunk_2
+            - task_key: es_chunk_3
+            - task_key: es_chunk_4
+            - task_key: es_chunk_5
+            - task_key: es_chunk_6
+            - task_key: es_chunk_7
+            - task_key: es_chunk_8
+            - task_key: es_chunk_9
+            - task_key: es_chunk_10
+            - task_key: es_chunk_11
+            - task_key: es_chunk_12
+            - task_key: es_chunk_13
+            - task_key: es_chunk_14
+            - task_key: es_chunk_15
+          run_if: ALL_SUCCESS
+          job_cluster_key: control
+          notebook_task:
+            notebook_path: notebooks/elastic/IndexRebuild
+            source: GIT
+            base_parameters:
+              mode: close_load
+              dry_run: "false"
+          max_retries: 0
+          timeout_seconds: 14400

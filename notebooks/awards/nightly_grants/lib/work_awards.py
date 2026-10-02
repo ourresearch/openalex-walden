@@ -161,6 +161,8 @@ def run(c):
     for k,v in c.sql(f'SELECT * FROM {r}work_merge_report').collect()[0].asDict().items():
         c.counts['work_merge_'+k]=int(v)
     c.count('work_awards',r+'work_awards_candidate')
+    import uk_lineage
+    uk_lineage.link_conservation(c)
 
 
 def work_survivors(c, max_hops=100):

@@ -266,3 +266,138 @@ def test_job_passes_run_id():
     text = (ROOT.parents[2] / "jobs" / "nightly_grants.yaml").read_text()
     assert 'databricks_run_id: "{{job.run_id}}"' in text
     assert "max_concurrent_runs: 1" in text and ("pause_status: PAUSED" in text or "pause_status: UNPAUSED" in text)
+
+
+# ---------- per-source completeness on raw rows (F1, 10-01) ----------
+class ReceiptSpark(FakeSpark):
+    def __init__(self, last_run=None, unreadable=False):
+        super().__init__()
+        self.last_run, self.unreadable = last_run, unreadable
+
+    def sql(self, statement, args=None):
+        self.statements.append((statement, dict(args or {})))
+        if "FROM dev.lab.ngr_award_nightly_runs WHERE status LIKE 'SUCCEEDED%'" in statement:
+            return Result([types.SimpleNamespace(details_json=self.last_run)] if self.last_run else [])
+        if statement.startswith("SELECT count(*) FROM (") and self.unreadable:
+            raise Exception("DELTA_UNSUPPORTED_TIME_TRAVEL_BEYOND_DELETED_FILE_RETENTION_DURATION")
+        return Result()
+
+
+def receipts_sql(spark):
+    return next(s for s, _ in spark.statements if "ngr_s_receipts" in s and s.startswith("CREATE"))
+
+
+def test_receipts_count_raw_rows_against_last_runs_versions():
+    import json
+    run = json.dumps(dict(versions=dict(raw=dict(relation="a.b.raw", version=7), gtr=dict(relation="a.b.gtr", version=3))))
+    spark = ReceiptSpark(last_run=run)
+    c = Nightly(spark, config())
+    c.family_receipts()
+    q = receipts_sql(spark)
+    assert "SELECT provenance family,count(*) cur_n FROM raw_v GROUP BY 1" in q
+    assert "FROM a.b.raw VERSION AS OF 7 GROUP BY 1" in q and "FROM a.b.gtr VERSION AS OF 3 WHERE work_id IS NOT NULL" in q
+    assert "observations o" not in q                      # never the deduplicated observation count
+    assert "coalesce(cur_n,0)>=0.98*coalesce(prev_n,0) coverage_complete" in q
+    assert c.counts["_source_baseline"] == "raw v7, gtr v3"
+
+
+def test_no_successful_run_yet_skips_the_ratio_and_records_why():
+    spark = ReceiptSpark(last_run=None)
+    c = Nightly(spark, config())
+    c.family_receipts()
+    assert "true coverage_complete" in receipts_sql(spark)
+    assert c.counts["_source_baseline"] == "none: no successful run yet"
+    assert c.counts["_source_ratio"] == dict(default=0.98, overrides={}, allow_missing_source_baseline=False)
+
+
+def test_unreadable_baseline_stops_the_night_unless_allowed():
+    import json
+    good = json.dumps(dict(versions=dict(raw=dict(relation="a.b.raw", version=7), gtr=dict(relation="a.b.gtr", version=3))))
+    for last, unreadable, why in ((good, True, "unavailable"), (json.dumps(dict(versions={})), False, "none: last run did not record")):
+        spark = ReceiptSpark(last_run=last, unreadable=unreadable)
+        c = Nightly(spark, config())
+        try:
+            c.family_receipts()
+            raise AssertionError("expected SOURCE_BASELINE_UNREADABLE")
+        except RuntimeError as exc:
+            assert str(exc).startswith("SOURCE_BASELINE_UNREADABLE: " + why)
+        spark = ReceiptSpark(last_run=last, unreadable=unreadable)
+        c = Nightly(spark, config(allow_missing_source_baseline=True))
+        c.family_receipts()
+        assert "true coverage_complete" in receipts_sql(spark)
+        assert c.counts["_source_ratio"]["allow_missing_source_baseline"] is True
+
+
+def test_effective_ratios_are_recorded():
+    import json
+    run = json.dumps(dict(versions=dict(raw=dict(relation="a.b.raw", version=7), gtr=dict(relation="a.b.gtr", version=3))))
+    spark = ReceiptSpark(last_run=run)
+    c = Nightly(spark, config(source_min_ratio_overrides={"gtr_legacy": 0.95}))
+    c.family_receipts()
+    assert c.counts["_source_ratio"] == dict(default=0.98, overrides={"gtr_legacy": 0.95}, allow_missing_source_baseline=False)
+    assert "CASE family WHEN 'gtr_legacy' THEN 0.95 ELSE 0.98 END" in receipts_sql(spark)
+
+# ---------- new funders added after the basis (auto-add, 10-01) ----------
+class FunderSpark(FakeSpark):
+    """Basis has columns funder_id, merge_into_id, display_name, ror_id; live lacks ror_id."""
+    def __init__(self):
+        super().__init__()
+        self.views = {}
+
+    def table(self, name):
+        cols = {"funders_v": ["funder_id", "merge_into_id", "display_name", "ror_id"],
+                "live_funders_v": ["funder_id", "merge_into_id", "display_name"]}[name]
+        return types.SimpleNamespace(schema=types.SimpleNamespace(fields=[types.SimpleNamespace(name=c) for c in cols]))
+
+    def sql(self, statement, args=None):
+        self.statements.append((statement, dict(args or {})))
+        if "DESCRIBE HISTORY" in statement:
+            return Result([types.SimpleNamespace(version=7, timestamp="t", operation="WRITE")])
+        if statement.startswith("SELECT count(*) n"):
+            return Result([types.SimpleNamespace(n=0)])
+        view = self
+
+        class Frame(Result):
+            def createOrReplaceTempView(self, name):
+                view.views[name] = statement
+        return Frame()
+
+
+def test_new_unmerged_funders_are_added_and_nothing_else():
+    spark = FunderSpark()
+    c = Nightly(spark, config(live_funders="openalex.funders.funders"))
+    c.versions["funders"] = dict(relation="openalex.awards.award_funders_basis", version=34)
+    c.add_new_funders()
+    added = next(s for s, _ in spark.statements if "ngr_s_funder_additions" in s and s.startswith("CREATE"))
+    assert "LEFT ANTI JOIN openalex.awards.award_funders_basis VERSION AS OF 34 b ON b.funder_id=l.funder_id" in added
+    assert "WHERE l.merge_into_id IS NULL" in added           # a merged new row is never added (merges need review)
+    assert "NULL AS ror_id" in added and "l.display_name" in added
+    assert spark.views["funders_v"] == ("SELECT * FROM openalex.awards.award_funders_basis VERSION AS OF 34 "
+                                        "UNION ALL SELECT * FROM dev.lab.ngr_s_funder_additions")
+    assert "funders_auto_added" in c.counts and "funder_merges_pending_basis_update" in c.counts
+
+
+def test_without_live_funders_the_basis_is_used_alone():
+    import inspect
+    src = inspect.getsource(Nightly.derive_inputs)
+    assert 'if self.config.get("live_funders"):\n            self.add_new_funders()' in src
+
+
+# ---------- sub-award search mapping preflight (10-01, Codex validation) ----------
+def _field_mapping(overrides=None):
+    resp = {"awards-v4": {"mappings": {}}}
+    for f, m in sync_awards.AWARD_FIELD_MAPPINGS.items():
+        m = dict(m, **(overrides or {}).get(f, {}))
+        resp["awards-v4"]["mappings"][f] = {"full_name": f, "mapping": {f.split(".")[-1]: m}}
+    return resp
+
+
+def test_award_mapping_matches_the_provisioned_index():
+    assert sync_awards.mapping_mismatches(_field_mapping(), "awards-v4") == []
+    assert len(sync_awards.AWARD_FIELD_MAPPINGS) == 25
+
+
+def test_award_mapping_mismatch_or_missing_field_is_reported():
+    resp = _field_mapping({"sub_awards_full.id": {"type": "text"}})
+    del resp["awards-v4"]["mappings"]["sub_awards_count"]
+    assert sync_awards.mapping_mismatches(resp, "awards-v4") == ["sub_awards_count", "sub_awards_full.id"]

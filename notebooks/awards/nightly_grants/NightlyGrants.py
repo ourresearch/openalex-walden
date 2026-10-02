@@ -27,7 +27,7 @@ config["package_root"] = PACKAGE_ROOT
 sys.path.insert(0, os.path.join(PACKAGE_ROOT, "lib"))
 
 from nightly_runtime import Nightly
-import build_awards, work_awards, create_api, sync_awards
+import build_awards, work_awards, award_relations, create_api, sync_awards
 
 spark.conf.set("spark.sql.ansi.enabled", "false")   # the deployed chain ran with ANSI off
 c = Nightly(spark, config, dbutils.widgets.get("databricks_run_id") or None)
@@ -42,6 +42,7 @@ try:
     c.bind_inputs()
     build_awards.run(c)
     work_awards.run(c)
+    award_relations.run(c)                        # sub-award links onto awards_candidate (no work-link change)
     create_api.run(c)
     search = sync_awards.Search(c, dbutils) if mode != "none" else None
     if search:
@@ -55,7 +56,8 @@ try:
         c.swap({c.p + "award_bindings_last": c.r + "bindings_final_carry", c.p + "award_merge_doi_pairs": c.r + "merge_doi_pairs"})
         o = c.outputs
         c.swap({o["awards"]: c.r + "awards_candidate", o["aliases"]: c.r + "aliases_candidate",
-                o["work_awards"]: c.r + "work_awards_candidate", o["api"]: c.r + "api_candidate"})
+                o["work_awards"]: c.r + "work_awards_candidate", o["api"]: c.r + "api_candidate",
+                **({o["relations"]: c.r + "relations_candidate"} if "relations" in o else {})})
         if mode == "elasticsearch":
             sync_awards.publish(c, search)
         build_awards.mark_published(c)

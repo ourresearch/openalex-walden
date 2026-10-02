@@ -1,11 +1,14 @@
-# Nightly refresh of the semantic-search vectors (oxjob #1275). Three tasks:
+# Nightly refresh of the semantic-search vectors (oxjob #1275). Four tasks:
 #   1. embed  — EmbedQwen3Incremental: new/changed/missing works → work_embeddings_qwen3 (serverless, ai_query)
 #   2. stage  — stage_vector_sync_qwen3.sql on the serverless SQL warehouse: rows embedded in the last 2 days, plus works
 #               whose 14 filter fields changed since they were last sent (hash vs the mirror vector_filter_fields_sent,
 #               oxjob #1433), joined to their filter fields → vector_sync_staging_qwen3; works gone → vector_sync_deletes_qwen3
 #   3. sync   — sync_vector_index_qwen3 incremental: ships the staging table to ES works-vectors-v2, deletes the gone
 #               works, then records the sent hashes in the mirror
-# The sync only runs if the embed task succeeds. Both are idempotent; a failed run is simply re-run.
+#   4. sdg_score — sdg_jev_head_score incremental (oxjob #1300): scores the vectors just embedded with the Jev-trained
+#               SDG head → openalex.works.works_sdg_jev, which the next Walden End 2 End merges into
+#               sustainable_development_goals. Runs beside stage/sync, so a failure never holds up the vectors.
+# The sync only runs if the embed task succeeds. All four are idempotent; a failed run is simply re-run.
 resources:
   jobs:
     Embed_Qwen3_Nightly:
@@ -48,6 +51,17 @@ resources:
               max_works: "{{job.parameters.max_works}}"
           environment_key: Default
           timeout_seconds: 43200
+        # oxjob #1300: the SDG head on tonight's new vectors (a few hundred K works, minutes)
+        - task_key: sdg_score
+          depends_on:
+            - task_key: embed
+          notebook_task:
+            notebook_path: notebooks/sdg/sdg_jev_head_score
+            source: GIT
+            base_parameters:
+              mode: incremental
+          environment_key: Default
+          timeout_seconds: 7200
         - task_key: stage
           depends_on:
             - task_key: embed
