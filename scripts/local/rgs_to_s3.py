@@ -161,7 +161,7 @@ def split_name(name: str) -> tuple[str | None, str | None]:
 
 def people_of(raw: str | None) -> list[str]:
     """Person names in a Name cell; [] for a team/expedition name."""
-    if not raw:
+    if not raw or re.fullmatch(r"(?i)not given|unknown|anonymous|tbc", raw.strip()):
         return []
     raw = re.sub(r"\(.*?\)", " ", raw)
     # 'X, plus five other team members' / 'X +13 servicemen' / 'rest of team TBC': keep the named people
