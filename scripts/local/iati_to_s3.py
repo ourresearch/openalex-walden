@@ -40,6 +40,19 @@ award_amount / _currency / _basis, award_start_date / award_end_date,
 lead_org_name / _ref / _country, recipient_country_codes, parent_iati_identifier,
 parent_title, children_total_*.
 
+ACTIVITY LEVEL OR TRANSACTION LEVEL (`classify_own`): IATI allows recipient
+countries/regions and sectors on the activity or on its transactions, not
+both. US agencies, Elrha, GARDP, Grand Challenges Canada, LSE and Sida's
+level-2 slices use transactions only. The parser reads whichever level was
+used, as percentage shares (transaction-level shares are weighted by the value
+of outgoing commitments, else disbursements + expenditure, else incoming
+funds), and falls back to the award's children (rolled up by their money) or
+its parent. Columns: derived_recipient_countries_json,
+derived_recipient_regions_json, recipient_geo_level, recipient_geo_share_basis,
+derived_sectors_json, sector_level, sector_share_basis. The research filter
+uses the same shares. `recipient_countries_json` / `sectors_json` stay exactly
+as published at activity level.
+
 Outputs per publisher (slug = short name with non-alphanumerics -> "_"):
   <output-dir>/iati_<slug>_activities.parquet   every activity (local only)
   <output-dir>/iati_<slug>_projects.parquet     rows with ship = true only
@@ -624,6 +637,157 @@ def parse_xml_to_rows(xml_bytes: bytes, source_url: str) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Classification level: activity or transaction
+# ---------------------------------------------------------------------------
+# IATI lets a publisher state recipient countries/regions and sectors EITHER on
+# the activity OR on its transactions, not both. US agencies, Elrha, GARDP,
+# Grand Challenges Canada, LSE and Sida's level-2 slices use transactions only.
+# The functions below read whichever level the publisher used, turn it into
+# percentage shares, and say where the shares came from.
+
+def _reported_shares(items) -> tuple:
+    """Activity-level shares from [(key, percentage-or-None)].
+
+    Percentages are used as published. Entries without one share what is left
+    of 100 equally; if none has a percentage the split is equal.
+    Returns ({key: pct}, basis) with basis `reported` or `equal_split`.
+    """
+    out: dict = {}
+    missing = []
+    any_pct = False
+    for key, pct in items:
+        p = _to_float(pct)
+        if p is None:
+            if key not in out:
+                missing.append(key)
+                out[key] = 0.0
+        else:
+            any_pct = True
+            out[key] = out.get(key, 0.0) + p
+    if not out:
+        return {}, None
+    if missing:
+        left = max(0.0, 100.0 - sum(out.values())) if any_pct else 100.0
+        each = left / len(missing)
+        for key in missing:
+            out[key] += each
+    basis = "reported" if (any_pct or len(out) == 1) else "equal_split"
+    return {k: round(v, 4) for k, v in out.items()}, basis
+
+
+def _tx_shares(txs, keys_of) -> tuple:
+    """Value-weighted shares of a transaction-level classification.
+
+    `keys_of(t)` gives the classification key(s) one transaction carries. The
+    weight is the net value of outgoing commitments; if those carry no positive
+    value, disbursements + expenditure; then incoming funds/commitments; and if
+    no transaction has a usable value, an equal split over the keys seen.
+    Returns ({key: pct}, basis).
+    """
+    for label, types in (("commitment", ("2",)), ("disbursement", ("3", "4")), ("incoming", ("1", "11"))):
+        sums: dict = {}
+        for t in txs:
+            if t.get("type") not in types:
+                continue
+            v = _to_float(t.get("value"))
+            if v is None:
+                continue
+            for k in keys_of(t):
+                sums[k] = sums.get(k, 0.0) + v
+        positive = {k: v for k, v in sums.items() if v > 0}
+        total = sum(positive.values())
+        if total > 0:
+            return {k: round(100.0 * v / total, 4) for k, v in positive.items()}, f"transaction_{label}"
+    keys = []
+    for t in txs:
+        for k in keys_of(t):
+            if k not in keys:
+                keys.append(k)
+    if keys:
+        return {k: round(100.0 / len(keys), 4) for k in keys}, "transaction_equal_split"
+    return {}, None
+
+
+def classify_own(row: dict) -> dict:
+    """One activity's own recipient geography and sectors, from whichever level it used.
+
+    Returns
+      geo            {("country"|"region", code): pct}   countries and regions share one 100
+      geo_level      "activity" | "transaction" | None
+      geo_basis      reported | equal_split | transaction_commitment | transaction_disbursement |
+                     transaction_incoming | transaction_equal_split | None
+      sectors        {vocabulary: {code: pct}}            each vocabulary sums to 100
+      sector_level, sector_basis                          same vocabulary of values
+    An absent sector vocabulary is "1" (OECD DAC 5-digit), as the standard says.
+    """
+    txs = None
+
+    items = [(("country", c["code"]), c.get("percentage"))
+             for c in json.loads(row["recipient_countries_json"]) if c.get("code")]
+    items += [(("region", g["code"]), g.get("percentage"))
+              for g in json.loads(row["recipient_regions_json"]) if g.get("code")]
+    geo, geo_basis = _reported_shares(items)
+    geo_level = "activity" if geo else None
+    if not geo:
+        txs = json.loads(row["transactions_json"])
+
+        def geo_keys(t):
+            c = (t.get("recipient_country") or "").upper()
+            if c:
+                return [("country", c)]
+            g = t.get("recipient_region")
+            return [("region", g)] if g else []
+        geo, geo_basis = _tx_shares(txs, geo_keys)
+        geo_level = "transaction" if geo else None
+
+    by_vocab: dict = {}
+    for s in json.loads(row["sectors_json"]):
+        if s.get("code"):
+            by_vocab.setdefault(s.get("vocabulary") or "1", []).append((s["code"], s.get("percentage")))
+    sectors = {v: _reported_shares(items_)[0] for v, items_ in by_vocab.items()}
+    sector_basis = None
+    if sectors:
+        bases = {_reported_shares(items_)[1] for items_ in by_vocab.values()}
+        sector_basis = "reported" if "reported" in bases else "equal_split"
+    sector_level = "activity" if sectors else None
+    if not sectors:
+        if txs is None:
+            txs = json.loads(row["transactions_json"])
+        vocabs = []
+        for t in txs:
+            for s in t.get("sectors") or []:
+                v = s.get("vocabulary") or "1"
+                if s.get("code") and v not in vocabs:
+                    vocabs.append(v)
+        for v in vocabs:
+            shares, basis = _tx_shares(
+                txs, lambda t, v=v: [s["code"] for s in (t.get("sectors") or [])
+                                     if s.get("code") and (s.get("vocabulary") or "1") == v])
+            if shares:
+                sectors[v] = shares
+                sector_basis = sector_basis or basis
+        sector_level = "transaction" if sectors else None
+
+    return {"geo": geo, "geo_level": geo_level, "geo_basis": geo_basis,
+            "sectors": sectors, "sector_level": sector_level, "sector_basis": sector_basis}
+
+
+def _weighted_merge(parts) -> dict:
+    """[(weight, {key: pct})] -> {key: pct} summing to 100. Zero weights fall back to equal weights."""
+    parts = [(w, shares) for w, shares in parts if shares]
+    if not parts:
+        return {}
+    if sum(w for w, _ in parts) <= 0:
+        parts = [(1.0, shares) for _, shares in parts]
+    total = sum(w for w, _ in parts)
+    out: dict = {}
+    for w, shares in parts:
+        for k, p in shares.items():
+            out[k] = out.get(k, 0.0) + (w / total) * p
+    return {k: round(v, 4) for k, v in out.items()}
+
+
+# ---------------------------------------------------------------------------
 # Research filter (rules are data: iati_research_rules.csv)
 # ---------------------------------------------------------------------------
 
@@ -654,34 +818,28 @@ def _match(rule, candidate) -> bool:
     raise ValueError(f"rule {rule['rule_id']}: unknown match type {m!r}")
 
 
-def apply_research_rules(row: dict, rules: list, rule_sets) -> dict:
+def apply_research_rules(row: dict, rules: list, rule_sets, classification: dict = None) -> dict:
     """Evaluate `rules` (restricted to `rule_sets`) against one parsed activity.
 
     Returns {"research_rule_ids": [...], "research_sector_share": float|None}.
     Supported `field` values:
       sector            qualifier = sector vocabulary ("1" = DAC 5-digit; an
-                        absent vocabulary counts as "1"). Activity-level
-                        sectors, else the sectors on its transactions.
+                        absent vocabulary counts as "1"). Uses the activity's
+                        sectors, or the sectors on its transactions when the
+                        activity has none (shares weighted by transaction
+                        value): see `classify_own`.
       tag               qualifier = tag vocabulary
       participating_org qualifier = role ("1".."4", blank = any); value tested
                         against the org ref and the org name
       title, description, extension, iati_identifier, aid_type   (qualifier unused)
+    `classification`: pass `classify_own(row)` if already computed.
     """
     wanted = set(rule_sets)
     active = [r for r in rules if r["rule_set"] in wanted]
     if not active:
         return {"research_rule_ids": [], "research_sector_share": None}
 
-    sectors = json.loads(row["sectors_json"])
-    if not sectors:
-        seen = set()
-        for t in json.loads(row["transactions_json"]):
-            for s in t.get("sectors") or []:
-                key = (s.get("code"), s.get("vocabulary"))
-                if key not in seen:
-                    seen.add(key)
-                    sectors.append({"code": s.get("code"), "vocabulary": s.get("vocabulary"),
-                                    "percentage": None})
+    sectors = (classification or classify_own(row))["sectors"]
     tags = orgs = aid_types = None
     hits = []
     share = None
@@ -689,15 +847,9 @@ def apply_research_rules(row: dict, rules: list, rule_sets) -> dict:
         field = r["field"]
         ok = False
         if field == "sector":
-            vocab = r["qualifier"] or "1"
-            same_vocab = [s for s in sectors if (s.get("vocabulary") or "1") == vocab]
-            matched = [s for s in same_vocab if _match(r, s.get("code"))]
-            if matched:
-                ok = True
-                for s in matched:
-                    pct = _to_float(s.get("percentage"))
-                    if pct is None:
-                        pct = 100.0 / len(same_vocab)
+            for code, pct in sectors.get(r["qualifier"] or "1", {}).items():
+                if _match(r, code):
+                    ok = True
                     share = (share or 0.0) + pct
         elif field == "tag":
             if tags is None:
@@ -883,15 +1035,22 @@ def derive_awards(rows: list, cfgs: list, rules: list, publisher: dict) -> dict:
     for child, parent in parent_of.items():
         children_of.setdefault(parent, []).append(child)
 
-    # --- per-activity research rules (own evidence only) ----------------------
+    # --- per-activity classification and research rules (own evidence only) ---
+    own_cls = {}
     own_hits = {}
     for r in rows:
-        res = apply_research_rules(r, rules, rule_sets)
-        own_hits[r["iati_identifier"]] = res
+        cls = classify_own(r)
+        own_cls[r["iati_identifier"]] = cls
+        own_hits[r["iati_identifier"]] = apply_research_rules(r, rules, rule_sets, cls)
+
+    def money_weight(row_) -> float:
+        a = _own_amounts(row_)
+        return abs(next((a[b][0] for b in basis_order if b in a), 0.0))
 
     stats = {"award_level": level, "awards": 0, "research_awards": 0,
              "research_awards_unrouted": 0, "shipped": 0, "rule_hits": Counter(),
-             "shipped_by_funder": Counter(), "amount_basis": Counter()}
+             "shipped_by_funder": Counter(), "amount_basis": Counter(),
+             "shipped_geo_level": Counter(), "shipped_sector_level": Counter()}
     seen_award_keys: dict = {}
 
     for r in rows:
@@ -1010,6 +1169,53 @@ def derive_awards(rows: list, cfgs: list, rules: list, publisher: dict) -> dict:
         r["recipient_country_codes"] = "|".join(countries) or None
         r["recipient_region_codes"] = "|".join(regions) or None
 
+        # --- derived geography and sectors, with shares and the level used ------
+        # Own activity level, else own transactions (value-weighted); if the
+        # activity has neither: its children rolled up by their money, else
+        # its parent's. `*_level` says which: activity | transaction | children
+        # | parent. These never feed back into `recipient_country_codes`.
+        cls = own_cls[iid]
+        geo, geo_level, geo_basis = cls["geo"], cls["geo_level"], cls["geo_basis"]
+        secs, sec_level, sec_basis = cls["sectors"], cls["sector_level"], cls["sector_basis"]
+        if not geo and kids:
+            geo = _weighted_merge([(money_weight(k), own_cls[k["iati_identifier"]]["geo"]) for k in kids])
+            if geo:
+                geo_level, geo_basis = "children", "children_value"
+        if not geo and parent is not None and own_cls[parent["iati_identifier"]]["geo"]:
+            pc = own_cls[parent["iati_identifier"]]
+            geo, geo_level, geo_basis = pc["geo"], "parent", pc["geo_basis"]
+        if not secs and kids:
+            vocabs = []
+            for k in kids:
+                for v in own_cls[k["iati_identifier"]]["sectors"]:
+                    if v not in vocabs:
+                        vocabs.append(v)
+            for v in vocabs:
+                merged = _weighted_merge([(money_weight(k), own_cls[k["iati_identifier"]]["sectors"].get(v, {}))
+                                          for k in kids])
+                if merged:
+                    secs = dict(secs)
+                    secs[v] = merged
+            if secs:
+                sec_level, sec_basis = "children", "children_value"
+        if not secs and parent is not None and own_cls[parent["iati_identifier"]]["sectors"]:
+            pc = own_cls[parent["iati_identifier"]]
+            secs, sec_level, sec_basis = pc["sectors"], "parent", pc["sector_basis"]
+
+        def geo_list(kind):
+            items = sorted(((code, pct) for (k_, code), pct in geo.items() if k_ == kind),
+                           key=lambda x: (-x[1], x[0]))
+            return json.dumps([{"code": c_, "percentage": p_} for c_, p_ in items])
+        r["derived_recipient_countries_json"] = geo_list("country")
+        r["derived_recipient_regions_json"] = geo_list("region")
+        r["recipient_geo_level"] = geo_level
+        r["recipient_geo_share_basis"] = geo_basis
+        r["derived_sectors_json"] = json.dumps([
+            {"code": c_, "vocabulary": v, "percentage": p_}
+            for v in sorted(secs) for c_, p_ in sorted(secs[v].items(), key=lambda x: (-x[1], x[0]))])
+        r["sector_level"] = sec_level
+        r["sector_share_basis"] = sec_basis
+
         # --- research admission --------------------------------------------------
         res = own_hits[iid]
         ids = list(res["research_rule_ids"])
@@ -1023,8 +1229,7 @@ def derive_awards(rows: list, cfgs: list, rules: list, publisher: dict) -> dict:
             # child, a sector rule counts the child's research sector share.
             tot = adm = adm_programme = 0.0
             for k in kids:
-                ka = _own_amounts(k)
-                w = abs(next((ka[b][0] for b in basis_order if b in ka), 0.0))
+                w = money_weight(k)
                 kres = own_hits[k["iati_identifier"]]
                 kshare = kres["research_sector_share"]
                 k_non_sector = any(i not in sector_rule_ids for i in kres["research_rule_ids"])
@@ -1124,6 +1329,8 @@ def derive_awards(rows: list, cfgs: list, rules: list, publisher: dict) -> dict:
                 if not r["openalex_funder_id"]:
                     stats["research_awards_unrouted"] += 1
         if ship:
+            stats["shipped_geo_level"][geo_level or "none"] += 1
+            stats["shipped_sector_level"][sec_level or "none"] += 1
             stats["shipped"] += 1
             stats["shipped_by_funder"][r["openalex_funder_id"]] += 1
             stats["amount_basis"][basis_used or "none"] += 1
@@ -1137,6 +1344,8 @@ def derive_awards(rows: list, cfgs: list, rules: list, publisher: dict) -> dict:
 
     stats["shipped_by_funder"] = dict(stats["shipped_by_funder"])
     stats["amount_basis"] = dict(stats["amount_basis"])
+    stats["shipped_geo_level"] = dict(stats["shipped_geo_level"])
+    stats["shipped_sector_level"] = dict(stats["shipped_sector_level"])
     return stats
 
 
@@ -1353,6 +1562,8 @@ def process_publisher(ref: str, cfg_by_ref: dict, rules: list, args) -> dict:
         "rule_sets": rule_sets, "rule_hits": dict(rule_counts.most_common()),
         "shipped_by_funder": stats["shipped_by_funder"],
         "amount_basis": stats["amount_basis"],
+        "shipped_geo_level": stats["shipped_geo_level"],
+        "shipped_sector_level": stats["shipped_sector_level"],
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "limit": args.limit, "limit_files": args.limit_files,
     }
