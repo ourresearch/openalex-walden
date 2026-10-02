@@ -639,18 +639,20 @@ elif MODE == "live_settings":
 
 elif MODE == "verify":
     c = es(timeout=300)
-    results = []  # (check, PASS/FAIL/SKIP, detail)
-    n_old, n_new = c.count(index=OLD)["count"], c.count(index=NEW)["count"]
+    results = []  # (check, PASS/FAIL/SKIP/INFO, detail)
+    HAVE_OLD = c.indices.exists(index=OLD)  # after retire the old index is gone: only the Delta checks apply
+    n_new = c.count(index=NEW)["count"]
+    n_old = c.count(index=OLD)["count"] if HAVE_OLD else None
     n_now = source_count()
     n_v = source_count(SOURCE_VERSION) if SOURCE_VERSION else None
-    detail = f"new {n_new:,}; old {n_old:,} (old - new {n_old - n_new:+,}); source now {n_now:,}" + (
-        f"; source at V {n_v:,}" if n_v is not None else "")
+    detail = f"new {n_new:,}; " + (f"old {n_old:,} (old - new {n_old - n_new:+,}); " if HAVE_OLD else f"old {OLD} absent; ") + (
+        f"source now {n_now:,}") + (f"; source at V {n_v:,}" if n_v is not None else "")
     results.append(("count: new vs source now", "PASS" if abs(n_new - n_now) <= COUNT_TOLERANCE else "FAIL", detail))
 
     ids = [f"{ID_PREFIX}{x}" for x in random_ids(SAMPLE)]
     docs_old, docs_new = {}, {}
     for i in range(0, len(ids), 200):
-        for idx, store in ((OLD, docs_old), (NEW, docs_new)):
+        for idx, store in (((OLD, docs_old),) if HAVE_OLD else ()) + ((NEW, docs_new),):
             for d in c.mget(index=idx, ids=ids[i:i + 200])["docs"]:
                 if d.get("found"):
                     store[d["_id"]] = d["_source"]
@@ -666,18 +668,23 @@ elif MODE == "verify":
                 examples.setdefault(f, i)
             unexpected_docs += bool(set(fields) - EXPECT_DIFF)
     compared = sum(1 for i in ids if i in docs_old and i in docs_new)
-    results.append(("docs: in old but missing from new", "PASS" if not lost else "FAIL",
-                    f"{len(lost)} of {len(ids)} {lost[:10]}; {len(both_absent)} in neither (source newer than both)"))
-    show(f"fields differing old vs new over {compared} docs (expected: {sorted(EXPECT_DIFF)})",
-         {f: f"{n} docs, e.g. {examples[f]}" + ("" if f in EXPECT_DIFF else "  <- UNEXPECTED")
-          for f, n in sorted(field_diffs.items(), key=lambda x: -x[1])})
+    missing_new = [i for i in ids if i not in docs_new]
+    results.append(("docs: sampled source ids present in new", "PASS" if not missing_new else "FAIL",
+                    f"{len(missing_new)} of {len(ids)} missing {missing_new[:10]}"))
+    if HAVE_OLD:
+        results.append(("docs: in old but missing from new", "PASS" if not lost else "FAIL",
+                        f"{len(lost)} of {len(ids)} {lost[:10]}; {len(both_absent)} in neither (source newer than both)"))
+        show(f"fields differing old vs new over {compared} docs (expected: {sorted(EXPECT_DIFF)})",
+             {f: f"{n} docs, e.g. {examples[f]}" + ("" if f in EXPECT_DIFF else "  <- UNEXPECTED")
+              for f, n in sorted(field_diffs.items(), key=lambda x: -x[1])})
     pct = 100 * unexpected_docs / max(compared, 1)
     # Informational only (oxjob #1456): the old index is stale on every field the content hash excludes (fwci,
     # citation percentiles, institutions_distinct_count, source.listed_in, location `updated`, transient updated_date
     # bumps) and on null-vs-[] representation, so on 2026-10-01 88% of docs differed and every one matched Delta.
-    results.append(("docs: old vs new field differences (info)", "INFO",
-                    f"{unexpected_docs} of {compared} docs ({pct:.1f}%) differ outside {sorted(EXPECT_DIFF)}; "
-                    f"the FAIL check is 'docs: new vs Delta at V' below"))
+    if HAVE_OLD:
+        results.append(("docs: old vs new field differences (info)", "INFO",
+                        f"{unexpected_docs} of {compared} docs ({pct:.1f}%) differ outside {sorted(EXPECT_DIFF)}; "
+                        f"the FAIL check is 'docs: new vs Delta at V' below"))
     # The truth check: the new index vs the source at V on fields that compare directly (no sync-side transforms).
     v_tbl = src(SOURCE_VERSION) if SOURCE_VERSION else src()
     DELTA_FIELDS = {  # es _source path -> SQL expression on the source row; both sides normalised by norm()
@@ -769,7 +776,7 @@ elif MODE == "verify":
         print(f"{'keyword':70} {'ES new':>9} {'ES old':>9} {'Delta now':>9} {'Delta V':>9}")
         for k in pick:
             e_new = c.count(index=NEW, query={"term": {KEYWORD_FIELD: k}})["count"]
-            e_old = c.count(index=OLD, query={"term": {KEYWORD_FIELD: k}})["count"]
+            e_old = c.count(index=OLD, query={"term": {KEYWORD_FIELD: k}})["count"] if HAVE_OLD else 0
             dn, dv = d_now.get(k, 0), d_v.get(k)
             tol = max(2, 0.001 * dn)
             ok = abs(e_new - dn) <= tol or (dv is not None and abs(e_new - dv) <= tol)
