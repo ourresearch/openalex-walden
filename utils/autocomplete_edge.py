@@ -41,7 +41,16 @@ TYPES = {
     "topics": ("t", "openalex.common.topics_api"),
     "awards": ("g", "openalex.awards.awards_api"),
     "authors": ("a", "openalex.authors.openalex_authors"),
+    # the front page's mixed tree: the six small types in one key space, each type capped per heavy node (#1504
+    # edge-proto design: one compact tree ships to the browser, which then answers most keystrokes itself; mixing the
+    # per-entity trees instead read 7 trees per keystroke and was 120 KB gzipped per response, #1529 2026-10-03)
+    "front": ("m", "openalex.common.keywords_api"),
 }
+FRONT_TYPES = {"keywords": ("k", 50), "institutions": ("i", 30), "sources": ("s", 30), "funders": ("f", 15),
+               "publishers": ("p", 10), "topics": ("t", 10)}
+# every source table the front tree reads (its job triggers on any of them)
+FRONT_SOURCES = ["openalex.common.keywords_api", "openalex.institutions.institutions_api", "openalex.sources.sources_api",
+                 "openalex.funders.funders_api", "openalex.publishers.publishers_api", "openalex.common.topics_api"]
 SMALL = ["keywords", "sources", "institutions", "funders", "publishers", "concepts", "topics"]
 
 STOP = ["of", "the", "and", "in", "for", "a", "an", "to", "on", "with", "by", "at", "from", "de", "la", "et", "des", "der",
@@ -215,6 +224,50 @@ WHERE leaf OR er <= {K} OR (st AND es <= {KS}) OR (st AND near AND length(p) >= 
     ]
 
 
+def front_steps():
+    """the front page's mixed tree. Entry [t, id, label, display|0, works, pop*100, hint|0, cited, ext|0] (a small-type
+    entry with its type letter in front); a heavy node keeps, per type, the top K_t by popularity, the top label starts,
+    near-exact and exact labels (as the small types do), so a type never crowds another out."""
+    typ = "front"
+    ent = "\nUNION ALL\n".join(f"SELECT '{t}' AS t, * FROM ({_entities_sql(name)})" for name, (t, _) in FRONT_TYPES.items())
+    pop = f"IF(t = 'k', 1.75 * log10(1 + coalesce(works, 0)), {POP.format(c='cited', w='works')})"
+    kcap = "CASE t " + " ".join(f"WHEN '{t}' THEN {k}" for t, k in FRONT_TYPES.values()) + " END"
+    return [
+        ("ent", f"CREATE OR REPLACE TABLE {stg(typ, 'ent')} AS\n{ent}"),
+        ("lab", f"""CREATE OR REPLACE TABLE {stg(typ, 'lab')} AS
+WITH x AS (SELECT t, eid, display, works, cited, hint, ext, {pop} AS pop, lid, label
+           FROM {stg(typ, 'ent')} LATERAL VIEW posexplode(labels) z AS lid, label)
+SELECT t, eid, lid, pop, IF(t IN ('k', 't'), {norm_sql('label', greek=True)}, {norm_sql('label')}) AS nlabel,
+       concat('[', {js('t')}, ',', {js('eid')}, ',', {js('label')}, ',', IF(label = display, '0', {js('display')}), ',', coalesce(works, 0), ',',
+              CAST(round(100 * pop) AS INT), ',', IF(hint IS NULL OR t NOT IN ('i', 's'), '0', {js('hint')}), ',', coalesce(cited, 0), ',',
+              IF(ext IS NULL OR ext = '', '0', {js('ext')}), ']') AS e
+FROM x"""),
+        # (hints: the front-page dropdown shows names only, so only the short institution and source hints ride along)
+        ("sfx", f"""CREATE OR REPLACE TABLE {stg(typ, 'sfx')} AS
+WITH s AS (SELECT t, eid, lid, split(nlabel, ' ') AS w FROM {stg(typ, 'lab')} WHERE nlabel <> ''),
+sf AS (SELECT t, eid, lid, i = 1 AS st, array_join(slice(w, i, size(w)), ' ') || ' ' AS sx FROM s LATERAL VIEW explode(sequence(1, size(w))) z AS i)
+SELECT t, eid, lid, substr(sx, 1, L) AS p, max(st) AS st FROM sf LATERAL VIEW explode(sequence(1, least(length(sx), {CAP}))) z AS L
+GROUP BY t, eid, lid, substr(sx, 1, L)"""),
+        ("cnt", f"CREATE OR REPLACE TABLE {stg(typ, 'cnt')} AS SELECT p, count(*) AS cnt FROM {stg(typ, 'sfx')} GROUP BY p"),
+        ("keys", f"""CREATE OR REPLACE TABLE {stg(typ, 'keys')} AS
+SELECT c.p, c.cnt, c.cnt <= {N} AS leaf
+FROM {stg(typ, 'cnt')} c LEFT JOIN {stg(typ, 'cnt')} par ON par.p = substr(c.p, 1, length(c.p) - 1)
+WHERE length(c.p) = 1 OR par.cnt > {N}"""),
+        ("mem", f"""CREATE OR REPLACE TABLE {stg(typ, 'mem')} AS
+WITH m AS (SELECT x.t, x.p, x.eid, x.lid, x.st, length(l.nlabel) <= length(rtrim(x.p)) + 3 AS near, l.nlabel = rtrim(x.p) AS exact,
+                  k.leaf, k.cnt, l.pop, l.e
+           FROM {stg(typ, 'sfx')} x JOIN {stg(typ, 'keys')} k ON k.p = x.p
+           JOIN {stg(typ, 'lab')} l ON l.t = x.t AND l.eid = x.eid AND l.lid = x.lid),
+r AS (SELECT m.*, dense_rank() OVER (PARTITION BY m.p, m.t ORDER BY m.pop DESC, m.eid) AS er,
+             dense_rank() OVER (PARTITION BY m.p, m.t, m.st ORDER BY m.pop DESC, m.eid) AS es,
+             dense_rank() OVER (PARTITION BY m.p, m.t, m.st AND m.near ORDER BY m.pop DESC, m.eid) AS en,
+             row_number() OVER (PARTITION BY m.p ORDER BY m.pop DESC, m.t, m.eid, m.lid) AS rn FROM m)
+SELECT p, leaf, cnt, rn, e FROM r
+WHERE leaf OR er <= {kcap} OR (st AND es <= 10) OR (st AND near AND length(p) >= 3 AND en <= 5) OR (st AND exact)"""),
+        ("nodes", _nodes_sql(typ, f"SELECT p, leaf, cnt, rn, e FROM {stg(typ, 'mem')}")),
+    ]
+
+
 def _nodes_sql(typ, mem_select):
     return f"""CREATE OR REPLACE TABLE {nodes_table(typ)} AS
 WITH g AS (SELECT p, concat('{{"l":', IF(first(leaf), '1', '0'), ',"n":', first(cnt), ',"e":[',
@@ -350,6 +403,8 @@ def steps(typ):
         return award_steps()
     if typ == "authors":
         return author_steps()
+    if typ == "front":
+        return front_steps()
     raise ValueError(typ)
 
 

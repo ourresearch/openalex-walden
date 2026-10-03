@@ -25,6 +25,15 @@ from utils import autocomplete_edge as ace  # noqa: E402
 now = spark.sql("SELECT current_timestamp()").collect()[0][0]
 stale, lines = [], []
 for typ, (t, src) in ace.TYPES.items():
+    if typ == "front":
+        # the front tree reads six tables: stale when any of them committed after its last good run, over an hour ago
+        newest = max(spark.sql(f"DESCRIBE HISTORY {s} LIMIT 1").collect()[0]["timestamp"] for s in ace.FRONT_SOURCES)
+        f = spark.sql(f"SELECT max(started_at) FROM {ace.SCHEMA}.refresh_runs WHERE typ = 'front' AND status = 'ok'").collect()[0][0]
+        age_min = (now - newest).total_seconds() / 60
+        lines.append(f"front         newest source commit {newest} ({age_min:.0f} min ago); last good run started {f}")
+        if (f is None or f < newest) and age_min > 60:
+            stale.append(f"front (a source committed {newest}, {age_min:.0f} min ago; last good run started {f})")
+        continue
     h = spark.sql(f"DESCRIBE HISTORY {src} LIMIT 1").collect()[0]
     version, committed = h["version"], h["timestamp"]
     last = spark.sql(f"""SELECT max(src_version) AS v, max(finished_at) AS f FROM {ace.SCHEMA}.refresh_runs
