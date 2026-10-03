@@ -502,16 +502,22 @@ def chunked(sql, table, prefix, log=print, chunk_bytes=150_000_000):
     one length at a time, split by hash so a chunk holds ~chunk_bytes; the next chunk is fetched while the caller writes
     this one. (#1529: streaming one globally sorted result through toLocalIterator ran ~280 keys/s.)"""
     import queue, threading
-    plan = []
+    plan, parts_of = [], {}
     for L, b in sql(f"SELECT length(p) AS L, sum(bytes) FROM {table} GROUP BY 1 ORDER BY 1 DESC"):
         parts = max(1, int((b or 0) // chunk_bytes) + 1)
-        plan += [(L, parts, i) for i in range(parts)]
+        parts_of[L] = parts
+        plan += [L * 1000 + i for i in range(parts)]
+    # one partition per chunk, so each chunk read touches only its own files (a filter over the whole table per chunk
+    # made the 10.7 GB author table load at ~430 keys/s)
+    ct = f"{table}_chunks"
+    case = "CASE length(p) " + " ".join(f"WHEN {L} THEN {n}" for L, n in parts_of.items()) + " ELSE 1 END"
+    sql(f"CREATE OR REPLACE TABLE {ct} PARTITIONED BY (c) AS SELECT p, v, length(p) * 1000 + pmod(xxhash64(p), {case}) AS c FROM {table}")
     q = queue.Queue(maxsize=2)
 
     def produce():
         try:
-            for L, parts, i in plan:
-                q.put(sql(f"SELECT concat('{prefix}', p), v FROM {table} WHERE length(p) = {L} AND pmod(xxhash64(p), {parts}) = {i}"))
+            for c in plan:
+                q.put(sql(f"SELECT concat('{prefix}', p), v FROM {ct} WHERE c = {c}"))
             q.put(None)
         except Exception as e:  # surface in the consumer
             q.put(e)
