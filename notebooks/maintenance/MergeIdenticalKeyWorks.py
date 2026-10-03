@@ -55,6 +55,9 @@
 # MAGIC `year_differs` (the two works' publication years disagree: reprints, later editions, mis-pinned annual reports) and
 # MAGIC `loser_mixed` (the loser also carries non-repo records, e.g. a MAG-era book the feed's book review was pinned onto;
 # MAGIC the 2026-10-02 stage's wrong merges all sat in these two classes: 2,361 losers, 4 % of the wave, half its citations),
+# MAGIC `winner_junk` (the Crossref winner has no title or is typed paratext: econjournals' 10.32479 stubs, 791 pairs carrying
+# MAGIC 74 % of wave 2's citations on 2026-10-03; the feed side holds the real metadata, so a merge would bury it),
+# MAGIC `winner_preprint` (the twin is an SSRN-style preprint record; the published side must survive, charter policy),
 # MAGIC `junk_type` on the title twin, and the mechanical holds. Keys differ (translated titles), so execute re-keys the
 # MAGIC loser's record keys onto the winner like exact_signature; `ta` = 'twin:<winner id>'.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
@@ -520,11 +523,12 @@ def feed_twin_class_sql():
     pairs AS (SELECT target AS a, work_id AS b, MIN(twin_rank) AS twin_rank, MAX(default_host) AS default_host
               FROM tw WHERE target IS NOT NULL AND target <> work_id GROUP BY target, work_id),
     pr AS (SELECT DISTINCT work_id FROM {LM} WHERE provenance IN ('crossref', 'datacite') AND work_id IS NOT NULL),
-    wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, primary_location.source.id AS src, COALESCE(cited_by_count, 0) AS cites FROM live),
+    wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, primary_location.source.id AS src, COALESCE(cited_by_count, 0) AS cites,
+                  (title IS NULL OR trim(title) = '') AS no_title FROM live),
     r1 AS (
       SELECT p.a, p.b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb, x.type AS ta_type, y.type AS tb_type,
              FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
-             p.a AS winner_work_id, p.b AS loser_work_id,
+             p.a AS winner_work_id, p.b AS loser_work_id, x.no_title AS winner_no_title,
              element_at(array('doi', 'url', 'title'), p.twin_rank) AS twin, p.default_host, (pr.work_id IS NOT NULL) AS loser_has_primary
       FROM pairs p JOIN wf x ON x.id = p.a JOIN wf y ON y.id = p.b LEFT JOIN pr ON pr.work_id = p.b),""" + pair_class_tail(FEED_TWIN_SIGNALS, FEED_TWIN_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('twin:', r.winner_work_id)")
 
@@ -533,6 +537,8 @@ FEED_TWIN_HOLD = """CASE WHEN r.default_host THEN 'default_oai_host'
                 WHEN r.loser_has_primary THEN 'loser_has_primary'
                 WHEN r.ya IS NOT NULL AND r.yb IS NOT NULL AND r.ya <> r.yb THEN 'year_differs'
                 WHEN NOT COALESCE(lm.repo_only, FALSE) THEN 'loser_mixed'
+                WHEN r.winner_no_title OR r.ta_type = 'paratext' THEN 'winner_junk'
+                WHEN r.ta_type = 'preprint' THEN 'winner_preprint'
                 WHEN r.twin = 'title' AND (r.ta_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')
                                            OR r.tb_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')) THEN 'junk_type'
                 WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
