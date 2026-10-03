@@ -40,7 +40,14 @@ RUBRIC_VERSION = "rubric-v2/2026-09-22"
 CONFIG_NAME = "r2_gate4"                     # oxjobs #1312 scratch/harness/configs/r2_gate4.py
 TAGGER_VERSION = f"{CONFIG_NAME}/{JEV_MODEL}"  # checkpoint key: a row counts only if it carries this
 JEV_USD_PER_TOKEN = 0.042 / 1e6              # input only; output free
-RETRYABLE = {429, 500, 502, 503, 529}
+RETRYABLE = {429, 500, 502, 503, 520, 521, 522, 524, 529}  # 520-524: Cloudflare in front of TypeSafe, seen in bursts (#1310)
+
+
+def is_billing_error(status: int, body: str) -> bool:
+    """TypeSafe refuses for billing: 402, or a 401/403 naming credit/billing. On 2 Oct 2026 the prepaid credit ran
+    out and clients treated it as one more failed item (oxjob #1523); JevClient now stops calling and says so."""
+    low = (body or "").lower()
+    return status == 402 or (status in (401, 403) and ("credit" in low or "billing" in low))
 
 # ---------------------------------------------------------------------------
 # The request (== configs/r2_shortnoul.py: rubric v2 texts + v1's short Nouls)
@@ -319,6 +326,7 @@ class JevClient:
         self.n_ok = 0
         self.n_fail = 0
         self.n_retry = 0
+        self.out_of_credit = None  # first billing error; once set, decide() fails fast without calling Jev
 
     @property
     def usd(self) -> float:
@@ -335,6 +343,10 @@ class JevClient:
         body = {"model": self._model, "state": state, "questions": qs}
         attempt = 0
         while True:
+            if self.out_of_credit:
+                with self._lock:
+                    self.n_fail += 1
+                return {"ok": False, "status": 402, "error": self.out_of_credit, "attempts": attempt, "billing": True}
             attempt += 1
             self._pacer.wait()
             t0 = time.perf_counter()
@@ -355,9 +367,15 @@ class JevClient:
                     ra = resp.headers.get("retry-after")
                     time.sleep(float(ra) if ra else _backoff(attempt))
                     continue
+                billing = is_billing_error(resp.status_code, resp.text)
                 with self._lock:
                     self.n_fail += 1
-                return {"ok": False, "status": resp.status_code, "error": resp.text[:300], "attempts": attempt}
+                    if billing and not self.out_of_credit:
+                        self.out_of_credit = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                        print(f"JEV OUT OF CREDIT ({self.out_of_credit}); no more Jev calls this run. "
+                              "Top up at console.typesafe.ai (oxjob #1523).", flush=True)
+                return {"ok": False, "status": resp.status_code, "error": resp.text[:300], "attempts": attempt,
+                        "billing": billing}
             except (requests.Timeout, requests.ConnectionError) as e:
                 if attempt < self._max_attempts:
                     with self._lock:

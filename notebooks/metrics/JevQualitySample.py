@@ -333,6 +333,8 @@ for start in range(0, len(todo), CHUNK):
     log(f"Jev {done:,}/{len(todo):,} ({chunk[0]['stratum']}): {rate:.1f}/s, ${spent:.3f}, "
         f"errors {sum(jev_errors.values())}, ETA {(len(todo) - done) / rate / 60 if rate else 0:.1f} min")
 log(f"Jev done: {jev.n_ok:,} ok, {jev.n_fail:,} failed, {jev.total_tokens:,} tokens, ${spent:.3f}")
+if jev.out_of_credit:
+    raise RuntimeError(f"Jev out of credit ({jev.out_of_credit}); top up at console.typesafe.ai, then rerun (oxjob #1523)")
 if todo and jev.n_fail > 0.2 * len(todo):
     raise RuntimeError(f"Jev failed on {jev.n_fail}/{len(todo)} items; check the typesafe key / API status before rerunning")
 

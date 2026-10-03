@@ -231,6 +231,9 @@ for chunk_id, n_chunk in todo:
     print(f"chunk {chunk_id}: {len(rows):,} tagged, {len(errs):,} failed, {chunk_tokens / max(1, len(rows)):.0f} tok/work, "
           f"${chunk_usd:.2f}, {secs:.0f}s ({len(works) / max(secs, 1):.0f}/s) -> {marked}. "
           f"run: {tot_queued:,} works, ${client.usd:.2f}, {rate:.0f}/s, ETA {remaining / max(rate, 1) / 60:.0f} min", flush=True)
+    if client.out_of_credit:
+        raise RuntimeError(f"Jev out of credit ({client.out_of_credit}); top up at console.typesafe.ai. "
+                           f"Untagged works stay queued for the next run (oxjob #1523).")
     if len(errs) > 0.5 * max(1, len(works)):
         raise RuntimeError(f"chunk {chunk_id}: {len(errs)} of {len(works)} calls failed; Jev down or key invalid?")
 

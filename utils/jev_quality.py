@@ -40,7 +40,13 @@ JEV_URL = "https://api.typesafe.ai/v1/systemone"
 JEV_MODEL = "jev-1.13.0"                 # pinned; jev-latest moves
 JEV_USD_PER_TOKEN = 0.042 / 1e6           # input only; output free
 JEV_CHARS_PER_TOKEN = 1.65                # measured; char/4 estimates are 2x low
-RETRYABLE = {429, 500, 502, 503, 529}
+RETRYABLE = {429, 500, 502, 503, 520, 521, 522, 524, 529}  # 520-524: Cloudflare in front of TypeSafe (#1310)
+
+
+def is_billing_error(status: int, body: str) -> bool:
+    """402, or a 401/403 naming credit/billing: the prepaid TypeSafe credit is gone (oxjob #1523)."""
+    low = (body or "").lower()
+    return status == 402 or (status in (401, 403) and ("credit" in low or "billing" in low))
 
 OPUS_MODEL = "databricks-claude-opus-5"   # FMAPI pay-per-token; the probe judged with claude-opus-5
 OPUS_IN_USD, OPUS_OUT_USD = 5.0, 25.0     # list price per 1M tokens (Anthropic list; FMAPI bills the same)
@@ -580,6 +586,7 @@ class JevClient:
         self.n_ok = 0
         self.n_fail = 0
         self._lock = threading.Lock()
+        self.out_of_credit = None  # first billing error; once set, decide() fails fast without calling Jev (#1523)
 
     def _session(self) -> requests.Session:
         s = getattr(self._local, "s", None)
@@ -592,6 +599,10 @@ class JevClient:
         body = {"model": self._model, "state": state, "questions": qs}
         attempt = 0
         while True:
+            if self.out_of_credit:
+                with self._lock:
+                    self.n_fail += 1
+                return {"ok": False, "status": 402, "error": self.out_of_credit, "attempts": attempt}
             attempt += 1
             t0 = time.perf_counter()
             try:
@@ -611,6 +622,8 @@ class JevClient:
                     continue
                 with self._lock:
                     self.n_fail += 1
+                    if is_billing_error(resp.status_code, resp.text) and not self.out_of_credit:
+                        self.out_of_credit = f"HTTP {resp.status_code}: {resp.text[:200]}"
                 return {"ok": False, "status": resp.status_code, "error": resp.text[:300], "attempts": attempt}
             except (requests.Timeout, requests.ConnectionError) as e:
                 if attempt < self._max_attempts:
