@@ -570,9 +570,11 @@ def chunked(sql, table, prefix, log=print, chunk_bytes=150_000_000):
         return
     # one partition per chunk, so each chunk read touches only its own files (a filter over the whole table per chunk
     # made the 10.7 GB author table load at ~430 keys/s)
-    ct = f"{table}_chunks"
+    # one table per run (dropped at the end): runs as different principals never fight over who owns it
+    import time as _t
+    ct = f"{table}_chunks_{int(_t.time() * 1000)}"
     case = "CASE length(p) " + " ".join(f"WHEN {L} THEN {n}" for L, n in parts_of.items()) + " ELSE 1 END"
-    sql(f"CREATE OR REPLACE TABLE {ct} PARTITIONED BY (c) AS SELECT p, v, length(p) * 1000 + pmod(xxhash64(p), {case}) AS c FROM {table}")
+    sql(f"CREATE TABLE {ct} PARTITIONED BY (c) AS SELECT p, v, length(p) * 1000 + pmod(xxhash64(p), {case}) AS c FROM {table}")
     q = queue.Queue(maxsize=2)
 
     def produce():
@@ -583,13 +585,19 @@ def chunked(sql, table, prefix, log=print, chunk_bytes=150_000_000):
         except Exception as e:  # surface in the consumer
             q.put(e)
     threading.Thread(target=produce, daemon=True).start()
-    while True:
-        part = q.get()
-        if part is None:
-            return
-        if isinstance(part, Exception):
-            raise part
-        yield from part
+    try:
+        while True:
+            part = q.get()
+            if part is None:
+                return
+            if isinstance(part, Exception):
+                raise part
+            yield from part
+    finally:
+        try:
+            sql(f"DROP TABLE IF EXISTS {ct}")
+        except Exception as e:  # leave it; the next cleanup can drop it
+            log(f"could not drop {ct}: {e!r}")
 
 
 def verify_build(typ, sql, kv, copies, nt, prefix, keys_total, put, log, rounds=5, rewrite_all=None):
