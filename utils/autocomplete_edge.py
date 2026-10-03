@@ -562,6 +562,8 @@ def chunked(sql, table, prefix, log=print, chunk_bytes=150_000_000):
         parts = max(1, int((b or 0) // chunk_bytes) + 1)
         parts_of[L] = parts
         plan += [L * 1000 + i for i in range(parts)]
+    if not plan:   # nothing to write (a night with no changes)
+        return
     # one partition per chunk, so each chunk read touches only its own files (a filter over the whole table per chunk
     # made the 10.7 GB author table load at ~430 keys/s)
     ct = f"{table}_chunks"
