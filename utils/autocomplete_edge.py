@@ -509,11 +509,15 @@ class Copies:
             for i in range(0, len(rows), 1000):   # a Durable Object batch stays small (CPU and request size)
                 part = rows[i:i + 1000]
                 for attempt in range(8):
-                    r = self.s.post(f"{self.worker}/admin/copy-load?region={region}", data=json.dumps(part), timeout=300)
-                    if r.status_code == 200:
-                        break
+                    try:
+                        r = self.s.post(f"{self.worker}/admin/copy-load?region={region}", data=json.dumps(part), timeout=300)
+                        if r.status_code == 200:
+                            break
+                        err = f"{r.status_code}: {r.text[:300]}"
+                    except OSError as e:   # timeouts and connection errors (requests' exceptions subclass OSError)
+                        err = repr(e)[:300]
                     if attempt == 7:
-                        raise RuntimeError(f"copy {region} {r.status_code}: {r.text[:300]}")
+                        raise RuntimeError(f"copy {region} {err}")
                     time.sleep(min(60, 2 ** attempt))
         return len(rows) * len(self.regions)
 
@@ -716,7 +720,8 @@ def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_
                 do_rows=ops * len(copies.regions), status="ok", message="", job_run_id=job_run_id)
 
 
-def backfill_copies(typ, sql, copies, log=print, threads=32):
+def backfill_copies(typ, sql, copies, log=print, threads=12):
+    # (32 threads queued so many writes on the single-threaded objects that requests hit the 300 s timeout)
     """write a type's live build (every key, and its version pointer) into the copies; for a newly placed region"""
     t, _ = TYPES[typ]
     live = sql(f"SELECT build FROM {SCHEMA}.builds WHERE typ = '{typ}' AND state = 'live' ORDER BY created_at DESC LIMIT 1")
