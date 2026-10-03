@@ -1,499 +1,147 @@
 #!/usr/bin/env python3
 """
-FWF (Austrian Science Fund) to S3 Data Pipeline
-================================================
+FWF (Fonds zur Förderung der wissenschaftlichen Forschung / Austrian Science Fund) to S3 Data Pipeline
+==========================================================================
 
-This script downloads all FWF research grant data from the OpenAIRE API,
-processes it into a parquet file, and uploads it to S3 for Databricks ingestion.
+Downloads ALL FWF research projects from the OpenAIRE **Graph API v1** (cursor
+pagination — no 10,000-result cap) and writes a parquet for Databricks.
 
-Data Source: OpenAIRE API (https://api.openaire.eu)
-- 19,600+ FWF projects available
-- Projects from 1995 onwards
-- Includes project codes, titles, dates, funding amounts, DOIs
+Data Source: https://api.openaire.eu/graph/v1/projects?fundingShortName=FWF
+  - ~20k FWF projects
+  - NOTE: the legacy /search/projects API caps at 10,000 results (page*size<=10k),
+    which silently truncates large funders — the existing openaire_fwf ingest is
+    capped at ~9k of FWF's ~20k for this reason. The Graph API cursor avoids that.
 
 Output: s3://openalex-ingest/awards/fwf/fwf_projects.parquet
-
-What this script does:
-1. Fetches all FWF projects from the OpenAIRE API (paginated JSON)
-2. Parses JSON responses to extract project metadata
-3. Extracts grant reference, funder, amount, dates, keywords
-4. Combines into a single DataFrame
-5. Saves as parquet and uploads to S3
-
-Features:
-- Checkpointing: Progress is saved every 50 pages; resume with --resume
-- Retry logic: Failed pages are retried up to 3 times with exponential backoff
-- ETA reporting: Shows estimated time remaining based on current progress
-- Error tracking: Failed pages are logged and can be retried manually
-
-Requirements:
-    pip install pandas pyarrow requests
-
-    AWS CLI must be configured with credentials that have write access to:
-    s3://openalex-ingest/awards/fwf/
+Output columns (mapped for CreateFWFAwards.ipynb): project_code, title, start_date,
+  end_date, funded_amount, total_cost, currency, keywords, website_url, doi,
+  funding_program, openaire_id
 
 Usage:
-    python fwf_to_s3.py
-
-    # Resume interrupted download:
-    python fwf_to_s3.py --resume
-
-    # Or with options:
-    python fwf_to_s3.py --output-dir /path/to/output --skip-upload
-
-Author: OpenAlex Team
+    python fwf_to_s3.py --skip-upload          # local
+    python fwf_to_s3.py --resume               # resume from checkpoint cursor
 """
-
-import argparse
-import json
-import subprocess
-import sys
-import time
-from datetime import datetime, timedelta
+import argparse, json, os, sys, time, html
 from pathlib import Path
-from typing import Any, Optional
-
-import pandas as pd
-import requests
-
-# --- Windows UTF-8 compatibility shim (fleet-fix 2026-05-22) ---
-# Windows Python defaults to cp1252 for BOTH stdout-when-piped AND default
-# file I/O (Path.write_text / open() without explicit encoding=). This
-# crashes scrapers writing laureate names with non-ASCII chars (Polish ł,
-# Turkish ğ, Greek μ, combining accents, zero-width spaces). Production
-# runs on Linux/Databricks where UTF-8 is the default, but this fixes
-# local validation on Windows without requiring contractors to set
-# PYTHONUTF8=1 in their environment. See runbook §1.2.
-import sys as _sys_utf8
+from datetime import datetime, timezone
 try:
-    _sys_utf8.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
-    _sys_utf8.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
-except (AttributeError, ValueError):
-    pass
+    sys.stdout.reconfigure(encoding="utf-8"); sys.stderr.reconfigure(encoding="utf-8")
+except Exception: pass
+import urllib.request, urllib.parse
+import pandas as pd
 
-if _sys_utf8.platform == "win32":
-    import builtins as _builtins_utf8
-    import pathlib as _pathlib_utf8
+S3_BUCKET="openalex-ingest"; S3_KEY="awards/fwf/fwf_projects.parquet"
+API="https://api.openaire.eu/graph/v1/projects"
+FUNDER="FWF"; PAGE_SIZE=100; DELAY=0.25
 
-    _orig_wt = _pathlib_utf8.Path.write_text
-    def _wt(self, data, encoding=None, errors=None, newline=None):
-        return _orig_wt(self, data, encoding=encoding or "utf-8", errors=errors, newline=newline)
-    _pathlib_utf8.Path.write_text = _wt
-
-    _orig_rt = _pathlib_utf8.Path.read_text
-    def _rt(self, encoding=None, errors=None, newline=None):
-        return _orig_rt(self, encoding=encoding or "utf-8", errors=errors, newline=newline)
-    _pathlib_utf8.Path.read_text = _rt
-
-    _orig_open = _builtins_utf8.open
-    def _open_utf8(file, mode="r", buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
-        if "b" not in mode and encoding is None:
-            encoding = "utf-8"
-        return _orig_open(file, mode, buffering, encoding, errors, newline, closefd, opener)
-    _builtins_utf8.open = _open_utf8
-# --- end shim ---
-
-# =============================================================================
-# Configuration
-# =============================================================================
-
-# OpenAIRE API settings
-OPENAIRE_API_BASE = "https://api.openaire.eu/search/projects"
-PAGE_SIZE = 100  # Results per page (max 100 for OpenAIRE)
-REQUEST_DELAY = 0.5  # Seconds between requests (be polite to API)
-MAX_RETRIES = 3  # Max retries per page
-RETRY_BACKOFF = 2.0  # Exponential backoff multiplier
-CHECKPOINT_INTERVAL = 50  # Save checkpoint every N pages
-
-# S3 destination
-S3_BUCKET = "openalex-ingest"
-S3_KEY = "awards/fwf/fwf_projects.parquet"
-
-
-# =============================================================================
-# Progress Tracker
-# =============================================================================
-
-class ProgressTracker:
-    """Track download progress with ETA calculation."""
-
-    def __init__(self, total_pages: int):
-        self.total_pages = total_pages
-        self.completed_pages = 0
-        self.total_projects = 0
-        self.errors = 0
-        self.start_time = time.time()
-        self.last_report_time = time.time()
-
-    def update(self, projects_count: int, is_error: bool = False):
-        """Update progress counters."""
-        self.completed_pages += 1
-        self.total_projects += projects_count
-        if is_error:
-            self.errors += 1
-
-    def get_eta(self) -> str:
-        """Calculate and format ETA."""
-        if self.completed_pages == 0:
-            return "calculating..."
-
-        elapsed = time.time() - self.start_time
-        rate = self.completed_pages / elapsed
-        remaining_pages = self.total_pages - self.completed_pages
-
-        if rate > 0:
-            remaining_seconds = remaining_pages / rate
-            eta = timedelta(seconds=int(remaining_seconds))
-            return str(eta)
-        return "unknown"
-
-    def should_report(self, interval: float = 5.0) -> bool:
-        """Check if we should report progress (every interval seconds)."""
-        if time.time() - self.last_report_time >= interval:
-            self.last_report_time = time.time()
-            return True
-        return False
-
-    def report(self):
-        """Print progress report."""
-        pct = (self.completed_pages / self.total_pages) * 100 if self.total_pages > 0 else 0
-        elapsed = timedelta(seconds=int(time.time() - self.start_time))
-        print(f"[{elapsed}] Page {self.completed_pages}/{self.total_pages} "
-              f"({pct:.1f}%) - {self.total_projects:,} projects - "
-              f"ETA: {self.get_eta()} - Errors: {self.errors}")
-
-
-# =============================================================================
-# API Functions
-# =============================================================================
-
-def fetch_page(page: int, session: requests.Session) -> tuple[list[dict], bool]:
-    """Fetch a single page of FWF projects from OpenAIRE API."""
-    params = {
-        "funder": "FWF",
-        "format": "json",
-        "size": PAGE_SIZE,
-        "page": page
-    }
-
-    for attempt in range(MAX_RETRIES):
+def _get(cursor, tries=6):
+    qs=urllib.parse.urlencode({"fundingShortName":FUNDER,"pageSize":PAGE_SIZE,"cursor":cursor})
+    url=f"{API}?{qs}"
+    for a in range(tries):
         try:
-            response = session.get(OPENAIRE_API_BASE, params=params, timeout=30)
-            response.raise_for_status()
+            raw=urllib.request.urlopen(urllib.request.Request(url,headers={"User-Agent":"OpenAlex-FWF/1.0 (contact@openalex.org)"}),timeout=45).read()
+            return json.loads(raw)
+        except Exception as e:
+            if a==tries-1: raise
+            time.sleep(min(60,2**a))
 
-            data = response.json()
-            results = data.get("response", {}).get("results", {}).get("result", [])
+def _v(x): return x if x not in ("",None) else None
 
-            if not results:
-                return [], False
-
-            projects = []
-            for result in results:
-                try:
-                    project = result.get("metadata", {}).get("oaf:entity", {}).get("oaf:project", {})
-                    if project:
-                        projects.append(extract_project(project))
-                except Exception as e:
-                    print(f"  Warning: Failed to parse project: {e}")
-                    continue
-
-            return projects, False
-
-        except requests.RequestException as e:
-            if attempt < MAX_RETRIES - 1:
-                wait_time = RETRY_BACKOFF ** attempt
-                print(f"  Retry {attempt + 1}/{MAX_RETRIES} for page {page} after {wait_time}s: {e}")
-                time.sleep(wait_time)
-            else:
-                print(f"  ERROR: Failed to fetch page {page} after {MAX_RETRIES} attempts: {e}")
-                return [], True
-
-    return [], True
-
-
-def extract_project(proj: dict) -> dict:
-    """Extract relevant fields from OpenAIRE project data."""
-    def get_value(d, default=None):
-        """Get value from OpenAIRE nested dict format."""
-        if d is None:
-            return default
-        if isinstance(d, dict):
-            return d.get("$", default)
-        return d
-
-    # Extract funding program from fundingtree
-    funding_program = None
-    fundingtree = proj.get("fundingtree", [])
-    if fundingtree and isinstance(fundingtree, list) and len(fundingtree) > 0:
-        fl0 = fundingtree[0].get("funding_level_0", {})
-        funding_program = get_value(fl0.get("name"))
-
-    # Extract DOI from pid
-    doi = None
-    pid = proj.get("pid")
-    if pid and isinstance(pid, dict):
-        if pid.get("@classid") == "doi":
-            doi = get_value(pid)
-
-    # Handle funded_amount - can be dict with "$" or direct value, and may be string or number
-    funded_amount = None
-    fa_raw = proj.get("fundedamount")
-    if fa_raw is not None:
-        if isinstance(fa_raw, dict):
-            fa_raw = fa_raw.get("$")
-        if fa_raw is not None:
-            try:
-                funded_amount = float(fa_raw)
-            except (ValueError, TypeError):
-                funded_amount = None
-
-    # Handle total_cost similarly
-    total_cost = None
-    tc_raw = get_value(proj.get("totalcost"))
-    if tc_raw is not None:
-        try:
-            total_cost = float(tc_raw)
-        except (ValueError, TypeError):
-            total_cost = None
-
+def parse(rec):
+    g=rec.get("granted") or {}
+    fund=(rec.get("fundings") or [])
+    fs=(fund[0].get("fundingStream") or {}) if fund else {}
+    prog=fs.get("id") or fs.get("description")
+    if prog: prog=html.unescape(prog)
+    title=rec.get("title")
+    if title: title=html.unescape(title)
+    kw=rec.get("keywords")
+    kw=html.unescape(kw) if isinstance(kw,str) else (";".join(kw) if isinstance(kw,list) else None)
     return {
-        "project_code": get_value(proj.get("code")),
-        "title": get_value(proj.get("title")),
-        "start_date": get_value(proj.get("startdate")),
-        "end_date": get_value(proj.get("enddate")),
-        "funded_amount": funded_amount,
-        "total_cost": total_cost,
-        "currency": get_value(proj.get("currency")),
-        "keywords": get_value(proj.get("keywords")),
-        "website_url": get_value(proj.get("websiteurl")),
-        "doi": doi,
-        "funding_program": funding_program,
-        "openaire_id": get_value(proj.get("originalId")),
+        "project_code": _v(rec.get("code")),
+        "title": _v(title),
+        "start_date": _v(rec.get("startDate")),
+        "end_date": _v(rec.get("endDate")),
+        "funded_amount": g.get("fundedAmount"),
+        "total_cost": g.get("totalCost"),
+        "currency": _v(g.get("currency")),
+        "keywords": _v(kw),
+        "website_url": _v(rec.get("websiteUrl")),
+        "doi": None,
+        "funding_program": _v(prog),
+        "openaire_id": _v(rec.get("id")),
     }
 
+def download(output_dir: Path, resume=False):
+    ckpt=output_dir/"fwf_cursor.json"; partial=output_dir/"fwf_partial.jsonl"
+    cursor="*"; rows=[]
+    if resume and ckpt.exists():
+        st=json.load(open(ckpt)); cursor=st["cursor"]
+        if partial.exists():
+            rows=[json.loads(l) for l in open(partial,encoding="utf-8")]
+        print(f"[resume] cursor={cursor[:30]} rows={len(rows)}")
+    first=_get("*"); total=first.get("header",{}).get("numFound")
+    print(f"Found {total:,} FWF projects (Graph API, cursor)")
+    pf=open(partial,"a",encoding="utf-8")
+    page=0; t0=time.time()
+    while True:
+        d=_get(cursor)
+        res=d.get("results") or []
+        if not res: break
+        for r in res:
+            rec=parse(r); rows.append(rec); pf.write(json.dumps(rec,ensure_ascii=False)+"\n")
+        pf.flush()
+        nxt=d.get("header",{}).get("nextCursor")
+        page+=1
+        if page%20==0:
+            el=time.time()-t0; print(f"  page {page} | {len(rows):,}/{total:,} | {el:.0f}s",flush=True)
+            json.dump({"cursor":nxt or cursor},open(ckpt,"w"))
+        if not nxt or nxt==cursor: break
+        cursor=nxt; time.sleep(DELAY)
+    pf.close()
+    df=pd.DataFrame(rows).drop_duplicates(subset=["openaire_id"])
+    for c in df.columns:
+        if df[c].dtype==object: df[c]=df[c].astype("string")
+    df["ingested_at"]=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return df
 
-def get_total_count(session: requests.Session) -> int:
-    """Get total number of FWF projects."""
-    params = {
-        "funder": "FWF",
-        "format": "json",
-        "size": 1,
-        "page": 1
-    }
-    response = session.get(OPENAIRE_API_BASE, params=params, timeout=30)
-    response.raise_for_status()
-    data = response.json()
-    total = data.get("response", {}).get("header", {}).get("total", {}).get("$", 0)
-    return int(total)
-
-
-# =============================================================================
-# Checkpoint Functions
-# =============================================================================
-
-def save_checkpoint(output_dir: Path, projects: list[dict], last_page: int):
-    """Save checkpoint with current progress."""
-    checkpoint_path = output_dir / "fwf_checkpoint.json"
-    data_path = output_dir / "fwf_partial.parquet"
-
-    # Save partial data
-    if projects:
-        df = pd.DataFrame(projects)
-        df.to_parquet(data_path, index=False)
-
-    # Save checkpoint metadata
-    checkpoint = {
-        "last_page": last_page,
-        "project_count": len(projects),
-        "timestamp": datetime.now().isoformat()
-    }
-    with open(checkpoint_path, "w") as f:
-        json.dump(checkpoint, f, indent=2)
-
-    print(f"  Checkpoint saved: page {last_page}, {len(projects):,} projects")
-
-
-def load_checkpoint(output_dir: Path) -> tuple[list[dict], int]:
-    """Load checkpoint if it exists."""
-    checkpoint_path = output_dir / "fwf_checkpoint.json"
-    data_path = output_dir / "fwf_partial.parquet"
-
-    if not checkpoint_path.exists() or not data_path.exists():
-        return [], 0
-
-    with open(checkpoint_path) as f:
-        checkpoint = json.load(f)
-
-    df = pd.read_parquet(data_path)
-    projects = df.to_dict(orient="records")
-
-    print(f"  Resumed from checkpoint: page {checkpoint['last_page']}, {len(projects):,} projects")
-    return projects, checkpoint["last_page"]
-
-
-def clear_checkpoint(output_dir: Path):
-    """Remove checkpoint files."""
-    checkpoint_path = output_dir / "fwf_checkpoint.json"
-    data_path = output_dir / "fwf_partial.parquet"
-
-    if checkpoint_path.exists():
-        checkpoint_path.unlink()
-    if data_path.exists():
-        data_path.unlink()
-
-
-# =============================================================================
-# Main Download Function
-# =============================================================================
-
-def download_fwf_projects(output_dir: Path, resume: bool = False) -> pd.DataFrame:
-    """Download all FWF projects from OpenAIRE API."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "OpenAlex-FWF-Downloader/1.0 (contact@openalex.org)"
-    })
-
-    # Get total count
-    print("Fetching total project count...")
-    total_count = get_total_count(session)
-    total_pages = (total_count + PAGE_SIZE - 1) // PAGE_SIZE
-    print(f"Found {total_count:,} FWF projects across {total_pages} pages")
-
-    # Load checkpoint if resuming
-    all_projects = []
-    start_page = 1
-    if resume:
-        all_projects, start_page = load_checkpoint(output_dir)
-        if start_page > 0:
-            start_page += 1  # Start from next page
-
-    if start_page > total_pages:
-        print("All pages already downloaded!")
-        return pd.DataFrame(all_projects)
-
-    # Initialize progress tracker
-    tracker = ProgressTracker(total_pages)
-    tracker.completed_pages = start_page - 1
-    tracker.total_projects = len(all_projects)
-
-    print(f"\nDownloading pages {start_page} to {total_pages}...")
-
-    for page in range(start_page, total_pages + 1):
-        # Fetch page
-        projects, is_error = fetch_page(page, session)
-        all_projects.extend(projects)
-        tracker.update(len(projects), is_error)
-
-        # Report progress
-        if tracker.should_report():
-            tracker.report()
-
-        # Save checkpoint periodically
-        if page % CHECKPOINT_INTERVAL == 0:
-            save_checkpoint(output_dir, all_projects, page)
-
-        # Rate limiting
-        time.sleep(REQUEST_DELAY)
-
-    # Final report
-    tracker.report()
-
-    # Clear checkpoint on success
-    clear_checkpoint(output_dir)
-
-    print(f"\nDownload complete! {len(all_projects):,} projects retrieved.")
-
-    return pd.DataFrame(all_projects)
-
-
-# =============================================================================
-# Upload to S3
-# =============================================================================
-
-def upload_to_s3(local_path: Path, bucket: str, key: str) -> bool:
-    """Upload file to S3 using AWS CLI."""
-    s3_uri = f"s3://{bucket}/{key}"
-    print(f"\nUploading to {s3_uri}...")
-
+def check_no_shrink(df, allow_shrink):
+    """§1.4: refuse to upload a parquet smaller than the one currently in S3 unless --allow-shrink."""
     try:
-        result = subprocess.run(
-            ["aws", "s3", "cp", str(local_path), s3_uri],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        print(f"Upload complete: {s3_uri}")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Upload failed: {e.stderr}")
-        return False
-
-
-# =============================================================================
-# Main
-# =============================================================================
+        import boto3
+        s3 = boto3.client("s3")
+        s3.head_object(Bucket=S3_BUCKET, Key=S3_KEY)
+        prev = pd.read_parquet(f"s3://{S3_BUCKET}/{S3_KEY}")
+        if len(df) < len(prev) and not allow_shrink:
+            raise SystemExit(
+                f"§1.4 shrink-check FAILED: new {len(df):,} < existing {len(prev):,}. "
+                f"Pass --allow-shrink only if this shrink is real."
+            )
+        print(f"  §1.4 shrink-check OK (new {len(df):,} >= existing {len(prev):,})")
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"  §1.4 shrink-check: no prior object / not comparable ({type(e).__name__})")
 
 def main():
-    parser = argparse.ArgumentParser(description="Download FWF projects from OpenAIRE to S3")
-    parser.add_argument("--output-dir", type=Path, default=Path("/tmp/fwf_download"),
-                        help="Directory for output files")
-    parser.add_argument("--resume", action="store_true",
-                        help="Resume from checkpoint if available")
-    parser.add_argument("--skip-upload", action="store_true",
-                        help="Skip S3 upload (for testing)")
-    args = parser.parse_args()
+    ap=argparse.ArgumentParser(description="FWF (OpenAIRE Graph API) -> S3")
+    ap.add_argument("--output-dir",type=Path,default=Path("/tmp/fwf_download"))
+    ap.add_argument("--skip-upload",action="store_true"); ap.add_argument("--resume",action="store_true")
+    ap.add_argument("--allow-shrink",action="store_true",help="§1.4 escape hatch")
+    a=ap.parse_args(); a.output_dir.mkdir(parents=True,exist_ok=True)
+    print("="*60+f"\nFWF (Fundação para a Ciência e a Tecnologia) — OpenAIRE Graph API\n"+"="*60)
+    df=download(a.output_dir,resume=a.resume)
+    out=a.output_dir/"fwf_projects.parquet"; df.to_parquet(out,index=False)
+    print(f"\nSaved {out.name}: {len(df):,} rows, {out.stat().st_size/1e6:.0f} MB")
+    nn=lambda c: 100*df[c].notna().mean()
+    amtcov=100*(pd.to_numeric(df['funded_amount'],errors='coerce')>0).mean()
+    print(f"coverage: code={nn('project_code'):.1f}% title={nn('title'):.1f}% amount={amtcov:.1f}% start={nn('start_date'):.1f}%")
+    if not a.skip_upload:
+        check_no_shrink(df, a.allow_shrink)
+        import subprocess,shutil
+        aws=shutil.which("aws")
+        if aws: subprocess.run([aws,"s3","cp",str(out),f"s3://{S3_BUCKET}/{S3_KEY}"],check=False)
+        else: print(f"  [manual] aws s3 cp {out} s3://{S3_BUCKET}/{S3_KEY}")
+    print("\nNext: notebooks/awards/CreateFWFAwards.ipynb in Databricks")
 
-    print("=" * 60)
-    print("FWF (Austrian Science Fund) Data Download")
-    print("=" * 60)
-    print(f"Source: OpenAIRE API")
-    print(f"Output: s3://{S3_BUCKET}/{S3_KEY}")
-    print(f"Local dir: {args.output_dir}")
-    print("=" * 60)
-
-    # Download projects
-    df = download_fwf_projects(args.output_dir, resume=args.resume)
-
-    if df.empty:
-        print("No projects downloaded!")
-        return 1
-
-    # Save to parquet
-    output_path = args.output_dir / "fwf_projects.parquet"
-    df.to_parquet(output_path, index=False)
-    print(f"\nSaved to {output_path}")
-    print(f"  Rows: {len(df):,}")
-    print(f"  Columns: {list(df.columns)}")
-
-    # Show sample
-    print("\nSample data:")
-    print(df[["project_code", "title", "funded_amount", "start_date"]].head(3).to_string())
-
-    # Summary stats
-    print("\n" + "=" * 60)
-    print("Summary Statistics")
-    print("=" * 60)
-    print(f"Total projects: {len(df):,}")
-    print(f"Projects with funding amount: {df['funded_amount'].notna().sum():,}")
-    if df['funded_amount'].notna().any():
-        total_funding = df['funded_amount'].sum()
-        print(f"Total funding: EUR {total_funding:,.0f}")
-    print(f"Date range: {df['start_date'].min()} to {df['start_date'].max()}")
-
-    # Upload to S3
-    if not args.skip_upload:
-        if upload_to_s3(output_path, S3_BUCKET, S3_KEY):
-            print("\nSuccess! Data is ready for Databricks ingestion.")
-            return 0
-        else:
-            print("\nUpload failed. Data saved locally.")
-            return 1
-    else:
-        print("\nSkipped S3 upload (--skip-upload)")
-        return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+if __name__=="__main__": main()
