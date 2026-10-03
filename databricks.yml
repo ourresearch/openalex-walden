@@ -13,6 +13,7 @@ permissions:
     level: CAN_MANAGE
 
 include:
+  - jobs/autocomplete_edge.yaml
   - jobs/ror_funder_proposals.yaml
   - jobs/authors.yaml
   - jobs/meta_tags_daily.yaml
