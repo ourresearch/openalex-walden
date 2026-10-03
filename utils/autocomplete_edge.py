@@ -531,9 +531,10 @@ def chunked(sql, table, prefix, log=print, chunk_bytes=150_000_000):
         yield from part
 
 
-def verify_build(typ, sql, kv, copies, nt, prefix, keys_total, put, log, rounds=5):
+def verify_build(typ, sql, kv, copies, nt, prefix, keys_total, put, log, rounds=5, rewrite_all=None):
     """Every key of a new build must be listed before its flip. Listing is eventually consistent, so a key missing
-    from the list is re-listed by its exact name; only keys still absent are written again; then recheck."""
+    from the list is re-listed by its exact name; only keys still absent are written again; then recheck. A resumed
+    build with many keys missing (its run stopped mid-write) is written again in full once (rewrite_all)."""
     import time
     expected = {p for (p,) in sql(f"SELECT p FROM {nt}")}
     firsts = sorted({p[0] for p in expected})
@@ -544,7 +545,13 @@ def verify_build(typ, sql, kv, copies, nt, prefix, keys_total, put, log, rounds=
         if not missing:
             return len(listed)
         if len(missing) > max(1000, keys_total // 100):
-            raise RuntimeError(f"{typ} {prefix}: {len(missing):,} keys missing after the write; not flipping")
+            if rewrite_all is None:
+                raise RuntimeError(f"{typ} {prefix}: {len(missing):,} keys missing after the write; not flipping")
+            log(f"{typ}: {len(missing):,} keys missing; writing the build again in full")
+            rewrite_all()
+            rewrite_all = None
+            time.sleep(PROPAGATION_WAIT_S)
+            continue
         absent = [p for p in missing if prefix + p not in kv.names(prefix + p)]
         if absent:
             log(f"{typ}: {len(absent)} keys absent by exact listing, writing them again: {absent[:5]}")
@@ -627,7 +634,11 @@ def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_
             written = run_parallel(put, batches(chunked(sql, nt, f"{t}:{b}:", log)), log=log, label=f"{typ} write")
             log(f"{typ}: wrote {written:,} keys of build {b}; waiting {PROPAGATION_WAIT_S} s for propagation")
             time.sleep(PROPAGATION_WAIT_S)
-        listed = verify_build(typ, sql, kv, copies, nt, f"{t}:{b}:", keys_total, put, log)
+        def rewrite_all():
+            nonlocal written
+            written += run_parallel(put, batches(chunked(sql, nt, f"{t}:{b}:", log)), log=log, label=f"{typ} rewrite")
+        listed = verify_build(typ, sql, kv, copies, nt, f"{t}:{b}:", keys_total, put, log,
+                              rewrite_all=rewrite_all if resume else None)
         sample = sql(f"SELECT p FROM {nt} ORDER BY rand() LIMIT 100")
         bad = [p for (p,) in sample if kv.get(f"{t}:{b}:{p}") is None]
         if bad:
