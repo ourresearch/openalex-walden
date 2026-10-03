@@ -490,6 +490,34 @@ def run_parallel(fn, items, threads=16, log=print, label="", every=50):
     return n_keys
 
 
+def chunked(sql, table, prefix, log=print, chunk_bytes=150_000_000):
+    """(key, value) pairs of a (p, v, bytes) table, longest p first (children before parents), read as bounded chunks:
+    one length at a time, split by hash so a chunk holds ~chunk_bytes; the next chunk is fetched while the caller writes
+    this one. (#1529: streaming one globally sorted result through toLocalIterator ran ~280 keys/s.)"""
+    import queue, threading
+    plan = []
+    for L, b in sql(f"SELECT length(p) AS L, sum(bytes) FROM {table} GROUP BY 1 ORDER BY 1 DESC"):
+        parts = max(1, int((b or 0) // chunk_bytes) + 1)
+        plan += [(L, parts, i) for i in range(parts)]
+    q = queue.Queue(maxsize=2)
+
+    def produce():
+        try:
+            for L, parts, i in plan:
+                q.put(sql(f"SELECT concat('{prefix}', p), v FROM {table} WHERE length(p) = {L} AND pmod(xxhash64(p), {parts}) = {i}"))
+            q.put(None)
+        except Exception as e:  # surface in the consumer
+            q.put(e)
+    threading.Thread(target=produce, daemon=True).start()
+    while True:
+        part = q.get()
+        if part is None:
+            return
+        if isinstance(part, Exception):
+            raise part
+        yield from part
+
+
 def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_id=""):
     """Copy nodes_<typ> into Workers KV (and the copies) by the release rule of plan 2.1:
       - no live build, a forced rebuild, or a delta over REBUILD_FRACTION of the keys: write a NEW build under its own
@@ -525,9 +553,9 @@ def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_
     written = removed = 0
     if mode == "delta":
         b = live
-        q = (f"""SELECT concat('{t}:{b}:', n.p), n.v FROM {nt} n LEFT JOIN {SCHEMA}.loaded l
-                 ON l.typ = '{typ}' AND l.build = '{b}' AND l.p = n.p WHERE l.h IS NULL OR l.h <> n.h ORDER BY length(n.p) DESC""")
-        written = run_parallel(put, batches(rows(q)), log=log, label=f"{typ} write")
+        sql(f"""CREATE OR REPLACE TABLE {stg(typ, 'delta')} AS SELECT n.p, n.v, n.bytes FROM {nt} n LEFT JOIN {SCHEMA}.loaded l
+                ON l.typ = '{typ}' AND l.build = '{b}' AND l.p = n.p WHERE l.h IS NULL OR l.h <> n.h""")
+        written = run_parallel(put, batches(chunked(sql, stg(typ, 'delta'), f"{t}:{b}:", log)), log=log, label=f"{typ} write")
         gone = rows(f"""SELECT concat('{t}:{b}:', l.p) FROM {SCHEMA}.loaded l LEFT ANTI JOIN {nt} n ON n.p = l.p
                         WHERE l.typ = '{typ}' AND l.build = '{b}'""")
         removed = run_parallel(drop, batches((k, "") for (k,) in gone), log=log, label=f"{typ} delete")
@@ -537,8 +565,7 @@ def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_
         prev = sql(f"SELECT max(CAST(build AS INT)) FROM {SCHEMA}.builds WHERE typ = '{typ}'")[0][0]
         b = str((prev or 0) + 1)
         sql(f"INSERT INTO {SCHEMA}.builds VALUES ('{typ}', '{b}', 'writing', {keys_total}, {src_version}, current_timestamp(), NULL, NULL)")
-        written = run_parallel(put, batches(rows(f"SELECT concat('{t}:{b}:', p), v FROM {nt} ORDER BY length(p) DESC")),
-                               log=log, label=f"{typ} write")
+        written = run_parallel(put, batches(chunked(sql, nt, f"{t}:{b}:", log)), log=log, label=f"{typ} write")
         log(f"{typ}: wrote {written:,} keys of build {b}; waiting {PROPAGATION_WAIT_S} s for propagation")
         time.sleep(PROPAGATION_WAIT_S)
         listed = kv.count_prefix(f"{t}:{b}:")
