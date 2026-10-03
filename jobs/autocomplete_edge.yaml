@@ -24,7 +24,8 @@ resources:
         - name: force_rebuild
           default: "false"
         - name: copies
-          default: ""
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
       tasks:
         - task_key: refresh
           notebook_task:
@@ -68,7 +69,8 @@ resources:
         - name: force_rebuild
           default: "false"
         - name: copies
-          default: ""
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
       tasks:
         - task_key: refresh
           notebook_task:
@@ -112,7 +114,8 @@ resources:
         - name: force_rebuild
           default: "false"
         - name: copies
-          default: ""
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
       tasks:
         - task_key: refresh
           notebook_task:
@@ -156,7 +159,8 @@ resources:
         - name: force_rebuild
           default: "false"
         - name: copies
-          default: ""
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
       tasks:
         - task_key: refresh
           notebook_task:
@@ -200,7 +204,8 @@ resources:
         - name: force_rebuild
           default: "false"
         - name: copies
-          default: ""
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
       tasks:
         - task_key: refresh
           notebook_task:
@@ -244,7 +249,8 @@ resources:
         - name: force_rebuild
           default: "false"
         - name: copies
-          default: ""
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
       tasks:
         - task_key: refresh
           notebook_task:
@@ -288,7 +294,8 @@ resources:
         - name: force_rebuild
           default: "false"
         - name: copies
-          default: ""
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
       tasks:
         - task_key: refresh
           notebook_task:
@@ -332,7 +339,8 @@ resources:
         - name: force_rebuild
           default: "false"
         - name: copies
-          default: ""
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
       tasks:
         - task_key: refresh
           notebook_task:
@@ -376,7 +384,8 @@ resources:
         - name: force_rebuild
           default: "false"
         - name: copies
-          default: ""
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
       tasks:
         - task_key: refresh
           notebook_task:
