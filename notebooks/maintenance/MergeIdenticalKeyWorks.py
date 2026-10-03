@@ -58,6 +58,8 @@
 # MAGIC `winner_junk` (the Crossref winner has no title or is typed paratext: econjournals' 10.32479 stubs, 791 pairs carrying
 # MAGIC 74 % of wave 2's citations on 2026-10-03; the feed side holds the real metadata, so a merge would bury it),
 # MAGIC `winner_preprint` (the twin is an SSRN-style preprint record; the published side must survive, charter policy),
+# MAGIC `title_type_differs` (a title twin whose two works carry different types: a book or chapter against an article with a
+# MAGIC generic title was wrong in 5 of 15 sampled on 2026-10-03; same-type title twins were 25/25 the same article),
 # MAGIC `junk_type` on the title twin, and the mechanical holds. Keys differ (translated titles), so execute re-keys the
 # MAGIC loser's record keys onto the winner like exact_signature; `ta` = 'twin:<winner id>'.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
@@ -539,6 +541,7 @@ FEED_TWIN_HOLD = """CASE WHEN r.default_host THEN 'default_oai_host'
                 WHEN NOT COALESCE(lm.repo_only, FALSE) THEN 'loser_mixed'
                 WHEN r.winner_no_title OR r.ta_type = 'paratext' THEN 'winner_junk'
                 WHEN r.ta_type = 'preprint' THEN 'winner_preprint'
+                WHEN r.twin = 'title' AND r.ta_type <> r.tb_type THEN 'title_type_differs'
                 WHEN r.twin = 'title' AND (r.ta_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')
                                            OR r.tb_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')) THEN 'junk_type'
                 WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
