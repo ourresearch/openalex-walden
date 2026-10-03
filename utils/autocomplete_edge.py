@@ -530,7 +530,7 @@ def verify_copies(sql, kv, copies, log=print):
     import json
     live = sql(f"""SELECT b.typ, b.build, count(l.p) FROM {SCHEMA}.builds b JOIN {SCHEMA}.loaded l
                    ON l.typ = b.typ AND l.build = b.build WHERE b.state = 'live' GROUP BY b.typ, b.build""")
-    expect = {f"{TYPES[typ][0]}:{build}:": n for typ, build, n in live}
+    expect = {f"{TYPES[typ][0]}:{build}:": int(n) for typ, build, n in live}
     q = "&".join("prefix=" + p for p in expect)
     out = {}
     for region in copies.regions:
