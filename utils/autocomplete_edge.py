@@ -421,15 +421,22 @@ class KV:
         r = self.s.get(self.base + "/values/" + quote(key, safe=""), timeout=60)
         return r.text if r.status_code == 200 else None
 
-    def count_prefix(self, prefix):
-        n, cursor = 0, None
+    def names(self, prefix):
+        """every key name under prefix (list is eventually consistent: a fresh key can be missing for a while)"""
+        out, cursor = [], None
         while True:
             params = {"prefix": prefix, "limit": 1000, **({"cursor": cursor} if cursor else {})}
             d = self._call("GET", "/keys", params=params).json()
-            n += len(d["result"])
+            out += [x["name"] for x in d["result"]]
             cursor = (d.get("result_info") or {}).get("cursor")
             if not cursor:
-                return n
+                return out
+
+    def names_parallel(self, prefix, firsts, threads=32):
+        """names under prefix, one listing per first character of the rest (in parallel); firsts must cover every key"""
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(threads) as ex:
+            return [n for part in ex.map(lambda c: self.names(prefix + c), firsts) for n in part]
 
 
 class Copies:
@@ -518,6 +525,33 @@ def chunked(sql, table, prefix, log=print, chunk_bytes=150_000_000):
         yield from part
 
 
+def verify_build(typ, sql, kv, copies, nt, prefix, keys_total, put, log, rounds=5):
+    """Every key of a new build must be listed before its flip. Listing is eventually consistent, so a key missing
+    from the list is re-listed by its exact name; only keys still absent are written again; then recheck."""
+    import time
+    expected = {p for (p,) in sql(f"SELECT p FROM {nt}")}
+    firsts = sorted({p[0] for p in expected})
+    for r in range(rounds):
+        listed = {n[len(prefix):] for n in kv.names_parallel(prefix, firsts)}
+        missing = expected - listed
+        log(f"{typ}: listed {len(listed & expected):,} of {keys_total:,} keys (round {r + 1}), {len(missing):,} missing")
+        if not missing:
+            return len(listed)
+        if len(missing) > max(1000, keys_total // 100):
+            raise RuntimeError(f"{typ} {prefix}: {len(missing):,} keys missing after the write; not flipping")
+        absent = [p for p in missing if prefix + p not in kv.names(prefix + p)]
+        if absent:
+            log(f"{typ}: {len(absent)} keys absent by exact listing, writing them again: {absent[:5]}")
+            vals = {p: v for p, v in sql(f"SELECT p, v FROM {nt} WHERE p IN ({','.join(_lit(p) for p in absent)})")}
+            put([(prefix + p, vals[p]) for p in absent if p in vals])
+        time.sleep(60)
+    raise RuntimeError(f"{typ} {prefix}: keys still missing after {rounds} rounds; not flipping")
+
+
+def _lit(s):
+    return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
 def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_id=""):
     """Copy nodes_<typ> into Workers KV (and the copies) by the release rule of plan 2.1:
       - no live build, a forced rebuild, or a delta over REBUILD_FRACTION of the keys: write a NEW build under its own
@@ -536,15 +570,30 @@ def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_
     live = live[0][0] if live else None
     put = lambda bt: (kv.put_bulk(bt), copies.load([list(x) for x in bt]), len(bt))[2]
     drop = lambda bt: (kv.delete_bulk([k for k, _ in bt]), copies.load([[k, None] for k, _ in bt]), len(bt))[2]
-    # builds retired by an earlier flip: delete their keys now (readers moved over at least a run ago)
     deleted = 0
+    # a build a failed run left half-written (never live, never read) is resumed when nodes_<typ> has not been rebuilt
+    # since it started (the verify step writes whatever is missing); any other is deleted
+    built_at = sql(f"SELECT max(built_at) FROM {nt}")[0][0]
+    writing = sql(f"SELECT build, created_at FROM {SCHEMA}.builds WHERE typ = '{typ}' AND state = 'writing' ORDER BY created_at DESC")
+    resume = writing[0][0] if writing and not force_rebuild and writing[0][1] > built_at else None
+    for (old, _) in writing:
+        if old == resume:
+            continue
+        firsts = [c for (c,) in sql(f"SELECT DISTINCT substr(p, 1, 1) FROM {nt}")]
+        ks = kv.names_parallel(f"{t}:{old}:", firsts)
+        deleted += run_parallel(drop, batches((k, "") for k in ks), log=log, label=f"{typ} delete abandoned build {old}")
+        sql(f"UPDATE {SCHEMA}.builds SET state = 'abandoned', deleted_at = current_timestamp() WHERE typ = '{typ}' AND build = '{old}'")
+        log(f"{typ}: abandoned build {old}: deleted {len(ks):,} keys")
+    # builds retired by an earlier flip: delete their keys now (readers moved over at least a run ago)
     for (old,) in sql(f"SELECT build FROM {SCHEMA}.builds WHERE typ = '{typ}' AND state = 'retiring'"):
         ks = rows(f"SELECT concat('{t}:{old}:', p) FROM {SCHEMA}.loaded WHERE typ = '{typ}' AND build = '{old}'")
         deleted += run_parallel(drop, batches((k, "") for (k,) in ks), log=log, label=f"{typ} delete build {old}")
         sql(f"DELETE FROM {SCHEMA}.loaded WHERE typ = '{typ}' AND build = '{old}'")
         sql(f"UPDATE {SCHEMA}.builds SET state = 'retired', deleted_at = current_timestamp() WHERE typ = '{typ}' AND build = '{old}'")
     mode = "rebuild"
-    if live and not force_rebuild:
+    if resume:
+        mode = "resume"
+    elif live and not force_rebuild:
         changed = sql(f"""SELECT count(*) FROM {nt} n LEFT JOIN {SCHEMA}.loaded l ON l.typ = '{typ}' AND l.build = '{live}' AND l.p = n.p
                           WHERE l.h IS NULL OR l.h <> n.h""")[0][0]
         if changed <= REBUILD_FRACTION * max(keys_total, 1):
@@ -562,15 +611,17 @@ def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_
         sql(f"DELETE FROM {SCHEMA}.loaded WHERE typ = '{typ}' AND build = '{b}'")
         sql(f"INSERT INTO {SCHEMA}.loaded SELECT '{typ}', '{b}', p, h FROM {nt}")
     else:
-        prev = sql(f"SELECT max(CAST(build AS INT)) FROM {SCHEMA}.builds WHERE typ = '{typ}'")[0][0]
-        b = str((prev or 0) + 1)
-        sql(f"INSERT INTO {SCHEMA}.builds VALUES ('{typ}', '{b}', 'writing', {keys_total}, {src_version}, current_timestamp(), NULL, NULL)")
-        written = run_parallel(put, batches(chunked(sql, nt, f"{t}:{b}:", log)), log=log, label=f"{typ} write")
-        log(f"{typ}: wrote {written:,} keys of build {b}; waiting {PROPAGATION_WAIT_S} s for propagation")
-        time.sleep(PROPAGATION_WAIT_S)
-        listed = kv.count_prefix(f"{t}:{b}:")
-        if listed != keys_total:
-            raise RuntimeError(f"{typ} build {b}: listed {listed:,} keys, expected {keys_total:,}; not flipping")
+        if resume:
+            b = resume
+            log(f"{typ}: resuming build {b} (written by a run that stopped before its flip)")
+        else:
+            prev = sql(f"SELECT max(CAST(build AS INT)) FROM {SCHEMA}.builds WHERE typ = '{typ}'")[0][0]
+            b = str((prev or 0) + 1)
+            sql(f"INSERT INTO {SCHEMA}.builds VALUES ('{typ}', '{b}', 'writing', {keys_total}, {src_version}, current_timestamp(), NULL, NULL)")
+            written = run_parallel(put, batches(chunked(sql, nt, f"{t}:{b}:", log)), log=log, label=f"{typ} write")
+            log(f"{typ}: wrote {written:,} keys of build {b}; waiting {PROPAGATION_WAIT_S} s for propagation")
+            time.sleep(PROPAGATION_WAIT_S)
+        listed = verify_build(typ, sql, kv, copies, nt, f"{t}:{b}:", keys_total, put, log)
         sample = sql(f"SELECT p FROM {nt} ORDER BY rand() LIMIT 100")
         bad = [p for (p,) in sample if kv.get(f"{t}:{b}:{p}") is None]
         if bad:
