@@ -33,7 +33,7 @@ sys.path.insert(0, REPO_ROOT)
 from utils import autocomplete_edge as ace  # noqa: E402
 
 dbutils.widgets.text("typ", "keywords")
-dbutils.widgets.text("steps", "build,load")          # build, load, or both
+dbutils.widgets.text("steps", "build,load")          # build, load, copy (backfill a newly placed copy region)
 dbutils.widgets.text("force_rebuild", "false")
 dbutils.widgets.text("copies", "")                   # regions whose copy gets every write (e.g. "sin,hkg,nrt,mel")
 TYP = dbutils.widgets.get("typ").strip()
@@ -89,3 +89,10 @@ if "load" in STEPS:
     ace.record_run(sql, run)
     log(f"{TYP}: {run['mode']} build {run['build']}: wrote {run['keys_written']:,}, deleted {run['keys_deleted']:,}, "
         f"~${run['est_usd']}, {run['minutes']} min")
+
+# COMMAND ----------
+
+if "copy" in STEPS:
+    assert REGIONS, "copy needs copies=<regions>"
+    copies = ace.Copies(dbutils.secrets.get(scope="autocomplete-edge", key="admin_key"), REGIONS)
+    ace.backfill_copies(TYP, sql, copies, log=log)

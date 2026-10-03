@@ -642,6 +642,21 @@ def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_
                 do_rows=ops * len(copies.regions), status="ok", message="", job_run_id=job_run_id)
 
 
+def backfill_copies(typ, sql, copies, log=print, threads=32):
+    """write a type's live build (every key, and its version pointer) into the copies; for a newly placed region"""
+    t, _ = TYPES[typ]
+    live = sql(f"SELECT build FROM {SCHEMA}.builds WHERE typ = '{typ}' AND state = 'live' ORDER BY created_at DESC LIMIT 1")
+    if not live:
+        raise RuntimeError(f"{typ}: no live build to copy")
+    b = live[0][0]
+    n = run_parallel(lambda bt: copies.load([list(x) for x in bt]) // max(1, len(copies.regions)),
+                     batches(chunked(sql, nodes_table(typ), f"{t}:{b}:", log), max_n=5000), threads=threads,
+                     log=log, label=f"{typ} copies {','.join(copies.regions)}")
+    copies.load([[f"ver:{t}", b]])
+    log(f"{typ}: copied build {b} ({n:,} keys) to {copies.regions}")
+    return n
+
+
 def record_run(sql, run):
     cols = ["typ", "build", "mode", "src_table", "src_version", "src_committed_at", "started_at", "finished_at", "minutes",
             "keys_total", "keys_written", "keys_deleted", "bytes_written", "est_usd", "do_rows", "status", "message", "job_run_id"]
