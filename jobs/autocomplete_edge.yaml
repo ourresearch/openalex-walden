@@ -409,3 +409,32 @@ resources:
         - environment_key: Default
           spec:
             environment_version: "4"
+    Autocomplete_Edge_Freshness:
+      name: Autocomplete Edge freshness
+      description: Fails (and emails) when a type's source table changed over 60 minutes ago and the edge has not loaded it (oxjob #1529).
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        # 14:00 UTC: after the last source of the night (openalex.authors.openalex_authors, ~12:30 UTC) plus its refresh
+        quartz_cron_expression: 0 0 14 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: check
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/CheckAutocompleteEdgeFreshness
+            source: GIT
+          environment_key: Default
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
