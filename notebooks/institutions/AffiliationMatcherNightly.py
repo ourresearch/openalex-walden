@@ -206,7 +206,9 @@ else:
     log(f"dense names: {len(names):,} ({'cached' if name_emb is not None else 'embedding this run'})")
 
 ES_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
-jev_client = sd.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=JEV_THREADS, rps=JEV_RPS) if USE_JEV else None
+jev_client = sd.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=JEV_THREADS, rps=JEV_RPS,
+                          broker_token=sd.broker_token(dbutils),  # shared Jev broker (#1523)
+                          job="affiliation_sweep" if SWEEP_IDS_TABLE else "affiliation_nightly") if USE_JEV else None
 
 spark.sql(f"""
 CREATE TABLE IF NOT EXISTS {TARGET} (

@@ -573,9 +573,16 @@ def _backoff(attempt: int) -> float:
 class JevClient:
     """Native TypeSafe API. One request per item. Retries 429/5xx/transport with jittered backoff."""
 
-    def __init__(self, api_key: str, concurrency: int = 16, timeout: float = 30.0, max_attempts: int = 6, model: str = JEV_MODEL):
+    def __init__(self, api_key: str, concurrency: int = 16, timeout: float = 30.0, max_attempts: int = 6, model: str = JEV_MODEL,
+                 broker_token: str | None = None, rps: float = 60.0):
         if not api_key:
             raise RuntimeError("Jev api_key missing")
+        # With a broker token: paced to a lease from the shared Jev broker, as study_design.JevClient (#1523); without, unpaced.
+        self._pacer = self.lease = None
+        if broker_token:
+            from utils.study_design import BrokerLease, Pacer
+            self._pacer = Pacer(rps)
+            self.lease = BrokerLease(broker_token, self._pacer, rps, "nightly", "walden", "qa_monitor")
         self._headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         self._concurrency = concurrency
         self._timeout = timeout
@@ -604,6 +611,8 @@ class JevClient:
                     self.n_fail += 1
                 return {"ok": False, "status": 402, "error": self.out_of_credit, "attempts": attempt}
             attempt += 1
+            if self._pacer:
+                self._pacer.wait()
             t0 = time.perf_counter()
             try:
                 resp = self._session().post(JEV_URL, headers=self._headers, json=body, timeout=self._timeout)
@@ -614,8 +623,12 @@ class JevClient:
                     with self._lock:
                         self.total_tokens += tok
                         self.n_ok += 1
+                    if self.lease:
+                        self.lease.record(200, tok)
                     return {"ok": True, "answers": data.get("answers", {}), "input_tokens": tok,
                             "latency_ms": round(ms), "attempts": attempt}
+                if self.lease:
+                    self.lease.record(resp.status_code, 0)
                 if resp.status_code in RETRYABLE and attempt < self._max_attempts:
                     ra = resp.headers.get("retry-after")
                     time.sleep(float(ra) if ra else _backoff(attempt))

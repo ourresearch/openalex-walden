@@ -52,6 +52,7 @@ from pyspark.sql.types import (BooleanType, DateType, DoubleType, IntegerType, L
 REPO_ROOT = os.path.abspath(os.path.join(os.getcwd(), "..", ".."))
 sys.path.insert(0, REPO_ROOT)
 from utils import jev_quality as jq  # noqa: E402
+from utils import study_design as sd  # noqa: E402  (broker_token, BrokerLease: the shared Jev broker, #1523)
 
 # COMMAND ----------
 
@@ -287,7 +288,8 @@ SAMPLE_SCHEMA = StructType([
     StructField("jev_cost_usd", DoubleType(), True),
 ])
 
-jev = jq.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=JEV_CONCURRENCY)
+jev = jq.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=JEV_CONCURRENCY,
+                   broker_token=sd.broker_token(dbutils))  # shared Jev broker (#1523)
 todo = [r.asDict() for r in spark.sql(f"""
     SELECT i.stratum, i.dimension, i.item_id, i.source_night, i.meta, i.state
     FROM {ITEMS} i

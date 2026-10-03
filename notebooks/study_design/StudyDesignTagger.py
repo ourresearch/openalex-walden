@@ -131,7 +131,8 @@ if DRY_RUN:
 
 # COMMAND ----------
 
-client = sd.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=CONCURRENCY, rps=RPS)
+client = sd.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=CONCURRENCY, rps=RPS,
+                      broker_token=sd.broker_token(dbutils), job="study_design")  # shared Jev broker (#1523)
 run_t0 = time.time()
 tot_tagged = tot_failed = tot_queued = 0
 

@@ -82,7 +82,8 @@ if spark.catalog.tableExists(SENSES) and spark.catalog.tableExists(WORK_SENSES) 
     for h in opts:
         opts[h].sort(key=lambda r: int(r.opt[1:]))
     client = sd.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=int(dbutils.widgets.get("jev_threads")),
-                          rps=float(dbutils.widgets.get("jev_rps")))
+                          rps=float(dbutils.widgets.get("jev_rps")),
+                          broker_token=sd.broker_token(dbutils), job="keyword_senses")  # shared Jev broker (#1523)
 
     def classify(r):
         o = opts[r.heading]
