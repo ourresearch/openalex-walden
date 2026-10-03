@@ -522,6 +522,31 @@ class Copies:
         return len(rows) * len(self.regions)
 
 
+def verify_copies(sql, kv, copies, log=print):
+    """Count each region's rows for every type's live build against the build's key count, and set KV copyok:<region>
+    to "1" (complete) or "0". The Worker races only regions marked "1" (src/copy.js copyFor): a copy missing keys
+    would answer "absent" for them and win the race (a Worker deploy during a load left 5,835 front keys missing,
+    2026-10-03). Returns {region: [mismatches]}."""
+    import json
+    live = sql(f"""SELECT b.typ, b.build, count(l.p) FROM {SCHEMA}.builds b JOIN {SCHEMA}.loaded l
+                   ON l.typ = b.typ AND l.build = b.build WHERE b.state = 'live' GROUP BY b.typ, b.build""")
+    expect = {f"{TYPES[typ][0]}:{build}:": n for typ, build, n in live}
+    q = "&".join("prefix=" + p for p in expect)
+    out = {}
+    for region in copies.regions:
+        r = copies.s.get(f"{copies.worker}/admin/copy-stats?region={region}&{q}", timeout=600)
+        r.raise_for_status()
+        got = {}
+        for o in r.json()["out"]:
+            for p, n in o["stats"].get("by", {}).items():
+                got[p] = got.get(p, 0) + n
+        bad = [(p, got.get(p, 0), n) for p, n in expect.items() if got.get(p, 0) != n]
+        kv.put(f"copyok:{region}", "0" if bad else "1")
+        log(f"copy {region}: {'complete' if not bad else 'INCOMPLETE ' + json.dumps(bad)}")
+        out[region] = bad
+    return out
+
+
 def batches(rows, max_n=10000, max_bytes=40_000_000):
     """group (key, value) pairs into KV bulk requests: <= 10,000 pairs and well under the 100 MB body limit"""
     cur, size = [], 0

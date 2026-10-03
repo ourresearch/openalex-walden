@@ -89,6 +89,8 @@ if "load" in STEPS:
     ace.record_run(sql, run)
     log(f"{TYP}: {run['mode']} build {run['build']}: wrote {run['keys_written']:,}, deleted {run['keys_deleted']:,}, "
         f"~${run['est_usd']}, {run['minutes']} min")
+    if copies.regions:
+        ace.verify_copies(sql, kv, copies, log=log)   # sets copyok:<region>; an incomplete copy is not raced
 
 # COMMAND ----------
 
@@ -96,3 +98,4 @@ if "copy" in STEPS:
     assert REGIONS, "copy needs copies=<regions>"
     copies = ace.Copies(dbutils.secrets.get(scope="autocomplete-edge", key="admin_key"), REGIONS)
     ace.backfill_copies(TYP, sql, copies, log=log)
+    ace.verify_copies(sql, ace.KV(dbutils.secrets.get(scope="autocomplete-edge", key="kv_api_token")), copies, log=log)
