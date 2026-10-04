@@ -20,6 +20,7 @@ resources:
             base_parameters:
               lookback_days: "30"
               url_limit: "2000000"
+              host_batch_cap: "3000"
               source_filter: "pdf_only"
               # TEMP: skip the ~900K backfill-reparse PDF backlog; only harvest
               # PDFs for works taxicab actually scraped (live pipeline). Drained
@@ -62,6 +63,8 @@ resources:
           default: "30"
         - name: url_limit
           default: "2000000"
+        - name: host_batch_cap
+          default: "3000"
         - name: source_filter
           default: "pdf_only"
         - name: only_scrape_new
