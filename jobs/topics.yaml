@@ -2,114 +2,86 @@ resources:
   jobs:
     Topics:
       name: Topics
+      description: |
+        Topics for new works (oxjob #1531), run by Walden End 2 End (task Topics, after Works_Base, before Author_Matching).
+        Three tasks: topics_create_input (queue = works in openalex_works_base with a title or abstract and no row in
+        openalex.works.work_topics_v2, newest first, at most max_works), topics_score_modal (the queue on Modal, app
+        openalex-topics-nightly: the #1485 student q8b_2m, vLLM FP8, at most 8 H100s, via a bearer-token endpoint; raw top-10
+        scores into the append-only ledger work_topics_v2_raw), topics_merge_v2 (checks, then INSERT of new work_ids only into
+        work_topics_v2; a failed check appends nothing). CreateWorksEnriched merges work_topics_v2 into openalex_works the same
+        night. About 110K works a night, under $1 of Modal GPU. State tables: openalex.works.work_topics_v2_{queue, raw,
+        append_rows, runs}. Rollback: the previous version of this file (topic-classifier serving endpoint + topics_merge_output
+        into work_topics); those notebooks are still in notebooks/topics/.
       email_notifications:
         on_failure:
           - artem@ourresearch.org
           - casey@ourresearch.org
+          - jason@ourresearch.org
         no_alert_for_skipped_runs: true
+      timeout_seconds: 21600
+      parameters:
+        - name: state_prefix
+          default: openalex.works.work_topics_v2_
+        - name: target
+          default: openalex.works.work_topics_v2
+        - name: works_table
+          default: openalex.works.openalex_works_base
+        - name: max_works
+          # newest first beyond this; the rest waits for the next run (a bulk arrival of millions: raise it by hand, and max_usd)
+          default: "3000000"
+        - name: shard_works
+          # works per Modal shard (one H100 call each, at most 8 containers at once)
+          default: "25000"
+        - name: force_ids_table
+          # tests / backfills only: queue exactly the not-yet-served works in this table (column id)
+          default: ""
+        - name: reuse_hours
+          # a job retry reuses an unfinished queue younger than this (same build id, same Modal call)
+          default: "20"
+        - name: volume_dir
+          default: /Volumes/openalex/works/data/topics_nightly
+        - name: endpoint
+          default: https://wordslikethis--openalex-topics-nightly-api.modal.run
+        - name: secret_scope
+          default: modal
+        - name: secret_key
+          default: topics1531_nightly_token
+        - name: warehouse_id
+          # the warehouse the Modal app exports the queue through (DEV-WH, X-Large serverless)
+          default: 3996dc0a9b183ce3
+        - name: max_usd
+          # topics_score_modal refuses to start a queue whose estimate is over this
+          default: "30"
+        - name: max_minutes
+          default: "150"
+        - name: max_nc_share
+          # topics_merge_v2 refuses a build whose not-classifiable share is over this (corpus: 0.096)
+          default: "0.30"
+        - name: dry_run
+          default: "false"
       tasks:
         - task_key: topics_create_input
           notebook_task:
-            notebook_path: notebooks/topics/topics_create_input
+            notebook_path: notebooks/topics/nightly/BuildTopicQueue
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3
-        - task_key: scale_up_topic_classifier
-          notebook_task:
-            notebook_path: notebooks/serving/rearm_endpoint
-            source: GIT
-            base_parameters:
-              endpoint: topic-classifier
-              mode: up
-              up_max: "16"
           environment_key: Default
-        - task_key: topics_inference
+        - task_key: topics_score_modal
           depends_on:
             - task_key: topics_create_input
-            - task_key: scale_up_topic_classifier
           notebook_task:
-            notebook_path: notebooks/topics/topics_inference_endpoint
+            notebook_path: notebooks/topics/nightly/TagTopicsModal
             source: GIT
-            base_parameters:
-              endpoint: topic-classifier
-              concurrency: "24"
-              request_batch: "25"
-              max_rows: "2000000"
           environment_key: Default
-          max_retries: 3
+          # A retry polls the same Modal call (its id is in <volume_dir>/<build_id>/_call_id.txt), never starts a second GPU run.
+          max_retries: 2
           min_retry_interval_millis: 300000
-        - task_key: rearm_topic_classifier
+        - task_key: topics_merge_v2
           depends_on:
-            - task_key: topics_inference
+            - task_key: topics_score_modal
           notebook_task:
-            notebook_path: notebooks/serving/rearm_endpoint
+            notebook_path: notebooks/topics/nightly/MergeTopicsV2
             source: GIT
-            base_parameters:
-              endpoint: topic-classifier
           environment_key: Default
-        - task_key: topics_merge_output
-          depends_on:
-            - task_key: topics_inference
-          notebook_task:
-            notebook_path: notebooks/topics/topics_merge_output
-            source: GIT
-            warehouse_id: 3996dc0a9b183ce3
-      job_clusters:
-        - job_cluster_key: topics-cpu-cluster
-          new_cluster:
-            cluster_name: ""
-            spark_version: 16.4.x-scala2.12
-            aws_attributes:
-              first_on_demand: 1
-              availability: SPOT_WITH_FALLBACK
-              zone_id: auto
-            node_type_id: m5d.2xlarge
-            data_security_mode: SINGLE_USER
-            spark_conf:
-              spark.master: "local[*]"
-              spark.databricks.cluster.profile: singleNode
-            custom_tags:
-              ResourceClass: SingleNode
-            num_workers: 0
-        - job_cluster_key: topics-gpu-cluster
-          new_cluster:
-            cluster_name: ""
-            spark_version: 15.4.x-gpu-ml-scala2.12
-            spark_conf:
-              spark.task.resource.gpu.amount: "1.0"
-            aws_attributes:
-              first_on_demand: 0
-              availability: SPOT_WITH_FALLBACK
-              zone_id: auto
-              spot_bid_price_percent: 100
-              ebs_volume_count: 0
-            node_type_id: g6.2xlarge
-            enable_elastic_disk: false
-            data_security_mode: SINGLE_USER
-            runtime_engine: STANDARD
-            autoscale:
-              min_workers: 4
-              max_workers: 32
-        - job_cluster_key: gpu-large
-          new_cluster:
-            cluster_name: ""
-            spark_version: 16.4.x-scala2.13
-            spark_conf:
-              spark.task.resource.gpu.amount: "0.25"
-            aws_attributes:
-              availability: SPOT_WITH_FALLBACK
-              zone_id: auto
-            node_type_id: g5.12xlarge
-            driver_node_type_id: md-fleet.12xlarge
-            spark_env_vars:
-              PYSPARK_PYTHON: /databricks/python3/bin/python3
-            data_security_mode: DATA_SECURITY_MODE_DEDICATED
-            runtime_engine: STANDARD
-            kind: CLASSIC_PREVIEW
-            use_ml_runtime: true
-            is_single_node: false
-            autoscale:
-              min_workers: 6
-              max_workers: 12
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
