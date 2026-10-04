@@ -43,6 +43,25 @@
 # MAGIC normalized title + year + abstract / author list / page fingerprint / arXiv id (see `exact_signature_class_sql`).
 # MAGIC The unpin alone would make the loser's records mint (their keys are not the winner's), so `execute` also writes
 # MAGIC `<target>_wave<N>_aliases` and inserts those keys into `work_id_map` with the winner's id.
+# MAGIC
+# MAGIC **`class_mode = feed_twin`** (oxjob #1427, 2026-09-29): an OJS journal's own OAI feed record and the journal's Crossref
+# MAGIC record of the same article on two works. Scope = the feed endpoints `feed_scope_sql` returns (default: the
+# MAGIC `is_journal_host` endpoints). The feed record's twin is the Crossref record with its DOI, else the one whose
+# MAGIC `resource.primary.URL` is its `/article/view/<N>` page (key claimed by one DOI, same year, host not on the
+# MAGIC renumbered-host blocklist, as MapWorkIds' url tier), else the one with its normalized title (>= 40 chars) + year
+# MAGIC (one Crossref work). Winner = the Crossref record's work; loser = the feed record's work. 98 % of these pairs are
+# MAGIC legacy pins MapWorkIds never re-resolves. Held: `default_oai_host` (native_id collisions, #1407),
+# MAGIC `loser_has_primary` (the loser carries its own Crossref/DataCite record: that needs a record move, not a merge),
+# MAGIC `year_differs` (the two works' publication years disagree: reprints, later editions, mis-pinned annual reports) and
+# MAGIC `loser_mixed` (the loser also carries non-repo records, e.g. a MAG-era book the feed's book review was pinned onto;
+# MAGIC the 2026-10-02 stage's wrong merges all sat in these two classes: 2,361 losers, 4 % of the wave, half its citations),
+# MAGIC `winner_junk` (the Crossref winner has no title or is typed paratext: econjournals' 10.32479 stubs, 791 pairs carrying
+# MAGIC 74 % of wave 2's citations on 2026-10-03; the feed side holds the real metadata, so a merge would bury it),
+# MAGIC `winner_preprint` (the twin is an SSRN-style preprint record; the published side must survive, charter policy),
+# MAGIC `title_type_differs` (a title twin whose two works carry different types: a book or chapter against an article with a
+# MAGIC generic title was wrong in 5 of 15 sampled on 2026-10-03; same-type title twins were 25/25 the same article),
+# MAGIC `junk_type` on the title twin, and the mechanical holds. Keys differ (translated titles), so execute re-keys the
+# MAGIC loser's record keys onto the winner like exact_signature; `ta` = 'twin:<winner id>'.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
 # MAGIC               (before-image, both sides) then UPDATE `work_references`: `cited_work_id` loser → winner (citations
 # MAGIC               TO the loser) and `citing_work_id` loser → winner (the loser's OWN reference list comes along; rows keep
@@ -54,7 +73,8 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version"])
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin"])
+dbutils.widgets.text("feed_scope_sql", "SELECT endpoint_id FROM openalex.sources.endpoint_to_source WHERE is_journal_host")
 dbutils.widgets.text("tiers", "1,2")
 dbutils.widgets.text("title_jaccard_min", "0.9")
 dbutils.widgets.text("abstract_jaccard_min", "0.6")
@@ -75,6 +95,8 @@ TIERS = {int(t) for t in dbutils.widgets.get("tiers").split(",") if t.strip()}
 TITLE_JACCARD_MIN = float(dbutils.widgets.get("title_jaccard_min"))
 ABSTRACT_JACCARD_MIN = float(dbutils.widgets.get("abstract_jaccard_min"))
 PREPRINT_IS_SAME = dbutils.widgets.get("preprint_is_same") == "yes"
+# feed_twin: the OAI feed endpoints in scope (a query returning endpoint_id)
+FEED_SCOPE_SQL = dbutils.widgets.get("feed_scope_sql").strip()
 # earlier targets whose executed losers must not be staged again (locations_mapped still shows them until the nightly rebuild)
 PRIOR_TARGETS = [t.strip() for t in dbutils.widgets.get("prior_targets").split(",") if t.strip()]
 # losers cited at least this often are held for a labelled review instead of merging (empty = no cap)
@@ -98,6 +120,7 @@ LEDGER = "openalex.works.deleted_works"
 END2END_JOB_ID = 616701029470182
 PUBLISHED_TYPES = "('article', 'conference-paper', 'book-chapter')"   # the published side of a preprint pair (Casey 2026-09-28)
 MERGED = "openalex.works.merged_work_ids"   # durable loser -> winner record; MapWorkIds redirects legacy adoption through it
+CROSSREF_RAW = "openalex.crossref.crossref_deduplicated"   # feed_twin: resource.primary.URL never reaches locations_mapped
 
 import datetime, json, time
 
@@ -135,6 +158,8 @@ def class_sql():
         return exact_signature_class_sql()
     if CLASS_MODE == "declared_version":
         return declared_version_class_sql()
+    if CLASS_MODE == "feed_twin":
+        return feed_twin_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -457,6 +482,74 @@ DECLARED_VERSION_HOLD = """CASE WHEN NOT r.title_same THEN 'title_differs'
                 END"""
 
 
+def feed_twin_class_sql():
+    """Feed-twin class (oxjob #1427, 2026-09-29): a feed record in scope whose Crossref twin (by DOI > article URL > title +
+    year) sits on another live work. Measured on the #1404 OJS endpoints: 58K records; DOI twins 100 % the same article in
+    samples, URL twins 99.06 % DOI-agreement on 268K pairs (49/50 blind), title twins 40/40. One row per (winner, loser)."""
+    ukey = lambda c: (f"regexp_extract(regexp_replace(regexp_replace(lower({c}), '^https?://(www[.])?', ''), '/index[.]php/', '/'), "
+                      "'^([^?#]*/article/view/[0-9]+)', 1)")
+    dk = lambda c: f"NULLIF(regexp_replace(lower({c}), '[^a-z0-9./-]', ''), '')"
+    return f"""
+    WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
+    scope AS ({FEED_SCOPE_SQL}),
+    feed AS (
+      SELECT l.native_id, l.work_id, YEAR(l.published_date) AS yr, l.normalized_title AS nt, {dk('l.merge_key.doi')} AS dk,
+             array_distinct(filter(transform(l.urls, u -> {ukey('u.url')}), x -> x <> '')) AS ukeys,
+             regexp_extract(l.native_id, '^oai:([^:]+):', 1) IN ('ojs.pkp.sfu.ca', 'localhost', 'ojs.localhost', 'generic.eprints.org') AS default_host
+      FROM {LM} l JOIN scope s ON s.endpoint_id = l.endpoint_id
+      WHERE l.provenance IN ('repo', 'repo_backfill') AND l.work_id IS NOT NULL {prior_exclusion()}),
+    crl AS (SELECT native_id, work_id, {dk('merge_key.doi')} AS dk, YEAR(published_date) AS yr, normalized_title AS nt
+            FROM {LM} WHERE provenance = 'crossref' AND work_id IS NOT NULL),
+    by_doi AS (SELECT dk, MIN(work_id) AS w FROM crl WHERE dk IS NOT NULL GROUP BY dk HAVING COUNT(DISTINCT work_id) = 1),
+    cru AS (SELECT c.native_id, {ukey('c.resource.primary.URL')} AS ukey FROM {CROSSREF_RAW} c WHERE c.resource.primary.URL LIKE '%/article/view/%'),
+    keyed AS (  -- a URL key counts only when exactly one DOI claims it
+      SELECT cru.ukey, MIN(crl.work_id) AS w, MIN(crl.dk) AS dk, MIN(crl.yr) AS yr
+      FROM cru JOIN crl ON crl.native_id = cru.native_id WHERE cru.ukey <> ''
+      GROUP BY cru.ukey HAVING COUNT(DISTINCT crl.dk) = 1),
+    fk AS (SELECT x.native_id, x.dk, x.yr, e.k AS ukey FROM (SELECT native_id, dk, yr, ukeys FROM feed) x LATERAL VIEW explode(x.ukeys) e AS k),
+    blocked AS (  -- hosts whose URL keys disagree with their records' own DOIs on > 2 % of >= 20 pairs (renumbered in a migration)
+      SELECT split_part(fk.ukey, '/', 1) AS host FROM fk JOIN keyed k ON k.ukey = fk.ukey WHERE fk.dk IS NOT NULL
+      GROUP BY 1 HAVING COUNT(*) >= 20 AND COUNT_IF(k.dk <> fk.dk) > 0.02 * COUNT(*)),
+    by_url AS (
+      SELECT fk.native_id, MIN(k.w) AS w FROM fk JOIN keyed k ON k.ukey = fk.ukey AND k.yr = fk.yr
+      LEFT ANTI JOIN blocked b ON b.host = split_part(fk.ukey, '/', 1)
+      WHERE fk.dk IS NULL GROUP BY fk.native_id HAVING COUNT(DISTINCT k.w) = 1),
+    by_title AS (SELECT nt, yr, MIN(work_id) AS w FROM crl WHERE length(nt) >= 40 AND yr IS NOT NULL
+                 GROUP BY nt, yr HAVING COUNT(DISTINCT work_id) = 1),
+    tw AS (
+      SELECT f.work_id, f.default_host,
+             CASE WHEN d.w IS NOT NULL THEN 1 WHEN u.w IS NOT NULL THEN 2 WHEN t.w IS NOT NULL THEN 3 END AS twin_rank,
+             COALESCE(d.w, u.w, t.w) AS target
+      FROM feed f LEFT JOIN by_doi d ON d.dk = f.dk LEFT JOIN by_url u ON u.native_id = f.native_id
+      LEFT JOIN by_title t ON f.dk IS NULL AND length(f.nt) >= 40 AND t.nt = f.nt AND t.yr = f.yr),
+    pairs AS (SELECT target AS a, work_id AS b, MIN(twin_rank) AS twin_rank, MAX(default_host) AS default_host
+              FROM tw WHERE target IS NOT NULL AND target <> work_id GROUP BY target, work_id),
+    pr AS (SELECT DISTINCT work_id FROM {LM} WHERE provenance IN ('crossref', 'datacite') AND work_id IS NOT NULL),
+    wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, primary_location.source.id AS src, COALESCE(cited_by_count, 0) AS cites,
+                  (title IS NULL OR trim(title) = '') AS no_title FROM live),
+    r1 AS (
+      SELECT p.a, p.b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb, x.type AS ta_type, y.type AS tb_type,
+             FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
+             p.a AS winner_work_id, p.b AS loser_work_id, x.no_title AS winner_no_title,
+             element_at(array('doi', 'url', 'title'), p.twin_rank) AS twin, p.default_host, (pr.work_id IS NOT NULL) AS loser_has_primary
+      FROM pairs p JOIN wf x ON x.id = p.a JOIN wf y ON y.id = p.b LEFT JOIN pr ON pr.work_id = p.b),""" + pair_class_tail(FEED_TWIN_SIGNALS, FEED_TWIN_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('twin:', r.winner_work_id)")
+
+FEED_TWIN_SIGNALS = "r.twin"
+FEED_TWIN_HOLD = """CASE WHEN r.default_host THEN 'default_oai_host'
+                WHEN r.loser_has_primary THEN 'loser_has_primary'
+                WHEN r.ya IS NOT NULL AND r.yb IS NOT NULL AND r.ya <> r.yb THEN 'year_differs'
+                WHEN NOT COALESCE(lm.repo_only, FALSE) THEN 'loser_mixed'
+                WHEN r.winner_no_title OR r.ta_type = 'paratext' THEN 'winner_junk'
+                WHEN r.ta_type = 'preprint' THEN 'winner_preprint'
+                WHEN r.twin = 'title' AND r.ta_type <> r.tb_type THEN 'title_type_differs'
+                WHEN r.twin = 'title' AND (r.ta_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')
+                                           OR r.tb_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')) THEN 'junk_type'
+                WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
+                WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
+                WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
+                END"""
+
+
 def is_preprint_pair(a, b):
     return f"(({a} = 'preprint' AND {b} IN {PUBLISHED_TYPES}) OR ({b} = 'preprint' AND {a} IN {PUBLISHED_TYPES}))"
 
@@ -634,7 +727,7 @@ if MODE == "execute":
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
                          AND a.loser_work_id = r.work_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
-    if CLASS_MODE in ("exact_signature", "declared_version") or PREPRINT_IS_SAME:
+    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
         ALIASES = f"{TARGET}_wave{WAVE}_aliases"

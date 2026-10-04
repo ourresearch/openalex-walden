@@ -27,7 +27,7 @@ config["package_root"] = PACKAGE_ROOT
 sys.path.insert(0, os.path.join(PACKAGE_ROOT, "lib"))
 
 from nightly_runtime import Nightly
-import build_awards, work_awards, award_relations, create_api, sync_awards
+import build_awards, work_awards, award_relations, create_api, sync_awards, pdf_backfill
 
 spark.conf.set("spark.sql.ansi.enabled", "false")   # the deployed chain ran with ANSI off
 c = Nightly(spark, config, dbutils.widgets.get("databricks_run_id") or None)
@@ -67,6 +67,13 @@ except BaseException as exc:
         c.finish("FAILED", f"{type(exc).__name__}: {exc}"[:4000])
     finally:
         raise
+
+# COMMAND ----------
+
+# The night above is finished and public. PDF grant-number matches for funders whose grant feed just became public are added
+# here (read by tomorrow's link build). The step never raises and holds no lock: it can't change tonight's result.
+if not config.get("stop_before_apply"):
+    pdf_backfill.run(c)
 
 # COMMAND ----------
 

@@ -40,7 +40,14 @@ RUBRIC_VERSION = "rubric-v2/2026-09-22"
 CONFIG_NAME = "r2_gate4"                     # oxjobs #1312 scratch/harness/configs/r2_gate4.py
 TAGGER_VERSION = f"{CONFIG_NAME}/{JEV_MODEL}"  # checkpoint key: a row counts only if it carries this
 JEV_USD_PER_TOKEN = 0.042 / 1e6              # input only; output free
-RETRYABLE = {429, 500, 502, 503, 529}
+RETRYABLE = {429, 500, 502, 503, 520, 521, 522, 524, 529}  # 520-524: Cloudflare in front of TypeSafe, seen in bursts (#1310)
+
+
+def is_billing_error(status: int, body: str) -> bool:
+    """TypeSafe refuses for billing: 402, or a 401/403 naming credit/billing. On 2 Oct 2026 the prepaid credit ran
+    out and clients treated it as one more failed item (oxjob #1523); JevClient now stops calling and says so."""
+    low = (body or "").lower()
+    return status == 402 or (status in (401, 403) and ("credit" in low or "billing" in low))
 
 # ---------------------------------------------------------------------------
 # The request (== configs/r2_shortnoul.py: rubric v2 texts + v1's short Nouls)
@@ -290,6 +297,10 @@ class Pacer:
         self._next = time.perf_counter()
         self._lock = threading.Lock()
 
+    def set_rate(self, rps: float) -> None:
+        with self._lock:
+            self._interval = 1.0 / max(rps, 0.1)
+
     def wait(self) -> None:
         with self._lock:
             now = time.perf_counter()
@@ -300,16 +311,101 @@ class Pacer:
             time.sleep(delay)
 
 
+JEV_BROKER_URL = "https://jev-broker.our-research.workers.dev"
+
+
+def broker_token(dbutils) -> str | None:
+    """The Jev broker token (secret scope `typesafe`, key `broker_token`), or None: no broker, pace at the client's own rps."""
+    try:
+        return dbutils.secrets.get(scope="typesafe", key="broker_token") or None
+    except Exception:
+        return None
+
+
+class BrokerLease:
+    """A lease from the shared Jev broker (oxjob #1376; ~/ox/jevkit/jevx.py is the reference client). Every 10 s it reports
+    what this client wants and used and sets the pacer to the granted rate, so `jevx.py status` on desk sees walden's Jev
+    use and desk backfills yield to it (class nightly > backfill). Fails open: if the broker cannot be reached for 60 s the
+    pacer goes back to the client's own rps, which is how walden ran before the broker (oxjob #1523)."""
+
+    def __init__(self, token: str, pacer: Pacer, want_rps: float, cls: str, session: str, job: str):
+        import os
+        import socket
+        import uuid
+        self._token, self._pacer, self.want, self.cls, self.session, self.job = token, pacer, float(want_rps), cls, session, job
+        self.host = socket.gethostname().split(".")[0]
+        self.client_id = f"{self.host}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
+        self.grant = None
+        self._last_ok = time.monotonic()
+        self._last_warn = 0.0
+        self._lock = threading.Lock()
+        self._calls = self._tok = self._n429 = self._err = 0
+        self._win_t = time.monotonic()
+        self._stop = threading.Event()
+        self._renew()
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def record(self, status: int, tokens: int) -> None:
+        with self._lock:
+            self._calls += 1
+            self._tok += tokens
+            self._n429 += status == 429
+            self._err += status not in (200, 429)
+
+    def _post(self, release: bool = False) -> dict:
+        with self._lock:
+            dt = max(1e-3, time.monotonic() - self._win_t)
+            body = {"client_id": self.client_id, "session": self.session, "job": self.job, "host": self.host, "cls": self.cls,
+                    "want_rps": self.want, "used_rps": self._calls / dt, "tok_s": self._tok / dt, "n429": self._n429,
+                    "errors": self._err, "release": release}
+            self._calls = self._tok = self._n429 = self._err = 0
+            self._win_t = time.monotonic()
+        r = requests.post(f"{JEV_BROKER_URL}/lease", json=body, headers={"Authorization": f"Bearer {self._token}"}, timeout=5)
+        r.raise_for_status()
+        return r.json()
+
+    def _renew(self) -> None:
+        try:
+            g = self._post()
+            self.grant = max(0.1, float(g["grant_rps"]))
+            self._pacer.set_rate(self.grant)
+            self._last_ok = time.monotonic()
+        except Exception as e:
+            now = time.monotonic()
+            if now - self._last_ok > 60:
+                self.grant = None
+                self._pacer.set_rate(self.want)
+            if now - self._last_warn > 300:
+                self._last_warn = now
+                print(f"Jev broker unreachable ({repr(e)[:120]}); pacing at "
+                      f"{self.grant if self.grant else self.want:.0f} rps", flush=True)
+
+    def _loop(self) -> None:
+        while not self._stop.wait(10):
+            self._renew()
+
+    def close(self) -> None:
+        self._stop.set()
+        try:
+            self._post(release=True)
+        except Exception:
+            pass
+
+
 class JevClient:
-    """Native TypeSafe API. One request per work. Retries 429/5xx/transport with jittered backoff."""
+    """Native TypeSafe API. One request per work. Retries 429/5xx/transport with jittered backoff.
+    With `broker_token` it paces to its lease from the shared Jev broker (BrokerLease); `rps` is then what it asks for and
+    what it falls back to if the broker is down."""
 
     def __init__(self, api_key: str, concurrency: int = 64, rps: float = 250.0, timeout: float = 60.0,
-                 max_attempts: int = 6, model: str = JEV_MODEL):
+                 max_attempts: int = 6, model: str = JEV_MODEL, broker_token: str | None = None, cls: str = "nightly",
+                 job: str = "walden"):
         if not api_key:
             raise RuntimeError("Jev api_key missing")
         self._headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         self._concurrency = concurrency
         self._pacer = Pacer(rps)
+        self.lease = BrokerLease(broker_token, self._pacer, rps, cls, "walden", job) if broker_token else None
         self._timeout = timeout
         self._max_attempts = max_attempts
         self._model = model
@@ -319,6 +415,7 @@ class JevClient:
         self.n_ok = 0
         self.n_fail = 0
         self.n_retry = 0
+        self.out_of_credit = None  # first billing error; once set, decide() fails fast without calling Jev
 
     @property
     def usd(self) -> float:
@@ -335,6 +432,10 @@ class JevClient:
         body = {"model": self._model, "state": state, "questions": qs}
         attempt = 0
         while True:
+            if self.out_of_credit:
+                with self._lock:
+                    self.n_fail += 1
+                return {"ok": False, "status": 402, "error": self.out_of_credit, "attempts": attempt, "billing": True}
             attempt += 1
             self._pacer.wait()
             t0 = time.perf_counter()
@@ -347,17 +448,27 @@ class JevClient:
                     with self._lock:
                         self.total_tokens += tok
                         self.n_ok += 1
+                    if self.lease:
+                        self.lease.record(200, tok)
                     return {"ok": True, "answers": data.get("answers", {}), "model": data.get("model"),
                             "input_tokens": tok, "latency_ms": round(ms), "attempts": attempt}
+                if self.lease:
+                    self.lease.record(resp.status_code, 0)
                 if resp.status_code in RETRYABLE and attempt < self._max_attempts:
                     with self._lock:
                         self.n_retry += 1
                     ra = resp.headers.get("retry-after")
                     time.sleep(float(ra) if ra else _backoff(attempt))
                     continue
+                billing = is_billing_error(resp.status_code, resp.text)
                 with self._lock:
                     self.n_fail += 1
-                return {"ok": False, "status": resp.status_code, "error": resp.text[:300], "attempts": attempt}
+                    if billing and not self.out_of_credit:
+                        self.out_of_credit = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                        print(f"JEV OUT OF CREDIT ({self.out_of_credit}); no more Jev calls this run. "
+                              "Top up at console.typesafe.ai (oxjob #1523).", flush=True)
+                return {"ok": False, "status": resp.status_code, "error": resp.text[:300], "attempts": attempt,
+                        "billing": billing}
             except (requests.Timeout, requests.ConnectionError) as e:
                 if attempt < self._max_attempts:
                     with self._lock:

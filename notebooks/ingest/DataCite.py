@@ -213,21 +213,46 @@ def datacite_parsed():
         )
         .withColumn("license", normalize_license_udf(F.col("raw_license")))
         .withColumn("language", F.col("attributes.language"))
+        # oxjob #1541: drop dates past next year before taking the min (array_min compares strings, so an embargo
+        # marker like '+10000-01-01' otherwise beats every real date), but keep Buddhist-era years (2400-2700) so
+        # they can be shifted below rather than falling through to the registration date.
+        .withColumn(
+            "_dates_ok",
+            F.expr(
+                "filter(attributes.dates, d -> try_to_date(d.date) is null"
+                " or year(try_to_date(d.date)) <= year(current_date()) + 1"
+                " or year(try_to_date(d.date)) between 2400 and 2700)"
+            ),
+        )
         .withColumn(
             "published_date",
             F.coalesce(
-                F.to_date(F.expr("array_min(filter(attributes.dates, d -> lower(d.dateType) = 'submitted').date)")),
-                F.to_date(F.expr("array_min(attributes.dates.date)")),
+                F.to_date(F.expr("array_min(filter(_dates_ok, d -> lower(d.dateType) = 'submitted').date)")),
+                F.to_date(F.expr("array_min(_dates_ok.date)")),
                 F.least(
                     F.to_date(F.col("attributes.registered")),
                     F.to_date(F.col("attributes.created")),
                 )
             ),
         )
+        # NRCT (client nrct.db1, Thailand's DOI agency) registers Buddhist-era years: BE = CE + 543.
         .withColumn(
             "published_date",
-            F.when(F.year(F.col("published_date")) >= 1900, F.col("published_date")).otherwise(F.lit(None))
+            F.when(
+                (F.col("relationships.client.data.id") == "nrct.db1")
+                & F.year(F.col("published_date")).between(2400, 2700),
+                F.add_months(F.col("published_date"), -543 * 12),
+            ).otherwise(F.col("published_date")),
         )
+        .withColumn(
+            "published_date",
+            F.when(
+                (F.year(F.col("published_date")) >= 1900)
+                & (F.year(F.col("published_date")) <= F.year(F.current_date()) + 1),
+                F.col("published_date"),
+            ).otherwise(F.lit(None)),
+        )
+        .drop("_dates_ok")
         .withColumn("created_date", F.to_date(F.col("attributes.created")))
         .withColumn("updated_date", F.to_date(F.col("attributes.updated")))
         .withColumn("updated_ts", F.to_timestamp(F.col("attributes.updated")))
