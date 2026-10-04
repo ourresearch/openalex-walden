@@ -8,8 +8,7 @@ resources:
         openalex.works.work_topics_v2, newest first, at most max_works), topics_score_modal (the queue on Modal, app
         openalex-topics-nightly: the #1485 student q8b_2m, vLLM FP8, at most 8 H100s, via a bearer-token endpoint; raw top-10
         scores into the append-only ledger work_topics_v2_raw), topics_merge_v2 (checks, then INSERT of new work_ids only into
-        work_topics_v2; a failed check appends nothing; catalogue records from catalogue_sources_table with type dataset / other
-        get topics = [] and catalogue_record = true). CreateWorksEnriched merges work_topics_v2 into openalex_works the same
+        work_topics_v2; a failed check appends nothing; catalogue_record is always false while catalogue_sources_table is ''). CreateWorksEnriched merges work_topics_v2 into openalex_works the same
         night. About 110K works a night, under $1 of Modal GPU. State tables: openalex.works.work_topics_v2_{queue, raw,
         append_rows, runs}. Rollback: the previous version of this file (topic-classifier serving endpoint + topics_merge_output
         into work_topics); those notebooks are still in notebooks/topics/.
@@ -56,9 +55,10 @@ resources:
         - name: max_minutes
           default: "150"
         - name: catalogue_sources_table
-          # catalogue records (source in this table AND type dataset / other) are served with topics = [] and catalogue_record = true;
-          # the ledger keeps their raw scores. Empty string disables the rule.
-          default: openalex.works.work_topics_v2_catalogue_sources
+          # OFF ('') by Jason's decision 2026-10-04 ("tag it all"): every work gets topics, catalogue_record is always false.
+          # To turn it on: a table (source_id = full 'https://openalex.org/S…' id, display_name, note); works from those sources with
+          # type dataset / other are then served with topics = [] and catalogue_record = true (the ledger keeps their raw scores).
+          default: ""
         - name: max_nc_share
           # topics_merge_v2 refuses a build whose not-classifiable share is over this (corpus: 0.096)
           default: "0.30"
