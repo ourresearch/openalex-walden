@@ -2,7 +2,8 @@
 
 The CSV maps the free-text `affiliation.country` of an award to ISO 3166-1 alpha-2 and says, per source, what that field
 means: the organisation's country (most sources), a US state (RWJF's 'MA' is Massachusetts, not Morocco), the country the
-project takes place in (IDRC), or a constant the ingest notebook wrote (Humboldt: 'Germany'). Columns: value (lower-case,
+project takes place in (IDRC's recipient country, NSF's place of performance), the investigator's own country (Kavli), or
+a constant the ingest notebook wrote (Humboldt: 'Germany'). Columns: value (lower-case,
 trimmed; '*' = the row describing the source), provenance_scope ('*' or one provenance), iso2, confidence (high / medium
 usable, low not), meaning, note. sql/api_payload.sql applies it; country/build_country_lookup.py documents the columns.
 """
@@ -11,7 +12,7 @@ from pathlib import Path
 
 COLUMNS = ("value", "provenance_scope", "iso2", "confidence")
 CONFIDENCE = {"high", "medium", "low"}
-MEANING = {"organisation", "assumed_domestic", "us_state", "project_country", "assumed", "mixed", "not_a_country"}
+MEANING = {"organisation", "assumed_domestic", "us_state", "project_country", "person_country", "assumed", "mixed", "not_a_country"}
 
 
 def read_lookup(package_root):

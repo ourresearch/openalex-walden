@@ -41,7 +41,7 @@ The migration-manifest retirement path stays, driven by an optional approved inp
 `sql/api_payload.sql` builds `institution_awarded` from the affiliation names on the award. Three changes:
 - **Country codes.** `country/award_country_lookup.csv` maps each source's free-text `affiliation.country` to ISO 3166-1 alpha-2
   and says per source what the field means (its `*` row): the organisation's country, a US state (RWJF), the project's country
-  (IDRC), or a constant the ingest notebook wrote. Only sources whose field is the organisation's country give a code; a source
+  (IDRC; NSF's place of performance), the investigator's own country (Kavli), or a constant the ingest notebook wrote. Only sources whose field is the organisation's country give a code; a source
   with no `*` row gives none. `lib/award_country.py` validates the file every run and inlines it into the query.
   NIH intramural awards (activity code Z..) with no country count as US.
 - **Country guard.** A matched institution is dropped when the award's affiliation has a country code and the institution is in

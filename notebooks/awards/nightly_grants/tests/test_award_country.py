@@ -56,6 +56,24 @@ def test_sources_whose_field_is_not_the_organisations_country_give_no_code():
     assert code("snsf", "Germany") is None and code("snsf", "Switzerland") == "CH"
 
 
+def test_place_of_performance_is_not_the_organisations_country():
+    # NSF records where the work is performed: Emory with Tanzania, University of Washington with Antarctica
+    for place in ("Tanzania", "Kenya", "United Kingdom", "Antarctica", "Puerto Rico"):
+        assert code("nsf_award_search", place) is None, place
+    assert code("nsf_award_search", "United States") == "US"       # performed in the US: kept, as a stated assumption
+    rows = {(r["provenance_scope"], r["value"]): r for r in award_country.read_lookup(ROOT)}
+    assert rows[("nsf_award_search", "*")]["meaning"] == "project_country" and rows[("nsf_award_search", "*")]["confidence"] == "low"
+    assert rows[("nsf_award_search", "united states")]["confidence"] == "medium"
+
+
+def test_a_persons_country_is_not_the_organisations_country():
+    assert code("kavli_nextdata", "The Netherlands") is None and code("kavli_nextdata", "USA") is None    # the laureate's country
+    assert code("cifar_wp_rest", "Canada") is None and code("bbrf_narsad", "US") is None
+    assert code("villum_veluxfonden", "United States") is None and code("villum_veluxfonden", "Denmark") == "DK"
+    rows = {(r["provenance_scope"], r["value"]): r for r in award_country.read_lookup(ROOT)}
+    assert rows[("kavli_nextdata", "*")]["meaning"] == "person_country" and rows[("cifar_wp_rest", "*")]["meaning"] == "person_country"
+
+
 def test_a_constant_is_used_only_where_the_funder_is_known_to_fund_at_home():
     assert code("kaken", "Japan") == "JP" and code("fapesp_bv", "Brazil") == "BR"
     rows = {(r["provenance_scope"], r["value"]): r for r in award_country.read_lookup(ROOT)}
@@ -180,6 +198,8 @@ INSTITUTIONS = {            # id: (display_name, country_code)
     50: ("University of Waterloo", "CA"), 51: ("University of Cape Town", "ZA"), 52: ("Harvard University", "US"),
     60: ("Institut National de la Recherche Agronomique de Tunisie", "TN"), 61: ("Somewhere without a country", None),
     70: ("Queens University", "BD"), 71: ("Queen's University", "CA"),
+    80: ("Emory University", "US"), 81: ("Lincoln University", "NZ"), 82: ("Lincoln University", "US"),
+    83: ("Universidad Técnica Federico Santa María", "CL"), 84: ("Universidad Técnica Federico Santa María", "EC"),
 }
 
 
@@ -273,6 +293,20 @@ def test_unknown_or_unreliable_country_never_rejects():
     no_inst_country = f.award("nih_exporter", lead=("Nowhere Institute", "UNITED STATES"))
     got = f.run()
     assert got[idrc] == [50] and got[humboldt] == [51] and got[junk] == [51] and got[empty] == [51] and got[no_inst_country] == [61]
+
+
+def test_nsf_place_of_performance_abroad_does_not_remove_the_us_awardee():
+    f = Fixture()
+    f.answer("Emory University", [80])
+    f.answer("Lincoln University", [82, 81])                      # the matcher returns both same-name institutions
+    f.answer("Universidad Tecnica Federico Santa Maria", [83, 84])
+    fieldwork = f.award("nsf_award_search", lead=("Emory University", "Tanzania"))          # US awardee, field site in Tanzania
+    at_home = f.award("nsf_award_search", lead=("Lincoln University", "United States"))     # performed in the US: the NZ twin goes
+    abroad = f.award("nsf_award_search", lead=("Universidad Tecnica Federico Santa Maria", "Chile"))
+    got = f.run()
+    assert got[fieldwork] == [80]
+    assert got[at_home] == [82]
+    assert got[abroad] == [83, 84]     # a place abroad checks nothing, so the Ecuador twin stays (the price of not trusting it)
 
 
 def test_territories_count_as_their_sovereign_state():

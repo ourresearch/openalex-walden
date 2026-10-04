@@ -15,7 +15,9 @@ Columns
                       assumed_domestic  one constant for every award, written by the ingest notebook; usable because the
                                         funder's recipients are domestic (contradicted matches were wrong matches)
                       assumed           one constant, and organisations abroad are named next to it: not usable
-                      project_country   where the project takes place, not where the organisation is: not usable
+                      project_country   where the project takes place (IDRC's recipient country, NSF's place of
+                                        performance), not where the organisation is: not usable
+                      person_country    the investigator's own country (nationality, or where the person is listed): not usable
                       mixed             neither reliably: not usable
                       us_state          a US state or territory code (resolves to US)
                       not_a_country     placeholder text, a region, two countries
@@ -125,7 +127,12 @@ US_STATE_SOURCES = {"rwjf_grants_explorer": "RWJF: US state or territory code in
 ABROAD = "one constant on every award; organisations abroad are named next to it"
 UNUSABLE_SOURCES = {
     "idrc_iati": ("project_country", "IDRC: `a.recipient_country as country` (CreateIDRCAwards cell 9); University of Alberta carries ZA, TH, CU, MW"),
+    "nsf_award_search": ("project_country", "NSF: the award's place of performance (scripts/local/nsf_awards_to_s3.py fills inst_* from perf_inst; the awardee block is not kept). US universities carry the country of their field site: University of Washington with Antarctica, Emory with Tanzania; 45 of 50 sampled removals of a US institution under a foreign place were correct matches"),
     "nihr": ("project_country", "NIHR: the ODA partner country; the only value today is the sentinel 'Award does not have an ODA Downstream Partner' (CreateNIHRAwards cell 7)"),
+    "kavli_nextdata": ("person_country", "Kavli Prize: the laureate's country (`element_at(s.countries, 1)`, CreateKavliPrizeAwards cell 7): Caltech with NL, Stanford with RU, MIT with CA"),
+    "cifar_wp_rest": ("person_country", "CIFAR: the fellow's country term, next to an institution elsewhere: DeepMind, Stanford, Yale with CA; Johns Hopkins with JP"),
+    "bbrf_narsad": ("mixed", "BBRF: the directory's country does not follow the institution: Yale and Caltech with TR, KAIST with US, Harvard Medical School with NL"),
+    "villum_veluxfonden": ("mixed", "Villum: non-Danish values sit next to Danish institutions (Aarhus University with US, DTU with SE): all 5 contradicted matches were correct"),
     "snsf": ("mixed", "SNSF: non-Swiss values sit next to Swiss institutions (University of Berne with DE, RU, GB)"),
     "fct": ("mixed", "FCT: Instituto Superior Tecnico carries Italy on 1,527 awards; Portugal sits next to Vigo, Utrecht, Amsterdam"),
     "humboldt": ("assumed", "`'Germany' as country` (CreateHumboldtAwards cell 6); the name is the fellow's institution abroad, 74% of legacy matches contradicted"),
@@ -152,8 +159,12 @@ UNUSABLE_SOURCES = {
     "brain_tumour_charity": ("assumed", ABROAD + " (Harvard, Mayo Clinic, UCSF)"),
     "inca": ("assumed", ABROAD + " (CIRMF Gabon, Hopital Charles Nicolle Tunis, Cancer Research UK)"),
 }
-# value kept usable inside an unusable source
-EXCEPTIONS = {("snsf", "switzerland"): ("CH", "high", "SNSF: Switzerland next to Swiss institutions is reliable (contradicted matches were wrong matches)")}
+# value kept usable inside an unusable source: (provenance, value) -> (iso2, confidence, meaning, evidence)
+EXCEPTIONS = {
+    ("snsf", "switzerland"): ("CH", "high", "organisation", "SNSF: Switzerland next to Swiss institutions is reliable (contradicted matches were wrong matches)"),
+    ("villum_veluxfonden", "denmark"): ("DK", "high", "organisation", "Villum: Denmark next to Danish institutions is reliable (971 of 978 awards)"),
+    ("nsf_award_search", "united states"): ("US", "medium", "project_country", "NSF: a place of performance in the US. Assumption: an organisation performing in the US is a US organisation. 50 of 50 sampled matches to an institution abroad under a US place were wrong matches (Princeton to The Princes Trust, Lincoln University to New Zealand's)"),
+}
 US_SUBDIVISIONS = {s.code.split("-")[1] for s in pycountry.subdivisions.get(country_code="US")}   # 50 states, DC, territories
 
 
@@ -185,8 +196,8 @@ def main(observed_path):
             put(code, scope, "US", "high", why, "us_state")
     for scope, (meaning, why) in UNUSABLE_SOURCES.items():
         put("*", scope, "", "low", why, meaning)
-    for (scope, value), (iso2, confidence, note) in EXCEPTIONS.items():
-        put(value, scope, iso2, confidence, note)
+    for (scope, value), (iso2, confidence, meaning, note) in EXCEPTIONS.items():
+        put(value, scope, iso2, confidence, note, meaning)
     unresolved, codes, awards = [], {}, {}                 # per provenance: resolved codes seen, awards carrying a value
     with open(observed_path) as fh:
         for r in csv.DictReader(fh, delimiter="\t"):

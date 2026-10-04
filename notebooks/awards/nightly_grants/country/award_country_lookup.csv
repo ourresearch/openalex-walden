@@ -1123,7 +1123,7 @@ zwe,*,ZW,high,organisation,ISO 3166-1 alpha-3
 *,autistica,,medium,assumed_domestic,one constant (GB) on 38 awards; no organisation abroad seen next to it
 *,axa_research_fund_projects,,high,organisation,38 countries recorded on 768 awards
 *,bacp,,medium,assumed_domestic,one constant (GB) on 2 awards; no organisation abroad seen next to it
-*,bbrf_narsad,,high,organisation,34 countries recorded on 6601 awards
+*,bbrf_narsad,,low,mixed,"BBRF: the directory's country does not follow the institution: Yale and Caltech with TR, KAIST with US, Harvard Medical School with NL"
 *,bcrf_researchers,,high,organisation,12 countries recorded on 210 awards
 *,bd2,,medium,assumed_domestic,one constant (US) on 18 awards; no organisation abroad seen next to it
 *,bdns_aei,,medium,assumed_domestic,one constant (ES) on 28835 awards; no organisation abroad seen next to it
@@ -1150,7 +1150,7 @@ zwe,*,ZW,high,organisation,ISO 3166-1 alpha-3
 *,cfref_competition_results,,medium,assumed_domestic,one constant (CA) on 29 awards; no organisation abroad seen next to it
 *,chongqing_nsf,,medium,assumed_domestic,one constant (CN) on 3429 awards; no organisation abroad seen next to it
 *,chss,,medium,assumed_domestic,one constant (GB) on 48 awards; no organisation abroad seen next to it
-*,cifar_wp_rest,,high,organisation,30 countries recorded on 738 awards
+*,cifar_wp_rest,,low,person_country,"CIFAR: the fellow's country term, next to an institution elsewhere: DeepMind, Stanford, Yale with CA; Johns Hopkins with JP"
 *,cihr_opendata,,low,assumed,"`'Canada' as country` (CreateCIHRAwards cell 7); one constant on every award; organisations abroad are named next to it (Harvard, Stanford, Witwatersrand)"
 *,cirm,,medium,assumed_domestic,one constant (US) on 1575 awards; no organisation abroad seen next to it
 *,conahcyt_snii_ckan,,medium,assumed_domestic,one constant (MX) on 84067 awards; no organisation abroad seen next to it
@@ -1248,7 +1248,7 @@ zwe,*,ZW,high,organisation,ISO 3166-1 alpha-3
 *,itf_hk,,medium,assumed_domestic,one constant (HK) on 1763 awards; no organisation abroad seen next to it
 *,kaken,,medium,assumed_domestic,one constant (JP) on 707489 awards; no organisation abroad seen next to it
 *,kauffman_foundation,,medium,assumed_domestic,one constant (US) on 337 awards; no organisation abroad seen next to it
-*,kavli_nextdata,,high,organisation,17 countries recorded on 73 awards
+*,kavli_nextdata,,low,person_country,"Kavli Prize: the laureate's country (`element_at(s.countries, 1)`, CreateKavliPrizeAwards cell 7): Caltech with NL, Stanford with RU, MIT with CA"
 *,kaw_wallenberg_projects,,medium,assumed_domestic,one constant (SE) on 633 awards; no organisation abroad seen next to it
 *,keck,,medium,assumed_domestic,one constant (US) on 156 awards; no organisation abroad seen next to it
 *,klingenstein_simons,,medium,assumed_domestic,one constant (US) on 443 awards; no organisation abroad seen next to it
@@ -1288,7 +1288,8 @@ zwe,*,ZW,high,organisation,ISO 3166-1 alpha-3
 *,nihr_ods_dhsc,,low,assumed,one constant on every award; organisations abroad are named next to it (Malawi-Liverpool-Wellcome Programme)
 *,nij_awards_list,,medium,assumed_domestic,one constant (US) on 3627 awards; no organisation abroad seen next to it
 *,nserc_open_data,,high,organisation,41 countries recorded on 200862 awards
-*,nsf_award_search,,high,organisation,140 countries recorded on 171647 awards
+*,nsf_award_search,,low,project_country,"NSF: the award's place of performance (scripts/local/nsf_awards_to_s3.py fills inst_* from perf_inst; the awardee block is not kept). US universities carry the country of their field site: University of Washington with Antarctica, Emory with Tanzania; 45 of 50 sampled removals of a US institution under a foreign place were correct matches"
+united states,nsf_award_search,US,medium,project_country,"NSF: a place of performance in the US. Assumption: an organisation performing in the US is a US organisation. 50 of 50 sampled matches to an institution abroad under a US place were wrong matches (Princeton to The Princes Trust, Lincoln University to New Zealand's)"
 *,nsf_sri_lanka_gmis,,medium,assumed_domestic,one constant (LK) on 2103 awards; no organisation abroad seen next to it
 *,nsfc_kd,,medium,assumed_domestic,one constant (CN) on 230869 awards; no organisation abroad seen next to it
 *,ntap,,high,organisation,8 countries recorded on 83 awards
@@ -1408,7 +1409,8 @@ switzerland,snsf,CH,high,organisation,SNSF: Switzerland next to Swiss institutio
 *,vega_sk,,medium,assumed_domestic,one constant (SK) on 11885 awards; no organisation abroad seen next to it
 *,versus_arthritis,,medium,assumed_domestic,one constant (GB) on 61 awards; no organisation abroad seen next to it
 *,vilcek_foundation,,medium,assumed_domestic,one constant (US) on 175 awards; no organisation abroad seen next to it
-*,villum_veluxfonden,,high,organisation,4 countries recorded on 978 awards
+*,villum_veluxfonden,,low,mixed,"Villum: non-Danish values sit next to Danish institutions (Aarhus University with US, DTU with SE): all 5 contradicted matches were correct"
+denmark,villum_veluxfonden,DK,high,organisation,Villum: Denmark next to Danish institutions is reliable (971 of 978 awards)
 *,vivensa,,medium,assumed_domestic,one constant (GB) on 232 awards; no organisation abroad seen next to it
 *,vlaamse_regering_fris,,medium,assumed_domestic,one constant (BE) on 17216 awards; no organisation abroad seen next to it
 *,vlaio_fris,,medium,assumed_domestic,one constant (BE) on 4241 awards; no organisation abroad seen next to it

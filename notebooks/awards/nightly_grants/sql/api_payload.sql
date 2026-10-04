@@ -15,8 +15,9 @@ country_map AS (
   FROM country_lookup
 ),
 -- Country code of every affiliation on the award. A row for this provenance and value decides on its own (RWJF's 'MA' is
--- Massachusetts). Otherwise the source must be usable (IDRC stores the project's recipient country, Humboldt a constant
--- 'Germany': neither is) and the code is the '*'-scoped row for the value. A source the file does not describe gives none.
+-- Massachusetts). Otherwise the source must be usable (IDRC stores the project's recipient country, NSF the place of
+-- performance, Humboldt a constant 'Germany': none is) and the code is the '*'-scoped row for the value. A source the
+-- file does not describe gives none.
 -- NIH intramural projects (activity codes Z01, ZIA, ZIC, ...) run inside NIH's own institutes and the source leaves their
 -- country empty: US. On 2026-10-02 all 116,926 such awards had either no country (59,975) or UNITED STATES.
 award_country AS (
