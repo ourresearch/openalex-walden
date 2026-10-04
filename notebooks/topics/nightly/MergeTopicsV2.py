@@ -12,7 +12,8 @@
 # MAGIC Catalogue records get no topic: a queued work whose `primary_location.source.id` (read from `works_table`) is in
 # MAGIC `catalogue_sources_table` (source_id = full 'https://openalex.org/S…' id) and whose `type` is 'dataset' or 'other' is served with
 # MAGIC `topics = []` and `catalogue_record = true`; `not_classifiable` stays the model's own flag and the ledger keeps the raw scores, so the
-# MAGIC rule can be reversed. An empty `catalogue_sources_table` disables the rule (every row `catalogue_record = false`).
+# MAGIC rule can be reversed. An empty `catalogue_sources_table` disables the rule (every row `catalogue_record = false`): the default,
+# MAGIC by Jason's decision 2026-10-04 ("tag it all").
 # MAGIC One line per finished build goes into `<state_prefix>runs`. A repair after a successful INSERT finds every row already served
 # MAGIC with the same topics and only records the run. `CreateWorksEnriched` merges the new rows into `openalex_works` the same night.
 
@@ -23,7 +24,7 @@ import json
 
 for name, default in [("state_prefix", "openalex.works.work_topics_v2_"), ("target", "openalex.works.work_topics_v2"), ("max_nc_share", "0.30"),
                       ("works_table", "openalex.works.openalex_works_base"),
-                      ("catalogue_sources_table", "openalex.works.work_topics_v2_catalogue_sources"), ("dry_run", "false")]:
+                      ("catalogue_sources_table", ""), ("dry_run", "false")]:
     dbutils.widgets.text(name, default)
 P = dbutils.widgets.get("state_prefix").strip()
 TARGET = dbutils.widgets.get("target").strip()
