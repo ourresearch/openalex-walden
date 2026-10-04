@@ -8,6 +8,11 @@
 # MAGIC score = ROUND(prob, 4) as FLOAT, ids / names from the vocabulary tables, `[]` for not-classifiable works) into
 # MAGIC `<state_prefix>append_rows`, checks them (one row per work, the served struct type, sizes, nothing unresolved, none already
 # MAGIC served) and INSERTs the new work_ids only into `target` (append-only, the #1312 rule; existing rows are never touched).
+# MAGIC
+# MAGIC Catalogue records get no topic: a queued work whose `primary_location.source.id` (read from `works_table`) is in
+# MAGIC `catalogue_sources_table` (source_id = full 'https://openalex.org/S…' id) and whose `type` is 'dataset' or 'other' is served with
+# MAGIC `topics = []` and `catalogue_record = true`; `not_classifiable` stays the model's own flag and the ledger keeps the raw scores, so the
+# MAGIC rule can be reversed. An empty `catalogue_sources_table` disables the rule (every row `catalogue_record = false`).
 # MAGIC One line per finished build goes into `<state_prefix>runs`. A repair after a successful INSERT finds every row already served
 # MAGIC with the same topics and only records the run. `CreateWorksEnriched` merges the new rows into `openalex_works` the same night.
 
@@ -17,12 +22,17 @@ import datetime as dt
 import json
 
 for name, default in [("state_prefix", "openalex.works.work_topics_v2_"), ("target", "openalex.works.work_topics_v2"), ("max_nc_share", "0.30"),
-                      ("dry_run", "false")]:
+                      ("works_table", "openalex.works.openalex_works_base"),
+                      ("catalogue_sources_table", "openalex.works.work_topics_v2_catalogue_sources"), ("dry_run", "false")]:
     dbutils.widgets.text(name, default)
 P = dbutils.widgets.get("state_prefix").strip()
 TARGET = dbutils.widgets.get("target").strip()
 MAX_NC = float(dbutils.widgets.get("max_nc_share"))
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
+WORKS = dbutils.widgets.get("works_table").strip()
+CAT = dbutils.widgets.get("catalogue_sources_table").strip()
+for t in (P + "x", TARGET, WORKS) + ((CAT,) if CAT else ()):
+    assert t.startswith("openalex.") and t.replace(".", "").replace("_", "").isalnum(), f"bad table name {t!r}"
 QUEUE, RAW, ROWS, RUNS = f"{P}queue", f"{P}raw", f"{P}append_rows", f"{P}runs"
 SOURCE = "q8b_2m"
 TOPICS_TYPE = ("ARRAY<STRUCT<id: STRING, display_name: STRING, score: FLOAT, subfield: STRUCT<id: STRING, display_name: STRING>, "
@@ -48,13 +58,13 @@ def one(sql):
 # COMMAND ----------
 
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {RUNS} (build_id STRING, queued BIGINT, scored BIGINT, appended BIGINT, not_classifiable BIGINT,
-  usd_est DOUBLE, modal_wall_s DOUBLE, target STRING, finished_at TIMESTAMP)
+  catalogue_records BIGINT, usd_est DOUBLE, modal_wall_s DOUBLE, target STRING, finished_at TIMESTAMP)
   COMMENT 'Topics nightly (oxjob #1531): one row per finished build'""")
 q = one(f"SELECT count(*) AS n, max(build_id) AS b FROM {QUEUE}")
 n, build_id = int(q.n), q.b
 if n == 0:
     if not DRY:
-        spark.sql(f"INSERT INTO {RUNS} VALUES (NULL, 0, 0, 0, 0, 0, 0, '{TARGET}', current_timestamp())")
+        spark.sql(f"INSERT INTO {RUNS} VALUES (NULL, 0, 0, 0, 0, 0, 0, 0, '{TARGET}', current_timestamp())")
     dbutils.notebook.exit("empty queue: nothing to append")
 
 # Gate 1: the ledger holds exactly this build's queue, the NC share is sane, every topic id resolves.
@@ -79,7 +89,21 @@ if bad:
 
 # COMMAND ----------
 
-# The PLAN § 2b builder over this build's ledger rows (keep identical to it).
+# The catalogue-record rule's input: queued works from a catalogue source with type dataset / other.
+if CAT:
+    cols = {c.name for c in spark.table(CAT).schema} if spark.catalog.tableExists(CAT) else set()
+    if not {"source_id", "display_name", "note"} <= cols:
+        raise RuntimeError(f"{CAT} missing or without source_id / display_name / note; pass catalogue_sources_table='' to disable the rule")
+    n_cat_sources = spark.table(CAT).count()
+    cat_cte = f"""SELECT DISTINCT w.id AS work_id FROM {WORKS} w
+      JOIN {CAT} c ON c.source_id = w.primary_location.source.id
+      WHERE w.type IN ('dataset', 'other') AND w.id IN (SELECT work_id FROM {QUEUE})"""
+    log(f"catalogue rule ON: {n_cat_sources} sources in {CAT}")
+else:
+    cat_cte = "SELECT CAST(NULL AS BIGINT) AS work_id WHERE false"
+    log("catalogue rule OFF (catalogue_sources_table is empty)")
+
+# The PLAN § 2b builder over this build's ledger rows (keep identical to it), plus the catalogue-record rule.
 spark.sql(f"""
 CREATE OR REPLACE TABLE {ROWS} COMMENT 'Topics nightly (oxjob #1531): served rows of the last build, staged and checked before the append' AS
 WITH tm AS (   -- 4,516 rows -> one MAP literal, so the build is a narrow per-row transform (no shuffle)
@@ -96,9 +120,10 @@ WITH tm AS (   -- 4,516 rows -> one MAP literal, so the build is a narrow per-ro
 sc AS (
   SELECT * FROM {RAW} WHERE build_id = '{build_id}'
   QUALIFY ROW_NUMBER() OVER (PARTITION BY work_id ORDER BY shard DESC) = 1
-)
+),
+cat AS ({cat_cte})
 SELECT sc.work_id,
-  CASE WHEN sc.not_classifiable
+  CASE WHEN sc.not_classifiable OR cat.work_id IS NOT NULL
     THEN CAST(ARRAY() AS {TOPICS_TYPE})
     ELSE TRANSFORM(
       slice(filter(arrays_zip(sc.topic_ids, sc.probs), x -> x.topic_ids <> -1), 1, 3),   -- skip the not-classifiable class
@@ -109,14 +134,17 @@ SELECT sc.work_id,
                         'field', tm.m[x.topic_ids].field,
                         'domain', tm.m[x.topic_ids].domain))
   END AS topics,
-  sc.not_classifiable, '{SOURCE}' AS source, current_timestamp() AS created_datetime, current_timestamp() AS updated_datetime
-FROM sc CROSS JOIN tm
+  sc.not_classifiable, cat.work_id IS NOT NULL AS catalogue_record,
+  '{SOURCE}' AS source, current_timestamp() AS created_datetime, current_timestamp() AS updated_datetime
+FROM sc CROSS JOIN tm LEFT JOIN cat ON cat.work_id = sc.work_id
 """)
 
 # Gate 2: the staged rows.
-c = one(f"""SELECT count(*) AS n, count(DISTINCT work_id) AS ids, count_if(work_id IS NULL OR topics IS NULL OR not_classifiable IS NULL) AS nulls,
-    count_if(not_classifiable) AS nc, count_if(NOT not_classifiable AND size(topics) <> 3) AS bad_size,
-    count_if(not_classifiable AND size(topics) <> 0) AS bad_nc,
+c = one(f"""SELECT count(*) AS n, count(DISTINCT work_id) AS ids,
+    count_if(work_id IS NULL OR topics IS NULL OR not_classifiable IS NULL OR catalogue_record IS NULL) AS nulls,
+    count_if(not_classifiable) AS nc, count_if(catalogue_record) AS catalogue, count_if(catalogue_record AND NOT not_classifiable) AS catalogue_classified,
+    count_if(NOT not_classifiable AND NOT catalogue_record AND size(topics) <> 3) AS bad_size,
+    count_if((not_classifiable OR catalogue_record) AND size(topics) <> 0) AS bad_nc,
     count_if(exists(topics, t -> t.display_name IS NULL OR t.subfield.id IS NULL OR t.field.id IS NULL OR t.domain.id IS NULL OR t.score IS NULL)) AS unresolved,
     (SELECT count(*) FROM {ROWS} r JOIN {TARGET} v ON v.work_id = r.work_id) AS already_in_target,
     max(typeof(topics)) AS typ FROM {ROWS}""")
@@ -142,8 +170,8 @@ if c.already_in_target == c.n:
     appended = 0
 else:
     before = spark.table(TARGET).count()
-    spark.sql(f"""INSERT INTO {TARGET} (work_id, topics, not_classifiable, source, created_datetime, updated_datetime)
-    SELECT r.work_id, r.topics, r.not_classifiable, r.source, r.created_datetime, r.updated_datetime
+    spark.sql(f"""INSERT INTO {TARGET} (work_id, topics, not_classifiable, catalogue_record, source, created_datetime, updated_datetime)
+    SELECT r.work_id, r.topics, r.not_classifiable, r.catalogue_record, r.source, r.created_datetime, r.updated_datetime
     FROM {ROWS} r LEFT ANTI JOIN {TARGET} v ON v.work_id = r.work_id""")
     after = spark.table(TARGET).count()
     appended = after - before
@@ -151,7 +179,8 @@ else:
     if appended != c.n:
         raise RuntimeError(f"expected {c.n:,} new rows in {TARGET}, got {appended:,} (another writer?)")
 
-spark.sql(f"""INSERT INTO {RUNS} VALUES ('{build_id}', {n}, {g.rows}, {appended}, {c.nc},
+spark.sql(f"""INSERT INTO {RUNS} VALUES ('{build_id}', {n}, {g.rows}, {appended}, {c.nc}, {c.catalogue},
   {float(task_value('topics_score_modal', 'usd_est', 0.0))}, {float(task_value('topics_score_modal', 'modal_wall_s', 0.0))}, '{TARGET}', current_timestamp())""")
-log(f"build {build_id}: {n:,} queued, {appended:,} appended ({c.nc:,} not classifiable, {c.nc / n:.2%})")
-print(json.dumps({"build_id": build_id, "queued": n, "appended": appended, "nc": c.nc}))
+log(f"build {build_id}: {n:,} queued, {appended:,} appended ({c.nc:,} not classifiable, {c.nc / n:.2%}; {c.catalogue:,} catalogue records "
+    f"served with no topic, {c.catalogue_classified:,} of them classified by the model)")
+print(json.dumps({"build_id": build_id, "queued": n, "appended": appended, "nc": c.nc, "catalogue_records": c.catalogue}))
