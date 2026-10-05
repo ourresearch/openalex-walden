@@ -179,7 +179,7 @@ FROM openalex.common.concepts_api WHERE display_name IS NOT NULL"""
 FROM openalex.publishers.publishers_api WHERE display_name IS NOT NULL"""
     if typ == "topics":
         return f"""SELECT CAST(id AS STRING) AS eid, display_name AS display, works_count AS works, cited_by_count AS cited,
-       {trunc('description', 160)} AS hint, ids.wikipedia AS ext, {arr('array(display_name)', 'keywords')} AS labels
+       {trunc('description', 160)} AS hint, ids.wikipedia AS ext, {arr('array(display_name)', "transform(split(coalesce(legacy_keywords, ''), ';'), x -> trim(x))")} AS labels
 FROM openalex.common.topics_api WHERE display_name IS NOT NULL"""
     raise ValueError(typ)
 

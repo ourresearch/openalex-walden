@@ -21,7 +21,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 ENTITIES = [
     {
         "table_name": "openalex.common.topics_api",
-        "index_name": "topics-v4",
+        "index_name": "topics-v5",  # v5: keywords are keyword objects, + legacy_keywords (oxjob #1307)
         "id_prefix": "https://openalex.org/T",
     },
     {
@@ -75,6 +75,7 @@ def send_partition_to_elastic(partition, index_name):
     except Exception as e:
         log.error(f"Error indexing to {index_name}: {e}", stack_info=True, exc_info=True)
         print(f"Error indexing to {index_name}: {e}")
+        raise
 
 # COMMAND ----------
 
@@ -106,6 +107,7 @@ for entity in ENTITIES:
     except Exception as e:
         print(f"Failed to process {table_name}: {e}")
         log.error(f"Failed: {table_name}: {e}", stack_info=True, exc_info=True)
+        raise
 
 print("\nAll indexing operations completed!")
 
