@@ -1,0 +1,33 @@
+# Staleness alarm for the Unpaywall API (api.unpaywall.org reads Lakebase project unpaywall-api since 2026-10-05).
+# Fails, and emails, when a Lakebase synced table is not ONLINE, serves a Delta version whose next data commit is > 24 h old,
+# or the DOI source table had no data commit for 48 h. Read-only. Runs 4x a day (the nightly refresh starts 05:00 UTC).
+resources:
+  jobs:
+    Unpaywall_Lakebase_Stale_Check:
+      name: Unpaywall Lakebase stale-data check
+      email_notifications:
+        on_failure:
+          - rohan@openalex.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        quartz_cron_expression: "0 30 1/6 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      timeout_seconds: 900
+      tasks:
+        - task_key: check
+          spark_python_task:
+            python_file: monitoring/checks/unpaywall_lakebase_stale_check.py
+            source: GIT
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 300000
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main

@@ -18,6 +18,9 @@ DAILY_LARGE_RECORD_COUNT = 20000000
 WEEKLY_LARGE_RECORD_COUNT = 45000000
 LARGE_RECORD_COUNT = WEEKLY_LARGE_RECORD_COUNT if mode == "weekly" else DAILY_LARGE_RECORD_COUNT
 dbutils.widgets.dropdown("wunpaywall_guard_override", "false", ["false", "true"], "Wunpaywall Guard Override")
+# RDS is being retired (Unpaywall API reads Lakebase since 2026-10-05). The copy below is optional and must never block publication:
+# set to "false" once the RDS rollback window closes (before openalex-1 is deleted).
+dbutils.widgets.dropdown("copy_metadata_to_rds", "true", ["true", "false"], "Copy export_metadata to RDS (legacy)")
 # job parameter OR a pre-cleared row in openalex.works.e2e_overrides (scripts/preclear_e2e.py)
 wunpaywall_guard_override = spark.sql(
     f"SELECT openalex.works.e2e_override_active('wunpaywall_guard_override', '{dbutils.widgets.get('wunpaywall_guard_override').replace(chr(39), chr(39) * 2)}')"
@@ -267,61 +270,71 @@ print("Syncing metadata table to PostgreSQL...")
 from sqlalchemy import create_engine, text
 import time
 
-user = dbutils.secrets.get(scope="postgres-works", key="user")
-password = dbutils.secrets.get(scope="postgres-works", key="password")
-pg_metadata_table = "unpaywall.export_metadata"
-engine = create_engine(f"postgresql+psycopg2://{user}:{password}@openalex-1.cqlclvdbbujw.us-east-1.rds.amazonaws.com:5432/postgres")
+def copy_metadata_to_rds():
+    user = dbutils.secrets.get(scope="postgres-works", key="user")
+    password = dbutils.secrets.get(scope="postgres-works", key="password")
+    pg_metadata_table = "unpaywall.export_metadata"
+    engine = create_engine(f"postgresql+psycopg2://{user}:{password}@openalex-1.cqlclvdbbujw.us-east-1.rds.amazonaws.com:5432/postgres", connect_args={"connect_timeout": 15})
 
-df = spark.table(metadata_table)
+    df = spark.table(metadata_table)
 
-# Create the target table in PostgreSQL if it doesn't exist
-with engine.connect() as conn:
-    conn.execute(text(f"""
-    CREATE TABLE IF NOT EXISTS {pg_metadata_table} (
-      export_timestamp VARCHAR(255),
-      mode VARCHAR(50),
-      file_name VARCHAR(255),
-      file_path VARCHAR(500),
-      file_size_bytes BIGINT,
-      line_count INT,
-      from_date DATE,
-      to_date DATE,
-      PRIMARY KEY (export_timestamp, mode, file_name)
-    );
-    """))
-    conn.commit()
-
-temp_table = f"{pg_metadata_table}_temp_{int(time.time())}"
-
-df.write \
-    .format("jdbc") \
-    .option("url", "jdbc:postgresql://openalex-1.cqlclvdbbujw.us-east-1.rds.amazonaws.com:5432/postgres") \
-    .option("dbtable", temp_table) \
-    .option("user", user) \
-    .option("password", password) \
-    .option("batchsize", 100) \
-    .option("numPartitions", 4) \
-    .mode("overwrite") \
-    .save()
-
-# merge the temporary table into the main table
-with engine.connect() as conn:
-    with conn.begin():
-        # Use TRUNCATE + INSERT for a full sync approach
+    # Create the target table in PostgreSQL if it doesn't exist
+    with engine.connect() as conn:
         conn.execute(text(f"""
-        TRUNCATE TABLE {pg_metadata_table};
-        
-        INSERT INTO {pg_metadata_table} (
-            export_timestamp, mode, file_name, file_path, 
-            file_size_bytes, line_count, from_date, to_date
-        )
-        SELECT 
-            export_timestamp, mode, file_name, file_path, 
-            file_size_bytes, line_count, from_date, to_date
-        FROM {temp_table};
+        CREATE TABLE IF NOT EXISTS {pg_metadata_table} (
+          export_timestamp VARCHAR(255),
+          mode VARCHAR(50),
+          file_name VARCHAR(255),
+          file_path VARCHAR(500),
+          file_size_bytes BIGINT,
+          line_count INT,
+          from_date DATE,
+          to_date DATE,
+          PRIMARY KEY (export_timestamp, mode, file_name)
+        );
         """))
-        
-        # clean up the temporary table
-        conn.execute(text(f"DROP TABLE {temp_table};"))
+        conn.commit()
 
-print(f"Successfully synced {df.count()} metadata records to PostgreSQL")
+    temp_table = f"{pg_metadata_table}_temp_{int(time.time())}"
+
+    df.write \
+        .format("jdbc") \
+        .option("url", "jdbc:postgresql://openalex-1.cqlclvdbbujw.us-east-1.rds.amazonaws.com:5432/postgres?connectTimeout=15&socketTimeout=600") \
+        .option("dbtable", temp_table) \
+        .option("user", user) \
+        .option("password", password) \
+        .option("batchsize", 100) \
+        .option("numPartitions", 4) \
+        .mode("overwrite") \
+        .save()
+
+    # merge the temporary table into the main table
+    with engine.connect() as conn:
+        with conn.begin():
+            # Use TRUNCATE + INSERT for a full sync approach
+            conn.execute(text(f"""
+            TRUNCATE TABLE {pg_metadata_table};
+        
+            INSERT INTO {pg_metadata_table} (
+                export_timestamp, mode, file_name, file_path, 
+                file_size_bytes, line_count, from_date, to_date
+            )
+            SELECT 
+                export_timestamp, mode, file_name, file_path, 
+                file_size_bytes, line_count, from_date, to_date
+            FROM {temp_table};
+            """))
+        
+            # clean up the temporary table
+            conn.execute(text(f"DROP TABLE {temp_table};"))
+
+    print(f"Successfully synced {df.count()} metadata records to PostgreSQL")
+
+
+if dbutils.widgets.get("copy_metadata_to_rds") != "true":
+    print("Skipping the legacy RDS copy of export_metadata (copy_metadata_to_rds=false).")
+else:
+    try:
+        copy_metadata_to_rds()
+    except Exception as e:  # RDS is no longer the serving database: report, never fail the feed task (Lakebase refresh depends on it)
+        print(f"WARNING: legacy RDS copy of export_metadata failed; feed files and the Delta metadata are published. {type(e).__name__}: {str(e)[:300]}")

@@ -63,6 +63,7 @@ include:
   - jobs/vector_matcher_nightly.yaml
   - jobs/nightly_grants.yaml
   - jobs/wunpaywall_weekly_data_feed.yaml
+  - jobs/unpaywall_lakebase_stale_check.yaml
   - jobs/snapshot_full.yaml
   - jobs/topics.yaml
   - jobs/register_topic_classifier.yaml
