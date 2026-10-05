@@ -19,6 +19,8 @@ resources:
           mode=verify wave=N     the morning after: audited pins re-pinned on the winner; losers unpinned + ledgered
           mode=repoint_citations wave=N confirm=yes   after verify: <target>_wave<N>_refs_audit, then UPDATE work_references
           class_mode=feed_twin   oxjob #1427: an OJS feed record and its Crossref twin on two works; feed_scope_sql = the endpoints in scope
+          class_mode=zenodo_twin oxjob #1540: a Zenodo concept DOI and its version DOI (DataCite IsVersionOf) on two works; winner = the
+                                 version work; twin_scope_sql = the source ids in scope (empty = corpus-wide)
       max_concurrent_runs: 1
       parameters:
         - name: mode
@@ -53,6 +55,8 @@ resources:
           default: "no"
         - name: feed_scope_sql
           default: "SELECT endpoint_id FROM openalex.sources.endpoint_to_source WHERE is_journal_host"
+        - name: twin_scope_sql
+          default: "SELECT source_id FROM openalex_dev.sources.ojs_coverage"
       tasks:
         - task_key: merge_identical_key_works
           notebook_task:
@@ -75,6 +79,7 @@ resources:
               release_list: "{{job.parameters.release_list}}"
               confirm: "{{job.parameters.confirm}}"
               feed_scope_sql: "{{job.parameters.feed_scope_sql}}"
+              twin_scope_sql: "{{job.parameters.twin_scope_sql}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
