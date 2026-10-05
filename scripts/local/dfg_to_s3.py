@@ -12,11 +12,13 @@ Output columns (mapped for CreateDFGAwards.ipynb):
     project_id          -> funder_award_id
     title               -> display_name
     description         -> description
-    amount              -> amount (DOUBLE, in EUR; converted from source millions)
+    amount              -> amount (DOUBLE, in EUR; the snapshot's estimated_budget, converted from
+                           source millions. An estimate: GEPRIS publishes no per-project amounts)
     program_type        -> funder_scheme
     area                -> subject_area
     start_date          -> start_date (STRING, YYYY-MM-DD)
-    end_date            -> end_date (STRING, YYYY-MM-DD)
+    end_date            -> end_date (STRING, YYYY-MM-DD; the notebook drops it where stop = start,
+                           which is how the snapshot records a project that was still running)
     start_year          -> start_year (INT)
     end_year            -> end_year (INT)
     lead_inst           -> institution name

@@ -82,7 +82,8 @@ if spark.catalog.tableExists(SENSES) and spark.catalog.tableExists(WORK_SENSES) 
     for h in opts:
         opts[h].sort(key=lambda r: int(r.opt[1:]))
     client = sd.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=int(dbutils.widgets.get("jev_threads")),
-                          rps=float(dbutils.widgets.get("jev_rps")))
+                          rps=float(dbutils.widgets.get("jev_rps")),
+                          broker_token=sd.broker_token(dbutils), job="keyword_senses")  # shared Jev broker (#1523)
 
     def classify(r):
         o = opts[r.heading]
@@ -103,6 +104,9 @@ if spark.catalog.tableExists(SENSES) and spark.catalog.tableExists(WORK_SENSES) 
                       SELECT work_id, heading, opt, prob, sense_id, model, current_timestamp() FROM new_sense_decisions""")
     log(f"senses: {len(dec):,} of {len(pairs):,} pairs classified ({len(pairs) - len(dec):,} failed, keep the main sense), "
         f"{sum(d[4] is not None for d in dec):,} move; Jev ${client.usd:.2f}; {time.time() - t0:.0f} s")
+    if client.out_of_credit:  # the failed pairs stay undecided and are re-asked next night (oxjob #1523)
+        log(f"senses: !!! JEV OUT OF CREDIT ({client.out_of_credit}); undecided pairs retry next night. "
+            "Top up at console.typesafe.ai.")
     t0 = time.time()
     spark.sql(kn.sense_statement(ROWS, f"{P}nrm_sensed", WORK_SENSES, SENSES))
     spark.sql(f"CREATE OR REPLACE TABLE {ROWS} AS SELECT * FROM {P}nrm_sensed")

@@ -52,6 +52,7 @@ from pyspark.sql.types import (BooleanType, DateType, DoubleType, IntegerType, L
 REPO_ROOT = os.path.abspath(os.path.join(os.getcwd(), "..", ".."))
 sys.path.insert(0, REPO_ROOT)
 from utils import jev_quality as jq  # noqa: E402
+from utils import study_design as sd  # noqa: E402  (broker_token, BrokerLease: the shared Jev broker, #1523)
 
 # COMMAND ----------
 
@@ -287,7 +288,8 @@ SAMPLE_SCHEMA = StructType([
     StructField("jev_cost_usd", DoubleType(), True),
 ])
 
-jev = jq.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=JEV_CONCURRENCY)
+jev = jq.JevClient(dbutils.secrets.get(scope="typesafe", key="api_key"), concurrency=JEV_CONCURRENCY,
+                   broker_token=sd.broker_token(dbutils))  # shared Jev broker (#1523)
 todo = [r.asDict() for r in spark.sql(f"""
     SELECT i.stratum, i.dimension, i.item_id, i.source_night, i.meta, i.state
     FROM {ITEMS} i
@@ -333,6 +335,8 @@ for start in range(0, len(todo), CHUNK):
     log(f"Jev {done:,}/{len(todo):,} ({chunk[0]['stratum']}): {rate:.1f}/s, ${spent:.3f}, "
         f"errors {sum(jev_errors.values())}, ETA {(len(todo) - done) / rate / 60 if rate else 0:.1f} min")
 log(f"Jev done: {jev.n_ok:,} ok, {jev.n_fail:,} failed, {jev.total_tokens:,} tokens, ${spent:.3f}")
+if jev.out_of_credit:
+    raise RuntimeError(f"Jev out of credit ({jev.out_of_credit}); top up at console.typesafe.ai, then rerun (oxjob #1523)")
 if todo and jev.n_fail > 0.2 * len(todo):
     raise RuntimeError(f"Jev failed on {jev.n_fail}/{len(todo)} items; check the typesafe key / API status before rerunning")
 

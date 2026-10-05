@@ -1,0 +1,490 @@
+# Edge autocomplete (oxjob #1529): one job per entity type, triggered when its source table updates. Each run rebuilds
+# openalex.autocomplete.nodes_<type> and copies what changed into Cloudflare Workers KV (and the Asia-Pacific copies)
+# for the Worker openalex-autocomplete-edge. Writes only openalex.autocomplete.* and the edge; feeds no works, no ES.
+# Run by hand with force_rebuild=true to write a fresh build and flip to it (utils/autocomplete_edge.py refresh()).
+resources:
+  jobs:
+    Autocomplete_Edge_Keywords:
+      name: Autocomplete Edge keywords
+      description: Edge autocomplete index for keywords (oxjob #1529), triggered by openalex.common.keywords_api.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.common.keywords_api
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: keywords
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Sources:
+      name: Autocomplete Edge sources
+      description: Edge autocomplete index for sources (oxjob #1529), triggered by openalex.sources.sources_api.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.sources.sources_api
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: sources
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Institutions:
+      name: Autocomplete Edge institutions
+      description: Edge autocomplete index for institutions (oxjob #1529), triggered by openalex.institutions.institutions_api.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.institutions.institutions_api
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: institutions
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Funders:
+      name: Autocomplete Edge funders
+      description: Edge autocomplete index for funders (oxjob #1529), triggered by openalex.funders.funders_api.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.funders.funders_api
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: funders
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Publishers:
+      name: Autocomplete Edge publishers
+      description: Edge autocomplete index for publishers (oxjob #1529), triggered by openalex.publishers.publishers_api.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.publishers.publishers_api
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: publishers
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Concepts:
+      name: Autocomplete Edge concepts
+      description: Edge autocomplete index for concepts (oxjob #1529), triggered by openalex.common.concepts_api.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.common.concepts_api
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: concepts
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Topics:
+      name: Autocomplete Edge topics
+      description: Edge autocomplete index for topics (oxjob #1529), triggered by openalex.common.topics_api.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.common.topics_api
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: topics
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Awards:
+      name: Autocomplete Edge awards
+      description: Edge autocomplete index for awards (oxjob #1529), triggered by openalex.awards.awards_api.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.awards.awards_api
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: awards
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Authors:
+      name: Autocomplete Edge authors
+      description: Edge autocomplete index for authors (oxjob #1529), triggered by openalex.authors.openalex_authors.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.authors.openalex_authors
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: authors
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Front:
+      name: Autocomplete Edge front
+      description: Edge autocomplete index for front (oxjob #1529), triggered by openalex.common.keywords_api, openalex.institutions.institutions_api, openalex.sources.sources_api, openalex.funders.funders_api, openalex.publishers.publishers_api, openalex.common.topics_api.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.common.keywords_api
+            - openalex.institutions.institutions_api
+            - openalex.sources.sources_api
+            - openalex.funders.funders_api
+            - openalex.publishers.publishers_api
+            - openalex.common.topics_api
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 600
+      parameters:
+        - name: force_rebuild
+          default: "false"
+        - name: copies
+          # Asia-Pacific Durable Object copies that get every write (Worker copy.js COPIES_PLACED)
+          default: "sin,hkg,nrt,mel"
+      tasks:
+        - task_key: refresh
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/RefreshAutocompleteEdge
+            source: GIT
+            base_parameters:
+              typ: front
+              steps: build,load
+              force_rebuild: "{{job.parameters.force_rebuild}}"
+              copies: "{{job.parameters.copies}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+    Autocomplete_Edge_Freshness:
+      name: Autocomplete Edge freshness
+      description: Fails (and emails) when a type's source table changed over 60 minutes ago and the edge has not loaded it (oxjob #1529).
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        # 14:00 UTC: after the last source of the night (openalex.authors.openalex_authors, ~12:30 UTC) plus its refresh
+        quartz_cron_expression: 0 0 14 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: check
+          notebook_task:
+            notebook_path: notebooks/autocomplete_edge/CheckAutocompleteEdgeFreshness
+            source: GIT
+          environment_key: Default
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"

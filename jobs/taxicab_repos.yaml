@@ -18,8 +18,10 @@ resources:
             notebook_path: notebooks/scraping/taxicab
             source: GIT
             base_parameters:
-              lookback_days: "3"
+              lookback_days: "30"
               url_limit: "500000"
+              host_batch_cap: "3000"
+              fetch_deadline_minutes: "200"
               source_filter: "repo_only"
               # oxjob #542: skip the bulk ingested_at re-stamp from the 2026-06-30/07-01
               # repo_items full refresh (105M rows, max ingested_at 2026-07-01 12:37 UTC).
@@ -54,9 +56,13 @@ resources:
         git_branch: main
       parameters:
         - name: lookback_days
-          default: "3"
+          default: "30"
         - name: url_limit
           default: "500000"
+        - name: host_batch_cap
+          default: "3000"
+        - name: fetch_deadline_minutes
+          default: "200"
         - name: source_filter
           default: "repo_only"
         - name: ingested_after
