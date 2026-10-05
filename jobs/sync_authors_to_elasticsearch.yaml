@@ -8,7 +8,9 @@ resources:
       schedule:
         quartz_cron_expression: 35 0 5 * * ?
         timezone_id: America/Chicago
-        pause_status: UNPAUSED
+        # oxjob #1531 (2026-10-05): PAUSED. The topics switch re-stamps ~98M author profiles (author topics are hashed);
+        # an in-place sync into authors-v19 is the 09-30 outage pattern. Unpause only after Casey's pick (full off-peak sync or authors-v20).
+        pause_status: PAUSED
       tasks:
         - task_key: sync_authors
           job_cluster_key: sync_authors_cluster
