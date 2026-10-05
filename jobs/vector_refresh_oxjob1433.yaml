@@ -34,7 +34,7 @@ resources:
         - name: max_merges
           default: "4"
         - name: guard_wait_minutes
-          default: "30"
+          default: "60"    # 5 Oct: after 1 batch the cache refill kept kNN at 550-850 ms for > 30 min (merges 0), stopping night 4 at 90/100
       tasks:
         - task_key: refresh
           notebook_task:
