@@ -60,7 +60,10 @@
 # MAGIC `winner_preprint` (the twin is an SSRN-style preprint record; the published side must survive, charter policy),
 # MAGIC `title_type_differs` (a title twin whose two works carry different types: a book or chapter against an article with a
 # MAGIC generic title was wrong in 5 of 15 sampled on 2026-10-03; same-type title twins were 25/25 the same article),
-# MAGIC `junk_type` on the title twin, and the mechanical holds. Keys differ (translated titles), so execute re-keys the
+# MAGIC `junk_type` on the title twin, and the mechanical holds. **`class_mode = legacy_twin`** (oxjob #1427, 2026-10-05): a DOI-less
+# MAGIC feed-only work beside a MAG-only legacy work on the same primary source with the same normalised title; the legacy work
+# MAGIC wins (it carries the citations) and the feed record is re-keyed onto it; holds `not_one_to_one`, `title_short`, `year_differs`,
+# MAGIC `type_differs`, `junk_type` and the mechanical ones. Keys differ (translated titles), so execute re-keys the
 # MAGIC loser's record keys onto the winner like exact_signature; `ta` = 'twin:<winner id>'.
 # MAGIC
 # MAGIC **`class_mode = zenodo_twin`** (oxjob #1540, 2026-10-05): Zenodo registers a concept DOI `10.5281/zenodo.N` and a version DOI per
@@ -85,7 +88,7 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin"])
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin"])
 dbutils.widgets.text("feed_scope_sql", "SELECT endpoint_id FROM openalex.sources.endpoint_to_source WHERE is_journal_host")
 dbutils.widgets.text("twin_scope_sql", "SELECT source_id FROM openalex_dev.sources.ojs_coverage")
 dbutils.widgets.text("tiers", "1,2")
@@ -177,6 +180,8 @@ def class_sql():
         return feed_twin_class_sql()
     if CLASS_MODE == "zenodo_twin":
         return zenodo_twin_class_sql()
+    if CLASS_MODE == "legacy_twin":
+        return legacy_twin_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -614,6 +619,54 @@ ZENODO_TWIN_HOLD = """CASE WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
                 END"""
 
 
+def legacy_twin_class_sql():
+    """Legacy-twin class (oxjob #1427, 2026-10-05, from #1546's QA round 2): a DOI-less feed-only work (every record repo, at least
+    one from a feed endpoint in `feed_scope_sql`) beside a MAG-only legacy work on the same primary source with the same normalised
+    title. Winner = the legacy work (it carries the citations), loser = the feed work; execute re-keys the feed record onto the legacy
+    work. Sized 2026-10-05: 43,709 clean pairs on 1,506 sources, 41,827 citations on the winners; blind 50 and the 15 most-cited
+    winners all the same article (oxjobs #1427 work/q45–q47). Holds: not_one_to_one, title_short (< 40 chars), year_differs
+    (or unknown), type_differs, junk_type, plus the mechanical holds; `ta` = 'leg:<winner id>'."""
+    return f"""
+    WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
+    scope AS ({FEED_SCOPE_SQL}),
+    feedw AS (SELECT DISTINCT l.work_id FROM {LM} l JOIN scope s ON s.endpoint_id = l.endpoint_id
+              WHERE l.provenance IN ('repo', 'repo_backfill') AND l.work_id IS NOT NULL {prior_exclusion()}),
+    lprov AS (SELECT l.work_id, MAX(CASE WHEN l.provenance NOT IN ('repo', 'repo_backfill') THEN 1 ELSE 0 END) AS has_nonrepo,
+                     MAX(CASE WHEN NULLIF(l.merge_key.doi, '') IS NOT NULL THEN 1 ELSE 0 END) AS has_doi, MIN(l.normalized_title) AS nt
+              FROM {LM} l LEFT SEMI JOIN feedw f ON f.work_id = l.work_id GROUP BY l.work_id),
+    L AS (SELECT w.id, w.primary_location.source.id AS src, p.nt FROM live w JOIN lprov p ON p.work_id = w.id
+          WHERE p.has_nonrepo = 0 AND p.has_doi = 0 AND w.primary_location.source.id IS NOT NULL AND p.nt IS NOT NULL AND p.nt <> ''),
+    srcs AS (SELECT DISTINCT src FROM L),
+    Wc AS (SELECT w.id FROM live w JOIN srcs ON srcs.src = w.primary_location.source.id),
+    wprov AS (SELECT l.work_id, MAX(CASE WHEN l.provenance <> 'mag' THEN 1 ELSE 0 END) AS has_nonmag,
+                     MIN(CASE WHEN l.provenance = 'mag' THEN l.normalized_title END) AS nt
+              FROM {LM} l LEFT SEMI JOIN Wc ON Wc.id = l.work_id GROUP BY l.work_id),
+    W AS (SELECT w.id, w.primary_location.source.id AS src, wp.nt FROM live w JOIN wprov wp ON wp.work_id = w.id
+          WHERE wp.has_nonmag = 0 AND wp.nt IS NOT NULL AND wp.nt <> ''),
+    pairs AS (SELECT W.id AS a, L.id AS b, length(L.nt) AS tl FROM L JOIN W ON W.src = L.src AND W.nt = L.nt),
+    nl AS (SELECT b, COUNT(*) AS n FROM pairs GROUP BY b),
+    nw AS (SELECT a, COUNT(*) AS n FROM pairs GROUP BY a),
+    wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, COALESCE(cited_by_count, 0) AS cites FROM live),
+    r1 AS (
+      SELECT p.a, p.b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb, x.type AS ta_type, y.type AS tb_type,
+             FALSE AS biblio_differs, TRUE AS src_same,
+             p.a AS winner_work_id, p.b AS loser_work_id,
+             (p.tl < 40) AS title_short, (nl.n > 1 OR nw.n > 1) AS not_one_to_one
+      FROM pairs p JOIN wf x ON x.id = p.a JOIN wf y ON y.id = p.b JOIN nl ON nl.b = p.b JOIN nw ON nw.a = p.a),""" + pair_class_tail(LEGACY_TWIN_SIGNALS, LEGACY_TWIN_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('leg:', r.winner_work_id)")
+
+LEGACY_TWIN_SIGNALS = "'legacy_mag'"
+LEGACY_TWIN_HOLD = """CASE WHEN r.not_one_to_one THEN 'not_one_to_one'
+                WHEN r.title_short THEN 'title_short'
+                WHEN r.ya IS NULL OR r.yb IS NULL OR r.ya <> r.yb THEN 'year_differs'
+                WHEN r.ta_type <> r.tb_type THEN 'type_differs'
+                WHEN r.ta_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other')
+                     OR r.tb_type IN ('book-review', 'letter', 'editorial', 'erratum', 'paratext', 'review', 'other') THEN 'junk_type'
+                WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
+                WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
+                WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
+                END"""
+
+
 def is_preprint_pair(a, b):
     return f"(({a} = 'preprint' AND {b} IN {PUBLISHED_TYPES}) OR ({b} = 'preprint' AND {a} IN {PUBLISHED_TYPES}))"
 
@@ -791,7 +844,7 @@ if MODE == "execute":
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
                          AND a.loser_work_id = r.work_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
-    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin") or PREPRINT_IS_SAME:
+    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
         ALIASES = f"{TARGET}_wave{WAVE}_aliases"
