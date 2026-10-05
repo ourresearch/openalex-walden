@@ -462,6 +462,24 @@ resources:
           max_retries: 3
           min_retry_interval_millis: 300000
           retry_on_timeout: true
+        - task_key: Unpaywall_Lakebase_Refresh
+          depends_on:
+            - task_key: Wunpaywall
+          pipeline_task:
+            pipeline_id: b362fe01-3cb7-40de-9c52-e35f02eea548
+            full_refresh: false
+          timeout_seconds: 14400
+          max_retries: 1
+          min_retry_interval_millis: 300000
+        - task_key: Unpaywall_Lakebase_Export_Metadata
+          depends_on:
+            - task_key: Wunpaywal_Data_Feed
+          pipeline_task:
+            pipeline_id: dd71de95-27da-4acd-a334-09997155e69e
+            full_refresh: false
+          timeout_seconds: 1800
+          max_retries: 2
+          min_retry_interval_millis: 120000
       job_clusters:
         - job_cluster_key: parseland_cluster
           new_cluster:
