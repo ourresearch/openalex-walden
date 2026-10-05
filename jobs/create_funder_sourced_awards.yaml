@@ -715,6 +715,18 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
+        - task_key: IATI_Awards
+          email_notifications: {}
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/awards/CreateIATIAwards
+            source: GIT
+            base_parameters:
+              publish_to_awards_raw: "true"
+              priority: "600"
+          run_if: ALL_SUCCESS
+          timeout_seconds: 0
+          webhook_notifications: {}
         - task_key: ISCIII_Awards
           email_notifications: {}
           environment_key: Default
@@ -3816,6 +3828,7 @@ resources:
             - task_key: Arnold_Ventures_Awards
             - task_key: Carl_Zeiss_Awards
             - task_key: IDRC_Awards
+            - task_key: IATI_Awards
             - task_key: Lasker_Awards
             - task_key: Templeton_Awards
             - task_key: Wolf_Prize_Awards
