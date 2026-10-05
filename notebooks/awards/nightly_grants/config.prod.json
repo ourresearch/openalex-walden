@@ -68,7 +68,8 @@
   "gone_fuse": 5000,
   "extra_inputs": {
     "award_relations_raw": "openalex.awards.award_relations_raw",
-    "migration_manifest": "openalex.awards.award_migration_manifest"
+    "migration_manifest": "openalex.awards.award_migration_manifest",
+    "affiliation_answers": "openalex.institutions.affiliation_matcher_answers"
   },
   "relations_drop_fuse": 0.01,
   "pdf_backfill": {
