@@ -9,7 +9,8 @@ resources:
         quartz_cron_expression: 35 0 5 * * ?
         timezone_id: America/Chicago
         # oxjob #1531 (2026-10-05): PAUSED. The topics switch re-stamps ~98M author profiles (author topics are hashed);
-        # an in-place sync into authors-v19 is the 09-30 outage pattern. Unpause only after Casey's pick (full off-peak sync or authors-v20).
+        # an in-place sync into authors-v19 is the 09-30 outage pattern. Unpause when authors-v20 (rebuilt beside it) is swapped in,
+        # with index_name below set to authors-v20.
         pause_status: PAUSED
       tasks:
         - task_key: sync_authors
@@ -19,6 +20,7 @@ resources:
             source: GIT
             base_parameters:
               is_full_sync: "false"
+              index_name: authors-v19
         - task_key: delete_authors
           depends_on:
             - task_key: sync_authors
@@ -28,6 +30,7 @@ resources:
             source: GIT
             base_parameters:
               guard_fraction: "0.02"
+              index_name: authors-v19
               deleted_authors_guard_override: "false"
           max_retries: 2
           min_retry_interval_millis: 300000

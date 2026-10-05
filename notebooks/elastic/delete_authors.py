@@ -3,14 +3,15 @@
 %restart_python
 
 # COMMAND ----------
-# notebooks/elastic/delete_authors — ES delete pass for authors-v19 (mirrors notebooks/elastic/delete_works, oxjob #784).
+# notebooks/elastic/delete_authors — ES delete pass for the live authors index (mirrors notebooks/elastic/delete_works, oxjob #784).
 # Second task in jobs/sync_authors_to_elasticsearch.yaml, after sync_authors, same job cluster.
 # Consumes openalex.authors.deleted_authors rows with es_deleted_at IS NULL; 404 = already gone = done;
 # non-404 failures stay unstamped and retry next run.
 from pyspark.sql import functions as F
 from elasticsearch import Elasticsearch, helpers
 
-ELASTIC_INDEX = "authors-v19"
+dbutils.widgets.text("index_name", "authors-v19")      # the job yaml passes it (oxjob #1531: authors-v20 rebuild)
+ELASTIC_INDEX = dbutils.widgets.get("index_name")
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 ID_PREFIX = "https://openalex.org/A"
 LEDGER = "openalex.authors.deleted_authors"
