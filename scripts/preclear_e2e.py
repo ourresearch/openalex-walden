@@ -9,10 +9,14 @@ manual `run-now` with the parameter set, with no second run, nothing to pause an
 cancel. Runbook: docs/runbooks/end2end-guardrails-override.md.
 
 Rules (they do not bend): run this only after Jason's explicit yes for this specific run, and
-only for the flag class that will actually fire. `guardrails_override` never authorises a mass
+only for the flag class that will actually fire. Give every planned change a cap (--max-changed for
+stamps, --max-deleted for deletions): the gate's threshold becomes that number instead of being
+switched off, so a change bigger than planned still fails the run. Uncapped rows are the old behaviour. `guardrails_override` never authorises a mass
 delete or an oversized feed; those have their own flags.
 
     scripts/preclear_e2e.py --reason "oxjob #1309 fallback cleanup, 10.9M works" --by jason
+    scripts/preclear_e2e.py --max-changed 12000000 --reason ... --by ...        # Check 1 passes up to 12M stamps, fails above
+    scripts/preclear_e2e.py --flags deleted_works_guard_override --max-deleted 5200000 --reason ... --by ...
     scripts/preclear_e2e.py --flags guardrails_override,deleted_works_guard_override --reason ... --by ...
     scripts/preclear_e2e.py --night 2026-09-24 --reason ... --by ...   # CT evening date; default = next 05:00 UTC
     scripts/preclear_e2e.py --list                                     # rows whose window has not ended
@@ -83,6 +87,8 @@ def main():
     ap.add_argument("--reason", help="what wave, how many works, oxjob id")
     ap.add_argument("--by", help="who gave the per-run yes")
     ap.add_argument("--night", help="CT evening date (YYYY-MM-DD) the run belongs to; default = the next 05:00 UTC")
+    ap.add_argument("--max-changed", type=int, help="guardrails_override cap: works this run may stamp (Check 1 threshold)")
+    ap.add_argument("--max-deleted", type=int, help="deleted_works_guard_override cap: works that may disappear")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--cancel", action="store_true", help="end every open window now")
     ap.add_argument("--warehouse", default=None)
@@ -91,7 +97,7 @@ def main():
     wh = a.warehouse or os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID") or DEFAULT_WAREHOUSE
 
     if a.list:
-        cols, rows = sql(f"SELECT flag, valid_from, valid_until, reason, requested_by, created_at FROM {TABLE} "
+        cols, rows = sql(f"SELECT flag, valid_from, valid_until, max_changed, reason, requested_by, created_at FROM {TABLE} "
                          f"WHERE valid_until > current_timestamp() ORDER BY valid_from", wh)
         print(" | ".join(cols)) if rows else print("no open windows")
         for r in rows:
@@ -109,17 +115,28 @@ def main():
     if not a.reason or not a.by:
         sys.exit("--reason and --by are required (the reason is what the morning reader sees in Guardrails' output)")
 
+    caps = {"guardrails_override": a.max_changed, "deleted_works_guard_override": a.max_deleted}
+    if a.max_changed is not None and "guardrails_override" not in flags:
+        sys.exit("--max-changed caps guardrails_override; add it to --flags")
+    if a.max_deleted is not None and "deleted_works_guard_override" not in flags:
+        sys.exit("--max-deleted caps deleted_works_guard_override; add it to --flags")
+    cols, _ = sql(f"DESCRIBE {TABLE}", wh)
+    if not any(r[0] == "max_changed" for r in _):
+        sql(f"ALTER TABLE {TABLE} ADD COLUMNS (max_changed BIGINT)", wh)
+
     start = next_run_start(a.night)
     until = start + timedelta(hours=WINDOW_AFTER_START_H)
     now = datetime.now(timezone.utc)
     if until <= now:
         sys.exit(f"that run's window ({until:%Y-%m-%d %H:%M} UTC) has already ended")
     vals = ", ".join(
-        f"(current_timestamp(), TIMESTAMP '{until:%Y-%m-%d %H:%M:%S}', {q(f)}, {q(a.reason)}, {q(a.by)}, current_timestamp())"
+        f"(current_timestamp(), TIMESTAMP '{until:%Y-%m-%d %H:%M:%S}', {q(f)}, {q(a.reason)}, {q(a.by)}, current_timestamp(), "
+        f"{caps.get(f) if caps.get(f) is not None else 'NULL'})"
         for f in flags
     )
-    sql(f"INSERT INTO {TABLE} (valid_from, valid_until, flag, reason, requested_by, created_at) VALUES {vals}", wh)
-    print(f"pre-cleared {', '.join(flags)} for the End 2 End run starting {start:%Y-%m-%d %H:%M} UTC "
+    sql(f"INSERT INTO {TABLE} (valid_from, valid_until, flag, reason, requested_by, created_at, max_changed) VALUES {vals}", wh)
+    capped = ", ".join(f"{f} capped at {caps[f]:,}" for f in flags if caps.get(f) is not None) or "uncapped"
+    print(f"pre-cleared {', '.join(flags)} ({capped}) for the End 2 End run starting {start:%Y-%m-%d %H:%M} UTC "
           f"({(start - timedelta(hours=5)):%Y-%m-%d %H:%M} CDT); window ends {until:%Y-%m-%d %H:%M} UTC")
     print("nothing to pause, nothing to cancel; check `SELECT ... FROM openalex.works.guardrails_history` in the morning "
           "(note = 'override:table').")

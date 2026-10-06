@@ -17,6 +17,12 @@ parameter is the fallback (section 3b).
   `deleted_works_guard_override`, `deleted_locations_guard_override`, `wunpaywall_guard_override`.
 - If the blast radius is genuinely unknown, do not override. Let the scheduled run trip, read
   `records_changed_by_run` and the diff in the morning, then decide.
+- **Cap every pre-clear to the planned size** (Casey, 2026-10-06): `--max-changed N` for
+  `guardrails_override` (Check 1's threshold becomes N; above N the override is withdrawn and the
+  run fails), `--max-deleted N` for `deleted_works_guard_override` (TrackDeletedWorks and the ES
+  delete abort above N even with the override). N = the planned change plus a normal night's
+  stamps plus headroom; recent unforced nights stamp 3–7M. An uncapped row is the pre-10-06
+  behaviour and should be the exception.
 
 ## 1. Size it (before merging)
 

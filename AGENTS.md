@@ -20,7 +20,8 @@ Before shipping anything that feeds `CreateWorkAuthorships` / `CreateWorksEnrich
 ancestors, author ids, affiliations, topics, locations, types): estimate how many works get a new
 content hash; a small entity-side change can re-stamp tens of millions of works. If it is anywhere
 near 7.5M, pre-clear the scheduled run (after Jason's per-run yes) with
-`scripts/preclear_e2e.py --reason "..." --by jason`, which writes a dated row to
+`scripts/preclear_e2e.py --max-changed <planned stamps + a normal night> --reason "..." --by jason`
+(and `--max-deleted` with `deleted_works_guard_override` for a wave that deletes works), which writes a dated row to
 `openalex.works.e2e_overrides` that every gate reads through `openalex.works.e2e_override_active()`,
 and say so in #dev. Do not start a second manual End 2 End in the evening:
 it collides with the 05:00 UTC schedule, and pausing the schedule does not survive a bundle deploy.
