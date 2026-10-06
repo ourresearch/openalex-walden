@@ -8,13 +8,13 @@ the moment the gate runs. So a row here makes the SCHEDULED nightly behave exact
 manual `run-now` with the parameter set, with no second run, nothing to pause and nothing to
 cancel. Runbook: docs/runbooks/end2end-guardrails-override.md.
 
-Rules (they do not bend): run this only after Jason's explicit yes for this specific run, and
-only for the flag class that will actually fire. Give every planned change a cap (--max-changed for
+Rules (they do not bend): Casey runs this himself (no approval from Jason needed, Casey 2026-10-06;
+agents size the change and hand him the command), and only for the flag class that will actually fire. Give every planned change a cap (--max-changed for
 stamps, --max-deleted for deletions): the gate's threshold becomes that number instead of being
 switched off, so a change bigger than planned still fails the run. Uncapped rows are the old behaviour. `guardrails_override` never authorises a mass
 delete or an oversized feed; those have their own flags.
 
-    scripts/preclear_e2e.py --reason "oxjob #1309 fallback cleanup, 10.9M works" --by jason
+    scripts/preclear_e2e.py --max-changed 12000000 --reason "oxjob #1309 fallback cleanup, 10.9M works" --by casey
     scripts/preclear_e2e.py --max-changed 12000000 --reason ... --by ...        # Check 1 passes up to 12M stamps, fails above
     scripts/preclear_e2e.py --flags deleted_works_guard_override --max-deleted 5200000 --reason ... --by ...
     scripts/preclear_e2e.py --flags guardrails_override,deleted_works_guard_override --reason ... --by ...

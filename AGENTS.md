@@ -5,7 +5,8 @@
 **Guardrails contain bugs; they never set the size or pace of our work (Jason, 2026-09-26).** The 7.5M line
 exists to catch the unexpected (a bug that re-stamps 200M works), not to budget intended changes. Never split
 a change across nights, trim it or delay it to fit under the line: make it as big and as fast as it can be and
-pre-clear it, asking Jason for the override in the same question as the change itself. Full rule: `~/ox/CLAUDE.md`
+pre-clear it. **Casey runs the pre-clear himself; it needs no approval from Jason (Casey, 2026-10-06)**: size the
+change, hand Casey the capped `preclear_e2e.py` command, never run it as an agent. Full rule: `~/ox/CLAUDE.md`
 Batch Job Rule 7.
 
 `Walden End 2 End` runs `notebooks/end2end/Guardrails` after `CreateWorksEnriched`. Check 1 fails
@@ -19,8 +20,8 @@ authorships propagation, 08-21 content-hash wave, 09-21 `institution_ancestors` 
 Before shipping anything that feeds `CreateWorkAuthorships` / `CreateWorksEnriched` (institution
 ancestors, author ids, affiliations, topics, locations, types): estimate how many works get a new
 content hash; a small entity-side change can re-stamp tens of millions of works. If it is anywhere
-near 7.5M, pre-clear the scheduled run (after Jason's per-run yes) with
-`scripts/preclear_e2e.py --max-changed <planned stamps + a normal night> --reason "..." --by jason`
+near 7.5M, Casey pre-clears the scheduled run with
+`scripts/preclear_e2e.py --max-changed <planned stamps + a normal night> --reason "..." --by casey`
 (and `--max-deleted` with `deleted_works_guard_override` for a wave that deletes works), which writes a dated row to
 `openalex.works.e2e_overrides` that every gate reads through `openalex.works.e2e_override_active()`,
 and say so in #dev. Do not start a second manual End 2 End in the evening:

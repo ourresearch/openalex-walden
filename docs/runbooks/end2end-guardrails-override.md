@@ -8,8 +8,11 @@ parameter is the fallback (section 3b).
 
 ## 0. Rules that do not bend
 
-- The override is applied **only with Jason's explicit yes for this specific run**. A standing
-  approval, "go ahead", or last week's similar case does not count. Never ask Casey to apply it.
+- **Casey pre-clears, on his own authority (Casey, 2026-10-06).** A pre-clear needs no yes from
+  Jason: Casey runs `scripts/preclear_e2e.py` himself with `--by casey`, always with a cap
+  (`--max-changed` / `--max-deleted`) sized from the planned change. Jason's earlier per-run-yes
+  rule predates capped pre-clears; the cap is what bounds the blast radius now. An agent never
+  runs the script; it sizes the change and hands Casey the command.
 - Never change the job-level parameter defaults (`guardrails_override` etc. must stay `"false"`).
   The override is a run parameter on one `run-now`, or a row in `openalex.works.e2e_overrides`
   whose window covers exactly one nightly.
@@ -67,9 +70,9 @@ Evening sequence (all times UTC; nightly = 05:00 UTC = 00:00 CDT):
    `COUNT(*) ... WHERE updated_date >= '<today>'` on `openalex_authors`.
 3. **Tell Casey in #dev**: what change, how many works, pre-cleared on purpose, replicas dropped
    if over ~10M, no action needed.
-4. **Pre-clear, after Jason's yes for this run** (from desk; `databricks` CLI authenticated):
+4. **Casey pre-clears** (from desk; `databricks` CLI authenticated), capped to the planned size:
    ```
-   scripts/preclear_e2e.py --reason "oxjob #1309 fallback cleanup, 10.9M works" --by jason
+   scripts/preclear_e2e.py --max-changed 12000000 --reason "oxjob #1309 fallback cleanup, 10.9M works" --by casey
    scripts/preclear_e2e.py --flags guardrails_override,deleted_works_guard_override --reason ... --by ...
    scripts/preclear_e2e.py --list      # open windows
    scripts/preclear_e2e.py --cancel    # close every open window (changed your mind)
@@ -137,7 +140,7 @@ with `"value": "true"`. Then deal with the schedule:
 - Run red elsewhere (ES sync, snapshot): the works Delta table is already written; rerun with
   "Repair run" from the failed task. A pre-cleared window still covers a same-morning repair; a
   manual run keeps its parameter.
-- Forgot to pre-clear and the scheduled run tripped Check 1: after Jason's yes, pre-clear now
+- Forgot to pre-clear and the scheduled run tripped Check 1: Casey pre-clears now
   (`scripts/preclear_e2e.py`, the window covers today) and repair-run from Guardrails; or
   repair-run with the parameter, the 2026-09-21 pattern (run 930976173247507, repaired 14:05 UTC).
 
