@@ -10,10 +10,10 @@ Data Source: https://reporter.nih.gov/exporter
 Output: s3://openalex-ingest/awards/nih/nih_projects_combined.parquet
 
 What this script does:
-1. Downloads NIH ExPORTER project files for fiscal years 1985-2024
+1. Downloads NIH ExPORTER project files for fiscal years 1985-2025
 2. Extracts CSV files from downloaded zip archives
 3. Combines all years into a single dataframe
-4. Deduplicates by full_project_num (keeping most recent fiscal year's data)
+4. Deduplicates by full_project_num + subproject_id (keeping most recent fiscal year's data): center and sub-project rows both kept
 5. Converts to parquet format
 6. Uploads to S3
 
@@ -92,7 +92,7 @@ if _sys_utf8.platform == "win32":
 
 # Fiscal years to download (NIH ExPORTER has data from 1985 onwards)
 START_YEAR = 1985
-END_YEAR = 2024
+END_YEAR = 2025
 
 # S3 destination
 S3_BUCKET = "openalex-ingest"
@@ -238,11 +238,16 @@ def combine_and_deduplicate(csv_files: list[Path], output_dir: Path) -> Path:
                         .str.replace(' ', '_')
                         .str.replace('-', '_'))
 
-    # Deduplicate by full_project_num, keeping most recent fiscal year
-    print(f"\n  [DEDUPE] Deduplicating by full_project_num...")
+    # Deduplicate by (full_project_num, subproject_id), keeping the most recent fiscal year.
+    # Multi-component awards (P01/P50/U54/P30/... centers) carry the center row (no subproject_id) and one row per
+    # sub-project under the SAME full_project_num. Deduplicating on full_project_num alone kept one arbitrary row per
+    # number and dropped the rest (09-30 measure: 38,164 sub-project rows survived in place of their center).
+    print(f"\n  [DEDUPE] Deduplicating by full_project_num + subproject_id...")
     combined['fy'] = pd.to_numeric(combined['fy'], errors='coerce')
+    combined['subproject_id'] = combined['subproject_id'].fillna('').str.strip() if 'subproject_id' in combined else ''
     combined = combined.sort_values('fy', ascending=False)
-    combined = combined.drop_duplicates(subset=['full_project_num'], keep='first')
+    combined = combined.drop_duplicates(subset=['full_project_num', 'subproject_id'], keep='first')
+    combined['subproject_id'] = combined['subproject_id'].mask(combined['subproject_id'] == '')   # '' back to null
     print(f"  Unique awards: {len(combined):,}")
 
     # Save to parquet
