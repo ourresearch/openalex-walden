@@ -23,7 +23,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 45 0 * * ?"   # 00:45 Central, quiet hours
         timezone_id: America/Chicago
-        pause_status: UNPAUSED   # calibrated 1 Oct: ≈ 6 batches/h under the guard, semantic 5xx 0-6% per 5 min
+        pause_status: PAUSED   # done 6 Oct: all 100 batches + the 4,582,190 deletes ran on night 5 (run 113749573536075)
       parameters:
         - name: max_batches
           default: "20"    # ≈ 32M docs; 62 batches left after 1 Oct → 4 nights (Fri 2 – Mon 5 Oct)
