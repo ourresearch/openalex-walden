@@ -601,7 +601,7 @@ def zenodo_twin_class_sql():
            WHERE l.provenance = 'crossref' OR (l.provenance = 'datacite' AND lower(l.native_id) <> p.concept_doi) GROUP BY p.concept_work),
     wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, CAST(regexp_extract(primary_location.source.id, '([0-9]+)$', 1) AS BIGINT) AS src,
                   {norm.format(c='title')} AS tn, (title IS NULL OR trim(title) = '') AS no_title, COALESCE(cited_by_count, 0) AS cites,
-                  filter(split(lower(get(authorships, 0).author.display_name), '[^\\p{{L}}]+'), t -> length(t) >= 3) AS a1 FROM live),
+                  filter(split(lower(get(authorships, 0).author.display_name), '[^\\\\p{{L}}]+'), t -> length(t) >= 3) AS a1 FROM live),
     r1 AS (
       SELECT x.id AS a, y.id AS b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb,
              x.type AS ta_type, y.type AS tb_type, FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
