@@ -1,6 +1,6 @@
 # Semantic-search vectors: how they are built and kept current
 
-Status 2026-09-29 (oxjobs #1275, #1433). Replaces the old protocol for the Databricks Vector Search index behind
+Status 2026-10-06 (oxjobs #1275, #1433). Replaces the old protocol for the Databricks Vector Search index behind
 `/find/works`, which no longer exists (endpoint 404, no vector-search endpoints in the workspace).
 
 ## The stack
@@ -26,22 +26,33 @@ The gte-large-en stack (`work_embeddings_v2`, `works_for_embedding`, `works-vect
    Returns a JSON summary (`dbutils.notebook.exit`).
 2. **stage** (SQL-file task on the serverless warehouse `69a583ace3bdc8d0`, `notebooks/elastic/stage_vector_sync_qwen3.sql`):
    builds `vector_sync_staging_qwen3` (10 batches) from every work with a vector that was **embedded** in the last
-   2 days. **Parked since 2026-09-29 (walden `fbf81eb9`):** the filter-field diff below (in `996ab8a5`) comes back with a
-   per-night cap once the one-off refresh is done. With the diff, it also stages every work 14 filter fields **changed** (their `xxhash64` differs from the mirror
-   `openalex.vector_search.vector_filter_fields_sent`), or that is **unmirrored**; and `vector_sync_deletes_qwen3`
-   (mirror ids whose work no longer exists). Fails if more than 5M works are unmirrored (the mirror is broken).
-   Runs on the warehouse on purpose: the same query stalled for hours on the job cluster.
+   2 days, with its 14 filter fields and their `filter_hash`. Runs on the warehouse on purpose: the same query stalled
+   for hours on the job cluster.
 3. **sync** (`sync_vector_index_qwen3.ipynb`, `is_full_sync=false`, 2–8-worker job cluster): bulk-indexes the staging
-   table into `works-vectors-v2` (`index` ops, so re-sending is safe), checkpointing per batch; deletes the gone works
-   (refuses above `max_deletes`, default 1M); after a clean run MERGEs the staged hashes into the mirror; then drops
-   the staging/checkpoint/deletes tables.
+   table into `works-vectors-v2` (`index` ops, so re-sending is safe), checkpointing per batch; after a clean run MERGEs
+   the staged hashes into the mirror `openalex.vector_search.vector_filter_fields_sent`; then drops the staging and
+   checkpoint tables.
+
+## Filter-field sync (`jobs/vector_filter_sync_qwen3.yaml`, 00:45 CT, paced)
+
+1. **stage** (`notebooks/elastic/stage_vector_filter_sync.sql`, same warehouse): `CREATE TABLE IF NOT EXISTS`
+   `vector_filter_sync_staging` (20 batches) = every work with a vector whose 14 filter fields **changed** (their
+   `xxhash64` differs from the mirror) or that is **unmirrored**; and `vector_filter_sync_deletes` (mirror ids whose
+   work no longer exists). Fails if more than 20M works are unmirrored (the mirror is broken). IF NOT EXISTS: an
+   unfinished night's tables are resumed, not re-staged.
+2. **sync** (same notebook, `resume=true`, `cleanup=true`, 2 workers, `spark.task.cpus=4`, paced as below): sends the
+   staged works, then deletes the gone works (`max_deletes` 1M), MERGEs the hashes into the mirror and drops the three
+   tables, all only once every batch is done.
+
+Sizes: ≈ 30M the first night (6 Oct 2026: 23.9M changed, 15.7M of them a primary-source change that week; 5.6M
+unmirrored; 238K gone); ≈ 1-3M a night after that.
 
 **Why the filter-field diff (oxjob #1433):** semantic search pre-filters kNN on this index's own copy of the filter
 fields. Until 2026-09-29 only works whose text changed were re-sent, so every metadata change (the 2026-09-27
 affiliation swap, author moves, citations) left the copy stale: ≈ 10% of works had stale institutions. The API now
 also re-checks filters on works-v34 when it hydrates hits (elastic-api `core/vector_index.py`), which stops wrong
 hits but not misses. The mirror was seeded on 2026-09-29 from `openalex_works` version 16676, the version the
-one-off refresh sent. **The stage file's projection and hash must match the mirror's:** changing either re-sends
+one-off refresh sent (160.4M works, paced over 1-6 Oct; then 4.58M deletes). **Both stage files' projection and hash must match the mirror's:** changing either re-sends
 every work once.
 
 Typical night: ~300K works, ~25 min wall, ≈$1 of endpoint. Failure emails jason@ourresearch.org; a failed run is
@@ -55,8 +66,8 @@ of docs in place sets off merges that evict it: on 2026-09-29 ≈ 40M docs in on
 bigger than a normal night goes through the sync notebook's pacing widgets: `max_batches` (per run), `max_minutes`,
 and the guard (`knn_guard_ms` > 0: before each batch wait for ≤ `max_merges` merges on the index and a direct kNN probe
 ≤ `knn_guard_ms`, else stop). A run that leaves batches undone skips the deletes, the mirror and the cleanup; the next
-run with `resume=true` carries on. Example: `jobs/vector_refresh_oxjob1433.yaml` (00:45 CT nightly, 2 workers,
-`spark.task.cpus=4`). Watch direct kNN (0.1-0.3 s healthy) and the Analytics Engine semantic 5xx rate, which was
+run with `resume=true` carries on. Example: `jobs/vector_filter_sync_qwen3.yaml` (00:45 CT nightly, 2 workers,
+`spark.task.cpus=4`); nights of the 160.4M refresh did 1-20 batches of 1.6M. Watch direct kNN (0.1-0.3 s healthy) and the Analytics Engine semantic 5xx rate, which was
 already 5-15% an hour before any re-send.
 
 ## Full rebuild (only if the model or the text format changes)

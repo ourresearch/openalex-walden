@@ -1,10 +1,10 @@
 # Nightly refresh of the semantic-search vectors (oxjob #1275). Four tasks:
 #   1. embed  — EmbedQwen3Incremental: new/changed/missing works → work_embeddings_qwen3 (serverless, ai_query)
-#   2. stage  — stage_vector_sync_qwen3.sql on the serverless SQL warehouse: rows embedded in the last 2 days, plus works
-#               whose 14 filter fields changed since they were last sent (hash vs the mirror vector_filter_fields_sent,
-#               oxjob #1433), joined to their filter fields → vector_sync_staging_qwen3; works gone → vector_sync_deletes_qwen3
-#   3. sync   — sync_vector_index_qwen3 incremental: ships the staging table to ES works-vectors-v2, deletes the gone
-#               works, then records the sent hashes in the mirror
+#   2. stage  — stage_vector_sync_qwen3.sql on the serverless SQL warehouse: rows embedded in the last 2 days, joined to
+#               their filter fields and filter_hash → vector_sync_staging_qwen3
+#   3. sync   — sync_vector_index_qwen3 incremental: ships the staging table to ES works-vectors-v2, then records the sent
+#               hashes in the mirror vector_filter_fields_sent. Works whose filter fields change without a text change,
+#               and works that no longer exist, go out at 00:45 CT in vector_filter_sync_qwen3.yaml (oxjob #1433)
 #   4. sdg_score — sdg_jev_head_score incremental (oxjob #1300): scores the vectors just embedded with the Jev-trained
 #               SDG head → openalex.works.works_sdg_jev, which the next Walden End 2 End merges into
 #               sustainable_development_goals. Runs beside stage/sync, so a failure never holds up the vectors.
