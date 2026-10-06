@@ -1228,6 +1228,9 @@ zwe,*,ZW,high,organisation,ISO 3166-1 alpha-3
 *,hrzz,,medium,assumed_domestic,one constant (HR) on 3601 awards; no organisation abroad seen next to it
 *,humboldt,,low,assumed,"`'Germany' as country` (CreateHumboldtAwards cell 6); the name is the fellow's institution abroad, 74% of legacy matches contradicted"
 *,hunan_nsf,,medium,assumed_domestic,one constant (CN) on 8985 awards; no organisation abroad seen next to it
+*,iati_fcdo,,high,organisation,"IATI: the lead organisation's registration country from its org-id prefix (iati_to_s3.py org_country_from_ref); 15 countries recorded on 644 awards (#1570)"
+*,iati_norad,,high,organisation,"IATI: the lead organisation's registration country from its org-id prefix (iati_to_s3.py org_country_from_ref); none recorded yet (#1570)"
+*,iati_sida,,high,organisation,"IATI: the lead organisation's registration country from its org-id prefix (iati_to_s3.py org_country_from_ref); 6 countries recorded on 23 awards (#1570)"
 *,icmr_approved_projects,,medium,assumed_domestic,one constant (IN) on 1313 awards; no organisation abroad seen next to it
 *,idrc_iati,,low,project_country,"IDRC: `a.recipient_country as country` (CreateIDRCAwards cell 9); University of Alberta carries ZA, TH, CU, MW"
 *,ifau,,medium,assumed_domestic,one constant (SE) on 29 awards; no organisation abroad seen next to it
