@@ -1,0 +1,64 @@
+# Weekly refresh of the IATI awards (Sida, Norad / Norway MFA, FCDO; oxjob #1570). PAUSED until the fetch task is
+# proven to write s3://openalex-ingest/awards/iati_*/ from Databricks (it uses boto3 with the task's credentials).
+# Order: fetch the publishers' IATI files and upload the research-admitted parquet (the uploader refuses to shrink) ->
+# rebuild iati_raw / iati_awards and republish at priority 600 (the notebook's guards run before the insert) ->
+# freshness check. Runs Monday 01:00 UTC, two hours before the Nightly Grants job reads openalex_awards_raw.
+# Replaces running CreateFunderSourcedAwards for IATI: that job has 300+ funder tasks and no schedule.
+resources:
+  jobs:
+    IATI_Awards_Refresh:
+      name: IATI awards weekly refresh
+      email_notifications:
+        on_failure:
+          - rohan@openalex.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        quartz_cron_expression: "0 0 1 ? * MON"
+        timezone_id: UTC
+        pause_status: PAUSED
+      max_concurrent_runs: 1
+      timeout_seconds: 10800
+      tasks:
+        - task_key: fetch_iati
+          spark_python_task:
+            python_file: scripts/local/iati_to_s3.py
+            source: GIT
+            parameters: ["--publisher", "sida", "norad", "fcdo", "--source", "bulk"]
+          environment_key: Fetch
+          max_retries: 1
+          min_retry_interval_millis: 600000
+        - task_key: IATI_Awards
+          depends_on:
+            - task_key: fetch_iati
+          notebook_task:
+            notebook_path: notebooks/awards/CreateIATIAwards
+            source: GIT
+            base_parameters:
+              publish_to_awards_raw: "true"
+              priority: "600"
+          environment_key: Default
+          run_if: ALL_SUCCESS
+        - task_key: freshness_check
+          depends_on:
+            - task_key: IATI_Awards
+          run_if: ALL_DONE
+          spark_python_task:
+            python_file: monitoring/checks/iati_freshness_check.py
+            source: GIT
+          environment_key: Default
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+        - environment_key: Fetch
+          spec:
+            environment_version: "4"
+            dependencies:
+              - pandas
+              - pyarrow
+              - requests
+              - boto3
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
