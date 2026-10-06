@@ -68,14 +68,17 @@
 # MAGIC
 # MAGIC **`class_mode = zenodo_twin`** (oxjob #1540, 2026-10-05): Zenodo registers a concept DOI `10.5281/zenodo.N` and a version DOI per
 # MAGIC deposit, both as DataCite records with the same metadata; walden mints a work for each (OJS journals that DOI through Zenodo:
-# MAGIC ~150K pairs on `ojs_coverage` sources; 6.9M corpus-wide, 2026-10-05 sizing in oxjobs #1427 `work/q42`). The pair is the version
+# MAGIC ~150K pairs on `ojs_coverage` sources; 6.9M corpus-wide, 2026-10-05 sizing in oxjobs #1427 `work/q42`). Every InvenioRDM
+# MAGIC instance does the same (KTH Data Repository 10.71775, ZD 25672), so since 2026-10-06 the class takes any DataCite prefix except
+# MAGIC arXiv (10.48550, the declared_version class). The pair is the version
 # MAGIC record's own declaration: `ids[]` carries `IsVersionOf` exactly one concept DOI, and that concept DOI is a DataCite record on
 # MAGIC exactly one other live work. **Winner = the version DOI's work** (what the article page prints and what the journal's feed record
 # MAGIC attached to; Casey 2026-10-05), loser = the concept work; the concept DOI becomes an alias key on the winner (execute re-keys
 # MAGIC like exact_signature; `ta` = 'zen:<winner id>'). Scope = `twin_scope_sql` (source ids; a pair is in scope when either side's
 # MAGIC primary source is; empty = corpus-wide). Held: `multi_winner` (a concept with several versions: software / dataset releases,
-# MAGIC re-deposited articles, not duplicates), `title_differs`, `year_differs`, `loser_has_primary` (the concept work also carries a
-# MAGIC Crossref record or another DataCite record), `winner_junk`, `dataset_software` (either side typed dataset / software: a separate
+# MAGIC re-deposited articles, not duplicates), `title_differs`, `year_differs`, `author_differs` (first authors share no name token:
+# MAGIC 2 of 25 in the 2026-10-06 non-Zenodo blind sample were different papers under one title), `loser_has_primary` (the concept work also carries a
+# MAGIC Crossref record or another DataCite record), `winner_junk`, `dataset_software` (either side typed dataset / software / supplementary-materials: a separate
 # MAGIC decision), and the mechanical holds.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
 # MAGIC               (before-image, both sides) then UPDATE `work_references`: `cited_work_id` loser → winner (citations
@@ -573,10 +576,11 @@ FEED_TWIN_HOLD = """CASE WHEN r.default_host THEN 'default_oai_host'
 
 
 def zenodo_twin_class_sql():
-    """Zenodo-twin class (oxjob #1540, 2026-10-05): a live DataCite `10.5281/zenodo.*` record whose `ids[]` declares `IsVersionOf`
-    exactly one concept DOI, that concept DOI being a DataCite record on exactly one other live work. Winner = the version work,
-    loser = the concept work (Casey 2026-10-05). One row per (winner, loser); a concept with several versions lists several
-    winners and is held as multi_winner by the shared tail."""
+    """Zenodo-twin class (oxjob #1540, 2026-10-05; widened 2026-10-06 to every DataCite prefix): a live DataCite record whose `ids[]`
+    declares `IsVersionOf` exactly one concept DOI, that concept DOI being a DataCite record on exactly one other live work. Zenodo
+    and every other InvenioRDM instance (KTH 10.71775, ZD 25672) register the pair this way; arXiv records (10.48550) stay with the
+    declared_version class. Winner = the version work, loser = the concept work (Casey 2026-10-05). One row per (winner, loser);
+    a concept with several versions lists several winners and is held as multi_winner by the shared tail."""
     norm = "regexp_replace(lower({c}), '[^\\\\p{{L}}\\\\p{{N}}]', '')"
     doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx\\\\.)?doi\\\\.org/|doi:)', ''), '[^a-z0-9./-]', '')"
     scope = (f"(x.src IN (SELECT source_id FROM scope) OR y.src IN (SELECT source_id FROM scope))" if TWIN_SCOPE_SQL else "TRUE")
@@ -585,10 +589,10 @@ def zenodo_twin_class_sql():
     WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
     {scope_cte}
     dc AS (SELECT l.work_id, lower(l.native_id) AS doi, l.ids FROM {LM} l
-           WHERE l.provenance = 'datacite' AND l.work_id IS NOT NULL AND lower(l.native_id) LIKE '10.5281/zenodo.%' {prior_exclusion()}),
+           WHERE l.provenance = 'datacite' AND l.work_id IS NOT NULL AND lower(l.native_id) NOT LIKE '10.48550/%' {prior_exclusion()}),
     rel AS (SELECT DISTINCT d.work_id AS ver_work, {doi_clean.format(c='i.id')} AS concept_doi
             FROM dc d LATERAL VIEW explode(d.ids) e AS i
-            WHERE i.relationship = 'IsVersionOf' AND lower(COALESCE(i.namespace, 'doi')) = 'doi' AND lower(i.id) LIKE '%10.5281/zenodo.%'),
+            WHERE i.relationship = 'IsVersionOf' AND lower(COALESCE(i.namespace, 'doi')) = 'doi' AND lower(i.id) NOT LIKE '%10.48550/%'),
     one AS (SELECT ver_work, MIN(concept_doi) AS concept_doi FROM rel GROUP BY ver_work HAVING COUNT(DISTINCT concept_doi) = 1),
     cw AS (SELECT doi, MIN(work_id) AS concept_work FROM dc GROUP BY doi HAVING COUNT(DISTINCT work_id) = 1),
     pairs AS (SELECT o.ver_work, cw.concept_work, o.concept_doi FROM one o JOIN cw ON cw.doi = o.concept_doi WHERE cw.concept_work <> o.ver_work),
@@ -596,13 +600,15 @@ def zenodo_twin_class_sql():
     lp AS (SELECT p.concept_work FROM pairs p JOIN {LM} l ON l.work_id = p.concept_work
            WHERE l.provenance = 'crossref' OR (l.provenance = 'datacite' AND lower(l.native_id) <> p.concept_doi) GROUP BY p.concept_work),
     wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, CAST(regexp_extract(primary_location.source.id, '([0-9]+)$', 1) AS BIGINT) AS src,
-                  {norm.format(c='title')} AS tn, (title IS NULL OR trim(title) = '') AS no_title, COALESCE(cited_by_count, 0) AS cites FROM live),
+                  {norm.format(c='title')} AS tn, (title IS NULL OR trim(title) = '') AS no_title, COALESCE(cited_by_count, 0) AS cites,
+                  filter(split(lower(get(authorships, 0).author.display_name), '[^\\p{{L}}]+'), t -> length(t) >= 3) AS a1 FROM live),
     r1 AS (
       SELECT x.id AS a, y.id AS b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb,
              x.type AS ta_type, y.type AS tb_type, FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
              x.tn = y.tn AS title_same, (x.yr IS NOT NULL AND y.yr IS NOT NULL AND x.yr <> y.yr) AS year_differs,
+             (size(x.a1) > 0 AND size(y.a1) > 0 AND NOT arrays_overlap(x.a1, y.a1)) AS author_differs,
              (lp.concept_work IS NOT NULL) AS loser_has_primary, x.no_title AS winner_no_title,
-             (x.type IN ('dataset', 'software') OR y.type IN ('dataset', 'software')) AS dataset_software,
+             (x.type IN ('dataset', 'software', 'supplementary-materials') OR y.type IN ('dataset', 'software', 'supplementary-materials')) AS dataset_software,
              x.id AS winner_work_id, y.id AS loser_work_id
       FROM pairs p JOIN wf x ON x.id = p.ver_work JOIN wf y ON y.id = p.concept_work LEFT JOIN lp ON lp.concept_work = p.concept_work
       WHERE {scope}),""" + pair_class_tail(ZENODO_TWIN_SIGNALS, ZENODO_TWIN_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('zen:', r.winner_work_id)")
@@ -611,6 +617,7 @@ ZENODO_TWIN_SIGNALS = "'declared_is_version_of'"
 ZENODO_TWIN_HOLD = """CASE WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
                 WHEN NOT r.title_same THEN 'title_differs'
                 WHEN r.year_differs THEN 'year_differs'
+                WHEN r.author_differs THEN 'author_differs'
                 WHEN r.loser_has_primary THEN 'loser_has_primary'
                 WHEN r.winner_no_title OR r.ta_type = 'paratext' THEN 'winner_junk'
                 WHEN r.dataset_software THEN 'dataset_software'
