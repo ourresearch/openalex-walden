@@ -1,0 +1,102 @@
+# Quiet-hours filter-field sync of works-vectors-v2 (oxjob #1433). Semantic search filters on the vector index's own copy
+# of 14 filter fields. The 10:00 CT nightly (embed_qwen3_nightly) sends only works embedded in the last 2 days, so a work
+# whose fields move without a text change (a nightly re-stamp, a date-kept backfill like the 27 Sep affiliation swap)
+# would keep stale fields. This job stages those works by hash against the mirror vector_filter_fields_sent
+# (stage_vector_filter_sync.sql), re-sends them whole in paced batches, deletes the docs of works that no longer exist,
+# then MERGEs the sent hashes into the mirror.
+#
+# Why paced, and why at night: the vector cluster (2 nodes, ≈ 2 TB index, no replica) serves kNN from the page cache,
+# and the merges that in-place overwrites set off evict it. Sending ≈ 40M docs in one evening on 29 Sep made semantic
+# search fail 60-78% of requests. So each night sends at most max_batches, starts no batch after max_minutes, and before
+# every batch waits for merges <= max_merges and a direct kNN probe <= knn_guard_ms (else stops for the night). A night
+# that leaves batches undone keeps its tables and the next night resumes them (the stage is CREATE TABLE IF NOT EXISTS).
+# Sizes: ≈ 30M on the first night after the 160.4M refresh (job 1103706340802170, 1-6 Oct 2026, now deleted) because
+# 15.7M works changed primary source that week; ≈ 1-3M a night after that.
+resources:
+  jobs:
+    Vector_Filter_Sync_Qwen3:
+      name: "Semantic index filter-field sync, paced nightly (oxjob #1433)"
+      description: |
+        Re-sends to works-vectors-v2 the works whose semantic-search filter fields changed since they were last sent
+        (hash vs vector_filter_fields_sent) and deletes the docs of works that no longer exist, in paced batches guarded
+        by merge count and kNN latency. Resumes unfinished nights; safe to re-run.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 45 0 * * ?"   # 00:45 Central, quiet hours; after the 10:00 CT nightly's mirror MERGE
+        timezone_id: America/Chicago
+        pause_status: UNPAUSED
+      parameters:
+        - name: max_batches
+          default: "20"    # all of them; the guard sets the pace (refresh nights 1-5: 15, 20, 16, 1, 10 batches of 1.6M)
+        - name: max_minutes
+          default: "210"   # no batch starts after ≈ 04:15 CT
+        - name: knn_guard_ms
+          default: "600"
+        - name: max_merges
+          default: "4"
+        - name: guard_wait_minutes
+          default: "60"    # 5 Oct: after 1 batch the cache refill kept kNN at 550-850 ms for > 30 min (merges 0)
+      tasks:
+        - task_key: stage
+          sql_task:
+            warehouse_id: 69a583ace3bdc8d0   # serverless Medium, as the nightly's stage
+            file:
+              path: notebooks/elastic/stage_vector_filter_sync.sql
+              source: GIT
+          timeout_seconds: 7200
+        - task_key: sync
+          depends_on:
+            - task_key: stage
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_vector_index_qwen3
+            source: GIT
+            base_parameters:
+              is_full_sync: "false"
+              staging_table: openalex.vector_search.vector_filter_sync_staging
+              checkpoint_table: openalex.vector_search.vector_filter_sync_checkpoint
+              num_batches: "20"   # must match pmod(hash(id), 20) in the stage
+              resume: "true"
+              deletes_table: openalex.vector_search.vector_filter_sync_deletes
+              max_deletes: "1000000"   # 6 Oct: 238K works gone in the week since the mirror seed
+              mirror_table: openalex.vector_search.vector_filter_fields_sent
+              cleanup: "true"   # drops staging/checkpoint/deletes only after all batches are done
+              max_batches: "{{job.parameters.max_batches}}"
+              max_minutes: "{{job.parameters.max_minutes}}"
+              knn_guard_ms: "{{job.parameters.knn_guard_ms}}"
+              max_merges: "{{job.parameters.max_merges}}"
+              guard_wait_minutes: "{{job.parameters.guard_wait_minutes}}"
+          job_cluster_key: refresh_cluster
+          timeout_seconds: 21600
+      job_clusters:
+        - job_cluster_key: refresh_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: rd-fleet.12xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            spark_conf:
+              spark.task.cpus: "4"   # 24 concurrent send tasks ≈ 11K docs/s; 8 workers at full speed made 1 in 4 semantic searches 504
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 2
+            custom_tags:
+              oxjob: "1433"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
