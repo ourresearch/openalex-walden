@@ -95,6 +95,18 @@
 # MAGIC are set aside for a location cap); the older ones wait here. `signals` = how the group was found (`declared` / `suffix`) + `title` / `author` when they agree, for stratified review.
 # MAGIC Execute re-keys the losers' keys onto the winner like exact_signature; `ta` = 'vgr:<winner id>'. Sized 2026-10-07: ~6.7M
 # MAGIC losers (Zenodo 2.77M, Figshare 2.70M, other 1.25M).
+# MAGIC
+# MAGIC **`class_mode = crossref_preprint`** (oxjob #1099, 2026-10-07): a Crossref preprint and its journal article on two works,
+# MAGIC linked by Crossref's own `relation.is-preprint-of` / `relation.has-preprint` (either side's deposit; read from
+# MAGIC `crossref_deduplicated`, so it does not wait on `ids[]` reaching `locations_mapped`). Preprint record `posted-content` /
+# MAGIC `preprint`, article record `journal-article` (AACR registers ~204K Figshare supplements as `is-preprint-of` with subtype
+# MAGIC `other`). **Winner = the article's work** (Casey 2026-09-28), loser = the preprint's work; the preprint DOI becomes an alias
+# MAGIC key on the winner (execute re-keys like exact_signature; `ta` = 'pre:<winner id>'). A changed title is not a hold: 59/60
+# MAGIC random title-differs pairs were the same paper, and first-author mismatches are byline order (50/50). Held:
+# MAGIC `correction_notice` (the article work is titled as a correction), `winner_type` (not article / review / letter),
+# MAGIC `year_gap` (article more than 3 years after or 1 before), `no_author_overlap` (no author name token on both sides: 13/20 wrong,
+# MAGIC JMIR off-by-N DOIs and OSF placeholders linked to unrelated articles), `no_authors_title_differs`, and the mechanical holds.
+# MAGIC Sized 2026-10-07: 634,437 pairs executable, 961 held by the evidence holds.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
 # MAGIC               (before-image, both sides) then UPDATE `work_references`: `cited_work_id` loser → winner (citations
 # MAGIC               TO the loser) and `citing_work_id` loser → winner (the loser's OWN reference list comes along; rows keep
@@ -106,7 +118,7 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group"])
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint"])
 dbutils.widgets.text("feed_scope_sql", "SELECT endpoint_id FROM openalex.sources.endpoint_to_source WHERE is_journal_host")
 dbutils.widgets.text("twin_scope_sql", "SELECT source_id FROM openalex_dev.sources.ojs_coverage")
 dbutils.widgets.text("tiers", "1,2")
@@ -202,6 +214,8 @@ def class_sql():
         return legacy_twin_class_sql()
     if CLASS_MODE == "version_group":
         return version_group_class_sql()
+    if CLASS_MODE == "crossref_preprint":
+        return crossref_preprint_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -531,6 +545,60 @@ def declared_version_class_sql():
 DECLARED_VERSION_SIGNALS = "'declared_is_version_of'"
 DECLARED_VERSION_HOLD = """CASE WHEN NOT r.title_same THEN 'title_differs'
                 WHEN r.pmid_conflict THEN 'pmid_conflict'
+                WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
+                WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
+                WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
+                END"""
+
+
+def crossref_preprint_class_sql():
+    """Crossref preprint class (oxjob #1099, 2026-10-07): the (preprint, article) DOI pairs Crossref declares in `relation`, typed
+    posted-content/preprint -> journal-article in Crossref, on two live works. Winner = the article's work. Author tokens are
+    computed once per work and joined (an inline arrays_overlap over two flatten(transform()) arrays gave run-varying wrong
+    answers on the warehouse, 2026-10-07)."""
+    doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx\\\\.)?doi\\\\.org/|doi:)', ''), '[^a-z0-9./-]', '')"
+    norm = "regexp_replace(lower({c}), '[^\\\\p{{L}}\\\\p{{N}}]', '')"
+    return f"""
+    WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
+    cr AS (SELECT native_id AS doi, relation FROM {CROSSREF_RAW}
+           WHERE size(relation.`is-preprint-of`) > 0 OR size(relation.`has-preprint`) > 0),
+    links AS (
+      SELECT cr.doi AS pre_doi, {doi_clean.format(c='x.id')} AS pub_doi
+      FROM cr LATERAL VIEW explode(relation.`is-preprint-of`) e AS x WHERE x.`id-type` = 'doi'
+      UNION
+      SELECT {doi_clean.format(c='x.id')}, cr.doi
+      FROM cr LATERAL VIEW explode(relation.`has-preprint`) e AS x WHERE x.`id-type` = 'doi'),
+    typed AS (
+      SELECT DISTINCT k.pre_doi, k.pub_doi FROM links k
+      JOIN {CROSSREF_RAW} p ON p.native_id = k.pre_doi AND p.type = 'posted-content' AND p.subtype = 'preprint'
+      JOIN {CROSSREF_RAW} q ON q.native_id = k.pub_doi AND q.type = 'journal-article'
+      WHERE k.pre_doi <> k.pub_doi),
+    pins AS (SELECT native_id AS doi, work_id FROM {REGISTRY}
+             WHERE provenance = 'crossref' AND native_id_namespace = 'doi' AND work_id IS NOT NULL),
+    pw AS (SELECT DISTINCT p.work_id AS a, q.work_id AS b FROM typed t
+           JOIN pins p ON p.doi = t.pre_doi JOIN pins q ON q.doi = t.pub_doi WHERE p.work_id <> q.work_id),
+    ids AS (SELECT a AS id FROM pw UNION SELECT b FROM pw),
+    wf AS (SELECT w.id, {doi_clean.format(c='w.doi')} AS d, w.publication_year AS yr, w.type, w.title,
+                  w.primary_location.source.id AS src, {norm.format(c='w.title')} AS tn, COALESCE(w.cited_by_count, 0) AS cites,
+                  array_distinct(flatten(transform(w.authorships,
+                    ax -> filter(split(lower(ax.author.display_name), '[^\\\\p{{L}}]+'), tx -> length(tx) >= 3)))) AS toks
+           FROM live w LEFT SEMI JOIN ids ON ids.id = w.id),
+    r1 AS (
+      SELECT x.id AS a, y.id AS b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb,
+             x.type AS ta_type, y.type AS tb_type, FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
+             x.tn = y.tn AS title_same, size(x.toks) = 0 OR size(y.toks) = 0 AS no_authors,
+             size(array_intersect(x.toks, y.toks)) > 0 AS author_overlap,
+             y.title RLIKE '(?i)^\\\\s*(metadata correction|correction|erratum|corrigendum|addendum)([^a-z]|$)' AS correction_notice,
+             (x.yr IS NOT NULL AND y.yr IS NOT NULL AND (y.yr - x.yr > 3 OR y.yr - x.yr < -1)) AS year_gap,
+             y.id AS winner_work_id, x.id AS loser_work_id
+      FROM pw JOIN wf x ON x.id = pw.a JOIN wf y ON y.id = pw.b),""" + pair_class_tail(CROSSREF_PREPRINT_SIGNALS, CROSSREF_PREPRINT_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('pre:', r.winner_work_id)")
+
+CROSSREF_PREPRINT_SIGNALS = """concat_ws('+', 'declared_preprint', CASE WHEN r.title_same THEN 'title' END, CASE WHEN r.author_overlap THEN 'author' END)"""
+CROSSREF_PREPRINT_HOLD = """CASE WHEN r.correction_notice THEN 'correction_notice'
+                WHEN r.tb_type NOT IN ('article', 'review', 'letter') THEN 'winner_type'
+                WHEN r.year_gap THEN 'year_gap'
+                WHEN r.no_authors AND NOT r.title_same THEN 'no_authors_title_differs'
+                WHEN NOT r.no_authors AND NOT r.author_overlap THEN 'no_author_overlap'
                 WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
                 WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
                 WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
@@ -963,7 +1031,7 @@ if MODE == "execute":
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
                          AND a.loser_work_id = r.work_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
-    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group") or PREPRINT_IS_SAME:
+    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
         ALIASES = f"{TARGET}_wave{WAVE}_aliases"

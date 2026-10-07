@@ -21,6 +21,8 @@ resources:
           class_mode=feed_twin   oxjob #1427: an OJS feed record and its Crossref twin on two works; feed_scope_sql = the endpoints in scope
           class_mode=zenodo_twin oxjob #1540: a Zenodo concept DOI and its version DOI (DataCite IsVersionOf) on two works; winner = the
                                  version work; twin_scope_sql = the source ids in scope (empty = corpus-wide)
+          class_mode=crossref_preprint  oxjob #1099: a Crossref preprint and its journal article (Crossref relation is-preprint-of /
+                                 has-preprint) on two works; winner = the article's work
       max_concurrent_runs: 1
       parameters:
         - name: mode
