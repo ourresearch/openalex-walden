@@ -555,7 +555,9 @@ def crossref_preprint_class_sql():
     """Crossref preprint class (oxjob #1099, 2026-10-07): the (preprint, article) DOI pairs Crossref declares in `relation`, typed
     posted-content/preprint -> journal-article in Crossref, on two live works. Winner = the article's work. Author tokens are
     computed once per work and joined (an inline arrays_overlap over two flatten(transform()) arrays gave run-varying wrong
-    answers on the warehouse, 2026-10-07)."""
+    answers on the warehouse, 2026-10-07). Key sharing is group-scoped like version_group: an article with several declared
+    preprints is one group, and a shared title key only holds a loser with a doi/pmid/arxiv-less record (the first stage held
+    160,823 on title keys of other preprint versions, OSF placeholders and Figshare copies; the preprint's DOI alias wins first)."""
     doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx\\\\.)?doi\\\\.org/|doi:)', ''), '[^a-z0-9./-]', '')"
     norm = "regexp_replace(lower({c}), '[^\\\\p{{L}}\\\\p{{N}}]', '')"
     return f"""
@@ -591,7 +593,7 @@ def crossref_preprint_class_sql():
              y.title RLIKE '(?i)^\\\\s*(metadata correction|correction|erratum|corrigendum|addendum)([^a-z]|$)' AS correction_notice,
              (x.yr IS NOT NULL AND y.yr IS NOT NULL AND (y.yr - x.yr > 3 OR y.yr - x.yr < -1)) AS year_gap,
              y.id AS winner_work_id, x.id AS loser_work_id
-      FROM pw JOIN wf x ON x.id = pw.a JOIN wf y ON y.id = pw.b),""" + pair_class_tail(CROSSREF_PREPRINT_SIGNALS, CROSSREF_PREPRINT_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('pre:', r.winner_work_id)")
+      FROM pw JOIN wf x ON x.id = pw.a JOIN wf y ON y.id = pw.b),""" + pair_class_tail(CROSSREF_PREPRINT_SIGNALS, CROSSREF_PREPRINT_HOLD, group_scoped=True).replace("concat('sig:', r.winner_work_id)", "concat('pre:', r.winner_work_id)")
 
 CROSSREF_PREPRINT_SIGNALS = """concat_ws('+', 'declared_preprint', CASE WHEN r.title_same THEN 'title' END, CASE WHEN r.author_overlap THEN 'author' END)"""
 CROSSREF_PREPRINT_HOLD = """CASE WHEN r.correction_notice THEN 'correction_notice'
