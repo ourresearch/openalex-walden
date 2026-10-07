@@ -80,6 +80,14 @@
 # MAGIC 2 of 25 in the 2026-10-06 non-Zenodo blind sample were different papers under one title), `loser_has_primary` (the concept work also carries a
 # MAGIC Crossref record or another DataCite record), `winner_junk`, `dataset_software` (either side typed dataset / software / supplementary-materials: a separate
 # MAGIC decision), and the mechanical holds.
+# MAGIC
+# MAGIC **`class_mode = version_suffix`** (oxjob #1581, 2026-10-07): Figshare (10.6084 and the institutional portals 10.25384,
+# MAGIC 10.25375, 10.25446, ...) and a few other DataCite registrants mint a version DOI as the concept DOI plus `.vN`
+# MAGIC (`10.6084/m9.figshare.123` and `10.6084/m9.figshare.123.v1`) without declaring `IsVersionOf`, so `zenodo_twin` never
+# MAGIC sees them (174 of 2.16M Figshare pairs staged there). The pair is a live DataCite record whose DOI ends `.v<N>` and the
+# MAGIC DataCite record holding the DOI without the suffix on exactly one other live work. Same winner rule, holds and execute
+# MAGIC re-keying as `zenodo_twin` (winner = the version work; `ta` = 'vsx:<winner id>'). Sized 2026-10-07 (oxjob #1577): ~2.9M
+# MAGIC version works with a live concept twin; the 184 such pairs in the #1577 sample were 168/168 the same item to Opus 5.5.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
 # MAGIC               (before-image, both sides) then UPDATE `work_references`: `cited_work_id` loser → winner (citations
 # MAGIC               TO the loser) and `citing_work_id` loser → winner (the loser's OWN reference list comes along; rows keep
@@ -91,7 +99,7 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin"])
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_suffix"])
 dbutils.widgets.text("feed_scope_sql", "SELECT endpoint_id FROM openalex.sources.endpoint_to_source WHERE is_journal_host")
 dbutils.widgets.text("twin_scope_sql", "SELECT source_id FROM openalex_dev.sources.ojs_coverage")
 dbutils.widgets.text("tiers", "1,2")
@@ -116,7 +124,7 @@ ABSTRACT_JACCARD_MIN = float(dbutils.widgets.get("abstract_jaccard_min"))
 PREPRINT_IS_SAME = dbutils.widgets.get("preprint_is_same") == "yes"
 # feed_twin: the OAI feed endpoints in scope (a query returning endpoint_id)
 FEED_SCOPE_SQL = dbutils.widgets.get("feed_scope_sql").strip()
-# zenodo_twin: the sources in scope (a query returning source_id BIGINT); empty = corpus-wide
+# zenodo_twin / version_suffix: the sources in scope (a query returning source_id BIGINT); empty = corpus-wide
 TWIN_SCOPE_SQL = dbutils.widgets.get("twin_scope_sql").strip()
 # earlier targets whose executed losers must not be staged again (locations_mapped still shows them until the nightly rebuild)
 PRIOR_TARGETS = [t.strip() for t in dbutils.widgets.get("prior_targets").split(",") if t.strip()]
@@ -185,6 +193,8 @@ def class_sql():
         return zenodo_twin_class_sql()
     if CLASS_MODE == "legacy_twin":
         return legacy_twin_class_sql()
+    if CLASS_MODE == "version_suffix":
+        return version_suffix_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -575,7 +585,7 @@ FEED_TWIN_HOLD = """CASE WHEN r.default_host THEN 'default_oai_host'
                 END"""
 
 
-def zenodo_twin_class_sql():
+def zenodo_twin_class_sql(rel_sql=None, tag="zen", signals=None):
     """Zenodo-twin class (oxjob #1540, 2026-10-05; widened 2026-10-06 to every DataCite prefix): a live DataCite record whose `ids[]`
     declares `IsVersionOf` exactly one concept DOI, that concept DOI being a DataCite record on exactly one other live work. Zenodo
     and every other InvenioRDM instance (KTH 10.71775, ZD 25672) register the pair this way; arXiv records (10.48550) stay with the
@@ -585,14 +595,16 @@ def zenodo_twin_class_sql():
     doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx\\\\.)?doi\\\\.org/|doi:)', ''), '[^a-z0-9./-]', '')"
     scope = (f"(x.src IN (SELECT source_id FROM scope) OR y.src IN (SELECT source_id FROM scope))" if TWIN_SCOPE_SQL else "TRUE")
     scope_cte = f"scope AS ({TWIN_SCOPE_SQL})," if TWIN_SCOPE_SQL else ""
+    if rel_sql is None:
+        rel_sql = f"""SELECT DISTINCT d.work_id AS ver_work, {doi_clean.format(c='i.id')} AS concept_doi
+            FROM dc d LATERAL VIEW explode(d.ids) e AS i
+            WHERE i.relationship = 'IsVersionOf' AND lower(COALESCE(i.namespace, 'doi')) = 'doi' AND lower(i.id) NOT LIKE '%10.48550/%'"""
     return f"""
     WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
     {scope_cte}
     dc AS (SELECT l.work_id, lower(l.native_id) AS doi, l.ids FROM {LM} l
            WHERE l.provenance = 'datacite' AND l.work_id IS NOT NULL AND lower(l.native_id) NOT LIKE '10.48550/%' {prior_exclusion()}),
-    rel AS (SELECT DISTINCT d.work_id AS ver_work, {doi_clean.format(c='i.id')} AS concept_doi
-            FROM dc d LATERAL VIEW explode(d.ids) e AS i
-            WHERE i.relationship = 'IsVersionOf' AND lower(COALESCE(i.namespace, 'doi')) = 'doi' AND lower(i.id) NOT LIKE '%10.48550/%'),
+    rel AS ({rel_sql}),
     one AS (SELECT ver_work, MIN(concept_doi) AS concept_doi FROM rel GROUP BY ver_work HAVING COUNT(DISTINCT concept_doi) = 1),
     cw AS (SELECT doi, MIN(work_id) AS concept_work FROM dc GROUP BY doi HAVING COUNT(DISTINCT work_id) = 1),
     pairs AS (SELECT o.ver_work, cw.concept_work, o.concept_doi FROM one o JOIN cw ON cw.doi = o.concept_doi WHERE cw.concept_work <> o.ver_work),
@@ -611,7 +623,7 @@ def zenodo_twin_class_sql():
              (x.type IN ('dataset', 'software', 'supplementary-materials') OR y.type IN ('dataset', 'software', 'supplementary-materials')) AS dataset_software,
              x.id AS winner_work_id, y.id AS loser_work_id
       FROM pairs p JOIN wf x ON x.id = p.ver_work JOIN wf y ON y.id = p.concept_work LEFT JOIN lp ON lp.concept_work = p.concept_work
-      WHERE {scope}),""" + pair_class_tail(ZENODO_TWIN_SIGNALS, ZENODO_TWIN_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('zen:', r.winner_work_id)")
+      WHERE {scope}),""" + pair_class_tail(signals or ZENODO_TWIN_SIGNALS, ZENODO_TWIN_HOLD).replace("concat('sig:', r.winner_work_id)", f"concat('{tag}:', r.winner_work_id)")
 
 ZENODO_TWIN_SIGNALS = "'declared_is_version_of'"
 ZENODO_TWIN_HOLD = """CASE WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
@@ -624,6 +636,16 @@ ZENODO_TWIN_HOLD = """CASE WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
                 WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
                 WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
                 END"""
+
+
+def version_suffix_class_sql():
+    """Version-suffix class (oxjob #1581, 2026-10-07): a live DataCite record whose DOI is another live DataCite record's DOI plus
+    `.v<N>` (Figshare and its institutional portals register versions this way and declare no IsVersionOf). The zenodo_twin
+    pipeline with the pair taken from the DOI string instead of the declaration: same winner (the version work), holds and
+    re-keying; `ta` = 'vsx:<winner id>'. A concept with several `.vN` works is held as multi_winner, as in zenodo_twin."""
+    rel = """SELECT DISTINCT d.work_id AS ver_work, regexp_replace(d.doi, '\\\\.v[0-9]+$', '') AS concept_doi
+            FROM dc d WHERE d.doi RLIKE '\\\\.v[0-9]+$'"""
+    return zenodo_twin_class_sql(rel_sql=rel, tag="vsx", signals="'doi_version_suffix'")
 
 
 def legacy_twin_class_sql():
@@ -851,7 +873,7 @@ if MODE == "execute":
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
                          AND a.loser_work_id = r.work_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
-    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin") or PREPRINT_IS_SAME:
+    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_suffix") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
         ALIASES = f"{TARGET}_wave{WAVE}_aliases"
