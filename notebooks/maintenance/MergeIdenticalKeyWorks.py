@@ -88,7 +88,8 @@
 # MAGIC version work's id), losers = every other live work holding a DOI of the group, any group size; a title, year or author edit
 # MAGIC between versions does not hold. Held: `software` (either side typed software: releases, Casey 2026-10-07), `concept_split` (the
 # MAGIC concept DOI on several works), `multi_group` (a work in two groups), `member_has_primary` (the loser also carries a Crossref
-# MAGIC record or a DataCite DOI outside the group), `winner_junk`, and `loser_key_shared` counting only key holders outside the group.
+# MAGIC record or a DataCite DOI outside the group), `winner_junk`, and `loser_key_shared` counting only key holders outside the group
+# MAGIC (a shared title key only when the loser has a record with no doi / pmid / arxiv).
 # MAGIC `over_cap`: a work carries at most 100 version DOIs besides its concept DOI (counting those it already has), the most recent first (Casey 2026-10-07: giant living datasets
 # MAGIC are set aside for a location cap); the older ones wait here. `signals` = how the group was found (`declared` / `suffix`) + `title` / `author` when they agree, for stratified review.
 # MAGIC Execute re-keys the losers' keys onto the winner like exact_signature; `ta` = 'vgr:<winner id>'. Sized 2026-10-07: ~6.7M
@@ -423,13 +424,19 @@ def pair_class_tail(signals, hold, group_scoped=False):
     """Shared tail of the pair classes (exact_signature, declared_version): `r1` (one row per pair with a, b, da, db, ya, yb,
     ca, cb, ta_type, tb_type, biblio_differs, src_same, winner_work_id, loser_work_id) -> the target's columns, with the
     mechanical holds (multi_winner, chained, loser_key_shared) available to `hold` as mu / wn / sh. `group_scoped`: one winner
-    with many losers (version_group); a key is shared only when a work outside the winner's group holds it."""
-    shared = """
+    with many losers (version_group); a key is shared only when a work outside the winner's group holds it, and a shared
+    title_author key only counts when the loser has a record with no doi / pmid / arxiv (a keyed record re-resolves on its own
+    key, aliased to the winner; oxjob #1581: 2,174,287 of 2,186,331 title-key holds had none, Casey 2026-10-07)."""
+    shared = f"""
     gw AS (SELECT DISTINCT winner_work_id AS anchor, loser_work_id AS id FROM r1
            UNION SELECT DISTINCT winner_work_id, winner_work_id FROM r1),
+    keyless AS (SELECT DISTINCT r.loser_work_id FROM r1 r JOIN {LM} l ON l.work_id = r.loser_work_id
+                WHERE NULLIF(l.merge_key.doi, '') IS NULL AND NULLIF(l.merge_key.pmid, '') IS NULL
+                  AND (l.merge_key.arxiv IS NULL OR l.merge_key.arxiv IN ('arXiv:', ''))),
     shared AS (
       SELECT DISTINCT lk.loser_work_id FROM lkeys lk JOIN holders h ON h.col = lk.col AND h.k = lk.k
-      WHERE NOT EXISTS (SELECT 1 FROM gw WHERE gw.anchor = lk.winner_work_id AND gw.id = h.id)),""" if group_scoped else """
+      WHERE NOT EXISTS (SELECT 1 FROM gw WHERE gw.anchor = lk.winner_work_id AND gw.id = h.id)
+        AND (lk.col <> 'title_author' OR EXISTS (SELECT 1 FROM keyless kl WHERE kl.loser_work_id = lk.loser_work_id))),""" if group_scoped else """
     kc AS (SELECT col, k, COUNT(DISTINCT id) AS n, MIN(id) AS mn, MAX(id) AS mx FROM holders GROUP BY col, k),
     shared AS (
       SELECT DISTINCT lk.loser_work_id FROM lkeys lk JOIN kc ON kc.col = lk.col AND kc.k = lk.k
