@@ -127,6 +127,9 @@ INDEX_MAPPING = {
             }
         },
         "created_date": {"type": "date", "format": TS_FORMATS, "ignore_malformed": True},
+        # oxjob #1573: Crossref/DataCite record DOI, https://doi.org/ form. Built-in `lowercase` normalizer:
+        # this index defines no custom `lower`, and adding one needs a close. Added live to locations-v3 2026-10-07.
+        "doi": {"type": "keyword", "fields": {"lower": {"type": "keyword", "normalizer": "lowercase"}}},
         "endpoint_id": {"type": "keyword"},
         "first_page": {"type": "keyword"},
         "grobid_s3_id": {"type": "keyword"},
