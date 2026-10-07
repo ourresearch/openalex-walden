@@ -7,7 +7,7 @@
   research/programme_rules.csv  rule_id, provenance_scope ('*' or one provenance), funder_scope ('*' or a regex on the funder's
                                 display name: a feed that carries several agencies), field (funder_scheme | funding_type |
                                 display_name | funder_award_id), pattern (Java regex, case-insensitive, against the trimmed value),
-                                is_research (true | false), tier, note. The first matching rule in file order decides; a rule
+                                is_research (true | false | unknown: a programme the feed default must not decide), tier, note. The first matching rule in file order decides; a rule
                                 beats the feed default (a public-programme line inside a research funder).
 Served: research_scope {is_research BOOLEAN (NULL = unknown), basis (funder_default | programme_rule | sector_code | unknown),
 tier INT} or NULL when the feed has no row. The default listing of /awards is unchanged; the field is a filter.
@@ -59,7 +59,7 @@ def read_rules(package_root):
         except re.error:
             raise RuntimeError("RESEARCH_RULE_FUNDER_SCOPE_INVALID: " + repr(row))
         ok = (row["rule_id"] and row["rule_id"] not in seen and row["provenance_scope"] and row["funder_scope"] and row["field"] in RULE_FIELDS
-              and row["pattern"] and row["is_research"] in ("true", "false") and (row["tier"] == "" or row["tier"].isdigit()))
+              and row["pattern"] and row["is_research"] in ("true", "false", "unknown") and (row["tier"] == "" or row["tier"].isdigit()))
         if not ok:
             raise RuntimeError("RESEARCH_RULE_ROW_INVALID: " + repr(row))
         seen.add(row["rule_id"])
@@ -89,6 +89,8 @@ def scope_in_python(defaults, rules, provenance, values):
         if rule["provenance_scope"] in ("*", provenance) and (rule["funder_scope"] == "*" or re.search(rule["funder_scope"], values.get("funder_name") or "", re.IGNORECASE)):
             value = (values.get(rule["field"]) or "").strip()
             if value and re.search(rule["pattern"], value, re.IGNORECASE):
+                if rule["is_research"] == "unknown":
+                    return dict(is_research=None, basis="unknown", tier=None)
                 return dict(is_research=rule["is_research"] == "true", basis="programme_rule", tier=int(rule["tier"]) if rule["tier"] else None)
     for row in defaults:
         if row["provenance"] == provenance:
@@ -118,7 +120,8 @@ def run(c):
                                WHEN 'display_name' THEN a.display_name WHEN 'funder_award_id' THEN a.funder_award_id END)
               RLIKE concat('(?i)',p.pattern)) GROUP BY award_id""")
     c.artifact("awards_candidate", f"""SELECT a.*,
-        CASE WHEN h.award_id IS NOT NULL THEN named_struct('is_research',h.hit.is_research='true','basis','programme_rule','tier',CAST(nullif(h.hit.tier,'') AS INT))
+        CASE WHEN h.award_id IS NOT NULL AND h.hit.is_research='unknown' THEN named_struct('is_research',CAST(NULL AS BOOLEAN),'basis','unknown','tier',CAST(NULL AS INT))
+             WHEN h.award_id IS NOT NULL THEN named_struct('is_research',h.hit.is_research='true','basis','programme_rule','tier',CAST(nullif(h.hit.tier,'') AS INT))
              WHEN d.is_research='mixed' THEN named_struct('is_research',CAST(NULL AS BOOLEAN),'basis','unknown','tier',CAST(NULL AS INT))
              WHEN d.provenance IS NOT NULL THEN named_struct('is_research',d.is_research='true','basis',d.basis,'tier',CAST(nullif(d.tier,'') AS INT))
         END research_scope

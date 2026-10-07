@@ -162,7 +162,7 @@ def test_research_reference_files_are_valid_and_cover_the_funder_feeds():
         assert stub not in by                                            # shell awards get no research_scope and do not move
     assert by["nih_exporter"]["is_research"] == "true" and by["usaspending_usda"]["is_research"] == "mixed"
     assert by["iati_sida"]["basis"] == "sector_code"
-    assert rules and all(r["is_research"] in ("true", "false") for r in rules)
+    assert rules and all(r["is_research"] in ("true", "false", "unknown") for r in rules)
 
 
 @pytest.mark.parametrize("provenance,values,expected", [
@@ -178,7 +178,8 @@ def test_research_reference_files_are_valid_and_cover_the_funder_feeds():
     ("iati_fcdo", {}, (True, "sector_code", 2)),
     ("nih_exporter", {"funder_scheme": "B09", "funder_name": "Substance Abuse and Mental Health Services Administration"}, (False, "programme_rule", None)),
     ("nih_exporter", {"funder_scheme": "A11", "funder_name": "Health Resources and Services Administration"}, (False, "programme_rule", None)),
-    ("nih_exporter", {"funder_scheme": "U2G", "funder_name": "Centers for Disease Control and Prevention"}, (True, "funder_default", 1)),
+    ("nih_exporter", {"funder_scheme": "U2G", "funder_name": "Centers for Disease Control and Prevention"}, (None, "unknown", None)),
+    ("nih_exporter", {"funder_scheme": "U01", "funder_name": "National Institutes of Health"}, (True, "funder_default", 1)),
     ("nih_exporter", {"funder_scheme": "R01", "funder_name": "Centers for Disease Control and Prevention"}, (True, "programme_rule", 2)),
     ("nih_exporter", {"funder_scheme": "I01", "funder_name": "U.S. Department of Veterans Affairs"}, (True, "programme_rule", 2)),
     ("novo_nordisk_fonden_grants", {"funder_scheme": "Humanitære og sociale formål"}, (False, "programme_rule", None)),
