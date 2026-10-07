@@ -325,6 +325,7 @@ def test_clear_funding_flows_empties_every_field_skips_loss_gates_and_restamps()
     names = [n for n, _ in c.artifacts]
     assert "rates_daily_empty" in names and "recipients_raw_empty" in names
     assert "WHERE false" in dict(c.artifacts)["research_feed_defaults"]
+    assert "CASE WHEN true OR a.amount IS NULL" in dict(c.artifacts)["awards_candidate"] or any("CASE WHEN true OR a.amount IS NULL" in q for _, q in c.artifacts)
     for gate in ("USD_INPUT_REQUIRED", "USD_COVERAGE_DROP", "RECIPIENT_INPUT_REQUIRED", "RECIPIENT_COUNT_DROP", "RESEARCH_SCOPE_DROP"):
         assert gate not in c.checks, gate
     # the hash of a cleared award is the old expression, which differs from yesterday's flow-aware hash: it is restamped

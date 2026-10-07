@@ -58,12 +58,13 @@ def run(c):
       SELECT currency,rate_date,usd_per_unit,source_date FROM carried
       WHERE usd_per_unit IS NOT NULL AND datediff(rate_date,source_date) <= {MAX_CARRY_DAYS}""")
     c.artifact("awards_candidate_before_usd", f"SELECT * FROM {r}awards_candidate")
+    clear = "true" if award_keys.clearing(c) else "false"           # rollback: the native-USD path needs no rate, so it is cleared explicitly
     c.artifact("awards_candidate", f"""SELECT a.*,
-        CASE WHEN a.amount IS NULL OR a.currency IS NULL THEN CAST(NULL AS DOUBLE)
+        CASE WHEN {clear} OR a.amount IS NULL OR a.currency IS NULL THEN CAST(NULL AS DOUBLE)
              WHEN a.currency='USD' THEN CAST(a.amount AS DOUBLE)
              WHEN d.usd_per_unit IS NOT NULL THEN round(a.amount*d.usd_per_unit,2)
              WHEN y.usd_per_unit IS NOT NULL THEN round(a.amount*y.usd_per_unit,2) END amount_usd,
-        CASE WHEN a.amount IS NULL OR a.currency IS NULL THEN CAST(NULL AS STRING)
+        CASE WHEN {clear} OR a.amount IS NULL OR a.currency IS NULL THEN CAST(NULL AS STRING)
              WHEN a.currency='USD' THEN 'usd_native'
              WHEN d.usd_per_unit IS NOT NULL THEN 'daily_rate'
              WHEN y.usd_per_unit IS NOT NULL THEN 'annual_average' END amount_usd_basis
