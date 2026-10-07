@@ -945,18 +945,21 @@ if MODE == "stage":
     t0 = time.time()
     cited_hold = (f"CASE WHEN c0.hold_reason IS NULL AND c0.loser_cites >= {HOLD_CITED_OVER} THEN 'cited_over_{HOLD_CITED_OVER}' ELSE c0.hold_reason END"
                   if HOLD_CITED_OVER is not None else "c0.hold_reason")
+    # version_group (oxjob #1581): a held version stays its own work without holding back its siblings, so a key's
+    # executable losers get a wave even when another loser of the key is held (2026-10-07: 69,935 losers went waveless)
+    per_loser = CLASS_MODE == "version_group"
     spark.sql(f"""CREATE OR REPLACE TABLE {TARGET} AS
                   WITH c0 AS ({class_sql()}),
                   c AS (SELECT c0.* EXCEPT (hold_reason), {cited_hold} AS hold_reason FROM c0),
                   keys AS (
                     SELECT ta, MAX(CASE WHEN hold_reason IS NOT NULL THEN 1 ELSE 0 END) AS held,
                            MAX(loser_cites) AS max_cites, COUNT(*) AS n_losers
-                    FROM c GROUP BY ta),
+                    FROM c {"WHERE hold_reason IS NULL" if per_loser else ""} GROUP BY ta),
                   ordered AS (
                     -- uncited keys first, then by citations; all losers of a key share a wave; held keys get no wave
                     SELECT ta, held, SUM(n_losers) OVER (ORDER BY max_cites, ta ROWS UNBOUNDED PRECEDING) AS cum_losers
                     FROM keys WHERE held = 0)
-                  SELECT c.*, CASE WHEN o.ta IS NOT NULL THEN CAST(CEIL(o.cum_losers / {WAVE_SIZE}) AS INT) END AS wave,
+                  SELECT c.*, CASE WHEN o.ta IS NOT NULL {"AND c.hold_reason IS NULL" if per_loser else ""} THEN CAST(CEIL(o.cum_losers / {WAVE_SIZE}) AS INT) END AS wave,
                          current_timestamp() AS staged_at, CAST(NULL AS TIMESTAMP) AS executed_at
                   FROM c LEFT JOIN ordered o ON o.ta = c.ta""")
     spark.sql(f"ALTER TABLE {TARGET} CLUSTER BY (wave, ta)")
