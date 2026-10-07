@@ -69,9 +69,15 @@
   "extra_inputs": {
     "award_relations_raw": "openalex.awards.award_relations_raw",
     "migration_manifest": "openalex.awards.award_migration_manifest",
-    "affiliation_answers": "openalex.institutions.affiliation_matcher_answers"
+    "affiliation_answers": "openalex.institutions.affiliation_matcher_answers",
+    "award_recipients_raw": "openalex.awards.award_recipients_raw",
+    "exchange_rates": "openalex.common.exchange_rates",
+    "exchange_rates_annual": "openalex.common.exchange_rates_annual"
   },
   "relations_drop_fuse": 0.01,
+  "recipients_drop_fuse": 0.01,
+  "usd_drop_fuse": 0.01,
+  "research_drop_fuse": 0.01,
   "pdf_backfill": {
     "max_checks_per_funder": 4000000000,
     "max_checks_per_night": 4000000000,

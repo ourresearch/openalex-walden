@@ -104,7 +104,8 @@ def test_hash_unchanged_for_awards_without_links_and_old_previous_table():
     base = (ROOT / "sql/api_hash_expression.sql").read_text().strip()
     a = hash_queries(["id", "display_name"])
     assert a["previous_api_hash"] == f"SELECT id,updated_date,{base} content_hash FROM previous_api_v"
-    assert a["new_api_hash"].startswith("SELECT id,CASE WHEN coalesce(size(parent_awards_full),0)=0 AND coalesce(size(sub_awards_full),0)=0 THEN " + base)
+    assert a["new_api_hash"].startswith("SELECT id,CASE WHEN coalesce(size(parent_awards_full),0)=0 AND coalesce(size(sub_awards_full),0)=0 AND NOT (")
+    assert ("WHEN NOT (amount_usd IS NOT NULL OR size(recipient_countries_full)>0 OR size(recipient_regions_full)>0 OR research_scope IS NOT NULL) THEN xxhash64(concat_ws('|',CAST(" + base) in a["new_api_hash"]
     b = hash_queries(["id", "parent_awards_full", "sub_awards_full"])
     assert "CASE WHEN coalesce(size(parent_awards_full),0)=0" in b["previous_api_hash"]
 

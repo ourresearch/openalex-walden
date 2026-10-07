@@ -1,0 +1,265 @@
+"""Offline tests for the funding-flows release (oxjob #1570): amount_usd, recipient countries / regions, research scope, the shared
+key resolver, hash compatibility, payload and job wiring (no warehouse)."""
+import pathlib
+import re
+import sys
+import types
+
+import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "lib"))
+
+import award_keys
+import award_recipients
+import award_relations
+import award_research_scope
+import award_usd
+import create_api
+
+
+class Frame:
+    def __init__(self, rows=(), cols=()):
+        self.rows, self.columns = list(rows), list(cols)
+
+    def collect(self):
+        return self.rows
+
+
+class FakeC:
+    def __init__(self, extra=(), prev_cols=(), config=None):
+        self.r, self.p, self.extra, self.prev_cols = "dev.lab.ngr_s_", "dev.lab.ngr_", set(extra), list(prev_cols)
+        self.config = dict(package_root=str(ROOT), **(config or {}))
+        self.artifacts, self.checks, self.counts, self.statements = [], {}, {}, []
+        self.outputs = {}
+
+    def guard(self): pass
+    def has_extra(self, name): return name in self.extra
+    def require(self, cond, name):
+        if not cond: raise RuntimeError(name)
+
+    def sql(self, statement, params=None):
+        self.statements.append(statement)
+        if "LIMIT 0" in statement:
+            return Frame(cols=self.prev_cols)
+        if statement.startswith("SELECT count(*) n"):
+            return Frame([types.SimpleNamespace(n=0)])
+        return Frame()
+
+    def artifact(self, name, query, params=None):
+        self.artifacts.append((name, query)); return self.r + name
+
+    def zero(self, name, query):
+        self.checks[name] = True; self.statements.append(query)
+
+    def count(self, name, relation):
+        self.counts[name] = 0; return 0
+
+
+# ---------- shared key resolver ----------
+def test_relations_use_the_shared_resolver_with_their_own_gate_names():
+    c = FakeC(extra=["award_relations_raw"])
+    award_relations.run(c)
+    for gate in ("RELATION_BRIDGE_UNIQUE", "RELATION_LOOKUP_UNIQUE", "RELATION_NATIVE_STAGING_DISAGREE"):
+        assert gate in c.checks
+    q = dict(c.artifacts)["relation_endpoint_lookup"]
+    assert "kn.key_type='NATIVE'" in q and "ks.key_type='STAGING'" in q and "resolve_candidate" in q
+
+
+def test_recipients_resolve_through_the_same_lookup():
+    c = FakeC(extra=["award_recipients_raw"])
+    award_recipients.run(c)
+    q = dict(c.artifacts)["recipient_endpoint_lookup"]
+    assert "kn.key_type='NATIVE'" in q and "ks.key_type='STAGING'" in q
+    for gate in ("RECIPIENT_RAW_SHAPE", "RECIPIENT_RAW_UNIQUE", "RECIPIENT_BRIDGE_UNIQUE", "RECIPIENT_LOOKUP_UNIQUE",
+                 "RECIPIENT_NATIVE_STAGING_DISAGREE", "RECIPIENT_NO_LOSS", "RECIPIENT_DROP_FUSE", "RECIPIENT_SELECTED_UNIQUE",
+                 "RECIPIENT_AWARDS_SAME_ROWS"):
+        assert gate in c.checks, gate
+
+
+# ---------- recipients ----------
+def test_recipients_no_input_before_first_rows_runs_on_empty_relation():
+    c = FakeC(prev_cols=["id", "display_name"])
+    award_recipients.run(c)
+    names = [n for n, _ in c.artifacts]
+    assert names[0] == "recipients_raw_empty" and "RECIPIENT_INPUT_REQUIRED" not in c.checks
+    assert names[-1] == "awards_candidate"
+
+
+def test_recipients_no_input_after_rows_exist_is_checked():
+    c = FakeC(prev_cols=["id", "recipient_countries"])
+    award_recipients.run(c)
+    assert "RECIPIENT_INPUT_REQUIRED" in c.checks and "RECIPIENT_COUNT_DROP" in c.checks
+
+
+def test_recipients_best_basis_wins_and_shares_split_equally_when_missing():
+    c = FakeC(extra=["award_recipients_raw"])
+    award_recipients.run(c)
+    q = dict(c.artifacts)["recipients_selected"]
+    assert "WHEN 'funder_reported' THEN 0 WHEN 'place_of_performance' THEN 1 WHEN 'organisation_location' THEN 2" in q
+    assert "min(basis_rank) best_rank" in q and "CASE WHEN any_missing THEN 1.0/n_rows ELSE share END" in q
+
+
+def test_recipients_projection_adds_four_columns_only_and_uses_amount_usd():
+    c = FakeC(extra=["award_recipients_raw"])
+    award_recipients.run(c)
+    q = dict(c.artifacts)["awards_candidate"]
+    for col in ("recipient_countries", "recipient_regions", "recipient_countries_full", "recipient_regions_full"):
+        assert f"coalesce(p.{col.replace('_full', '')},array()) {col}" in q
+    assert "FROM dev.lab.ngr_s_awards_candidate_before_recipients a" in q
+    arrays = dict(c.artifacts)["recipient_arrays"]
+    assert "round(a.amount_usd*s.share,2)" in arrays and "'oecd_dac_region'" in arrays
+    assert not any("work_awards" in n or "institution_awarded" in q for n, q in c.artifacts)
+
+
+def test_dac_region_file_is_valid():
+    rows = award_recipients.region_names(str(ROOT))
+    codes = {r["code"]: r["name"] for r in rows}
+    assert codes["289"].startswith("South of Sahara") and codes["298"].startswith("Africa")
+    assert "VALUES ('88'," in award_recipients.region_relation_sql(str(ROOT))
+
+
+# ---------- amount_usd ----------
+def test_usd_no_input_runs_on_empty_rates_and_is_checked_once_published():
+    c = FakeC(prev_cols=["id"])
+    award_usd.run(c)
+    names = [n for n, _ in c.artifacts]
+    assert "rates_daily_empty" in names and "rates_annual_empty" in names and "USD_INPUT_REQUIRED" not in c.checks
+    c = FakeC(prev_cols=["id", "amount_usd"])
+    award_usd.run(c)
+    assert "USD_INPUT_REQUIRED" in c.checks and "USD_COVERAGE_DROP" in c.checks
+
+
+def test_usd_rules_start_date_rate_then_annual_then_null_and_amount_untouched():
+    c = FakeC(extra=["exchange_rates", "exchange_rates_annual"])
+    award_usd.run(c)
+    q = dict(c.artifacts)["awards_candidate"]
+    assert "WHEN a.currency='USD' THEN CAST(a.amount AS DOUBLE)" in q
+    assert "WHEN d.usd_per_unit IS NOT NULL THEN round(a.amount*d.usd_per_unit,2)" in q
+    assert "WHEN y.usd_per_unit IS NOT NULL THEN round(a.amount*y.usd_per_unit,2)" in q
+    assert "WHEN a.amount IS NULL OR a.currency IS NULL THEN CAST(NULL AS DOUBLE)" in q
+    assert "d.rate_date=CAST(a.start_date AS DATE)" in q and "y.rate_year=CAST(a.start_year AS INT)" in q
+    assert "SELECT a.*," in q and "amount AS" not in q.replace("CAST(a.amount AS DOUBLE)", "")   # the native amount is passed through
+    filled = dict(c.artifacts)["rates_daily_filled"]
+    assert "last_value(usd_per_unit,true)" in filled and f"<= {award_usd.MAX_CARRY_DAYS}" in filled
+    for gate in ("RATES_DAILY_SHAPE", "RATES_DAILY_UNIQUE", "RATES_ANNUAL_SHAPE", "RATES_ANNUAL_UNIQUE", "USD_AWARDS_SAME_ROWS", "USD_BASIS_SHAPE"):
+        assert gate in c.checks, gate
+
+
+# ---------- research scope ----------
+def test_research_reference_files_are_valid_and_cover_the_funder_feeds():
+    defaults = award_research_scope.read_defaults(str(ROOT))
+    rules = award_research_scope.read_rules(str(ROOT))
+    by = {r["provenance"]: r for r in defaults}
+    for stub in ("crossref_work_funders", "europepmc_work_funders", "crossref_work.grants", "datacite_work_funders", "gtr_legacy"):
+        assert stub not in by                                            # shell awards get no research_scope and do not move
+    assert by["nih_exporter"]["is_research"] == "true" and by["usaspending_usda"]["is_research"] == "mixed"
+    assert by["iati_sida"]["basis"] == "sector_code"
+    assert rules and all(r["is_research"] in ("true", "false") for r in rules)
+
+
+@pytest.mark.parametrize("provenance,values,expected", [
+    ("nih_exporter", {"funder_scheme": "R01"}, (True, "funder_default", 1)),
+    ("usaspending_usda", {"funder_scheme": "NATIONAL SCHOOL LUNCH PROGRAM"}, (False, "programme_rule", None)),
+    ("usaspending_usda", {"funder_scheme": "ANIMAL HEALTH AND DISEASE RESEARCH"}, (True, "programme_rule", 2)),
+    ("usaspending", {"funder_scheme": "NATIONAL GUARD MILITARY OPERATIONS AND MAINTENANCE (O&M) PROJECTS"}, (False, "programme_rule", None)),
+    ("usaspending_usaid", {"funder_scheme": "USAID FOREIGN ASSISTANCE FOR PROGRAMS OVERSEAS"}, (None, "unknown", None)),
+    ("gates_foundation", {"funder_scheme": "Global Development|Global Health"}, (True, "programme_rule", 2)),
+    ("gates_foundation", {"funder_scheme": "U.S. Program"}, (None, "unknown", None)),
+    ("hrsa_data_warehouse", {"funder_scheme": "Health Center Program (H80)"}, (False, "funder_default", None)),
+    ("neh_open_data", {"funder_scheme": "Institutes for K-12 Educators"}, (False, "programme_rule", None)),
+    ("iati_fcdo", {}, (True, "sector_code", 2)),
+])
+def test_research_reference_answers(provenance, values, expected):
+    d, r = award_research_scope.read_defaults(str(ROOT)), award_research_scope.read_rules(str(ROOT))
+    got = award_research_scope.scope_in_python(d, r, provenance, values)
+    assert (got["is_research"], got["basis"], got["tier"]) == expected
+
+
+def test_research_stub_feeds_get_no_scope():
+    d, r = award_research_scope.read_defaults(str(ROOT)), award_research_scope.read_rules(str(ROOT))
+    assert award_research_scope.scope_in_python(d, r, "crossref_work_funders", {}) is None
+
+
+def test_research_sql_applies_rules_first_then_defaults_and_leaves_stubs_null():
+    c = FakeC()
+    award_research_scope.run(c)
+    q = dict(c.artifacts)["awards_candidate"]
+    assert q.index("WHEN h.award_id IS NOT NULL") < q.index("WHEN d.is_research='mixed'") < q.index("WHEN d.provenance IS NOT NULL")
+    assert "'basis','unknown'" in q and "LEFT JOIN dev.lab.ngr_s_research_feed_defaults d ON d.provenance=a.provenance" in q
+    hits = dict(c.artifacts)["research_rule_hits"]
+    assert "min_by(" in hits and "concat('(?i)',p.pattern)" in hits
+    assert "RESEARCH_AWARDS_SAME_ROWS" in c.checks
+
+
+def test_research_invalid_rows_are_refused(tmp_path):
+    (tmp_path / "research").mkdir()
+    (tmp_path / "research" / "feed_defaults.csv").write_text("provenance,is_research,basis,tier,note\nx,maybe,funder_default,1,\n")
+    (tmp_path / "research" / "programme_rules.csv").write_text("rule_id,provenance_scope,field,pattern,is_research,tier,note\nr,*,funder_scheme,(,true,2,\n")
+    with pytest.raises(RuntimeError, match="RESEARCH_DEFAULT_ROW_INVALID"):
+        award_research_scope.read_defaults(str(tmp_path))
+    with pytest.raises(RuntimeError, match="RESEARCH_RULE_PATTERN_INVALID"):
+        award_research_scope.read_rules(str(tmp_path))
+
+
+# ---------- hash compatibility ----------
+BASE = (ROOT / "sql/api_hash_expression.sql").read_text().strip()
+LINKS = f"xxhash64(concat_ws('|',CAST({BASE} AS STRING),to_json(parent_awards_full),to_json(sub_awards_full)))"
+NO_LINKS = "coalesce(size(parent_awards_full),0)=0 AND coalesce(size(sub_awards_full),0)=0"
+
+
+def test_hash_without_any_optional_column_is_the_base():
+    assert create_api.hash_expression(BASE, {"id", "display_name"}) == BASE
+
+
+def test_hash_with_links_only_is_unchanged_from_the_sub_awards_release():
+    assert create_api.hash_expression(BASE, {"id", "parent_awards_full", "sub_awards_full"}) == f"CASE WHEN {NO_LINKS} THEN {BASE} ELSE {LINKS} END"
+
+
+def test_hash_with_flow_columns_keeps_both_older_forms_for_awards_without_flow_data():
+    cols = {"id", "parent_awards_full", "sub_awards_full", *create_api.FLOW_COLUMNS}
+    e = create_api.hash_expression(BASE, cols)
+    present = "amount_usd IS NOT NULL OR size(recipient_countries_full)>0 OR size(recipient_regions_full)>0 OR research_scope IS NOT NULL"
+    assert e.startswith(f"CASE WHEN {NO_LINKS} AND NOT ({present}) THEN {BASE} WHEN NOT ({present}) THEN {LINKS} ELSE xxhash64(concat_ws('|',")
+    assert "CAST(amount_usd AS STRING),amount_usd_basis,to_json(recipient_countries_full),to_json(recipient_regions_full),to_json(research_scope)))" in e
+
+
+def test_hash_with_flow_columns_but_no_links_in_yesterdays_table():
+    e = create_api.hash_expression(BASE, {"id", "amount_usd", "amount_usd_basis"})
+    assert e.startswith(f"CASE WHEN true AND NOT (amount_usd IS NOT NULL) THEN {BASE} WHEN NOT (amount_usd IS NOT NULL) THEN {BASE} ELSE")
+    assert "'',''," in e and ",'','','')" in e                            # absent columns contribute empty strings
+
+
+def test_create_api_hashes_yesterday_with_its_own_columns_and_tonight_with_all():
+    c = FakeC(prev_cols=["id", "parent_awards_full", "sub_awards_full"])
+    c.sql = lambda st, params=None: Frame(cols=c.prev_cols) if "LIMIT 0" in st else Frame()
+    create_api.run(c)
+    a = dict(c.artifacts)
+    assert a["previous_api_hash"] == f"SELECT id,updated_date,CASE WHEN {NO_LINKS} THEN {BASE} ELSE {LINKS} END content_hash FROM previous_api_v"
+    assert "to_json(research_scope)" in a["new_api_hash"] and a["new_api_hash"].startswith("SELECT id,CASE WHEN")
+
+
+# ---------- wiring ----------
+def test_job_runs_the_three_steps_between_relations_and_api():
+    text = (ROOT / "NightlyGrants.py").read_text()
+    assert (text.index("award_relations.run(c)") < text.index("award_usd.run(c)") < text.index("award_recipients.run(c)")
+            < text.index("award_research_scope.run(c)") < text.index("create_api.run(c)") < text.index('config.get("stop_before_apply")'))
+
+
+def test_payload_passes_flow_columns():
+    sql = (ROOT / "sql/api_payload.sql").read_text()
+    for col in ("amount_usd", "amount_usd_basis", "recipient_countries", "recipient_regions", "recipient_countries_full",
+                "recipient_regions_full", "research_scope"):
+        assert re.search(rf"\boa\.{col}\b", sql), col
+    assert "oa.amount," in sql and "oa.currency," in sql                       # native amount still served
+
+
+def test_config_binds_the_three_inputs_and_runtime_allows_them():
+    import json
+    cfg = json.loads((ROOT / "config.prod.json").read_text())
+    assert cfg["extra_inputs"]["award_recipients_raw"] == "openalex.awards.award_recipients_raw"
+    assert cfg["extra_inputs"]["exchange_rates"] == "openalex.common.exchange_rates"
+    assert cfg["extra_inputs"]["exchange_rates_annual"] == "openalex.common.exchange_rates_annual"
+    runtime = (ROOT / "lib/nightly_runtime.py").read_text()
+    for name in ("award_recipients_raw", "exchange_rates", "exchange_rates_annual"):
+        assert f'"{name}"' in runtime[runtime.index("UNKNOWN_EXTRA_INPUT") - 400:runtime.index("UNKNOWN_EXTRA_INPUT")]
