@@ -331,6 +331,20 @@ def crossref_parsed():
             " and to_timestamp(x.start.`date-time`) <= current_timestamp()), false)"
         )
 
+    def preprint_relation_ids():
+        # Declared preprint <-> published links as ids entries; relationship is
+        # Crossref's own key, verbatim. Appended AFTER the self DOI: merge_key.doi
+        # is the first doi entry in ids. DOI-typed links only. Oxjob #1099.
+        return F.array_distinct(F.concat(*[
+            F.expr(
+                rf"""filter(transform(filter(coalesce(relation.`{rel}`, array()), r -> r.`id-type` = 'doi'),
+                    r -> named_struct('id', lower(regexp_replace(trim(r.id), '^https?://(dx\\.)?doi\\.org/', '')),
+                                      'namespace', 'doi', 'relationship', '{rel}')),
+                    x -> x.id rlike '^10\\.[0-9]{{4,}}/.+' and x.id <> native_id)"""
+            )
+            for rel in ("is-preprint-of", "has-preprint")
+        ]))
+
     return (
         # spark.readStream
         # .option("skipChangeCommits", "true") 
@@ -360,7 +374,7 @@ def crossref_parsed():
         )
         .withColumn(
             "ids",
-            F.filter(
+            F.concat(F.filter(
                 F.array(
                     F.struct(
                         F.when(F.isnull(F.get(extract_issn_id_by_type("print"), 0)), None)
@@ -400,7 +414,7 @@ def crossref_parsed():
                     )
                 ),
                 lambda x: x.id != ""
-            )  # Filter out empty ids
+            ), preprint_relation_ids())  # Filter out empty ids
         )
         .withColumn("elsevier_open_archive", elsevier_oa_started("vor"))
         .withColumn("elsevier_open_manuscript", elsevier_oa_started("am"))
@@ -704,6 +718,8 @@ def _with_total_order_sequence(df, lead_col):
 # Step 3: The final, quick step.
 @dlt.view(name="crossref_works_source",
            comment="Applies merge_key and final filtering")
+# oxjob #1099: ids also carries related DOIs; the record's own must stay merge_key.doi
+@dlt.expect("merge_key_doi_is_self", "merge_key.doi = native_id")
 def crossref_works_source():
     df_processed = dlt.read_stream("crossref_features_and_authors")
     return _with_total_order_sequence(
