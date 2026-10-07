@@ -61,7 +61,7 @@ resources:
               num_batches: "20"   # must match pmod(hash(id), 20) in the stage
               resume: "true"
               deletes_table: openalex.vector_search.vector_filter_sync_deletes
-              max_deletes: "1000000"   # 6 Oct: 238K works gone in the week since the mirror seed
+              max_deletes: "6000000"   # 7 Oct: 4.43M works gone since the 29 Sep mirror seed (#1540 Zenodo-twin merges, 7 Oct E2E); a bad read of openalex_works mid-rebuild would be 100M+
               mirror_table: openalex.vector_search.vector_filter_fields_sent
               cleanup: "true"   # drops staging/checkpoint/deletes only after all batches are done
               max_batches: "{{job.parameters.max_batches}}"
