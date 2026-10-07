@@ -88,7 +88,8 @@
 # MAGIC version work's id), losers = every other live work holding a DOI of the group, any group size; a title, year or author edit
 # MAGIC between versions does not hold. Held: `software` (either side typed software: releases, Casey 2026-10-07), `concept_split` (the
 # MAGIC concept DOI on several works), `multi_group` (a work in two groups), `member_has_primary` (the loser also carries a Crossref
-# MAGIC record or a DataCite DOI outside the group), `winner_junk`, and `loser_key_shared` counting only key holders outside the group
+# MAGIC record or a DataCite DOI outside the group), `legacy_mismatch` (the loser carries a MAG / PubMed record titled unlike its DataCite
+# MAGIC records: a legacy paper glued to a deposit), `winner_junk`, and `loser_key_shared` counting only key holders outside the group
 # MAGIC (a shared title key only when the loser has a record with no doi / pmid / arxiv).
 # MAGIC `over_cap`: a work carries at most 100 version DOIs besides its concept DOI (counting those it already has), the most recent first (Casey 2026-10-07: giant living datasets
 # MAGIC are set aside for a location cap); the older ones wait here. `signals` = how the group was found (`declared` / `suffix`) + `title` / `author` when they agree, for stratified review.
@@ -684,6 +685,13 @@ def version_group_class_sql():
     mp AS (SELECT m.grp, m.member FROM mem m JOIN {LM} l ON l.work_id = m.member
            LEFT JOIN g ON g.grp = m.grp AND g.doi = lower(l.native_id) AND l.provenance = 'datacite'
            WHERE l.provenance = 'crossref' OR (l.provenance = 'datacite' AND g.doi IS NULL) GROUP BY m.grp, m.member),
+    -- the loser carries a MAG / PubMed record titled unlike all its DataCite records: a legacy paper glued to a deposit
+    -- (oxjob #1581 cited review: a 1979 PubMed paper with 1,340 cites under a 2026 Zenodo preprint)
+    lg AS (SELECT m.grp, m.member FROM mem m JOIN {LM} l ON l.work_id = m.member
+           WHERE l.provenance IN ('mag', 'pubmed') AND l.title IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM {LM} d WHERE d.work_id = m.member AND d.provenance = 'datacite'
+                               AND {norm.format(c='d.title')} = {norm.format(c='l.title')})
+           GROUP BY m.grp, m.member),
     wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, CAST(regexp_extract(primary_location.source.id, '([0-9]+)$', 1) AS BIGINT) AS src,
                   {norm.format(c='title')} AS tn, (title IS NULL OR trim(title) = '') AS no_title, COALESCE(cited_by_count, 0) AS cites,
                   filter(split(lower(get(authorships, 0).author.display_name), '[^\\\\p{{L}}]+'), t -> length(t) >= 3) AS a1 FROM live),
@@ -693,12 +701,14 @@ def version_group_class_sql():
              gs.how, x.tn = y.tn AS title_same,
              NOT (size(x.a1) > 0 AND size(y.a1) > 0 AND NOT arrays_overlap(x.a1, y.a1)) AS author_ok,
              an.n_anchor > 1 AS concept_split, (wx.ng > 1 OR wy.ng > 1) AS multi_group, (mp.member IS NOT NULL) AS member_has_primary,
+             (lg.member IS NOT NULL) AS legacy_mismatch,
              (x.type = 'software' OR y.type = 'software') AS software, x.no_title AS winner_no_title,
              x.id AS winner_work_id, y.id AS loser_work_id
       FROM mem m JOIN anc an ON an.grp = m.grp JOIN gs ON gs.grp = m.grp
       JOIN wf x ON x.id = an.anchor JOIN wf y ON y.id = m.member
       LEFT JOIN wg wx ON wx.work_id = x.id LEFT JOIN wg wy ON wy.work_id = y.id
       LEFT JOIN mp ON mp.grp = m.grp AND mp.member = m.member
+      LEFT JOIN lg ON lg.grp = m.grp AND lg.member = m.member
       WHERE {scope}),""" + pair_class_tail(VERSION_GROUP_SIGNALS, VERSION_GROUP_HOLD, group_scoped=True).replace("concat('sig:', r.winner_work_id)", "concat('vgr:', r.winner_work_id)")
     # a work holds at most VERSION_GROUP_CAP version DOIs besides its concept DOI (counting the DataCite DOIs it already carries);
     # the most recent versions join first (publication date, then `.vN`, then newest id)
@@ -722,6 +732,7 @@ VERSION_GROUP_HOLD = """CASE WHEN r.concept_split THEN 'concept_split'
                 WHEN r.multi_group OR wn.winner_work_id IS NOT NULL THEN 'multi_group'
                 WHEN r.software THEN 'software'
                 WHEN r.member_has_primary THEN 'member_has_primary'
+                WHEN r.legacy_mismatch THEN 'legacy_mismatch'
                 WHEN r.winner_no_title OR r.ta_type = 'paratext' THEN 'winner_junk'
                 WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
                 END"""
