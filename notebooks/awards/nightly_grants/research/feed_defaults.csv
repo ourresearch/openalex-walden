@@ -177,7 +177,7 @@ iati_fcdo,true,sector_code,2,FCDO IATI: admitted at ingest by DAC research purpo
 bard_funded_research,true,funder_default,1,research funder feed: United States - Israel Binational Agricultural Research and Development Fund
 canada_council_prizes,mixed,,,Canada Council for the Arts prizes
 hec_pakistan_nrpu,true,funder_default,1,"research funder feed: Higher Education Commission, Pakistan"
-templeton_wp,true,funder_default,1,research funder feed: John Templeton Foundation
+templeton_wp,mixed,,,"John Templeton Foundation: science beside character, religion and public engagement programmes (Codex 10-07 review population)"
 mrff,true,funder_default,1,research funder feed: Medical Research Future Fund
 osf_grants_past,mixed,,,"Open Society: advocacy, civil society; no research mark"
 ontario_mcu,mixed,,,Ontario Ministry of Colleges and Universities: research infrastructure and other programmes
@@ -256,7 +256,7 @@ kaw_wallenberg_projects,true,funder_default,1,research funder feed: Knut och Ali
 wwtf_project_database,true,funder_default,1,research funder feed: Vienna Science and Technology Fund
 beijing_bmstc,true,funder_default,1,research funder feed: Beijing Municipal Science and Technology Commission
 ekfs,true,funder_default,1,research funder feed: Else Kröner-Fresenius-Stiftung
-health_foundation,true,funder_default,1,research funder feed: Health Foundation
+health_foundation,mixed,,,Health Foundation (UK): improvement programmes beside research (Codex 10-07 review population)
 hscni_rd_portfolio,true,funder_default,1,research funder feed: Public Health Agency
 cottrell_scholars,true,funder_default,1,research funder feed: Research Corporation for Science Advancement
 aar_rome_prize_fellows,mixed,,,American Academy in Rome: arts and humanities fellows

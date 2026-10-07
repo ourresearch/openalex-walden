@@ -184,6 +184,14 @@ def test_research_reference_files_are_valid_and_cover_the_funder_feeds():
     ("nih_exporter", {"funder_scheme": "I01", "funder_name": "U.S. Department of Veterans Affairs"}, (True, "programme_rule", 2)),
     ("novo_nordisk_fonden_grants", {"funder_scheme": "Humanitære og sociale formål"}, (False, "programme_rule", None)),
     ("novo_nordisk_fonden_grants", {"funder_scheme": "Pioneer Innovator"}, (True, "programme_rule", 2)),
+    ("novo_nordisk_fonden_grants", {"funder_scheme": "Enkeltsatsninger", "display_name": "Emergency drought relief in Ethiopia"}, (False, "programme_rule", None)),
+    ("novo_nordisk_fonden_grants", {"funder_scheme": "Enkeltsatsninger", "display_name": "A centre"}, (None, "unknown", None)),
+    ("nih_exporter", {"funder_scheme": "VF1", "funder_name": "Centers for Disease Control and Prevention"}, (False, "programme_rule", None)),
+    ("nih_exporter", {"funder_scheme": "E10", "funder_name": "Health Resources and Services Administration"}, (False, "programme_rule", None)),
+    ("nih_exporter", {"funder_scheme": "KD1", "funder_name": "Substance Abuse and Mental Health Services Administration"}, (False, "programme_rule", None)),
+    ("nih_exporter", {"funder_scheme": None, "funder_name": "Administration for Children and Families"}, (None, "unknown", None)),
+    ("nih_exporter", {"funder_scheme": "F19", "funder_name": "Indian Health Service"}, (True, "programme_rule", 2)),
+    ("nih_exporter", {"funder_scheme": "R01", "funder_name": "Agency for Healthcare Research and Quality"}, (True, "funder_default", 1)),
 ])
 def test_research_reference_answers(provenance, values, expected):
     d, r = award_research_scope.read_defaults(str(ROOT)), award_research_scope.read_rules(str(ROOT))
@@ -303,7 +311,7 @@ def test_usd_loss_gates_cover_basis_and_currency_not_only_the_total():
         award_usd.run(c)
     c = FakeC(extra=["exchange_rates", "exchange_rates_annual"], prev_cols=["id", "amount_usd", "amount_usd_basis"])
     award_usd.run(c)
-    assert "USD_CURRENCY_DROP" in c.checks and "USD_COVERAGE_DROP" in c.checks
+    assert any(k.startswith("USD_CURRENCY_DROP_") for k in c.checks) and "USD_COVERAGE_DROP" in c.checks
 
 
 def test_recipient_loss_gates_cover_rows_per_source_regions_and_memberships():
@@ -382,3 +390,27 @@ def test_clearing_skips_baselines_too():
     c = FakeC(extra=["award_recipients_raw"], prev_cols=["id"], config=dict(clear_funding_flows=True))
     award_recipients.run(c); award_usd.run(c); award_research_scope.run(c)
     assert not any(k.endswith("BASELINE_REQUIRED") for k in c.checks)
+
+
+
+# ---------- per-currency gate on the first night (Codex round 3, finding 2) ----------
+def test_a_whole_currency_cannot_vanish_on_the_first_night():
+    import json
+    boot = json.loads((ROOT / "config.prod.json").read_text())["bootstrap_counts"]
+    assert boot["amount_usd_currency_DKK"] == 25948
+
+    class C(FakeC):
+        def sql(self, st, params=None):
+            self.statements.append(st)
+            if "LIMIT 0" in st: return Frame(cols=self.prev_cols)
+            if st.startswith("SELECT count(*) n"): return Frame([types.SimpleNamespace(n=0)])
+            if "amount_usd_basis basis,count(*) n" in st:
+                return Frame([types.SimpleNamespace(basis=b, n=boot["amount_usd_" + b]) for b in award_usd.BASES])
+            if "SELECT currency,count(*) n FROM" in st:          # tonight: every currency but DKK converted as before
+                return Frame([types.SimpleNamespace(currency=k[len("amount_usd_currency_"):], n=v) for k, v in boot.items()
+                              if k.startswith("amount_usd_currency_") and not k.endswith("_DKK")])
+            return Frame()
+    c = C(extra=["exchange_rates", "exchange_rates_annual"], prev_cols=["id"], config=dict(bootstrap_counts=dict(boot)))
+    c.count = lambda name, relation: c.counts.setdefault(name, boot.get(name, 0)) or boot.get(name, 0)
+    with pytest.raises(RuntimeError, match="USD_CURRENCY_DROP_DKK: 25948 -> 0"):
+        award_usd.run(c)

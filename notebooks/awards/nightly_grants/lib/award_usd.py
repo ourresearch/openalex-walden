@@ -88,9 +88,15 @@ def run(c):
                   if has_prev else {})
     for basis in BASES:
         award_keys.drop_gate(c, "USD_BASIS_DROP_" + basis, "amount_usd_" + basis, c.counts.get("amount_usd_" + basis, 0), fuse, prev_basis.get(basis) if has_prev else None)
-    # Per currency: one currency's series going missing is invisible in the total (from the second night, when yesterday has the column).
-    if has_prev and not award_keys.clearing(c):
-        c.zero("USD_CURRENCY_DROP", f"""SELECT p.currency,p.n before,coalesce(a.n,0) now FROM
-            (SELECT currency,count(*) n FROM previous_api_v WHERE amount_usd IS NOT NULL GROUP BY 1) p
-            LEFT JOIN (SELECT currency,count(*) n FROM {r}awards_candidate WHERE amount_usd IS NOT NULL GROUP BY 1) a USING(currency)
-            WHERE coalesce(a.n,0) < p.n - greatest(10,{fuse}*p.n)""")
+    # Per currency: one currency's series going missing is invisible in the total. Baseline: yesterday's column, else last night's
+    # recorded counts, else the frozen bootstrap; every currency any baseline knows must still convert tonight (fail closed).
+    for row in c.sql(f"SELECT currency,count(*) n FROM {r}awards_candidate WHERE amount_usd IS NOT NULL GROUP BY 1").collect():
+        c.counts["amount_usd_currency_" + row.currency] = int(row.n)
+    if not award_keys.clearing(c):
+        prev_ccy = ({row.currency: int(row.n) for row in c.sql("SELECT currency,count(*) n FROM previous_api_v WHERE amount_usd IS NOT NULL GROUP BY 1").collect()}
+                    if has_prev else {})
+        known = {k[len("amount_usd_currency_"):] for k in list(award_keys.last_counts(c)) + list(c.config.get("bootstrap_counts", {})) if k.startswith("amount_usd_currency_")}
+        known |= set(prev_ccy)
+        c.require(known, "USD_CURRENCY_BASELINE_REQUIRED: no amount_usd_currency_* count in yesterday's table, last night's run or bootstrap_counts")
+        for ccy in sorted(known):
+            award_keys.drop_gate(c, "USD_CURRENCY_DROP_" + ccy, "amount_usd_currency_" + ccy, c.counts.get("amount_usd_currency_" + ccy, 0), fuse, prev_ccy.get(ccy))

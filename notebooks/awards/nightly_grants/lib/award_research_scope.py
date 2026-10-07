@@ -87,8 +87,8 @@ def scope_in_python(defaults, rules, provenance, values):
     """The answer for one award in Python (values: field -> value): the reference for the SQL below, used by the tests."""
     for rule in rules:
         if rule["provenance_scope"] in ("*", provenance) and (rule["funder_scope"] == "*" or re.search(rule["funder_scope"], values.get("funder_name") or "", re.IGNORECASE)):
-            value = (values.get(rule["field"]) or "").strip()
-            if value and re.search(rule["pattern"], value, re.IGNORECASE):
+            value = (values.get(rule["field"]) or "").strip()          # a missing value is '' so a '.*' fallback still applies
+            if re.search(rule["pattern"], value, re.IGNORECASE):
                 if rule["is_research"] == "unknown":
                     return dict(is_research=None, basis="unknown", tier=None)
                 return dict(is_research=rule["is_research"] == "true", basis="programme_rule", tier=int(rule["tier"]) if rule["tier"] else None)
@@ -116,8 +116,8 @@ def run(c):
         FROM {r}awards_candidate_before_research a JOIN {r}research_programme_rules p
           ON (p.provenance_scope='*' OR p.provenance_scope=a.provenance)
           AND (p.funder_scope='*' OR a.funder.display_name RLIKE concat('(?i)',p.funder_scope))
-          AND trim(CASE p.field WHEN 'funder_scheme' THEN a.funder_scheme WHEN 'funding_type' THEN a.funding_type
-                               WHEN 'display_name' THEN a.display_name WHEN 'funder_award_id' THEN a.funder_award_id END)
+          AND coalesce(trim(CASE p.field WHEN 'funder_scheme' THEN a.funder_scheme WHEN 'funding_type' THEN a.funding_type
+                               WHEN 'display_name' THEN a.display_name WHEN 'funder_award_id' THEN a.funder_award_id END),'')
               RLIKE concat('(?i)',p.pattern)) GROUP BY award_id""")
     c.artifact("awards_candidate", f"""SELECT a.*,
         CASE WHEN h.award_id IS NOT NULL AND h.hit.is_research='unknown' THEN named_struct('is_research',CAST(NULL AS BOOLEAN),'basis','unknown','tier',CAST(NULL AS INT))
