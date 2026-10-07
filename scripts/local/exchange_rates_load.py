@@ -9,7 +9,8 @@ Sources, all open and widely used:
 Tables (one row per currency and day / year, usd_per_unit > 0, `source` says which series):
   <schema>.exchange_rates        rate_date DATE, currency STRING, usd_per_unit DOUBLE, source STRING
   <schema>.exchange_rates_annual rate_year INT,  currency STRING, usd_per_unit DOUBLE, source STRING
-Precedence when two sources give the same (day | year, currency): ecb, then fed_h10, then worldbank. The nightly
+Precedence when two sources give the same (day | year, currency): ecb, then fed_h10, then worldbank, then the mean of the
+Fed daily series (the current, unfinished year only). The nightly
 (notebooks/awards/nightly_grants/lib/award_usd.py) reads both tables and never rescales `amount`.
 
 Usage: exchange_rates_load.py --schema openalex_dev.rohan_lab --prefix af1570_   (dev)
@@ -22,7 +23,7 @@ ECB_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip"
 WB_URL = "https://api.worldbank.org/v2/country/all/indicator/PA.NUS.FCRF?format=json&per_page=20000&date=1960:2030"
 FRED_DAILY = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXTAUS"
 FRED_ANNUAL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=AEXTAUS"
-PRECEDENCE = {"ecb": 0, "ecb_daily_mean": 0, "fed_h10": 1, "worldbank_pa_nus_fcrf": 2}
+PRECEDENCE = {"ecb": 0, "ecb_daily_mean": 0, "fed_h10": 1, "worldbank_pa_nus_fcrf": 2, "fed_h10_daily_mean": 3}
 # World Bank reports by country (ISO3); the currency each one's LCU is. Only currencies that can appear on an award are listed.
 ISO3_CURRENCY = {
     "CHL": "CLP", "ARG": "ARS", "COL": "COP", "URY": "UYU", "TZA": "TZS", "SAU": "SAR", "UKR": "UAH", "BTN": "BTN", "IDN": "IDR",
@@ -77,10 +78,13 @@ def parse(cache, offline):
     for (year, ccy), values in by_year.items():
         put(annual, (int(year), ccy), statistics.fmean(values), "ecb_daily_mean")
     # Fed H.10 (TWD per USD)
+    fed_by_year = collections.defaultdict(list)
     for row in csv.DictReader(io.StringIO(fetch(FRED_DAILY, cache, "DEXTAUS.csv", offline).decode())):
         v = row["DEXTAUS"]
         if v not in ("", "."):
-            put(daily, (row["observation_date"], "TWD"), 1.0 / float(v), "fed_h10")
+            put(daily, (row["observation_date"], "TWD"), 1.0 / float(v), "fed_h10"); fed_by_year[int(row["observation_date"][:4])].append(1.0 / float(v))
+    for year, values in fed_by_year.items():                       # the current year, before H.10 publishes its annual figure
+        put(annual, (year, "TWD"), statistics.fmean(values), "fed_h10_daily_mean")
     for row in csv.DictReader(io.StringIO(fetch(FRED_ANNUAL, cache, "AEXTAUS.csv", offline).decode())):
         v = row["AEXTAUS"]
         if v not in ("", "."):
