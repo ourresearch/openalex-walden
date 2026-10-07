@@ -137,7 +137,7 @@ def test_usd_rules_start_date_rate_then_annual_then_null_and_amount_untouched():
     assert "WHEN a.currency='USD' THEN CAST(a.amount AS DOUBLE)" in q
     assert "WHEN d.usd_per_unit IS NOT NULL THEN round(a.amount*d.usd_per_unit,2)" in q
     assert "WHEN y.usd_per_unit IS NOT NULL THEN round(a.amount*y.usd_per_unit,2)" in q
-    assert "WHEN a.amount IS NULL OR a.currency IS NULL THEN CAST(NULL AS DOUBLE)" in q
+    assert "WHEN false OR a.amount IS NULL OR a.currency IS NULL THEN CAST(NULL AS DOUBLE)" in q
     assert "d.rate_date=CAST(a.start_date AS DATE)" in q and "y.rate_year=CAST(a.start_year AS INT)" in q
     assert "SELECT a.*," in q and "amount AS" not in q.replace("CAST(a.amount AS DOUBLE)", "")   # the native amount is passed through
     filled = dict(c.artifacts)["rates_daily_filled"]
