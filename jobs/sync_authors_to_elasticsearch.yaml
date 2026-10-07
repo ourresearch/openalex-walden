@@ -8,10 +8,7 @@ resources:
       schedule:
         quartz_cron_expression: 35 0 5 * * ?
         timezone_id: America/Chicago
-        # oxjob #1531: authors-v20 (rebuilt with the new topics) is live since 2026-10-06 11:23 CT; authors-v19 kept 48 h for rollback.
-        # Stays PAUSED through the Wed 7 Oct 05:35 run: sync_authors looks back 2 days by updated_date, so that run would re-push
-        # Monday's 101.7M re-stamped profiles (already in the full load). Unpause from Wed ~06:00 CT (wake 1531 sets it).
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: sync_authors
           job_cluster_key: sync_authors_cluster
