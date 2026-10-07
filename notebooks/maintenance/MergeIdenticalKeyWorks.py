@@ -81,13 +81,18 @@
 # MAGIC Crossref record or another DataCite record), `winner_junk`, `dataset_software` (either side typed dataset / software / supplementary-materials: a separate
 # MAGIC decision), and the mechanical holds.
 # MAGIC
-# MAGIC **`class_mode = version_suffix`** (oxjob #1581, 2026-10-07): Figshare (10.6084 and the institutional portals 10.25384,
-# MAGIC 10.25375, 10.25446, ...) and a few other DataCite registrants mint a version DOI as the concept DOI plus `.vN`
-# MAGIC (`10.6084/m9.figshare.123` and `10.6084/m9.figshare.123.v1`) without declaring `IsVersionOf`, so `zenodo_twin` never
-# MAGIC sees them (174 of 2.16M Figshare pairs staged there). The pair is a live DataCite record whose DOI ends `.v<N>` and the
-# MAGIC DataCite record holding the DOI without the suffix on exactly one other live work. Same winner rule, holds and execute
-# MAGIC re-keying as `zenodo_twin` (winner = the version work; `ta` = 'vsx:<winner id>'). Sized 2026-10-07 (oxjob #1577): ~2.9M
-# MAGIC version works with a live concept twin; the 184 such pairs in the #1577 sample were 168/168 the same item to Opus 5.5.
+# MAGIC **`class_mode = version_group`** (oxjob #1581, 2026-10-07): one work per concept DOI. A version group is a concept DOI and every
+# MAGIC DataCite DOI pointing at it: the record's single declared `IsVersionOf` DOI (Zenodo / InvenioRDM), else its DOI with a `.vN`
+# MAGIC suffix stripped (Figshare `10.6084/m9.figshare.123.v2` and its institutional portals, AACR 10.1158, ...). **Winner = the work
+# MAGIC holding the concept DOI's record** (Casey 2026-10-07: the concept DOI is the work's DOI; after #1540 that is often the former
+# MAGIC version work's id), losers = every other live work holding a DOI of the group, any group size; a title, year or author edit
+# MAGIC between versions does not hold. Held: `software` (either side typed software: releases, Casey 2026-10-07), `concept_split` (the
+# MAGIC concept DOI on several works), `multi_group` (a work in two groups), `member_has_primary` (the loser also carries a Crossref
+# MAGIC record or a DataCite DOI outside the group), `winner_junk`, and `loser_key_shared` counting only key holders outside the group.
+# MAGIC `over_cap`: a work carries at most 100 version DOIs besides its concept DOI (counting those it already has), the most recent first (Casey 2026-10-07: giant living datasets
+# MAGIC are set aside for a location cap); the older ones wait here. `signals` = how the group was found (`declared` / `suffix`) + `title` / `author` when they agree, for stratified review.
+# MAGIC Execute re-keys the losers' keys onto the winner like exact_signature; `ta` = 'vgr:<winner id>'. Sized 2026-10-07: ~6.7M
+# MAGIC losers (Zenodo 2.77M, Figshare 2.70M, other 1.25M).
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
 # MAGIC               (before-image, both sides) then UPDATE `work_references`: `cited_work_id` loser → winner (citations
 # MAGIC               TO the loser) and `citing_work_id` loser → winner (the loser's OWN reference list comes along; rows keep
@@ -99,7 +104,7 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_suffix"])
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group"])
 dbutils.widgets.text("feed_scope_sql", "SELECT endpoint_id FROM openalex.sources.endpoint_to_source WHERE is_journal_host")
 dbutils.widgets.text("twin_scope_sql", "SELECT source_id FROM openalex_dev.sources.ojs_coverage")
 dbutils.widgets.text("tiers", "1,2")
@@ -124,7 +129,7 @@ ABSTRACT_JACCARD_MIN = float(dbutils.widgets.get("abstract_jaccard_min"))
 PREPRINT_IS_SAME = dbutils.widgets.get("preprint_is_same") == "yes"
 # feed_twin: the OAI feed endpoints in scope (a query returning endpoint_id)
 FEED_SCOPE_SQL = dbutils.widgets.get("feed_scope_sql").strip()
-# zenodo_twin / version_suffix: the sources in scope (a query returning source_id BIGINT); empty = corpus-wide
+# zenodo_twin / version_group: the sources in scope (a query returning source_id BIGINT); empty = corpus-wide
 TWIN_SCOPE_SQL = dbutils.widgets.get("twin_scope_sql").strip()
 # earlier targets whose executed losers must not be staged again (locations_mapped still shows them until the nightly rebuild)
 PRIOR_TARGETS = [t.strip() for t in dbutils.widgets.get("prior_targets").split(",") if t.strip()]
@@ -193,8 +198,8 @@ def class_sql():
         return zenodo_twin_class_sql()
     if CLASS_MODE == "legacy_twin":
         return legacy_twin_class_sql()
-    if CLASS_MODE == "version_suffix":
-        return version_suffix_class_sql()
+    if CLASS_MODE == "version_group":
+        return version_group_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -414,10 +419,23 @@ def exact_signature_class_sql():
         AND (da IS NULL OR db IS NULL OR da = db)),""" + pair_class_tail(EXACT_SIGNATURE_SIGNALS, exact_signature_hold())
 
 
-def pair_class_tail(signals, hold):
+def pair_class_tail(signals, hold, group_scoped=False):
     """Shared tail of the pair classes (exact_signature, declared_version): `r1` (one row per pair with a, b, da, db, ya, yb,
     ca, cb, ta_type, tb_type, biblio_differs, src_same, winner_work_id, loser_work_id) -> the target's columns, with the
-    mechanical holds (multi_winner, chained, loser_key_shared) available to `hold` as mu / wn / sh."""
+    mechanical holds (multi_winner, chained, loser_key_shared) available to `hold` as mu / wn / sh. `group_scoped`: one winner
+    with many losers (version_group); a key is shared only when a work outside the winner's group holds it."""
+    shared = """
+    gw AS (SELECT DISTINCT winner_work_id AS anchor, loser_work_id AS id FROM r1
+           UNION SELECT DISTINCT winner_work_id, winner_work_id FROM r1),
+    shared AS (
+      SELECT DISTINCT lk.loser_work_id FROM lkeys lk JOIN holders h ON h.col = lk.col AND h.k = lk.k
+      WHERE NOT EXISTS (SELECT 1 FROM gw WHERE gw.anchor = lk.winner_work_id AND gw.id = h.id)),""" if group_scoped else """
+    kc AS (SELECT col, k, COUNT(DISTINCT id) AS n, MIN(id) AS mn, MAX(id) AS mx FROM holders GROUP BY col, k),
+    shared AS (
+      SELECT DISTINCT lk.loser_work_id FROM lkeys lk JOIN kc ON kc.col = lk.col AND kc.k = lk.k
+      WHERE kc.n > 2
+         OR (kc.n = 2 AND NOT (kc.mn IN (lk.loser_work_id, lk.winner_work_id) AND kc.mx IN (lk.loser_work_id, lk.winner_work_id)))
+         OR (kc.n = 1 AND kc.mn NOT IN (lk.loser_work_id, lk.winner_work_id))),"""
     return f"""
     lm AS (SELECT work_id, COUNT(*) AS n_locations,
                   MAX(CASE WHEN provenance NOT IN ('repo', 'repo_backfill') THEN 1 ELSE 0 END) = 0 AS repo_only
@@ -434,13 +452,7 @@ def pair_class_tail(signals, hold):
       SELECT 'doi' AS col, m.doi AS k, m.id FROM {MAP} m JOIN kin ON kin.col = 'doi' AND kin.k = m.doi
       UNION ALL SELECT 'pmid', m.pmid, m.id FROM {MAP} m JOIN kin ON kin.col = 'pmid' AND kin.k = m.pmid
       UNION ALL SELECT 'arxiv', m.arxiv, m.id FROM {MAP} m JOIN kin ON kin.col = 'arxiv' AND kin.k = m.arxiv
-      UNION ALL SELECT 'title_author', m.title_author, m.id FROM {MAP} m JOIN kin ON kin.col = 'title_author' AND kin.k = m.title_author),
-    kc AS (SELECT col, k, COUNT(DISTINCT id) AS n, MIN(id) AS mn, MAX(id) AS mx FROM holders GROUP BY col, k),
-    shared AS (
-      SELECT DISTINCT lk.loser_work_id FROM lkeys lk JOIN kc ON kc.col = lk.col AND kc.k = lk.k
-      WHERE kc.n > 2
-         OR (kc.n = 2 AND NOT (kc.mn IN (lk.loser_work_id, lk.winner_work_id) AND kc.mx IN (lk.loser_work_id, lk.winner_work_id)))
-         OR (kc.n = 1 AND kc.mn NOT IN (lk.loser_work_id, lk.winner_work_id))),
+      UNION ALL SELECT 'title_author', m.title_author, m.id FROM {MAP} m JOIN kin ON kin.col = 'title_author' AND kin.k = m.title_author),{shared}
     multi AS (SELECT loser_work_id FROM r1 GROUP BY loser_work_id HAVING COUNT(DISTINCT winner_work_id) > 1),
     winners AS (SELECT DISTINCT winner_work_id FROM r1)
     SELECT concat('sig:', r.winner_work_id) AS ta, CAST(2 AS BIGINT) AS n_ids,
@@ -585,7 +597,7 @@ FEED_TWIN_HOLD = """CASE WHEN r.default_host THEN 'default_oai_host'
                 END"""
 
 
-def zenodo_twin_class_sql(rel_sql=None, tag="zen", signals=None):
+def zenodo_twin_class_sql():
     """Zenodo-twin class (oxjob #1540, 2026-10-05; widened 2026-10-06 to every DataCite prefix): a live DataCite record whose `ids[]`
     declares `IsVersionOf` exactly one concept DOI, that concept DOI being a DataCite record on exactly one other live work. Zenodo
     and every other InvenioRDM instance (KTH 10.71775, ZD 25672) register the pair this way; arXiv records (10.48550) stay with the
@@ -595,16 +607,14 @@ def zenodo_twin_class_sql(rel_sql=None, tag="zen", signals=None):
     doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx\\\\.)?doi\\\\.org/|doi:)', ''), '[^a-z0-9./-]', '')"
     scope = (f"(x.src IN (SELECT source_id FROM scope) OR y.src IN (SELECT source_id FROM scope))" if TWIN_SCOPE_SQL else "TRUE")
     scope_cte = f"scope AS ({TWIN_SCOPE_SQL})," if TWIN_SCOPE_SQL else ""
-    if rel_sql is None:
-        rel_sql = f"""SELECT DISTINCT d.work_id AS ver_work, {doi_clean.format(c='i.id')} AS concept_doi
-            FROM dc d LATERAL VIEW explode(d.ids) e AS i
-            WHERE i.relationship = 'IsVersionOf' AND lower(COALESCE(i.namespace, 'doi')) = 'doi' AND lower(i.id) NOT LIKE '%10.48550/%'"""
     return f"""
     WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
     {scope_cte}
     dc AS (SELECT l.work_id, lower(l.native_id) AS doi, l.ids FROM {LM} l
            WHERE l.provenance = 'datacite' AND l.work_id IS NOT NULL AND lower(l.native_id) NOT LIKE '10.48550/%' {prior_exclusion()}),
-    rel AS ({rel_sql}),
+    rel AS (SELECT DISTINCT d.work_id AS ver_work, {doi_clean.format(c='i.id')} AS concept_doi
+            FROM dc d LATERAL VIEW explode(d.ids) e AS i
+            WHERE i.relationship = 'IsVersionOf' AND lower(COALESCE(i.namespace, 'doi')) = 'doi' AND lower(i.id) NOT LIKE '%10.48550/%'),
     one AS (SELECT ver_work, MIN(concept_doi) AS concept_doi FROM rel GROUP BY ver_work HAVING COUNT(DISTINCT concept_doi) = 1),
     cw AS (SELECT doi, MIN(work_id) AS concept_work FROM dc GROUP BY doi HAVING COUNT(DISTINCT work_id) = 1),
     pairs AS (SELECT o.ver_work, cw.concept_work, o.concept_doi FROM one o JOIN cw ON cw.doi = o.concept_doi WHERE cw.concept_work <> o.ver_work),
@@ -623,7 +633,7 @@ def zenodo_twin_class_sql(rel_sql=None, tag="zen", signals=None):
              (x.type IN ('dataset', 'software', 'supplementary-materials') OR y.type IN ('dataset', 'software', 'supplementary-materials')) AS dataset_software,
              x.id AS winner_work_id, y.id AS loser_work_id
       FROM pairs p JOIN wf x ON x.id = p.ver_work JOIN wf y ON y.id = p.concept_work LEFT JOIN lp ON lp.concept_work = p.concept_work
-      WHERE {scope}),""" + pair_class_tail(signals or ZENODO_TWIN_SIGNALS, ZENODO_TWIN_HOLD).replace("concat('sig:', r.winner_work_id)", f"concat('{tag}:', r.winner_work_id)")
+      WHERE {scope}),""" + pair_class_tail(ZENODO_TWIN_SIGNALS, ZENODO_TWIN_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('zen:', r.winner_work_id)")
 
 ZENODO_TWIN_SIGNALS = "'declared_is_version_of'"
 ZENODO_TWIN_HOLD = """CASE WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
@@ -638,14 +648,76 @@ ZENODO_TWIN_HOLD = """CASE WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
                 END"""
 
 
-def version_suffix_class_sql():
-    """Version-suffix class (oxjob #1581, 2026-10-07): a live DataCite record whose DOI is another live DataCite record's DOI plus
-    `.v<N>` (Figshare and its institutional portals register versions this way and declare no IsVersionOf). The zenodo_twin
-    pipeline with the pair taken from the DOI string instead of the declaration: same winner (the version work), holds and
-    re-keying; `ta` = 'vsx:<winner id>'. A concept with several `.vN` works is held as multi_winner, as in zenodo_twin."""
-    rel = """SELECT DISTINCT d.work_id AS ver_work, regexp_replace(d.doi, '\\\\.v[0-9]+$', '') AS concept_doi
-            FROM dc d WHERE d.doi RLIKE '\\\\.v[0-9]+$'"""
-    return zenodo_twin_class_sql(rel_sql=rel, tag="vsx", signals="'doi_version_suffix'")
+def version_group_class_sql():
+    """Version-group class (oxjob #1581, 2026-10-07): one work per concept DOI. Each live DataCite record's group is its single
+    declared `IsVersionOf` DOI, else its DOI minus a `.vN` suffix (Figshare and portals declare nothing), else its own DOI; a group
+    with two or more DOIs on two or more works merges onto the work holding the concept DOI's record. One row per (winner, loser)."""
+    norm = "regexp_replace(lower({c}), '[^\\\\p{{L}}\\\\p{{N}}]', '')"
+    doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx[.])?doi[.]org/|doi:)', ''), '[^a-z0-9./-]', '')"
+    scope = (f"(x.src IN (SELECT source_id FROM scope) OR y.src IN (SELECT source_id FROM scope))" if TWIN_SCOPE_SQL else "TRUE")
+    scope_cte = f"scope AS ({TWIN_SCOPE_SQL})," if TWIN_SCOPE_SQL else ""
+    inner = f"""
+    WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
+    {scope_cte}
+    dc AS (SELECT l.work_id, lower(l.native_id) AS doi,
+                  array_distinct(transform(filter(l.ids, i -> i.relationship = 'IsVersionOf' AND lower(COALESCE(i.namespace, 'doi')) = 'doi'
+                                                   AND lower(i.id) NOT LIKE '%10.48550/%'), i -> {doi_clean.format(c='i.id')})) AS vof
+           FROM {LM} l
+           WHERE l.provenance = 'datacite' AND l.work_id IS NOT NULL AND lower(l.native_id) NOT LIKE '10.48550/%' {prior_exclusion()}),
+    g AS (SELECT DISTINCT work_id, doi,
+                 CASE WHEN size(vof) = 1 THEN vof[0] WHEN doi RLIKE '[.]v[0-9]+$' THEN regexp_replace(doi, '[.]v[0-9]+$', '') ELSE doi END AS grp,
+                 CASE WHEN size(vof) = 1 THEN 'declared' WHEN doi RLIKE '[.]v[0-9]+$' THEN 'suffix' END AS how
+          FROM dc),
+    gs AS (SELECT grp, MAX(how) AS how FROM g GROUP BY grp HAVING COUNT(DISTINCT doi) > 1 AND COUNT(DISTINCT work_id) > 1),
+    anc AS (SELECT g.grp, MIN(g.work_id) AS anchor, COUNT(DISTINCT g.work_id) AS n_anchor FROM g JOIN gs ON gs.grp = g.grp
+            WHERE g.doi = g.grp GROUP BY g.grp),
+    mem AS (SELECT DISTINCT g.grp, g.work_id AS member FROM g JOIN anc ON anc.grp = g.grp WHERE g.work_id <> anc.anchor),
+    wg AS (SELECT work_id, COUNT(DISTINCT grp) AS ng FROM (SELECT grp, anchor AS work_id FROM anc UNION SELECT grp, member FROM mem) GROUP BY work_id),
+    -- the loser's other primary records: a Crossref record, or a DataCite DOI outside its group
+    mp AS (SELECT m.grp, m.member FROM mem m JOIN {LM} l ON l.work_id = m.member
+           LEFT JOIN g ON g.grp = m.grp AND g.doi = lower(l.native_id) AND l.provenance = 'datacite'
+           WHERE l.provenance = 'crossref' OR (l.provenance = 'datacite' AND g.doi IS NULL) GROUP BY m.grp, m.member),
+    wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, CAST(regexp_extract(primary_location.source.id, '([0-9]+)$', 1) AS BIGINT) AS src,
+                  {norm.format(c='title')} AS tn, (title IS NULL OR trim(title) = '') AS no_title, COALESCE(cited_by_count, 0) AS cites,
+                  filter(split(lower(get(authorships, 0).author.display_name), '[^\\\\p{{L}}]+'), t -> length(t) >= 3) AS a1 FROM live),
+    r1 AS (
+      SELECT x.id AS a, y.id AS b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb,
+             x.type AS ta_type, y.type AS tb_type, FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
+             gs.how, x.tn = y.tn AS title_same,
+             NOT (size(x.a1) > 0 AND size(y.a1) > 0 AND NOT arrays_overlap(x.a1, y.a1)) AS author_ok,
+             an.n_anchor > 1 AS concept_split, (wx.ng > 1 OR wy.ng > 1) AS multi_group, (mp.member IS NOT NULL) AS member_has_primary,
+             (x.type = 'software' OR y.type = 'software') AS software, x.no_title AS winner_no_title,
+             x.id AS winner_work_id, y.id AS loser_work_id
+      FROM mem m JOIN anc an ON an.grp = m.grp JOIN gs ON gs.grp = m.grp
+      JOIN wf x ON x.id = an.anchor JOIN wf y ON y.id = m.member
+      LEFT JOIN wg wx ON wx.work_id = x.id LEFT JOIN wg wy ON wy.work_id = y.id
+      LEFT JOIN mp ON mp.grp = m.grp AND mp.member = m.member
+      WHERE {scope}),""" + pair_class_tail(VERSION_GROUP_SIGNALS, VERSION_GROUP_HOLD, group_scoped=True).replace("concat('sig:', r.winner_work_id)", "concat('vgr:', r.winner_work_id)")
+    # a work holds at most VERSION_GROUP_CAP version DOIs besides its concept DOI (counting the DataCite DOIs it already carries);
+    # the most recent versions join first (publication date, then `.vN`, then newest id)
+    return f"""
+    WITH t AS ({inner}),
+    held AS (SELECT l.work_id, COUNT(DISTINCT lower(l.native_id)) - 1 AS n_on
+             FROM {LM} l WHERE l.provenance = 'datacite' AND l.work_id IN (SELECT winner_work_id FROM t) GROUP BY l.work_id)
+    SELECT v.* EXCEPT (hold_reason, rk, n_on),
+           CASE WHEN v.hold_reason IS NULL AND v.rk + GREATEST(COALESCE(v.n_on, 0), 0) > {VERSION_GROUP_CAP} THEN 'over_cap'
+                ELSE v.hold_reason END AS hold_reason
+    FROM (SELECT t.*, h.n_on, ROW_NUMBER() OVER (PARTITION BY t.winner_work_id, t.hold_reason IS NULL
+                                                 ORDER BY w.publication_date DESC NULLS LAST,
+                                                          TRY_CAST(regexp_extract(lower(w.doi), '[.]v([0-9]+)$', 1) AS INT) DESC NULLS LAST,
+                                                          t.loser_work_id DESC) AS rk
+          FROM t LEFT JOIN {WORKS} w ON w.id = t.loser_work_id LEFT JOIN held h ON h.work_id = t.winner_work_id) v"""
+
+VERSION_GROUP_CAP = 100
+
+VERSION_GROUP_SIGNALS = """concat_ws('+', r.how, CASE WHEN r.title_same THEN 'title' END, CASE WHEN r.author_ok THEN 'author' END)"""
+VERSION_GROUP_HOLD = """CASE WHEN r.concept_split THEN 'concept_split'
+                WHEN r.multi_group OR wn.winner_work_id IS NOT NULL THEN 'multi_group'
+                WHEN r.software THEN 'software'
+                WHEN r.member_has_primary THEN 'member_has_primary'
+                WHEN r.winner_no_title OR r.ta_type = 'paratext' THEN 'winner_junk'
+                WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
+                END"""
 
 
 def legacy_twin_class_sql():
@@ -873,7 +945,7 @@ if MODE == "execute":
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
                          AND a.loser_work_id = r.work_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
-    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_suffix") or PREPRINT_IS_SAME:
+    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
         ALIASES = f"{TARGET}_wave{WAVE}_aliases"
