@@ -85,9 +85,11 @@ def run(c):
     for row in c.sql(f"SELECT provenance,kind,count(*) n FROM {raw} GROUP BY 1,2").collect():
         c.counts[f"recipients_rows_{row.provenance}_{row.kind}"] = int(row.n)
     if not award_keys.clearing(c):
-        for key, before in sorted(last.items()):
-            if key.startswith("recipients_rows_"):
-                award_keys.count_drop_check(c, "RECIPIENT_ROWS_DROP_" + key[len("recipients_rows_"):], int(before), c.counts.get(key, 0), fuse)
+        # Every (provenance, kind) last night or the bootstrap knew about must still be there tonight; a new one needs no baseline.
+        known = {k for k in last if k.startswith("recipients_rows_")} | {k for k in c.config.get("bootstrap_counts", {}) if k.startswith("recipients_rows_")}
+        c.require(known, "RECIPIENT_ROWS_BASELINE_REQUIRED: no recipients_rows_* count in last night's run or bootstrap_counts")
+        for key in sorted(known):
+            award_keys.drop_gate(c, "RECIPIENT_ROWS_DROP_" + key[len("recipients_rows_"):], key, c.counts.get(key, 0), fuse)
     c.artifact("recipient_endpoints", f"""SELECT DISTINCT provenance namespace,funder_award_id source_record_id,staging_id,funder_id,award_key
       FROM {raw}""")
     lookup = award_keys.endpoint_lookup(c, "RECIPIENT", f"{r}recipient_endpoints", "recipient_endpoint_lookup")
@@ -143,9 +145,9 @@ def run(c):
     regions = c.count("awards_with_recipient_regions", f"(SELECT id FROM {r}awards_candidate WHERE size(recipient_regions)>0) x")
     members = int(award_keys.one(c, f"SELECT coalesce(sum(size(recipient_countries)),0) n FROM {r}awards_candidate", n=0).n)
     c.counts["recipient_country_memberships"] = members
-    if "recipient_countries" in award_keys.columns(c, "previous_api_v") and not award_keys.clearing(c):
-        prev = award_keys.one(c, """SELECT count_if(size(recipient_countries)>0) countries,count_if(size(recipient_regions)>0) regions,
-            coalesce(sum(size(recipient_countries)),0) members FROM previous_api_v""", countries=0, regions=0, members=0)
-        award_keys.count_drop_check(c, "RECIPIENT_COUNT_DROP", int(prev.countries), now, fuse)
-        award_keys.count_drop_check(c, "RECIPIENT_REGIONS_DROP", int(prev.regions), regions, fuse)
-        award_keys.count_drop_check(c, "RECIPIENT_MEMBERSHIP_DROP", int(prev.members), members, fuse)
+    has_prev = "recipient_countries" in award_keys.columns(c, "previous_api_v")
+    prev = (award_keys.one(c, """SELECT count_if(size(recipient_countries)>0) countries,count_if(size(recipient_regions)>0) regions,
+        coalesce(sum(size(recipient_countries)),0) members FROM previous_api_v""", countries=0, regions=0, members=0) if has_prev else None)
+    award_keys.drop_gate(c, "RECIPIENT_COUNT_DROP", "awards_with_recipient_countries", now, fuse, int(prev.countries) if prev else None)
+    award_keys.drop_gate(c, "RECIPIENT_REGIONS_DROP", "awards_with_recipient_regions", regions, fuse, int(prev.regions) if prev else None)
+    award_keys.drop_gate(c, "RECIPIENT_MEMBERSHIP_DROP", "recipient_country_memberships", members, fuse, int(prev.members) if prev else None)

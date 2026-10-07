@@ -196,5 +196,22 @@
       "ror_relationships": "openalex.institutions.ror_relationships",
       "award_id_guard": "openalex.awards.award_id_guard"
     }
+  },
+  "bootstrap_counts": {
+    "awards_with_amount_usd": 6380945,
+    "amount_usd_usd_native": 2988860,
+    "amount_usd_daily_rate": 2767262,
+    "amount_usd_annual_average": 624823,
+    "recipients_rows_usaspending_cdc_country": 46210,
+    "recipients_rows_usaspending_usda_country": 45195,
+    "recipients_rows_usaspending_country": 119337,
+    "recipients_rows_usaspending_usaid_country": 36657,
+    "recipients_rows_idrc_iati_country": 5649,
+    "recipients_rows_idrc_iati_region": 4031,
+    "awards_with_recipient_countries": 127944,
+    "awards_with_recipient_regions": 2913,
+    "recipient_country_memberships": 131085,
+    "awards_with_research_scope": 8318213,
+    "research_true": 7449965
   }
 }

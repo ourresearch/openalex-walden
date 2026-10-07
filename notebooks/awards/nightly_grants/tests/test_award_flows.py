@@ -26,10 +26,17 @@ class Frame:
         return self.rows
 
 
+import json
+BOOTSTRAP = json.loads((ROOT / "config.prod.json").read_text())["bootstrap_counts"]
+
+
 class FakeC:
+    """Yesterday predates the columns unless prev_cols says otherwise; a zero baseline for every bootstrap key (the fake counts
+    everything as 0) unless the test passes its own."""
     def __init__(self, extra=(), prev_cols=(), config=None):
         self.r, self.p, self.extra, self.prev_cols = "dev.lab.ngr_s_", "dev.lab.ngr_", set(extra), list(prev_cols)
-        self.config = dict(package_root=str(ROOT), **(config or {}))
+        self.config = dict(package_root=str(ROOT), bootstrap_counts={k: 0 for k in BOOTSTRAP})
+        self.config.update(config or {})
         self.artifacts, self.checks, self.counts, self.statements = [], {}, {}, []
         self.outputs = {}
 
@@ -169,6 +176,13 @@ def test_research_reference_files_are_valid_and_cover_the_funder_feeds():
     ("hrsa_data_warehouse", {"funder_scheme": "Health Center Program (H80)"}, (False, "funder_default", None)),
     ("neh_open_data", {"funder_scheme": "Institutes for K-12 Educators"}, (False, "programme_rule", None)),
     ("iati_fcdo", {}, (True, "sector_code", 2)),
+    ("nih_exporter", {"funder_scheme": "B09", "funder_name": "Substance Abuse and Mental Health Services Administration"}, (False, "programme_rule", None)),
+    ("nih_exporter", {"funder_scheme": "A11", "funder_name": "Health Resources and Services Administration"}, (False, "programme_rule", None)),
+    ("nih_exporter", {"funder_scheme": "U2G", "funder_name": "Centers for Disease Control and Prevention"}, (True, "funder_default", 1)),
+    ("nih_exporter", {"funder_scheme": "R01", "funder_name": "Centers for Disease Control and Prevention"}, (True, "programme_rule", 2)),
+    ("nih_exporter", {"funder_scheme": "I01", "funder_name": "U.S. Department of Veterans Affairs"}, (True, "programme_rule", 2)),
+    ("novo_nordisk_fonden_grants", {"funder_scheme": "Humanitære og sociale formål"}, (False, "programme_rule", None)),
+    ("novo_nordisk_fonden_grants", {"funder_scheme": "Pioneer Innovator"}, (True, "programme_rule", 2)),
 ])
 def test_research_reference_answers(provenance, values, expected):
     d, r = award_research_scope.read_defaults(str(ROOT)), award_research_scope.read_rules(str(ROOT))
@@ -188,14 +202,14 @@ def test_research_sql_applies_rules_first_then_defaults_and_leaves_stubs_null():
     assert q.index("WHEN h.award_id IS NOT NULL") < q.index("WHEN d.is_research='mixed'") < q.index("WHEN d.provenance IS NOT NULL")
     assert "'basis','unknown'" in q and "LEFT JOIN dev.lab.ngr_s_research_feed_defaults d ON d.provenance=a.provenance" in q
     hits = dict(c.artifacts)["research_rule_hits"]
-    assert "min_by(" in hits and "concat('(?i)',p.pattern)" in hits
+    assert "min_by(" in hits and "concat('(?i)',p.pattern)" in hits and "a.funder.display_name RLIKE concat('(?i)',p.funder_scope)" in hits
     assert "RESEARCH_AWARDS_SAME_ROWS" in c.checks
 
 
 def test_research_invalid_rows_are_refused(tmp_path):
     (tmp_path / "research").mkdir()
     (tmp_path / "research" / "feed_defaults.csv").write_text("provenance,is_research,basis,tier,note\nx,maybe,funder_default,1,\n")
-    (tmp_path / "research" / "programme_rules.csv").write_text("rule_id,provenance_scope,field,pattern,is_research,tier,note\nr,*,funder_scheme,(,true,2,\n")
+    (tmp_path / "research" / "programme_rules.csv").write_text("rule_id,provenance_scope,funder_scope,field,pattern,is_research,tier,note\nr,*,*,funder_scheme,(,true,2,\n")
     with pytest.raises(RuntimeError, match="RESEARCH_DEFAULT_ROW_INVALID"):
         award_research_scope.read_defaults(str(tmp_path))
     with pytest.raises(RuntimeError, match="RESEARCH_RULE_PATTERN_INVALID"):
@@ -303,8 +317,8 @@ def test_recipient_loss_gates_cover_rows_per_source_regions_and_memberships():
             if "count_if(size(recipient_countries)>0) countries" in st:
                 return Frame([types.SimpleNamespace(countries=0, regions=0, members=0)])
             return Frame()
-    c = C(extra=["award_recipients_raw"], prev_cols=["id", "recipient_countries", "recipient_regions"]); c.p = "dev.lab.ngr_"
-    with pytest.raises(RuntimeError, match="RECIPIENT_ROWS_DROP_idrc_iati_region: 4031 -> 0"):
+    c = C(extra=["award_recipients_raw"], prev_cols=["id", "recipient_countries", "recipient_regions"], config=dict(bootstrap_counts={})); c.p = "dev.lab.ngr_"
+    with pytest.raises(RuntimeError, match="RECIPIENT_ROWS_DROP_idrc_iati_region: 4031 -> 0"):      # last night's recorded count, no bootstrap needed
         award_recipients.run(c)
     c = FakeC(extra=["award_recipients_raw"], prev_cols=["id", "recipient_countries", "recipient_regions"])
     award_recipients.run(c)
@@ -332,3 +346,38 @@ def test_clear_funding_flows_empties_every_field_skips_loss_gates_and_restamps()
     cols = {"id", "parent_awards_full", "sub_awards_full", *create_api.FLOW_COLUMNS}
     e = create_api.hash_expression(BASE, cols)
     assert e.startswith(f"CASE WHEN {NO_LINKS} AND NOT (amount_usd IS NOT NULL")
+
+
+
+# ---------- first-night baselines (Codex re-check 10-07, finding 1) ----------
+def test_gates_fail_closed_without_any_baseline():
+    none = dict(bootstrap_counts={})
+    c = FakeC(extra=["award_recipients_raw"], prev_cols=["id"], config=none)   # yesterday predates the columns, no run has recorded counts
+    with pytest.raises(RuntimeError, match="RECIPIENT_ROWS_BASELINE_REQUIRED"):
+        award_recipients.run(c)
+    c = FakeC(extra=["exchange_rates", "exchange_rates_annual"], prev_cols=["id"], config=none)
+    with pytest.raises(RuntimeError, match="USD_COVERAGE_DROP_BASELINE_REQUIRED"):
+        award_usd.run(c)
+    c = FakeC(prev_cols=["id"], config=none)
+    with pytest.raises(RuntimeError, match="RESEARCH_SCOPE_DROP_BASELINE_REQUIRED"):
+        award_research_scope.run(c)
+
+
+def test_bootstrap_counts_carry_the_first_night_and_catch_a_loss():
+    import json
+    boot = json.loads((ROOT / "config.prod.json").read_text())["bootstrap_counts"]
+    for key in ("awards_with_amount_usd", "amount_usd_daily_rate", "recipients_rows_idrc_iati_region", "awards_with_recipient_regions",
+                "recipient_country_memberships", "awards_with_research_scope", "research_true"):
+        assert boot[key] > 0, key
+    c = FakeC(extra=["award_recipients_raw"], prev_cols=["id"], config=dict(bootstrap_counts=dict(boot)))
+    with pytest.raises(RuntimeError, match="RECIPIENT_ROWS_DROP_idrc_iati_country: 5649 -> 0"):   # tonight's side table is empty in the fake
+        award_recipients.run(c)
+    c = FakeC(extra=["exchange_rates", "exchange_rates_annual"], prev_cols=["id"], config=dict(bootstrap_counts=dict(boot)))
+    with pytest.raises(RuntimeError, match="USD_COVERAGE_DROP: 6380945 -> 0"):
+        award_usd.run(c)
+
+
+def test_clearing_skips_baselines_too():
+    c = FakeC(extra=["award_recipients_raw"], prev_cols=["id"], config=dict(clear_funding_flows=True))
+    award_recipients.run(c); award_usd.run(c); award_research_scope.run(c)
+    assert not any(k.endswith("BASELINE_REQUIRED") for k in c.checks)

@@ -44,12 +44,9 @@ def last_counts(c):
     """The counts the last SUCCEEDED night recorded (award_nightly_runs.details_json), for per-source baselines; {} when none."""
     if getattr(c, "_last_counts", None) is None:
         rows = []
-        if getattr(c, "p", None):
-            try:
-                rows = c.sql(f"""SELECT details_json FROM {c.p}award_nightly_runs WHERE status LIKE 'SUCCEEDED%' AND details_json IS NOT NULL
-                    ORDER BY started_at DESC LIMIT 1""").collect()
-            except Exception:                                  # dev harnesses without a run log
-                rows = []
+        if getattr(c, "p", None):                              # a read error here stops the run: never a silent empty baseline
+            rows = c.sql(f"""SELECT details_json FROM {c.p}award_nightly_runs WHERE status LIKE 'SUCCEEDED%' AND details_json IS NOT NULL
+                ORDER BY started_at DESC LIMIT 1""").collect()
         c._last_counts = {}
         if rows and getattr(rows[0], "details_json", None):
             import json
@@ -76,3 +73,24 @@ def one(c, sql, **defaults):
         return rows[0]
     import types
     return types.SimpleNamespace(**defaults)
+
+
+def baseline(c, key):
+    """Last night's recorded count for `key`, else the frozen, reviewed `bootstrap_counts` in the config (the first release night,
+    when yesterday's table has no such column and no night has recorded the count), else None."""
+    last = last_counts(c)
+    if key in last:
+        return int(last[key])
+    boot = c.config.get("bootstrap_counts", {})
+    return int(boot[key]) if key in boot else None
+
+
+def drop_gate(c, name, key, now, fuse, previous=None):
+    """The served quantity `now` may not fall below last night's by more than max(10, fuse*before). `previous` is the count read
+    from yesterday's table when it has the column; otherwise the baseline. Neither -> the night stops (fail closed), unless the
+    run is clearing the fields on purpose."""
+    if clearing(c):
+        return
+    before = previous if previous is not None else baseline(c, key)
+    c.require(before is not None, f"{name}_BASELINE_REQUIRED: no count for {key} in last night's run or bootstrap_counts")
+    count_drop_check(c, name, int(before), int(now), fuse)

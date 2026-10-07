@@ -75,7 +75,7 @@ openaire_fwf,true,funder_default,1,research funder feed: Austrian Science Fund
 frqnt,true,funder_default,1,research funder feed: Fonds de recherche du Québec – Nature et technologies
 carnegie_corporation,mixed,,,"Carnegie Corporation: education, democracy, international peace; research only in part"
 hunan_nsf,true,funder_default,1,research funder feed: Natural Science Foundation of Hunan Province
-novo_nordisk_fonden_grants,true,funder_default,1,research funder feed: Novo Nordisk Fonden
+novo_nordisk_fonden_grants,mixed,,,Novo Nordisk Foundation: research and innovation beside humanitarian and social grants (rules decide)
 trygfonden_donations_api,mixed,,,TrygFonden: the portal's own type marks research grants
 innovate_uk,true,funder_default,1,research funder feed: Innovate UK
 portal_fis_isciii,true,funder_default,1,research funder feed: Instituto de Salud Carlos III

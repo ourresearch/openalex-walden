@@ -79,14 +79,17 @@ def run(c):
     now = c.count("awards_with_amount_usd", f"(SELECT id FROM {r}awards_candidate WHERE amount_usd IS NOT NULL) x")
     for row in c.sql(f"SELECT amount_usd_basis basis,count(*) n FROM {r}awards_candidate WHERE amount_usd_basis IS NOT NULL GROUP BY 1").collect():
         c.counts["amount_usd_" + row.basis] = int(row.n)
-    if "amount_usd" in award_keys.columns(c, "previous_api_v") and not award_keys.clearing(c):
-        fuse = float(c.config.get("usd_drop_fuse", 0.01))
-        before = int(award_keys.one(c, "SELECT count(*) n FROM previous_api_v WHERE amount_usd IS NOT NULL", n=0).n)
-        award_keys.count_drop_check(c, "USD_COVERAGE_DROP", before, now, fuse)
-        # Per basis: a lost or stale daily table would move awards from daily_rate to annual_average with the total unchanged.
-        for row in c.sql("SELECT amount_usd_basis basis,count(*) n FROM previous_api_v WHERE amount_usd_basis IS NOT NULL GROUP BY 1").collect():
-            award_keys.count_drop_check(c, "USD_BASIS_DROP_" + row.basis, int(row.n), c.counts.get("amount_usd_" + row.basis, 0), fuse)
-        # Per currency: one currency's series going missing is invisible in the total.
+    fuse = float(c.config.get("usd_drop_fuse", 0.01))
+    has_prev = "amount_usd" in award_keys.columns(c, "previous_api_v")
+    prev_total = int(award_keys.one(c, "SELECT count(*) n FROM previous_api_v WHERE amount_usd IS NOT NULL", n=0).n) if has_prev else None
+    award_keys.drop_gate(c, "USD_COVERAGE_DROP", "awards_with_amount_usd", now, fuse, prev_total)
+    # Per basis: a lost or stale daily table would move awards from daily_rate to annual_average with the total unchanged.
+    prev_basis = ({row.basis: int(row.n) for row in c.sql("SELECT amount_usd_basis basis,count(*) n FROM previous_api_v WHERE amount_usd_basis IS NOT NULL GROUP BY 1").collect()}
+                  if has_prev else {})
+    for basis in BASES:
+        award_keys.drop_gate(c, "USD_BASIS_DROP_" + basis, "amount_usd_" + basis, c.counts.get("amount_usd_" + basis, 0), fuse, prev_basis.get(basis) if has_prev else None)
+    # Per currency: one currency's series going missing is invisible in the total (from the second night, when yesterday has the column).
+    if has_prev and not award_keys.clearing(c):
         c.zero("USD_CURRENCY_DROP", f"""SELECT p.currency,p.n before,coalesce(a.n,0) now FROM
             (SELECT currency,count(*) n FROM previous_api_v WHERE amount_usd IS NOT NULL GROUP BY 1) p
             LEFT JOIN (SELECT currency,count(*) n FROM {r}awards_candidate WHERE amount_usd IS NOT NULL GROUP BY 1) a USING(currency)
