@@ -19,8 +19,8 @@ WEEKLY_LARGE_RECORD_COUNT = 45000000
 LARGE_RECORD_COUNT = WEEKLY_LARGE_RECORD_COUNT if mode == "weekly" else DAILY_LARGE_RECORD_COUNT
 dbutils.widgets.dropdown("wunpaywall_guard_override", "false", ["false", "true"], "Wunpaywall Guard Override")
 # RDS is being retired (Unpaywall API reads Lakebase since 2026-10-05). The copy below is optional and must never block publication:
-# set to "false" once the RDS rollback window closes (before openalex-1 is deleted).
-dbutils.widgets.dropdown("copy_metadata_to_rds", "true", ["true", "false"], "Copy export_metadata to RDS (legacy)")
+# Off since 2026-10-07: openalex-1 is retired 2026-10-09; the API reads export_metadata from Lakebase.
+dbutils.widgets.dropdown("copy_metadata_to_rds", "false", ["true", "false"], "Copy export_metadata to RDS (legacy)")
 # job parameter OR a pre-cleared row in openalex.works.e2e_overrides (scripts/preclear_e2e.py)
 wunpaywall_guard_override = spark.sql(
     f"SELECT openalex.works.e2e_override_active('wunpaywall_guard_override', '{dbutils.widgets.get('wunpaywall_guard_override').replace(chr(39), chr(39) * 2)}')"
