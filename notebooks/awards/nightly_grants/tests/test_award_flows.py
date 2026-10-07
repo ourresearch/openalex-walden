@@ -263,3 +263,71 @@ def test_config_binds_the_three_inputs_and_runtime_allows_them():
     runtime = (ROOT / "lib/nightly_runtime.py").read_text()
     for name in ("award_recipients_raw", "exchange_rates", "exchange_rates_annual"):
         assert f'"{name}"' in runtime[runtime.index("UNKNOWN_EXTRA_INPUT") - 400:runtime.index("UNKNOWN_EXTRA_INPUT")]
+
+
+# ---------- loss gates and rollback (Codex review 10-07, findings 1 and 2) ----------
+def test_configured_but_empty_inputs_are_refused():
+    c = FakeC(extra=["exchange_rates", "exchange_rates_annual", "award_recipients_raw"])
+    award_usd.run(c); award_recipients.run(c)
+    for gate in ("RATES_DAILY_NONEMPTY", "RATES_ANNUAL_NONEMPTY", "RECIPIENT_RAW_NONEMPTY"):
+        assert gate in c.checks, gate
+        assert any("count(*) FROM" in q and ")=0" in q for q in c.statements)
+
+
+def test_usd_loss_gates_cover_basis_and_currency_not_only_the_total():
+    class C(FakeC):
+        def sql(self, st, params=None):
+            self.statements.append(st)
+            if "LIMIT 0" in st: return Frame(cols=self.prev_cols)
+            if st.startswith("SELECT count(*) n"): return Frame([types.SimpleNamespace(n=0)])
+            if "amount_usd_basis basis" in st and "previous_api_v" in st:
+                return Frame([types.SimpleNamespace(basis="daily_rate", n=1000)])
+            return Frame()
+    c = C(extra=["exchange_rates", "exchange_rates_annual"], prev_cols=["id", "amount_usd", "amount_usd_basis"])
+    with pytest.raises(RuntimeError, match="USD_BASIS_DROP_daily_rate: 1000 -> 0"):   # tonight converted nothing by daily rate
+        award_usd.run(c)
+    c = FakeC(extra=["exchange_rates", "exchange_rates_annual"], prev_cols=["id", "amount_usd", "amount_usd_basis"])
+    award_usd.run(c)
+    assert "USD_CURRENCY_DROP" in c.checks and "USD_COVERAGE_DROP" in c.checks
+
+
+def test_recipient_loss_gates_cover_rows_per_source_regions_and_memberships():
+    class C(FakeC):
+        def sql(self, st, params=None):
+            self.statements.append(st)
+            if "LIMIT 0" in st: return Frame(cols=self.prev_cols)
+            if st.startswith("SELECT count(*) n"): return Frame([types.SimpleNamespace(n=0)])
+            if "award_nightly_runs" in st:
+                import json
+                return Frame([types.SimpleNamespace(details_json=json.dumps({"counts": {"recipients_rows_idrc_iati_region": 4031}}))])
+            if "count_if(size(recipient_countries)>0) countries" in st:
+                return Frame([types.SimpleNamespace(countries=0, regions=0, members=0)])
+            return Frame()
+    c = C(extra=["award_recipients_raw"], prev_cols=["id", "recipient_countries", "recipient_regions"]); c.p = "dev.lab.ngr_"
+    with pytest.raises(RuntimeError, match="RECIPIENT_ROWS_DROP_idrc_iati_region: 4031 -> 0"):
+        award_recipients.run(c)
+    c = FakeC(extra=["award_recipients_raw"], prev_cols=["id", "recipient_countries", "recipient_regions"])
+    award_recipients.run(c)
+    for gate in ("RECIPIENT_COUNT_DROP", "RECIPIENT_REGIONS_DROP", "RECIPIENT_MEMBERSHIP_DROP"):
+        assert gate in c.checks, gate
+
+
+def test_research_loss_gate_covers_the_true_count():
+    c = FakeC(prev_cols=["id", "research_scope"])
+    award_research_scope.run(c)
+    assert "RESEARCH_SCOPE_DROP" in c.checks and "RESEARCH_TRUE_DROP" in c.checks
+
+
+def test_clear_funding_flows_empties_every_field_skips_loss_gates_and_restamps():
+    cfg = dict(clear_funding_flows=True)
+    c = FakeC(extra=["exchange_rates", "exchange_rates_annual", "award_recipients_raw"], prev_cols=["id", "amount_usd", "recipient_countries", "research_scope"], config=cfg)
+    award_usd.run(c); award_recipients.run(c); award_research_scope.run(c)
+    names = [n for n, _ in c.artifacts]
+    assert "rates_daily_empty" in names and "recipients_raw_empty" in names
+    assert "WHERE false" in dict(c.artifacts)["research_feed_defaults"]
+    for gate in ("USD_INPUT_REQUIRED", "USD_COVERAGE_DROP", "RECIPIENT_INPUT_REQUIRED", "RECIPIENT_COUNT_DROP", "RESEARCH_SCOPE_DROP"):
+        assert gate not in c.checks, gate
+    # the hash of a cleared award is the old expression, which differs from yesterday's flow-aware hash: it is restamped
+    cols = {"id", "parent_awards_full", "sub_awards_full", *create_api.FLOW_COLUMNS}
+    e = create_api.hash_expression(BASE, cols)
+    assert e.startswith(f"CASE WHEN {NO_LINKS} AND NOT (amount_usd IS NOT NULL")

@@ -11,6 +11,8 @@
 Served: research_scope {is_research BOOLEAN (NULL = unknown), basis (funder_default | programme_rule | sector_code | unknown),
 tier INT} or NULL when the feed has no row. The default listing of /awards is unchanged; the field is a filter.
 Policy (which feeds, which programmes, the research boundary) is Kyle's; this file only applies the two tables.
+Failure policy: an invalid reference row stops the run (read_defaults / read_rules); against last night, the awards with a scope and
+the awards flagged true may not fall beyond the fuse. Rollback: `clear_funding_flows` (award_keys).
 """
 import csv
 import re
@@ -93,8 +95,12 @@ def scope_in_python(defaults, rules, provenance, values):
 def run(c):
     c.guard(); r = c.r
     root = c.config["package_root"]
-    c.artifact("research_feed_defaults", defaults_relation_sql(root))
-    c.artifact("research_programme_rules", rules_relation_sql(root))
+    if award_keys.clearing(c):                                      # rollback: no feed has a row, every award's scope is NULL
+        c.artifact("research_feed_defaults", "SELECT CAST(NULL AS STRING) provenance,CAST(NULL AS STRING) is_research,CAST(NULL AS STRING) basis,CAST(NULL AS STRING) tier WHERE false")
+        c.artifact("research_programme_rules", "SELECT CAST(NULL AS INT) rule_order,CAST(NULL AS STRING) rule_id,CAST(NULL AS STRING) provenance_scope,CAST(NULL AS STRING) field,CAST(NULL AS STRING) pattern,CAST(NULL AS STRING) is_research,CAST(NULL AS STRING) tier WHERE false")
+    else:
+        c.artifact("research_feed_defaults", defaults_relation_sql(root))
+        c.artifact("research_programme_rules", rules_relation_sql(root))
     c.artifact("awards_candidate_before_research", f"SELECT * FROM {r}awards_candidate")
     # The first rule (file order) whose pattern matches the award's field value, within the rule's provenance scope.
     c.artifact("research_rule_hits", f"""SELECT award_id,min_by(named_struct('is_research',is_research,'tier',tier),rule_order) hit
@@ -118,6 +124,10 @@ def run(c):
     for row in c.sql(f"""SELECT concat_ws('_',coalesce(CAST(research_scope.is_research AS STRING),'unknown'),research_scope.basis) k,count(*) n
         FROM {r}awards_candidate WHERE research_scope IS NOT NULL GROUP BY 1""").collect():
         c.counts["research_scope_" + row.k] = int(row.n)
-    if "research_scope" in award_keys.columns(c, "previous_api_v"):
-        before = int(c.sql("SELECT count(*) n FROM previous_api_v WHERE research_scope IS NOT NULL").collect()[0].n)
-        award_keys.count_drop_check(c, "RESEARCH_SCOPE_DROP", before, now, float(c.config.get("research_drop_fuse", 0.01)))
+    if "research_scope" in award_keys.columns(c, "previous_api_v") and not award_keys.clearing(c):
+        fuse = float(c.config.get("research_drop_fuse", 0.01))
+        prev = award_keys.one(c, "SELECT count_if(research_scope.is_research) t,count(*) n FROM previous_api_v WHERE research_scope IS NOT NULL", n=0, t=0)
+        award_keys.count_drop_check(c, "RESEARCH_SCOPE_DROP", int(prev.n), now, fuse)
+        # A reference-file edit that empties a research feed shows here; an intended re-policy runs with research_drop_fuse raised.
+        award_keys.count_drop_check(c, "RESEARCH_TRUE_DROP", int(prev.t), c.counts.get("research_scope_true_funder_default", 0)
+                                    + c.counts.get("research_scope_true_programme_rule", 0) + c.counts.get("research_scope_true_sector_code", 0), fuse)

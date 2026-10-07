@@ -9,8 +9,9 @@ Inputs, both optional extra inputs: `exchange_rates` (rate_date, currency, usd_p
   annual_average  start year only, a currency with no daily series, or a start date before the daily series begins.
 No amount, no currency, no start year, or no rate -> NULL (a non-monetary prize stays NULL, never 0). An award with amount_usd NULL
 hashes exactly as before (create_api.py), so nothing moves until a rate applies.
-Failure policy: malformed or duplicate rate rows stop the run; so does a fall in USD coverage against last night beyond the fuse,
-and running with no rate input once USD amounts have been published.
+Failure policy: malformed, duplicate or EMPTY rate tables stop the run; so does a fall against last night beyond the fuse in the
+number of awards converted, per basis (a lost daily table would otherwise downgrade millions of awards to annual averages) and
+per currency; and running with no rate input once USD amounts have been published. Rollback: `clear_funding_flows` (award_keys).
 """
 import award_keys
 
@@ -21,8 +22,14 @@ BASES = ("usd_native", "daily_rate", "annual_average")
 
 
 def rate_inputs(c):
+    if award_keys.clearing(c):
+        return c.artifact("rates_daily_empty", EMPTY_DAILY), c.artifact("rates_annual_empty", EMPTY_ANNUAL)
     daily = "exchange_rates_v" if c.has_extra("exchange_rates") else None
     annual = "exchange_rates_annual_v" if c.has_extra("exchange_rates_annual") else None
+    if daily:
+        award_keys.nonempty(c, "RATES_DAILY_NONEMPTY", daily)
+    if annual:
+        award_keys.nonempty(c, "RATES_ANNUAL_NONEMPTY", annual)
     if daily is None and annual is None and "amount_usd" in award_keys.columns(c, "previous_api_v"):
         # No input configured: allowed only while no USD amount has been published, so amounts can never vanish silently.
         c.zero("USD_INPUT_REQUIRED", "SELECT id FROM previous_api_v WHERE amount_usd IS NOT NULL")
@@ -71,6 +78,15 @@ def run(c):
     now = c.count("awards_with_amount_usd", f"(SELECT id FROM {r}awards_candidate WHERE amount_usd IS NOT NULL) x")
     for row in c.sql(f"SELECT amount_usd_basis basis,count(*) n FROM {r}awards_candidate WHERE amount_usd_basis IS NOT NULL GROUP BY 1").collect():
         c.counts["amount_usd_" + row.basis] = int(row.n)
-    if "amount_usd" in award_keys.columns(c, "previous_api_v"):
-        before = int(c.sql("SELECT count(*) n FROM previous_api_v WHERE amount_usd IS NOT NULL").collect()[0].n)
-        award_keys.count_drop_check(c, "USD_COVERAGE_DROP", before, now, float(c.config.get("usd_drop_fuse", 0.01)))
+    if "amount_usd" in award_keys.columns(c, "previous_api_v") and not award_keys.clearing(c):
+        fuse = float(c.config.get("usd_drop_fuse", 0.01))
+        before = int(award_keys.one(c, "SELECT count(*) n FROM previous_api_v WHERE amount_usd IS NOT NULL", n=0).n)
+        award_keys.count_drop_check(c, "USD_COVERAGE_DROP", before, now, fuse)
+        # Per basis: a lost or stale daily table would move awards from daily_rate to annual_average with the total unchanged.
+        for row in c.sql("SELECT amount_usd_basis basis,count(*) n FROM previous_api_v WHERE amount_usd_basis IS NOT NULL GROUP BY 1").collect():
+            award_keys.count_drop_check(c, "USD_BASIS_DROP_" + row.basis, int(row.n), c.counts.get("amount_usd_" + row.basis, 0), fuse)
+        # Per currency: one currency's series going missing is invisible in the total.
+        c.zero("USD_CURRENCY_DROP", f"""SELECT p.currency,p.n before,coalesce(a.n,0) now FROM
+            (SELECT currency,count(*) n FROM previous_api_v WHERE amount_usd IS NOT NULL GROUP BY 1) p
+            LEFT JOIN (SELECT currency,count(*) n FROM {r}awards_candidate WHERE amount_usd IS NOT NULL GROUP BY 1) a USING(currency)
+            WHERE coalesce(a.n,0) < p.n - greatest(10,{fuse}*p.n)""")

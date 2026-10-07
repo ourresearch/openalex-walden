@@ -38,3 +38,41 @@ def count_drop_check(c, name, previous_count, now, fuse):
     """Against last night's published count: the night stops when a served quantity falls by more than max(10, fuse*before)."""
     c.checks[name] = now >= previous_count - max(10, fuse * previous_count)
     c.require(c.checks[name], f"{name}: {previous_count} -> {now}")
+
+
+def last_counts(c):
+    """The counts the last SUCCEEDED night recorded (award_nightly_runs.details_json), for per-source baselines; {} when none."""
+    if getattr(c, "_last_counts", None) is None:
+        rows = []
+        if getattr(c, "p", None):
+            try:
+                rows = c.sql(f"""SELECT details_json FROM {c.p}award_nightly_runs WHERE status LIKE 'SUCCEEDED%' AND details_json IS NOT NULL
+                    ORDER BY started_at DESC LIMIT 1""").collect()
+            except Exception:                                  # dev harnesses without a run log
+                rows = []
+        c._last_counts = {}
+        if rows and getattr(rows[0], "details_json", None):
+            import json
+            c._last_counts = json.loads(rows[0].details_json).get("counts", {}) or {}
+    return c._last_counts
+
+
+def nonempty(c, name, relation):
+    """A configured input that comes back empty is a broken producer, not an absence of data: stop."""
+    c.zero(name, f"SELECT 1 WHERE (SELECT count(*) FROM {relation})=0")
+
+
+def clearing(c):
+    """`clear_funding_flows: true` (overrides_json, one night) empties every funding-flows field on purpose: the inputs are
+    ignored, the loss gates are skipped, and every award that had a field is restamped with it cleared. That is the rollback;
+    a code-only revert would leave the fields in yesterday's documents untouched (search keeps what it was last sent)."""
+    return bool(c.config.get("clear_funding_flows", False))
+
+
+def one(c, sql, **defaults):
+    """The single row of an aggregate query, or the defaults when the relation gives none (offline harnesses)."""
+    rows = c.sql(sql).collect()
+    if rows:
+        return rows[0]
+    import types
+    return types.SimpleNamespace(**defaults)

@@ -12,8 +12,10 @@ Served (extra columns on awards_candidate, nothing else changes):
   then place_of_performance, then organisation_location: a US organisation working in Kenya lands in Kenya). Shares are the
   funder's; when any kept row has none, the kept rows split equally. amount_usd here is the award's amount_usd times the share
   (award_usd.py runs first). institution_awarded is untouched.
-Failure policy: malformed or duplicate rows, an ambiguous key, or more rows dropped than the fuse allows stop the run; rows whose
-award is not served tonight are dropped and counted.
+Failure policy: malformed or duplicate rows, an EMPTY side table, an ambiguous key, or more rows dropped than the fuse allows stop
+the run; rows whose award is not served tonight are dropped and counted. Against last night: the rows per (provenance, kind) the
+last successful night read, the served memberships and the awards with regions may not fall beyond the fuse. Rollback:
+`clear_funding_flows` (award_keys).
 """
 import csv
 from pathlib import Path
@@ -53,7 +55,10 @@ def region_relation_sql(package_root):
 
 
 def raw_input(c):
+    if award_keys.clearing(c):
+        return c.artifact("recipients_raw_empty", EMPTY_RAW)
     if c.has_extra("award_recipients_raw"):
+        award_keys.nonempty(c, "RECIPIENT_RAW_NONEMPTY", "award_recipients_raw_v")
         return "award_recipients_raw_v"
     # No input configured: allowed only while nothing has been published, so recipient countries can never vanish silently.
     if "recipient_countries" in award_keys.columns(c, "previous_api_v"):
@@ -74,6 +79,15 @@ def run(c):
       AND length(adapter_version)>0 AND asserted_at IS NOT NULL,false)""")
     c.zero("RECIPIENT_RAW_UNIQUE", f"""SELECT provenance,staging_id,funder_id,award_key,kind,country_code,region_code,region_vocabulary,basis
       FROM {raw} GROUP BY ALL HAVING count(*)<>1""")
+    # Rows per (provenance, kind) tonight, against the last successful night's: a producer that lost a feed or a kind stops the run.
+    last = award_keys.last_counts(c)
+    fuse = float(c.config.get("recipients_drop_fuse", 0.01))
+    for row in c.sql(f"SELECT provenance,kind,count(*) n FROM {raw} GROUP BY 1,2").collect():
+        c.counts[f"recipients_rows_{row.provenance}_{row.kind}"] = int(row.n)
+    if not award_keys.clearing(c):
+        for key, before in sorted(last.items()):
+            if key.startswith("recipients_rows_"):
+                award_keys.count_drop_check(c, "RECIPIENT_ROWS_DROP_" + key[len("recipients_rows_"):], int(before), c.counts.get(key, 0), fuse)
     c.artifact("recipient_endpoints", f"""SELECT DISTINCT provenance namespace,funder_award_id source_record_id,staging_id,funder_id,award_key
       FROM {raw}""")
     lookup = award_keys.endpoint_lookup(c, "RECIPIENT", f"{r}recipient_endpoints", "recipient_endpoint_lookup")
@@ -84,7 +98,6 @@ def run(c):
     c.zero("RECIPIENT_NO_LOSS", f"SELECT 1 WHERE (SELECT count(*) FROM {raw})<>(SELECT count(*) FROM {r}recipients_resolved)")
     for reason in ("UNRESOLVED", "NOT_SERVED"):
         c.counts["recipients_dropped_" + reason.lower()] = int(c.sql(f"SELECT count(*) n FROM {r}recipients_resolved WHERE dropped='{reason}'").collect()[0].n)
-    fuse = float(c.config.get("recipients_drop_fuse", 0.01))
     c.zero("RECIPIENT_DROP_FUSE", f"""SELECT count_if(dropped IS NOT NULL) dropped,count(*) total FROM {r}recipients_resolved
       HAVING count_if(dropped IS NOT NULL) > greatest(10, {fuse}*count(*))""")
     # The best basis on the award wins; one row per (award, kind, code) after that (two sources agreeing collapse to one).
@@ -127,7 +140,12 @@ def run(c):
     c.zero("RECIPIENT_AWARDS_SAME_ROWS", f"""(SELECT id FROM {r}awards_candidate EXCEPT ALL SELECT id FROM {r}awards_candidate_before_recipients)
       UNION ALL (SELECT id FROM {r}awards_candidate_before_recipients EXCEPT ALL SELECT id FROM {r}awards_candidate)""")
     now = c.count("awards_with_recipient_countries", f"(SELECT id FROM {r}awards_candidate WHERE size(recipient_countries)>0) x")
-    c.count("awards_with_recipient_regions", f"(SELECT id FROM {r}awards_candidate WHERE size(recipient_regions)>0) x")
-    if "recipient_countries" in award_keys.columns(c, "previous_api_v"):
-        before = int(c.sql("SELECT count(*) n FROM previous_api_v WHERE size(recipient_countries)>0").collect()[0].n)
-        award_keys.count_drop_check(c, "RECIPIENT_COUNT_DROP", before, now, fuse)
+    regions = c.count("awards_with_recipient_regions", f"(SELECT id FROM {r}awards_candidate WHERE size(recipient_regions)>0) x")
+    members = int(award_keys.one(c, f"SELECT coalesce(sum(size(recipient_countries)),0) n FROM {r}awards_candidate", n=0).n)
+    c.counts["recipient_country_memberships"] = members
+    if "recipient_countries" in award_keys.columns(c, "previous_api_v") and not award_keys.clearing(c):
+        prev = award_keys.one(c, """SELECT count_if(size(recipient_countries)>0) countries,count_if(size(recipient_regions)>0) regions,
+            coalesce(sum(size(recipient_countries)),0) members FROM previous_api_v""", countries=0, regions=0, members=0)
+        award_keys.count_drop_check(c, "RECIPIENT_COUNT_DROP", int(prev.countries), now, fuse)
+        award_keys.count_drop_check(c, "RECIPIENT_REGIONS_DROP", int(prev.regions), regions, fuse)
+        award_keys.count_drop_check(c, "RECIPIENT_MEMBERSHIP_DROP", int(prev.members), members, fuse)
