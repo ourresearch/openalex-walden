@@ -41,11 +41,11 @@ The gte-large-en stack (`work_embeddings_v2`, `works_for_embedding`, `works-vect
    work no longer exists). Fails if more than 20M works are unmirrored (the mirror is broken). IF NOT EXISTS: an
    unfinished night's tables are resumed, not re-staged.
 2. **sync** (same notebook, `resume=true`, `cleanup=true`, 2 workers, `spark.task.cpus=4`, paced as below): sends the
-   staged works, then deletes the gone works (`max_deletes` 1M), MERGEs the hashes into the mirror and drops the three
+   staged works, then deletes the gone works (`max_deletes` 13M for the first catch-up; set it back to ≈ 1M once caught up), MERGEs the hashes into the mirror and drops the three
    tables, all only once every batch is done.
 
-Sizes: ≈ 30M the first night (6 Oct 2026: 23.9M changed, 15.7M of them a primary-source change that week; 5.6M
-unmirrored; 238K gone); ≈ 1-3M a night after that.
+Sizes: the first catch-up (8 Oct 2026) ≈ 42M re-sent (36.2M changed, 6.0M unmirrored) and 10.75M deleted (the #1540,
+#1581 and #1099 merges), 2-3 nights at the guard's pace; ≈ 1-3M a night after that.
 
 **Why the filter-field diff (oxjob #1433):** semantic search pre-filters kNN on this index's own copy of the filter
 fields. Until 2026-09-29 only works whose text changed were re-sent, so every metadata change (the 2026-09-27

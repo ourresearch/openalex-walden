@@ -84,7 +84,8 @@ LEFT ANTI JOIN openalex.works.openalex_works w ON w.id = CAST(substring(m.id, 23
 
 -- A missing or emptied mirror would make every work 'unmirrored' (≈ 475M sends): fail instead. 6 Oct 2026, a week
 -- after the seed: 5.6M unmirrored (new works), 23.9M changed (15.7M of them a primary-source change). 7 Oct: 5.8M
--- unmirrored, 27.9M changed, 4.43M gone (#1540 merges).
+-- unmirrored, 27.9M changed, 4.43M gone (#1540 merges). 8 Oct: 6.0M unmirrored, 36.2M changed, 10.75M gone
+-- (+ #1581/#1099 dedup merges).
 SELECT assert_true(
   (SELECT COUNT(*) FROM openalex.vector_search.vector_filter_sync_staging WHERE send_reason = 'unmirrored') <= 20000000,
   'vector filter sync: more than 20M works with a vector have no mirror row; vector_filter_fields_sent looks missing or emptied (oxjob #1433)'
