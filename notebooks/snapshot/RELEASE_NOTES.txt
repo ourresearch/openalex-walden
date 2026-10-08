@@ -5,6 +5,7 @@ Schedule and sync guidance: https://help.openalex.org/access/sync/
 
 NEXT RELEASE (draft, oxjob #1322)
 - replaced work keywords with a new keyword tagger and vocabulary (~1.9M keywords, all works incl. the expansion pack; keywords.score is now the tagger's confidence); keyword ids changed for most works. updated_date did NOT move for this change: incremental snapshot consumers need a full reload of works and keywords
+- added locations[].doi, primary_location.doi and best_oa_location.doi (oxjob #1573): the DOI of the Crossref or DataCite record behind each location, as a lowercase https://doi.org/ URL; absent on every other location. A work that holds several registered records (a preprint and its article, Zenodo concept and version DOIs) now shows each record's DOI; the work-level doi is unchanged. updated_date did NOT move for this change: incremental snapshot consumers need a full reload of works
 
 RELEASE 2026-09-23
 - quarterly snapshot with bug fixes and improvements
