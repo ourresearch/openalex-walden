@@ -50,6 +50,7 @@ include:
   - jobs/landing_page.yaml
   - jobs/pubmed.yaml
   - jobs/irdb.yaml
+  - jobs/hal_tei.yaml
   - jobs/repo.yaml
   - jobs/repo_backfill.yaml
   - jobs/taxicab_crossref.yaml
@@ -102,4 +103,5 @@ include:
   - jobs/landing_page_pipeline.yaml
   - jobs/pubmed_pipeline.yaml
   - jobs/irdb_pipeline.yaml
+  - jobs/hal_tei_pipeline.yaml
   - jobs/pdf_pipeline.yaml

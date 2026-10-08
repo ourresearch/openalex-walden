@@ -1,0 +1,29 @@
+# HAL xml-tei DLT pipeline (oxjob #1588): s3://openalex-ingest/hal-tei/ -> openalex.repo.hal_tei_*.
+# Bundle-managed: notebook code deploys via CI on push to main — do NOT pull the
+# /Shared/openalex-walden Git folder for this pipeline; edits made in the pipeline UI
+# (settings AND code) are reverted on the next deploy.
+#
+# NOTE: this pipeline publishes via `schema:` (default publishing mode), not `target:` —
+# keep it that way; switching modes forces a table migration.
+resources:
+  pipelines:
+    hal_tei_pipeline:
+      name: HAL TEI
+      # Pin the owner to the CI deploy service principal (github-actions-deploy).
+      # Without this the CLI makes whoever runs `bundle deploy` the owner, and only
+      # metastore admins can change a pipeline owner, so a local deploy breaks CI.
+      permissions:
+        - service_principal_name: 321056ec-06df-41ad-8227-2c238f818596
+          level: IS_OWNER
+      catalog: openalex
+      schema: repo
+      serverless: true
+      photon: true
+      continuous: false
+      development: true
+      channel: CURRENT
+      configuration:
+        spark.sql.execution.arrow.maxRecordsPerBatch: "1000"
+      libraries:
+        - notebook:
+            path: ../notebooks/ingest/HalTei.py

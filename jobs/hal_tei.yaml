@@ -1,0 +1,17 @@
+# HAL in xml-tei (oxjob #1588): runs the HAL TEI pipeline once a day, after the OAI-PMH harvester's daily run.
+resources:
+  jobs:
+    HAL_TEI:
+      name: HAL TEI
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 0 30 18 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: HAL_TEI
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.hal_tei_pipeline.id}
+            full_refresh: false
