@@ -10,8 +10,9 @@
 # search fail 60-78% of requests. So each night sends at most max_batches, starts no batch after max_minutes, and before
 # every batch waits for merges <= max_merges and a direct kNN probe <= knn_guard_ms (else stops for the night). A night
 # that leaves batches undone keeps its tables and the next night resumes them (the stage is CREATE TABLE IF NOT EXISTS).
-# Sizes: ≈ 30M on the first night after the 160.4M refresh (job 1103706340802170, 1-6 Oct 2026, now deleted) because
-# 15.7M works changed primary source that week; ≈ 1-3M a night after that.
+# Sizes: ≈ 42M re-sent + 10.75M deleted for the first catch-up (8 Oct: changed primary sources and two corpus-wide dedup
+# merges since the 160.4M refresh, job 1103706340802170, 1-6 Oct 2026, now deleted), 2-3 nights at the guard's pace;
+# ≈ 1-3M a night after that.
 resources:
   jobs:
     Vector_Filter_Sync_Qwen3:
@@ -61,7 +62,7 @@ resources:
               num_batches: "20"   # must match pmod(hash(id), 20) in the stage
               resume: "true"
               deletes_table: openalex.vector_search.vector_filter_sync_deletes
-              max_deletes: "6000000"   # 7 Oct: 4.43M works gone since the 29 Sep mirror seed (#1540 Zenodo-twin merges, 7 Oct E2E); a bad read of openalex_works mid-rebuild would be 100M+
+              max_deletes: "13000000"   # 8 Oct: 10.75M works gone since the 29 Sep mirror seed (#1540 Zenodo-twin merges 7 Oct, #1581/#1099 dedup merges 8 Oct); a bad read of openalex_works mid-rebuild would be 100M+
               mirror_table: openalex.vector_search.vector_filter_fields_sent
               cleanup: "true"   # drops staging/checkpoint/deletes only after all batches are done
               max_batches: "{{job.parameters.max_batches}}"
