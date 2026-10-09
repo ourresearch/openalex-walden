@@ -16,6 +16,9 @@ from stable_award_ids import compact, ident, literal, sha, short
 from capture_support import verify_body
 
 MAINTENANCE = ("OPTIMIZE", "VACUUM START", "VACUUM END", "COMPUTE STATISTICS")
+# A DELETE newer than this is treated as the first half of a producer rewrite (the version before it is read); an older one is the
+# table's final state. The version before an old DELETE can fall out of time travel (7 days): live funders, 10-09.
+DELETE_REWRITE_HOURS = 6
 PARAM = re.compile(r":(rid|ts)\b")
 WRITE_TARGET = re.compile(r"\s*(?:CREATE (?:OR REPLACE )?TABLE|MERGE INTO|UPDATE|INSERT INTO|DELETE FROM)\s+(\S+)", re.I)
 
@@ -171,7 +174,8 @@ class Nightly:
         """Current version, read once: every later statement reads exactly this version (no drift inside a run)."""
         relation = ident(relation)
         try:
-            history = self.sql(f"SELECT version,timestamp,operation FROM (DESCRIBE HISTORY {relation}) ORDER BY version DESC LIMIT 50").collect()
+            history = self.sql(f"""SELECT version,timestamp,operation,timestamp >= current_timestamp() - INTERVAL {DELETE_REWRITE_HOURS} HOURS recent
+              FROM (DESCRIBE HISTORY {relation}) ORDER BY version DESC LIMIT 50""").collect()
         except Exception as exc:
             if "EXPECT_TABLE_NOT_VIEW" not in str(exc) and "not a Delta table" not in str(exc):
                 raise
@@ -182,7 +186,9 @@ class Nightly:
             for h in history:                                 # newest data commit decides; maintenance after it preserves content
                 if h.operation in MAINTENANCE:
                     continue
-                if h.operation == "DELETE":                   # producers rewrite as DELETE then WRITE: never read between the two
+                if h.operation == "DELETE" and not h.recent:  # an old lone DELETE is the table's final state, not a half rewrite: read it
+                    self.versions.setdefault("_trailing_delete_bound", []).append(dict(relation=relation, delete_version=int(h.version)))
+                elif h.operation == "DELETE":                 # producers rewrite as DELETE then WRITE: never read between the two
                     prior = [x for x in history if int(x.version) == int(h.version) - 1]
                     self.require(prior, "INPUT_ENDS_IN_DELETE_WITHOUT_PRIOR_VERSION: " + relation)
                     row = prior[0]

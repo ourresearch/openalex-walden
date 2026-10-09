@@ -226,7 +226,7 @@ class HistorySpark(FakeSpark):
     def sql(self, statement, args=None):
         self.statements.append((statement, dict(args or {})))
         if "DESCRIBE HISTORY" in statement:
-            return Result([types.SimpleNamespace(version=v, timestamp="t", operation=o) for v, o in self.ops])
+            return Result([types.SimpleNamespace(version=x[0], timestamp="t", operation=x[1], recent=x[2] if len(x) > 2 else True) for x in self.ops])
         return Result()
 
     def views(self):
@@ -244,6 +244,13 @@ def test_bind_skips_a_trailing_producer_delete():
     assert bound_version([(13, "OPTIMIZE"), (12, "DELETE"), (11, "WRITE")]) == "11"
     assert bound_version([(13, "OPTIMIZE"), (12, "WRITE"), (11, "DELETE")]) == "13"
     assert bound_version([(5, "MERGE")]) == "5"
+
+
+def test_bind_reads_an_old_lone_delete():
+    # 10-09: openalex.funders.funders ended in a 4-day-old DELETE; the version before it was past time travel, so skipping failed the run
+    assert bound_version([(41, "DELETE", False), (40, "OPTIMIZE", False), (39, "UPDATE", False)]) == "41"
+    assert bound_version([(42, "OPTIMIZE", True), (41, "DELETE", False), (40, "WRITE", False)]) == "42"
+    assert bound_version([(12, "DELETE", True), (11, "WRITE", False)]) == "11"
 
 
 def test_run_id_required_when_configured():
