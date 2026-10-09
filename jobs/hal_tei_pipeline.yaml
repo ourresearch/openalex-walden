@@ -23,7 +23,10 @@ resources:
       development: true
       channel: CURRENT
       configuration:
-        spark.sql.execution.arrow.maxRecordsPerBatch: "1000"
+        # One row = one harvested file (up to ~28 MB of XML, ~80 MB parsed): hand the parser UDF only a few
+        # files per Python batch. Batches of 100-1,000 files OOMed the Python workers (9 Oct).
+        spark.sql.execution.arrow.maxRecordsPerBatch: "4"
+        spark.sql.execution.python.udf.maxRecordsPerBatch: "4"
       libraries:
         - notebook:
             path: ../notebooks/ingest/HalTei.py

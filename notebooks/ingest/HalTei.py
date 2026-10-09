@@ -20,6 +20,7 @@
 # COMMAND ----------
 
 import gzip
+import io
 import re
 import xml.etree.ElementTree as ET
 
@@ -91,11 +92,17 @@ def parse_record(rec):
 
 
 def parse_file(data):
-    """Harvester file bytes (gzip or not) -> list of record dicts."""
-    if data[:2] == b"\x1f\x8b":
-        data = gzip.decompress(data)
-    root = ET.fromstring(data)
-    return [parse_record(r) for r in root.iter(OAI + "record")]
+    """Harvester file bytes (gzip or not) -> list of record dicts.
+
+    Streams record by record and frees each one: a backfill file is ~28 MB of XML, and building its whole
+    tree took ~300 MB per file, which OOMed the Python workers on the first backfill update (9 Oct)."""
+    stream = gzip.GzipFile(fileobj=io.BytesIO(data)) if data[:2] == b"\x1f\x8b" else io.BytesIO(data)
+    out = []
+    for _, el in ET.iterparse(stream, events=("end",)):
+        if el.tag == OAI + "record":
+            out.append(parse_record(el))
+            el.clear()
+    return out
 
 
 # COMMAND ----------
@@ -154,8 +161,8 @@ def hal_tei_items():
         .option("cloudFiles.schemaLocation", "dbfs:/pipelines/hal_tei/schema")
         # Discovery via UC managed file events on the openalex-ingest external location, as Repo.py / IRDB.py
         .option("cloudFiles.useManagedFileEvents", "true")
-        # Backfill files hold 1,000 records (~26 MB of XML); keep micro-batches small
-        .option("cloudFiles.maxFilesPerTrigger", "2000")
+        # Backfill files hold 1,000 records (~28 MB of XML); keep micro-batches small
+        .option("cloudFiles.maxFilesPerTrigger", "500")
         .load("s3a://openalex-ingest/hal-tei/")
         .select(
             F.explode(parse_file_udf(F.col("content"))).alias("r"),
