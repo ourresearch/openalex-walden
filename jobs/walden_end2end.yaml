@@ -131,9 +131,30 @@ resources:
           max_retries: 3
           min_retry_interval_millis: 300000
           retry_on_timeout: true
+        # oxjob #1099: merge preprint and article works whose declared link (Crossref is-preprint-of / has-preprint, arXiv DataCite IsVersionOf) appeared
+        # after both were pinned; MapWorkIds then re-resolves the losers' records onto the winner in this run.
+        - task_key: Merge_Declared_Preprints
+          depends_on:
+            - task_key: Locations_with_Types
+          notebook_task:
+            notebook_path: notebooks/end2end/MergeDeclaredPreprints
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+          timeout_seconds: 2400
+        # Passes whether the merge succeeded, failed or timed out: MapWorkIds runs either way.
+        - task_key: Merge_Declared_Preprints_Gate
+          depends_on:
+            - task_key: Merge_Declared_Preprints
+          run_if: ALL_DONE
+          condition_task:
+            op: EQUAL_TO
+            left: "1"
+            right: "1"
         - task_key: Map_Work_Ids
           depends_on:
             - task_key: Locations_with_Types
+            - task_key: Merge_Declared_Preprints_Gate
+              outcome: "true"   # the gate always evaluates true; the API requires an outcome on a condition dependency
           notebook_task:
             notebook_path: notebooks/end2end/MapWorkIds
             source: GIT
