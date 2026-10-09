@@ -1,0 +1,44 @@
+# Create or Update Funders (funder registry, Casey naming convention; was "Funders Daily" in dev): fetch FundRef predecessor crosswalks, read ROR's daily copy, resolve every record against
+# the funder registry (ROR-only mints; existing fields frozen by default), run the id checks, then rebuild the compat view and funders_api.
+# v0 writes ONLY to openalex_dev (the notebook refuses any other prefix). It runs after the ROR job (~20:10-20:20 UTC) and before
+# Sync Funders to Elasticsearch (04:00 UTC). One-time seed pins the current funders version: run the notebook by hand with mode=seed.
+# Switching prod over (funders.funders -> compat view, this job replacing ROR Funder Proposals + the API build) is a later,
+# reviewed change; see grants-work/funder-registry-20261006/README.md.
+resources:
+  jobs:
+    Create_Or_Update_Funders:
+      name: Create or Update Funders (dev registry, paused)
+      schedule:
+        quartz_cron_expression: "0 45 21 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED   # deployed paused; unpause by changing this line in a later push (a UI unpause is reset by the next bundle deploy)
+      email_notifications:
+        on_failure:
+          - rohan@openalex.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      tasks:
+        - task_key: fetch_resolve_publish
+          notebook_task:
+            notebook_path: notebooks/funders/CreateOrUpdateFunders
+            source: GIT
+            base_parameters:
+              prefix: openalex_dev.rohan_lab.fr1006_
+              mode: daily
+              run_id: "{{job.run_id}}"
+              max_mints: "200"   # fuse: more mints in one night stops the run for a person; nothing is applied
+          environment_key: Default
+          timeout_seconds: 3000
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      environments:
+        - environment_key: Default
+          spec:
+            client: "2"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
