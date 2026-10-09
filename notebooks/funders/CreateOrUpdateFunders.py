@@ -1,12 +1,12 @@
 # Databricks notebook source
-# Create or Update Funders (redesign step 4): fetch -> resolve -> publish for the funder registry.
+# Create or Update Funders (redesign step 4): read -> resolve -> publish for the funder registry.
 #   {T}funder               one row per F id ever issued, never deleted; status active | merged | withdrawn
 #   {T}funder_id            every identifier -> F id: (id_type, id_value) unique; id_type ror | fundref | name
 #   {T}funder_source_record ROR, cited ids, predecessor crosswalks and exact seed rows; fingerprint/outcome/reason
 #   {T}funder_decision      append-only log of every non-trivial decision per run (mint, attach, alias, hold)
 #   {T}funders_compat       snapshot with today's 22 openalex.funders.funders columns, so every reader keeps working
-# Modes: seed (one time, from the current pinned funders version + deleted_funders) | daily (fetch, resolve, checks, publish).
-# Sources: ROR (entities), Crossref registry (predecessor crosswalk only), Crossref/DataCite cited ids (matching evidence), edits.csv.
+# Modes: seed (one time, from the current pinned funders version + deleted_funders) | daily (read, resolve, checks, publish).
+# Sources: ROR (entities), committed FundRef predecessor crosswalk, Crossref/DataCite cited ids (matching evidence), edits.csv.
 # ROR funder-typed records mint automatically. Citation feeds never mint or enter a mint-review list.
 # Every funder keeps the ROR it has; one active funder per ROR id is PRIMARY (ror_primary) and resolves it. Mint ids keep today's rule (abs(xxhash64(key)) % 9e9, from RorFunderProposals); a mint id that
 # was ever issued is held, never reused. Merges and withdrawals come only from edits.csv.
@@ -17,9 +17,6 @@
 import json
 import re
 import os
-import urllib.parse
-import urllib.request
-import time
 
 NORM = r"regexp_replace(trim(regexp_replace(lower({x}), '[^\\p{{L}}\\p{{N}}]+', ' ')), '^the ', '')"   # same as RorFunderProposals
 RID = r"lower(regexp_extract({x}, '([0-9a-z]{{9}})/*$', 1))"
@@ -198,54 +195,17 @@ UNION ALL
 SELECT funder_id, created_by, created_date FROM {t['F']} WHERE created_by LIKE 'mint%'""")
 
 
-# ---------------------------------------------------------------- FETCH
+# ---------------------------------------------------------------- COMMITTED PREDECESSOR CROSSWALK
 
-def fetch_crossref_rows(sleep=1.0, log=print):
-    """Fetch predecessor FundRef crosswalks only; the legacy tuple schema is retained for the dev runner."""
-    import datetime
-    fetched, cursor, rows, total = datetime.datetime.utcnow(), "*", [], None
-    while True:
-        url = "https://api.crossref.org/funders?rows=1000&cursor=" + urllib.parse.quote(cursor)
-        for attempt in range(5):
-            try:
-                req = urllib.request.Request(url, headers={"User-Agent": "openalex-funders-daily/0.1"})
-                msg = json.load(urllib.request.urlopen(req, timeout=120))["message"]
-                break
-            except Exception as e:   # noqa: BLE001 - retried, then the run fails closed
-                log(f"crossref retry {attempt}: {e}")
-                time.sleep(10 * (attempt + 1))
-        else:
-            raise RuntimeError("Crossref funder registry fetch failed; nothing written")
-        total, items = msg["total-results"], msg["items"]
-        for d in items:
-            xw = {"id": str(d["id"]), "replaces": [str(x) for x in d.get("replaces") or []],
-                  "replaced-by": [str(x) for x in d.get("replaced-by") or []]}
-            rows.append((xw["id"], None, [], None, None, xw["replaces"], xw["replaced-by"], json.dumps(xw), fetched))
-        if not items or len(rows) >= total:
-            break
-        cursor = msg["next-cursor"]
-        time.sleep(sleep)
-    if len(rows) != total:
-        raise RuntimeError(f"Crossref fetch partial: {len(rows)} of {total}; nothing written")
-    return rows
-
-
-CR_SCHEMA = ("fundref_id STRING, name STRING, alt_names ARRAY<STRING>, location STRING, uri STRING, replaces ARRAY<STRING>, "
-             "replaced_by ARRAY<STRING>, raw_json STRING, fetched_at TIMESTAMP")
-
-
-def write_crossref(spark, p, rows):
-    """Guarded overwrite of the Crossref copy: never shrink by more than 2% or below MIN_CR_RECORDS (fail closed)."""
-    t = tables(p)
-    rows = list({r[0]: r for r in reversed(rows)}.values())   # one row per FundRef id (the first one the API returned)
-    n = len(rows)
-    prev = 0
-    if spark.catalog.tableExists(t["CR"]):
-        prev = spark.sql(f"SELECT count(*) n FROM {t['CR']}").collect()[0]["n"]
-    if n < int(p["MIN_CR_RECORDS"]) or n < prev * 0.98:
-        raise RuntimeError(f"Crossref registry pull too small ({n}, previous {prev}); nothing written (fail closed)")
-    spark.createDataFrame(rows, CR_SCHEMA).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(t["CR"])
-    return n, prev
+def predecessor_edges(path):
+    """Read the complete frozen edge set; resolve successors against today's ROR external_ids below.
+    successor_ror_id in the CSV is export-time provenance, not an override of daily ROR identity."""
+    import csv
+    with open(path, newline="") as f:
+        rows = list(csv.DictReader(f))
+    edges = sorted({(r["predecessor_fundref_id"], r["successor_fundref_id"]) for r in rows})
+    assert edges and all(re.fullmatch(r"[0-9]{5,}", x) for edge in edges for x in edge), "Invalid predecessor bridge CSV"
+    return "SELECT * FROM VALUES " + ", ".join(f"('{old}', '{new}')" for old, new in edges) + " AS edges(old_id, new_id)"
 
 
 # ---------------------------------------------------------------- DAILY: source records
@@ -261,15 +221,10 @@ def guard_ror(p):
   'ROR copy too small, undated, or history incomplete; nothing written (fail closed)') ok""")
 
 
-def guard(p):
-    return ("guard", f"""SELECT assert_true((SELECT count(*) FROM {tables(p)['CR']}) >= {int(p['MIN_CR_RECORDS'])},
-  'Crossref copy too small; nothing written (fail closed)') ok""")
-
-
-def upsert_sources(p):
+def upsert_sources(p, bridge_path):
     t, R = tables(p), p["RUN_ID"]
-    crosswalk = (f"SELECT fundref_id old_id, explode(replaced_by) new_id FROM {t['CR']} UNION SELECT explode(replaces), fundref_id FROM {t['CR']}"
-                 if FUNDREF_INTERNAL_KEY else "SELECT CAST(NULL AS STRING) old_id, CAST(NULL AS STRING) new_id WHERE false")
+    crosswalk = (predecessor_edges(bridge_path) if FUNDREF_INTERNAL_KEY
+                 else "SELECT CAST(NULL AS STRING) old_id, CAST(NULL AS STRING) new_id WHERE false")
     return ("upsert_sources", f"""MERGE INTO {t['S']} t
 USING (
   WITH ror AS (
@@ -336,6 +291,7 @@ WHEN NOT MATCHED THEN INSERT (source, source_key, name, alt_names, country, ror_
   homepage, record_json, fingerprint, first_seen_at, fetched_at, changed_run_id)
   VALUES (s.source, s.source_key, s.name, s.alt_names, s.country, s.ror_id, s.fundref_ids, s.replaced_by, s.record_status, s.is_funder,
   s.homepage, s.record_json, s.fingerprint, current_timestamp(), current_timestamp(), '{R}')
+-- Legacy crossref_registry records retire to 'gone' once, then remain a no-op; keep their schema/history.
 WHEN NOT MATCHED BY SOURCE AND t.source IN ('ror', 'crossref_registry', 'crossref_crosswalk', 'crossref_cited', 'datacite_cited') AND t.record_status <> 'gone' THEN UPDATE SET
   t.record_status = 'gone', t.changed_run_id = '{R}'""")
 
@@ -692,7 +648,7 @@ ORDER BY 1, 2"""
 # ---------------------------------------------------------------- RUNNERS
 
 DEFAULTS = dict(ROR="openalex.institutions.ror", ROR_RAW="openalex.institutions.ror_raw", FUNDERS_V41="openalex.funders.funders VERSION AS OF 41",
-                DELETED="openalex.funders.deleted_funders", MIN_ROR_ROWS=100000, MIN_FUNDER_RECORDS=15000, MIN_CR_RECORDS=40000,
+                DELETED="openalex.funders.deleted_funders", MIN_ROR_ROWS=100000, MIN_FUNDER_RECORDS=15000,
                 ALIASES="openalex.common.funder_names_keep", AWARDS="openalex.awards.openalex_awards", CROSSREF_REFS="openalex.works.locations_mapped",
                 MAX_MINTS=200, DATACITE_REFS="openalex.awards.datacite_work_funder_evidence", API_SEED_FROM="openalex.funders.funders_api",
                 WORKS_COUNTS="openalex.funders.funders_api")   # seed only: works per funder, to pick the keeper among same-name duplicates
@@ -704,23 +660,18 @@ def run(spark, statements, log=print):
         spark.sql(sql).collect()   # collect() forces execution: spark.sql on a SELECT is lazy, so assert_true would never run
 
 
-def daily(spark, p, fetch=True, edits_path=None, api_ipynb=None, max_mints=None, log=print):
+def daily(spark, p, bridge_path, edits_path=None, api_ipynb=None, max_mints=None, log=print):
     """Order: every source guard and edits.csv precondition before the first registry write; checks before the compat snapshot and
     funders_api. Delta has no multi-table transaction: a run that stops between apply steps resumes on the next run (mints are keyed
     by mint_key), and nothing is published until the checks pass."""
     t = tables(p)
     run(spark, [guard_ror(p)], log)
-    if fetch and FUNDREF_INTERNAL_KEY:
-        n, prev = write_crossref(spark, p, fetch_crossref_rows(log=log))
-        log(f"crossref registry: {n} records (previous {prev})")
-    if FUNDREF_INTERNAL_KEY:
-        run(spark, [guard(p)], log)
     prev_version = spark.sql(f"DESCRIBE HISTORY {t['F']} LIMIT 1").collect()[0]["version"]
     edits = edit_statements(p, read_edits(edits_path))
     if not FUNDREF_INTERNAL_KEY:
         run(spark, [("drop_fundref_keys", f"DELETE FROM {t['I']} WHERE id_type = 'fundref'")], log)
     run(spark, edits, log)   # each edit asserts its preconditions first; reviewed edits apply even if tonight's fuse then trips
-    run(spark, [upsert_sources(p), materialize(p), review_mints(p), hold_batch_collisions(p), mint_fuse(p, max_mints or p["MAX_MINTS"]),
+    run(spark, [upsert_sources(p, bridge_path), materialize(p), review_mints(p), hold_batch_collisions(p), mint_fuse(p, max_mints or p["MAX_MINTS"]),
                 never_issued(p)], log)
     run(spark, apply(p), log)
     run(spark, checks(p, prev_version) + [compat_view(p)], log)
@@ -754,7 +705,8 @@ if "dbutils" in globals():  # Databricks entrypoint; local runs import the funct
         print(f"seed version: {version}")
         run(spark, seed(p))
     else:
-        for row in daily(spark, p, fetch=True, edits_path=repo_file("edits.csv", "notebooks/funders/edits.csv"),
+        for row in daily(spark, p, bridge_path=repo_file("fundref_predecessor_bridge.csv", "notebooks/funders/fundref_predecessor_bridge.csv"),
+                         edits_path=repo_file("edits.csv", "notebooks/funders/edits.csv"),
                          api_ipynb=repo_file("CreateFundersAPI.ipynb", "notebooks/funders/CreateFundersAPI.ipynb"),
                          max_mints=int(dbutils.widgets.get("max_mints"))):
             print(row.asDict())

@@ -1,4 +1,4 @@
-# Create or Update Funders (funder registry, Casey naming convention; was "Funders Daily" in dev): fetch FundRef predecessor crosswalks, read ROR's daily copy, resolve every record against
+# Funders: read committed FundRef predecessor crosswalks and ROR's daily copy, resolve every record against
 # the funder registry (ROR-only mints; existing fields frozen by default), run the id checks, then rebuild the compat view and funders_api.
 # v0 writes ONLY to openalex_dev (the notebook refuses any other prefix). It runs after the ROR job (~20:10-20:20 UTC) and before
 # Sync Funders to Elasticsearch (04:00 UTC). One-time seed pins the current funders version: run the notebook by hand with mode=seed.
@@ -7,7 +7,9 @@
 resources:
   jobs:
     Create_Or_Update_Funders:
-      name: Create or Update Funders (dev registry, paused)
+      name: Funders
+      description: Dev funder registry; paused pending production cutover.
+      tags: {stage: dev, lane: funders}
       schedule:
         quartz_cron_expression: "0 45 21 * * ?"
         timezone_id: UTC
