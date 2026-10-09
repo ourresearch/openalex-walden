@@ -322,7 +322,8 @@ df_transformed = (
             'license', x.license,
             'license_id', x.license_id,
             'version', x.version,
-            'is_accepted', x.is_accepted
+            'is_accepted', x.is_accepted,
+            'doi', x.doi
         ))
     """))
     # limit to a reasonable number (they go up to 130) - mainly for xpac
@@ -372,9 +373,8 @@ df_transformed = (
         F.col("concepts"),
         F.col("locations"),
         F.col("locations_count"),
-        # location doi (oxjob #1573) stays out until the API half ships, same as sync_works; no-op if absent.
-        F.col("primary_location").dropFields("doi").alias("primary_location"),
-        F.col("best_oa_location").dropFields("doi").alias("best_oa_location"),
+        F.col("primary_location"),
+        F.col("best_oa_location"),
         F.coalesce(F.col("sustainable_development_goals"), empty_sdg_array).alias("sustainable_development_goals"),
         # DEPRECATED (oxjob #1300): Aurora's frozen SDG tags, same as sync_works; removed about a month after the swap.
         F.coalesce(F.col("sustainable_development_goals_aurora"), empty_sdg_array).alias("sustainable_development_goals_aurora"),
