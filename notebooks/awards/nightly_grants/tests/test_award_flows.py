@@ -210,6 +210,8 @@ def test_research_reference_answers(provenance, values, expected):
     ("idrc_iati", {}, ["nonprofit"], [2], True, (True, "sector_code", 2)),                  # IDRC research purpose code: about research
     ("idrc_iati", {}, ["nonprofit"], [2], False, (None, "recipient_type", None)),
     ("novo_nordisk_fonden_grants", {"funder_scheme": "Pioneer Innovator"}, ["company"], [0], False, (True, "programme_rule", 2)),   # programme says research
+    ("wellcome_trust", {"display_name": "Preclinical development of a malaria drug candidate"}, ["company"], [9], False, (True, "programme_rule", 4)),   # title says research
+    ("wellcome_trust", {"display_name": "A festival of music and the brain"}, ["nonprofit"], [10], False, (None, "recipient_type", None)),
 ])
 def test_recipient_test_and_sector_codes(provenance, values, types, works, code, expected):
     d, r = award_research_scope.read_defaults(str(ROOT)), award_research_scope.read_rules(str(ROOT))
@@ -221,8 +223,10 @@ def test_feed_defaults_exempt_research_agencies_and_test_foundations():
     by = {r["provenance"]: r for r in award_research_scope.read_defaults(str(ROOT))}
     for p in ("nih_exporter", "nsf_award_search", "kaken", "gepris", "erc", "cihr_opendata", "foerderkatalog", "nsfc_kd", "anr_opendata", "nhmrc"):
         assert by[p]["recipient_test"] == "no", p
-    for p in ("gates_foundation", "wellcome_trust", "idrc_iati", "iati_fcdo", "hewlett_facetwp", "templeton_wp", "sloan_foundation"):
+    for p in ("gates_foundation", "wellcome_trust", "idrc_iati", "iati_fcdo", "hewlett_facetwp", "templeton_wp", "sloan_foundation", "vivensa"):
         assert by[p]["recipient_test"] == "yes", p
+    assert by["edctp_grants_portal"]["recipient_test"] == "no"                       # Codex 10-09: EDCTP funds research only
+    assert all(i.startswith("I") for i in award_research_scope.read_research_organisations(str(ROOT)))
     assert award_research_scope.read_research_codes(str(ROOT))[:2] == ["11182", "12182"]
 
 
@@ -238,6 +242,9 @@ def test_research_sql_applies_rules_first_then_defaults_and_leaves_stubs_null():
     assert (q.index("WHEN h.award_id IS NOT NULL") < q.index("WHEN s.award_id IS NOT NULL") < q.index("WHEN d.is_research='mixed'")
             < q.index("d.recipient_test='yes'") < q.index("WHEN d.provenance IS NOT NULL"))
     assert "rr.award_id IS NULL" in q and "'basis','recipient_type'" in q
+    assert "x.short_id IN (" in dict(c.artifacts)["research_recipient_awards"]
+    for gate in ("CLASSIFICATION_NO_LOSS", "CLASSIFICATION_DROP_FUSE"):
+        assert gate in c.checks, gate
     rr = dict(c.artifacts)["research_recipient_awards"]
     assert "x.type IN ('education','facility') OR coalesce(i.works_count,0) >= 50" in rr and "institutions_api_v" in rr
     for gate in ("CLASSIFICATION_RAW_SHAPE", "CLASSIFICATION_RAW_UNIQUE", "CLASSIFICATION_BRIDGE_UNIQUE"):

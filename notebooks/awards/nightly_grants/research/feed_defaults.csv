@@ -274,7 +274,7 @@ ocast_award_lists,true,funder_default,1,no,research funder feed: Oklahoma Center
 lloyds_register_foundation,mixed,,,yes,Lloyd's Register Foundation: engineering safety research and education
 medical_research_scotland,true,funder_default,1,no,research funder feed: Medical Research Scotland
 arcadia_360giving,mixed,,,yes,"Arcadia: conservation, open access, culture"
-edctp_grants_portal,true,funder_default,1,yes,research funder feed: European and Developing Countries Clinical Trials Partnership
+edctp_grants_portal,true,funder_default,1,no,research funder feed: European and Developing Countries Clinical Trials Partnership
 princess_asturias,mixed,,,yes,"Princess of Asturias awards: arts, sports, concord, science"
 klingenstein_simons,true,funder_default,1,yes,research funder feed: Esther A. and Joseph Klingenstein Fund
 schmidt_sciences_awardees,true,funder_default,1,no,research funder feed: Schmidt Futures
@@ -314,7 +314,7 @@ ostersjostiftelsen,true,funder_default,1,yes,research funder feed: Östersjösti
 nbcf_research_projects,true,funder_default,1,no,research funder feed: National Breast Cancer Foundation
 bbva_frontiers,mixed,,,yes,BBVA Frontiers of Knowledge: sciences beside music
 cec_business_meeting_agendas,mixed,,,yes,California Energy Commission: R&D and deployment programmes
-vivensa,true,funder_default,1,no,research funder feed: Dunhill Medical Trust
+vivensa,true,funder_default,1,yes,research funder feed: Dunhill Medical Trust
 carl_zeiss_stiftung,true,funder_default,1,yes,research funder feed: Carl-Zeiss-Stiftung
 rita_allen_scholars,true,funder_default,1,yes,research funder feed: Rita Allen Foundation
 bcrf_researchers,true,funder_default,1,no,research funder feed: Breast Cancer Research Foundation

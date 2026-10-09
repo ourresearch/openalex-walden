@@ -83,6 +83,17 @@ def read_rules(package_root):
     return rows
 
 
+def read_research_organisations(package_root):
+    """research/research_organisations.csv: openalex_id (I...), name, note. Organisations that are research organisations although
+    ROR types them otherwise and they have fewer than the works floor (a drug-discovery company, a small institute)."""
+    with open(Path(package_root) / "research" / "research_organisations.csv", newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    ids = [r["openalex_id"] for r in rows]
+    if any(not re.fullmatch(r"I[0-9]+", i) for i in ids) or len(set(ids)) != len(ids):
+        raise RuntimeError("RESEARCH_ORGANISATIONS_INVALID")
+    return ids
+
+
 def read_research_codes(package_root):
     """research/dac_research_codes.csv: code, name. The DAC purpose codes whose own name says research."""
     with open(Path(package_root) / "research" / "dac_research_codes.csv", newline="", encoding="utf-8") as fh:
@@ -112,7 +123,8 @@ def rules_relation_sql(package_root):
 
 def scope_in_python(defaults, rules, provenance, values, recipient_types=None, research_code=False, recipient_works=None, min_works=DEFAULT_MIN_WORKS):
     """The answer for one award in Python (values: field -> value; recipient_types / recipient_works: the matched institutions'
-    types and works counts, [] when none matched): the reference for the SQL below, used by the tests."""
+    types and works counts, [] when none matched; a listed research organisation counts as works >= min_works): the reference
+    for the SQL below, used by the tests."""
     for rule in rules:
         if rule["provenance_scope"] in ("*", provenance) and (rule["funder_scope"] == "*" or re.search(rule["funder_scope"], values.get("funder_name") or "", re.IGNORECASE)):
             value = (values.get(rule["field"]) or "").strip()          # a missing value is '' so a '.*' fallback still applies
@@ -160,12 +172,30 @@ def run(c, relation="awards_candidate"):
       AND staging_id IS NOT NULL AND funder_id IS NOT NULL AND length(award_key)>0 AND length(scheme)>0 AND length(code)>0
       AND asserted_by IN ('funder','openalex','curated') AND length(adapter_version)>0 AND asserted_at IS NOT NULL,false)""")
     c.zero("CLASSIFICATION_RAW_UNIQUE", f"SELECT provenance,staging_id,funder_id,award_key,scheme,code FROM {raw} GROUP BY ALL HAVING count(*)<>1")
+    # Rows and research-coded rows per provenance tonight, against the last successful night's (or the frozen bootstrap): a producer
+    # that lost a feed, or its research codes, stops the run (Codex 10-09 finding 3).
+    fuse = float(c.config.get("research_drop_fuse", 0.01))
+    for row in c.sql(f"""SELECT provenance,count(*) n,count_if(scheme='oecd_dac_purpose' AND code IN ({codes})) research_n FROM {raw} GROUP BY 1""").collect():
+        c.counts[f"classifications_rows_{row.provenance}"] = int(row.n)
+        c.counts[f"classifications_research_rows_{row.provenance}"] = int(row.research_n)
+    if not award_keys.clearing(c):
+        known = {k for k in list(award_keys.last_counts(c)) + list(c.config.get("bootstrap_counts", {})) if k.startswith("classifications_")}
+        for key in sorted(known):
+            award_keys.drop_gate(c, "CLASSIFICATION_DROP_" + key[len("classifications_"):], key, c.counts.get(key, 0), fuse)
     c.artifact("classification_endpoints", f"SELECT DISTINCT provenance namespace,funder_award_id source_record_id,staging_id,funder_id,award_key FROM {raw}")
     lookup = award_keys.endpoint_lookup(c, "CLASSIFICATION", f"{r}classification_endpoints", "classification_endpoint_lookup")
     # Awards carrying a research purpose code (OECD DAC vocabulary 1): research whatever the recipient.
-    c.artifact("research_sector_awards", f"""SELECT DISTINCT e.stable_id award_id FROM {raw} a
-      JOIN {lookup} e ON e.namespace=a.provenance AND e.source_record_id=a.funder_award_id
-      WHERE e.stable_id IS NOT NULL AND a.scheme='oecd_dac_purpose' AND a.code IN ({codes})""")
+    c.artifact("classifications_resolved", f"""SELECT a.provenance,a.scheme,a.code,e.stable_id award_id,
+        CASE WHEN e.stable_id IS NULL THEN 'UNRESOLVED' WHEN e.status<>'ACTIVE' OR d.id IS NULL THEN 'NOT_SERVED' END dropped
+      FROM {raw} a JOIN {lookup} e ON e.namespace=a.provenance AND e.source_record_id=a.funder_award_id
+      LEFT JOIN {r}{src} d ON d.id=e.stable_id""")
+    c.zero("CLASSIFICATION_NO_LOSS", f"SELECT 1 WHERE (SELECT count(*) FROM {raw})<>(SELECT count(*) FROM {r}classifications_resolved)")
+    for reason in ("UNRESOLVED", "NOT_SERVED"):
+        c.counts["classifications_dropped_" + reason.lower()] = int(award_keys.one(c, f"SELECT count(*) n FROM {r}classifications_resolved WHERE dropped='{reason}'", n=0).n)
+    c.zero("CLASSIFICATION_DROP_FUSE", f"""SELECT count_if(dropped IS NOT NULL) dropped,count(*) total FROM {r}classifications_resolved
+      HAVING count_if(dropped IS NOT NULL) > greatest(10, {fuse}*count(*))""")
+    c.artifact("research_sector_awards", f"""SELECT DISTINCT award_id FROM {r}classifications_resolved
+      WHERE dropped IS NULL AND scheme='oecd_dac_purpose' AND code IN ({codes})""")
     c.count("research_sector_awards", f"{r}research_sector_awards")
     c.artifact(f"{src}_before_research", f"SELECT * FROM {r}{src}")
     # The first rule (file order) whose pattern matches the award's field value, within the rule's provenance and funder scope.
@@ -179,12 +209,15 @@ def run(c, relation="awards_candidate"):
               RLIKE concat('(?i)',p.pattern)) GROUP BY award_id""")
     types = ",".join(repr(t) for t in RECIPIENT_RESEARCH_TYPES)
     min_works = int(c.config.get("recipient_research_min_works", DEFAULT_MIN_WORKS))
-    # Awards with at least one research-organisation recipient: ROR type education / facility, or a publisher of research.
+    listed = ",".join(repr(i) for i in read_research_organisations(root)) or "''"
+    # Awards with at least one research-organisation recipient: ROR type education / facility, a publisher of research, or an
+    # organisation on the reviewed list (research/research_organisations.csv).
     c.artifact("research_recipient_awards", f"""SELECT DISTINCT x.award_id FROM
-      (SELECT a.id award_id,ia.type,CAST(regexp_replace(ia.id,'^https://openalex[.]org/I','') AS BIGINT) institution_id
+      (SELECT a.id award_id,ia.type,CAST(regexp_replace(ia.id,'^https://openalex[.]org/I','') AS BIGINT) institution_id,
+              regexp_replace(ia.id,'^https://openalex[.]org/','') short_id
          FROM {r}{src}_before_research a LATERAL VIEW explode(a.institution_awarded) e AS ia) x
       LEFT JOIN institutions_api_v i ON i.id=x.institution_id
-      WHERE x.type IN ({types}) OR coalesce(i.works_count,0) >= {min_works}""")
+      WHERE x.type IN ({types}) OR coalesce(i.works_count,0) >= {min_works} OR x.short_id IN ({listed})""")
     c.artifact(src, f"""SELECT a.*,
         CASE WHEN h.award_id IS NOT NULL AND h.hit.is_research='unknown' THEN named_struct('is_research',CAST(NULL AS BOOLEAN),'basis','unknown','tier',CAST(NULL AS INT))
              WHEN h.award_id IS NOT NULL THEN named_struct('is_research',h.hit.is_research='true','basis','programme_rule','tier',CAST(nullif(h.hit.tier,'') AS INT))
@@ -206,7 +239,6 @@ def run(c, relation="awards_candidate"):
     for row in c.sql(f"""SELECT concat_ws('_',coalesce(CAST(research_scope.is_research AS STRING),'unknown'),research_scope.basis) k,count(*) n
         FROM {r}{src} WHERE research_scope IS NOT NULL GROUP BY 1""").collect():
         c.counts["research_scope_" + row.k] = int(row.n)
-    fuse = float(c.config.get("research_drop_fuse", 0.01))
     true_now = sum(c.counts.get("research_scope_true_" + b, 0) for b in ("funder_default", "programme_rule", "sector_code"))
     c.counts["research_true"] = true_now
     has_prev = "research_scope" in award_keys.columns(c, "previous_api_v")

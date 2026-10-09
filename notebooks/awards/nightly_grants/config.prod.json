@@ -242,6 +242,8 @@
     "amount_usd_currency_TWD": 177623,
     "amount_usd_currency_TZS": 401,
     "amount_usd_currency_USD": 2988860,
-    "amount_usd_currency_UYU": 1833
+    "amount_usd_currency_UYU": 1833,
+    "classifications_rows_idrc_iati": 5112,
+    "classifications_research_rows_idrc_iati": 1649
   }
 }
