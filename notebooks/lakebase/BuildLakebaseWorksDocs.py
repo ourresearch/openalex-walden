@@ -456,20 +456,31 @@ print(f"Staged {staged:,} docs into {STAGING}")
 
 # COMMAND ----------
 
-# Shared SQL: current external-id extraction (DOI + PMID, in the URL/term form the API
-# queries — DOI gets the https://doi.org/ prefix exactly like the doc transform's ids map;
-# pmid is stored in URL form upstream). MIN(work_id) dedupes the rare multi-claim key.
-EXT_ID_SOURCE = f"""
-SELECT ext_id, MIN(work_id) AS work_id
-FROM (
-    SELECT CONCAT('https://doi.org/', ids['doi']) AS ext_id, id AS work_id
-    FROM {WORKS_TABLE} WHERE id IS NOT NULL AND ids['doi'] IS NOT NULL
-    UNION ALL
-    SELECT ids['pmid'] AS ext_id, id AS work_id
-    FROM {WORKS_TABLE} WHERE id IS NOT NULL AND ids['pmid'] IS NOT NULL
-)
+# Shared SQL: external-id claims (DOI + PMID, in the URL/term form the API queries — DOI gets
+# the https://doi.org/ prefix exactly like the doc transform's ids map; location doi and pmid
+# are stored in URL form upstream). A DOI is claimed by every work holding its Crossref/DataCite
+# record (locations[].doi, rk 0) and every work whose ids['doi'] it is (rk 1). When several
+# works claim a key, the record holder wins, then the lowest work id (Casey, oxjob #1605).
+EXT_ID_CLAIMS = f"""
+SELECT l.doi AS ext_id, w.id AS work_id, 0 AS rk
+FROM {WORKS_TABLE} w LATERAL VIEW explode(w.locations) x AS l
+WHERE w.id IS NOT NULL AND l.doi IS NOT NULL
+UNION ALL
+SELECT CONCAT('https://doi.org/', ids['doi']) AS ext_id, id AS work_id, 1 AS rk
+FROM {WORKS_TABLE} WHERE id IS NOT NULL AND ids['doi'] IS NOT NULL
+UNION ALL
+SELECT ids['pmid'] AS ext_id, id AS work_id, 0 AS rk
+FROM {WORKS_TABLE} WHERE id IS NOT NULL AND ids['pmid'] IS NOT NULL
+"""
+
+def ext_id_winners(claims_sql):
+    return f"""
+SELECT ext_id, MIN(named_struct('rk', rk, 'work_id', work_id)).work_id AS work_id
+FROM ({claims_sql})
 GROUP BY ext_id
 """
+
+EXT_ID_SOURCE = ext_id_winners(EXT_ID_CLAIMS)
 
 # COMMAND ----------
 
@@ -547,22 +558,21 @@ if not IS_FULL_BUILD:
         """).collect()[0]
         print(f"{t}: updated={result.num_updated_rows:,} inserted={result.num_inserted_rows:,}")
 
-    # Id map, churn-only: keys of just the churned works (update moved keys, insert new ones).
+    # Id map, churn-only: keys the churned works claim now or held as winner, with the winner
+    # recomputed over ALL claimants of those keys (a churned claimant can take or give up a key
+    # whose other claimants did not churn). Keys left with no claimant wait for the delete sweep.
+    spark.sql(f"""
+        CREATE OR REPLACE TEMP VIEW churn_ext_ids AS
+        SELECT c.ext_id FROM ({EXT_ID_CLAIMS}) c JOIN {INCR_STAGING} d ON c.work_id = d.work_id
+        UNION
+        SELECT t.ext_id FROM {IDS_TABLE} t JOIN {INCR_STAGING} d ON t.work_id = d.work_id
+    """)
+    churn_claims = f"""
+        SELECT c.* FROM ({EXT_ID_CLAIMS}) c LEFT SEMI JOIN churn_ext_ids k ON c.ext_id = k.ext_id
+    """
     result = spark.sql(f"""
         MERGE INTO {IDS_TABLE} AS target
-        USING (
-            SELECT ext_id, MIN(work_id) AS work_id
-            FROM (
-                SELECT CONCAT('https://doi.org/', w.ids['doi']) AS ext_id, w.id AS work_id
-                FROM {WORKS_TABLE} w JOIN {INCR_STAGING} d ON w.id = d.work_id
-                WHERE w.ids['doi'] IS NOT NULL
-                UNION ALL
-                SELECT w.ids['pmid'] AS ext_id, w.id AS work_id
-                FROM {WORKS_TABLE} w JOIN {INCR_STAGING} d ON w.id = d.work_id
-                WHERE w.ids['pmid'] IS NOT NULL
-            )
-            GROUP BY ext_id
-        ) AS source
+        USING ({ext_id_winners(churn_claims)}) AS source
         ON target.ext_id = source.ext_id
         WHEN MATCHED AND target.work_id <> source.work_id THEN
             UPDATE SET work_id = source.work_id, updated_at = current_timestamp()
