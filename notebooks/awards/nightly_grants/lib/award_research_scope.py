@@ -6,8 +6,10 @@ optional side table (oxjob #1570):
                                 whose awards are all research (a research council, a research charity) or all not; `mixed` leaves the
                                 award to the programme rules. `recipient_test = yes` (foundations, charities, aid-adjacent funders):
                                 an award research-true by the feed default alone whose matched recipients are all non-research
-                                organisations (not education or facility) becomes unknown, basis recipient_type: a research funder's
-                                grant to a city for a park. Research councils and agencies are exempt (`no`): every award of theirs is
+                                organisations becomes unknown, basis recipient_type: a research funder's grant to a city for a park.
+                                A research organisation is one of ROR type education or facility, or one with at least
+                                `recipient_research_min_works` OpenAlex works (config, default 50): the Wellcome Sanger Institute
+                                and WHO are typed nonprofit and government, a city council is not a publisher. Research councils and agencies are exempt (`no`): every award of theirs is
                                 a research instrument whatever the recipient. A provenance with no row (citation stubs known only
                                 from paper metadata) gets no research_scope at all, so those awards do not move.
   research/dac_research_codes.csv  the OECD DAC purpose codes that mean research (11182, 12182, 43082 ...). With the optional side
@@ -33,6 +35,7 @@ import award_keys
 
 DEFAULT_COLUMNS = ("provenance", "is_research", "basis", "tier", "recipient_test")
 RECIPIENT_RESEARCH_TYPES = ("education", "facility")
+DEFAULT_MIN_WORKS = 50
 EMPTY_CLASSIFICATIONS = """SELECT CAST(NULL AS STRING) provenance,CAST(NULL AS STRING) funder_award_id,CAST(NULL AS BIGINT) staging_id,
   CAST(NULL AS BIGINT) funder_id,CAST(NULL AS STRING) award_key,CAST(NULL AS STRING) scheme,CAST(NULL AS STRING) code,
   CAST(NULL AS STRING) source_field,CAST(NULL AS STRING) asserted_by,CAST(NULL AS STRING) adapter_version,CAST(NULL AS TIMESTAMP) asserted_at WHERE false"""
@@ -107,9 +110,9 @@ def rules_relation_sql(package_root):
     return f"SELECT * FROM VALUES {values} AS research_programme_rules(rule_order,{','.join(RULE_COLUMNS)})"
 
 
-def scope_in_python(defaults, rules, provenance, values, recipient_types=None, research_code=False):
-    """The answer for one award in Python (values: field -> value; recipient_types: the matched institutions' types, [] when none
-    matched): the reference for the SQL below, used by the tests."""
+def scope_in_python(defaults, rules, provenance, values, recipient_types=None, research_code=False, recipient_works=None, min_works=DEFAULT_MIN_WORKS):
+    """The answer for one award in Python (values: field -> value; recipient_types / recipient_works: the matched institutions'
+    types and works counts, [] when none matched): the reference for the SQL below, used by the tests."""
     for rule in rules:
         if rule["provenance_scope"] in ("*", provenance) and (rule["funder_scope"] == "*" or re.search(rule["funder_scope"], values.get("funder_name") or "", re.IGNORECASE)):
             value = (values.get(rule["field"]) or "").strip()          # a missing value is '' so a '.*' fallback still applies
@@ -123,8 +126,9 @@ def scope_in_python(defaults, rules, provenance, values, recipient_types=None, r
         if row["provenance"] == provenance:
             if row["is_research"] == "mixed":
                 return dict(is_research=None, basis="unknown", tier=None)
+            research_org = any(t in RECIPIENT_RESEARCH_TYPES for t in recipient_types or []) or any(w >= min_works for w in recipient_works or [])
             if (row["is_research"] == "true" and row["basis"] == "funder_default" and row["recipient_test"] == "yes"
-                    and recipient_types and not any(t in RECIPIENT_RESEARCH_TYPES for t in recipient_types)):
+                    and recipient_types and not research_org):
                 return dict(is_research=None, basis="recipient_type", tier=None)
             return dict(is_research=row["is_research"] == "true", basis=row["basis"], tier=int(row["tier"]) if row["tier"] else None)
     return None
@@ -174,19 +178,27 @@ def run(c, relation="awards_candidate"):
                                WHEN 'display_name' THEN a.display_name WHEN 'funder_award_id' THEN a.funder_award_id END),'')
               RLIKE concat('(?i)',p.pattern)) GROUP BY award_id""")
     types = ",".join(repr(t) for t in RECIPIENT_RESEARCH_TYPES)
+    min_works = int(c.config.get("recipient_research_min_works", DEFAULT_MIN_WORKS))
+    # Awards with at least one research-organisation recipient: ROR type education / facility, or a publisher of research.
+    c.artifact("research_recipient_awards", f"""SELECT DISTINCT x.award_id FROM
+      (SELECT a.id award_id,ia.type,CAST(regexp_replace(ia.id,'^https://openalex[.]org/I','') AS BIGINT) institution_id
+         FROM {r}{src}_before_research a LATERAL VIEW explode(a.institution_awarded) e AS ia) x
+      LEFT JOIN institutions_api_v i ON i.id=x.institution_id
+      WHERE x.type IN ({types}) OR coalesce(i.works_count,0) >= {min_works}""")
     c.artifact(src, f"""SELECT a.*,
         CASE WHEN h.award_id IS NOT NULL AND h.hit.is_research='unknown' THEN named_struct('is_research',CAST(NULL AS BOOLEAN),'basis','unknown','tier',CAST(NULL AS INT))
              WHEN h.award_id IS NOT NULL THEN named_struct('is_research',h.hit.is_research='true','basis','programme_rule','tier',CAST(nullif(h.hit.tier,'') AS INT))
              WHEN s.award_id IS NOT NULL THEN named_struct('is_research',true,'basis','sector_code','tier',2)
              WHEN d.is_research='mixed' THEN named_struct('is_research',CAST(NULL AS BOOLEAN),'basis','unknown','tier',CAST(NULL AS INT))
              WHEN d.is_research='true' AND d.basis='funder_default' AND d.recipient_test='yes' AND size(a.institution_awarded)>0
-                  AND NOT exists(a.institution_awarded, x -> x.type IN ({types}))
+                  AND rr.award_id IS NULL
                   THEN named_struct('is_research',CAST(NULL AS BOOLEAN),'basis','recipient_type','tier',CAST(NULL AS INT))
              WHEN d.provenance IS NOT NULL THEN named_struct('is_research',d.is_research='true','basis',d.basis,'tier',CAST(nullif(d.tier,'') AS INT))
         END research_scope
       FROM {r}{src}_before_research a
       LEFT JOIN {r}research_rule_hits h ON h.award_id=a.id
       LEFT JOIN {r}research_sector_awards s ON s.award_id=a.id
+      LEFT JOIN {r}research_recipient_awards rr ON rr.award_id=a.id
       LEFT JOIN {r}research_feed_defaults d ON d.provenance=a.provenance""")
     c.zero("RESEARCH_AWARDS_SAME_ROWS", f"""(SELECT id FROM {r}{src} EXCEPT ALL SELECT id FROM {r}{src}_before_research)
       UNION ALL (SELECT id FROM {r}{src}_before_research EXCEPT ALL SELECT id FROM {r}{src})""")

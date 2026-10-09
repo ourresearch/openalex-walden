@@ -199,20 +199,21 @@ def test_research_reference_answers(provenance, values, expected):
     assert (got["is_research"], got["basis"], got["tier"]) == expected
 
 
-@pytest.mark.parametrize("provenance,values,types,code,expected", [
-    ("gates_foundation", {"funder_scheme": "Global Development"}, ["government"], False, (None, "unknown", None)),   # mixed feed: rules first
-    ("wellcome_trust", {}, ["government"], False, (None, "recipient_type", None)),       # research funder, grant to a city: Kyle's park
-    ("wellcome_trust", {}, ["education"], False, (True, "funder_default", 1)),          # to a university
-    ("wellcome_trust", {}, ["healthcare", "education"], False, (True, "funder_default", 1)),
-    ("wellcome_trust", {}, [], False, (True, "funder_default", 1)),                     # no matched recipient: cannot be tested
-    ("nih_exporter", {"funder_scheme": "R01", "funder_name": "National Institutes of Health"}, ["company"], False, (True, "funder_default", 1)),   # agency exempt
-    ("idrc_iati", {}, ["nonprofit"], True, (True, "sector_code", 2)),                   # IDRC research purpose code: about research
-    ("idrc_iati", {}, ["nonprofit"], False, (None, "recipient_type", None)),
-    ("novo_nordisk_fonden_grants", {"funder_scheme": "Pioneer Innovator"}, ["company"], False, (True, "programme_rule", 2)),   # programme says research
+@pytest.mark.parametrize("provenance,values,types,works,code,expected", [
+    ("gates_foundation", {"funder_scheme": "Global Development"}, ["government"], [3], False, (None, "unknown", None)),   # mixed feed: rules first
+    ("wellcome_trust", {}, ["government"], [3], False, (None, "recipient_type", None)),       # research funder, grant to a city: Kyle's park
+    ("wellcome_trust", {}, ["nonprofit"], [19705], False, (True, "funder_default", 1)),     # Wellcome Sanger Institute: a publisher of research
+    ("wellcome_trust", {}, ["education"], [0], False, (True, "funder_default", 1)),         # to a university
+    ("wellcome_trust", {}, ["healthcare", "education"], [10, 0], False, (True, "funder_default", 1)),
+    ("wellcome_trust", {}, [], [], False, (True, "funder_default", 1)),                     # no matched recipient: cannot be tested
+    ("nih_exporter", {"funder_scheme": "R01", "funder_name": "National Institutes of Health"}, ["company"], [0], False, (True, "funder_default", 1)),   # agency exempt
+    ("idrc_iati", {}, ["nonprofit"], [2], True, (True, "sector_code", 2)),                  # IDRC research purpose code: about research
+    ("idrc_iati", {}, ["nonprofit"], [2], False, (None, "recipient_type", None)),
+    ("novo_nordisk_fonden_grants", {"funder_scheme": "Pioneer Innovator"}, ["company"], [0], False, (True, "programme_rule", 2)),   # programme says research
 ])
-def test_recipient_test_and_sector_codes(provenance, values, types, code, expected):
+def test_recipient_test_and_sector_codes(provenance, values, types, works, code, expected):
     d, r = award_research_scope.read_defaults(str(ROOT)), award_research_scope.read_rules(str(ROOT))
-    got = award_research_scope.scope_in_python(d, r, provenance, values, recipient_types=types, research_code=code)
+    got = award_research_scope.scope_in_python(d, r, provenance, values, recipient_types=types, research_code=code, recipient_works=works)
     assert (got["is_research"], got["basis"], got["tier"]) == expected
 
 
@@ -236,7 +237,9 @@ def test_research_sql_applies_rules_first_then_defaults_and_leaves_stubs_null():
     q = dict(c.artifacts)["awards_candidate"]
     assert (q.index("WHEN h.award_id IS NOT NULL") < q.index("WHEN s.award_id IS NOT NULL") < q.index("WHEN d.is_research='mixed'")
             < q.index("d.recipient_test='yes'") < q.index("WHEN d.provenance IS NOT NULL"))
-    assert "x.type IN ('education','facility')" in q and "'basis','recipient_type'" in q
+    assert "rr.award_id IS NULL" in q and "'basis','recipient_type'" in q
+    rr = dict(c.artifacts)["research_recipient_awards"]
+    assert "x.type IN ('education','facility') OR coalesce(i.works_count,0) >= 50" in rr and "institutions_api_v" in rr
     for gate in ("CLASSIFICATION_RAW_SHAPE", "CLASSIFICATION_RAW_UNIQUE", "CLASSIFICATION_BRIDGE_UNIQUE"):
         assert gate in c.checks, gate
     assert "'basis','unknown'" in q and "LEFT JOIN dev.lab.ngr_s_research_feed_defaults d ON d.provenance=a.provenance" in q
