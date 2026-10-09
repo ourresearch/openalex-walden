@@ -72,7 +72,8 @@
     "affiliation_answers": "openalex.institutions.affiliation_matcher_answers",
     "award_recipients_raw": "openalex.awards.award_recipients_raw",
     "exchange_rates": "openalex.common.exchange_rates",
-    "exchange_rates_annual": "openalex.common.exchange_rates_annual"
+    "exchange_rates_annual": "openalex.common.exchange_rates_annual",
+    "award_classifications_raw": "openalex.awards.award_classifications_raw"
   },
   "relations_drop_fuse": 0.01,
   "recipients_drop_fuse": 0.01,

@@ -199,6 +199,32 @@ def test_research_reference_answers(provenance, values, expected):
     assert (got["is_research"], got["basis"], got["tier"]) == expected
 
 
+@pytest.mark.parametrize("provenance,values,types,code,expected", [
+    ("gates_foundation", {"funder_scheme": "Global Development"}, ["government"], False, (None, "unknown", None)),   # mixed feed: rules first
+    ("wellcome_trust", {}, ["government"], False, (None, "recipient_type", None)),       # research funder, grant to a city: Kyle's park
+    ("wellcome_trust", {}, ["education"], False, (True, "funder_default", 1)),          # to a university
+    ("wellcome_trust", {}, ["healthcare", "education"], False, (True, "funder_default", 1)),
+    ("wellcome_trust", {}, [], False, (True, "funder_default", 1)),                     # no matched recipient: cannot be tested
+    ("nih_exporter", {"funder_scheme": "R01", "funder_name": "National Institutes of Health"}, ["company"], False, (True, "funder_default", 1)),   # agency exempt
+    ("idrc_iati", {}, ["nonprofit"], True, (True, "sector_code", 2)),                   # IDRC research purpose code: about research
+    ("idrc_iati", {}, ["nonprofit"], False, (None, "recipient_type", None)),
+    ("novo_nordisk_fonden_grants", {"funder_scheme": "Pioneer Innovator"}, ["company"], False, (True, "programme_rule", 2)),   # programme says research
+])
+def test_recipient_test_and_sector_codes(provenance, values, types, code, expected):
+    d, r = award_research_scope.read_defaults(str(ROOT)), award_research_scope.read_rules(str(ROOT))
+    got = award_research_scope.scope_in_python(d, r, provenance, values, recipient_types=types, research_code=code)
+    assert (got["is_research"], got["basis"], got["tier"]) == expected
+
+
+def test_feed_defaults_exempt_research_agencies_and_test_foundations():
+    by = {r["provenance"]: r for r in award_research_scope.read_defaults(str(ROOT))}
+    for p in ("nih_exporter", "nsf_award_search", "kaken", "gepris", "erc", "cihr_opendata", "foerderkatalog", "nsfc_kd", "anr_opendata", "nhmrc"):
+        assert by[p]["recipient_test"] == "no", p
+    for p in ("gates_foundation", "wellcome_trust", "idrc_iati", "iati_fcdo", "hewlett_facetwp", "templeton_wp", "sloan_foundation"):
+        assert by[p]["recipient_test"] == "yes", p
+    assert award_research_scope.read_research_codes(str(ROOT))[:2] == ["11182", "12182"]
+
+
 def test_research_stub_feeds_get_no_scope():
     d, r = award_research_scope.read_defaults(str(ROOT)), award_research_scope.read_rules(str(ROOT))
     assert award_research_scope.scope_in_python(d, r, "crossref_work_funders", {}) is None
@@ -208,7 +234,11 @@ def test_research_sql_applies_rules_first_then_defaults_and_leaves_stubs_null():
     c = FakeC()
     award_research_scope.run(c)
     q = dict(c.artifacts)["awards_candidate"]
-    assert q.index("WHEN h.award_id IS NOT NULL") < q.index("WHEN d.is_research='mixed'") < q.index("WHEN d.provenance IS NOT NULL")
+    assert (q.index("WHEN h.award_id IS NOT NULL") < q.index("WHEN s.award_id IS NOT NULL") < q.index("WHEN d.is_research='mixed'")
+            < q.index("d.recipient_test='yes'") < q.index("WHEN d.provenance IS NOT NULL"))
+    assert "x.type IN ('education','facility')" in q and "'basis','recipient_type'" in q
+    for gate in ("CLASSIFICATION_RAW_SHAPE", "CLASSIFICATION_RAW_UNIQUE", "CLASSIFICATION_BRIDGE_UNIQUE"):
+        assert gate in c.checks, gate
     assert "'basis','unknown'" in q and "LEFT JOIN dev.lab.ngr_s_research_feed_defaults d ON d.provenance=a.provenance" in q
     hits = dict(c.artifacts)["research_rule_hits"]
     assert "min_by(" in hits and "concat('(?i)',p.pattern)" in hits and "a.funder.display_name RLIKE concat('(?i)',p.funder_scope)" in hits
@@ -217,7 +247,7 @@ def test_research_sql_applies_rules_first_then_defaults_and_leaves_stubs_null():
 
 def test_research_invalid_rows_are_refused(tmp_path):
     (tmp_path / "research").mkdir()
-    (tmp_path / "research" / "feed_defaults.csv").write_text("provenance,is_research,basis,tier,note\nx,maybe,funder_default,1,\n")
+    (tmp_path / "research" / "feed_defaults.csv").write_text("provenance,is_research,basis,tier,recipient_test,note\nx,maybe,funder_default,1,no,\n")
     (tmp_path / "research" / "programme_rules.csv").write_text("rule_id,provenance_scope,funder_scope,field,pattern,is_research,tier,note\nr,*,*,funder_scheme,(,true,2,\n")
     with pytest.raises(RuntimeError, match="RESEARCH_DEFAULT_ROW_INVALID"):
         award_research_scope.read_defaults(str(tmp_path))
@@ -263,17 +293,21 @@ def test_create_api_hashes_yesterday_with_its_own_columns_and_tonight_with_all()
 
 
 # ---------- wiring ----------
-def test_job_runs_the_three_steps_between_relations_and_api():
+def test_job_runs_usd_and_recipients_between_relations_and_api_and_research_inside_api():
     text = (ROOT / "NightlyGrants.py").read_text()
     assert (text.index("award_relations.run(c)") < text.index("award_usd.run(c)") < text.index("award_recipients.run(c)")
-            < text.index("award_research_scope.run(c)") < text.index("create_api.run(c)") < text.index('config.get("stop_before_apply")'))
+            < text.index("create_api.run(c)") < text.index('config.get("stop_before_apply")'))
+    assert "award_research_scope" not in text
+    api = (ROOT / "lib/create_api.py").read_text()
+    assert api.index("c.artifact('api_payload'") < api.index("award_research_scope.run(c,'api_payload')") < api.index("api_hash_expression.sql")
 
 
 def test_payload_passes_flow_columns():
     sql = (ROOT / "sql/api_payload.sql").read_text()
     for col in ("amount_usd", "amount_usd_basis", "recipient_countries", "recipient_regions", "recipient_countries_full",
-                "recipient_regions_full", "research_scope"):
+                "recipient_regions_full"):
         assert re.search(rf"\boa\.{col}\b", sql), col
+    assert "oa.research_scope" not in sql                                       # added after the payload, from the matched institutions
     assert "oa.amount," in sql and "oa.currency," in sql                       # native amount still served
 
 
@@ -283,8 +317,9 @@ def test_config_binds_the_three_inputs_and_runtime_allows_them():
     assert cfg["extra_inputs"]["award_recipients_raw"] == "openalex.awards.award_recipients_raw"
     assert cfg["extra_inputs"]["exchange_rates"] == "openalex.common.exchange_rates"
     assert cfg["extra_inputs"]["exchange_rates_annual"] == "openalex.common.exchange_rates_annual"
+    assert cfg["extra_inputs"]["award_classifications_raw"] == "openalex.awards.award_classifications_raw"
     runtime = (ROOT / "lib/nightly_runtime.py").read_text()
-    for name in ("award_recipients_raw", "exchange_rates", "exchange_rates_annual"):
+    for name in ("award_recipients_raw", "award_classifications_raw", "exchange_rates", "exchange_rates_annual"):
         assert f'"{name}"' in runtime[runtime.index("UNKNOWN_EXTRA_INPUT") - 400:runtime.index("UNKNOWN_EXTRA_INPUT")]
 
 
@@ -339,6 +374,9 @@ def test_research_loss_gate_covers_the_true_count():
     c = FakeC(prev_cols=["id", "research_scope"])
     award_research_scope.run(c)
     assert "RESEARCH_SCOPE_DROP" in c.checks and "RESEARCH_TRUE_DROP" in c.checks
+    c = FakeC(extra=["award_classifications_raw"], prev_cols=["id", "research_scope"])
+    award_research_scope.run(c)
+    assert "CLASSIFICATION_RAW_NONEMPTY" in c.checks and any("award_classifications_raw_v" in q for _, q in c.artifacts)
 
 
 def test_clear_funding_flows_empties_every_field_skips_loss_gates_and_restamps():

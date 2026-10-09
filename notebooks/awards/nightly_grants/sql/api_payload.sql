@@ -210,13 +210,13 @@ SELECT
   oa.parent_awards_full,
   oa.sub_awards_full,
   -- Funding-flows release (oxjob #1570): amount in USD (award_usd.py), recipient countries and regions (award_recipients.py),
-  -- research flag (award_research_scope.py). *_full = uncapped object siblings for search filters.
+  -- research flag (award_research_scope.py, added after this payload). *_full = uncapped object siblings for search filters.
   oa.amount_usd,
   oa.amount_usd_basis,
   oa.recipient_countries,
   oa.recipient_regions,
   oa.recipient_countries_full,
-  oa.recipient_regions_full,
-  oa.research_scope
+  oa.recipient_regions_full
+  -- research_scope is added after this payload by award_research_scope.run (it reads institution_awarded).
 FROM {AWARDS} oa
 LEFT JOIN institution_awarded_per_award iap ON oa.id = iap.award_id

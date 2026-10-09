@@ -27,7 +27,7 @@ config["package_root"] = PACKAGE_ROOT
 sys.path.insert(0, os.path.join(PACKAGE_ROOT, "lib"))
 
 from nightly_runtime import Nightly
-import build_awards, work_awards, award_relations, award_usd, award_recipients, award_research_scope, create_api, sync_awards, pdf_backfill
+import build_awards, work_awards, award_relations, award_usd, award_recipients, create_api, sync_awards, pdf_backfill
 
 spark.conf.set("spark.sql.ansi.enabled", "false")   # the deployed chain ran with ANSI off
 c = Nightly(spark, config, dbutils.widgets.get("databricks_run_id") or None)
@@ -45,8 +45,7 @@ try:
     award_relations.run(c)                        # sub-award links onto awards_candidate (no work-link change)
     award_usd.run(c)                              # amount_usd + basis (start-date rate; `amount` untouched)
     award_recipients.run(c)                       # recipient countries / regions from award_recipients_raw (uses amount_usd)
-    award_research_scope.run(c)                   # research flag from research/*.csv
-    create_api.run(c)
+    create_api.run(c)                             # API payload; the research flag is added inside, after the institution match
     search = sync_awards.Search(c, dbutils) if mode != "none" else None
     if search:
         sync_awards.stage(c, search)

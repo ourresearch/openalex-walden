@@ -2,6 +2,7 @@
 from pathlib import Path
 from stable_award_ids import ident
 import award_country
+import award_research_scope
 
 EMPTY_ANSWERS='SELECT CAST(NULL AS STRING) raw_affiliation_string,CAST(NULL AS ARRAY<BIGINT>) institution_ids WHERE false'
 LINK_COLUMNS=('parent_awards_full','sub_awards_full')                          # sub-award links (award_relations.py, 10-01)
@@ -47,6 +48,7 @@ def run(c):
     template=template.replace('{AWARDS}',r+'awards_candidate').replace('{ANSWERS}',answers_relation(c))
     template=template.replace('{COUNTRY_LOOKUP}',award_country.lookup_relation_sql(c.config['package_root']))   # country/award_country_lookup.csv, validated
     c.artifact('api_payload',f'SELECT a.*,:rid release_id FROM ({template}) a')
+    award_research_scope.run(c,'api_payload')          # research flag reads the matched institutions (Kyle's 10-08 rule): after the payload
     prev='previous_api_v'   # yesterday's published awards_api, bound at run start (was the release's api_final pin)
     # The country guard only removes matches. A broken lookup or institutions table would remove most of them: stop instead.
     fuse=float(c.config.get('institution_drop_fuse',0.10))

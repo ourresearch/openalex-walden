@@ -25,7 +25,9 @@ class FakeC:
     """Just enough of Nightly: records artifacts, checks and reads; answers counts with 0 and schema probes with `prev_cols`."""
     def __init__(self, extra=(), prev_cols=(), config=None):
         self.r, self.p, self.extra, self.prev_cols = "dev.lab.ngr_s_", "dev.lab.ngr_", set(extra), list(prev_cols)
-        self.config = dict(package_root=str(ROOT), **(config or {}))
+        import json
+        boot = json.loads((ROOT / "config.prod.json").read_text())["bootstrap_counts"]
+        self.config = dict(package_root=str(ROOT), bootstrap_counts={k: 0 for k in boot}, **(config or {}))
         self.artifacts, self.checks, self.counts, self.statements = [], {}, {}, []
         self.outputs = {}
 
