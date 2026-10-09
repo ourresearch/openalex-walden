@@ -92,7 +92,12 @@
 # MAGIC record or a DataCite DOI outside the group), `legacy_mismatch` (the loser carries a MAG / PubMed record titled unlike its DataCite
 # MAGIC records: a legacy paper glued to a deposit), `winner_junk`, and `loser_key_shared` counting only key holders outside the group
 # MAGIC (a shared title key only when the loser has a record with no doi / pmid / arxiv).
-# MAGIC `over_cap`: a work carries at most 100 version DOIs besides its concept DOI (counting those it already has), the most recent first (Casey 2026-10-07: giant living datasets
+# MAGIC **Article anchor** (round 2, 2026-10-09): when exactly one member also holds the deposit's published article (one Crossref record
+# MAGIC outside the group, titled as a group DataCite record, its first author among the DataCite authors; not a book, chapter or review;
+# MAGIC the DataCite records article / preprint or the Crossref type; not figshare.com, Sage Journals Data or 10.48580) and the concept work
+# MAGIC holds none, the article's work wins and the concept work joins it (preprint policy: the published side keeps its id). A Crossref
+# MAGIC record of a group DOI itself (ICPSR) is not another primary record; `winner_junk` is a title-less winner only.
+# MAGIC `over_cap`: a work carries at most 100 version DOIs besides its concept DOI (counting those it already has and every one a loser brings), the most recent first (Casey 2026-10-07: giant living datasets
 # MAGIC are set aside for a location cap); the older ones wait here. `signals` = how the group was found (`declared` / `suffix`) + `title` / `author` when they agree, for stratified review.
 # MAGIC Execute re-keys the losers' keys onto the winner like exact_signature; `ta` = 'vgr:<winner id>'. Sized 2026-10-07: ~6.7M
 # MAGIC losers (Zenodo 2.77M, Figshare 2.70M, other 1.25M).
@@ -751,14 +756,55 @@ def version_group_class_sql():
                  CASE WHEN size(vof) = 1 THEN 'declared' WHEN doi RLIKE '[.]v[0-9]+$' THEN 'suffix' END AS how
           FROM dc),
     gs AS (SELECT grp, MAX(how) AS how FROM g GROUP BY grp HAVING COUNT(DISTINCT doi) > 1 AND COUNT(DISTINCT work_id) > 1),
-    anc AS (SELECT g.grp, MIN(g.work_id) AS anchor, COUNT(DISTINCT g.work_id) AS n_anchor FROM g JOIN gs ON gs.grp = g.grp
-            WHERE g.doi = g.grp GROUP BY g.grp),
+    anc0 AS (SELECT g.grp, MIN(g.work_id) AS anchor, COUNT(DISTINCT g.work_id) AS n_anchor FROM g JOIN gs ON gs.grp = g.grp
+             WHERE g.doi = g.grp GROUP BY g.grp),
+    -- article anchor (oxjob #1581 round 2, 2026-10-09): when one member holds the deposit's published article (one Crossref record
+    -- outside the group, titled as a group DataCite record, its first author among the group records' authors) and the concept
+    -- work holds none, the article's work is the anchor and the concept work joins it (the published side keeps its id). Not for
+    -- books, chapters or reviews, a DataCite thesis / conference / dataset record, or the supplement and derived-dataset registrants
+    vg_rec AS (SELECT gw.grp, gw.work_id, l.provenance, l.type, lower(l.native_id) AS nid, {norm.format(c='l.title')} AS tn, l.authors,
+                      gi.doi IS NOT NULL AS in_grp, lower(COALESCE(l.abstract, '')) RLIKE '{VERSION_GROUP_NOT_ARTICLE_ABSTRACT}' AS talk_like
+               FROM (SELECT DISTINCT g.grp, g.work_id FROM g JOIN anc0 ON anc0.grp = g.grp) gw
+               JOIN {LM} l ON l.work_id = gw.work_id AND l.provenance IN ('crossref', 'datacite')
+               LEFT JOIN (SELECT DISTINCT grp, doi FROM g) gi ON gi.grp = gw.grp AND gi.doi = lower(l.native_id)),
+    vg_w AS (SELECT grp, work_id,
+                    COUNT(DISTINCT CASE WHEN provenance = 'crossref' AND NOT in_grp THEN nid END) AS n_cr,
+                    COUNT(DISTINCT CASE WHEN provenance = 'datacite' AND NOT in_grp THEN nid END) AS n_dc_out,
+                    MAX(CASE WHEN provenance = 'crossref' AND NOT in_grp THEN tn END) AS cr_tn,
+                    MAX(CASE WHEN provenance = 'crossref' AND NOT in_grp THEN type END) AS cr_type
+             FROM vg_rec GROUP BY grp, work_id),
+    cand AS (SELECT a.grp, a.anchor, w.work_id AS article, w.cr_type, w.cr_tn
+             FROM anc0 a JOIN vg_w w ON w.grp = a.grp AND w.work_id <> a.anchor JOIN vg_w x ON x.grp = a.grp AND x.work_id = a.anchor
+             WHERE a.n_anchor = 1 AND x.n_cr = 0 AND w.n_cr = 1 AND w.n_dc_out = 0
+               AND w.cr_type NOT IN ('book', 'book-review', 'book-chapter', 'other', 'paratext')
+               AND NOT EXISTS (SELECT 1 FROM vg_w o WHERE o.grp = a.grp AND o.n_cr > 0 AND o.work_id <> w.work_id)),
+    cdc AS (SELECT c.grp, c.article, c.cr_type, c.cr_tn, r.type, r.nid, r.tn, r.authors, r.talk_like
+            FROM cand c JOIN vg_rec r ON r.grp = c.grp AND r.work_id IN (c.anchor, c.article) AND r.provenance = 'datacite' AND r.in_grp),
+    -- author tokens as rows: array set ops give run-varying answers in queries this size
+    ctok AS (SELECT DISTINCT d.grp, d.article, t FROM cdc d LATERAL VIEW explode(d.authors) e AS au
+             LATERAL VIEW explode(split(lower(coalesce(nullif(au.family, ''), au.name)), '[^\\\\p{{L}}]+')) e2 AS t WHERE length(t) >= 3),
+    ftok AS (SELECT DISTINCT c.grp, c.article, t
+             FROM cand c JOIN vg_rec r ON r.grp = c.grp AND r.work_id = c.article AND r.provenance = 'crossref' AND NOT r.in_grp
+             LATERAL VIEW explode(split(lower(coalesce(nullif(get(r.authors, 0).family, ''), get(r.authors, 0).name)), '[^\\\\p{{L}}]+')) e AS t
+             WHERE length(t) >= 3),
+    title_ok AS (SELECT DISTINCT grp, article FROM cdc WHERE tn = cr_tn),
+    author_ok AS (SELECT DISTINCT f.grp, f.article FROM ftok f JOIN ctok t ON t.grp = f.grp AND t.article = f.article AND t.t = f.t),
+    not_text AS (SELECT DISTINCT grp, article FROM cdc
+                 WHERE COALESCE(type, '') NOT IN ('article', 'preprint') AND COALESCE(type, '') <> cr_type
+                    OR split_part(nid, '/', 1) IN {VERSION_GROUP_SUPPLEMENT_PREFIXES} OR talk_like),
+    flip AS (SELECT c.grp, c.article FROM cand c
+             LEFT SEMI JOIN title_ok o ON o.grp = c.grp AND o.article = c.article
+             LEFT SEMI JOIN author_ok u ON u.grp = c.grp AND u.article = c.article
+             LEFT ANTI JOIN not_text n ON n.grp = c.grp AND n.article = c.article),
+    anc AS (SELECT a.grp, COALESCE(f.article, a.anchor) AS anchor, a.n_anchor, f.article IS NOT NULL AS article_anchor
+            FROM anc0 a LEFT JOIN flip f ON f.grp = a.grp),
     mem AS (SELECT DISTINCT g.grp, g.work_id AS member FROM g JOIN anc ON anc.grp = g.grp WHERE g.work_id <> anc.anchor),
     wg AS (SELECT work_id, COUNT(DISTINCT grp) AS ng FROM (SELECT grp, anchor AS work_id FROM anc UNION SELECT grp, member FROM mem) GROUP BY work_id),
-    -- the loser's other primary records: a Crossref record, or a DataCite DOI outside its group
+    -- the loser's other primary records: a Crossref or DataCite DOI outside its group (a Crossref record of a group DOI is
+    -- the same registration twice: ICPSR registers its studies with both, oxjob #1581 round 2)
     mp AS (SELECT m.grp, m.member FROM mem m JOIN {LM} l ON l.work_id = m.member
-           LEFT JOIN g ON g.grp = m.grp AND g.doi = lower(l.native_id) AND l.provenance = 'datacite'
-           WHERE l.provenance = 'crossref' OR (l.provenance = 'datacite' AND g.doi IS NULL) GROUP BY m.grp, m.member),
+           LEFT JOIN g ON g.grp = m.grp AND g.doi = lower(l.native_id)
+           WHERE l.provenance IN ('crossref', 'datacite') AND g.doi IS NULL GROUP BY m.grp, m.member),
     -- the loser carries a MAG / PubMed record titled unlike all its DataCite records: a legacy paper glued to a deposit
     -- (oxjob #1581 cited review: a 1979 PubMed paper with 1,340 cites under a 2026 Zenodo preprint)
     lg AS (SELECT m.grp, m.member FROM mem m JOIN {LM} l ON l.work_id = m.member
@@ -776,7 +822,7 @@ def version_group_class_sql():
              NOT (size(x.a1) > 0 AND size(y.a1) > 0 AND NOT arrays_overlap(x.a1, y.a1)) AS author_ok,
              an.n_anchor > 1 AS concept_split, (wx.ng > 1 OR wy.ng > 1) AS multi_group, (mp.member IS NOT NULL) AS member_has_primary,
              (lg.member IS NOT NULL) AS legacy_mismatch,
-             (x.type = 'software' OR y.type = 'software') AS software, x.no_title AS winner_no_title,
+             (x.type = 'software' OR y.type = 'software') AS software, x.no_title AS winner_no_title, an.article_anchor,
              x.id AS winner_work_id, y.id AS loser_work_id
       FROM mem m JOIN anc an ON an.grp = m.grp JOIN gs ON gs.grp = m.grp
       JOIN wf x ON x.id = an.anchor JOIN wf y ON y.id = m.member
@@ -784,24 +830,34 @@ def version_group_class_sql():
       LEFT JOIN mp ON mp.grp = m.grp AND mp.member = m.member
       LEFT JOIN lg ON lg.grp = m.grp AND lg.member = m.member
       WHERE {scope}),""" + pair_class_tail(VERSION_GROUP_SIGNALS, version_group_hold(), group_scoped=True).replace("concat('sig:', r.winner_work_id)", "concat('vgr:', r.winner_work_id)")
-    # a work holds at most VERSION_GROUP_CAP version DOIs besides its concept DOI (counting the DataCite DOIs it already carries);
+    # a work holds at most VERSION_GROUP_CAP version DOIs besides its concept DOI (counting the DataCite DOIs it already carries,
+    # and every DataCite DOI a loser brings: a concept work joining an article anchor brings its merged versions);
     # the most recent versions join first (publication date, then `.vN`, then newest id)
     return f"""
     WITH t AS ({inner}),
-    held AS (SELECT l.work_id, COUNT(DISTINCT lower(l.native_id)) - 1 AS n_on
-             FROM {LM} l WHERE l.provenance = 'datacite' AND l.work_id IN (SELECT winner_work_id FROM t) GROUP BY l.work_id)
+    dois AS (SELECT l.work_id, COUNT(DISTINCT lower(l.native_id)) AS n FROM {LM} l
+             WHERE l.provenance = 'datacite' AND l.work_id IN (SELECT winner_work_id FROM t UNION SELECT loser_work_id FROM t) GROUP BY l.work_id)
     SELECT v.* EXCEPT (hold_reason, rk, n_on),
            CASE WHEN v.hold_reason IS NULL AND v.rk + GREATEST(COALESCE(v.n_on, 0), 0) > {VERSION_GROUP_CAP} THEN 'over_cap'
                 ELSE v.hold_reason END AS hold_reason
-    FROM (SELECT t.*, h.n_on, ROW_NUMBER() OVER (PARTITION BY t.winner_work_id, t.hold_reason IS NULL
+    FROM (SELECT t.*, h.n - 1 AS n_on, SUM(GREATEST(COALESCE(ld.n, 1), 1)) OVER (PARTITION BY t.winner_work_id, t.hold_reason IS NULL
                                                  ORDER BY w.publication_date DESC NULLS LAST,
                                                           TRY_CAST(regexp_extract(lower(w.doi), '[.]v([0-9]+)$', 1) AS INT) DESC NULLS LAST,
-                                                          t.loser_work_id DESC) AS rk
-          FROM t LEFT JOIN {WORKS} w ON w.id = t.loser_work_id LEFT JOIN held h ON h.work_id = t.winner_work_id) v"""
+                                                          t.loser_work_id DESC ROWS UNBOUNDED PRECEDING) AS rk
+          FROM t LEFT JOIN {WORKS} w ON w.id = t.loser_work_id LEFT JOIN dois h ON h.work_id = t.winner_work_id
+          LEFT JOIN dois ld ON ld.work_id = t.loser_work_id) v"""
 
 VERSION_GROUP_CAP = 100
+# registrants whose `.vN` / IsVersionOf records copy an article's title without being it: publisher supplement portals (figshare.com,
+# Sage Journals Data) and ChecklistBank-style derived datasets (10.48580); never an article anchor (oxjob #1581 round 2)
+VERSION_GROUP_SUPPLEMENT_PREFIXES = "('10.6084', '10.48580', '10.25384')"
+# a deposit describing itself as a talk, slides, symposium abstract or technical report is not its article's copy (round 2 blind:
+# 6 of 14 article-anchor misses, 0 of 186 same pairs)
+VERSION_GROUP_NOT_ARTICLE_ABSTRACT = ('^(talk|presentation|poster|slides|keynote)\\\\b|talk presented|presented at|technical report|symposium'
+                                      '|abstract id|^abstract: "|slide deck|webinar')
 
-VERSION_GROUP_SIGNALS = """concat_ws('+', r.how, CASE WHEN r.title_same THEN 'title' END, CASE WHEN r.author_ok THEN 'author' END)"""
+VERSION_GROUP_SIGNALS = """concat_ws('+', r.how, CASE WHEN r.title_same THEN 'title' END, CASE WHEN r.author_ok THEN 'author' END,
+                                CASE WHEN r.article_anchor THEN 'article_anchor' END)"""
 def version_group_hold():
     """In mode=stage, `release_hold=software` stages version_group without the software hold (Casey 2026-10-08: software
     releases of one concept merge too); every other hold and the over_cap limit still apply."""
@@ -815,7 +871,7 @@ VERSION_GROUP_HOLD = """CASE WHEN r.concept_split THEN 'concept_split'
                 WHEN r.software THEN 'software'
                 WHEN r.member_has_primary THEN 'member_has_primary'
                 WHEN r.legacy_mismatch THEN 'legacy_mismatch'
-                WHEN r.winner_no_title OR r.ta_type = 'paratext' THEN 'winner_junk'
+                WHEN r.winner_no_title THEN 'winner_junk'
                 WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
                 END"""
 
