@@ -1,4 +1,5 @@
-# Quiet-hours filter-field sync of works-vectors-v2 (oxjob #1433). Semantic search filters on the vector index's own copy
+# Quiet-hours filter-field sync of the semantic index (alias works-vectors = works-vectors-v3 since 10 Oct 2026; oxjob
+# #1433). Semantic search filters on the vector index's own copy
 # of 14 filter fields. The 10:00 CT nightly (embed_qwen3_nightly) sends only works embedded in the last 2 days, so a work
 # whose fields move without a text change (a nightly re-stamp, a date-kept backfill like the 27 Sep affiliation swap)
 # would keep stale fields. This job stages those works by hash against the mirror vector_filter_fields_sent
@@ -18,7 +19,8 @@ resources:
     Vector_Filter_Sync_Qwen3:
       name: "Semantic index filter-field sync, paced nightly (oxjob #1433)"
       description: |
-        Re-sends to works-vectors-v2 the works whose semantic-search filter fields changed since they were last sent
+        Re-sends to the semantic index (works-vectors) the works whose semantic-search filter fields changed since they were
+        last sent
         (hash vs vector_filter_fields_sent) and deletes the docs of works that no longer exist, in paced batches guarded
         by merge count and kNN latency. Resumes unfinished nights; safe to re-run.
       email_notifications:
@@ -36,7 +38,7 @@ resources:
         - name: max_minutes
           default: "210"   # no batch starts after ≈ 04:15 CT
         - name: knn_guard_ms
-          default: "600"
+          default: "2000"   # v3 (bbq_disk) p95 1.2-1.45 s at rest, and writes barely move it; 600 was v2's healthy bar
         - name: max_merges
           default: "4"
         - name: guard_wait_minutes
@@ -62,7 +64,7 @@ resources:
               num_batches: "20"   # must match pmod(hash(id), 20) in the stage
               resume: "true"
               deletes_table: openalex.vector_search.vector_filter_sync_deletes
-              max_deletes: "13000000"   # 8 Oct: 10.75M works gone since the 29 Sep mirror seed (#1540 Zenodo-twin merges 7 Oct, #1581/#1099 dedup merges 8 Oct); a bad read of openalex_works mid-rebuild would be 100M+
+              max_deletes: "1000000"   # back to ~1M after the catch-up (13M on 8 Oct for v2's 10.75M); a bad read of openalex_works mid-rebuild would be 100M+
               mirror_table: openalex.vector_search.vector_filter_fields_sent
               cleanup: "true"   # drops staging/checkpoint/deletes only after all batches are done
               max_batches: "{{job.parameters.max_batches}}"

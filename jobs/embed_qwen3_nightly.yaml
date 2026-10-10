@@ -2,7 +2,7 @@
 #   1. embed  — EmbedQwen3Incremental: new/changed/missing works → work_embeddings_qwen3 (serverless, ai_query)
 #   2. stage  — stage_vector_sync_qwen3.sql on the serverless SQL warehouse: rows embedded in the last 2 days, joined to
 #               their filter fields and filter_hash → vector_sync_staging_qwen3
-#   3. sync   — sync_vector_index_qwen3 incremental: ships the staging table to ES works-vectors-v2, then records the sent
+#   3. sync   — sync_vector_index_qwen3 incremental: ships the staging table to ES works-vectors (v3 since 10 Oct), then records the sent
 #               hashes in the mirror vector_filter_fields_sent. Works whose filter fields change without a text change,
 #               and works that no longer exist, go out at 00:45 CT in vector_filter_sync_qwen3.yaml (oxjob #1433)
 #   4. sdg_score — sdg_jev_head_score incremental (oxjob #1300): scores the vectors just embedded with the Jev-trained
@@ -14,7 +14,7 @@ resources:
     Embed_Qwen3_Nightly:
       name: Embed works with Qwen3 + sync to ES (nightly, oxjob #1275)
       description: |
-        Keeps openalex.vector_search.work_embeddings_qwen3 and the ES index works-vectors-v2 current.
+        Keeps openalex.vector_search.work_embeddings_qwen3 and the ES index works-vectors (alias; works-vectors-v3) current.
         Embeds works whose title/abstract/venue changed in the last lookback_days plus any titled work
         without a vector (documents bare, no instruction prefix), then runs the Qwen3 ES sync in
         incremental mode over rows embedded in the last sync_lookback_days.
