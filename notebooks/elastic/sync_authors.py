@@ -22,6 +22,24 @@ CONFIG = {
     "index_name": dbutils.widgets.get("index_name")
 }
 
+# oxjob #1617: the keys OQL's `at [X] since Y` and `in [country] since Y` read (one SQL
+# expression each, so the same text runs on a SQL warehouse to check it)
+INSTITUTION_YEARS_SQL = """
+filter(array_distinct(flatten(filter(transform(affiliations, a -> flatten(filter(transform(
+    CASE WHEN size(a.institution.lineage) > 0 THEN a.institution.lineage
+         ELSE array(a.institution.id) END,
+    inst -> transform(a.years, y -> concat(regexp_extract(inst, '([A-Za-z][0-9]+)$', 1), ':',
+                                           cast(y AS string)))),
+    x -> x IS NOT NULL))), x -> x IS NOT NULL))),
+  k -> k IS NOT NULL AND NOT startswith(k, ':'))
+"""
+COUNTRY_YEARS_SQL = """
+filter(array_distinct(flatten(filter(transform(affiliations, a -> transform(a.years,
+    y -> concat(upper(a.institution.country_code), ':', cast(y AS string)))),
+    x -> x IS NOT NULL))),
+  k -> k IS NOT NULL)
+"""
+
 dbutils.widgets.text("is_full_sync", "false")
 IS_FULL_SYNC = dbutils.widgets.get("is_full_sync").lower() == "true"
 print(f"IS_FULL_SYNC: {IS_FULL_SYNC}")
@@ -103,6 +121,12 @@ try:
         .withColumn("topics", F.slice(F.col("topics"), 1, 5))
         .withColumn("topic_share", F.slice(F.col("topic_share"), 1, 5))
         .withColumn("display_name_alternatives", F.col("raw_author_names"))
+        # Institution-year and country-year keys (oxjob #1617), so OQL's `at [UBC](I141945490)
+        # since 2022` is one terms query: "I141945490:2022" for the institution and every
+        # institution in its lineage (a department's years count for its university), and
+        # "CA:2022" for the institution's country, in each year the record lists it.
+        .withColumn("institution_years", F.expr(INSTITUTION_YEARS_SQL))
+        .withColumn("country_years", F.expr(COUNTRY_YEARS_SQL))
         .select("id", F.struct(F.col("*")).alias("_source"))
     )
     df = df.repartition(1024)
