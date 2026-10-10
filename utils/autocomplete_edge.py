@@ -434,7 +434,6 @@ KV_NAMESPACE = "ff3e53d8c9a64ca5a4cf0369bdcf5059"      # openalex-autocomplete
 WORKER = "https://openalex-autocomplete-edge.our-research.workers.dev"
 USD_KV_OP, USD_DO_ROW = 5e-6, 1e-6
 PROPAGATION_WAIT_S = 180      # KV write propagation is up to ~60 s; #1504 read keys a minute after the last write and poisoned them
-REBUILD_FRACTION = 0.5        # a delta touching more than half the keys is written as a new build instead (plan 2.3)
 
 
 class KV:
@@ -661,10 +660,13 @@ def _lit(s):
 
 def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_id=""):
     """Copy nodes_<typ> into Workers KV (and the copies) by the release rule of plan 2.1:
-      - no live build, a forced rebuild, or a delta over REBUILD_FRACTION of the keys: write a NEW build under its own
-        prefix, wait PROPAGATION_WAIT_S, check the key count by listing and 100 random reads, then flip ver:<t>; the
-        old build's keys are deleted on the type's next run (readers on the old build keep working meanwhile);
-      - otherwise write only changed keys IN PLACE, longest first (children before parents), then delete removed keys.
+      - no live build, or a forced rebuild (a change to the key space, e.g. new label sources): write a NEW build under
+        its own prefix, wait PROPAGATION_WAIT_S, check the key count by listing and 100 random reads, then flip ver:<t>;
+        the old build's keys are deleted on the type's next run (readers on the old build keep working meanwhile);
+      - otherwise write only changed keys IN PLACE, longest first (children before parents), then delete removed keys,
+        however many changed. (Until 2026-10-10 a delta over half the keys became a new build: keywords, the front tree
+        and the small types rebuilt nearly every night, each rebuild writing every key and then deleting the old build,
+        ~2x the writes of the same night in place, plus every colo's cache cold for that tree; oxjob #1529.)
     sql(q) -> list of row tuples; rows(q) -> an iterator of row tuples (streamed). Returns the refresh_runs row."""
     import datetime, time
     t, src = TYPES[typ]
@@ -701,10 +703,7 @@ def refresh(typ, sql, rows, kv, copies, log=print, force_rebuild=False, job_run_
     if resume:
         mode = "resume"
     elif live and not force_rebuild:
-        changed = sql(f"""SELECT count(*) FROM {nt} n LEFT JOIN {SCHEMA}.loaded l ON l.typ = '{typ}' AND l.build = '{live}' AND l.p = n.p
-                          WHERE l.h IS NULL OR l.h <> n.h""")[0][0]
-        if changed <= REBUILD_FRACTION * max(keys_total, 1):
-            mode = "delta"
+        mode = "delta"
     log(f"{typ}: {keys_total:,} keys, live build {live}, mode {mode}")
     written = removed = 0
     if mode == "delta":
