@@ -19,15 +19,15 @@ resources:
       tasks:
         # SQL tasks run on their own warehouse (vector-matcher, serverless Medium, 1-2 clusters, CAN_USE for this job's SP only; oxjob #1348):
         # on the shared serverless warehouse Vector_Cards sat in the overload queue and never ran on 1, 8 (HTTP 503) and 10 Oct,
-        # so those nights wrote no vector assignments. Cards takes ~2 min (6.9M seats on 3 Oct); short timeouts + retries keep a
-        # stuck queue inside End 2 End's 90-min wait.
+        # so those nights wrote no vector assignments. Cards takes ~2 min warm, 200 s cold on this warehouse (10 Oct test);
+        # short timeouts + retries keep a stuck queue inside End 2 End's 90-min wait.
         - task_key: Vector_Cards
           sql_task:
             warehouse_id: a34475cc19d133a4   # vector-matcher (oxjob 1348)
             file:
               path: notebooks/end2end/vector_match/vector_cards.sql
               source: GIT
-          timeout_seconds: 600
+          timeout_seconds: 900
           max_retries: 2
           min_retry_interval_millis: 60000
           retry_on_timeout: true
