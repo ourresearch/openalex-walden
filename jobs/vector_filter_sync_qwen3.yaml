@@ -44,7 +44,7 @@ resources:
       tasks:
         - task_key: stage
           sql_task:
-            warehouse_id: 69a583ace3bdc8d0   # serverless Medium, as the nightly's stage
+            warehouse_id: 8d889de6cd2f2cee   # vector-pipeline, as the nightly's stage (oxjob #1433)
             file:
               path: notebooks/elastic/stage_vector_filter_sync.sql
               source: GIT

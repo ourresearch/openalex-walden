@@ -66,7 +66,7 @@ resources:
           depends_on:
             - task_key: embed
           sql_task:
-            warehouse_id: 69a583ace3bdc8d0   # serverless Medium; hashes every work's filter fields (oxjob #1433)
+            warehouse_id: 8d889de6cd2f2cee   # vector-pipeline: serverless Medium, 1-2 clusters, only the vector jobs (oxjob #1433; the shared serverless warehouse queued the stage 2 h on 10 Oct)
             file:
               path: notebooks/elastic/stage_vector_sync_qwen3.sql
               source: GIT
