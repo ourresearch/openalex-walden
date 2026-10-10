@@ -1,6 +1,6 @@
 -- #1348 Vector_Pool: tonight's seats with their vectors (vector_match_night) and the candidate pool (vector_match_pool): CAP most-recent stored
 -- seats of every profile in the touched small + medium blocks, from openalex.authors.seat_embeddings_live (#1342's 09-24 store + nightly vectors), tonight's works excluded.
--- Runs on the serverless warehouse (69a583ace3bdc8d0) after Vector_Embed; ~5-6 min for an 800K-seat night (104M pool rows).
+-- Runs on the vector-matcher warehouse (a34475cc19d133a4, oxjob #1348) after Vector_Embed; ~5-6 min for an 800K-seat night (104M pool rows).
 -- Block tier = profiles in the block per authors_for_matching (small <= 249, medium <= 5000, mega beyond: cascade only).
 CREATE OR REPLACE TABLE openalex.authors.vector_match_night CLUSTER BY (block_key) AS
 WITH bs AS (SELECT block_key, COUNT(*) block_size FROM openalex.authors.authors_for_matching GROUP BY 1),

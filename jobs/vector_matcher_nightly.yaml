@@ -17,13 +17,20 @@ resources:
       timeout_seconds: 9000
       max_concurrent_runs: 1
       tasks:
+        # SQL tasks run on their own warehouse (vector-matcher, serverless Medium, 1-2 clusters, CAN_USE for this job's SP only; oxjob #1348):
+        # on the shared serverless warehouse Vector_Cards sat in the overload queue and never ran on 1, 8 (HTTP 503) and 10 Oct,
+        # so those nights wrote no vector assignments. Cards takes ~2 min (6.9M seats on 3 Oct); short timeouts + retries keep a
+        # stuck queue inside End 2 End's 90-min wait.
         - task_key: Vector_Cards
           sql_task:
-            warehouse_id: 69a583ace3bdc8d0
+            warehouse_id: a34475cc19d133a4   # vector-matcher (oxjob 1348)
             file:
               path: notebooks/end2end/vector_match/vector_cards.sql
               source: GIT
-          timeout_seconds: 1800
+          timeout_seconds: 600
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
         - task_key: Vector_Embed
           depends_on:
             - task_key: Vector_Cards
@@ -42,11 +49,14 @@ resources:
           depends_on:
             - task_key: Vector_Embed
           sql_task:
-            warehouse_id: 69a583ace3bdc8d0
+            warehouse_id: a34475cc19d133a4   # vector-matcher (oxjob 1348); ~3-6 min
             file:
               path: notebooks/end2end/vector_match/vector_pool.sql
               source: GIT
-          timeout_seconds: 3600
+          timeout_seconds: 1200
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
         - task_key: Vector_Decide
           depends_on:
             - task_key: Vector_Pool
@@ -62,11 +72,14 @@ resources:
           depends_on:
             - task_key: Vector_Decide
           sql_task:
-            warehouse_id: 69a583ace3bdc8d0
+            warehouse_id: a34475cc19d133a4   # vector-matcher (oxjob 1348); ~1 min
             file:
               path: notebooks/end2end/vector_match/vector_zone_cards.sql
               source: GIT
-          timeout_seconds: 1800
+          timeout_seconds: 600
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
         # Vector_Sonnet (Claude Sonnet 5.5 zone judge) removed 2026-09-29 (Jason: not worth the money). Zone seats fall to the name cascade.
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
