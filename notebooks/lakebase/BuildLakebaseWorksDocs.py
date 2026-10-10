@@ -25,7 +25,8 @@
 # MAGIC Modes:
 # MAGIC - `is_full_build=true` — one-time/recovery: rebuild all shards + id map from scratch.
 # MAGIC - default (incremental) — same freshness contract as the ES sync
-# MAGIC   (`updated_date >= current_date() - 2 days`), hash-gated MERGE per shard + deletes.
+# MAGIC   (`updated_date >= current_date() - 2 days`), hash-gated MERGE per shard, then every doc / id-map row whose
+# MAGIC   work is no longer in `openalex_works` (deleted or merged away) is deleted, every run.
 
 # COMMAND ----------
 
@@ -44,11 +45,12 @@ DOCS_TABLE = lambda s: f"{SCHEMA}.lakebase_works_docs_{s}"
 IDS_TABLE = f"{SCHEMA}.lakebase_works_ids"
 BUILD_STAGING = f"{SCHEMA}._lakebase_docs_build"
 INCR_STAGING = f"{SCHEMA}._lakebase_docs_incr"
+GONE_STAGING = f"{SCHEMA}._lakebase_gone_incr"
 
 dbutils.widgets.text("is_full_build", "false")
 dbutils.widgets.text("guardrails_override", "false")
 dbutils.widgets.text("trigger_syncs", "false")  # end2end passes true once synced tables exist
-dbutils.widgets.text("run_deletes", "false")    # force the full delete sweep (auto-runs when doc count > works count)
+dbutils.widgets.text("run_deletes", "false")    # force the full delete sweep (auto-runs when docs still outnumber works after the targeted deletes)
 # "k/N": incremental MERGE over every work with pmod(id, N) = k instead of the 2-day churn window, for a
 # hash-rebaselined change that moved no updated_date (oxjob #1322 keywords). doc_hash still gates the writes.
 dbutils.widgets.text("id_mod", "")
@@ -526,24 +528,17 @@ if IS_FULL_BUILD:
 # MAGIC ### Incremental: churn-only hash-gated MERGE per shard, then id map
 # MAGIC
 # MAGIC Daily MERGEs use ONLY the transformed churn as source (file-pruned by work_id
-# MAGIC clustering — minutes). The full-table delete sweep (`NOT MATCHED BY SOURCE`) forces a
-# MAGIC complete scan of every shard (~90 min observed 2026-07-11) so it does NOT run daily:
-# MAGIC it runs when `run_deletes=true` OR automatically when the doc tables hold more rows
-# MAGIC than `openalex_works` (i.e. upstream deletions happened). Deletes lagging by days is
-# MAGIC still stricter than ES, whose works sync never propagates deletes at all.
+# MAGIC clustering — minutes). Then a targeted delete, every run: the work_ids in the shards or the id map that are not in
+# MAGIC `openalex_works` (an id-only anti-join, ~30 s on a warehouse) are deleted by id (oxjob #1099, 2026-10-10: the sweep
+# MAGIC used to be the only delete path and fired only when the doc count, taken before the night's inserts, beat the works
+# MAGIC count, which a night that mints more works than it deletes never does, so 59,795 merged-away ids kept serving their
+# MAGIC old doc through the Lakebase-first single-work read).
+# MAGIC The full-table sweep (`NOT MATCHED BY SOURCE`) scans every shard (~90 min observed 2026-07-11) and stays as the
+# MAGIC backstop: `run_deletes=true`, or the doc tables still outnumbering `openalex_works` after the targeted delete.
 
 # COMMAND ----------
 
 if not IS_FULL_BUILD:
-    total_docs = sum(
-        spark.sql(f"SELECT COUNT(*) AS cnt FROM {DOCS_TABLE(s)}").collect()[0].cnt
-        for s in range(N_SHARDS)
-    )
-    do_deletes = RUN_DELETES or (total_docs > total_works)
-    if do_deletes and not RUN_DELETES:
-        print(f"Auto-enabling delete sweep: docs total {total_docs:,} > openalex_works {total_works:,}")
-    print(f"docs total: {total_docs:,} | works: {total_works:,} | delete sweep this run: {do_deletes}")
-
     for s in range(N_SHARDS):
         t = DOCS_TABLE(s)
         result = spark.sql(f"""
@@ -558,14 +553,39 @@ if not IS_FULL_BUILD:
         """).collect()[0]
         print(f"{t}: updated={result.num_updated_rows:,} inserted={result.num_inserted_rows:,}")
 
+    # Gone works: ids held by a shard or the id map that are no longer in openalex_works (deleted or merged away)
+    held = " UNION ALL ".join([f"SELECT work_id FROM {DOCS_TABLE(s)}" for s in range(N_SHARDS)] + [f"SELECT work_id FROM {IDS_TABLE}"])
+    spark.sql(f"""
+        CREATE OR REPLACE TABLE {GONE_STAGING} AS
+        SELECT DISTINCT h.work_id FROM ({held}) h LEFT ANTI JOIN {WORKS_TABLE} w ON w.id = h.work_id
+    """)
+    n_gone = spark.sql(f"SELECT COUNT(*) AS cnt FROM {GONE_STAGING}").collect()[0].cnt
+    print(f"gone works (in the shards or id map, not in {WORKS_TABLE}): {n_gone:,}")
+    # a partial openalex_works would read as millions of gone works: stop before deleting (largest planned wave so far,
+    # #1581 on 2026-10-08, was 5.76M = 1.2 %); rerun with run_deletes=true once the deletions are confirmed as intended
+    if n_gone > 0.02 * total_works and not RUN_DELETES:
+        raise Exception(
+            f"GUARDRAIL: {n_gone:,} docs / id-map works are not in {WORKS_TABLE} (> 2 % of {total_works:,}); nothing deleted. "
+            "If the deletions are intended, rerun with run_deletes=true."
+        )
+    for s in range(N_SHARDS):
+        t = DOCS_TABLE(s)
+        result = spark.sql(f"""
+            DELETE FROM {t} WHERE work_id IN (SELECT work_id FROM {GONE_STAGING} WHERE pmod(work_id, {N_SHARDS}) = {s})
+        """).collect()[0]
+        print(f"{t} (gone): deleted={result.num_affected_rows:,}")
+
     # Id map, churn-only: keys the churned works claim now or held as winner, with the winner
     # recomputed over ALL claimants of those keys (a churned claimant can take or give up a key
-    # whose other claimants did not churn). Keys left with no claimant wait for the delete sweep.
+    # whose other claimants did not churn), plus the keys a gone work held (re-claimed by the work that took its
+    # records). A key left pointing at a gone work after that has no claimant and is deleted below.
     spark.sql(f"""
         CREATE OR REPLACE TEMP VIEW churn_ext_ids AS
         SELECT c.ext_id FROM ({EXT_ID_CLAIMS}) c JOIN {INCR_STAGING} d ON c.work_id = d.work_id
         UNION
         SELECT t.ext_id FROM {IDS_TABLE} t JOIN {INCR_STAGING} d ON t.work_id = d.work_id
+        UNION
+        SELECT t.ext_id FROM {IDS_TABLE} t JOIN {GONE_STAGING} g ON t.work_id = g.work_id
     """)
     churn_claims = f"""
         SELECT c.* FROM ({EXT_ID_CLAIMS}) c LEFT SEMI JOIN churn_ext_ids k ON c.ext_id = k.ext_id
@@ -580,6 +600,18 @@ if not IS_FULL_BUILD:
             INSERT (ext_id, work_id, updated_at) VALUES (source.ext_id, source.work_id, current_timestamp())
     """).collect()[0]
     print(f"{IDS_TABLE} (churn): updated={result.num_updated_rows:,} inserted={result.num_inserted_rows:,}")
+    result = spark.sql(f"DELETE FROM {IDS_TABLE} WHERE work_id IN (SELECT work_id FROM {GONE_STAGING})").collect()[0]
+    print(f"{IDS_TABLE} (gone, no claimant left): deleted={result.num_affected_rows:,}")
+    spark.sql(f"DROP TABLE IF EXISTS {GONE_STAGING}")
+
+    total_docs = sum(
+        spark.sql(f"SELECT COUNT(*) AS cnt FROM {DOCS_TABLE(s)}").collect()[0].cnt
+        for s in range(N_SHARDS)
+    )
+    do_deletes = RUN_DELETES or (total_docs > total_works)
+    if do_deletes and not RUN_DELETES:
+        print(f"Auto-enabling delete sweep: docs total {total_docs:,} > openalex_works {total_works:,} after the targeted delete")
+    print(f"docs total: {total_docs:,} | works: {total_works:,} | delete sweep this run: {do_deletes}")
 
     if do_deletes:
         for s in range(N_SHARDS):
