@@ -23,10 +23,12 @@ resources:
       development: true
       channel: CURRENT
       configuration:
-        # One row = one harvested file (up to ~28 MB of XML, ~80 MB parsed): hand the parser UDF only a few
-        # files per Python batch. Batches of 100-1,000 files OOMed the Python workers (9 Oct).
-        spark.sql.execution.arrow.maxRecordsPerBatch: "4"
-        spark.sql.execution.python.udf.maxRecordsPerBatch: "4"
+        # One row = one harvested file: hand the parser UDF ONE file per Python batch. Batches of 100-1,000
+        # files OOMed the Python workers (9 Oct); 4 files did too on 10 Oct, once files of big-collaboration
+        # papers arrived (a 1,000-record file with 94,661 authors, 52 MB of XML, parses to ~250 MB with its
+        # pickled copy). The harvester now caps hal_tei files at 32 MB of XML (openalex-ingest 87bc8de).
+        spark.sql.execution.arrow.maxRecordsPerBatch: "1"
+        spark.sql.execution.python.udf.maxRecordsPerBatch: "1"
       libraries:
         - notebook:
             path: ../notebooks/ingest/HalTei.py
