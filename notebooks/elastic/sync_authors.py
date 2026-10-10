@@ -15,8 +15,8 @@ log = logging.getLogger(__name__)
 
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
-# index_name is a widget so a rebuild can load a fresh index beside the live one (oxjob #1531: authors-v20); the job yaml passes it.
-dbutils.widgets.text("index_name", "authors-v20")
+# index_name is a widget so a rebuild can load a fresh index beside the live one (oxjob #1531: authors-v20; #1617: authors-v21); the job yaml passes it.
+dbutils.widgets.text("index_name", "authors-v21")
 CONFIG = {
     "table_name": "openalex.authors.openalex_authors",
     "index_name": dbutils.widgets.get("index_name")

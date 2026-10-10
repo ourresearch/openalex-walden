@@ -17,7 +17,7 @@ resources:
             source: GIT
             base_parameters:
               is_full_sync: "false"
-              index_name: authors-v20
+              index_name: authors-v21
         - task_key: delete_authors
           depends_on:
             - task_key: sync_authors
@@ -27,7 +27,7 @@ resources:
             source: GIT
             base_parameters:
               guard_fraction: "0.02"
-              index_name: authors-v20
+              index_name: authors-v21
               deleted_authors_guard_override: "false"
           max_retries: 2
           min_retry_interval_millis: 300000
