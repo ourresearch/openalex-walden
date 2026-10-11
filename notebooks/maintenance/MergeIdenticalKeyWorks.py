@@ -113,6 +113,16 @@
 # MAGIC `year_gap` (article more than 3 years after or 1 before), `no_author_overlap` (no author name token on both sides: 13/20 wrong,
 # MAGIC JMIR off-by-N DOIs and OSF placeholders linked to unrelated articles), `no_authors_title_differs`, and the mechanical holds.
 # MAGIC Sized 2026-10-07: 634,437 pairs executable, 961 held by the evidence holds.
+# MAGIC
+# MAGIC **`class_mode = two_doi_guarded`** (oxjob #1643, 2026-10-11): the exactly-two-work title keys where BOTH works hold a DOI, which the
+# MAGIC title class's `n_doi <= 1` never touches, in four groups: 0 the same DOI after cleaning (`10.1037//` vs `10.1037/`), 1 preprint vs
+# MAGIC published, 2 same source + year + first page, 5 one side a repository. Base guards: the works' own normalized titles equal and no
+# MAGIC data-repository DOI prefix; holds in `TWO_DOI_RULE_HOLD` (abstracts or authors disagree, per-group biblio / year / chapter holds,
+# MAGIC conference abstracts, AoM proceedings, DataCite dataset/software records, bad titles, Cochrane `.pubN` updates). Blind-labelled:
+# MAGIC groups 1/2/5 898 merge / 1 wrong / 1 unsure of 900 (#1489 round 2), group 0 200/200 on a fresh draw after its guards. Winner: the
+# MAGIC published side, then a non-repository primary source, a Crossref record, more citations, the lower id. The loser's DOI stays
+# MAGIC findable as the winner's `locations[].doi`. Stage first builds `<target>_features` (`build_two_doi_features`); execute re-keys the
+# MAGIC loser's record keys like exact_signature; `ta` = 'two:<winner id>'.
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
 # MAGIC               (before-image, both sides) then UPDATE `work_references`: `cited_work_id` loser → winner (citations
 # MAGIC               TO the loser) and `citing_work_id` loser → winner (the loser's OWN reference list comes along; rows keep
@@ -124,7 +134,7 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint"])
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint", "two_doi_guarded"])
 dbutils.widgets.text("feed_scope_sql", "SELECT endpoint_id FROM openalex.sources.endpoint_to_source WHERE is_journal_host")
 dbutils.widgets.text("twin_scope_sql", "SELECT source_id FROM openalex_dev.sources.ojs_coverage")
 dbutils.widgets.text("tiers", "1,2")
@@ -222,6 +232,8 @@ def class_sql():
         return version_group_class_sql()
     if CLASS_MODE == "crossref_preprint":
         return crossref_preprint_class_sql()
+    if CLASS_MODE == "two_doi_guarded":
+        return two_doi_guarded_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -610,6 +622,150 @@ CROSSREF_PREPRINT_HOLD = """CASE WHEN r.correction_notice THEN 'correction_notic
                 WHEN r.year_gap THEN 'year_gap'
                 WHEN r.no_authors AND NOT r.title_same THEN 'no_authors_title_differs'
                 WHEN NOT r.no_authors AND NOT r.author_overlap THEN 'no_author_overlap'
+                WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
+                WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
+                WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
+                END"""
+
+
+TWO_DOI_DATA_PREFIXES = "6084|7910|5061|17632|17605|5281|25384|1594|48436"
+TWO_DOI_NONPAPER = ("('dataset', 'software', 'collection', 'audiovisual', 'image', 'presentation', 'physicalobject', 'model', 'workflow', "
+                    "'sound', 'interactiveresource', 'service', 'event', 'datapaper', 'computationalnotebook', 'outputmanagementplan', "
+                    "'studyregistration', 'instrument')")
+TWO_DOI_NONPAPER_TYPES = ("('dataset', 'other', 'peer-review', 'supplementary-materials', 'reference-entry', 'standard', 'paratext', 'software', "
+                          "'erratum', 'retraction', 'grant', 'libguides', 'editorial', 'letter', 'review', 'book-review')")
+
+
+def build_two_doi_features():
+    """two_doi_guarded (oxjob #1643): one row per (a, b) pair of the exactly-two-work title keys whose works both hold a DOI,
+    in the four rule groups, with the evidence features and the rule hold. Materialized as `<target>_features` (the
+    all-in-one statement is too big; every set comparison is explode + join, never arrays_overlap / array_intersect)."""
+    feats = f"{TARGET}_features"
+    clean = "regexp_replace({c}, '[^a-z0-9]', '')"
+    spark.sql(f"""CREATE OR REPLACE TABLE {feats}_keys AS
+      WITH live AS (SELECT w.id FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
+      k AS (SELECT l.merge_key.title_author AS ta, l.work_id, array_sort(collect_set(lower(NULLIF(l.merge_key.doi, '')))) AS dois
+            FROM {LM} l LEFT SEMI JOIN live ON live.id = l.work_id
+            WHERE l.merge_key.title_author IS NOT NULL AND LENGTH(l.merge_key.title_author) > 20 {prior_exclusion()}
+            GROUP BY 1, 2),
+      g AS (SELECT ta FROM k GROUP BY ta HAVING COUNT(*) = 2 AND MIN(size(dois)) > 0)
+      SELECT k.ta, MIN(k.work_id) AS a_id, MAX(k.work_id) AS b_id,
+             min_by(k.dois, k.work_id) AS a_dois, max_by(k.dois, k.work_id) AS b_dois
+      FROM k JOIN g ON g.ta = k.ta GROUP BY k.ta""")
+    spark.sql(f"""CREATE OR REPLACE TABLE {feats}_strata AS
+      WITH ea AS (SELECT ta, {clean.format(c='d')} AS c FROM {feats}_keys LATERAL VIEW explode(a_dois) e AS d),
+      eb AS (SELECT ta, {clean.format(c='d')} AS c FROM {feats}_keys LATERAL VIEW explode(b_dois) e AS d),
+      sh AS (SELECT DISTINCT ea.ta FROM ea JOIN eb ON eb.ta = ea.ta AND eb.c = ea.c),
+      ids AS (SELECT a_id AS id FROM {feats}_keys UNION SELECT b_id FROM {feats}_keys),
+      w AS (SELECT id, type, publication_year AS yr, title, primary_location.source.id AS src, primary_location.source.type AS st,
+                   biblio.volume AS vol, biblio.issue AS iss, biblio.first_page AS fp
+            FROM {WORKS} o LEFT SEMI JOIN ids ON ids.id = o.id),
+      p AS (SELECT k.*, sh.ta IS NOT NULL AS share_doi,
+                   wa.type AS a_type, wb.type AS b_type, wa.yr AS a_yr, wb.yr AS b_yr, wa.title AS a_title, wb.title AS b_title,
+                   wa.src AS a_src, wb.src AS b_src, wa.st AS a_st, wb.st AS b_st, wa.vol AS a_vol, wb.vol AS b_vol,
+                   wa.iss AS a_iss, wb.iss AS b_iss, wa.fp AS a_fp, wb.fp AS b_fp
+            FROM {feats}_keys k LEFT JOIN sh ON sh.ta = k.ta JOIN w wa ON wa.id = k.a_id JOIN w wb ON wb.id = k.b_id)
+      SELECT * FROM (
+        SELECT p.*,
+          CASE WHEN share_doi THEN '0'
+               WHEN a_type IN {TWO_DOI_NONPAPER_TYPES} OR b_type IN {TWO_DOI_NONPAPER_TYPES} THEN NULL
+               WHEN (a_type = 'preprint') <> (b_type = 'preprint') THEN '1'
+               WHEN a_type <> b_type THEN NULL
+               WHEN a_src = b_src AND a_yr = b_yr AND a_fp IS NOT NULL AND a_fp = b_fp THEN '2'
+               WHEN a_src = b_src THEN NULL
+               WHEN a_st = 'repository' OR b_st = 'repository' THEN '5' END AS s
+        FROM p)
+      WHERE s IS NOT NULL
+        AND regexp_replace(lower(a_title), '[^a-z0-9]', '') = regexp_replace(lower(b_title), '[^a-z0-9]', '')
+        AND NOT exists(concat(a_dois, b_dois), d -> d RLIKE '^10\\\\.({TWO_DOI_DATA_PREFIXES})/')""")
+    spark.sql(f"""CREATE OR REPLACE TABLE {feats} AS
+      WITH p AS (SELECT * FROM {feats}_strata),
+      pp AS (SELECT DISTINCT a_id, b_id FROM p),
+      ids AS (SELECT a_id AS id FROM pp UNION SELECT b_id FROM pp),
+      w AS (SELECT o.id, o.authorships, o.abstract, COALESCE(o.cited_by_count, 0) AS cites FROM {WORKS} o LEFT SEMI JOIN ids ON ids.id = o.id),
+      au AS (SELECT DISTINCT id, lower(regexp_replace(CASE WHEN x.author.display_name LIKE '%,%' THEN split(x.author.display_name, ',')[0]
+                                                           ELSE element_at(split(trim(x.author.display_name), ' '), -1) END, '[^\\\\p{{L}}]', '')) AS t
+             FROM (SELECT id, posexplode(authorships) AS (pos, x) FROM w) WHERE pos < 50),
+      au2 AS (SELECT * FROM au WHERE t <> ''),
+      ab AS (SELECT DISTINCT id, t FROM (SELECT id, explode(slice(split(regexp_replace(lower(abstract), '[^a-z0-9 ]', ' '), ' +'), 1, 200)) AS t
+                                         FROM w WHERE abstract IS NOT NULL AND length(abstract) > 100) WHERE length(t) >= 4),
+      an AS (SELECT id, COUNT(*) AS n FROM au2 GROUP BY id), bn AS (SELECT id, COUNT(*) AS n FROM ab GROUP BY id),
+      ai AS (SELECT p.a_id, p.b_id, COUNT(*) AS inter FROM pp p JOIN au2 x ON x.id = p.a_id JOIN au2 y ON y.id = p.b_id AND y.t = x.t GROUP BY 1, 2),
+      bi AS (SELECT p.a_id, p.b_id, COUNT(*) AS inter FROM pp p JOIN ab x ON x.id = p.a_id JOIN ab y ON y.id = p.b_id AND y.t = x.t GROUP BY 1, 2),
+      fl AS (SELECT l.work_id,
+                    MAX(CASE WHEN l.provenance = 'datacite' AND lower(l.raw_type) IN {TWO_DOI_NONPAPER} THEN 1 ELSE 0 END) = 1 AS dc_nonpaper,
+                    MAX(CASE WHEN l.provenance = 'crossref' THEN 1 ELSE 0 END) = 1 AS has_crossref
+             FROM {LM} l LEFT SEMI JOIN ids ON ids.id = l.work_id WHERE NULLIF(l.merge_key.doi, '') IS NOT NULL GROUP BY 1),
+      bt AS (SELECT DISTINCT lower(trim(title)) AS t FROM openalex.system.bad_titles),
+      f AS (
+        SELECT p.*, wa.cites AS a_cites, wb.cites AS b_cites, COALESCE(fa.has_crossref, FALSE) AS a_crossref, COALESCE(fb.has_crossref, FALSE) AS b_crossref,
+               ana.n AS a_au_n, anb.n AS b_au_n, COALESCE(ai.inter, 0) AS au_inter, bna.n AS a_ab_n, bnb.n AS b_ab_n,
+               try_divide(COALESCE(ai.inter, 0), least(ana.n, anb.n)) AS au_ovl,
+               CASE WHEN bna.n > 0 AND bnb.n > 0 THEN try_divide(COALESCE(bi.inter, 0), bna.n + bnb.n - COALESCE(bi.inter, 0)) END AS ab_jac,
+               COALESCE(fa.dc_nonpaper, FALSE) OR COALESCE(fb.dc_nonpaper, FALSE) AS dc_nonpaper, bt.t IS NOT NULL AS bad_title
+        FROM p JOIN w wa ON wa.id = p.a_id JOIN w wb ON wb.id = p.b_id
+        LEFT JOIN an ana ON ana.id = p.a_id LEFT JOIN an anb ON anb.id = p.b_id
+        LEFT JOIN bn bna ON bna.id = p.a_id LEFT JOIN bn bnb ON bnb.id = p.b_id
+        LEFT JOIN ai ON ai.a_id = p.a_id AND ai.b_id = p.b_id LEFT JOIN bi ON bi.a_id = p.a_id AND bi.b_id = p.b_id
+        LEFT JOIN fl fa ON fa.work_id = p.a_id LEFT JOIN fl fb ON fb.work_id = p.b_id
+        LEFT JOIN bt ON bt.t = lower(trim(p.a_title))),
+      h AS (
+        SELECT f.*, {TWO_DOI_RULE_HOLD} AS rule_hold FROM f)
+      -- a pair under several keys: one row, held if any of its key rows is held
+      SELECT a_id, b_id, MIN(s) AS s, MIN(ta) AS ta, first(a_type) AS a_type, first(b_type) AS b_type, first(a_yr) AS a_yr, first(b_yr) AS b_yr,
+             first(a_src) AS a_src, first(b_src) AS b_src, first(a_st) AS a_st, first(b_st) AS b_st, first(a_dois)[0] AS a_doi, first(b_dois)[0] AS b_doi,
+             first(a_cites) AS a_cites, first(b_cites) AS b_cites, first(a_crossref) AS a_crossref, first(b_crossref) AS b_crossref,
+             MAX(au_ovl) AS au_ovl, MAX(ab_jac) AS ab_jac,
+             COALESCE(MIN(CASE WHEN rule_hold <> 'pass' THEN rule_hold END), 'pass') AS rule_hold
+      FROM h GROUP BY a_id, b_id""")
+    note(two_doi_features=feats, by_group=rows(f"SELECT s, rule_hold, COUNT(*) AS pairs FROM {feats} GROUP BY 1, 2 ORDER BY 1, 3 DESC"))
+
+
+# the oxjob #1489 round-2 holds (990 blind pairs) + #1643's refinements (conference abstracts, DataCite non-paper records, AoM
+# proceedings, bad titles; group 0: same type, no biblio conflict, no Cochrane update, years at most one apart)
+TWO_DOI_RULE_HOLD = """CASE
+  WHEN f.ab_jac IS NOT NULL AND f.ab_jac < 0.2 THEN 'abstracts_disagree'
+  WHEN f.a_au_n > 0 AND f.b_au_n > 0 AND f.au_ovl < 0.5 THEN 'authors_disagree'
+  WHEN f.s = '2' AND f.a_vol IS NOT NULL AND f.b_vol IS NOT NULL AND regexp_replace(f.a_vol, '[^0-9a-z]', '') <> regexp_replace(f.b_vol, '[^0-9a-z]', '') THEN 'volume_conflict'
+  WHEN f.s = '2' AND f.a_type IN ('book-chapter', 'reference-entry') AND f.b_type IN ('book-chapter', 'reference-entry')
+       AND split(f.a_dois[0], '/')[0] = split(f.b_dois[0], '/')[0] AND f.ab_jac IS NULL THEN 'same_registrant_chapters_no_abstract'
+  WHEN f.s = '5' AND (f.a_yr IS NULL OR f.b_yr IS NULL OR abs(f.a_yr - f.b_yr) > 2) AND (f.ab_jac IS NULL OR f.ab_jac < 0.5) THEN 'repo_year_gap_no_abstract'
+  WHEN f.s = '1' AND abs(f.a_yr - f.b_yr) > 3 AND (f.ab_jac IS NULL OR f.ab_jac < 0.5) THEN 'preprint_gap_no_abstract'
+  WHEN f.a_au_n IS NULL AND f.b_au_n IS NULL AND f.ab_jac IS NULL THEN 'no_authors_no_abstract'
+  WHEN f.s = '0' AND f.a_type <> f.b_type THEN 'type_differs'
+  WHEN f.s = '0' AND ((f.a_vol IS NOT NULL AND f.b_vol IS NOT NULL AND regexp_replace(lower(f.a_vol), '[^0-9a-z]', '') <> regexp_replace(lower(f.b_vol), '[^0-9a-z]', ''))
+                   OR (f.a_iss IS NOT NULL AND f.b_iss IS NOT NULL AND regexp_replace(lower(f.a_iss), '[^0-9a-z]', '') <> regexp_replace(lower(f.b_iss), '[^0-9a-z]', ''))
+                   OR (f.a_fp IS NOT NULL AND f.b_fp IS NOT NULL AND regexp_replace(lower(f.a_fp), '[^0-9a-z]', '') <> regexp_replace(lower(f.b_fp), '[^0-9a-z]', ''))) THEN 'biblio_conflict'
+  WHEN exists(concat(f.a_dois, f.b_dois), d -> d RLIKE '\\\\.pub[0-9]+$') THEN 'cochrane_update'
+  WHEN f.s = '0' AND abs(f.a_yr - f.b_yr) > 1 THEN 'year_gap'
+  WHEN 'conference-abstract' IN (f.a_type, f.b_type) AND f.a_type <> f.b_type THEN 'conference_abstract'
+  WHEN exists(concat(f.a_dois, f.b_dois), d -> d LIKE '10.5465/ambpp%') THEN 'aom_proceedings'
+  WHEN f.dc_nonpaper THEN 'datacite_nonpaper'
+  WHEN f.bad_title THEN 'bad_title'
+  ELSE 'pass' END"""
+
+
+def two_doi_guarded_class_sql():
+    """Two-DOI guarded class (oxjob #1643, 2026-10-11): an exactly-two-work title key where both works hold a DOI (the #880
+    `n_doi <= 1` scope never touches it), in four guarded groups: 0 the same DOI after cleaning, 1 preprint vs published,
+    2 same source + year + first page, 5 one side a repository. Base guards: the works' own normalized titles equal, no
+    data-repository DOI prefix; rule holds in TWO_DOI_RULE_HOLD (blind-labelled: #1489 round 2, 898/900 merge on groups
+    1/2/5; group 0 re-validated on its own draw). Features come from `build_two_doi_features` (`<target>_features`).
+    Winner: the published side over the preprint, a non-repository primary source over a repository one, a Crossref record,
+    more citations, the lower id. The loser's DOI stays findable on the winner as `locations[].doi` (#1573 / #1605); its record
+    keys are re-keyed onto the winner at execute like exact_signature; `ta` = 'two:<winner id>'."""
+    rank = "named_struct('pub', {x}_type <> 'preprint', 'nonrepo', COALESCE({x}_st, '') <> 'repository', 'crossref', {x}_crossref, 'cites', {x}_cites, 'low', -{x}_id)"
+    return f"""
+    WITH f AS (SELECT *, {rank.format(x='a')} > {rank.format(x='b')} AS a_wins FROM {TARGET}_features),
+    r1 AS (
+      SELECT a_id AS a, b_id AS b, a_doi AS da, b_doi AS db, a_yr AS ya, b_yr AS yb, a_cites AS ca, b_cites AS cb,
+             a_type AS ta_type, b_type AS tb_type, FALSE AS biblio_differs, (a_src IS NOT NULL AND a_src = b_src) AS src_same,
+             s, rule_hold, ab_jac, au_ovl,
+             CASE WHEN a_wins THEN a_id ELSE b_id END AS winner_work_id, CASE WHEN a_wins THEN b_id ELSE a_id END AS loser_work_id
+      FROM f),""" + pair_class_tail(TWO_DOI_SIGNALS, TWO_DOI_HOLD).replace("concat('sig:', r.winner_work_id)", "concat('two:', r.winner_work_id)")
+
+TWO_DOI_SIGNALS = """concat_ws('+', concat('g', r.s), CASE WHEN r.ab_jac >= 0.5 THEN 'abstract' END, CASE WHEN r.au_ovl >= 0.5 THEN 'authors' END)"""
+TWO_DOI_HOLD = """CASE WHEN r.rule_hold <> 'pass' THEN r.rule_hold
                 WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
                 WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
                 WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
@@ -1017,7 +1173,9 @@ if MODE == "stage":
                   if HOLD_CITED_OVER is not None else "c0.hold_reason")
     # version_group (oxjob #1581): a held version stays its own work without holding back its siblings, so a key's
     # executable losers get a wave even when another loser of the key is held (2026-10-07: 69,935 losers went waveless)
-    per_loser = CLASS_MODE == "version_group"
+    per_loser = CLASS_MODE in ("version_group", "two_doi_guarded")
+    if CLASS_MODE == "two_doi_guarded":
+        build_two_doi_features()
     spark.sql(f"""CREATE OR REPLACE TABLE {TARGET} AS
                   WITH c0 AS ({class_sql()}),
                   c AS (SELECT c0.* EXCEPT (hold_reason), {cited_hold} AS hold_reason FROM c0),
@@ -1104,7 +1262,7 @@ if MODE == "execute":
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
                          AND a.loser_work_id = r.work_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
-    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint") or PREPRINT_IS_SAME:
+    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint", "two_doi_guarded") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
         ALIASES = f"{TARGET}_wave{WAVE}_aliases"
