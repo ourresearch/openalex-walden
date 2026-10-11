@@ -461,12 +461,13 @@ print(f"Staged {staged:,} docs into {STAGING}")
 # Shared SQL: external-id claims (DOI + PMID, in the URL/term form the API queries — DOI gets
 # the https://doi.org/ prefix exactly like the doc transform's ids map; location doi and pmid
 # are stored in URL form upstream). A DOI is claimed by every work holding its Crossref/DataCite
-# record (locations[].doi, rk 0) and every work whose ids['doi'] it is (rk 1). When several
+# record (a Crossref/DataCite locations[].doi, rk 0) and every work whose ids['doi'] it is (rk 1;
+# a repo/MAG/PubMed location's doi is that work's ids['doi'] since oxjob #1616). When several
 # works claim a key, the record holder wins, then the lowest work id (Casey, oxjob #1605).
 EXT_ID_CLAIMS = f"""
 SELECT l.doi AS ext_id, w.id AS work_id, 0 AS rk
 FROM {WORKS_TABLE} w LATERAL VIEW explode(w.locations) x AS l
-WHERE w.id IS NOT NULL AND l.doi IS NOT NULL
+WHERE w.id IS NOT NULL AND l.doi IS NOT NULL AND l.provenance IN ('crossref', 'datacite')
 UNION ALL
 SELECT CONCAT('https://doi.org/', ids['doi']) AS ext_id, id AS work_id, 1 AS rk
 FROM {WORKS_TABLE} WHERE id IS NOT NULL AND ids['doi'] IS NOT NULL
