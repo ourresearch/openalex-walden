@@ -1146,6 +1146,16 @@ def wave_pred():
     return f"t.wave = {WAVE} AND t.hold_reason IS NULL AND t.executed_at IS NULL"
 
 
+def repoint_pairs(extra=""):
+    """ONE winner per executed loser (a loser under two keys can list two winners; MERGE needs a single source row per
+    target row): the lowest winner id, which is what MIN(id) resolution picks too. A winner merged away since (the
+    nightly preprint merge runs before the morning repoints) hands on to its own latest winner."""
+    return f"""(SELECT t.loser_work_id, MIN(COALESCE(m.winner_work_id, t.winner_work_id)) AS winner_work_id FROM {TARGET} t
+                LEFT JOIN (SELECT loser_work_id, MAX_BY(winner_work_id, merged_at) AS winner_work_id FROM {MERGED}
+                           WHERE source <> '{TARGET}' GROUP BY loser_work_id) m ON m.loser_work_id = t.winner_work_id
+                WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL {extra} GROUP BY t.loser_work_id)"""
+
+
 def print_waves(table):
     for r in rows(f"""SELECT wave, hold_reason, COUNT(*) AS losers, COUNT(DISTINCT ta) AS keys, COUNT(DISTINCT winner_work_id) AS winners,
                              SUM(loser_locations) AS locations, SUM(CASE WHEN loser_cites > 0 THEN 1 ELSE 0 END) AS cited_losers,
@@ -1465,9 +1475,8 @@ if MODE == "repoint_arrays":
     if not spark.catalog.tableExists(AUDIT):
         raise Exception(f"{AUDIT} does not exist: wave {WAVE} was not executed")
     ARR_AUDIT = f"{TARGET}_wave{WAVE}_arrays_audit"
-    pairs = f"""(SELECT t.loser_work_id, MIN(t.winner_work_id) AS winner_work_id FROM {TARGET} t
-                 WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL GROUP BY t.loser_work_id)"""
-    citing = f"""(SELECT DISTINCT id FROM (
+    pairs = repoint_pairs()
+    citing =f"""(SELECT DISTINCT id FROM (
                     SELECT c.paper_id AS id FROM openalex.mid.citation c JOIN {pairs} p ON c.paper_reference_id = p.loser_work_id
                     UNION ALL
                     SELECT a.citing_work_id FROM {REFS_AUDIT} a JOIN {pairs} p ON a.old_id = p.loser_work_id WHERE a.side = 'cited'
@@ -1521,12 +1530,8 @@ if MODE == "repoint_citations":
     if not spark.catalog.tableExists(AUDIT):
         raise Exception(f"{AUDIT} does not exist: wave {WAVE} was not executed")
     # losers that hold pins again (resurrected before the MapWorkIds redirect) are left for the re-execute pass.
-    # ONE winner per loser (a loser under two keys can list two winners and MERGE needs a single source row per
-    # target row): the lowest winner id, which is what MIN(id) resolution picks too.
-    pairs = f"""(SELECT t.loser_work_id, MIN(t.winner_work_id) AS winner_work_id FROM {TARGET} t
-                 WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL
-                   AND NOT EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = t.loser_work_id)
-                 GROUP BY t.loser_work_id)"""
+    pairs = repoint_pairs(f"AND NOT EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = t.loser_work_id)")
+    note(winners_not_live=one(f"SELECT COUNT(DISTINCT p.winner_work_id) AS n FROM {pairs} p LEFT ANTI JOIN {WORKS} w ON w.id = p.winner_work_id")["n"])
     still = one(f"""SELECT COUNT(DISTINCT t.loser_work_id) AS n FROM {TARGET} t WHERE t.wave = {WAVE} AND t.executed_at IS NOT NULL
                     AND EXISTS (SELECT 1 FROM {REGISTRY} r WHERE r.work_id = t.loser_work_id)""")["n"]
     plan = one(f"""SELECT COUNT(*) AS edges, COUNT(DISTINCT r.citing_work_id) AS citing_works, COUNT(DISTINCT r.cited_work_id) AS losers_cited
