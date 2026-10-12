@@ -35,6 +35,7 @@
 # MAGIC - `dry_run`   `wave = N`: losers, keys, winners, pins + map rows to delete, cited losers; samples.
 # MAGIC - `execute`   `confirm = yes`, `wave = N`, outside 04:00-08:00 UTC, never while End 2 End runs: freeze
 # MAGIC               `<target>_wave<N>_audit` (the pins and map rows deleted, in full), the two DELETEs, stamp.
+# MAGIC               Location curations naming a loser are repointed to the winner (`<target>_wave<N>_curations`).
 # MAGIC               Undo: re-INSERT the audit rows (pins + map rows) — the nightly has not run yet.
 # MAGIC - `verify`    the morning after: every audited pin re-pinned; landed on the winner / elsewhere / NULL;
 # MAGIC               losers with 0 pins; losers ledgered.
@@ -178,6 +179,7 @@ REVIEW = f"{TARGET}_cited_review"
 LM = "openalex.works.locations_mapped"
 REGISTRY = "openalex.works.location_work_ids"
 MAP = "openalex.works.work_id_map"
+CURATIONS = "openalex.curations.raw_curations"
 WORKS = "openalex.works.openalex_works"
 REFS = "openalex.works.work_references"
 LEDGER = "openalex.works.deleted_works"
@@ -1262,6 +1264,25 @@ if MODE == "execute":
                          AND a.provenance = r.provenance AND a.native_id_namespace = r.native_id_namespace AND a.native_id = r.native_id
                          AND a.loser_work_id = r.work_id)""").collect()[0].num_affected_rows
     maprows = spark.sql(f"""DELETE FROM {MAP} m WHERE EXISTS (SELECT 1 FROM {AUDIT} a WHERE a.kind = 'map' AND a.loser_work_id = m.id)""").collect()[0].num_affected_rows
+    # a create_new location curation names its work in the curation itself and never passes through MapWorkIds, so it
+    # keeps the loser alive as a title-less stub: repoint the curation and its locations_mapped row to the winner.
+    # Undo: restore old_property_value by id and set the rows' work_id back to loser_work_id.
+    CUR_AUDIT = f"{TARGET}_wave{WAVE}_curations"
+    spark.sql(f"""CREATE TABLE {CUR_AUDIT} AS
+                  SELECT c.id, c.entity_id, c.property_value AS old_property_value, t.loser_work_id, t.winner_work_id, current_timestamp() AS audited_at
+                  FROM {CURATIONS} c JOIN (SELECT DISTINCT t.loser_work_id, t.winner_work_id FROM {TARGET} t WHERE {wave_pred()}) t
+                    ON get_json_object(c.property_value, '$.work_id') = concat('https://openalex.org/W', t.loser_work_id)
+                  WHERE c.entity = 'locations' AND c.create_new = true""")
+    curations = curated_locs = 0
+    if one(f"SELECT COUNT(*) AS n FROM {CUR_AUDIT}")["n"]:
+        curations = spark.sql(f"""MERGE INTO {CURATIONS} c USING {CUR_AUDIT} a ON c.id = a.id
+                                  WHEN MATCHED THEN UPDATE SET c.property_value = replace(c.property_value,
+                                    concat('"https://openalex.org/W', a.loser_work_id, '"'), concat('"https://openalex.org/W', a.winner_work_id, '"'))""").collect()[0].num_updated_rows
+        curated_locs = spark.sql(f"""MERGE INTO {LM} l USING {CUR_AUDIT} a
+                                     ON l.provenance = 'curation' AND l.native_id_namespace = 'openalex_curation'
+                                        AND l.native_id = substring(a.entity_id, locate(':', a.entity_id) + 1) AND l.work_id = a.loser_work_id
+                                     WHEN MATCHED THEN UPDATE SET l.work_id = a.winner_work_id, l.openalex_updated_dt = current_timestamp()""").collect()[0].num_updated_rows
+    note(curations_audit=CUR_AUDIT, curations_repointed=curations, curation_locations_repointed=curated_locs)
     if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint", "two_doi_guarded") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
