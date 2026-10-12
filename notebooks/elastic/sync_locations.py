@@ -237,7 +237,7 @@ if IS_FULL_SYNC:
 print(f"\n=== Processing {CONFIG['table_name']} ===")
 
 doc_columns = [
-    "work_id", "native_id", "native_id_namespace", "provenance", "merge_key",
+    "work_id", "native_id", "native_id_namespace", "provenance", "doi", "merge_key",
     "title", "type", "raw_type", "version", "license", "language",
     "published_date", "created_date", "updated_date",
     "issue", "volume", "first_page", "last_page",
@@ -268,6 +268,10 @@ df = (df
     .filter(F.col("native_id").isNotNull() & F.col("native_id_namespace").isNotNull())
     .filter(F.col("work_id").isNotNull() & (F.col("work_id") > 0))
     .withColumn("id", F.concat(F.col("native_id_namespace"), F.lit(":"), F.col("native_id")))
+    # oxjob #1651: same rule as CreateWorksBase's Crossref/DataCite branch (#1573)
+    .withColumn("doi", F.when(
+        F.col("provenance").isin("crossref", "datacite") & (F.col("native_id_namespace") == "doi"),
+        F.concat(F.lit("https://doi.org/"), F.lower(F.col("native_id")))))
     .withColumn("work_id", F.concat(F.lit("https://openalex.org/W"), F.col("work_id").cast("string")))
     .withColumn("source_id", F.when(F.col("source_id").isNotNull(),
         F.concat(F.lit("https://openalex.org/S"), F.col("source_id").cast("string"))))
