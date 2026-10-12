@@ -249,7 +249,31 @@ doc_columns = [
     "openalex_created_dt", "openalex_updated_dt",
 ]
 
-df = spark.table(CONFIG["table_name"])
+# oxjob #1651: repo/MAG/PubMed locations carry the doi openalex_works gives them (#1616). It changes when another
+# location of the work changes, which doesn't re-stamp this one, so changed ids come from a diff against the last
+# synced snapshot; the snapshot advances only with the watermark.
+NON_RA_DOI_CURRENT = "openalex.works.locations_non_ra_doi_current"
+NON_RA_DOI_SNAPSHOT = "openalex.works.locations_non_ra_doi_snapshot"
+
+spark.sql(f"""CREATE OR REPLACE TABLE {NON_RA_DOI_CURRENT} AS
+SELECT concat(lm.native_id_namespace, ':', lm.native_id) AS id, min(w.doi) AS doi
+FROM (
+  SELECT ow.id AS work_id, l.provenance, l.native_id, l.doi
+  FROM openalex.works.openalex_works ow LATERAL VIEW explode(ow.locations) t AS l
+  WHERE l.doi IS NOT NULL AND l.provenance NOT IN ('crossref', 'datacite')
+) w
+JOIN {CONFIG['table_name']} lm
+  ON lm.work_id = w.work_id AND lm.provenance = w.provenance AND lm.native_id = w.native_id
+WHERE lm.native_id_namespace IS NOT NULL
+GROUP BY 1""")
+non_ra_doi = spark.table(NON_RA_DOI_CURRENT).withColumnRenamed("doi", "non_ra_doi")
+print(f"Non-RA locations with a doi: {non_ra_doi.count():,}")
+
+df = (spark.table(CONFIG["table_name"])
+    .filter(F.col("native_id").isNotNull() & F.col("native_id_namespace").isNotNull())
+    .filter(F.col("work_id").isNotNull() & (F.col("work_id") > 0))
+    .withColumn("id", F.concat(F.col("native_id_namespace"), F.lit(":"), F.col("native_id")))
+)
 
 if not IS_FULL_SYNC:
     watermark = read_watermark()
@@ -259,19 +283,26 @@ if not IS_FULL_SYNC:
     else:
         sync_since = sync_started_at - timedelta(days=FALLBACK_LOOKBACK_DAYS)
         print(f"No watermark for {CONFIG['index_name']}; falling back to {FALLBACK_LOOKBACK_DAYS}-day lookback from {sync_since}")
-    df = df.filter(F.col("openalex_updated_dt") >= F.lit(sync_since.strftime("%Y-%m-%d %H:%M:%S")).cast("timestamp"))
+    if spark.catalog.tableExists(NON_RA_DOI_SNAPSHOT):
+        non_ra_changed = spark.sql(f"""SELECT coalesce(c.id, s.id) AS id
+FROM {NON_RA_DOI_CURRENT} c FULL OUTER JOIN {NON_RA_DOI_SNAPSHOT} s ON c.id = s.id
+WHERE NOT (c.doi <=> s.doi)""")
+    else:
+        non_ra_changed = spark.table(NON_RA_DOI_CURRENT).select("id")
+    print(f"Non-RA doi changes since the last clean sync: {non_ra_changed.count():,}")
+    stamped = F.coalesce(
+        F.col("openalex_updated_dt") >= F.lit(sync_since.strftime("%Y-%m-%d %H:%M:%S")).cast("timestamp"), F.lit(False))
+    df = df.filter(stamped).unionByName(df.filter(~stamped).join(non_ra_changed, "id", "left_semi"))
 
 for c in ["published_date", "created_date", "updated_date", "ingested_at", "openalex_created_dt", "openalex_updated_dt"]:
     df = df.withColumn(c, F.col(c).cast("string"))
 
 df = (df
-    .filter(F.col("native_id").isNotNull() & F.col("native_id_namespace").isNotNull())
-    .filter(F.col("work_id").isNotNull() & (F.col("work_id") > 0))
-    .withColumn("id", F.concat(F.col("native_id_namespace"), F.lit(":"), F.col("native_id")))
+    .join(non_ra_doi, "id", "left")
     # oxjob #1651: same rule as CreateWorksBase's Crossref/DataCite branch (#1573)
     .withColumn("doi", F.when(
         F.col("provenance").isin("crossref", "datacite") & (F.col("native_id_namespace") == "doi"),
-        F.concat(F.lit("https://doi.org/"), F.lower(F.col("native_id")))))
+        F.concat(F.lit("https://doi.org/"), F.lower(F.col("native_id")))).otherwise(F.col("non_ra_doi")))
     .withColumn("work_id", F.concat(F.lit("https://openalex.org/W"), F.col("work_id").cast("string")))
     .withColumn("source_id", F.when(F.col("source_id").isNotNull(),
         F.concat(F.lit("https://openalex.org/S"), F.col("source_id").cast("string"))))
@@ -342,6 +373,8 @@ WHEN NOT MATCHED THEN INSERT (index_name, last_sync_started_at, updated_at)
 VALUES (s.index_name, s.last_sync_started_at, s.updated_at)
 """)
     print(f"Watermark for {CONFIG['index_name']} advanced to {stamp} (UTC)")
+    spark.sql(f"CREATE OR REPLACE TABLE {NON_RA_DOI_SNAPSHOT} AS SELECT * FROM {NON_RA_DOI_CURRENT}")
+    print("Non-RA doi snapshot advanced")
 
 # COMMAND ----------
 
