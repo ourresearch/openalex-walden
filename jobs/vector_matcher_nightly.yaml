@@ -19,16 +19,17 @@ resources:
       tasks:
         # SQL tasks run on their own warehouse (vector-matcher, serverless Medium, 1-2 clusters, CAN_USE for this job's SP only; oxjob #1348):
         # on the shared serverless warehouse Vector_Cards sat in the overload queue and never ran on 1, 8 (HTTP 503) and 10 Oct,
-        # so those nights wrote no vector assignments. Cards takes ~2 min warm, 200 s cold on this warehouse (10 Oct test);
-        # short timeouts + retries keep a stuck queue inside End 2 End's 90-min wait.
+        # so those nights wrote no vector assignments. Cards takes 1-4 min on a normal night, but it reads every work re-stamped since
+        # the last run, so after a big re-stamp night it runs ~15 min (13 Oct: 14.3 min, 2x the files; no queue on this warehouse).
+        # A 15-min timeout killed that run at 14.9 min and the retry cost 15 more, so: 30 min, one retry. End 2 End waits 90 min.
         - task_key: Vector_Cards
           sql_task:
             warehouse_id: a34475cc19d133a4   # vector-matcher (oxjob 1348)
             file:
               path: notebooks/end2end/vector_match/vector_cards.sql
               source: GIT
-          timeout_seconds: 900
-          max_retries: 2
+          timeout_seconds: 1800
+          max_retries: 1
           min_retry_interval_millis: 60000
           retry_on_timeout: true
         - task_key: Vector_Embed
@@ -45,9 +46,32 @@ resources:
             - pypi:
                 package: "sentence-transformers>=3.4"
           timeout_seconds: 3600
+        # g5.12xlarge on-demand capacity runs out in us-east-1 at this hour: 6 Oct (start 30 min), 12 Oct (no node after 24 min,
+        # night lost), 13 Oct (start 31 min). If Vector_Embed fails, the same embed runs on g6.12xlarge (4 x L4), another AWS
+        # capacity pool (oxjob #1348). Re-runs are idempotent: the script overwrites the night's parquet and replaces its
+        # seat_embeddings_daily rows. ALL_FAILED also fires when Cards failed (upstream_failed counts as failed), so --cards-after
+        # makes it exit unless vector_match_cards was written during this run; Vector_Pool then has no success and is skipped.
+        - task_key: Vector_Embed_Fallback
+          depends_on:
+            - task_key: Vector_Embed
+          run_if: ALL_FAILED
+          spark_python_task:
+            python_file: notebooks/end2end/vector_match/nightly_embed_dbx.py
+            source: GIT
+            parameters: ["/Volumes/openalex/authors/oxjob_tmp/oxjob1348", "--date", "{{job.start_time.iso_date}}",
+                         "--cards-table", "openalex.authors.vector_match_cards",
+                         "--out-prefix", "/Volumes/openalex/authors/oxjob_tmp/oxjob1401/seat_emb_daily",
+                         "--cards-after", "{{job.start_time.timestamp_ms}}"]
+          job_cluster_key: vector_gpu_fallback
+          libraries:
+            - pypi:
+                package: "sentence-transformers>=3.4"
+          timeout_seconds: 3600
         - task_key: Vector_Pool
           depends_on:
             - task_key: Vector_Embed
+            - task_key: Vector_Embed_Fallback
+          run_if: AT_LEAST_ONE_SUCCESS
           sql_task:
             warehouse_id: a34475cc19d133a4   # vector-matcher (oxjob 1348); ~3-6 min
             file:
@@ -107,6 +131,29 @@ resources:
             custom_tags:
               ResourceClass: SingleNode
               oxjob: "1401"
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+        - job_cluster_key: vector_gpu_fallback   # Vector_Embed_Fallback only: same as vector_gpu on g6.12xlarge (4 x L4)
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-gpu-ml-scala2.13
+            node_type_id: g6.12xlarge
+            num_workers: 0
+            aws_attributes:
+              zone_id: auto
+              availability: ON_DEMAND
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: "local[*, 4]"
+              spark.driver.memory: 24g
+            spark_env_vars:
+              MLFLOW_TRACKING_URI: file:/tmp/mlruns
+              DISABLE_MLFLOW_INTEGRATION: "TRUE"
+              MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING: "false"
+              USE_TF: "0"
+            custom_tags:
+              ResourceClass: SingleNode
+              oxjob: "1348"
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
         - job_cluster_key: vector_cpu
