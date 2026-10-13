@@ -27,8 +27,9 @@ def main():
     from pyspark.sql import SparkSession
     spark = SparkSession.builder.getOrCreate(); t0 = time.time(); local = f"/tmp/daily_{D8}"
     if CARDS_AFTER:  # the fallback task runs whenever Vector_Embed is failed OR upstream-failed: never embed a stale cards table
-        ms = spark.sql(f"DESCRIBE HISTORY {DAILY} LIMIT 1").selectExpr("unix_millis(timestamp) AS ms").first()["ms"]
-        if ms < CARDS_AFTER: raise SystemExit(f"{DAILY} last written {ms} < this run's start {CARDS_AFTER}: Vector_Cards did not run tonight")
+        # the latest CREATE, not the latest version: predictive optimization OPTIMIZEs / VACUUMs the table at any hour
+        ms = spark.sql(f"DESCRIBE HISTORY {DAILY} LIMIT 50").where("operation LIKE 'CREATE%'").selectExpr("max(unix_millis(timestamp)) AS ms").first()["ms"] or 0
+        if ms < CARDS_AFTER: raise SystemExit(f"{DAILY} last created {ms} < this run's start {CARDS_AFTER}: Vector_Cards did not run tonight")
     spark.table(DAILY).select(*COLS).write.mode("overwrite").parquet(f"file:{local}"); log(f"daily dumped ({time.time()-t0:.0f}s)")
     T = pa.concat_tables([pq.read_table(f) for f in sorted(glob.glob(f"{local}/*.parquet"))]); rows = T.to_pylist(); n = len(rows)
     texts = ["query: " + card(r, "base") for r in rows]; log(f"{n} cards")
