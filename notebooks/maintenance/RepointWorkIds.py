@@ -33,7 +33,9 @@
 
 # COMMAND ----------
 
-dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "revert_cited", "wave_e", "repoint_citations"])
+dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "revert_cited", "wave_e", "repoint_citations",
+                                           "doi_split_stage", "doi_split", "doi_split_verify"])
+dbutils.widgets.text("doi_like", "")
 dbutils.widgets.text("cited_min", "1")
 dbutils.widgets.text("min_keys", "4")
 dbutils.widgets.text("max_keys", "0")
@@ -52,6 +54,7 @@ WAVE = int(dbutils.widgets.get("wave"))
 HOLD_CITED_OVER = int(dbutils.widgets.get("hold_cited_over"))
 TARGET = dbutils.widgets.get("target_table")
 CONFIRM = dbutils.widgets.get("confirm") == "yes"
+DOI_LIKE = dbutils.widgets.get("doi_like").strip().lower()
 REVIEW = f"{TARGET}_cited_review"
 AUDIT = f"{TARGET}_wave{WAVE}_audit"
 REVERT_AUDIT = f"{TARGET}_revert_cited{CITED_MIN}_audit"
@@ -498,3 +501,168 @@ if MODE == "repoint_citations":
     """).collect()[0].num_affected_rows
     print({"edges_repointed": n})
     dbutils.notebook.exit(str({"edges_repointed": n}))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## doi_split — one work per DOI for a DOI family that must never share a work (oxjob #1678)
+# MAGIC
+# MAGIC For DOIs matching `doi_like` (e.g. `10.25582/data.%`, EMSL instrument uploads: each its own work, Casey
+# MAGIC 2026-10-13), a work holding 2+ distinct such DOIs keeps the one it publishes (`openalex_works.doi`, else the
+# MAGIC smallest) and every other DOI leaves with all of its anchors, whatever their provenance. Same correction path
+# MAGIC as `wave_e`: delete the pins and the old work's map rows for those DOIs, and the nightly `MapWorkIds` mints one
+# MAGIC work per DOI (cell 24 partitions by `doi_clean`) or binds to another work already holding the DOI. The title
+# MAGIC tier cannot pull them back: the old work keeps a record of the same class (`title_doi_conflict`).
+# MAGIC
+# MAGIC `doi_split_stage`   build `target_table`; refuses to overwrite a target that has executed rows.
+# MAGIC `doi_split`         dry run; `confirm = yes`, outside 04:00-08:00 UTC: freeze `<target>_audit`, then the DELETEs.
+# MAGIC                     Refuses when a moving DOI has inbound `work_references` edges (no repoint here).
+# MAGIC `doi_split_verify`  the morning after.
+
+# COMMAND ----------
+
+if MODE.startswith("doi_split"):
+    SPLIT_AUDIT = f"{TARGET}_audit"
+    DOI_CLEAN = "regexp_replace({}, '[^a-zA-Z0-9\\./-]', '')"  # MapWorkIds' doi_clean / map_doi_lookup, verbatim
+
+if MODE == "doi_split_stage":
+    if not DOI_LIKE or "%" not in DOI_LIKE:
+        raise Exception("doi_like must be a LIKE pattern, e.g. 10.25582/data.%")
+    if spark.catalog.tableExists(TARGET) and one(f"SELECT COUNT(*) AS n FROM {TARGET} WHERE executed_at IS NOT NULL")["n"]:
+        raise Exception(f"{TARGET} has executed rows; stage into a new target_table")
+    shown_doi = DOI_CLEAN.format("lower(regexp_replace(ow.doi, '^https://doi.org/', ''))")
+    family = DOI_LIKE.rstrip("%")
+    spark.sql(f"""
+      CREATE OR REPLACE TABLE {TARGET} AS
+      WITH live AS (
+        SELECT provenance, native_id_namespace, native_id, NULLIF(merge_key.doi, '') AS anchor_doi,
+               NULLIF({DOI_CLEAN.format('merge_key.doi')}, '') AS doi_clean, substr(title, 1, 120) AS title
+        FROM {LWT}
+        WHERE lower(merge_key.doi) LIKE '{DOI_LIKE}'
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY provenance, native_id_namespace, native_id ORDER BY updated_date DESC) = 1
+      ),
+      a AS (
+        SELECT l.*, r.work_id AS old_work_id, r.work_id_source AS old_work_id_source
+        FROM live l
+        JOIN {REGISTRY} r USING (provenance, native_id_namespace, native_id)
+        WHERE r.work_id IS NOT NULL AND l.doi_clean IS NOT NULL
+      ),
+      w AS (
+        SELECT a.old_work_id, COUNT(DISTINCT a.doi_clean) AS n_dois, COUNT(*) AS n_anchors,
+               COALESCE(MAX(CASE WHEN lower(a.doi_clean) = {shown_doi} THEN a.doi_clean END),
+                        MIN(a.doi_clean)) AS keep_doi,
+               MAX(COALESCE(ow.cited_by_count, 0)) AS cited_by_count
+        FROM a LEFT JOIN {WORKS} ow ON ow.id = a.old_work_id
+        GROUP BY a.old_work_id
+        HAVING COUNT(DISTINCT a.doi_clean) >= 2
+      ),
+      elsewhere AS (
+        SELECT DISTINCT {DOI_CLEAN.format('m.doi')} AS doi_clean, m.id
+        FROM {MAP} m
+        WHERE lower(m.doi) LIKE '%{family}%'
+      )
+      SELECT a.provenance, a.native_id_namespace, a.native_id, a.anchor_doi, a.doi_clean, a.title,
+             a.old_work_id, a.old_work_id_source, w.n_dois, w.n_anchors, w.keep_doi, w.cited_by_count,
+             MIN(e.id) AS doi_resolves_elsewhere,
+             current_timestamp() AS staged_at, CAST(NULL AS TIMESTAMP) AS executed_at
+      FROM a
+      JOIN w ON w.old_work_id = a.old_work_id
+      LEFT JOIN elsewhere e ON e.doi_clean = a.doi_clean AND e.id <> a.old_work_id
+      WHERE a.doi_clean <> w.keep_doi
+      GROUP BY ALL""")
+    for r in rows(f"""
+        SELECT COUNT(*) AS anchors_to_move, COUNT(DISTINCT old_work_id) AS works,
+               COUNT(DISTINCT doi_clean) AS dois_to_move, MAX(n_dois) AS max_dois_on_a_work,
+               COUNT(DISTINCT CASE WHEN doi_resolves_elsewhere IS NOT NULL THEN doi_clean END) AS dois_already_on_another_work,
+               MAX(cited_by_count) AS max_cited
+        FROM {TARGET}"""):
+        print(r)
+    for r in rows(f"""SELECT provenance, native_id_namespace, old_work_id_source, COUNT(*) AS anchors FROM {TARGET}
+                      GROUP BY ALL ORDER BY anchors DESC"""):
+        print("  ", r)
+    for r in rows(f"""SELECT old_work_id, n_dois, n_anchors, keep_doi, cited_by_count, MIN(title) AS title FROM {TARGET}
+                      GROUP BY ALL ORDER BY n_dois DESC LIMIT 30"""):
+        print("  ", r)
+
+# COMMAND ----------
+
+if MODE == "doi_split":
+    scope = f"SELECT * FROM {TARGET} WHERE executed_at IS NULL"
+    plan = one(f"""SELECT COUNT(*) AS pins_to_delete, COUNT(DISTINCT old_work_id) AS works,
+                          COUNT(DISTINCT doi_clean) AS dois_to_move, MAX(cited_by_count) AS max_cited
+                   FROM ({scope})""")
+    maprows = one(f"""SELECT COUNT(*) AS map_rows_to_delete,
+                             SUM(CASE WHEN m.title_author IS NOT NULL THEN 1 ELSE 0 END) AS of_which_carry_a_title
+                      FROM {MAP} m
+                      WHERE m.doi IS NOT NULL
+                        AND EXISTS (SELECT 1 FROM ({scope}) x WHERE x.old_work_id = m.id
+                                    AND x.doi_clean = {DOI_CLEAN.format('m.doi')})""")
+    edges = one(f"""SELECT COUNT(*) AS citation_edges_on_moving_dois FROM openalex.works.work_references r
+                    WHERE EXISTS (SELECT 1 FROM ({scope}) x WHERE x.old_work_id = r.cited_work_id
+                                  AND lower(x.doi_clean) = {DOI_CLEAN.format('lower(r.doi)')})""")
+    print({**plan, **maprows, **edges})
+    if plan["pins_to_delete"] == 0:
+        dbutils.notebook.exit("nothing to split")
+    if edges["citation_edges_on_moving_dois"]:
+        raise Exception("moving DOIs carry citations: split them with wave_e + repoint_citations instead")
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to split")
+    if 4 <= datetime.datetime.utcnow().hour < 8:
+        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run outside 04:00-08:00 UTC")
+    if spark.catalog.tableExists(SPLIT_AUDIT):
+        raise Exception(f"{SPLIT_AUDIT} exists: this split already ran (or clean it up first)")
+
+    spark.sql(f"""CREATE TABLE {SPLIT_AUDIT} AS
+                  SELECT *, current_timestamp() AS audited_at, (SELECT MAX(id) FROM {MAP}) AS max_map_id_at_execute
+                  FROM ({scope})""")
+    n = one(f"SELECT COUNT(*) AS n FROM {SPLIT_AUDIT}")["n"]
+    assert n == plan["pins_to_delete"], f"audit {n} != planned {plan['pins_to_delete']}"
+    pins = spark.sql(f"""DELETE FROM {REGISTRY} r
+                         WHERE EXISTS (SELECT 1 FROM {SPLIT_AUDIT} x
+                                       WHERE x.provenance = r.provenance AND x.native_id_namespace = r.native_id_namespace
+                                         AND x.native_id = r.native_id AND x.old_work_id = r.work_id)""").collect()[0].num_affected_rows
+    ids = spark.sql(f"""DELETE FROM {MAP} m
+                        WHERE m.doi IS NOT NULL
+                          AND EXISTS (SELECT 1 FROM {SPLIT_AUDIT} x WHERE x.old_work_id = m.id
+                                      AND x.doi_clean = {DOI_CLEAN.format('m.doi')})""").collect()[0].num_affected_rows
+    spark.sql(f"""MERGE INTO {TARGET} t
+                  USING (SELECT DISTINCT provenance, native_id_namespace, native_id FROM {SPLIT_AUDIT}) a
+                    ON t.provenance = a.provenance AND t.native_id_namespace = a.native_id_namespace
+                   AND t.native_id = a.native_id AND t.executed_at IS NULL
+                  WHEN MATCHED THEN UPDATE SET t.executed_at = current_timestamp()""")
+    out = dict(audit_table=SPLIT_AUDIT, audited=n, pins_deleted=pins, map_rows_deleted=ids)
+    assert pins == n, f"pins {pins} != audited {n}"
+    print(out)
+    dbutils.notebook.exit(str(out))
+
+# COMMAND ----------
+
+if MODE == "doi_split_verify":
+    if not spark.catalog.tableExists(SPLIT_AUDIT):
+        raise Exception(f"{SPLIT_AUDIT} does not exist: run doi_split first")
+    res = one(f"""
+        WITH j AS (
+          SELECT x.*, r.work_id, r.work_id_source
+          FROM {SPLIT_AUDIT} x
+          LEFT JOIN {REGISTRY} r ON r.provenance = x.provenance AND r.native_id_namespace = x.native_id_namespace
+                                AND r.native_id = x.native_id
+        )
+        SELECT COUNT(*) AS audited,
+               SUM(CASE WHEN work_id IS NULL THEN 1 ELSE 0 END) AS still_pending,
+               SUM(CASE WHEN work_id = old_work_id THEN 1 ELSE 0 END) AS back_on_old_work_BAD,
+               SUM(CASE WHEN work_id > max_map_id_at_execute THEN 1 ELSE 0 END) AS on_a_new_work,
+               SUM(CASE WHEN work_id = doi_resolves_elsewhere THEN 1 ELSE 0 END) AS joined_existing_as_planned,
+               COUNT(DISTINCT doi_clean) AS dois_moved,
+               COUNT(DISTINCT work_id) AS works_now_holding_them,
+               SUM(CASE WHEN work_id_source = 'doi' THEN 1 ELSE 0 END) AS via_doi_tier
+        FROM j""")
+    shared = one(f"""
+        SELECT COUNT(*) AS works_still_holding_2plus_dois, COALESCE(MAX(n), 0) AS max_dois_on_a_work FROM (
+          SELECT r.work_id, COUNT(DISTINCT x.doi_clean) AS n
+          FROM {SPLIT_AUDIT} x
+          JOIN {REGISTRY} r ON r.provenance = x.provenance AND r.native_id_namespace = x.native_id_namespace
+                           AND r.native_id = x.native_id
+          GROUP BY 1 HAVING COUNT(DISTINCT x.doi_clean) > 1)""")
+    out = {**res, **shared}
+    print(out)
+    dbutils.notebook.exit(str(out))

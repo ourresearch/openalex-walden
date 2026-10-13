@@ -18,6 +18,8 @@ resources:
           mode=wave_e   split the identifier-bearing holds: pins + title aliases + id map rows
           mode=repoint_citations  the morning after wave_e: work_references.cited_work_id by DOI
           mode=verify   the morning after: re-pins, none back on the old work, fan-in
+          mode=doi_split_stage / doi_split / doi_split_verify  oxjob #1678: one work per DOI for the
+                        family `doi_like` (e.g. 10.25582/data.%); target_table must be a new table
       max_concurrent_runs: 1
       parameters:
         - name: mode
@@ -38,6 +40,8 @@ resources:
           default: "openalex.works.oxjob880_fanout_target"
         - name: confirm
           default: "no"
+        - name: doi_like
+          default: ""
       tasks:
         - task_key: repoint_work_ids
           notebook_task:
@@ -53,6 +57,7 @@ resources:
               cited_min: "{{job.parameters.cited_min}}"
               target_table: "{{job.parameters.target_table}}"
               confirm: "{{job.parameters.confirm}}"
+              doi_like: "{{job.parameters.doi_like}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
