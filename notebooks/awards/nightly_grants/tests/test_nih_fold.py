@@ -108,8 +108,9 @@ def render(module_path, **kw):
 def test_without_nih_pairs_build_is_byte_identical(extra):
     old = render(BASE / "build_awards.py", extra=extra)
     new = render(ROOT / "lib" / "build_awards.py", extra=extra)
-    probe = [s for s in new.statements if "NIH_PROJECT_YEAR_FOLD' LIMIT 1" in s[1]]
-    assert [s for s in new.statements if s not in probe] == old.statements
+    # the probe is the only statement the fold adds without NIH pairs; drop it on both sides (once the fold is on main, HEAD has it too)
+    def strip(c): return [s for s in c.statements if "NIH_PROJECT_YEAR_FOLD' LIMIT 1" not in s[1]]
+    assert strip(new) == strip(old)
 
 
 def test_with_nih_pairs_every_hook_is_on():
