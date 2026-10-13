@@ -1,0 +1,38 @@
+# Dev rehearsal only. Production cutover and unpausing require a later reviewed change.
+resources:
+  jobs:
+    Create_Or_Update_Awards:
+      name: Awards
+      description: Refresh five explicit award sources with SQL MERGE; preserve unchanged and absent rows.
+      tags: {stage: dev, lane: awards}
+      schedule:
+        quartz_cron_expression: "0 30 0 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED
+      email_notifications:
+        on_failure:
+          - rohan@openalex.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      tasks:
+        - task_key: create_or_update_awards
+          notebook_task:
+            notebook_path: notebooks/awards/CreateOrUpdateAwards
+            source: GIT
+            base_parameters:
+              raw_table: openalex_dev.rohan_lab.gr1009_review_shadow_raw
+              stage: dev
+          environment_key: Default
+          timeout_seconds: 3000
+          max_retries: 0
+      environments:
+        - environment_key: Default
+          spec:
+            client: "2"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true

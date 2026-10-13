@@ -1,0 +1,6 @@
+source,priority,funder_id,s3_prefix,fetch_cadence
+nsf_award_search,3,F4320306076,s3://openalex-ingest/awards/dev-gr1009/nsf/,weekly
+wellcome_trust,22,F4320311904,s3://openalex-ingest/awards/dev-gr1009/wellcome/,monthly
+cordis,27,F4320320300|F4320338438|F4320338448,s3://openalex-ingest/awards/dev-gr1009/european_commission/,manual
+gates_foundation,4,F4320306137,s3://openalex-ingest/awards/dev-gr1009/gates/,manual
+kaken,10,F4320334764,s3://openalex-ingest/awards/kaken/,monthly
