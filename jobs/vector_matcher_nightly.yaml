@@ -48,9 +48,10 @@ resources:
           timeout_seconds: 3600
         # g5.12xlarge on-demand capacity runs out in us-east-1 at this hour: 6 Oct (start 30 min), 12 Oct (no node after 24 min,
         # night lost), 13 Oct (start 31 min); g6.12xlarge was out too in a 13 Oct test. If Vector_Embed fails, the same embed runs
-        # on one L4 (g6.4xlarge), which places easily and embeds a normal night in ~15 min (oxjob #1348). Re-runs are idempotent: the script overwrites the night's parquet and replaces its
-        # seat_embeddings_daily rows. ALL_FAILED also fires when Cards failed (upstream_failed counts as failed), so --cards-after
-        # makes it exit unless vector_match_cards was written during this run; Vector_Pool then has no success and is skipped.
+        # on one L4 (g6.4xlarge), which places easily and embeds a normal night in ~15 min (oxjob #1348). Re-runs are idempotent:
+        # the script overwrites the night's parquet and replaces its seat_embeddings_daily rows. ALL_FAILED also fires when Cards
+        # failed (upstream_failed counts as failed), so --cards-after makes it exit unless vector_match_cards was created during
+        # this run; Vector_Pool then has no success and is skipped.
         - task_key: Vector_Embed_Fallback
           depends_on:
             - task_key: Vector_Embed
