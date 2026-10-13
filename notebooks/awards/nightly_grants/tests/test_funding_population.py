@@ -128,3 +128,20 @@ def test_held_pair_does_not_reduce_population_and_elected_amount_stays_convertib
     c = fixture(); c.config['nih_fold']={'amount':'elected'}
     c.sql('UPDATE resolve_candidate SET stable_id=owner_id WHERE owner_id=981')
     assert fp.expected(c,'usd')[0]['awards_with_amount_usd']==981
+
+
+def test_expected_population_cannot_shrink_to_match_a_broken_candidate():
+    c = fixture(); c.nih = False
+    c.sql('DROP TABLE awards_candidate')
+    # Expected quantities are derived from yesterday and the checked resolver only.
+    assert fp.expected(c,'orgs')[0]['awards_with_recipients']==980
+    with pytest.raises(RuntimeError,match='RECIPIENT_ORG_COUNT_DROP'):
+        fp.gate(c,'orgs','RECIPIENT_ORG_COUNT_DROP','awards_with_recipients',900,.01)
+
+
+def test_geography_fold_reapplies_basis_priority_before_counting_memberships():
+    c = fixture(); c.nih = False
+    c.sql("""UPDATE previous_api_v SET recipient_countries_full=[{'country_code':'KE','share':1.0,
+      'amount_usd':100.0,'basis':'organisation_location'}] WHERE id>980""")
+    # Each target's funder-reported US location wins over the loser's org location.
+    assert fp.expected(c,'geography')[0]['recipient_country_memberships']==980
