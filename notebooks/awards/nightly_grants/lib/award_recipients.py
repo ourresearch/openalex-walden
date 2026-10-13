@@ -22,6 +22,7 @@ import csv
 from pathlib import Path
 
 import award_keys
+import funding_population
 import award_recipient_orgs
 
 KINDS = ("country", "region", "organisation")
@@ -166,8 +167,8 @@ def run(c):
     has_prev = "recipient_countries" in award_keys.columns(c, "previous_api_v")
     prev = (award_keys.one(c, """SELECT count_if(size(recipient_countries)>0) countries,count_if(size(recipient_regions)>0) regions,
         coalesce(sum(size(recipient_countries)),0) members FROM previous_api_v""", countries=0, regions=0, members=0) if has_prev else None)
-    award_keys.drop_gate(c, "RECIPIENT_COUNT_DROP", "awards_with_recipient_countries", now, fuse, int(prev.countries) if prev else None)
-    award_keys.drop_gate(c, "RECIPIENT_REGIONS_DROP", "awards_with_recipient_regions", regions, fuse, int(prev.regions) if prev else None)
-    award_keys.drop_gate(c, "RECIPIENT_MEMBERSHIP_DROP", "recipient_country_memberships", members, fuse, int(prev.members) if prev else None)
+    funding_population.gate(c, "geography", "RECIPIENT_COUNT_DROP", "awards_with_recipient_countries", now, fuse, int(prev.countries) if prev else None)
+    funding_population.gate(c, "geography", "RECIPIENT_REGIONS_DROP", "awards_with_recipient_regions", regions, fuse, int(prev.regions) if prev else None)
+    funding_population.gate(c, "geography", "RECIPIENT_MEMBERSHIP_DROP", "recipient_country_memberships", members, fuse, int(prev.members) if prev else None)
 
     award_recipient_orgs.check_counts(c, fuse)

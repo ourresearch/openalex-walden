@@ -10,6 +10,7 @@ from pathlib import Path
 import csv
 from award_country import sql_string
 import award_keys
+import funding_population
 
 EMPTY_ANSWERS = "SELECT CAST(NULL AS STRING) raw_affiliation_string,CAST(NULL AS ARRAY<BIGINT>) institution_ids WHERE false"
 
@@ -98,4 +99,4 @@ def check_counts(c, fuse):
         ('RECIPIENT_ORG_COUNT_DROP','awards_with_recipients',now,prev.awards if prev else None),
         ('RECIPIENT_ORG_MATCH_DROP','awards_with_matched_recipients',matched,prev.matched if prev else None),
         ('RECIPIENT_ORG_MEMBERSHIP_DROP','recipient_org_memberships',members,prev.members if prev else None)):
-        award_keys.drop_gate(c,gate,key,n,fuse,before)
+        funding_population.gate(c, "orgs",gate,key,n,fuse,before)

@@ -32,6 +32,7 @@ import re
 from pathlib import Path
 
 import award_keys
+import funding_population
 
 DEFAULT_COLUMNS = ("provenance", "is_research", "basis", "tier", "recipient_test")
 RECIPIENT_RESEARCH_TYPES = ("education", "facility")
@@ -243,6 +244,6 @@ def run(c, relation="awards_candidate"):
     c.counts["research_true"] = true_now
     has_prev = "research_scope" in award_keys.columns(c, "previous_api_v")
     prev = award_keys.one(c, "SELECT count_if(research_scope.is_research) t,count(*) n FROM previous_api_v WHERE research_scope IS NOT NULL", n=0, t=0) if has_prev else None
-    award_keys.drop_gate(c, "RESEARCH_SCOPE_DROP", "awards_with_research_scope", now, fuse, int(prev.n) if prev else None)
+    funding_population.gate(c, "research", "RESEARCH_SCOPE_DROP", "awards_with_research_scope", now, fuse, int(prev.n) if prev else None)
     # A reference-file edit that empties a research feed shows here; an intended re-policy runs with research_drop_fuse raised.
-    award_keys.drop_gate(c, "RESEARCH_TRUE_DROP", "research_true", true_now, fuse, int(prev.t) if prev else None)
+    funding_population.gate(c, "research", "RESEARCH_TRUE_DROP", "research_true", true_now, fuse, int(prev.t) if prev else None)

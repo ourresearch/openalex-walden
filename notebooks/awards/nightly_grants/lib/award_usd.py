@@ -14,6 +14,7 @@ number of awards converted, per basis (a lost daily table would otherwise downgr
 per currency; and running with no rate input once USD amounts have been published. Rollback: `clear_funding_flows` (award_keys).
 """
 import award_keys
+import funding_population
 
 MAX_CARRY_DAYS = 10
 EMPTY_DAILY = "SELECT CAST(NULL AS DATE) rate_date,CAST(NULL AS STRING) currency,CAST(NULL AS DOUBLE) usd_per_unit WHERE false"
@@ -82,12 +83,12 @@ def run(c):
     fuse = float(c.config.get("usd_drop_fuse", 0.01))
     has_prev = "amount_usd" in award_keys.columns(c, "previous_api_v")
     prev_total = int(award_keys.one(c, "SELECT count(*) n FROM previous_api_v WHERE amount_usd IS NOT NULL", n=0).n) if has_prev else None
-    award_keys.drop_gate(c, "USD_COVERAGE_DROP", "awards_with_amount_usd", now, fuse, prev_total)
+    funding_population.gate(c, "usd", "USD_COVERAGE_DROP", "awards_with_amount_usd", now, fuse, prev_total)
     # Per basis: a lost or stale daily table would move awards from daily_rate to annual_average with the total unchanged.
     prev_basis = ({row.basis: int(row.n) for row in c.sql("SELECT amount_usd_basis basis,count(*) n FROM previous_api_v WHERE amount_usd_basis IS NOT NULL GROUP BY 1").collect()}
                   if has_prev else {})
     for basis in BASES:
-        award_keys.drop_gate(c, "USD_BASIS_DROP_" + basis, "amount_usd_" + basis, c.counts.get("amount_usd_" + basis, 0), fuse, prev_basis.get(basis) if has_prev else None)
+        funding_population.gate(c, "usd", "USD_BASIS_DROP_" + basis, "amount_usd_" + basis, c.counts.get("amount_usd_" + basis, 0), fuse, prev_basis.get(basis) if has_prev else None)
     # Per currency: one currency's series going missing is invisible in the total. Baseline: yesterday's column, else last night's
     # recorded counts, else the frozen bootstrap; every currency any baseline knows must still convert tonight (fail closed).
     for row in c.sql(f"SELECT currency,count(*) n FROM {r}awards_candidate WHERE amount_usd IS NOT NULL GROUP BY 1").collect():
@@ -99,4 +100,4 @@ def run(c):
         known |= set(prev_ccy)
         c.require(known, "USD_CURRENCY_BASELINE_REQUIRED: no amount_usd_currency_* count in yesterday's table, last night's run or bootstrap_counts")
         for ccy in sorted(known):
-            award_keys.drop_gate(c, "USD_CURRENCY_DROP_" + ccy, "amount_usd_currency_" + ccy, c.counts.get("amount_usd_currency_" + ccy, 0), fuse, prev_ccy.get(ccy))
+            funding_population.gate(c, "usd", "USD_CURRENCY_DROP_" + ccy, "amount_usd_currency_" + ccy, c.counts.get("amount_usd_currency_" + ccy, 0), fuse, prev_ccy.get(ccy))
