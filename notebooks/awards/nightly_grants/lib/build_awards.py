@@ -1,6 +1,7 @@
 """CreateAwards identity + projection, ported from the deployed stableid-r1-prod lib (build/deployed/lib/build_awards.py).
 Only the release wrapper and dead paths are removed; see build/PORT-NOTES.md for each edit."""
 from stable_award_ids import compact, generic_sql, ident, key_match, literal, norm_doi_sql, short
+import nih_fold
 
 PUBLIC_DOI_CLASS='PUBLIC_DOI_EQUALS_TARGET_DOI'
 # 10-01: a public paper-only grant (shell) retired into a public shell twin of the same funder whose number differs only in
@@ -31,7 +32,7 @@ def public_shell_filter(c,mm):
       UNION SELECT loser_id,target_id FROM {r}public_shell_pairs""")
     c.artifact('direct_ids',f"SELECT DISTINCT stable_id FROM {r}resolved_observations WHERE is_direct")
     c.artifact('public_shell_numbers',f"""SELECT x.loser_id,count(DISTINCT o.nk) keys,min(o.nk) nk,bool_or(coalesce(n.is_weak,true)) any_weak
-      FROM {r}public_shell_members x JOIN {r}resolved_observations o ON o.stable_id=x.member_id
+      FROM {r}public_shell_members x JOIN {nih_fold.unpinned(c,'resolved_observations')} o ON o.stable_id=x.member_id
       LEFT JOIN {r}normalization_lookup n ON n.funder_id<=>o.funder_id AND n.award_key<=>o.award_key AND n.is_direct=o.is_direct
       GROUP BY x.loser_id""")
     c.artifact('public_shell_held',f"""SELECT DISTINCT loser_id,reason FROM (
@@ -40,8 +41,8 @@ def public_shell_filter(c,mm):
         UNION ALL SELECT x.loser_id,'NOT_SERVED' FROM {r}public_shell_members x LEFT ANTI JOIN awards_v a ON a.id=x.member_id
         UNION ALL SELECT m.loser_id,'NUMBER' FROM {r}public_shell_pairs m LEFT JOIN {r}public_shell_numbers n USING(loser_id)
           WHERE NOT COALESCE(n.keys=1 AND length(n.nk)>=4 AND n.nk RLIKE '[0-9]' AND NOT n.any_weak,false)
-        UNION ALL SELECT m.loser_id,'FUNDER' FROM {r}public_shell_pairs m LEFT JOIN {r}ownership_plan a ON a.stable_id=m.loser_id
-          LEFT JOIN {r}ownership_plan b ON b.stable_id=m.target_id WHERE a.funder_id IS NULL OR NOT(a.funder_id<=>b.funder_id)
+        UNION ALL SELECT m.loser_id,'FUNDER' FROM {r}public_shell_pairs m LEFT JOIN {nih_fold.plan_for_matching(c)} a ON a.stable_id=m.loser_id
+          LEFT JOIN {nih_fold.plan_for_matching(c)} b ON b.stable_id=m.target_id WHERE a.funder_id IS NULL OR NOT(a.funder_id<=>b.funder_id)
         UNION ALL SELECT m.loser_id,'TARGET_RETIRING' FROM {r}public_shell_pairs m JOIN {r}retirements_rule t ON t.old_id=m.target_id)""")
     held=c.count('public_shell_held',r+'public_shell_held'); pairs=c.count('public_shell_pairs',r+'public_shell_pairs')
     for row in c.sql(f"SELECT reason,count(DISTINCT loser_id) n FROM {r}public_shell_held GROUP BY 1").collect():
@@ -199,8 +200,9 @@ def plan(c):
       CASE WHEN bool_or(b.is_direct) THEN 'DIRECT' ELSE max(e.entity_kind) END entity_kind
       FROM {r}bindings b JOIN {r}entities_allocated e USING(stable_id)
       LEFT JOIN {r}funder_canon f ON f.funder_id=b.source_funder_id GROUP BY b.stable_id""")
+    nih_fold.pin_ownership(c)
     c.zero('ENTITY_FUNDER_AMBIGUOUS',f"""SELECT b.stable_id FROM {r}bindings b LEFT JOIN {r}funder_canon f
-      ON f.funder_id=b.source_funder_id GROUP BY b.stable_id HAVING count(DISTINCT to_json(named_struct('f',f.canonical_funder_id),map('ignoreNullFields','false')))>1""")
+      ON f.funder_id=b.source_funder_id{nih_fold.exempt_survivors(c,'b')} GROUP BY b.stable_id HAVING count(DISTINCT to_json(named_struct('f',f.canonical_funder_id),map('ignoreNullFields','false')))>1""")
     # A native hit proves the current observation's continuity. Other direct changes need row proof.
     c.artifact('ownership_changes',f"""SELECT b.observation_key,b.stable_id,e.funder_id old_funder_id,f.canonical_funder_id new_funder_id,
       b.namespace,b.source_record_id,(b.is_direct OR e.entity_kind='DIRECT') is_direct,l.native_hit
@@ -210,7 +212,7 @@ def plan(c):
       LEFT JOIN {r}funder_canon fc ON fc.funder_id=o.old_funder_id
       LEFT ANTI JOIN continuity_v m ON m.new_observation_key=o.observation_key AND m.stable_id=o.stable_id
       AND m.old_funder_id <=> o.old_funder_id AND m.new_funder_id <=> o.new_funder_id
-      AND m.old_observation_key IS NOT NULL AND m.evidence_uri IS NOT NULL AND m.producer_code_sha IS NOT NULL
+      AND m.old_observation_key IS NOT NULL AND m.evidence_uri IS NOT NULL AND m.producer_code_sha IS NOT NULL{nih_fold.exempt_survivors(c,'o')}
       WHERE o.is_direct AND o.native_hit IS NULL AND NOT(fc.canonical_funder_id <=> o.new_funder_id)""")
     # D0 normalization is a pinned lookup computed from captured function definitions.
     lookup = 'SELECT DISTINCT canonical_funder_id AS funder_id, award_key, is_direct, sharp_key, sharp_eligible, is_weak FROM normalization_v'
@@ -218,8 +220,8 @@ def plan(c):
         lookup += ' UNION SELECT funder_id,award_key,is_direct,sharp_key,sharp_eligible,is_weak FROM normalization_work_v'
     c.artifact('normalization_lookup',lookup)
     c.zero('NORMALIZATION_UNIQUE',f'SELECT funder_id,award_key,is_direct FROM {r}normalization_lookup GROUP BY ALL HAVING count(*)<>1')
-    c.zero('NORMALIZATION_COVERAGE',f"""SELECT b.observation_key FROM {r}bindings b JOIN {r}ownership_plan e USING(stable_id)
-      LEFT ANTI JOIN {r}normalization_lookup n ON n.funder_id <=> e.funder_id AND n.award_key <=> b.award_key AND n.is_direct=b.is_direct""")
+    c.zero('NORMALIZATION_COVERAGE',f"""SELECT b.observation_key FROM {r}bindings b JOIN {r}ownership_plan e USING(stable_id){nih_fold.lookup_join(c,'b')}
+      LEFT ANTI JOIN {r}normalization_lookup n ON n.funder_id <=> {nih_fold.norm_funder(c,'e')} AND n.award_key <=> b.award_key AND n.is_direct=b.is_direct""")
     # op16: NARROW. The wide raw `payload` struct must not travel through these joins (17.8M rows x 24 nested columns hung d01/d01m
     # and exceeded 10 min even on the SQL warehouse). Payload is fetched once, by observation_key, only for elected metadata rows.
     # op21 (F21): TWO STEPS. When one statement joined bindings, ownership_plan and normalization_lookup, the optimizer paired
@@ -228,17 +230,17 @@ def plan(c):
     # lookup join a single two-table equi-join on the full (funder_id, award_key, is_direct) key. Rule: a join predicate must never
     # reference two different earlier relations; materialize the pair instead.
     c.artifact('bound_observations',f"""SELECT b.observation_key,b.stable_id,b.staging_id,b.source_funder_id,b.award_key,b.namespace,
-      b.source_record_id,b.is_direct,b.priority,b.family,e.funder_id
+      b.source_record_id,b.is_direct,b.priority,b.family,e.funder_id{(','+nih_fold.norm_funder(c,'e')+' lookup_funder_id') if getattr(c,'nih',False) else ''}
       FROM (SELECT observation_key,stable_id,staging_id,source_funder_id,award_key,namespace,source_record_id,is_direct,priority,family
-              FROM {r}bindings) b JOIN {r}ownership_plan e USING(stable_id)""")
+              FROM {r}bindings) b JOIN {r}ownership_plan e USING(stable_id){nih_fold.lookup_join(c,'b')}""")
     c.zero('BOUND_OBSERVATIONS_COMPLETE',f'SELECT b.observation_key FROM {r}bindings b LEFT ANTI JOIN {r}bound_observations o USING(observation_key)')
     c.artifact('resolved_observations',f"""SELECT b.observation_key,b.stable_id,b.staging_id,b.source_funder_id,b.award_key,b.namespace,
       b.source_record_id,b.is_direct,b.priority,b.family,b.funder_id,{generic_sql('b.award_key')} nk,
       CASE WHEN n.sharp_eligible AND (b.is_direct OR NOT n.is_weak) THEN n.sharp_key END sk
       FROM {r}bound_observations b
-      JOIN {r}normalization_lookup n ON n.funder_id <=> b.funder_id AND n.award_key <=> b.award_key AND n.is_direct=b.is_direct""")
-    c.artifact('shell_targets',f"""WITH direct AS (SELECT DISTINCT stable_id,funder_id,nk,sk FROM {r}resolved_observations WHERE is_direct),
-      shells AS (SELECT * FROM {r}resolved_observations WHERE NOT is_direct),
+      JOIN {r}normalization_lookup n ON n.funder_id <=> b.{'lookup_funder_id' if getattr(c,'nih',False) else 'funder_id'} AND n.award_key <=> b.award_key AND n.is_direct=b.is_direct""")
+    c.artifact('shell_targets',f"""WITH direct AS (SELECT DISTINCT stable_id,funder_id,nk,sk FROM {nih_fold.unpinned(c,'resolved_observations')} WHERE is_direct),
+      shells AS (SELECT * FROM {nih_fold.unpinned(c,'resolved_observations')} WHERE NOT is_direct),
       generic AS (SELECT s.observation_key,count(DISTINCT d.stable_id) n,min(d.stable_id) target_id FROM shells s
         JOIN direct d ON s.funder_id=d.funder_id AND s.nk=d.nk WHERE s.nk IS NOT NULL GROUP BY s.observation_key),
       sharp AS (SELECT s.observation_key,count(DISTINCT d.stable_id) n,min(d.stable_id) target_id FROM shells s
@@ -265,7 +267,7 @@ def plan(c):
         # SHELL_TO_SERVED_SHELL_SAME_NUMBER: shell loser -> target that is served today (pinned awards) but has no direct observation.
         DOI_CLASS,SHELL_CLASS='DOI_EQUALS_TARGET_DOI','SHELL_TO_SERVED_SHELL_SAME_NUMBER'
         doi_classes=f"({literal(DOI_CLASS)},{literal(PUBLIC_DOI_CLASS)})"
-        c.zero('MIGRATION_EVIDENCE_CLASS',f"SELECT * FROM {mm} WHERE NOT COALESCE(evidence_class IN ('EXACT_FUNDER_NUMBER_SINGLE_TARGET_AGREEING',{literal(DOI_CLASS)},{literal(SHELL_CLASS)}) OR evidence_class IN {tuple_sql(PUBLIC_TWIN_CLASSES)},false)")
+        c.zero('MIGRATION_EVIDENCE_CLASS',f"SELECT * FROM {mm} WHERE NOT COALESCE(evidence_class IN ('EXACT_FUNDER_NUMBER_SINGLE_TARGET_AGREEING',{literal(DOI_CLASS)},{literal(SHELL_CLASS)}) OR evidence_class IN {tuple_sql(nih_fold.with_class(c,PUBLIC_TWIN_CLASSES))},false)")
         # op23: the manifest is idempotent. A pair whose loser is ALREADY REDIRECTED (by an earlier release, accepted or dev-abandoned after
         # APPLYING) is 'applied': it must already resolve to the manifest target (else MIGRATION_APPLIED_MISMATCH) and is excluded from the
         # loser/target gates and from this release's retirements. Only 'pending' pairs are retired here.
@@ -274,10 +276,11 @@ def plan(c):
         c.artifact('migration_pending',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}migration_applied a ON a.loser_id=m.loser_id")
         mm=f'{r}migration_pending'
         mm=public_shell_filter(c,mm)   # 10-01: held pairs never reach the retirement gates
+        mm=nih_fold.filter(c,mm)   # NIH pairs failing their proof are held (nih_fold.py)
         mm=uk_lineage.filter(c,mm)
         # loser: allocated by a registry release (origin NEW, id >= 9e9), never published, an ACTIVE entity, bound in this release, no NATIVE key
         c.zero('MIGRATION_LOSER_NEVER_PUBLIC',f"""SELECT m.* FROM {mm} m LEFT JOIN {r}entities_allocated e ON e.stable_id=m.loser_id
-          WHERE m.evidence_class NOT IN {tuple_sql(PUBLIC_TWIN_CLASSES)} AND (e.stable_id IS NULL OR m.loser_id<9000000000 OR NOT COALESCE(e.origin='NEW',false) OR e.first_published_release IS NOT NULL OR e.first_published_at IS NOT NULL)""")
+          WHERE m.evidence_class NOT IN {tuple_sql(nih_fold.with_class(c,PUBLIC_TWIN_CLASSES))} AND (e.stable_id IS NULL OR m.loser_id<9000000000 OR NOT COALESCE(e.origin='NEW',false) OR e.first_published_release IS NOT NULL OR e.first_published_at IS NOT NULL)""")
         c.zero('MIGRATION_LOSER_ACTIVE_ENTITY',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}entities_allocated e ON e.stable_id=m.loser_id AND e.status='ACTIVE'")
         c.zero('MIGRATION_LOSER_BOUND',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}bindings b ON b.stable_id=m.loser_id")
         c.zero('MIGRATION_LOSER_NO_NATIVE',f"SELECT m.* FROM {mm} m JOIN {p}award_keys k ON k.stable_id=m.loser_id AND k.key_type='NATIVE' WHERE m.evidence_class NOT IN ({literal(DOI_CLASS)},{literal(PUBLIC_DOI_CLASS)},{literal(uk_lineage.LINEAGE_TWIN_CLASS)})")
@@ -295,13 +298,13 @@ def plan(c):
         # target: independently ACTIVE, bound, with a direct observation, same canonical funder (both sides must be present in the plan)
         c.zero('MIGRATION_TARGET_ACTIVE',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}entities_allocated e ON e.stable_id=m.target_id AND e.status='ACTIVE'")
         c.zero('MIGRATION_TARGET_BOUND',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}bindings b ON b.stable_id=m.target_id")
-        c.zero('MIGRATION_TARGET_DIRECT',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}resolved_observations b ON b.stable_id=m.target_id AND b.is_direct WHERE m.evidence_class NOT IN ({literal(SHELL_CLASS)},{literal(PUBLIC_SHELL_CLASS)})")
+        c.zero('MIGRATION_TARGET_DIRECT',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}resolved_observations b ON b.stable_id=m.target_id AND b.is_direct WHERE m.evidence_class NOT IN {tuple_sql(nih_fold.with_class(c,(SHELL_CLASS,PUBLIC_SHELL_CLASS)))}")
         # shell-class proof: loser is a SHELL, target is served today (pinned awards relation) and is not retired by the rule in this release.
         c.zero('MIGRATION_SHELL_TARGET_SERVED',f"""SELECT m.* FROM {mm} m LEFT JOIN awards_v a ON a.id=m.target_id LEFT JOIN {r}ownership_plan o ON o.stable_id=m.loser_id
           WHERE m.evidence_class={literal(SHELL_CLASS)} AND NOT COALESCE(a.id IS NOT NULL AND o.entity_kind='SHELL',false)""")
         c.zero('MIGRATION_SHELL_TARGET_RETIRED',f"SELECT m.* FROM {mm} m JOIN {r}retirements_rule t ON t.old_id=m.target_id WHERE m.evidence_class={literal(SHELL_CLASS)}")
         c.zero('MIGRATION_SAME_FUNDER',f"""SELECT m.* FROM {mm} m LEFT JOIN {r}ownership_plan a ON a.stable_id=m.loser_id LEFT JOIN {r}ownership_plan b ON b.stable_id=m.target_id
-          WHERE a.stable_id IS NULL OR b.stable_id IS NULL OR a.funder_id IS NULL OR NOT (a.funder_id <=> b.funder_id)""")
+          WHERE {nih_fold.exempt_where(c,'a.stable_id IS NULL OR b.stable_id IS NULL OR a.funder_id IS NULL OR NOT (a.funder_id <=> b.funder_id)',nih_fold.pair_same_funder_exempt(c,'m'))}""")
         c.zero('MIGRATION_CONFLICT_WITH_RULE',f"SELECT m.* FROM {mm} m JOIN {r}retirements_rule t ON t.old_id=m.loser_id WHERE t.canonical_id<>m.target_id")
         c.artifact('retirements_manifest',f"SELECT DISTINCT loser_id old_id,target_id canonical_id,evidence_class FROM {mm}")
         # provenance kept separately; the operational set is deduplicated on (old_id, canonical_id)
@@ -313,9 +316,9 @@ def plan(c):
     # composition: no retirement may target another retiring entity (bindings_final applies exactly one hop)
     c.zero('RETIREMENT_CHAIN',f'SELECT r.* FROM {r}retirements r JOIN {r}retirements t ON t.old_id=r.canonical_id')
     c.zero('RETIREMENT_UNIQUE',f'SELECT old_id FROM {r}retirements GROUP BY old_id HAVING count(DISTINCT canonical_id)<>1')
-    c.zero('RETIREMENT_SAME_FUNDER',f'SELECT t.* FROM {r}retirements t JOIN {r}ownership_plan a ON a.stable_id=t.old_id JOIN {r}ownership_plan b ON b.stable_id=t.canonical_id WHERE a.funder_id IS NULL OR a.funder_id<>b.funder_id')
+    c.zero('RETIREMENT_SAME_FUNDER',f'SELECT t.* FROM {r}retirements t JOIN {r}ownership_plan a ON a.stable_id=t.old_id JOIN {r}ownership_plan b ON b.stable_id=t.canonical_id WHERE {nih_fold.exempt_where(c,'a.funder_id IS NULL OR a.funder_id<>b.funder_id',nih_fold.same_funder_exempt(c,'t'))}')
     # op24: a manifest pair of the shell class is the one sanctioned retirement into a non-direct (served) target.
-    shell_exempt=(f" LEFT ANTI JOIN {r}retirements_manifest s ON s.old_id=t.old_id AND s.canonical_id=t.canonical_id AND s.evidence_class IN ('SHELL_TO_SERVED_SHELL_SAME_NUMBER',{literal(PUBLIC_SHELL_CLASS)})"
+    shell_exempt=(f" LEFT ANTI JOIN {r}retirements_manifest s ON s.old_id=t.old_id AND s.canonical_id=t.canonical_id AND s.evidence_class IN {tuple_sql(nih_fold.with_class(c,('SHELL_TO_SERVED_SHELL_SAME_NUMBER',PUBLIC_SHELL_CLASS)))}"
                   if c.has_extra('migration_manifest') else '')
     c.zero('RETIREMENT_DIRECT_TARGET',f"SELECT t.* FROM {r}retirements t LEFT ANTI JOIN {r}resolved_observations b ON b.stable_id=t.canonical_id AND b.is_direct"+shell_exempt)
     c.artifact('bindings_final',f"SELECT b.* EXCEPT(stable_id),b.stable_id original_terminal_id,coalesce(t.canonical_id,b.stable_id) stable_id FROM {r}bindings b LEFT JOIN {r}retirements t ON t.old_id=b.stable_id")
@@ -461,6 +464,7 @@ def project(c):
       FROM {metadata} m JOIN {r}state_candidate e USING(stable_id)
       LEFT JOIN funders_v f ON f.funder_id=e.funder_id LEFT JOIN {r}award_aggregates a USING(stable_id)
       LEFT JOIN topics_v t ON t.award_id=m.stable_id WHERE e.status='ACTIVE'""")
+    nih_fold.project(c)                           # NIH project record: number, title/people, dates, amount (no-op without NIH pairs)
     c.artifact('aliases_candidate',f"""SELECT k.staging_id old_id,k.funder_id,k.award_key old_funder_award_id,
       k.stable_id old_stable_id,x.stable_id canonical_stable_id,x.stable_id canonical_id,
       a.funder_id canonical_funder_id,lower(a.funder_award_id) canonical_funder_award_id,

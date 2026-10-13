@@ -6,6 +6,7 @@ Release 1 reproduces it on its ACTIVE candidates (links only; identity, keys, re
 pinned legacy aliases + release aliases third, and a SHELL whose key legacy only knew through an alias (a collapsed shell, minted here as
 its own entity) last — so papers keep linking to the family's newest-year record while the shell stays an ACTIVE public entity."""
 DEPOSITED = "('crossref_work_funders','crossref_work.grants','crossref_work','europepmc_work_funders','datacite_work_funders')"   # legacy is_registry = provenance NOT IN
+import nih_fold
 from stable_award_ids import generic_sql
 
 # source view, work field, number field, explode, priority, sharp eligibility, registry mode
@@ -61,7 +62,7 @@ def run(c):
     # legacy eligibility (awards_al joins awards_base ON id AND funder_id, and awards_base excludes NULL numbers): the resolved canonical must
     # be served under the SAME canonical funder with a funder_award_id; everything else is recorded, not linked.
     c.artifact('legacy_aliases',f"""SELECT DISTINCT t.old_id,t.funder_id,t.award_key,t.stable_id FROM {r}legacy_alias_targets t
-      JOIN {r}awards_candidate d ON d.id=t.stable_id WHERE d.funder_id <=> t.funder_id AND d.funder_award_id IS NOT NULL""")
+      JOIN {r}awards_candidate d ON d.id=t.stable_id{nih_fold.unpinned_owner_join(c,'t')} WHERE {nih_fold.owner_funder(c,'d')} <=> t.funder_id AND d.funder_award_id IS NOT NULL""")
     c.artifact('legacy_alias_unresolved',f"""SELECT al.*,'NOT_ACTIVE' reason FROM aliases_v al LEFT ANTI JOIN {r}resolve_candidate x ON x.owner_id=al.canonical_id AND x.status='ACTIVE'
       UNION ALL SELECT al.*,'INELIGIBLE_FUNDER_OR_NUMBER' FROM aliases_v al JOIN {r}legacy_alias_targets t ON t.old_id=al.old_id AND t.alias_funder_id=al.funder_id AND t.award_key=lower(al.old_funder_award_id)
       LEFT ANTI JOIN {r}legacy_aliases l ON l.old_id=t.old_id AND l.funder_id <=> t.funder_id AND l.award_key <=> t.award_key""")
@@ -69,7 +70,7 @@ def run(c):
     # alias's canonical funder with the collapsed spelling. Legacy never served that record, so its keys are reachable ONLY through the
     # alias: the observation is EXCLUDED from own-key candidates (any entity kind — legacy collapsed by priority, not by shell-ness);
     # an independently served spelling of the same entity keeps its own keys.
-    c.artifact('collapsed_observations',f"""SELECT DISTINCT o.observation_key,o.stable_id FROM {r}resolved_observations o
+    c.artifact('collapsed_observations',f"""SELECT DISTINCT o.observation_key,o.stable_id FROM {nih_fold.unpinned(c,'resolved_observations')} o
       JOIN {r}legacy_aliases l ON l.old_id=o.staging_id AND l.funder_id <=> o.funder_id AND l.award_key <=> o.award_key""")
     # op26: every candidate carries its legacy tier (pref) and the legacy election fields; the election happens in work_key_map.
     # (F25 round 5) legacy derives a served award's SHARP key by the DOCUMENT's provenance (deposited set → 'deposited' mode with the weak
@@ -78,7 +79,7 @@ def run(c):
     # identity-mode key is kept as a documented fallback and counted in linking_sharp_coverage.
     c.artifact('linking_sharp_input',f"""SELECT DISTINCT x.stable_id,o.funder_id,o.award_key,o.sk identity_sk,
         CASE WHEN d.provenance IN {DEPOSITED} THEN false ELSE true END registry_mode
-      FROM {r}resolved_observations o LEFT JOIN {r}collapsed_observations co ON co.observation_key=o.observation_key
+      FROM {nih_fold.unpinned(c,'resolved_observations')} o LEFT JOIN {r}collapsed_observations co ON co.observation_key=o.observation_key
       JOIN {r}resolve_candidate x ON x.owner_id=o.stable_id JOIN {r}awards_candidate d ON d.id=x.stable_id
       WHERE co.observation_key IS NULL AND x.status='ACTIVE'""")
     c.artifact('linking_sharp',f"""SELECT l.stable_id,l.funder_id,l.award_key,l.registry_mode,
@@ -89,7 +90,7 @@ def run(c):
     # grain = DISTINCT (entity, canonical funder, spelling) rows of linking_sharp_input
     c.artifact('linking_sharp_coverage',f"SELECT sk_source,registry_mode,count(*) spellings,count(sk) with_sharp FROM {r}linking_sharp GROUP BY 1,2")
     c.artifact('work_key_candidates',f"""WITH obs AS (
-      SELECT o.* FROM {r}resolved_observations o LEFT JOIN {r}collapsed_observations co ON co.observation_key=o.observation_key
+      SELECT o.* FROM {nih_fold.unpinned(c,'resolved_observations')} o LEFT JOIN {r}collapsed_observations co ON co.observation_key=o.observation_key
       WHERE co.observation_key IS NULL),
     own AS (
       SELECT DISTINCT x.stable_id,o.funder_id,o.nk,'g' regime,1 tier
@@ -163,6 +164,7 @@ def run(c):
     c.count('work_awards',r+'work_awards_candidate')
     import uk_lineage
     uk_lineage.link_conservation(c)
+    nih_fold.link_conservation(c)
 
 
 def work_survivors(c, max_hops=100):
