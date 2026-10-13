@@ -47,8 +47,8 @@ resources:
                 package: "sentence-transformers>=3.4"
           timeout_seconds: 3600
         # g5.12xlarge on-demand capacity runs out in us-east-1 at this hour: 6 Oct (start 30 min), 12 Oct (no node after 24 min,
-        # night lost), 13 Oct (start 31 min). If Vector_Embed fails, the same embed runs on g6.12xlarge (4 x L4), another AWS
-        # capacity pool (oxjob #1348). Re-runs are idempotent: the script overwrites the night's parquet and replaces its
+        # night lost), 13 Oct (start 31 min); g6.12xlarge was out too in a 13 Oct test. If Vector_Embed fails, the same embed runs
+        # on one L4 (g6.4xlarge), which places easily and embeds a normal night in ~15 min (oxjob #1348). Re-runs are idempotent: the script overwrites the night's parquet and replaces its
         # seat_embeddings_daily rows. ALL_FAILED also fires when Cards failed (upstream_failed counts as failed), so --cards-after
         # makes it exit unless vector_match_cards was written during this run; Vector_Pool then has no success and is skipped.
         - task_key: Vector_Embed_Fallback
@@ -133,11 +133,11 @@ resources:
               oxjob: "1401"
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
-        - job_cluster_key: vector_gpu_fallback   # Vector_Embed_Fallback only: same as vector_gpu on g6.12xlarge (4 x L4)
+        - job_cluster_key: vector_gpu_fallback   # Vector_Embed_Fallback only: one L4 (g6.4xlarge, 64 GB); 4-GPU boxes (g5/g6.12xlarge) are the scarce ones
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-gpu-ml-scala2.13
-            node_type_id: g6.12xlarge
+            node_type_id: g6.4xlarge
             num_workers: 0
             aws_attributes:
               zone_id: auto
@@ -145,7 +145,7 @@ resources:
             spark_conf:
               spark.databricks.cluster.profile: singleNode
               spark.master: "local[*, 4]"
-              spark.driver.memory: 24g
+              spark.driver.memory: 16g
             spark_env_vars:
               MLFLOW_TRACKING_URI: file:/tmp/mlruns
               DISABLE_MLFLOW_INTEGRATION: "TRUE"
