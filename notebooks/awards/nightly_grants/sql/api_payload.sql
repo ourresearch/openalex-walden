@@ -216,7 +216,9 @@ SELECT
   oa.recipient_countries,
   oa.recipient_regions,
   oa.recipient_countries_full,
-  oa.recipient_regions_full
+  oa.recipient_regions_full,
+  oa.recipients,
+  oa.recipients_full
   -- research_scope is added after this payload by award_research_scope.run (it reads institution_awarded).
 FROM {AWARDS} oa
 LEFT JOIN institution_awarded_per_award iap ON oa.id = iap.award_id

@@ -244,6 +244,19 @@
     "amount_usd_currency_USD": 2988860,
     "amount_usd_currency_UYU": 1833,
     "classifications_rows_idrc_iati": 5112,
-    "classifications_research_rows_idrc_iati": 1649
+    "classifications_research_rows_idrc_iati": 1649,
+    "awards_with_recipients": 281222,
+    "awards_with_matched_recipients": 107139,
+    "recipient_org_memberships": 286689,
+    "recipients_rows_usaspending_cdc_organisation": 29619,
+    "recipients_rows_iati_sida_organisation": 2451,
+    "recipients_rows_usaspending_organisation": 77645,
+    "recipients_rows_idrc_iati_organisation": 8680,
+    "recipients_rows_iati_fcdo_organisation": 1927,
+    "recipients_rows_iati_norad_organisation": 439,
+    "recipients_rows_wellcome_trust_organisation": 19618,
+    "recipients_rows_usaspending_usda_organisation": 86463,
+    "recipients_rows_gates_foundation_organisation": 40218,
+    "recipients_rows_usaspending_usaid_organisation": 19668
   }
 }

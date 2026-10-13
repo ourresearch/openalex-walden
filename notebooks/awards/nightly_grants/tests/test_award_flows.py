@@ -426,7 +426,10 @@ def test_bootstrap_counts_carry_the_first_night_and_catch_a_loss():
     for key in ("awards_with_amount_usd", "amount_usd_daily_rate", "recipients_rows_idrc_iati_region", "awards_with_recipient_regions",
                 "recipient_country_memberships", "awards_with_research_scope", "research_true"):
         assert boot[key] > 0, key
-    c = FakeC(extra=["award_recipients_raw"], prev_cols=["id"], config=dict(bootstrap_counts=dict(boot)))
+    # Isolate the country feed under test; new organisation feeds also have nonzero baselines.
+    recipient_boot = {k: (0 if k.startswith("recipients_rows_") else v) for k, v in boot.items()}
+    recipient_boot["recipients_rows_idrc_iati_country"] = boot["recipients_rows_idrc_iati_country"]
+    c = FakeC(extra=["award_recipients_raw"], prev_cols=["id"], config=dict(bootstrap_counts=recipient_boot))
     with pytest.raises(RuntimeError, match="RECIPIENT_ROWS_DROP_idrc_iati_country: 5649 -> 0"):   # tonight's side table is empty in the fake
         award_recipients.run(c)
     c = FakeC(extra=["exchange_rates", "exchange_rates_annual"], prev_cols=["id"], config=dict(bootstrap_counts=dict(boot)))

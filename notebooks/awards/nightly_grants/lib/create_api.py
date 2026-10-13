@@ -12,7 +12,7 @@ FLOW_TEXT={'amount_usd':'CAST(amount_usd AS STRING)','amount_usd_basis':'amount_
            'recipient_regions_full':'to_json(recipient_regions_full)','research_scope':'to_json(research_scope)'}
 
 
-def hash_expression(base,cols):
+def legacy_flow_hash_expression(base,cols):
     """The content hash over the columns a table has. Sub-award links: an award with none hashes exactly as before (10-01).
     Funding-flows fields: an award with none of them hashes exactly as it did with links alone, so the 9.3M awards known only
     from paper metadata (no amount, no recipient, no research scope) never move; yesterday's table may predate any of the columns."""
@@ -27,6 +27,15 @@ def hash_expression(base,cols):
     parts+=[FLOW_TEXT[x] if x in flows else "''" for x in FLOW_COLUMNS]
     with_flows=f"xxhash64(concat_ws('|',{','.join(parts)}))"
     return (f"CASE WHEN {no_links} AND NOT ({present}) THEN {base} WHEN NOT ({present}) THEN {with_links} ELSE {with_flows} END")
+
+
+def hash_expression(base, cols):
+    """Empty recipients preserve the prior release hash exactly, including its flow wrapper."""
+    old = legacy_flow_hash_expression(base, cols)
+    if 'recipients_full' not in cols:
+        return old
+    return (f"CASE WHEN coalesce(size(recipients_full),0)=0 THEN {old} "
+            f"ELSE xxhash64(concat_ws('|',CAST(({old}) AS STRING),to_json(recipients_full))) END")
 
 
 def answers_relation(c):
@@ -58,7 +67,7 @@ def run(c):
     prev_cols=set(c.sql(f'SELECT * FROM {prev} LIMIT 0').columns)
     c.artifact('previous_api_hash',f'SELECT id,updated_date,{hash_expression(base,prev_cols)} content_hash FROM {prev}')
     c.zero('PREVIOUS_API_HASH_UNIQUE',f'SELECT id FROM {r}previous_api_hash GROUP BY id HAVING count(*)<>1')
-    expression=hash_expression(base,prev_cols|set(LINK_COLUMNS)|set(FLOW_COLUMNS))
+    expression=hash_expression(base,prev_cols|set(LINK_COLUMNS)|set(FLOW_COLUMNS)|{'recipients_full'})
     c.artifact('new_api_hash',f'SELECT id,{expression} content_hash FROM {r}api_payload')
     c.artifact('api_candidate',f"""SELECT a.* EXCEPT(updated_date),
       CASE WHEN p.id IS NULL OR NOT(n.content_hash <=> p.content_hash) THEN date_trunc('SECOND',CAST(:ts AS TIMESTAMP)) ELSE p.updated_date END updated_date
