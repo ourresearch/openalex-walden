@@ -153,8 +153,9 @@ if MODE == "stage":
 
 if MODE in ("dry_run", "execute"):
     apply_list = ", ".join(f"'{a}'" for a in APPLY)
-    scope = (f"{TARGET} t WHERE t.action IN ({apply_list}) AND t.executed_at IS NULL "
-             f"AND COALESCE(t.displaced_cited_by_count, 0) < {HOLD_CITED_OVER}")
+    scope_where = (f"t.action IN ({apply_list}) AND t.executed_at IS NULL "
+                   f"AND COALESCE(t.displaced_cited_by_count, 0) < {HOLD_CITED_OVER}")
+    scope = f"{TARGET} t WHERE {scope_where}"
     held = one(f"""SELECT COUNT(*) AS repairs_held_displaced_id_cited, SUM(displaced_cited_by_count) AS cites_on_held_ghosts
                    FROM {TARGET} t WHERE t.action = 'repair' AND t.executed_at IS NULL
                    AND COALESCE(t.displaced_cited_by_count, 0) >= {HOLD_CITED_OVER}""")
@@ -225,7 +226,7 @@ if MODE == "execute":
                   SELECT t.anchor_work_id, t.doi, NULL, NULL, NULL, current_date(), current_timestamp()
                   FROM {scope}""")
     # stamp only what execute applied: held repairs (displaced id cited >= hold_cited_over) were not touched
-    spark.sql(f"UPDATE {scope} SET executed_at = current_timestamp()")
+    spark.sql(f"UPDATE {TARGET} t SET executed_at = current_timestamp() WHERE {scope_where}")
     note(executed_seconds=int(time.time() - t0),
          executed=rows(f"SELECT action, COUNT(*) AS n FROM {TARGET} WHERE executed_at IS NOT NULL GROUP BY 1 ORDER BY 1"))
 
