@@ -893,18 +893,20 @@ ZENODO_TWIN_HOLD = """CASE WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
                 END"""
 
 
-def version_group_class_sql():
+def build_version_group_tables():
     """Version-group class (oxjob #1581, 2026-10-07): one work per concept DOI. Each live DataCite record's group is its single
     declared `IsVersionOf` DOI, else its DOI minus a `.vN` suffix (Figshare and portals declare nothing), else its own DOI; a group
-    with two or more DOIs on two or more works merges onto the work holding the concept DOI's record. One row per (winner, loser)."""
+    with two or more DOIs on two or more works merges onto the work holding the concept DOI's record. One row per (winner, loser).
+    Materialized step by step as `<target>_vg_*` (oxjob #1672, 2026-10-13): as one statement Spark inlines every CTE at each use,
+    and the 10-09 stage spent ~6 h of its 6.4 h planning a 1.2M-character plan while the executors sat idle."""
+    vg = f"{TARGET}_vg"
     norm = "regexp_replace(lower({c}), '[^\\\\p{{L}}\\\\p{{N}}]', '')"
     doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx[.])?doi[.]org/|doi:)', ''), '[^a-z0-9./-]', '')"
     scope = (f"(x.src IN (SELECT source_id FROM scope) OR y.src IN (SELECT source_id FROM scope))" if TWIN_SCOPE_SQL else "TRUE")
     scope_cte = f"scope AS ({TWIN_SCOPE_SQL})," if TWIN_SCOPE_SQL else ""
-    inner = f"""
-    WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
-    {scope_cte}
-    dc AS (SELECT l.work_id, lower(l.native_id) AS doi,
+    # the records of groups with two or more DOIs on two or more works; grp_how = the group's `how`
+    spark.sql(f"""CREATE OR REPLACE TABLE {vg}_g AS
+    WITH dc AS (SELECT l.work_id, lower(l.native_id) AS doi,
                   array_distinct(transform(filter(l.ids, i -> i.relationship = 'IsVersionOf' AND lower(COALESCE(i.namespace, 'doi')) = 'doi'
                                                    AND lower(i.id) NOT LIKE '%10.48550/%'), i -> {doi_clean.format(c='i.id')})) AS vof
            FROM {LM} l
@@ -913,18 +915,22 @@ def version_group_class_sql():
                  CASE WHEN size(vof) = 1 THEN vof[0] WHEN doi RLIKE '[.]v[0-9]+$' THEN regexp_replace(doi, '[.]v[0-9]+$', '') ELSE doi END AS grp,
                  CASE WHEN size(vof) = 1 THEN 'declared' WHEN doi RLIKE '[.]v[0-9]+$' THEN 'suffix' END AS how
           FROM dc),
-    gs AS (SELECT grp, MAX(how) AS how FROM g GROUP BY grp HAVING COUNT(DISTINCT doi) > 1 AND COUNT(DISTINCT work_id) > 1),
-    anc0 AS (SELECT g.grp, MIN(g.work_id) AS anchor, COUNT(DISTINCT g.work_id) AS n_anchor FROM g JOIN gs ON gs.grp = g.grp
-             WHERE g.doi = g.grp GROUP BY g.grp),
-    -- article anchor (oxjob #1581 round 2, 2026-10-09): when one member holds the deposit's published article (one Crossref record
-    -- outside the group, titled as a group DataCite record, its first author among the group records' authors) and the concept
-    -- work holds none, the article's work is the anchor and the concept work joins it (the published side keeps its id). Not for
-    -- books, chapters or reviews, a DataCite thesis / conference / dataset record, or the supplement and derived-dataset registrants
-    vg_rec AS (SELECT gw.grp, gw.work_id, l.provenance, l.type, lower(l.native_id) AS nid, {norm.format(c='l.title')} AS tn, l.authors,
-                      gi.doi IS NOT NULL AS in_grp, lower(COALESCE(l.abstract, '')) RLIKE '{VERSION_GROUP_NOT_ARTICLE_ABSTRACT}' AS talk_like
-               FROM (SELECT DISTINCT g.grp, g.work_id FROM g JOIN anc0 ON anc0.grp = g.grp) gw
-               JOIN {LM} l ON l.work_id = gw.work_id AND l.provenance IN ('crossref', 'datacite')
-               LEFT JOIN (SELECT DISTINCT grp, doi FROM g) gi ON gi.grp = gw.grp AND gi.doi = lower(l.native_id)),
+    gs AS (SELECT grp, MAX(how) AS how FROM g GROUP BY grp HAVING COUNT(DISTINCT doi) > 1 AND COUNT(DISTINCT work_id) > 1)
+    SELECT g.*, gs.how AS grp_how FROM g JOIN gs ON gs.grp = g.grp""")
+    spark.sql(f"""CREATE OR REPLACE TABLE {vg}_anc0 AS
+    SELECT grp, MIN(work_id) AS anchor, COUNT(DISTINCT work_id) AS n_anchor FROM {vg}_g WHERE doi = grp GROUP BY grp""")
+    spark.sql(f"""CREATE OR REPLACE TABLE {vg}_rec AS
+    SELECT gw.grp, gw.work_id, l.provenance, l.type, lower(l.native_id) AS nid, {norm.format(c='l.title')} AS tn, l.authors,
+           gi.doi IS NOT NULL AS in_grp, lower(COALESCE(l.abstract, '')) RLIKE '{VERSION_GROUP_NOT_ARTICLE_ABSTRACT}' AS talk_like
+    FROM (SELECT DISTINCT g.grp, g.work_id FROM {vg}_g g JOIN {vg}_anc0 anc0 ON anc0.grp = g.grp) gw
+    JOIN {LM} l ON l.work_id = gw.work_id AND l.provenance IN ('crossref', 'datacite')
+    LEFT JOIN (SELECT DISTINCT grp, doi FROM {vg}_g) gi ON gi.grp = gw.grp AND gi.doi = lower(l.native_id)""")
+    # article anchor (oxjob #1581 round 2, 2026-10-09): when one member holds the deposit's published article (one Crossref record
+    # outside the group, titled as a group DataCite record, its first author among the group records' authors) and the concept
+    # work holds none, the article's work is the anchor and the concept work joins it (the published side keeps its id). Not for
+    # books, chapters or reviews, a DataCite thesis / conference / dataset record, or the supplement and derived-dataset registrants
+    spark.sql(f"""CREATE OR REPLACE TABLE {vg}_anc AS
+    WITH vg_rec AS (SELECT * FROM {vg}_rec),
     vg_w AS (SELECT grp, work_id,
                     COUNT(DISTINCT CASE WHEN provenance = 'crossref' AND NOT in_grp THEN nid END) AS n_cr,
                     COUNT(DISTINCT CASE WHEN provenance = 'datacite' AND NOT in_grp THEN nid END) AS n_dc_out,
@@ -932,7 +938,7 @@ def version_group_class_sql():
                     MAX(CASE WHEN provenance = 'crossref' AND NOT in_grp THEN type END) AS cr_type
              FROM vg_rec GROUP BY grp, work_id),
     cand AS (SELECT a.grp, a.anchor, w.work_id AS article, w.cr_type, w.cr_tn
-             FROM anc0 a JOIN vg_w w ON w.grp = a.grp AND w.work_id <> a.anchor JOIN vg_w x ON x.grp = a.grp AND x.work_id = a.anchor
+             FROM {vg}_anc0 a JOIN vg_w w ON w.grp = a.grp AND w.work_id <> a.anchor JOIN vg_w x ON x.grp = a.grp AND x.work_id = a.anchor
              WHERE a.n_anchor = 1 AND x.n_cr = 0 AND w.n_cr = 1 AND w.n_dc_out = 0
                AND w.cr_type NOT IN ('book', 'book-review', 'book-chapter', 'other', 'paratext')
                AND NOT EXISTS (SELECT 1 FROM vg_w o WHERE o.grp = a.grp AND o.n_cr > 0 AND o.work_id <> w.work_id)),
@@ -953,9 +959,14 @@ def version_group_class_sql():
     flip AS (SELECT c.grp, c.article FROM cand c
              LEFT SEMI JOIN title_ok o ON o.grp = c.grp AND o.article = c.article
              LEFT SEMI JOIN author_ok u ON u.grp = c.grp AND u.article = c.article
-             LEFT ANTI JOIN not_text n ON n.grp = c.grp AND n.article = c.article),
-    anc AS (SELECT a.grp, COALESCE(f.article, a.anchor) AS anchor, a.n_anchor, f.article IS NOT NULL AS article_anchor
-            FROM anc0 a LEFT JOIN flip f ON f.grp = a.grp),
+             LEFT ANTI JOIN not_text n ON n.grp = c.grp AND n.article = c.article)
+    SELECT a.grp, COALESCE(f.article, a.anchor) AS anchor, a.n_anchor, f.article IS NOT NULL AS article_anchor
+    FROM {vg}_anc0 a LEFT JOIN flip f ON f.grp = a.grp""")
+    spark.sql(f"""CREATE OR REPLACE TABLE {vg}_r1 AS
+    WITH {scope_cte}
+    anc AS (SELECT * FROM {vg}_anc),
+    g AS (SELECT * FROM {vg}_g),
+    gs AS (SELECT DISTINCT grp, grp_how AS how FROM {vg}_g),
     mem AS (SELECT DISTINCT g.grp, g.work_id AS member FROM g JOIN anc ON anc.grp = g.grp WHERE g.work_id <> anc.anchor),
     wg AS (SELECT work_id, COUNT(DISTINCT grp) AS ng FROM (SELECT grp, anchor AS work_id FROM anc UNION SELECT grp, member FROM mem) GROUP BY work_id),
     -- the loser's other primary records: a Crossref or DataCite DOI outside its group (a Crossref record of a group DOI is
@@ -970,29 +981,36 @@ def version_group_class_sql():
              AND NOT EXISTS (SELECT 1 FROM {LM} d WHERE d.work_id = m.member AND d.provenance = 'datacite'
                                AND {norm.format(c='d.title')} = {norm.format(c='l.title')})
            GROUP BY m.grp, m.member),
+    ids AS (SELECT anchor AS id FROM anc UNION SELECT member FROM mem),
+    live AS (SELECT w.* FROM {WORKS} w LEFT SEMI JOIN ids ON ids.id = w.id LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
     wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, CAST(regexp_extract(primary_location.source.id, '([0-9]+)$', 1) AS BIGINT) AS src,
                   {norm.format(c='title')} AS tn, (title IS NULL OR trim(title) = '') AS no_title, COALESCE(cited_by_count, 0) AS cites,
-                  filter(split(lower(get(authorships, 0).author.display_name), '[^\\\\p{{L}}]+'), t -> length(t) >= 3) AS a1 FROM live),
-    r1 AS (
-      SELECT x.id AS a, y.id AS b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb,
-             x.type AS ta_type, y.type AS tb_type, FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
-             gs.how, x.tn = y.tn AS title_same,
-             NOT (size(x.a1) > 0 AND size(y.a1) > 0 AND NOT arrays_overlap(x.a1, y.a1)) AS author_ok,
-             an.n_anchor > 1 AS concept_split, (wx.ng > 1 OR wy.ng > 1) AS multi_group, (mp.member IS NOT NULL) AS member_has_primary,
-             (lg.member IS NOT NULL) AS legacy_mismatch,
-             (x.type = 'software' OR y.type = 'software') AS software, x.no_title AS winner_no_title, an.article_anchor,
-             x.id AS winner_work_id, y.id AS loser_work_id
-      FROM mem m JOIN anc an ON an.grp = m.grp JOIN gs ON gs.grp = m.grp
-      JOIN wf x ON x.id = an.anchor JOIN wf y ON y.id = m.member
-      LEFT JOIN wg wx ON wx.work_id = x.id LEFT JOIN wg wy ON wy.work_id = y.id
-      LEFT JOIN mp ON mp.grp = m.grp AND mp.member = m.member
-      LEFT JOIN lg ON lg.grp = m.grp AND lg.member = m.member
-      WHERE {scope}),""" + pair_class_tail(VERSION_GROUP_SIGNALS, version_group_hold(), group_scoped=True).replace("concat('sig:', r.winner_work_id)", "concat('vgr:', r.winner_work_id)")
+                  filter(split(lower(get(authorships, 0).author.display_name), '[^\\\\p{{L}}]+'), t -> length(t) >= 3) AS a1 FROM live)
+    SELECT x.id AS a, y.id AS b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb,
+           x.type AS ta_type, y.type AS tb_type, FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
+           gs.how, x.tn = y.tn AS title_same,
+           NOT (size(x.a1) > 0 AND size(y.a1) > 0 AND NOT arrays_overlap(x.a1, y.a1)) AS author_ok,
+           an.n_anchor > 1 AS concept_split, (wx.ng > 1 OR wy.ng > 1) AS multi_group, (mp.member IS NOT NULL) AS member_has_primary,
+           (lg.member IS NOT NULL) AS legacy_mismatch,
+           (x.type = 'software' OR y.type = 'software') AS software, x.no_title AS winner_no_title, an.article_anchor,
+           x.id AS winner_work_id, y.id AS loser_work_id
+    FROM mem m JOIN anc an ON an.grp = m.grp JOIN gs ON gs.grp = m.grp
+    JOIN wf x ON x.id = an.anchor JOIN wf y ON y.id = m.member
+    LEFT JOIN wg wx ON wx.work_id = x.id LEFT JOIN wg wy ON wy.work_id = y.id
+    LEFT JOIN mp ON mp.grp = m.grp AND mp.member = m.member
+    LEFT JOIN lg ON lg.grp = m.grp AND lg.member = m.member
+    WHERE {scope}""")
+    spark.sql(f"""CREATE OR REPLACE TABLE {vg}_t AS
+    WITH r1 AS (SELECT * FROM {vg}_r1),""" + pair_class_tail(VERSION_GROUP_SIGNALS, version_group_hold(), group_scoped=True).replace("concat('sig:', r.winner_work_id)", "concat('vgr:', r.winner_work_id)"))
+
+
+def version_group_class_sql():
+    """The version-group pairs from `build_version_group_tables` (`<target>_vg_t`), with the version cap applied."""
     # a work holds at most VERSION_GROUP_CAP version DOIs besides its concept DOI (counting the DataCite DOIs it already carries,
     # and every DataCite DOI a loser brings: a concept work joining an article anchor brings its merged versions);
     # the most recent versions join first (publication date, then `.vN`, then newest id)
     return f"""
-    WITH t AS ({inner}),
+    WITH t AS (SELECT * FROM {TARGET}_vg_t),
     dois AS (SELECT l.work_id, COUNT(DISTINCT lower(l.native_id)) AS n FROM {LM} l
              WHERE l.provenance = 'datacite' AND l.work_id IN (SELECT winner_work_id FROM t UNION SELECT loser_work_id FROM t) GROUP BY l.work_id)
     SELECT v.* EXCEPT (hold_reason, rk, n_on),
@@ -1004,6 +1022,7 @@ def version_group_class_sql():
                                                           t.loser_work_id DESC ROWS UNBOUNDED PRECEDING) AS rk
           FROM t LEFT JOIN {WORKS} w ON w.id = t.loser_work_id LEFT JOIN dois h ON h.work_id = t.winner_work_id
           LEFT JOIN dois ld ON ld.work_id = t.loser_work_id) v"""
+
 
 VERSION_GROUP_CAP = 100
 # registrants whose `.vN` / IsVersionOf records copy an article's title without being it: publisher supplement portals (figshare.com,
@@ -1188,6 +1207,8 @@ if MODE == "stage":
     per_loser = CLASS_MODE in ("version_group", "two_doi_guarded")
     if CLASS_MODE == "two_doi_guarded":
         build_two_doi_features()
+    if CLASS_MODE == "version_group":
+        build_version_group_tables()
     spark.sql(f"""CREATE OR REPLACE TABLE {TARGET} AS
                   WITH c0 AS ({class_sql()}),
                   c AS (SELECT c0.* EXCEPT (hold_reason), {cited_hold} AS hold_reason FROM c0),
