@@ -75,9 +75,9 @@ def test_geography_never_ranks_or_splits_organisation_rows():
     assert "kind IN ('country','region')" in q['recipients_selected']
     assert 'institution_awarded' not in q['awards_candidate']
     assert 'slice(coalesce(o.recipients,array()),1,100) recipients' in q['awards_candidate']
-    assert "'share',s.share" in q['recipient_org_arrays']
+    assert "'share',share" in q['recipient_org_arrays']
     assert 'sort_array(collect_set(' in q['recipient_org_arrays']
-    assert 'coalesce(m.display_name,s.name)' in q['recipient_org_arrays']
+    assert 'coalesce(m.display_name,s.name)' in q['recipient_org_objects']
     assert 'RECIPIENT_ORG_CONFLICT' in c.checks
     assert 'RECIPIENT_ORG_MATCH_DROP' in c.checks
 
@@ -144,3 +144,37 @@ def test_organisation_served_loss_is_fatal(key,gate):
     c=FakeC(); c.config['bootstrap_counts'][key]=100
     with pytest.raises(RuntimeError,match=gate+': 100 -> 0'):
         award_recipient_orgs.check_counts(c,.01)
+
+
+def grouped(db):
+    # Execute production grouping, translating only aggregate spellings for DuckDB.
+    q = queries()
+    for name in ('recipient_org_objects', 'recipient_org_grouped'):
+        sql = q[name].replace('<=>', ' IS NOT DISTINCT FROM ')
+        sql = sql.replace('sort_array(collect_set(role))', 'list_sort(list(DISTINCT role))')
+        db.execute('CREATE TABLE '+name+' AS '+sql)
+    return db.execute('SELECT id,display_name,country_code,roles,share,basis FROM recipient_org_grouped ORDER BY country_code,basis,share').fetchall()
+
+
+def test_served_roles_union_and_cross_country_unmatched_are_distinct():
+    db=matched([('Partner','partner','KE',None,None),('Partner','implementing','KE',None,None),
+                ('Partner','partner','GB',None,None)],[],[])
+    assert grouped(db)==[(None,'Partner','GB',['partner'],None,'funder_reported'),
+                         (None,'Partner','KE',['implementing','partner'],None,'funder_reported')]
+
+
+def test_same_institution_two_match_methods_merge_to_strongest_basis():
+    db=matched([('Alias','partner','KE',None,None),('Canonical','implementing','KE',None,None)],
+               [('Alias',[1])],[(1,'Canonical',None,'KE')])
+    assert grouped(db)==[('https://openalex.org/I1','Canonical','KE',['implementing','partner'],None,'affiliation_matcher')]
+
+
+def test_distinct_share_assertions_never_sum_or_disappear():
+    db=matched([('Partner','partner','KE',None,.25),('Partner','implementing','KE',None,.5)],[],[])
+    assert [r[4] for r in grouped(db)]==[.25,.5]
+
+
+def test_explicit_ror_evidence_wins_over_matcher_for_same_identity():
+    db=matched([('Alias','partner','KE',None,None),('Canonical','implementing','KE','https://ror.org/012345678',None)],
+               [('Alias',[1])],[(1,'Canonical','https://ror.org/012345678','KE')])
+    assert grouped(db)==[('https://openalex.org/I1','Canonical','KE',['implementing','partner'],None,'ror')]

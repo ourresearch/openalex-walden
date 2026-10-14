@@ -75,14 +75,27 @@ def run(c):
       SELECT name,country_code,ror,min(institution_id) institution_id,min(display_name) display_name,
         min(institution_ror) institution_ror,min(institution_country) institution_country,min(match_basis) match_basis
       FROM guarded GROUP BY name,country_code,ror HAVING count(DISTINCT institution_id)=1""")
-    c.artifact('recipient_org_arrays', f"""SELECT s.award_id,sort_array(collect_set(named_struct(
-        'id',CASE WHEN m.institution_id IS NOT NULL THEN concat('https://openalex.org/I',CAST(m.institution_id AS STRING)) END,
-        'display_name',coalesce(m.display_name,s.name),'ror',m.institution_ror,
-        'country_code',coalesce(s.country_code,m.institution_country),'role',s.role,'share',s.share,
-        'basis',coalesce(m.match_basis,s.basis),'asserted_by',s.asserted_by))) recipients
+    c.artifact('recipient_org_objects', f"""SELECT s.award_id,
+        CASE WHEN m.institution_id IS NOT NULL THEN concat('https://openalex.org/I',CAST(m.institution_id AS STRING)) END id,
+        coalesce(m.display_name,s.name) display_name,m.institution_ror ror,
+        coalesce(s.country_code,m.institution_country) country_code,s.role,s.share,
+        coalesce(m.match_basis,s.basis) basis,s.asserted_by
       FROM {r}recipient_org_selected s LEFT JOIN {r}recipient_org_matches m
-        ON m.name=s.name AND m.country_code <=> s.country_code AND m.ror <=> s.ror
-      GROUP BY s.award_id""")
+        ON m.name=s.name AND m.country_code <=> s.country_code AND m.ror <=> s.ror""")
+    # One object per identity/assertion. Unknown identities retain country; matching
+    # methods are evidence for the same identity, ordered ROR > matcher > exact name.
+    # Distinct monetary/attribution assertions are never silently combined or summed.
+    c.artifact('recipient_org_grouped', f"""SELECT award_id,id,display_name,ror,country_code,share,asserted_by,
+        sort_array(collect_set(role)) roles,
+        CASE WHEN id IS NULL THEN min(basis) ELSE
+          CASE min(CASE basis WHEN 'ror' THEN 0 WHEN 'affiliation_matcher' THEN 1 ELSE 2 END)
+            WHEN 0 THEN 'ror' WHEN 1 THEN 'affiliation_matcher' ELSE 'institution_name' END END basis
+      FROM {r}recipient_org_objects
+      GROUP BY award_id,id,display_name,ror,country_code,share,asserted_by,CASE WHEN id IS NULL THEN basis END""")
+    c.artifact('recipient_org_arrays', f"""SELECT award_id,sort_array(collect_set(named_struct(
+        'id',id,'display_name',display_name,'ror',ror,'country_code',country_code,
+        'roles',roles,'share',share,'basis',basis,'asserted_by',asserted_by))) recipients
+      FROM {r}recipient_org_grouped GROUP BY award_id""")
 
 
 def check_counts(c, fuse):

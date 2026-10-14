@@ -8,7 +8,7 @@ basis (funder_reported | place_of_performance | organisation_location), share (0
 (funder | openalex | curated), adapter_version, asserted_at. Organisation rows also carry name, role and optional ROR.
 Served (extra columns on awards_candidate, nothing else changes):
   recipient_countries[] {country_code, share, amount_usd, basis}   recipient_regions[] {code, vocabulary, display_name, share}
-  recipients[] {id, display_name, ror, country_code, role, share, basis, asserted_by} (first 100)
+  recipients[] {id, display_name, ror, country_code, roles, share, basis, asserted_by} (first 100)
   plus *_full siblings for search filters. Geography rules: when an award has rows on several bases the best one wins (funder_reported,
   then place_of_performance, then organisation_location: a US organisation working in Kenya lands in Kenya). Shares are the
   funder's; when any kept row has none, the kept rows split equally. amount_usd here is the award's amount_usd times the share

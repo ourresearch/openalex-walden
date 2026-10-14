@@ -39,7 +39,7 @@ def fixture():
     c = DB()
     c.sql("""CREATE TABLE previous_api_v AS SELECT i id,100.0 amount,'USD' currency,100.0 amount_usd,'usd_native' amount_usd_basis,
       {'is_research':true,'basis':'funder_default','tier':1} research_scope,
-      [{'id':concat('I',i),'display_name':concat('Org',i),'ror':NULL::VARCHAR,'country_code':'US','role':'lead',
+      [{'id':concat('I',i),'display_name':concat('Org',i),'ror':NULL::VARCHAR,'country_code':'US','roles':['lead'],
         'share':NULL::DOUBLE,'basis':'institution_name','asserted_by':'funder'}] recipients_full,
       [{'country_code':'US','share':1.0,'amount_usd':100.0,'basis':'funder_reported'}] recipient_countries_full,
       []::STRUCT(code VARCHAR,vocabulary VARCHAR,display_name VARCHAR,share DOUBLE)[] recipient_regions_full,
@@ -98,13 +98,13 @@ def test_missing_and_gone_are_not_discounted_as_folds():
     assert fp.expected(c,'research')[0]['research_true'] == 980
 
 
-def test_duplicate_org_membership_collapses_but_distinct_role_does_not():
+def test_duplicate_org_membership_unions_roles_across_fold():
     c = fixture(); c.nih = False
     c.sql('UPDATE previous_api_v SET recipients_full=(SELECT recipients_full FROM previous_api_v WHERE id=1) WHERE id=981')
     assert fp.expected(c,'orgs')[0]['recipient_org_memberships'] == 999
     c._funding_population = {}
-    c.sql("UPDATE previous_api_v SET recipients_full=from_json(replace(to_json(recipients_full),'lead','partner'),'[{\"id\":\"VARCHAR\",\"display_name\":\"VARCHAR\",\"ror\":\"VARCHAR\",\"country_code\":\"VARCHAR\",\"role\":\"VARCHAR\",\"share\":\"DOUBLE\",\"basis\":\"VARCHAR\",\"asserted_by\":\"VARCHAR\"}]') WHERE id=981")
-    assert fp.expected(c,'orgs')[0]['recipient_org_memberships'] == 1000
+    c.sql("UPDATE previous_api_v SET recipients_full=from_json(replace(to_json(recipients_full),'lead','partner'),'[{\"id\":\"VARCHAR\",\"display_name\":\"VARCHAR\",\"ror\":\"VARCHAR\",\"country_code\":\"VARCHAR\",\"roles\":[\"VARCHAR\"],\"share\":\"DOUBLE\",\"basis\":\"VARCHAR\",\"asserted_by\":\"VARCHAR\"}]') WHERE id=981")
+    assert fp.expected(c,'orgs')[0]['recipient_org_memberships'] == 999
 
 
 def test_bootstrap_fold_requires_rows_and_rechecks_independent_scalar_baseline():

@@ -44,8 +44,11 @@ def metrics_sql(kind, mapped, scalar):
         return f"""SELECT 'awards_with_research_scope' k,count(*) n FROM {scalar} WHERE research_scope IS NOT NULL
           UNION ALL SELECT 'research_true',count(*) FROM {scalar} WHERE research_scope.is_research=true"""
     if kind == 'orgs':
-        # Same full struct identity as recipient_org_arrays' collect_set: role and null share are preserved.
-        return f"""WITH members AS (SELECT DISTINCT p.resolved_id,to_json(o) member,o.id institution_id
+        # Count organisation identities after resolution, unioning overlapping roles.
+        # Match methods do not split an identity; unmatched countries and genuine
+        # share/source-basis/attribution differences remain distinct.
+        return f"""WITH members AS (SELECT DISTINCT p.resolved_id,o.id institution_id,o.display_name,o.ror,o.country_code,
+            o.share,o.asserted_by,CASE WHEN o.id IS NULL THEN o.basis END source_basis
             FROM {mapped} p LATERAL VIEW explode(p.recipients_full) e AS o)
           SELECT 'awards_with_recipients' k,count(DISTINCT resolved_id) n FROM members
           UNION ALL SELECT 'awards_with_matched_recipients',count(DISTINCT resolved_id) FROM members WHERE institution_id IS NOT NULL

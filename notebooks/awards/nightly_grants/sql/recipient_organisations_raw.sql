@@ -1,3 +1,4 @@
+-- Keep one source assertion per role; award_recipient_orgs unions roles[] per served organisation.
 WITH country_aliases AS (
   -- Source spellings equivalent to the versioned country/award_country_lookup.csv ISO aliases.
   SELECT * FROM VALUES ('bolivia, plurinational state of','BO'),('bosnia-herzegovina','BA'),('congo, democratic republic of','CD'),('congo, the democratic republic of the','CD'),('cote d\'ivoire','CI'),('czech republic','CZ'),('côte d\'ivoire','CI'),('dominican republic','DO'),('korea, republic of','KR'),('palestine, state of','PS'),('palestinian territories','PS'),('taiwan, province of china','TW'),('tanzania, united republic of','TZ'),('trinidad and tobago','TT'),('türkiye','TR'),('venezuela, bolivarian republic of','VE'),('viet nam','VN') AS aliases(value,code)

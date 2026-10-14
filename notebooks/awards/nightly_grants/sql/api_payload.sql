@@ -217,6 +217,7 @@ SELECT
   oa.recipient_regions,
   oa.recipient_countries_full,
   oa.recipient_regions_full,
+  -- One organisation object with sorted roles[]; source role rows remain in the side table.
   oa.recipients,
   oa.recipients_full
   -- research_scope is added after this payload by award_research_scope.run (it reads institution_awarded).
