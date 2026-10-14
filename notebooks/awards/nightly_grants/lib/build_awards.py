@@ -316,7 +316,7 @@ def plan(c):
     # composition: no retirement may target another retiring entity (bindings_final applies exactly one hop)
     c.zero('RETIREMENT_CHAIN',f'SELECT r.* FROM {r}retirements r JOIN {r}retirements t ON t.old_id=r.canonical_id')
     c.zero('RETIREMENT_UNIQUE',f'SELECT old_id FROM {r}retirements GROUP BY old_id HAVING count(DISTINCT canonical_id)<>1')
-    c.zero('RETIREMENT_SAME_FUNDER',f'SELECT t.* FROM {r}retirements t JOIN {r}ownership_plan a ON a.stable_id=t.old_id JOIN {r}ownership_plan b ON b.stable_id=t.canonical_id WHERE {nih_fold.exempt_where(c,'a.funder_id IS NULL OR a.funder_id<>b.funder_id',nih_fold.same_funder_exempt(c,'t'))}')
+    c.zero('RETIREMENT_SAME_FUNDER',f'SELECT t.* FROM {r}retirements t JOIN {r}ownership_plan a ON a.stable_id=t.old_id JOIN {r}ownership_plan b ON b.stable_id=t.canonical_id WHERE {nih_fold.exempt_where(c,"a.funder_id IS NULL OR a.funder_id<>b.funder_id",nih_fold.same_funder_exempt(c,"t"))}')
     # op24: a manifest pair of the shell class is the one sanctioned retirement into a non-direct (served) target.
     shell_exempt=(f" LEFT ANTI JOIN {r}retirements_manifest s ON s.old_id=t.old_id AND s.canonical_id=t.canonical_id AND s.evidence_class IN {tuple_sql(nih_fold.with_class(c,('SHELL_TO_SERVED_SHELL_SAME_NUMBER',PUBLIC_SHELL_CLASS)))}"
                   if c.has_extra('migration_manifest') else '')
