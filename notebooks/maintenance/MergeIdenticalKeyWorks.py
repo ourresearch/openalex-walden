@@ -127,7 +127,10 @@
 # MAGIC - `repoint_citations`  `wave = N`, `confirm = yes`, after `verify` is clean: `<target>_wave<N>_refs_audit`
 # MAGIC               (before-image, both sides) then UPDATE `work_references`: `cited_work_id` loser → winner (citations
 # MAGIC               TO the loser) and `citing_work_id` loser → winner (the loser's OWN reference list comes along; rows keep
-# MAGIC               their location + ref_ind so they never collide with the winner's).
+# MAGIC               their location + ref_ind so they never collide with the winner's). The cited side only tidies
+# MAGIC               `work_references` now (CreateWorksEnriched redirects merged ids at read time, #1643); the citing
+# MAGIC               side is still needed, since `parse_work_references` skips a winner that already has rows.
+# MAGIC - `repoint_arrays`  not needed for waves ledgered in `merged_work_ids` (CreateWorksEnriched rewrites them nightly).
 
 # COMMAND ----------
 
@@ -1491,10 +1494,10 @@ if MODE == "follow_null_to_winner":
 # COMMAND ----------
 
 if MODE == "repoint_arrays":
-    # cited_by_count is computed from the citing works' referenced_works ARRAYS (CreateWorksEnriched), and the nightly
-    # MERGE only ever unions into them, so a merged loser id stays in every citing work's list and keeps collecting
-    # citations. Rewrite the arrays of exactly the works known to cite this wave's losers: from the refs audit (parsed
-    # graph) and openalex.mid.citation (legacy graph). Audited (before-image arrays); cited_by_count follows on the nightly.
+    # Not needed for waves ledgered in merged_work_ids: since 2026-10-13 (#1643, 60e68144) CreateWorksEnriched rewrites
+    # every merged-away id in referenced_works to its winner nightly before counting cited_by (#1672 wave 1: 0 loser
+    # ids left the next night). Kept for a wave whose losers are not in merged_work_ids. Rewrites the arrays of the
+    # works known to cite this wave's losers (refs audit + openalex.mid.citation), audited; cited_by follows nightly.
     if not spark.catalog.tableExists(AUDIT):
         raise Exception(f"{AUDIT} does not exist: wave {WAVE} was not executed")
     ARR_AUDIT = f"{TARGET}_wave{WAVE}_arrays_audit"
