@@ -78,6 +78,44 @@ dbutils.widgets.text("rebuild", "false", "Full rebuild (overwrite)")
 REBUILD = dbutils.widgets.get("rebuild").strip().lower() in ("true", "1", "yes")
 print(f"RepoBackfill mode: {'REBUILD (overwrite)' if REBUILD else 'MERGE (incremental)'}")
 
+# Licence fallbacks, same rule as Repo.py (4afa5d56). Keep the two constants below byte-identical with Repo.py.
+# CC0 named as text in dc:rights: the normaliser knows the CC0 URL and the words "public domain"
+# only. Whole-value forms seen in the corpus (whitespace collapsed, lower-cased, trailing period
+# stripped); a bare token would also match revocations such as "In Copyright - The CC0 1.0
+# Universal license was removed from this item". The value is checked as a whole, so a
+# sentence that merely mentions CC0 does not count.
+CC0_TEXT_PATTERNS = (
+    r"^(creative commons |cc |licen[cs]e:? ?)?cc0([- ]1\.0)?( universal| universell| uniwersalna| παγκόσμια| public domain dedication)?( \(cc0([- ]1\.0)?\))?$"
+    r"|^cc-?zero$|^creative commons \(cc0\)$|^creative commons zero v?1\.0 universal( \(cc0[- ]1\.0\))?$"
+    r"|^cc0:? creative commons zero( 1\.0)?( universal)?$|^cc0[- ]?(1\.0 )?no rights reserved$|^no rights reserved \(cc0( 1\.0)?\)$"
+    r"|^https?://(spdx\.org|choosealicense\.com)/licenses/cc0-1\.0(\.html)?/?$|^https?://api\.github\.com/licenses/cc0-1\.0$"
+    r"|^https?://(www\.)?opendefinition\.org/licenses/cc-zero/?$"
+    r"|^dedicaci[óo]n de dominio p[úu]blico 1\.0 universal\.? \(cc0\)$|^uznanie cc0 1\.0 universal \(cc0 1\.0\) przekazanie do domeny publicznej$"
+)
+# Whole values only. The full CC0 legal-code text, the deed sentence ("To the extent possible under
+# law, X has waived ...") and per-item statements ("Items in this record are available as ...") are
+# deliberately not matched: an open-ended prefix would also accept a negated or qualified sentence.
+# A dc:rights value that restricts access blocks every fallback below (not the dc:rights pick
+# itself, whose behaviour is unchanged). Tested on the normalised form (spaces/hyphens removed).
+RIGHTS_RESTRICTED_PATTERN = r"restrictedaccess|closedaccess|embargoedaccess|rightsstatements\.org/vocab/inc|incopyright"
+# Licence carried outside dc:rights. Repo.py reads the harvester's re-serialised prefix (ns4:accessRights / ns4:license);
+# the backfill XML keeps each repository's own prefix, so the same dcterms elements appear as dcterms:, dct: or
+# unprefixed. Exact element names only (not licenseCondition, not dc:rightsHolder), text content only, one element.
+ALT_RIGHTS_ELEMENT_PATTERN = r"<(?:(?:dcterms|dct):)?(?:accessRights|license)(?:\s[^>]*)?>([^<]*)</"
+# For the fallbacks, dc:rights is read with or without attributes (Persee: <dc:rights xml:lang=...>), text content
+# only. The existing raw_license pick is NOT changed: it still reads attribute-free dc:rights only. The fallbacks are
+# not applied when (a) a dc:rights element cannot be read as text (CDATA, nested markup), (b) a dc:rights value
+# restricts access, or (c) any dc:rights value already names a licence the normaliser recognises (that record
+# keeps today's result: an alternative field never overrides a licence stated in dc:rights). The joined check is
+# repeated per value for public domain, because the normaliser's 'works not in the public domain' exception would
+# otherwise let one value cancel another.
+DC_RIGHTS_TEXT_PATTERN = r"<dc:rights(?:\s[^>]*)?>([^<]*)</dc:rights>"
+DC_RIGHTS_OPEN_TAG_PATTERN = r"<dc:rights(?:\s[^>]*)?(?<!/)>"   # every non-self-closing opening tag
+# Used below as fallbacks when the dc:rights pick normalises to nothing (e.g. a copyright line): the dcterms fields with
+# the same creativecommons.org-first selection rule, then CC0 named as text; both blocked by a restricting dc:rights
+# value. The patterns are passed with lit(), so they reach the regex engine unescaped. (No comments inside the
+# backslash-continued chain: a comment line would end the continuation.)
+
 # COMMAND ----------
 
 # first run
@@ -490,7 +528,35 @@ parsed_df = clean_df \
                 else element_at(regexp_extract_all(cleaned_xml, '<dc:rights>(.*?)</dc:rights>'), 1)
             end
         """)) \
-    .withColumn("license", normalize_license_udf(col("raw_license"))) \
+    .withColumn("_alt_rights", regexp_extract_all(col("cleaned_xml"), lit(ALT_RIGHTS_ELEMENT_PATTERN), lit(1))) \
+    .withColumn("raw_alt_license",
+        expr("""
+            case
+                when size(filter(_alt_rights, x -> x like '%creativecommons.org%')) > 0
+                then filter(_alt_rights, x -> x like '%creativecommons.org%')[0]
+                else get(_alt_rights, 0)
+            end
+        """)) \
+    .withColumn("_dc_rights_all", regexp_extract_all(col("cleaned_xml"), lit(DC_RIGHTS_TEXT_PATTERN), lit(1))) \
+    .withColumn("_rights_blocked",
+        (size(regexp_extract_all(col("cleaned_xml"), lit(DC_RIGHTS_OPEN_TAG_PATTERN), lit(0))) > size(col("_dc_rights_all")))
+        | exists(col("_dc_rights_all"),
+            lambda x: coalesce(regexp_replace(lower(x), "[ -]", "").rlike(RIGHTS_RESTRICTED_PATTERN), lit(False)))
+        | normalize_license_udf(when(size(col("_dc_rights_all")) > 0, concat_ws(" | ", col("_dc_rights_all")))).isNotNull()
+        | exists(col("_dc_rights_all"),
+            lambda x: coalesce(regexp_replace(lower(x), "[ -]", "").contains("publicdomain")
+                               & ~regexp_replace(lower(x), "[ -]", "").contains("worksnotinthepublicdomain"), lit(False)))) \
+    .withColumn("_cc0_text",
+        exists(col("_dc_rights_all"),
+            lambda x: coalesce(regexp_replace(regexp_replace(lower(trim(x)), r"\s+", " "), r"\.$", "").rlike(CC0_TEXT_PATTERNS), lit(False)))) \
+    .withColumn("license",
+        coalesce(
+            normalize_license_udf(col("raw_license")),
+            when(~col("_rights_blocked"),
+                coalesce(
+                    normalize_license_udf(col("raw_alt_license")),
+                    when(col("_cc0_text"), lit("public-domain")))))) \
+    .drop("_alt_rights", "raw_alt_license", "_dc_rights_all", "_rights_blocked", "_cc0_text") \
     .withColumn("issue", lit(None).cast("string")) \
     .withColumn("volume", lit(None).cast("string")) \
     .withColumn("first_page", lit(None).cast("string")) \
