@@ -508,8 +508,9 @@ if MODE == "repoint_citations":
 # MAGIC ## doi_split — one work per DOI for a DOI family that must never share a work (oxjob #1678)
 # MAGIC
 # MAGIC For DOIs matching `doi_like` (e.g. `10.25582/data.%`, EMSL instrument uploads: each its own work, Casey
-# MAGIC 2026-10-13), a work holding 2+ distinct such DOIs keeps the one it publishes (`openalex_works.doi`, else the
-# MAGIC smallest) and every other DOI leaves with all of its anchors, whatever their provenance. Same correction path
+# MAGIC 2026-10-13), a work holding 2+ distinct such DOIs keeps the DOI carried by the most provenances, then the one it
+# MAGIC publishes (`openalex_works.doi`), then the smallest; every other DOI leaves with all of its anchors. A moving DOI
+# MAGIC with a repo copy title-binds straight back (the class guard only blocks same-class binds): W4402428251, 10-14. Same correction path
 # MAGIC as `wave_e`: delete the pins and the old work's map rows for those DOIs, and the nightly `MapWorkIds` mints one
 # MAGIC work per DOI (cell 24 partitions by `doi_clean`) or binds to another work already holding the DOI. The title
 # MAGIC tier cannot pull them back: the old work keeps a record of the same class (`title_doi_conflict`).
@@ -547,14 +548,19 @@ if MODE == "doi_split_stage":
         JOIN {REGISTRY} r USING (provenance, native_id_namespace, native_id)
         WHERE r.work_id IS NOT NULL AND l.doi_clean IS NOT NULL
       ),
-      w AS (
-        SELECT a.old_work_id, COUNT(DISTINCT a.doi_clean) AS n_dois, COUNT(*) AS n_anchors,
-               COALESCE(MAX(CASE WHEN lower(a.doi_clean) = {shown_doi} THEN a.doi_clean END),
-                        MIN(a.doi_clean)) AS keep_doi,
+      d AS (
+        SELECT a.old_work_id, a.doi_clean, COUNT(*) AS n_anchors, COUNT(DISTINCT a.provenance) AS n_prov,
+               MAX(CASE WHEN lower(a.doi_clean) = {shown_doi} THEN 1 ELSE 0 END) AS shown,
                MAX(COALESCE(ow.cited_by_count, 0)) AS cited_by_count
         FROM a LEFT JOIN {WORKS} ow ON ow.id = a.old_work_id
-        GROUP BY a.old_work_id
-        HAVING COUNT(DISTINCT a.doi_clean) >= 2
+        GROUP BY a.old_work_id, a.doi_clean
+      ),
+      w AS (
+        SELECT old_work_id, COUNT(*) AS n_dois, SUM(n_anchors) AS n_anchors,
+               MAX_BY(doi_clean, struct(n_prov, shown, -rank_doi)) AS keep_doi, MAX(cited_by_count) AS cited_by_count
+        FROM (SELECT d.*, DENSE_RANK() OVER (PARTITION BY old_work_id ORDER BY doi_clean) AS rank_doi FROM d)
+        GROUP BY old_work_id
+        HAVING COUNT(*) >= 2
       ),
       elsewhere AS (
         SELECT DISTINCT {DOI_CLEAN.format('m.doi')} AS doi_clean, m.id
@@ -656,13 +662,16 @@ if MODE == "doi_split_verify":
                COUNT(DISTINCT work_id) AS works_now_holding_them,
                SUM(CASE WHEN work_id_source = 'doi' THEN 1 ELSE 0 END) AS via_doi_tier
         FROM j""")
+    # the kept DOIs count too: a moved DOI back on its old work makes that work hold two
     shared = one(f"""
         SELECT COUNT(*) AS works_still_holding_2plus_dois, COALESCE(MAX(n), 0) AS max_dois_on_a_work FROM (
-          SELECT r.work_id, COUNT(DISTINCT x.doi_clean) AS n
-          FROM {SPLIT_AUDIT} x
-          JOIN {REGISTRY} r ON r.provenance = x.provenance AND r.native_id_namespace = x.native_id_namespace
-                           AND r.native_id = x.native_id
-          GROUP BY 1 HAVING COUNT(DISTINCT x.doi_clean) > 1)""")
+          SELECT work_id, COUNT(DISTINCT doi_clean) AS n FROM (
+            SELECT r.work_id, x.doi_clean
+            FROM {SPLIT_AUDIT} x
+            JOIN {REGISTRY} r ON r.provenance = x.provenance AND r.native_id_namespace = x.native_id_namespace
+                             AND r.native_id = x.native_id
+            UNION SELECT old_work_id, keep_doi FROM {SPLIT_AUDIT})
+          GROUP BY 1 HAVING COUNT(DISTINCT doi_clean) > 1)""")
     out = {**res, **shared}
     print(out)
     dbutils.notebook.exit(str(out))
