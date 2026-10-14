@@ -45,7 +45,7 @@ awards_transformed AS (
         abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(w.grant_ref)))) % 9000000000 as id,
 
         -- Display name = title
-        w.title as display_name,
+        RTRIM(w.title) as display_name,
 
         -- Description
         w.description as description,

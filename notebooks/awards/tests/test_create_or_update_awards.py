@@ -29,9 +29,11 @@ def test_plain_sql_only():
 
 def test_closed_parameter_guard():
     first = CELLS[0]
-    assert ":stage = 'dev'" in first
-    assert ":raw_table = 'openalex_dev.rohan_lab.gr1009_review_shadow_raw'" in first
-    assert 'raise_error(' in first and 'production allowlist is empty' in first
+    assert "(:stage = 'prod' AND :raw_table = 'openalex.awards.openalex_awards_raw')" in first
+    assert "OR (:stage = 'dev' AND :raw_table = 'openalex_dev.rohan_lab.gr1009_review_shadow_raw')" in first
+    assert 'raise_error(' in first and 'must match an allowed production or review shadow pair' in first
+    assert SQL.count('DESCRIBE HISTORY IDENTIFIER(:raw_table)') == 10
+    assert 'DESCRIBE HISTORY openalex_dev.' not in SQL
     assert 'IDENTIFIER(session.awards_target)' in SQL
 
 
@@ -73,11 +75,27 @@ def test_deferred_failure_and_frozen_result():
         assert SQL.index(f'SET VAR {source}_result =') < SQL.index(f'USING {source}_guarded_candidate c')
 
 
-def test_paused_dev_job():
+def test_prod_job():
     job = yaml.safe_load((ROOT / 'jobs/create_or_update_awards.yaml').read_text())['resources']['jobs']['Create_Or_Update_Awards']
     assert job['name'] == 'Awards'
-    assert job['schedule'] == {'quartz_cron_expression': '0 30 0 * * ?', 'timezone_id': 'UTC', 'pause_status': 'PAUSED'}
+    assert job['schedule'] == {'quartz_cron_expression': '0 30 0 * * ?', 'timezone_id': 'UTC', 'pause_status': 'UNPAUSED'}
     task = job['tasks'][0]['notebook_task']
     assert task['notebook_path'] == 'notebooks/awards/CreateOrUpdateAwards'
-    assert task['base_parameters'] == {'raw_table': 'openalex_dev.rohan_lab.gr1009_review_shadow_raw', 'stage': 'dev'}
+    assert task['base_parameters'] == {'raw_table': 'openalex.awards.openalex_awards_raw', 'stage': 'prod'}
     assert job['max_concurrent_runs'] == 1 and job['email_notifications']['on_failure']
+
+    assert job['tags']['stage'] == 'prod'
+    assert job['environments'][0]['spec']['client'] == '2'
+    assert 'new_cluster' not in job['tasks'][0] and 'existing_cluster_id' not in job['tasks'][0]
+
+
+def test_production_source_prefixes():
+    prefixes = re.findall(r"read_files\('([^']+)'", SQL)
+    assert prefixes == [
+        's3://openalex-ingest/awards/nsf/*.parquet',
+        's3://openalex-ingest/awards/wellcome/*.parquet',
+        's3://openalex-ingest/awards/european_commission/*.parquet',
+        's3://openalex-ingest/awards/gates/*.parquet',
+        's3://openalex-ingest/awards/kaken/*.parquet',
+    ]
+    assert 'dev-gr1009' not in SQL

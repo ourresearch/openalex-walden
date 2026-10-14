@@ -1,14 +1,14 @@
-# Dev rehearsal only. Production cutover and unpausing require a later reviewed change.
+# Awards runs nightly against the production raw table.
 resources:
   jobs:
     Create_Or_Update_Awards:
       name: Awards
       description: Refresh five explicit award sources with SQL MERGE; preserve unchanged and absent rows.
-      tags: {stage: dev, lane: awards}
+      tags: {stage: prod, lane: awards}
       schedule:
         quartz_cron_expression: "0 30 0 * * ?"
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       email_notifications:
         on_failure:
           - rohan@openalex.org
@@ -21,8 +21,8 @@ resources:
             notebook_path: notebooks/awards/CreateOrUpdateAwards
             source: GIT
             base_parameters:
-              raw_table: openalex_dev.rohan_lab.gr1009_review_shadow_raw
-              stage: dev
+              raw_table: openalex.awards.openalex_awards_raw
+              stage: prod
           environment_key: Default
           timeout_seconds: 3000
           max_retries: 0

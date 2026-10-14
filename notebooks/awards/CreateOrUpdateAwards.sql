@@ -1,10 +1,11 @@
 -- Databricks notebook source
 -- Five explicit source groups. sources.csv and sources/*.sql are reference documentation only.
--- KAKEN uses its frozen production object read-only until a fresh dev object exists.
+-- Each source reads its latest production object.
 -- Job base_parameters create raw_table/stage widgets; named markers bind them here.
--- No production allowlist is enabled in this five-source dev package.
-SELECT CASE WHEN :stage = 'dev' AND :raw_table = 'openalex_dev.rohan_lab.gr1009_review_shadow_raw'
- THEN 'dev target accepted' ELSE raise_error('Awards: only stage=dev and the exact review shadow target are allowed; production allowlist is empty') END;
+-- Only the paired production and review shadow targets are allowed.
+SELECT CASE WHEN (:stage = 'prod' AND :raw_table = 'openalex.awards.openalex_awards_raw')
+ OR (:stage = 'dev' AND :raw_table = 'openalex_dev.rohan_lab.gr1009_review_shadow_raw')
+ THEN 'target accepted' ELSE raise_error('Awards: stage and raw_table must match an allowed production or review shadow pair') END;
 
 -- COMMAND ----------
 
@@ -31,7 +32,7 @@ DECLARE OR REPLACE VARIABLE awards_timestamp TIMESTAMP DEFAULT current_timestamp
 -- nsf_award_search: candidate mapping. weekly fetch cadence (descriptive).
 CREATE OR REPLACE TEMP VIEW nsf_award_search_files AS
 SELECT *, _metadata.file_path AS _file_path, _metadata.file_modification_time AS _file_modified
-FROM read_files('s3://openalex-ingest/awards/dev-gr1009/nsf/*.parquet', format => 'parquet');
+FROM read_files('s3://openalex-ingest/awards/nsf/*.parquet', format => 'parquet');
 
 -- COMMAND ----------
 
@@ -49,7 +50,7 @@ CREATE OR REPLACE TEMP VIEW nsf_award_search_input AS SELECT * EXCEPT (_file_pat
 
 -- COMMAND ----------
 
-SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw));
+SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
 
 -- COMMAND ----------
 
@@ -308,7 +309,7 @@ SELECT * FROM nsf_award_search_candidate WHERE session.nsf_award_search_result.s
 -- COMMAND ----------
 
 -- Fail closed on target drift between guard and write. One writer per slice is still required.
-SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw)) = session.awards_version
+SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table))) = session.awards_version
  THEN 'baseline current' ELSE raise_error('Awards target advanced during validation; rerun') END;
 
 -- COMMAND ----------
@@ -360,7 +361,7 @@ SELECT to_json(session.nsf_award_search_result) AS result;
 -- wellcome_trust: candidate mapping. monthly fetch cadence (descriptive).
 CREATE OR REPLACE TEMP VIEW wellcome_trust_files AS
 SELECT *, _metadata.file_path AS _file_path, _metadata.file_modification_time AS _file_modified
-FROM read_files('s3://openalex-ingest/awards/dev-gr1009/wellcome/*.parquet', format => 'parquet');
+FROM read_files('s3://openalex-ingest/awards/wellcome/*.parquet', format => 'parquet');
 
 -- COMMAND ----------
 
@@ -378,7 +379,7 @@ CREATE OR REPLACE TEMP VIEW wellcome_trust_input AS SELECT * EXCEPT (_file_path,
 
 -- COMMAND ----------
 
-SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw));
+SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
 
 -- COMMAND ----------
 
@@ -437,7 +438,7 @@ awards_transformed AS (
         abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(w.grant_ref)))) % 9000000000 as id,
 
         -- Display name = title
-        w.title as display_name,
+        RTRIM(w.title) as display_name,
 
         -- Description
         w.description as description,
@@ -675,7 +676,7 @@ SELECT * FROM wellcome_trust_candidate WHERE session.wellcome_trust_result.state
 -- COMMAND ----------
 
 -- Fail closed on target drift between guard and write. One writer per slice is still required.
-SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw)) = session.awards_version
+SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table))) = session.awards_version
  THEN 'baseline current' ELSE raise_error('Awards target advanced during validation; rerun') END;
 
 -- COMMAND ----------
@@ -727,7 +728,7 @@ SELECT to_json(session.wellcome_trust_result) AS result;
 -- cordis: candidate mapping. manual fetch cadence (descriptive).
 CREATE OR REPLACE TEMP VIEW cordis_files AS
 SELECT *, _metadata.file_path AS _file_path, _metadata.file_modification_time AS _file_modified
-FROM read_files('s3://openalex-ingest/awards/dev-gr1009/european_commission/*.parquet', format => 'parquet');
+FROM read_files('s3://openalex-ingest/awards/european_commission/*.parquet', format => 'parquet');
 
 -- COMMAND ----------
 
@@ -745,7 +746,7 @@ CREATE OR REPLACE TEMP VIEW cordis_input AS SELECT * EXCEPT (_file_path, _file_m
 
 -- COMMAND ----------
 
-SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw));
+SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
 
 -- COMMAND ----------
 
@@ -1048,7 +1049,7 @@ SELECT * FROM cordis_candidate WHERE session.cordis_result.state = 'written';
 -- COMMAND ----------
 
 -- Fail closed on target drift between guard and write. One writer per slice is still required.
-SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw)) = session.awards_version
+SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table))) = session.awards_version
  THEN 'baseline current' ELSE raise_error('Awards target advanced during validation; rerun') END;
 
 -- COMMAND ----------
@@ -1100,7 +1101,7 @@ SELECT to_json(session.cordis_result) AS result;
 -- gates_foundation: candidate mapping. manual fetch cadence (descriptive).
 CREATE OR REPLACE TEMP VIEW gates_foundation_files AS
 SELECT *, _metadata.file_path AS _file_path, _metadata.file_modification_time AS _file_modified
-FROM read_files('s3://openalex-ingest/awards/dev-gr1009/gates/*.parquet', format => 'parquet');
+FROM read_files('s3://openalex-ingest/awards/gates/*.parquet', format => 'parquet');
 
 -- COMMAND ----------
 
@@ -1118,7 +1119,7 @@ CREATE OR REPLACE TEMP VIEW gates_foundation_input AS SELECT * EXCEPT (_file_pat
 
 -- COMMAND ----------
 
-SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw));
+SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
 
 -- COMMAND ----------
 
@@ -1389,7 +1390,7 @@ SELECT * FROM gates_foundation_candidate WHERE session.gates_foundation_result.s
 -- COMMAND ----------
 
 -- Fail closed on target drift between guard and write. One writer per slice is still required.
-SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw)) = session.awards_version
+SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table))) = session.awards_version
  THEN 'baseline current' ELSE raise_error('Awards target advanced during validation; rerun') END;
 
 -- COMMAND ----------
@@ -1459,7 +1460,7 @@ CREATE OR REPLACE TEMP VIEW kaken_input AS SELECT * EXCEPT (_file_path, _file_mo
 
 -- COMMAND ----------
 
-SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw));
+SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
 
 -- COMMAND ----------
 
@@ -1733,7 +1734,7 @@ SELECT * FROM kaken_candidate WHERE session.kaken_result.state = 'written';
 -- COMMAND ----------
 
 -- Fail closed on target drift between guard and write. One writer per slice is still required.
-SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY openalex_dev.rohan_lab.gr1009_review_shadow_raw)) = session.awards_version
+SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table))) = session.awards_version
  THEN 'baseline current' ELSE raise_error('Awards target advanced during validation; rerun') END;
 
 -- COMMAND ----------
