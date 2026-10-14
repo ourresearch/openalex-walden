@@ -155,16 +155,21 @@ resources:
           depends_on:
             - task_key: Merge_Declared_Preprints
           run_if: ALL_DONE
-          condition_task:
-            op: EQUAL_TO
-            left: "1"
-            right: "1"
+          # Fails only when Merge_Declared_Preprints never ran (upstream failed), so a repair re-runs this gate after it.
+          sql_task:
+            warehouse_id: 4d37bf76372a2901
+            file:
+              path: notebooks/end2end/gate_guarded_task_ran.sql
+              source: GIT
+            parameters:
+              guarded_state: "{{tasks.Merge_Declared_Preprints.result_state}}"
+          max_retries: 2
+          min_retry_interval_millis: 60000
         - task_key: Map_Work_Ids
           timeout_seconds: 1200
           depends_on:
             - task_key: Locations_with_Types
             - task_key: Merge_Declared_Preprints_Gate
-              outcome: "true"   # the gate always evaluates true; the API requires an outcome on a condition dependency
           notebook_task:
             notebook_path: notebooks/end2end/MapWorkIds
             source: GIT
@@ -265,17 +270,22 @@ resources:
           depends_on:
             - task_key: Affiliation_Matcher_Nightly
           run_if: ALL_DONE
-          condition_task:
-            op: EQUAL_TO
-            left: "1"
-            right: "1"
+          # Fails only when Affiliation_Matcher_Nightly never ran (upstream failed), so a repair re-runs this gate after it.
+          sql_task:
+            warehouse_id: 4d37bf76372a2901
+            file:
+              path: notebooks/end2end/gate_guarded_task_ran.sql
+              source: GIT
+            parameters:
+              guarded_state: "{{tasks.Affiliation_Matcher_Nightly.result_state}}"
+          max_retries: 2
+          min_retry_interval_millis: 60000
         - task_key: Institutions_Frontfill
           timeout_seconds: 3300
           depends_on:
             - task_key: Prepare_Affiliation_Strings
             - task_key: Sync_RAS_Curations
             - task_key: Affiliation_Matcher_Gate
-              outcome: "true"   # the gate always evaluates true; the API requires an outcome on a condition dependency
           run_job_task:
             job_id: 637771147662119
           max_retries: 2
@@ -324,17 +334,22 @@ resources:
           depends_on:
             - task_key: Vector_Matcher
           run_if: ALL_DONE
-          condition_task:
-            op: EQUAL_TO
-            left: "1"
-            right: "1"
+          # Fails only when Vector_Matcher never ran (upstream failed), so a repair re-runs this gate after it.
+          sql_task:
+            warehouse_id: 4d37bf76372a2901
+            file:
+              path: notebooks/end2end/gate_guarded_task_ran.sql
+              source: GIT
+            parameters:
+              guarded_state: "{{tasks.Vector_Matcher.result_state}}"
+          max_retries: 2
+          min_retry_interval_millis: 60000
         - task_key: Author_Matching
           timeout_seconds: 3900
           depends_on:
             - task_key: Author_Affiliations
             - task_key: Topics
             - task_key: Vector_Matcher_Gate
-              outcome: "true"   # the gate always evaluates true; the API requires an outcome on a condition dependency
           notebook_task:
             notebook_path: notebooks/end2end/MatchAuthors
             source: GIT
