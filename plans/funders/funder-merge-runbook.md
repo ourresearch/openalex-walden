@@ -64,6 +64,16 @@ the sources registry, oxjob #548).
   DataCite award name candidates use `openalex.funders.funder_match_policy`
   (`matcher='datacite_name_v1' AND eligible); DOI/ROR ownership uses the full table.
   There is no compatibility-table write branch.
+- **Redirects for every merge path.** `notebooks/elastic/sync_funders.py` adds any MISSING `merge-funders`
+  redirect for `openalex.funders.funders.merge_into_id` (chains resolved to the live root, winner doc checked
+  in the funders index) on each funders ES sync, so SQL-packet / registry merges get the 301 too, not only
+  MergeFunders.ipynb runs (2026-10-14: 64 of 65 merges had no redirect doc; F4320311391 404ed). It is
+  upsert-only: it never changes or deletes an existing redirect, and it fails the run (before the stale-doc
+  delete) on an unresolved merge, a conflicting existing redirect or a winner missing from ES.
+- **Unmerge is manual.** Clear `merge_into_id`/`merge_into_date` on the loser row, let CreateFundersAPI +
+  the funders sync republish it, confirm `GET /funders/F<loser>` serves the loser itself, then delete its
+  doc by hand: `DELETE merge-funders/_doc/https:%2F%2Fopenalex.org%2FF<loser>`. A changed winner is the
+  same: delete the old redirect doc; the next sync writes the new one.
 - Award IDs churn by design: loser-attributed award ids (hash of loser funder_id) are
   replaced by winner-hashed ids. Anything caching `G...` ids for the loser's awards will
   see new ids.
