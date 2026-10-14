@@ -28,6 +28,7 @@ resources:
           retry_on_timeout: true
           timeout_seconds: 3600
         - task_key: Parseland
+          timeout_seconds: 28500
           notebook_task:
             notebook_path: notebooks/scraping/parseland
             source: GIT
@@ -67,6 +68,7 @@ resources:
           retry_on_timeout: true
           timeout_seconds: 3600
         - task_key: Union
+          timeout_seconds: 2700
           depends_on:
             - task_key: Crossref_Ingest_DLT
             - task_key: PubMed_Ingest_DLT
@@ -81,6 +83,7 @@ resources:
           min_retry_interval_millis: 300000
           retry_on_timeout: true
         - task_key: Crossref_Super_Authorships
+          timeout_seconds: 1200
           depends_on:
             - task_key: Union
           notebook_task:
@@ -88,6 +91,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Repo_Super_Authorships
+          timeout_seconds: 1200
           depends_on:
             - task_key: Union
           notebook_task:
@@ -95,6 +99,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Superlocations
+          timeout_seconds: 2100
           depends_on:
             - task_key: Repo_Super_Authorships
             - task_key: Crossref_Super_Authorships
@@ -107,6 +112,8 @@ resources:
         # a cron, so this run's consumers raced a snapshot that could be a day stale.
         # Same CreateSources notebook — single source of truth for the legacy shape.
         - task_key: Sources_Snapshot
+          timeout_seconds: 1800
+          retry_on_timeout: true
           notebook_task:
             notebook_path: notebooks/sources/CreateSources
             source: GIT
@@ -114,6 +121,7 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 300000
         - task_key: Locations_with_Sources
+          timeout_seconds: 1800
           depends_on:
             - task_key: Superlocations
             - task_key: Sources_Snapshot
@@ -122,6 +130,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Locations_with_Types
+          timeout_seconds: 1200
           depends_on:
             - task_key: Locations_with_Sources
           notebook_task:
@@ -143,6 +152,7 @@ resources:
           timeout_seconds: 2400
         # Passes whether the merge succeeded, failed or timed out: MapWorkIds runs either way.
         - task_key: Merge_Declared_Preprints_Gate
+          timeout_seconds: 1200
           depends_on:
             - task_key: Merge_Declared_Preprints
           run_if: ALL_DONE
@@ -151,6 +161,7 @@ resources:
             left: "1"
             right: "1"
         - task_key: Map_Work_Ids
+          timeout_seconds: 1200
           depends_on:
             - task_key: Locations_with_Types
             - task_key: Merge_Declared_Preprints_Gate
@@ -160,6 +171,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Locations_Mapped
+          timeout_seconds: 1500
           depends_on:
             - task_key: Map_Work_Ids
           notebook_task:
@@ -167,6 +179,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Apply_Location_Curations
+          timeout_seconds: 1200
           depends_on:
             - task_key: Locations_Mapped
           notebook_task:
@@ -174,6 +187,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: parse_referenced_works
+          timeout_seconds: 1500
           depends_on:
             - task_key: Works_Base
           notebook_task:
@@ -181,6 +195,7 @@ resources:
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
         - task_key: Work_Volumes
+          timeout_seconds: 1200
           depends_on:
             - task_key: Map_Work_Ids
           notebook_task:
@@ -188,6 +203,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Works_Base
+          timeout_seconds: 3000
           depends_on:
             - task_key: Apply_Location_Curations
             - task_key: Work_Volumes
@@ -196,6 +212,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Works_Fulltext
+          timeout_seconds: 1200
           depends_on:
             - task_key: Works_Base
           notebook_task:
@@ -203,12 +220,14 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Parsed_Author_Names
+          timeout_seconds: 1200
           depends_on:
             - task_key: Works_Base
           notebook_task:
             notebook_path: notebooks/end2end/CreateAuthorNames
             source: GIT
         - task_key: Prepare_Affiliation_Strings
+          timeout_seconds: 1200
           depends_on:
             - task_key: Works_Base
           notebook_task:
@@ -216,6 +235,9 @@ resources:
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
         - task_key: Sync_RAS_Curations
+          timeout_seconds: 10800
+          max_retries: 1
+          min_retry_interval_millis: 60000
           depends_on:
             - task_key: Works_Base
           notebook_task:
@@ -223,6 +245,9 @@ resources:
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
         - task_key: Sync_Work_Author_Curations
+          timeout_seconds: 14400
+          max_retries: 1
+          min_retry_interval_millis: 60000
           depends_on:
             - task_key: Works_Base
           notebook_task:
@@ -238,6 +263,7 @@ resources:
           timeout_seconds: 3000
         # Passes whether the matcher succeeded, failed or timed out: its strings then keep the legacy answer.
         - task_key: Affiliation_Matcher_Gate
+          timeout_seconds: 1200
           depends_on:
             - task_key: Affiliation_Matcher_Nightly
           run_if: ALL_DONE
@@ -246,6 +272,7 @@ resources:
             left: "1"
             right: "1"
         - task_key: Institutions_Frontfill
+          timeout_seconds: 3300
           depends_on:
             - task_key: Prepare_Affiliation_Strings
             - task_key: Sync_RAS_Curations
@@ -258,6 +285,7 @@ resources:
         # oxjob #1300: SDG_Frontfill (Aurora on the sdg-classifier endpoint, job 27479127407344) removed. The
         # Jev-trained head replaced Aurora; new works are scored by task sdg_score of Embed_Qwen3_Nightly.
         - task_key: Topics
+          timeout_seconds: 18600
           depends_on:
             - task_key: Works_Base
           run_job_task:
@@ -265,6 +293,7 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 600000
         - task_key: Concepts
+          timeout_seconds: 5100
           depends_on:
             - task_key: Works_Base
           run_job_task:
@@ -272,6 +301,7 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 600000
         - task_key: Author_Affiliations
+          timeout_seconds: 1200
           depends_on:
             - task_key: Parsed_Author_Names
             - task_key: Institutions_Frontfill
@@ -293,6 +323,7 @@ resources:
           timeout_seconds: 5400
         # Passes whether the vector matcher succeeded, failed or timed out: Author_Matching then runs on the name cascade alone.
         - task_key: Vector_Matcher_Gate
+          timeout_seconds: 1200
           depends_on:
             - task_key: Vector_Matcher
           run_if: ALL_DONE
@@ -301,6 +332,7 @@ resources:
             left: "1"
             right: "1"
         - task_key: Author_Matching
+          timeout_seconds: 3900
           depends_on:
             - task_key: Author_Affiliations
             - task_key: Topics
@@ -311,6 +343,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Apply_Work_Author_Curations
+          timeout_seconds: 3600  # never over 2.2 min so far, but 14 Oct doubled the curations (28.7M); generous until it has history
           depends_on:
             - task_key: Author_Matching
             - task_key: Sync_Work_Author_Curations
@@ -319,6 +352,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Authorships
+          timeout_seconds: 2400
           depends_on:
             - task_key: Apply_Work_Author_Curations
           notebook_task:
@@ -326,6 +360,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Works_Enriched
+          timeout_seconds: 5700
           depends_on:
             - task_key: Authorships
             - task_key: Concepts
@@ -337,6 +372,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Optimize_Works_Enriched
+          timeout_seconds: 1500
           depends_on:
             - task_key: Works_Enriched
           notebook_task:
@@ -344,6 +380,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Guardrails
+          timeout_seconds: 1200
           depends_on:
             - task_key: Optimize_Works_Enriched
           notebook_task:
@@ -353,6 +390,7 @@ resources:
         # Guardrails so a pathological run is stopped before it can ledger the loss.
         # Feeds Delete_Works_from_Elasticsearch and the snapshot's deleted_ids.csv.
         - task_key: Track_Deleted_Works
+          timeout_seconds: 1200
           depends_on:
             - task_key: Guardrails
           notebook_task:
@@ -365,6 +403,7 @@ resources:
         # an explicit delete feed). Runs after Guardrails for the same reason as
         # Track_Deleted_Works. Feeds Delete_Locations_from_Elasticsearch.
         - task_key: Track_Deleted_Locations
+          timeout_seconds: 1200
           depends_on:
             - task_key: Guardrails
           notebook_task:
@@ -373,6 +412,7 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 300000
         - task_key: Full_Snapshot
+          timeout_seconds: 15300
           depends_on:
             - task_key: Guardrails
             - task_key: Track_Deleted_Works
@@ -383,6 +423,7 @@ resources:
               # this nightly's snapshot goes to the public bucket (oxjob #1323).
               public_release: "auto"
         - task_key: Sync_to_Elasticsearch
+          timeout_seconds: 37200
           depends_on:
             - task_key: Guardrails
           notebook_task:
@@ -395,6 +436,7 @@ resources:
         # watermark-driven (elastic_sync_state, keyed locations-v3).
         # Serialized after the works sync on the shared cluster.
         - task_key: Sync_Locations_to_Elasticsearch
+          timeout_seconds: 5400
           depends_on:
             - task_key: Sync_to_Elasticsearch
           notebook_task:
@@ -406,6 +448,7 @@ resources:
         # oxjob #850: the ES delete path sync_locations lacks — consumes the
         # deleted_locations ledger and removes the stale docs from locations-v3.
         - task_key: Delete_Locations_from_Elasticsearch
+          timeout_seconds: 1200
           depends_on:
             - task_key: Sync_Locations_to_Elasticsearch
             - task_key: Track_Deleted_Locations
@@ -420,6 +463,7 @@ resources:
         # oxjob #784: the ES delete path sync_works lacks — consumes the
         # deleted_works ledger and removes the stale docs from the works index (the `works` alias).
         - task_key: Delete_Works_from_Elasticsearch
+          timeout_seconds: 1200
           depends_on:
             - task_key: Sync_to_Elasticsearch
             - task_key: Track_Deleted_Works
@@ -444,6 +488,7 @@ resources:
           job_cluster_key: lakebase_sync_cluster
           timeout_seconds: 21600
         - task_key: Refresh_RAS_Counts
+          timeout_seconds: 1200
           depends_on:
             - task_key: Guardrails
           notebook_task:
@@ -451,6 +496,7 @@ resources:
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
         - task_key: Sync_RAS_to_Elasticsearch
+          timeout_seconds: 13500
           depends_on:
             - task_key: Refresh_RAS_Counts
             - task_key: Sync_to_Elasticsearch
@@ -461,6 +507,7 @@ resources:
             source: GIT
           job_cluster_key: es_sync_cluster
         - task_key: Wunpaywall
+          timeout_seconds: 1200
           depends_on:
             - task_key: Guardrails
           notebook_task:
@@ -468,6 +515,7 @@ resources:
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
         - task_key: Wunpaywal_Data_Feed
+          timeout_seconds: 2100
           depends_on:
             - task_key: Wunpaywall
           notebook_task:
@@ -475,6 +523,7 @@ resources:
             source: GIT
           job_cluster_key: Wunpaywall_DataFeed_Job_Cluster
         - task_key: Wunpaywall_Full_Snapshot
+          timeout_seconds: 2700
           depends_on:
             - task_key: Wunpaywall
           notebook_task:
