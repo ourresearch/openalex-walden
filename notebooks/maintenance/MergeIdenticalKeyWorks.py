@@ -253,8 +253,9 @@ def class_sql():
     ),
     w AS (
       SELECT id, publication_year AS yr, type, title,
-             regexp_replace(lower(title), '[^a-z0-9]', '') AS title_norm,
-             array_distinct(filter(split(regexp_replace(lower(title), '[^a-z0-9 ]', ' '), ' +'), x -> x <> '')) AS title_tokens,
+             -- oxjob #1676: COALESCE so an untitled work gets no tokens (Jaccard 0, held) instead of NULL, which skipped the holds
+             regexp_replace(lower(COALESCE(title, '')), '[^a-z0-9]', '') AS title_norm,
+             array_distinct(filter(split(regexp_replace(lower(COALESCE(title, '')), '[^a-z0-9 ]', ' '), ' +'), x -> x <> '')) AS title_tokens,
              primary_location.source.id AS src, biblio.volume AS vol, biblio.first_page AS fp,
              COALESCE(cited_by_count, 0) AS cites,
              array_distinct(filter(split(regexp_replace(lower(COALESCE(abstract, '')), '[^a-z0-9 ]', ' '), ' +'), x -> length(x) > 3)) AS abs_tokens
@@ -268,7 +269,7 @@ def class_sql():
              s.n_locations AS loser_locations, LENGTH(s.ta) AS key_len, s.type AS loser_type,
              CASE WHEN s.yr IS NULL OR x.yr IS NULL THEN 'unknown' WHEN s.yr = x.yr THEN 'same'
                   WHEN ABS(s.yr - x.yr) = 1 THEN 'pm1' ELSE 'gt1' END AS year_cls,
-             (s.title_norm = x.title_norm) AS full_title_same,
+             (s.title_norm = x.title_norm AND s.title_norm <> '') AS full_title_same,   -- two untitled works don't agree (#1676)
              CASE WHEN size(array_union(s.title_tokens, x.title_tokens)) = 0 THEN 0.0
                   ELSE size(array_intersect(s.title_tokens, x.title_tokens)) / size(array_union(s.title_tokens, x.title_tokens)) END AS title_jaccard,
              (s.vol IS NOT NULL AND x.vol IS NOT NULL AND (s.vol <> x.vol OR (s.fp IS NOT NULL AND x.fp IS NOT NULL AND s.fp <> x.fp))) AS biblio_differs,
@@ -343,8 +344,9 @@ def same_doi_class_sql():
     g AS (SELECT ta, COUNT(*) AS n_ids, SUM(CASE WHEN has_doi THEN 1 ELSE 0 END) AS n_doi FROM kl GROUP BY ta HAVING COUNT(*) BETWEEN 2 AND 3),
     w AS (
       SELECT id, publication_year AS yr, type, title,
-             regexp_replace(lower(title), '[^a-z0-9]', '') AS title_norm,
-             array_distinct(filter(split(regexp_replace(lower(title), '[^a-z0-9 ]', ' '), ' +'), x -> x <> '')) AS title_tokens,
+             -- oxjob #1676: COALESCE so an untitled work gets no tokens (Jaccard 0, held) instead of NULL, which skipped the holds
+             regexp_replace(lower(COALESCE(title, '')), '[^a-z0-9]', '') AS title_norm,
+             array_distinct(filter(split(regexp_replace(lower(COALESCE(title, '')), '[^a-z0-9 ]', ' '), ' +'), x -> x <> '')) AS title_tokens,
              primary_location.source.id AS src, biblio.volume AS vol, biblio.first_page AS fp,
              COALESCE(cited_by_count, 0) AS cites,
              array_distinct(filter(split(regexp_replace(lower(COALESCE(abstract, '')), '[^a-z0-9 ]', ' '), ' +'), x -> length(x) > 3)) AS abs_tokens
@@ -362,7 +364,7 @@ def same_doi_class_sql():
              s.n_locations AS loser_locations, LENGTH(s.ta) AS key_len, s.type AS loser_type,
              CASE WHEN s.yr IS NULL OR x.yr IS NULL THEN 'unknown' WHEN s.yr = x.yr THEN 'same'
                   WHEN ABS(s.yr - x.yr) = 1 THEN 'pm1' ELSE 'gt1' END AS year_cls,
-             (s.title_norm = x.title_norm) AS full_title_same,
+             (s.title_norm = x.title_norm AND s.title_norm <> '') AS full_title_same,   -- two untitled works don't agree (#1676)
              CASE WHEN size(array_union(s.title_tokens, x.title_tokens)) = 0 THEN 0.0
                   ELSE size(array_intersect(s.title_tokens, x.title_tokens)) / size(array_union(s.title_tokens, x.title_tokens)) END AS title_jaccard,
              (s.vol IS NOT NULL AND x.vol IS NOT NULL AND (s.vol <> x.vol OR (s.fp IS NOT NULL AND x.fp IS NOT NULL AND s.fp <> x.fp))) AS biblio_differs,
