@@ -152,6 +152,7 @@ resources:
           timeout_seconds: 2400
         # Passes whether the merge succeeded, failed or timed out: MapWorkIds runs either way.
         - task_key: Merge_Declared_Preprints_Gate
+          timeout_seconds: 1200
           depends_on:
             - task_key: Merge_Declared_Preprints
           run_if: ALL_DONE
@@ -268,6 +269,7 @@ resources:
           timeout_seconds: 3000
         # Passes whether the matcher succeeded, failed or timed out: its strings then keep the legacy answer.
         - task_key: Affiliation_Matcher_Gate
+          timeout_seconds: 1200
           depends_on:
             - task_key: Affiliation_Matcher_Nightly
           run_if: ALL_DONE
@@ -333,6 +335,7 @@ resources:
           timeout_seconds: 5400
         # Passes whether the vector matcher succeeded, failed or timed out: Author_Matching then runs on the name cascade alone.
         - task_key: Vector_Matcher_Gate
+          timeout_seconds: 1200
           depends_on:
             - task_key: Vector_Matcher
           run_if: ALL_DONE
