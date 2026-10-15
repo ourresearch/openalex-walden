@@ -52,3 +52,28 @@ The migration-manifest retirement path stays, driven by an optional approved inp
   lookup. Remove the config line and every name is back on the legacy lookup; the guard works either way.
 Also: a NaN model score no longer passes the threshold (318 names were given the same five institutions).
 New source with a country field: add its `*` row to the CSV (see `country/build_country_lookup.py` for the columns) or it gets no codes.
+
+
+### Organisation recipients in the funding-flows release (#1570)
+
+`CreateAwardRecipientsRaw` supplies `kind=organisation` from USAspending (four feeds), IDRC, generic IATI, Gates and Wellcome.
+The generic IATI adapter keeps role 2 (`partner`) and role 4 (`implementing`), including partners on rolled-up child activities.
+A publisher/extending agency's own role-2 row is not a recipient; an implementer that also co-funds remains a recipient.
+The other feeds use `lead`. USAspending rows explicitly typed Individual (business type P) do not become organisations. The original organisation country is normalised independently of landing countries.
+
+`recipients[]` contains `{id, display_name, ror, country_code, role, share, basis, asserted_by}`.
+It is sorted deterministically, capped at 100 for display, and uncapped in `recipients_full` for filters and hashing.
+An unmatched organisation keeps its source name in `display_name`, with null `id` and `ror`.
+Matches reuse an explicit ROR, an existing affiliation matcher answer, or an unambiguous exact institution name.
+Empty matcher answers are final; multiple surviving institutions are ambiguous and leave the organisation unmatched.
+The existing sovereign/territory country guard applies. Reviewed wrong name/id pairs in `recipients/match_exclusions.csv` stay unmatched; this does not modify the shared answers. No matching requests are sent.
+
+`asserted_by=funder` describes the recipient assertion; `basis` is `ror`, `affiliation_matcher`, or `institution_name`
+for an institution match, otherwise the source assertion's `funder_reported`. Organisation shares are retained only when
+the source supplies them; they do not participate in the country/region allocation.
+`institution_awarded` and the research classifier continue to use their existing inputs.
+
+Deploy the expanded producer and mapping with USD, recipient geography and research scope in one release.
+The content hash adds an organisation wrapper only for nonempty arrays: other awards keep the previous release's hash exactly.
+`clear_funding_flows` clears the organisation arrays along with the other fields. Missing source rows, ambiguous source
+assertions, and unexpected losses in recipient awards, institution matches or memberships stop the nightly.

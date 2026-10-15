@@ -2,8 +2,40 @@
 from pathlib import Path
 from stable_award_ids import ident
 import award_country
+import award_research_scope
 
 EMPTY_ANSWERS='SELECT CAST(NULL AS STRING) raw_affiliation_string,CAST(NULL AS ARRAY<BIGINT>) institution_ids WHERE false'
+LINK_COLUMNS=('parent_awards_full','sub_awards_full')                          # sub-award links (award_relations.py, 10-01)
+FLOW_COLUMNS=('amount_usd','amount_usd_basis','recipient_countries_full','recipient_regions_full','research_scope')   # funding-flows release (oxjob #1570)
+FLOW_PRESENT=("amount_usd IS NOT NULL","size(recipient_countries_full)>0","size(recipient_regions_full)>0","research_scope IS NOT NULL")
+FLOW_TEXT={'amount_usd':'CAST(amount_usd AS STRING)','amount_usd_basis':'amount_usd_basis','recipient_countries_full':'to_json(recipient_countries_full)',
+           'recipient_regions_full':'to_json(recipient_regions_full)','research_scope':'to_json(research_scope)'}
+
+
+def legacy_flow_hash_expression(base,cols):
+    """The content hash over the columns a table has. Sub-award links: an award with none hashes exactly as before (10-01).
+    Funding-flows fields: an award with none of them hashes exactly as it did with links alone, so the 9.3M awards known only
+    from paper metadata (no amount, no recipient, no research scope) never move; yesterday's table may predate any of the columns."""
+    links=set(LINK_COLUMNS)<=cols
+    flows=[x for x in FLOW_COLUMNS if x in cols]
+    no_links="coalesce(size(parent_awards_full),0)=0 AND coalesce(size(sub_awards_full),0)=0" if links else "true"
+    with_links=(f"xxhash64(concat_ws('|',CAST({base} AS STRING),to_json(parent_awards_full),to_json(sub_awards_full)))" if links else base)
+    if not flows:
+        return f"CASE WHEN {no_links} THEN {base} ELSE {with_links} END" if links else base
+    present=" OR ".join(p for p in FLOW_PRESENT if any(p.startswith(x) or x in p for x in flows)) or "false"
+    parts=[f"CAST({base} AS STRING)","to_json(parent_awards_full)" if links else "''","to_json(sub_awards_full)" if links else "''"]
+    parts+=[FLOW_TEXT[x] if x in flows else "''" for x in FLOW_COLUMNS]
+    with_flows=f"xxhash64(concat_ws('|',{','.join(parts)}))"
+    return (f"CASE WHEN {no_links} AND NOT ({present}) THEN {base} WHEN NOT ({present}) THEN {with_links} ELSE {with_flows} END")
+
+
+def hash_expression(base, cols):
+    """Empty recipients preserve the prior release hash exactly, including its flow wrapper."""
+    old = legacy_flow_hash_expression(base, cols)
+    if 'recipients_full' not in cols:
+        return old
+    return (f"CASE WHEN coalesce(size(recipients_full),0)=0 THEN {old} "
+            f"ELSE xxhash64(concat_ws('|',CAST(({old}) AS STRING),to_json(recipients_full))) END")
 
 
 def answers_relation(c):
@@ -25,18 +57,17 @@ def run(c):
     template=template.replace('{AWARDS}',r+'awards_candidate').replace('{ANSWERS}',answers_relation(c))
     template=template.replace('{COUNTRY_LOOKUP}',award_country.lookup_relation_sql(c.config['package_root']))   # country/award_country_lookup.csv, validated
     c.artifact('api_payload',f'SELECT a.*,:rid release_id FROM ({template}) a')
+    award_research_scope.run(c,'api_payload')          # research flag reads the matched institutions (Kyle's 10-08 rule): after the payload
     prev='previous_api_v'   # yesterday's published awards_api, bound at run start (was the release's api_final pin)
     # The country guard only removes matches. A broken lookup or institutions table would remove most of them: stop instead.
     fuse=float(c.config.get('institution_drop_fuse',0.10))
     c.zero('INSTITUTION_AWARDED_DROP_FUSE',f"""SELECT now_n,prev_n FROM (SELECT (SELECT count(*) FROM {r}api_payload WHERE size(institution_awarded)>0) now_n,
       (SELECT count(*) FROM {prev} WHERE size(institution_awarded)>0) prev_n) WHERE now_n<(1-{fuse})*prev_n""")
     base=(Path(c.config['package_root'])/'sql/api_hash_expression.sql').read_text().strip()
-    # Sub-award links: an award with none hashes exactly as before; yesterday's table may predate the columns.
-    expression=(f"CASE WHEN coalesce(size(parent_awards_full),0)=0 AND coalesce(size(sub_awards_full),0)=0 THEN {base} "
-                f"ELSE xxhash64(concat_ws('|',CAST({base} AS STRING),to_json(parent_awards_full),to_json(sub_awards_full))) END")
-    has_links=set(c.sql(f'SELECT * FROM {prev} LIMIT 0').columns)>={'parent_awards_full','sub_awards_full'}
-    c.artifact('previous_api_hash',f'SELECT id,updated_date,{expression if has_links else base} content_hash FROM {prev}')
+    prev_cols=set(c.sql(f'SELECT * FROM {prev} LIMIT 0').columns)
+    c.artifact('previous_api_hash',f'SELECT id,updated_date,{hash_expression(base,prev_cols)} content_hash FROM {prev}')
     c.zero('PREVIOUS_API_HASH_UNIQUE',f'SELECT id FROM {r}previous_api_hash GROUP BY id HAVING count(*)<>1')
+    expression=hash_expression(base,prev_cols|set(LINK_COLUMNS)|set(FLOW_COLUMNS)|{'recipients_full'})
     c.artifact('new_api_hash',f'SELECT id,{expression} content_hash FROM {r}api_payload')
     c.artifact('api_candidate',f"""SELECT a.* EXCEPT(updated_date),
       CASE WHEN p.id IS NULL OR NOT(n.content_hash <=> p.content_hash) THEN date_trunc('SECOND',CAST(:ts AS TIMESTAMP)) ELSE p.updated_date END updated_date

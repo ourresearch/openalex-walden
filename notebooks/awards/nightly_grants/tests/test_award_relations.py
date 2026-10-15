@@ -25,7 +25,9 @@ class FakeC:
     """Just enough of Nightly: records artifacts, checks and reads; answers counts with 0 and schema probes with `prev_cols`."""
     def __init__(self, extra=(), prev_cols=(), config=None):
         self.r, self.p, self.extra, self.prev_cols = "dev.lab.ngr_s_", "dev.lab.ngr_", set(extra), list(prev_cols)
-        self.config = dict(package_root=str(ROOT), **(config or {}))
+        import json
+        boot = json.loads((ROOT / "config.prod.json").read_text())["bootstrap_counts"]
+        self.config = dict(package_root=str(ROOT), bootstrap_counts={k: 0 for k in boot}, **(config or {}))
         self.artifacts, self.checks, self.counts, self.statements = [], {}, {}, []
         self.outputs = {}
 
@@ -104,7 +106,8 @@ def test_hash_unchanged_for_awards_without_links_and_old_previous_table():
     base = (ROOT / "sql/api_hash_expression.sql").read_text().strip()
     a = hash_queries(["id", "display_name"])
     assert a["previous_api_hash"] == f"SELECT id,updated_date,{base} content_hash FROM previous_api_v"
-    assert a["new_api_hash"].startswith("SELECT id,CASE WHEN coalesce(size(parent_awards_full),0)=0 AND coalesce(size(sub_awards_full),0)=0 THEN " + base)
+    assert a["new_api_hash"].startswith("SELECT id,CASE WHEN coalesce(size(recipients_full),0)=0 THEN CASE WHEN coalesce(size(parent_awards_full),0)=0 AND coalesce(size(sub_awards_full),0)=0 AND NOT (")
+    assert ("WHEN NOT (amount_usd IS NOT NULL OR size(recipient_countries_full)>0 OR size(recipient_regions_full)>0 OR research_scope IS NOT NULL) THEN xxhash64(concat_ws('|',CAST(" + base) in a["new_api_hash"]
     b = hash_queries(["id", "parent_awards_full", "sub_awards_full"])
     assert "CASE WHEN coalesce(size(parent_awards_full),0)=0" in b["previous_api_hash"]
 

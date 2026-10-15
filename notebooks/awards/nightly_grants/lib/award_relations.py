@@ -11,6 +11,8 @@ Failure policy (the grants nightly must not stop because one award went away):
 - dropped and counted: links whose end is no longer an active served award, or whose two ends were merged into one id.
 """
 
+import award_keys
+
 RELATION_TYPES = ("component", "sub_award")
 
 EMPTY_RAW = """SELECT CAST(NULL AS STRING) source,CAST(NULL AS STRING) relation_type,
@@ -26,15 +28,11 @@ LINK = """named_struct('id',concat('https://openalex.org/G',a.id),'display_name'
   'relationship',n.relation_type,'asserted_by',n.asserted_by)"""
 
 
-def columns(c, relation):
-    return set(c.sql(f"SELECT * FROM {relation} LIMIT 0").columns)
-
-
 def raw_input(c):
     if c.has_extra("award_relations_raw"):
         return "award_relations_raw_v"
     # No input configured: allowed only while nothing is linked yet, so links can never vanish silently.
-    if "sub_awards_count" in columns(c, "previous_api_v"):
+    if "sub_awards_count" in award_keys.columns(c, "previous_api_v"):
         c.zero("RELATION_INPUT_REQUIRED", "SELECT id FROM previous_api_v WHERE sub_awards_count>0 OR size(parent_awards)>0")
     return c.artifact("relations_raw_empty", EMPTY_RAW)
 
@@ -51,20 +49,7 @@ def run(c):
     c.artifact("relation_endpoints", f"""SELECT child_ns namespace,child_key source_record_id,child_staging_id staging_id,
         child_funder_id funder_id,child_award_key award_key FROM {raw}
       UNION SELECT parent_ns,parent_key,parent_staging_id,parent_funder_id,parent_award_key FROM {raw}""")
-    c.zero("RELATION_BRIDGE_UNIQUE", f"SELECT namespace,source_record_id FROM {r}relation_endpoints GROUP BY ALL HAVING count(*)<>1")
-    # NATIVE (namespace, record id) first, else the producer's STAGING triple; then redirects to the terminal id.
-    c.artifact("relation_endpoint_lookup", f"""SELECT o.*,kn.stable_id native_owner,ks.stable_id staging_owner,
-        rn.stable_id native_id,rs.stable_id staging_id_resolved,
-        coalesce(rn.stable_id,rs.stable_id) stable_id,coalesce(rn.status,rs.status) status
-      FROM {r}relation_endpoints o
-      LEFT JOIN {r}keys_candidate kn ON kn.key_type='NATIVE' AND kn.namespace=o.namespace AND kn.source_record_id=o.source_record_id
-      LEFT JOIN {r}keys_candidate ks ON ks.key_type='STAGING' AND ks.staging_id=o.staging_id
-        AND ks.funder_id <=> o.funder_id AND ks.award_key <=> o.award_key
-      LEFT JOIN {r}resolve_candidate rn ON rn.owner_id=kn.stable_id
-      LEFT JOIN {r}resolve_candidate rs ON rs.owner_id=ks.stable_id""")
-    c.zero("RELATION_LOOKUP_UNIQUE", f"SELECT namespace,source_record_id FROM {r}relation_endpoint_lookup GROUP BY ALL HAVING count(*)<>1")
-    c.zero("RELATION_NATIVE_STAGING_DISAGREE", f"""SELECT * FROM {r}relation_endpoint_lookup
-      WHERE native_id IS NOT NULL AND staging_id_resolved IS NOT NULL AND native_id<>staging_id_resolved""")
+    lookup = award_keys.endpoint_lookup(c, "RELATION", f"{r}relation_endpoints", "relation_endpoint_lookup")
     c.artifact("relations_resolved", f"""SELECT a.*,ch.stable_id child_id,pa.stable_id parent_id,
         CASE WHEN ch.stable_id IS NULL OR pa.stable_id IS NULL THEN 'UNRESOLVED'
              WHEN ch.status<>'ACTIVE' OR pa.status<>'ACTIVE' OR dc.id IS NULL OR dp.id IS NULL THEN 'NOT_SERVED'

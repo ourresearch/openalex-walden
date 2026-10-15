@@ -128,22 +128,26 @@ class Frame:
 class FakeC:
     def __init__(self, extra=(), config=None):
         self.r, self.p, self.extra = "dev.lab.ngr_s_", "dev.lab.ngr_", set(extra)
-        self.config = dict(package_root=str(ROOT), **(config or {}))
+        import json
+        boot = json.loads((ROOT / "config.prod.json").read_text())["bootstrap_counts"]
+        self.config = dict(package_root=str(ROOT), bootstrap_counts={k: 0 for k in boot}, **(config or {}))
         self.artifacts, self.checks, self.counts = [], {}, {}
 
     def guard(self): pass
+    def require(self, cond, name):
+        if not cond: raise RuntimeError(name)
     def has_extra(self, name): return name in self.extra
     def sql(self, statement, params=None): return Frame()
     def artifact(self, name, query, params=None):
         self.artifacts.append((name, query)); return self.r + name
     def zero(self, name, query): self.checks[name] = query
-    def count(self, name, relation): self.counts[name] = 0
+    def count(self, name, relation): self.counts[name] = 0; return 0
 
 
 def payload_query(**kw):
     c = FakeC(**kw)
     create_api.run(c)
-    return c, dict(c.artifacts)["api_payload"]
+    return c, next(q for n, q in c.artifacts if n == "api_payload")      # the hydration query; research_scope is added to it afterwards
 
 
 def test_payload_has_no_placeholder_left_and_carries_the_lookup():

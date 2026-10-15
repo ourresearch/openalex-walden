@@ -1,0 +1,422 @@
+provenance,is_research,basis,tier,recipient_test,note
+nih_exporter,true,funder_default,1,no,"research funder feed: 12 funders, e.g. Administration for Children and Families"
+kaken,true,funder_default,1,no,research funder feed: Japan Society for the Promotion of Science
+nsf_award_search,true,funder_default,1,no,research funder feed: National Science Foundation
+erasmus_plus,mixed,,,yes,"Erasmus+: mobility and accreditation vs Jean Monnet, Erasmus Mundus, capacity building"
+nsfc_kd,true,funder_default,1,no,research funder feed: National Natural Science Foundation of China
+usaspending,mixed,,,no,"DoD, NASA, DOE assistance (CFDA programmes): research programmes vs O&M, construction, education"
+foerderkatalog,true,funder_default,1,no,research funder feed: Bundesministerium für Bildung und Forschung
+nserc_open_data,true,funder_default,1,no,research funder feed: Natural Sciences and Engineering Research Council of Canada
+gateway_to_research,true,funder_default,1,no,"research funder feed: 9 funders, e.g. Arts and Humanities Research Council"
+gepris,true,funder_default,1,no,research funder feed: Deutsche Forschungsgemeinschaft
+crossref_work,true,funder_default,1,no,"research funder feed: 94 funders, e.g. ALS Association"
+grb_most_projects,true,funder_default,1,no,"research funder feed: Ministry of Science and Technology, Taiwan"
+sshrc_opendata,true,funder_default,1,no,research funder feed: Social Sciences and Humanities Research Council of Canada
+fapesp_bv,true,funder_default,1,no,research funder feed: Fundação de Amparo à Pesquisa do Estado de São Paulo
+usaspending_usda,mixed,,,no,"USDA assistance: research programmes vs nutrition, housing, rural services"
+fct,true,funder_default,1,no,"research funder feed: 4 funders, e.g. Agência Nacional de Inovação"
+snsf,true,funder_default,1,no,research funder feed: Schweizerischer Nationalfonds zur Förderung der Wissenschaftlichen Forschung
+conahcyt_snii_ckan,true,funder_default,1,no,research funder feed: Consejo Nacional de Ciencia y Tecnología
+cihr_opendata,true,funder_default,1,no,research funder feed: Canadian Institutes of Health Research
+hrsa_data_warehouse,false,funder_default,,no,"HRSA: health centres, Ryan White care, workforce training (research programmes by rule)"
+neh_open_data,true,funder_default,1,no,research funder feed: National Endowment for the Humanities
+cordis,true,funder_default,1,no,"research funder feed: 3 funders, e.g. European Commission"
+usaspending_epa,mixed,,,no,EPA assistance: STAR research and fellowships vs state programme grants
+anid_github,true,funder_default,1,no,research funder feed: Agencia Nacional de Investigación y Desarrollo
+grb_nstc_projects,true,funder_default,1,no,research funder feed: National Science and Technology Council
+research_council_norway_project_bank,true,funder_default,1,no,research funder feed: Norges Forskningsråd
+foerderkatalog_bmwe,true,funder_default,1,no,research funder feed: Bundesministerium für Wirtschaft und Energie
+gates_foundation,mixed,,,yes,Gates: Global Health division counts as research (#1518 decision 10-04); other divisions unknown
+arc,true,funder_default,1,no,research funder feed: Australian Research Council
+anr_opendata,true,funder_default,1,no,research funder feed: Agence Nationale de la Recherche
+rwjf_grants_explorer,mixed,,,yes,RWJF: health policy and leadership programmes; no research mark in the feed
+mitacs_projects,true,funder_default,1,no,research funder feed: Mitacs
+usaspending_cdc,mixed,,,no,CDC assistance: a few research programmes inside prevention and emergency programmes (#1518 E: 8% research in sample)
+bdns_aei,true,funder_default,1,no,research funder feed: Agencia Estatal de Investigación
+nhmrc,true,funder_default,1,no,research funder feed: National Health and Medical Research Council
+humboldt,true,funder_default,1,yes,research funder feed: Alexander von Humboldt-Stiftung
+trdizin_tubitak_projects,true,funder_default,1,no,research funder feed: Türkiye Bilimsel ve Teknolojik Araştırma Kurumu
+swecris_vinnova,true,funder_default,1,no,research funder feed: VINNOVA
+ncn_ranking_lists,true,funder_default,1,no,research funder feed: Narodowe Centrum Nauki
+dimensions_cdmrp,true,funder_default,1,no,research funder feed: Congressionally Directed Medical Research Programs
+fapemig_projetos_contratados,true,funder_default,1,no,research funder feed: Fundação de Amparo à Pesquisa do Estado de Minas Gerais
+fwo_fris,true,funder_default,1,no,research funder feed: Fonds Wetenschappelijk Onderzoek
+datacite,true,funder_default,1,no,"research funder feed: 9 funders, e.g. Australian Research Data Commons"
+swedish_research_council,true,funder_default,1,no,research funder feed: Vetenskapsrådet
+isvavai_cep,true,funder_default,1,no,research funder feed: Grantová Agentura České Republiky
+rgc_hk_project_enquiry,true,funder_default,1,no,"research funder feed: Research Grants Council, University Grants Committee"
+imls_awarded_grants,mixed,,,yes,IMLS: library and museum services; National Leadership and Laura Bush programmes may fund research
+doe_sc,true,funder_default,1,no,research funder feed: Office of Science
+guggenheim_fellowship,mixed,,,yes,Guggenheim fellowships: scholars and artists
+usaspending_usaid,mixed,,,no,USAID assistance: no programme marks research; 98.001 covers 86% of rows
+wellcome_trust,true,funder_default,1,yes,research funder feed: Wellcome Trust
+mhlw_grants_niph,true,funder_default,1,no,"research funder feed: Ministry of Health, Labour and Welfare"
+argentina_mincyt,true,funder_default,1,no,"research funder feed: 3 funders, e.g. Agencia Nacional de Promoción Científica y Tecnológica"
+osti_facility,true,funder_default,1,no,research funder feed: U.S. Department of Energy
+zonmw_projects_jsonapi,true,funder_default,1,no,research funder feed: ZonMw
+erc,true,funder_default,1,no,"research funder feed: 3 funders, e.g. FP7 Ideas: European Research Council"
+vlaamse_regering_fris,true,funder_default,1,no,research funder feed: Vlaamse regering
+isf_grant_search,true,funder_default,1,no,research funder feed: Israel Science Foundation
+garfield_weston_foundation,mixed,,,yes,"Garfield Weston: general philanthropy (arts, community, welfare)"
+nwopen,true,funder_default,1,no,research funder feed: Nederlandse Organisatie voor Wetenschappelijk Onderzoek
+cfi_opendata,true,funder_default,1,no,research funder feed: Canada Foundation for Innovation
+hhs_taggs,false,funder_default,,no,TAGGS: SAMHSA/IHS/CMS/ASPR service programmes (research by rule)
+defra_science_search,true,funder_default,1,no,"research funder feed: Department for Environment, Food and Rural Affairs, UK Government"
+dbu_projektdatenbank,mixed,,,yes,"DBU: environmental projects, research and practical"
+zhejiang_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Zhejiang Province
+vega_sk,true,funder_default,1,no,research funder feed: Vedecká Grantová Agentúra MŠVVaŠ SR a SAV
+isvavai_msm,true,funder_default,1,no,"research funder feed: Ministerstvo Školství, Mládeže a Tělovýchovy"
+mur_prin_portal,true,funder_default,1,no,"research funder feed: 2 funders, e.g. Ministero dell'Università e della Ricerca"
+amed_amedfind,true,funder_default,1,no,research funder feed: Japan Agency for Medical Research and Development
+aris_ecris,true,funder_default,1,no,research funder feed: Javna Agencija za Raziskovalno Dejavnost RS
+nihr,true,funder_default,1,no,research funder feed: National Institute for Health and Care Research
+aha_report_builder,true,funder_default,1,no,research funder feed: American Heart Association
+openaire_fwf,true,funder_default,1,no,research funder feed: Austrian Science Fund
+frqnt,true,funder_default,1,no,research funder feed: Fonds de recherche du Québec – Nature et technologies
+carnegie_corporation,mixed,,,yes,"Carnegie Corporation: education, democracy, international peace; research only in part"
+hunan_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Hunan Province
+novo_nordisk_fonden_grants,mixed,,,yes,Novo Nordisk Foundation: research and innovation beside humanitarian and social grants (rules decide)
+trygfonden_donations_api,mixed,,,yes,TrygFonden: the portal's own type marks research grants
+innovate_uk,true,funder_default,1,no,research funder feed: Innovate UK
+portal_fis_isciii,true,funder_default,1,no,research funder feed: Instituto de Salud Carlos III
+foerderkatalog_bmel,true,funder_default,1,no,research funder feed: Bundesministerium für Ernährung und Landwirtschaft
+takeda_bopdb,true,funder_default,1,no,research funder feed: Takeda Science Foundation
+ucop_grants,true,funder_default,1,no,"research funder feed: Office of the President, University of California"
+ffg_projektdatenbank,true,funder_default,1,no,research funder feed: Österreichische Forschungsförderungsgesellschaft
+usaspending_noaa,mixed,,,no,NOAA assistance: research and Sea Grant vs management and conservation
+ahmanson_grants_archive,mixed,,,yes,"Ahmanson Foundation: arts, education, health, religion grants in Los Angeles (Codex: dinners, organ reinstallation flagged research)"
+fujian_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Fujian Province
+hewlett_facetwp,mixed,,,yes,Hewlett: the portal's own type marks research grants
+formas,true,funder_default,1,no,research funder feed: Svenska Forskningsrådet Formas
+sfi_open_data,true,funder_default,1,no,research funder feed: Science Foundation Ireland
+nafosted,true,funder_default,1,no,research funder feed: National Foundation for Science and Technology Development
+business_finland,true,funder_default,1,no,"research funder feed: 2 funders, e.g. Business Finland"
+bbrf_narsad,true,funder_default,1,no,research funder feed: Brain and Behavior Research Foundation
+rufford_project_directory,mixed,,,yes,"Rufford: small nature-conservation grants, partly research"
+irc_awardees_database,true,funder_default,1,no,research funder feed: Irish Research Council
+guangdong_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Guangdong Province
+isvavai_cep_mpo,true,funder_default,1,no,research funder feed: Ministerstvo Průmyslu a Obchodu
+frqsc,true,funder_default,1,no,research funder feed: Fonds de Recherche du Québec-Société et Culture
+foerderkatalog_bmv,true,funder_default,1,no,research funder feed: Bundesministerium für Verkehr und Digitale Infrastruktur
+uehara_report_search,true,funder_default,1,yes,research funder feed: Uehara Memorial Foundation
+energimyndigheten,true,funder_default,1,no,research funder feed: Energimyndigheten
+ontario_research_funding_summary,mixed,,,yes,Government of Ontario research programmes (several ministries)
+cdti_open_data,true,funder_default,1,no,research funder feed: Centro para el Desarrollo Tecnológico Industrial
+frqs,true,funder_default,1,no,research funder feed: Fonds de Recherche du Québec - Santé
+starfos_tacr,true,funder_default,1,no,research funder feed: Technology Agency of the Czech Republic
+apvv,true,funder_default,1,no,research funder feed: Agentúra na Podporu Výskumu a Vývoja
+researchfi,true,funder_default,1,no,research funder feed: Academy of Finland
+idrc_iati,true,funder_default,1,yes,research funder feed: International Development Research Centre
+shanghai_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Shanghai
+hfsp_awards_listing,true,funder_default,1,no,research funder feed: Human Frontier Science Program
+gva,true,funder_default,1,no,research funder feed: Generalitat Valenciana
+shandong_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Shandong Province
+usaspending_nist,mixed,,,no,NIST assistance: measurement research vs manufacturing extension
+andalucia,true,funder_default,1,no,research funder feed: Junta de Andalucía
+volkswagen_foundation_projektdatenbank,true,funder_default,1,yes,research funder feed: Volkswagen Foundation
+vlaio_fris,true,funder_default,1,no,research funder feed: Agentschap voor Innovatie door Wetenschap en Technologie
+wolfson_foundation,mixed,,,yes,"Wolfson: capital grants to research, education, arts, health"
+lmt_spektras,true,funder_default,1,no,research funder feed: Lietuvos Mokslo Taryba
+bhf_annual_reports,true,funder_default,1,no,research funder feed: British Heart Foundation
+aramis_seri,true,funder_default,1,no,"research funder feed: Staatssekretariat für Bildung, Forschung und Innovation"
+crc_chairholders,true,funder_default,1,no,research funder feed: Canada Research Chairs
+hainan_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Hainan Province
+forskningsportal_dk,true,funder_default,1,no,research funder feed: Danmarks Frie Forskningsfond
+fnp_laureates,true,funder_default,1,yes,research funder feed: Fundacja na rzecz Nauki Polskiej
+hmrf,true,funder_default,1,no,research funder feed: Health and Medical Research Fund
+grantconnect,mixed,,,no,16 Australian Government agencies: MRFF/CRC/research schemes vs other programmes
+alliancecan_rac,true,funder_default,1,no,"research funder feed: 2 funders, e.g. Alliance de recherche numérique du Canada"
+nij_awards_list,true,funder_default,1,no,research funder feed: National Institute of Justice
+min_sante_fr,true,funder_default,1,no,research funder feed: Ministère des Affaires Sociales et de la Santé
+hrzz,true,funder_default,1,no,research funder feed: Hrvatska Zaklada za Znanost
+conquer_cancer_recipients_db,true,funder_default,1,no,research funder feed: Conquer Cancer Foundation
+moore_foundation,mixed,,,yes,"Moore: science, environment, patient care"
+chongqing_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Chongqing
+sloan_foundation,mixed,,,yes,"Sloan: research, public understanding, economics"
+beijing_nsf,true,funder_default,1,no,research funder feed: Beijing Municipal Natural Science Foundation
+ncbr,true,funder_default,1,no,research funder feed: Narodowe Centrum Badań i Rozwoju
+rgs_projects_supported,mixed,,,yes,"Royal Geographical Society: expeditions and fieldwork, partly research"
+naito_foundation_grants,true,funder_default,1,yes,research funder feed: Naito Foundation
+agaur_raisc_socrata,true,funder_default,1,no,research funder feed: Agència de Gestió d'Ajuts Universitaris i de Recerca
+carlsberg_fondet,true,funder_default,1,yes,research funder feed: Carlsbergfondet
+pcaarrd_gia_projects,true,funder_default,1,no,"research funder feed: Philippine Council for Agriculture, Aquatic and Natural Resources Research and Development"
+telethon,true,funder_default,1,no,research funder feed: Fondazione Telethon
+helmsley_grants,mixed,,,yes,Helmsley: biomedical research programmes beside health services and other programmes
+ies_official,true,funder_default,1,no,research funder feed: Institute of Education Sciences
+mott_grants,mixed,,,yes,Mott: community philanthropy
+iketani_grants_search,true,funder_default,1,no,research funder feed: Iketani Science and Technology Foundation
+datos_gov_co_minciencias,true,funder_default,1,no,"research funder feed: Departamento Administrativo de Ciencia, Tecnología e Innovación (COLCIENCIAS)"
+mbie_who_got_funded,true,funder_default,1,no,"research funder feed: Ministry of Business, Innovation and Employment"
+heilongjiang_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Heilongjiang Province
+wihuri_myonnot,mixed,,,yes,Wihuri: research beside culture
+mnisw,true,funder_default,1,no,research funder feed: Ministerstwo Edukacji i Nauki
+mochida_recipient_lists,true,funder_default,1,no,research funder feed: Mochida Memorial Foundation for Medical and Pharmaceutical Research
+sumitomo_foundation_grant_lists,true,funder_default,1,yes,research funder feed: Sumitomo Foundation
+pcori,true,funder_default,1,no,research funder feed: Patient-Centered Outcomes Research Institute
+ash_award_recipients,true,funder_default,1,no,research funder feed: American Society of Hematology
+forte,true,funder_default,1,no,"research funder feed: Forskningsrådet om Hälsa, Arbetsliv och Välfärd"
+mjff_funded_studies,true,funder_default,1,no,research funder feed: Michael J. Fox Foundation for Parkinson's Research
+arnold_ventures_algolia,mixed,,,yes,Arnold Ventures: research and advocacy; the feed's 'research' type is the notebook's default
+wss_foerderprojekte,true,funder_default,1,yes,research funder feed: Wilhelm Sander-Stiftung
+inca,true,funder_default,1,no,research funder feed: Institut National Du Cancer
+hilton_foundation,mixed,,,yes,Hilton: humanitarian programmes (false by rule); others unknown
+beckman_awarded_scientists,true,funder_default,1,yes,research funder feed: Arnold and Mabel Beckman Foundation
+etis_etag,true,funder_default,1,no,research funder feed: Eesti Teadusagentuur
+alz_association,true,funder_default,1,no,research funder feed: Alzheimer's Association
+anii_projects_portal,true,funder_default,1,no,research funder feed: Agencia Nacional de Investigación e Innovación
+hrc_research_repository,true,funder_default,1,no,research funder feed: Health Research Council of New Zealand
+cprit,true,funder_default,1,no,research funder feed: Cancer Prevention and Research Institute of Texas
+etis_etf,true,funder_default,1,no,research funder feed: Eesti Teadusfondi
+etis_htm,true,funder_default,1,no,research funder feed: Haridus- ja Teadusministeerium
+ssf,true,funder_default,1,no,research funder feed: Stiftelsen för Strategisk Forskning
+nsf_sri_lanka_gmis,true,funder_default,1,no,research funder feed: National Science Foundation of Sri Lanka
+wenner_gren_grantees,true,funder_default,1,yes,research funder feed: Wenner-Gren Foundation
+capes_cooperacao_internacional,true,funder_default,1,no,research funder feed: Coordenação de Aperfeiçoamento de Pessoal de Nível Superior
+isvavai_cep_mze,true,funder_default,1,no,research funder feed: Ministerstvo Zemědělství
+iati_fcdo,true,sector_code,2,yes,FCDO IATI: admitted at ingest by DAC research purpose codes (walden #269)
+bard_funded_research,true,funder_default,1,no,research funder feed: United States - Israel Binational Agricultural Research and Development Fund
+canada_council_prizes,mixed,,,yes,Canada Council for the Arts prizes
+hec_pakistan_nrpu,true,funder_default,1,no,"research funder feed: Higher Education Commission, Pakistan"
+templeton_wp,mixed,,,yes,"John Templeton Foundation: science beside character, religion and public engagement programmes (Codex 10-07 review population)"
+mrff,true,funder_default,1,no,research funder feed: Medical Research Future Fund
+osf_grants_past,mixed,,,yes,"Open Society: advocacy, civil society; no research mark"
+ontario_mcu,mixed,,,yes,Ontario Ministry of Colleges and Universities: research infrastructure and other programmes
+itf_hk,true,funder_default,1,no,research funder feed: Innovation and Technology Fund
+hk_itc_itf,true,funder_default,1,no,research funder feed: Innovation and Technology Commission
+guys_st_thomas_360giving,mixed,,,yes,Guy's and St Thomas' Charity: health programmes
+srf_former_studies,true,funder_default,1,no,research funder feed: Smoking Research Foundation
+hhmi_scientist_pages,true,funder_default,1,no,research funder feed: Howard Hughes Medical Institute
+usaspending_ahrq,true,funder_default,1,no,research funder feed: Agency for Healthcare Research and Quality
+sigrid_juselius_grant_lists,true,funder_default,1,no,research funder feed: Sigrid Juséliuksen Säätiö
+rj_jubileumsfond_grants,true,funder_default,1,no,research funder feed: Riksbankens Jubileumsfond
+hrb_ireland,true,funder_default,1,no,research funder feed: Health Research Board
+rpb,true,funder_default,1,no,research funder feed: Research to Prevent Blindness
+cirm,true,funder_default,1,no,research funder feed: California Institute for Regenerative Medicine
+wt_grant_foundation,true,funder_default,1,yes,research funder feed: William T. Grant Foundation
+csa_canada_proactive,true,funder_default,1,no,research funder feed: Canadian Space Agency
+cyprus_rif_funded_projects,true,funder_default,1,no,research funder feed: Research and Innovation Foundation
+brightfocus_grant_search,true,funder_default,1,yes,research funder feed: BrightFocus Foundation
+rockefeller_wp,mixed,,,yes,Rockefeller: development programmes
+fuv_ricercatori,true,funder_default,1,yes,research funder feed: Fondazione Umberto Veronesi
+croucher_fellows_and_scholars,true,funder_default,1,yes,research funder feed: Croucher Foundation
+barncancerfonden_beviljade_anslag,true,funder_default,1,no,research funder feed: Barncancerfonden
+sydantutkimussaatio_grant_lists,true,funder_default,1,no,research funder feed: Sydäntutkimussäätiö
+helse_sor_ost_tildelinger,true,funder_default,1,no,research funder feed: Helse Sør-Øst RHF
+radcliffe_fellowship,mixed,,,yes,"Radcliffe fellows: scholars, artists, writers"
+fritz_thyssen_fundings,true,funder_default,1,yes,research funder feed: Fritz Thyssen Stiftung
+icmr_approved_projects,true,funder_default,1,no,research funder feed: Indian Council of Medical Research
+hertz_facetwp,true,funder_default,1,yes,research funder feed: Hertz Foundation
+cariplo,mixed,,,yes,"Fondazione Cariplo: research beside culture, welfare, environment"
+nihr_ods_dhsc,true,funder_default,1,no,research funder feed: Department of Health and Social Care
+hfri_funding_lists,true,funder_default,1,no,research funder feed: Hellenic Foundation for Research and Innovation
+macarthur_fellows,mixed,,,yes,MacArthur fellows: all fields
+swecris,true,funder_default,1,no,"research funder feed: 5 funders, e.g. Familjen Kamprads Stiftelse"
+jsmf,true,funder_default,1,no,research funder feed: James S. McDonnell Foundation
+research_manitoba,true,funder_default,1,no,research funder feed: Research Manitoba
+iati_sida,true,sector_code,2,yes,Sida IATI: admitted at ingest by DAC research purpose codes (walden #269)
+marato_tv3_funded_projects,true,funder_default,1,yes,research funder feed: Fundació la Marató de TV3
+marsden,true,funder_default,1,no,research funder feed: Marsden Fund
+kwf,true,funder_default,1,no,research funder feed: KWF Kankerbestrijding
+villum_veluxfonden,true,funder_default,1,yes,research funder feed: Villum Fonden
+aacr_funded_research,true,funder_default,1,no,research funder feed: American Association for Cancer Research
+mercator_fellows,mixed,,,yes,Stiftung Mercator fellows
+oenb_jubilaeumsfonds_projektabfrage,true,funder_default,1,no,research funder feed: Oesterreichische Nationalbank
+alberta_innovates_projects,true,funder_default,1,no,research funder feed: Alberta Innovates
+embo,true,funder_default,1,no,research funder feed: European Molecular Biology Organization
+czi_grants,true,funder_default,1,yes,research funder feed: Chan Zuckerberg Initiative
+damon_runyon_drupal,true,funder_default,1,no,research funder feed: Damon Runyon Cancer Research Foundation
+brain_canada,true,funder_default,1,no,research funder feed: Fondation Brain Canada
+indam_gnampa_progetti,true,funder_default,1,no,"research funder feed: Gruppo Nazionale per l'Analisi Matematica, la Probabilità e le loro Applicazioni"
+acmedsci,true,funder_default,1,no,research funder feed: Academy of Medical Sciences
+addf_portfolio,true,funder_default,1,no,research funder feed: Alzheimer's Drug Discovery Foundation
+pew_biomed,true,funder_default,1,yes,research funder feed: Pew Charitable Trusts
+pew_biomedical_scholars_directory,true,funder_default,1,yes,research funder feed: Pew Charitable Trusts
+scas_former_fellows,mixed,,,yes,Swedish Collegium for Advanced Study fellows (scholars)
+axa_research_fund_projects,true,funder_default,1,no,research funder feed: AXA Research Fund
+royal_society_grants,true,funder_default,1,no,research funder feed: Royal Society
+mda_grants_at_a_glance,true,funder_default,1,no,research funder feed: Muscular Dystrophy Association
+nobelprize_api,mixed,,,yes,Nobel Prize: sciences beside literature and peace
+iadb_project_search_scitech,mixed,,,yes,IADB science and technology projects (loans and grants)
+cifar_wp_rest,true,funder_default,1,no,research funder feed: Canadian Institute for Advanced Research
+aera_funded_grants_fellowships,true,funder_default,1,no,research funder feed: American Educational Research Association
+belspo_fris,true,funder_default,1,no,research funder feed: Belgian Federal Science Policy Office
+packard_fellows_directory,true,funder_default,1,yes,research funder feed: David and Lucile Packard Foundation
+royal_society_medals,true,funder_default,1,no,research prize: Royal Society
+aragon_boa_research_groups,true,funder_default,1,no,research funder feed: Gobierno de Aragón
+isvavai_cep_mvcr,true,funder_default,1,no,research funder feed: Ministerstvo Vnitra České Republiky
+lzp_projects,true,funder_default,1,no,research funder feed: Latvijas Zinātnes Padome
+lpdp_rispro_grantees,true,funder_default,1,no,research funder feed: Lembaga Pengelola Dana Pendidikan
+whitehall_grant_lists,true,funder_default,1,yes,research funder feed: Whitehall Foundation
+fondation_arc,true,funder_default,1,no,research funder feed: Fondation ARC pour la Recherche sur le Cancer
+twcf_project_database,mixed,,,yes,Templeton World Charity: research beside other programmes
+crs_operating_grant_results,true,funder_default,1,no,research funder feed: Cancer Research Society
+sir_jules_thorn_360giving,mixed,,,yes,Sir Jules Thorn: medical research award beside other charitable grants
+nuffield_wp_rest,true,funder_default,1,yes,research funder feed: Nuffield Foundation
+kaw_wallenberg_projects,true,funder_default,1,yes,research funder feed: Knut och Alice Wallenbergs Stiftelse
+wwtf_project_database,true,funder_default,1,no,research funder feed: Vienna Science and Technology Fund
+beijing_bmstc,true,funder_default,1,no,research funder feed: Beijing Municipal Science and Technology Commission
+ekfs,true,funder_default,1,yes,research funder feed: Else Kröner-Fresenius-Stiftung
+health_foundation,mixed,,,yes,Health Foundation (UK): improvement programmes beside research (Codex 10-07 review population)
+hscni_rd_portfolio,true,funder_default,1,no,research funder feed: Public Health Agency
+cottrell_scholars,true,funder_default,1,no,research funder feed: Research Corporation for Science Advancement
+aar_rome_prize_fellows,mixed,,,yes,American Academy in Rome: arts and humanities fellows
+treilles_prix_jeune_chercheur,true,funder_default,1,yes,research funder feed: Fondation des Treilles
+genomebc_project_portfolio,true,funder_default,1,no,research funder feed: Genome British Columbia
+ccs_funding_results,true,funder_default,1,no,research funder feed: Canadian Cancer Society Research Institute
+nhf_australia_grant_recipients,true,funder_default,1,no,research funder feed: National Heart Foundation of Australia
+diabetes_uk_europepmc_grist,true,funder_default,1,no,research funder feed: Diabetes UK
+fls_beviljade_forskningsanslag,true,funder_default,1,no,research funder feed: Finska Läkaresällskapet
+potter_foundation_grants,mixed,,,yes,"Potter Foundation: civil society, education"
+india_alliance_europepmc_grist,true,funder_default,1,no,research funder feed: The Wellcome Trust DBT India Alliance
+parkinsonfonden_beviljade_anslag,true,funder_default,1,no,research funder feed: Parkinsonfonden
+jaes_donations_granted,mixed,,,yes,"Jane and Aatos Erkko Foundation: research, culture, welfare"
+ocast_award_lists,true,funder_default,1,no,research funder feed: Oklahoma Center for the Advancement of Science and Technology
+lloyds_register_foundation,mixed,,,yes,Lloyd's Register Foundation: engineering safety research and education
+medical_research_scotland,true,funder_default,1,no,research funder feed: Medical Research Scotland
+arcadia_360giving,mixed,,,yes,"Arcadia: conservation, open access, culture"
+edctp_grants_portal,true,funder_default,1,no,research funder feed: European and Developing Countries Clinical Trials Partnership
+princess_asturias,mixed,,,yes,"Princess of Asturias awards: arts, sports, concord, science"
+klingenstein_simons,true,funder_default,1,yes,research funder feed: Esther A. and Joseph Klingenstein Fund
+schmidt_sciences_awardees,true,funder_default,1,no,research funder feed: Schmidt Futures
+gauss_centre_large_scale,true,funder_default,1,no,research funder feed: Gauss Centre for Supercomputing
+gairdner_sitefinity,true,funder_default,1,no,research prize: Gairdner Foundation
+lcrf,true,funder_default,1,no,research funder feed: Lung Cancer Research Foundation
+kidneycure_recipients,true,funder_default,1,no,research funder feed: American Society of Nephrology
+lasker_wp,true,funder_default,1,no,research prize: Lasker Foundation
+efsd_recipients,true,funder_default,1,no,research funder feed: European Foundation for the Study of Diabetes
+costech_nfast_projects,true,funder_default,1,no,research funder feed: Tanzania Commission for Science and Technology
+smri_treatment_trials,true,funder_default,1,no,research funder feed: Stanley Medical Research Institute
+mcknight_ccrp_grants,true,funder_default,1,yes,research funder feed: McKnight Foundation
+gulbenkian_projects,mixed,,,yes,"Gulbenkian: arts, science, charity"
+wolf_prize_wp,mixed,,,yes,Wolf Prize: sciences beside the arts
+novo_nordisk_fonden_prizes,true,funder_default,1,no,research prize: Novo Nordisk Fonden
+ms_society_grants,true,funder_default,1,no,research funder feed: Multiple Sclerosis Society
+sepm_science_awards,true,funder_default,1,no,research prize: Society for Sedimentary Geology
+blavatnikawards_org,true,funder_default,1,no,research prize: Blavatnik Family Foundation
+maudsley_360giving,mixed,,,yes,Maudsley Charity: mental health programmes
+kauffman_foundation,mixed,,,yes,Kauffman: entrepreneurship and education
+breakthrough_prize,true,funder_default,1,no,research prize: Breakthrough Prize Foundation
+keck,mixed,,,yes,W. M. Keck: science and engineering research beside Southern California community grants
+pcf_work_we_fund,true,funder_default,1,no,research funder feed: Prostate Cancer Foundation
+king_faisal_prize,mixed,,,yes,King Faisal Prize: science and medicine beside service to Islam and Arabic literature
+nordforsk_projects,true,funder_default,1,no,research funder feed: NordForsk
+cure_epilepsy,true,funder_default,1,no,research funder feed: Citizens United for Research in Epilepsy
+twas_awards,true,funder_default,1,no,research funder feed: The World Academy of Sciences
+einstein_foundation_directory,true,funder_default,1,yes,research funder feed: Einstein Stiftung Berlin
+doris_duke,mixed,,,yes,"Doris Duke: medical research beside arts, environment, child wellbeing"
+magnus_ehrnrooth_awarded_grants,true,funder_default,1,no,research funder feed: Magnus Ehrnroothin Säätiö
+indam_gncs_progetti,true,funder_default,1,no,research funder feed: Gruppo Nazionale per il Calcolo Scientifico
+gomri,true,funder_default,1,no,research funder feed: Gulf of Mexico Research Initiative
+dreyfus_foundation,true,funder_default,1,yes,research funder feed: Camille and Henry Dreyfus Foundation
+su2c_program_guides,true,funder_default,1,no,"research funder feed: 2 funders, e.g. Stand Up To Cancer"
+iati_norad,true,sector_code,2,yes,Norad / Norway MFA IATI: admitted at ingest by DAC research purpose codes (walden #269)
+ostersjostiftelsen,true,funder_default,1,yes,research funder feed: Östersjöstiftelsen
+nbcf_research_projects,true,funder_default,1,no,research funder feed: National Breast Cancer Foundation
+bbva_frontiers,mixed,,,yes,BBVA Frontiers of Knowledge: sciences beside music
+cec_business_meeting_agendas,mixed,,,yes,California Energy Commission: R&D and deployment programmes
+vivensa,true,funder_default,1,yes,research funder feed: Dunhill Medical Trust
+carl_zeiss_stiftung,true,funder_default,1,yes,research funder feed: Carl-Zeiss-Stiftung
+rita_allen_scholars,true,funder_default,1,yes,research funder feed: Rita Allen Foundation
+bcrf_researchers,true,funder_default,1,no,research funder feed: Breast Cancer Research Foundation
+kirby_recent_grants,mixed,,,yes,"James N. Kirby Foundation: community, medical, education"
+prostate_cancer_uk,true,funder_default,1,no,research funder feed: Prostate Cancer UK
+lumina_grant_database,mixed,,,yes,Lumina: higher-education policy
+balzan_prize,true,funder_default,1,no,research prize: Fondazione Internazionale Premio Balzan
+lister,true,funder_default,1,no,research funder feed: Lister Institute of Preventive Medicine
+ada_research_database,true,funder_default,1,no,research funder feed: American Diabetes Association
+pchrd_ongoing_projects,true,funder_default,1,no,research funder feed: Philippine Council for Health Research and Development
+vilcek_foundation,mixed,,,yes,Vilcek prizes: biomedical science and the arts
+shanghai_stcsm,true,funder_default,1,no,research funder feed: Science and Technology Commission of Shanghai Municipality
+autism_science_foundation,true,funder_default,1,no,research funder feed: Autism Science Foundation
+compagnia_san_paolo_beneficiari,mixed,,,yes,"Compagnia di San Paolo: culture, welfare, research"
+eruk,true,funder_default,1,no,research funder feed: Epilepsy Research UK
+dnrf_dg_dk,true,funder_default,1,no,research funder feed: Danmarks Grundforskningsfond
+aes,true,funder_default,1,no,research funder feed: American Epilepsy Society
+fmfc,mixed,,,yes,Financial Markets Foundation for Children: child health research and services
+cruk,true,funder_default,1,no,research funder feed: Cancer Research UK
+heineken_prizes_wp,mixed,,,yes,Heineken Prizes: sciences beside art
+alzheimer_nl,true,funder_default,1,no,research funder feed: Alzheimer Nederland
+vaincre_alzheimer,true,funder_default,1,no,research funder feed: Fondation Vaincre Alzheimer
+ifau,true,funder_default,1,no,research funder feed: Institutet för arbetsmarknads- och utbildningspolitisk politisk utvärdering
+kyoto_prize,mixed,,,yes,Kyoto Prize: science beside arts and philosophy
+stroke_association,true,funder_default,1,no,research funder feed: Stroke Association
+gruber_prizes,true,funder_default,1,no,research prize: Gruber Foundation
+tsc_alliance,true,funder_default,1,no,research funder feed: Tuberous Sclerosis Alliance
+fnr_luxembourg,true,funder_default,1,no,research funder feed: Fonds National de la Recherche Luxembourg
+blood_cancer_uk,true,funder_default,1,no,research funder feed: Blood Cancer UK
+lemelson_mit,true,funder_default,1,yes,research funder feed: Lemelson Foundation
+mhrc,true,funder_default,1,no,research funder feed: Mental Health Research Canada
+japan_prize,true,funder_default,1,no,research prize: Japan Prize Foundation
+georgia_ctsa_pilot_grants,true,funder_default,1,no,research funder feed: Georgia Clinical and Translational Science Alliance
+mmw_wallenberg_grants,true,funder_default,1,no,research funder feed: Marcus och Amalia Wallenbergs minnesfond
+searle_scholars,true,funder_default,1,no,research funder feed: Searle Scholars Program
+leducq_website,true,funder_default,1,yes,research funder feed: Fondation Leducq
+smithsonian_sarf,true,funder_default,1,no,"research funder feed: Office of Fellowships, Smithsonian Institution"
+nomis_projects,true,funder_default,1,yes,research funder feed: NOMIS Stiftung
+la_borsf_rcs,true,funder_default,1,no,research funder feed: Louisiana Board of Regents
+alliancecan_funding_programmes,true,funder_default,1,no,research funder feed: Alliance de recherche numérique du Canada
+ragnar_soderberg,true,funder_default,1,yes,research funder feed: Ragnar Söderbergs stiftelse
+pbtf,true,funder_default,1,no,research funder feed: Pediatric Brain Tumor Foundation
+shriners,true,funder_default,1,no,research funder feed: Shriners Hospitals for Children
+ntap,true,funder_default,1,no,research funder feed: Neurofibromatosis Therapeutic Acceleration Program
+warren_alpert_prize,true,funder_default,1,no,research prize: Warren Alpert Foundation
+deutsche_krebshilfe,true,funder_default,1,no,research funder feed: Deutsche Krebshilfe
+welch_foundation,true,funder_default,1,yes,research funder feed: Welch Foundation
+arthritis_foundation_announcements,true,funder_default,1,no,research funder feed: Arthritis Foundation
+crafoord_prize,true,funder_default,1,no,research prize: Royal Swedish Academy of Sciences
+rzsnsw_research_grants,true,funder_default,1,no,research funder feed: Royal Zoological Society of New South Wales
+rnid,true,funder_default,1,no,research funder feed: Action on Hearing Loss
+gra_research_talent,true,funder_default,1,no,research funder feed: Georgia Research Alliance
+indam_cofund_fellows,true,funder_default,1,no,"research funder feed: Istituto Nazionale di Alta Matematica ""Francesco Severi"""
+kavli_nextdata,true,funder_default,1,yes,research funder feed: Kavli Foundation
+breast_cancer_now,true,funder_default,1,no,research funder feed: Breast Cancer Now
+blue_planet_prize,true,funder_default,1,no,research prize: Asahi Glass Foundation
+brain_research_uk,true,funder_default,1,no,research funder feed: Brain Research UK
+cerc_chairholders,true,funder_default,1,no,"research funder feed: Canada Excellence Research Chairs, Government of Canada"
+sparks,true,funder_default,1,no,research funder feed: Sparks
+mq_mental_health,true,funder_default,1,no,research funder feed: MQ: Transforming Mental Health
+imu_fields_medal,true,funder_default,1,no,research prize: International Mathematical Union
+btfc,true,funder_default,1,no,research funder feed: Brain Tumour Foundation of Canada
+brain_aneurysm,true,funder_default,1,no,research funder feed: Brain Aneurysm Foundation
+versus_arthritis,true,funder_default,1,no,research funder feed: Versus Arthritis
+keio_medical_science_prize,true,funder_default,1,no,research prize: Keio University
+templeton_prize,mixed,,,yes,"Templeton Prize: spiritual progress, not research as such"
+alcohol_change_uk,mixed,,,yes,Alcohol Change UK: research and other grants
+gerber,true,funder_default,1,yes,research funder feed: Gerber Foundation
+kruk,true,funder_default,1,no,research funder feed: Kidney Research UK
+brain_prize,true,funder_default,1,no,research prize: Lundbeckfonden
+finep_funttel,true,funder_default,1,no,research funder feed: Financiadora de Estudos e Projetos
+npf,true,funder_default,1,yes,research funder feed: National Psoriasis Foundation
+parkinsons_uk,true,funder_default,1,no,research funder feed: Parkinson's UK
+brain_tumour_charity,true,funder_default,1,no,research funder feed: Brain Tumour Charity
+chss,true,funder_default,1,no,research funder feed: Chest Heart and Stroke Scotland
+aas_arise_grantees,true,funder_default,1,no,research funder feed: African Academy of Sciences
+sweden_america_foundation,mixed,,,yes,Sweden-America Foundation: study fellowships
+holberg_wp_rest,true,funder_default,1,no,research prize: Universitetet i Bergen
+autistica,true,funder_default,1,no,research funder feed: Autistica
+brace,true,funder_default,1,no,research funder feed: BRACE
+international_biology_prize,true,funder_default,1,no,research prize: Japan Society for the Promotion of Science
+indam_gnfm_progetti_giovani,true,funder_default,1,no,research funder feed: Gruppo Nazionale per la Fisica Matematica
+world_food_prize,mixed,,,yes,World Food Prize: agriculture achievement
+stockholm_water_prize,mixed,,,yes,Stockholm Water Prize
+dan_david_prize,true,funder_default,1,no,research prize: Dan David Prize
+aos_kessel_laccr_research,true,funder_default,1,no,research funder feed: American Ornithological Society
+velux_stiftung_projects,true,funder_default,1,yes,research funder feed: Velux Stiftung
+tenovus,true,funder_default,1,no,research funder feed: Tenovus
+researchnb,true,funder_default,1,no,research funder feed: Fondation de la recherche en santé du Nouveau-Brunswick
+cfref_competition_results,true,funder_default,1,no,research funder feed: Canada First Research Excellence Fund
+crohns_colitis_uk,true,funder_default,1,no,research funder feed: Crohn's and Colitis UK
+ugc_bd_icsetep_rdg,true,funder_default,1,no,research funder feed: University Grants Commission of Bangladesh
+cure_parkinsons,true,funder_default,1,no,research funder feed: Cure Parkinson's Trust
+bd2,true,funder_default,1,no,research funder feed: BD2 Breakthrough Discoveries for thriving with Bipolar Disorder
+marie_curie,true,funder_default,1,no,research funder feed: Marie Curie
+millennium_prize,true,funder_default,1,no,research prize: Tekniikan Akatemia
+irish_cancer_society,true,funder_default,1,no,research funder feed: Irish Cancer Society
+pogo,true,funder_default,1,no,research funder feed: Pediatric Oncology Group of Ontario
+tourettes,true,funder_default,1,no,research funder feed: Tourettes Action
+bdsra,true,funder_default,1,no,research funder feed: Batten Disease Support and Research Association
+gla,true,funder_default,1,no,research funder feed: Global Lyme Alliance
+fysiografen_anslagstilldelning,true,funder_default,1,no,research funder feed: Kungliga Fysiografiska Sällskapet i Lund
+ons_foundation,true,funder_default,1,yes,research funder feed: Oncology Nursing Society Foundation
+letten_prize,true,funder_default,1,no,research prize: Letten Foundation
+bacp,true,funder_default,1,no,research funder feed: British Association for Counselling and Psychotherapy
