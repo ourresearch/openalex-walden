@@ -1,5 +1,5 @@
 {
- "_about": "Shared cases for the #1689 quality rule (utils/sitemaps.py). A record that is not indexable gets <meta name=robots content=noindex> on openalex.org (track seo-content) AND stays out of sitemaps (track sitemaps). Records are API-shaped (what the website renders). Delta rows are derived: has_abstract = abstract_inverted_index is not null. Any implementation of the rule (Python, SQL, the website's JS) must pass every case.",
+ "_about": "Shared cases for the #1689 quality rule (utils/sitemaps.py). A record that is not indexable gets <meta name=robots content=noindex> on openalex.org (track seo-content) AND stays out of sitemaps (track sitemaps). Implementations: openalex-walden utils/sitemaps.py (is_indexable + WORK_/AUTHOR_INDEXABLE_SQL) and openalex-gui src/seo/indexable.mjs. Records are API-shaped (what the website renders). Delta rows are derived: has_abstract = abstract_inverted_index is not null. Any implementation of the rule (Python, SQL, the website's JS) must pass every case.",
  "cases": [
   {
    "name": "work with abstract and citations",
@@ -102,6 +102,28 @@
    }
   },
   {
+   "name": "work with an empty abstract object and zero citations",
+   "entity": "works",
+   "expected": false,
+   "record": {
+    "is_xpac": false,
+    "is_paratext": false,
+    "cited_by_count": 0,
+    "abstract_inverted_index": {}
+   }
+  },
+  {
+   "name": "work with an empty abstract object and one citation",
+   "entity": "works",
+   "expected": true,
+   "record": {
+    "is_xpac": false,
+    "is_paratext": false,
+    "cited_by_count": 1,
+    "abstract_inverted_index": {}
+   }
+  },
+  {
    "name": "author with two works, no ORCID",
    "entity": "authors",
    "expected": true,
@@ -160,6 +182,18 @@
    "entity": "authors",
    "expected": false,
    "record": {}
+  },
+  {
+   "name": "author with one work and an ORCID only under ids",
+   "entity": "authors",
+   "expected": true,
+   "record": {
+    "works_count": 1,
+    "orcid": null,
+    "ids": {
+     "orcid": "https://orcid.org/0000-0001-6187-6610"
+    }
+   }
   },
   {
    "name": "source with no works",

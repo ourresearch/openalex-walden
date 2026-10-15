@@ -30,10 +30,12 @@ def test_quality_rule_python(case):
 def _delta_row(entity, rec):
     """API record -> the Walden columns the SQL predicate reads."""
     if entity == "works":
+        aii = rec.get("abstract_inverted_index")
         return {"is_xpac": rec.get("is_xpac"), "is_paratext": rec.get("is_paratext"),
-                "has_abstract": rec.get("abstract_inverted_index") is not None,
+                "has_abstract": aii is not None, "abstract_inverted_index": None if aii is None else json.dumps(aii),
                 "cited_by_count": rec.get("cited_by_count")}
-    return {"works_count": rec.get("works_count"), "orcid": rec.get("orcid")}
+    return {"works_count": rec.get("works_count"), "orcid": rec.get("orcid"),
+            "ids_orcid": (rec.get("ids") or {}).get("orcid")}
 
 
 @pytest.mark.parametrize("case", [c for c in CASES if c["entity"] in ("works", "authors")],
@@ -42,6 +44,7 @@ def test_quality_rule_sql_matches(case):
     """The exact SQL predicate string the nightly runs, evaluated in SQLite on the same cases."""
     row = _delta_row(case["entity"], case["record"])
     pred = sm.WORK_INDEXABLE_SQL if case["entity"] == "works" else sm.AUTHOR_INDEXABLE_SQL
+    pred = pred.replace("ids.orcid", "ids_orcid")  # SQLite has no structs; the only edit to the predicate
     db = sqlite3.connect(":memory:")
     cols = list(row)
     db.execute(f"CREATE TABLE t ({', '.join(cols)})")

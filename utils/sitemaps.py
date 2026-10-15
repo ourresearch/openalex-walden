@@ -46,12 +46,19 @@ BUCKET_WIDTH = 10_000                 # id buckets for packing; densest range (a
 # Delta columns: openalex.works.openalex_works.has_abstract == (abstract_inverted_index IS NOT NULL), the
 # same test the ES sync uses for the API's has_abstract (checked: 0 disagreements). The API record has no
 # has_abstract field, so is_indexable() tests abstract_inverted_index directly.
+#
 # ---------------------------------------------------------------------------------------------------------
+# The website's copy of this rule is openalex-gui src/seo/indexable.mjs (noindexReason / isIndexable, track
+# seo-content, commit 43c1e616). Both must pass notebooks/sitemaps/quality_rule_cases.json; change all three
+# together. JS `hasAbstract` = abstract_inverted_index present with at least one key, hence the '{}' guard
+# (0 such rows in Walden on 2026-10-15, but the rule is the rule). JS reads `orcid || ids.orcid`.
+HAS_ABSTRACT_SQL = "(COALESCE(has_abstract, FALSE) AND COALESCE(abstract_inverted_index, '{}') <> '{}')"
+HAS_ORCID_SQL = "(COALESCE(orcid, '') <> '' OR COALESCE(ids.orcid, '') <> '')"
 WORK_INDEXABLE_SQL = (
     "(NOT COALESCE(is_xpac, FALSE) AND NOT COALESCE(is_paratext, FALSE)"
-    " AND (COALESCE(has_abstract, FALSE) OR COALESCE(cited_by_count, 0) > 0))"
+    f" AND ({HAS_ABSTRACT_SQL} OR COALESCE(cited_by_count, 0) > 0))"
 )
-AUTHOR_INDEXABLE_SQL = "(COALESCE(works_count, 0) >= 2 OR COALESCE(orcid, '') <> '')"
+AUTHOR_INDEXABLE_SQL = f"(COALESCE(works_count, 0) >= 2 OR {HAS_ORCID_SQL})"
 
 
 def is_indexable(entity: str, record: dict) -> bool:
@@ -59,9 +66,10 @@ def is_indexable(entity: str, record: dict) -> bool:
     if entity == "works":
         if record.get("is_xpac") or record.get("is_paratext"):
             return False
-        return record.get("abstract_inverted_index") is not None or (record.get("cited_by_count") or 0) > 0
+        return bool(record.get("abstract_inverted_index")) or (record.get("cited_by_count") or 0) > 0
     if entity == "authors":
-        return (record.get("works_count") or 0) >= 2 or bool(record.get("orcid"))
+        orcid = record.get("orcid") or (record.get("ids") or {}).get("orcid")
+        return (record.get("works_count") or 0) >= 2 or bool(orcid)
     return entity in ENTITY_PATHS
 
 
@@ -101,10 +109,10 @@ class Entity:
 
 ENTITIES: tuple[Entity, ...] = (
     Entity("works", "W", "openalex.works.openalex_works", WORK_INDEXABLE_SQL,
-           "CASE WHEN COALESCE(has_abstract, FALSE) THEN 'works-abstract' ELSE 'works-cited' END",
+           f"CASE WHEN {HAS_ABSTRACT_SQL} THEN 'works-abstract' ELSE 'works-cited' END",
            WORK_FINGERPRINT_SQL, ("works-abstract", "works-cited")),
     Entity("authors", "A", "openalex.authors.openalex_authors", AUTHOR_INDEXABLE_SQL,
-           "CASE WHEN COALESCE(orcid, '') <> '' THEN 'authors-orcid' ELSE 'authors-multi' END",
+           f"CASE WHEN {HAS_ORCID_SQL} THEN 'authors-orcid' ELSE 'authors-multi' END",
            AUTHOR_FINGERPRINT_SQL, ("authors-orcid", "authors-multi")),
     Entity("sources", "S", "openalex.sources.sources_api", "TRUE", "'sources'",
            """xxhash64(to_json(named_struct('n', display_name, 'issn', issn_l, 'h', host_organization_name,
@@ -202,6 +210,10 @@ def changed_sql(state_view: str, run_ts_literal: str, days: int, max_urls: int) 
 # ---------------------------------------------------------------------------------------------------------
 # URLs, names, XML
 # ---------------------------------------------------------------------------------------------------------
+# Spark formats lastmod once, in SQL, so executors never touch time zones (session time zone set to UTC).
+LASTMOD_W3C_SQL = "date_format(lastmod, \"yyyy-MM-dd'T'HH:mm:ss'Z'\")"
+
+
 def record_url(entity: str, record_id: int) -> str:
     """Canonical long form, e.g. https://openalex.org/works/W2741809807 (same as the page's canonical tag)."""
     return f"{BASE_URL}/{entity}/{ENTITY_PATHS[entity].prefix}{int(record_id)}"
@@ -222,6 +234,8 @@ def w3c(ts) -> str:
     """W3C Datetime in UTC with seconds, e.g. 2026-10-14T05:12:33Z (Bing asks for date and time)."""
     if ts is None:
         raise ValueError("lastmod must not be None")
+    if isinstance(ts, str) and len(ts) == 20 and ts[10] == "T" and ts[-1] == "Z":
+        return ts  # already formatted by Spark (LASTMOD_W3C_SQL); the hot path in the nightly
     if isinstance(ts, str):
         ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     if ts.tzinfo is None:
