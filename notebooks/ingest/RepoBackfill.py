@@ -738,14 +738,31 @@ elif REBUILD:
         .saveAsTable(target_table))
 
 else:
+    # CHANGED-ONLY MERGE: a matched row is updated only when some column differs. The updated_date
+    # test alone is true for every unchanged row (>= holds on equal dates), so each run rewrote the
+    # whole table into the change feed -- history v86 (09-03) and v89 (09-10): 179,509,487 of
+    # 179,513,507 rows updated -- and repo_works/Union re-processed every one. A re-emitted unchanged
+    # row reaches repo_works with the same content; only its _commit_version (a _sequence tiebreak) moves.
+    # Side effect: this job no longer replays unchanged backfill rows through Repo.py's repo_enriched, so
+    # a change there (filters, enrichment, the current_date()+30 date cut-off) reaches them only through
+    # a Repo pipeline full refresh, as it already does for live rows.
+    # <=> is null-safe and compares arrays/structs element by element (nested NULLs included).
+    # If any source column is new to the target or has a different type (schema evolution), fall
+    # back to updating every matched row, as before, so the new/changed column is filled everywhere.
+    _tgt_types = {f.name.lower(): f.dataType.simpleString() for f in spark.table(target_table).schema.fields}
+    _same_schema = all(_tgt_types.get(f.name.lower()) == f.dataType.simpleString() for f in parsed_df.schema.fields)
+    _changed = " OR ".join(f"NOT (target.`{c}` <=> source.`{c}`)" for c in parsed_df.columns
+                           if c != "native_id") if _same_schema else "true"
+    print("  MERGE updates " + ("only matched rows whose content changed." if _same_schema else
+          "EVERY matched row: the source schema differs from the target (new or retyped column)."))
     (DeltaTable.forName(spark, target_table).alias("target")
         .merge(parsed_df.alias("source"), "target.native_id = source.native_id")
         # NULL-safe: 3,932,463 rows carry a NULL updated_date and NULL >= NULL is NULL, which
         # MERGE treats as false -- those rows could never be refreshed (oxjob #881 REPOBACKFILL
         # CHANGES section C).
         .whenMatchedUpdateAll(
-            condition="source.updated_date IS NULL OR target.updated_date IS NULL "
-                      "OR source.updated_date >= target.updated_date")
+            condition="(source.updated_date IS NULL OR target.updated_date IS NULL "
+                      "OR source.updated_date >= target.updated_date) AND (" + _changed + ")")
         .whenNotMatchedInsertAll()
         # the whole point: rows the parse no longer produces are removed, not stranded
         .whenNotMatchedBySourceDelete()
