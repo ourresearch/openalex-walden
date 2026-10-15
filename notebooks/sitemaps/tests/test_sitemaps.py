@@ -207,3 +207,13 @@ def test_indexnow_cap_retry_and_stop():
     assert calls == [10_000, 10_000, 10_000, 5_000]
     assert res.sent_urls == 20_000 and res.stopped_reason == "HTTP 403 on batch 3"
     assert waits[0] == 30
+
+
+def test_published_names_match_the_websites_route():
+    """openalex-gui server/utils/sitemaps.ts SITEMAP_PATH serves only these shapes; keep them in step."""
+    import re
+    route = re.compile(r"^/(sitemap(?:-[a-z][a-z0-9]*)*(?:-\d{5}\.xml\.gz|\.xml))$")
+    names = [sm.TOP_INDEX_NAME] + [sm.group_index_name(g) for g in sm.ALL_GROUPS] + \
+            [sm.file_name(g, n) for g in sm.ALL_GROUPS for n in (1, 4430)]
+    for name in names:
+        assert route.match("/" + name), name
