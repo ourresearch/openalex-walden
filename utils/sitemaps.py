@@ -123,7 +123,9 @@ ENTITIES: tuple[Entity, ...] = (
               'u', homepage_url, 'st', status, 'l', lineage, 'alt', display_name_alternatives)))""",
            ("institutions",)),
     Entity("topics", "T", "openalex.common.topics_api", "TRUE", "'topics'",
-           """xxhash64(to_json(named_struct('n', display_name, 'd', description, 'k', keywords,
+           # keywords left out: their scores move nightly and the top-keyword set reshuffles (1,312 of 4,516
+           # topics in six days by name alone, 2026-10-09 -> 10-15)
+           """xxhash64(to_json(named_struct('n', display_name, 'd', description,
               'sf', subfield.id, 'f', field.id, 'dm', domain.id)))""",
            ("topics",)),
     Entity("funders", "F", "openalex.funders.funders_api", "TRUE", "'funders'",
