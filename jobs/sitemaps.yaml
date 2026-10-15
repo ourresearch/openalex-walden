@@ -1,6 +1,6 @@
 # Sitemaps + IndexNow for openalex.org record pages (oxjob #1689).
-# NOT in databricks.yml `include:` yet, so no bundle deploy creates it. To ship (after Jason's yes):
-# work/build-sitemaps.md in oxjobs working/search-engines-see-record-pages, "Schedule it".
+# In databricks.yml `include:` since 2026-10-15 (Jason's yes): deployed paused, dry_run. Turning it on (publish,
+# IndexNow, UNPAUSED): work/build-sitemaps.md in oxjobs working/search-engines-see-record-pages, "Schedule it".
 resources:
   jobs:
     Sitemaps:

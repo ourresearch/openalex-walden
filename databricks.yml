@@ -107,3 +107,4 @@ include:
   - jobs/irdb_pipeline.yaml
   - jobs/hal_tei_pipeline.yaml
   - jobs/pdf_pipeline.yaml
+  - jobs/sitemaps.yaml
