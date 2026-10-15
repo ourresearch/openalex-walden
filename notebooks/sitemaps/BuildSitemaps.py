@@ -44,6 +44,10 @@ if not os.path.exists(os.path.join(REPO_ROOT, "utils", "sitemaps.py")):
                 break
 sys.path.insert(0, REPO_ROOT)
 from utils import sitemaps as sm  # noqa: E402
+from pyspark import cloudpickle  # noqa: E402
+
+# Executors can't import utils/ from the repo checkout; ship the module's code with the writer function.
+cloudpickle.register_pickle_by_value(sm)
 
 from pyspark.sql import Row  # noqa: E402
 from pyspark.sql import functions as F  # noqa: E402
@@ -148,7 +152,7 @@ st = spark.table(NEXT)
 hist = (st.groupBy("grp", F.floor(F.col("id") / sm.BUCKET_WIDTH).alias("bucket")).count()
         .collect())
 assign = sm.pack_buckets((r.grp, r.bucket, r["count"]) for r in hist)
-assign_df = spark.createDataFrame([Row(grp=g, bucket=b, file_no=n) for (g, b), n in assign.items()])
+assign_df = spark.createDataFrame([(g, b, n) for (g, b), n in assign.items()], "grp string, bucket bigint, file_no int")
 n_main_files = len(set((g, n) for (g, _), n in assign.items()))
 log(f"{len(hist):,} id buckets packed into {n_main_files:,} files")
 

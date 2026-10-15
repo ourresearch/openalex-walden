@@ -209,8 +209,6 @@ def changed_sql(state_view: str, run_ts_literal: str, days: int, max_urls: int) 
     )
 
 
-CHANGED_ORDER = ("prio", "lastmod DESC", "entity", "id")   # the same order, for numbering the rows
-
 
 # ---------------------------------------------------------------------------------------------------------
 # URLs, names, XML
