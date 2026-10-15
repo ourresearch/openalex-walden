@@ -200,11 +200,14 @@ def changed_sql(state_view: str, run_ts_literal: str, days: int, max_urls: int) 
     other changed record still carries its new lastmod in its own group's files."""
     rt = f"TIMESTAMP'{run_ts_literal}'"
     return (
-        f"SELECT entity, id, lastmod FROM {state_view}\n"
-        f"WHERE lastmod >= {rt} - INTERVAL {int(days)} DAYS\n"
-        f"ORDER BY CASE WHEN created_date >= {rt} - INTERVAL {int(days)} DAYS THEN 0 ELSE 1 END,\n"
-        f"  lastmod DESC, entity, id\nLIMIT {int(max_urls)}"
+        f"SELECT entity, id, lastmod,\n"
+        f"  CASE WHEN created_date >= {rt} - INTERVAL {int(days)} DAYS THEN 0 ELSE 1 END AS prio\n"
+        f"FROM {state_view}\nWHERE lastmod >= {rt} - INTERVAL {int(days)} DAYS\n"
+        f"ORDER BY prio, lastmod DESC, entity, id\nLIMIT {int(max_urls)}"
     )
+
+
+CHANGED_ORDER = ("prio", "lastmod DESC", "entity", "id")   # the same order, for numbering the rows
 
 
 # ---------------------------------------------------------------------------------------------------------

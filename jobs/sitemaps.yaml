@@ -1,0 +1,80 @@
+# Sitemaps + IndexNow for openalex.org record pages (oxjob #1689).
+# NOT in databricks.yml `include:` yet, so no bundle deploy creates it. To ship (after Jason's yes):
+# work/build-sitemaps.md in oxjobs working/search-engines-see-record-pages, "Schedule it".
+resources:
+  jobs:
+    Sitemaps:
+      name: Sitemaps (openalex.org)
+      description: |
+        Nightly sitemaps for openalex.org record pages: every record above the quality bar (utils/sitemaps.py,
+        the same rule as the website's noindex, openalex-gui src/seo/indexable.mjs), grouped by entity and
+        quality group, lastmod = when the page's content last changed (page fingerprints in
+        openalex.sitemaps.page_state), plus a rolling "changed" group. Files go to R2 bucket openalex-sitemaps
+        (live/ prefix), served at https://openalex.org/sitemap.xml by the website. Then IndexNow pings for the
+        night's new, updated and removed record URLs. Writes only openalex.sitemaps.* and the R2 bucket.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        # 20:00 UTC: after Walden End 2 End's publish path (05:00 UTC start; ES sync done by ~17:30 on most
+        # days). The notebook refuses to run if today's works ES sync hasn't started.
+        quartz_cron_expression: 0 0 20 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode
+          default: "dry_run"          # "publish" once approved
+        - name: indexnow_send
+          default: "false"            # "true" once approved
+        - name: indexnow_max_urls
+          default: "1000000"
+        - name: changed_days
+          default: "7"
+        - name: changed_max_urls
+          default: "1000000"
+      tasks:
+        - task_key: build_sitemaps
+          job_cluster_key: sitemaps_cluster
+          notebook_task:
+            notebook_path: notebooks/sitemaps/BuildSitemaps
+            source: GIT
+            base_parameters:
+              mode: "{{job.parameters.mode}}"
+              changed_days: "{{job.parameters.changed_days}}"
+              changed_max_urls: "{{job.parameters.changed_max_urls}}"
+          timeout_seconds: 7200
+          max_retries: 1
+          min_retry_interval_millis: 600000
+        - task_key: indexnow_ping
+          depends_on:
+            - task_key: build_sitemaps
+          job_cluster_key: sitemaps_cluster
+          notebook_task:
+            notebook_path: notebooks/sitemaps/IndexNowPing
+            source: GIT
+            base_parameters:
+              send: "{{job.parameters.indexnow_send}}"
+              max_urls: "{{job.parameters.indexnow_max_urls}}"
+          timeout_seconds: 3600
+      job_clusters:
+        - job_cluster_key: sitemaps_cluster
+          new_cluster:
+            spark_version: 16.4.x-scala2.12
+            # Works fingerprints read ~208 GB of columns (measured 2026-10-15: 37 task-minutes on a SQL
+            # warehouse); 8 x 8 cores keep the whole run near 20 min. m5d NVMe for the shuffle.
+            node_type_id: m5d.2xlarge
+            num_workers: 8
+            runtime_engine: PHOTON
+            aws_attributes:
+              availability: SPOT_WITH_FALLBACK
+              first_on_demand: 1
+              zone_id: auto
+            data_security_mode: SINGLE_USER
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
