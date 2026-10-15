@@ -2,7 +2,7 @@ resources:
   jobs:
     Parse_PDFs:
       name: Parse PDFs
-      # 2 slots: the 8-hourly normal-mode run and one #789 batch drain run
+      # 2 slots: the daily normal-mode run and one #789 batch drain run
       # alongside. Safe: normal mode never reads grobid_reparse_queue, and the
       # campaign's pre-0.9.1 pdfs cannot appear in the 3-day normal window.
       # Batch drains themselves stay serialized by the campaign runner.
@@ -10,11 +10,13 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
-      trigger:
+      # Once a day (was every 8 h; oxjob #1698): 00:30 UTC, inside GROBID's warm window
+      # (ECS scheduled scaling: 40 tasks from 00:10 UTC, back to 1 at 04:00 UTC), and
+      # done before the 05:00 UTC End 2 End refreshes PDFWork. Every consumer is daily.
+      schedule:
+        quartz_cron_expression: "0 30 0 * * ?"
+        timezone_id: UTC
         pause_status: UNPAUSED
-        periodic:
-          interval: 8
-          unit: HOURS
       tasks:
         - task_key: parse_pdfs
           notebook_task:
