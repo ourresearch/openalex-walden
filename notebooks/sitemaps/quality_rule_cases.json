@@ -1,0 +1,199 @@
+{
+ "_about": "Shared cases for the #1689 quality rule (utils/sitemaps.py). A record that is not indexable gets <meta name=robots content=noindex> on openalex.org (track seo-content) AND stays out of sitemaps (track sitemaps). Records are API-shaped (what the website renders). Delta rows are derived: has_abstract = abstract_inverted_index is not null. Any implementation of the rule (Python, SQL, the website's JS) must pass every case.",
+ "cases": [
+  {
+   "name": "work with abstract and citations",
+   "entity": "works",
+   "expected": true,
+   "record": {
+    "is_xpac": false,
+    "is_paratext": false,
+    "cited_by_count": 12,
+    "abstract_inverted_index": {
+     "We": [
+      0
+     ]
+    }
+   }
+  },
+  {
+   "name": "work with abstract, no citations",
+   "entity": "works",
+   "expected": true,
+   "record": {
+    "is_xpac": false,
+    "is_paratext": false,
+    "cited_by_count": 0,
+    "abstract_inverted_index": {
+     "We": [
+      0
+     ]
+    }
+   }
+  },
+  {
+   "name": "work with one citation, no abstract",
+   "entity": "works",
+   "expected": true,
+   "record": {
+    "is_xpac": false,
+    "is_paratext": false,
+    "cited_by_count": 1,
+    "abstract_inverted_index": null
+   }
+  },
+  {
+   "name": "work with no abstract and zero citations",
+   "entity": "works",
+   "expected": false,
+   "record": {
+    "is_xpac": false,
+    "is_paratext": false,
+    "cited_by_count": 0,
+    "abstract_inverted_index": null
+   }
+  },
+  {
+   "name": "work with abstract field missing and citations missing",
+   "entity": "works",
+   "expected": false,
+   "record": {
+    "is_xpac": false,
+    "is_paratext": false
+   }
+  },
+  {
+   "name": "paratext with abstract and citations",
+   "entity": "works",
+   "expected": false,
+   "record": {
+    "is_xpac": false,
+    "is_paratext": true,
+    "cited_by_count": 50,
+    "abstract_inverted_index": {
+     "Front": [
+      0
+     ]
+    }
+   }
+  },
+  {
+   "name": "xpac work with abstract and citations",
+   "entity": "works",
+   "expected": false,
+   "record": {
+    "is_xpac": true,
+    "is_paratext": false,
+    "cited_by_count": 50,
+    "abstract_inverted_index": {
+     "We": [
+      0
+     ]
+    }
+   }
+  },
+  {
+   "name": "work with is_xpac and is_paratext missing (null), cited",
+   "entity": "works",
+   "expected": true,
+   "record": {
+    "cited_by_count": 3,
+    "abstract_inverted_index": null
+   }
+  },
+  {
+   "name": "author with two works, no ORCID",
+   "entity": "authors",
+   "expected": true,
+   "record": {
+    "works_count": 2,
+    "orcid": null
+   }
+  },
+  {
+   "name": "author with one work and an ORCID",
+   "entity": "authors",
+   "expected": true,
+   "record": {
+    "works_count": 1,
+    "orcid": "https://orcid.org/0000-0001-6187-6610"
+   }
+  },
+  {
+   "name": "author with zero works and an ORCID",
+   "entity": "authors",
+   "expected": true,
+   "record": {
+    "works_count": 0,
+    "orcid": "https://orcid.org/0000-0001-6187-6610"
+   }
+  },
+  {
+   "name": "author with one work, no ORCID",
+   "entity": "authors",
+   "expected": false,
+   "record": {
+    "works_count": 1,
+    "orcid": null
+   }
+  },
+  {
+   "name": "author with one work, empty-string ORCID",
+   "entity": "authors",
+   "expected": false,
+   "record": {
+    "works_count": 1,
+    "orcid": ""
+   }
+  },
+  {
+   "name": "author with zero works, no ORCID",
+   "entity": "authors",
+   "expected": false,
+   "record": {
+    "works_count": 0,
+    "orcid": null
+   }
+  },
+  {
+   "name": "author with works_count missing, no ORCID",
+   "entity": "authors",
+   "expected": false,
+   "record": {}
+  },
+  {
+   "name": "source with no works",
+   "entity": "sources",
+   "expected": true,
+   "record": {
+    "works_count": 0
+   }
+  },
+  {
+   "name": "institution",
+   "entity": "institutions",
+   "expected": true,
+   "record": {
+    "works_count": 5
+   }
+  },
+  {
+   "name": "topic",
+   "entity": "topics",
+   "expected": true,
+   "record": {}
+  },
+  {
+   "name": "funder",
+   "entity": "funders",
+   "expected": true,
+   "record": {}
+  },
+  {
+   "name": "publisher",
+   "entity": "publishers",
+   "expected": true,
+   "record": {}
+  }
+ ]
+}
