@@ -15,6 +15,7 @@
     "openalex.awards.awards_api",
     "openalex.awards.award_registry_lock",
     "openalex.awards.award_relations",
+    "openalex.awards.work_award_list_audit",
     "openalex.pdf.grobid_award_matches"
   ],
   "outputs": {
@@ -22,7 +23,8 @@
     "aliases": "openalex.awards.award_id_aliases",
     "work_awards": "openalex.awards.work_awards",
     "api": "openalex.awards.awards_api",
-    "relations": "openalex.awards.award_relations"
+    "relations": "openalex.awards.award_relations",
+    "list_audit": "openalex.awards.work_award_list_audit"
   },
   "inputs": {
     "raw": "openalex.awards.openalex_awards_raw",
@@ -75,6 +77,11 @@
     "exchange_rates_annual": "openalex.common.exchange_rates_annual",
     "award_classifications_raw": "openalex.awards.award_classifications_raw"
   },
+  "list_legs": {
+    "add": [],
+    "suppress": []
+  },
+  "list_bindings": "openalex.awards.award_list_bindings",
   "relations_drop_fuse": 0.01,
   "recipients_drop_fuse": 0.01,
   "usd_drop_fuse": 0.01,

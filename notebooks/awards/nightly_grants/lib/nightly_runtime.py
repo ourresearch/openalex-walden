@@ -52,7 +52,7 @@ class Nightly:
         self.fence = tuple(config["write_fence"])             # every write target must start with one of these
         self.require(len(self.fence) > 0, "WRITE_FENCE_REQUIRED")
         self.outputs = {k: ident(v) for k, v in config["outputs"].items()}
-        self.require(set(self.outputs) - {"relations"} == {"awards", "aliases", "work_awards", "api"}, "OUTPUT_SET")   # relations: optional (award_relations.py)
+        self.require(set(self.outputs) - {"relations", "list_audit"} == {"awards", "aliases", "work_awards", "api"}, "OUTPUT_SET")   # relations: optional (award_relations.py); list_audit: optional (list_legs.py)
         self.versions, self.counts, self.checks, self.log = {}, {}, {}, []
         self.locked = False
         if config.get("require_databricks_run_id"):
@@ -207,6 +207,8 @@ class Nightly:
         self.require(set(inputs) == REQUIRED_INPUTS, "INPUT_SET: " + compact(sorted(set(inputs) ^ REQUIRED_INPUTS)))
         for view, relation in inputs.items():
             self.bind(view, relation)
+        import list_legs                                      # pinned ADD / SUPPRESS lists (config "list_legs"); before derive: feeds a leg
+        list_legs.bind(self)
         self.derive_inputs()
 
     def identity_file(self, name):

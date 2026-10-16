@@ -15,6 +15,7 @@ When no NIH pair is in the list every function is a no-op and the build renders 
 """
 import json
 
+import list_legs
 from stable_award_ids import literal
 
 NIH_CLASS = "NIH_PROJECT_YEAR_FOLD"
@@ -285,7 +286,8 @@ def link_conservation(c):
     # a paper whose acknowledgement vanished upstream tonight is an explained removal; only links tonight's producers still
     # tie to the retired record or its project must survive (same contract as uk_lineage's supported checks)
     c.artifact("nih_supported", f"""SELECT DISTINCT wm.work_id,{g.format('x.target_id')} award_id FROM {r}work_matches wm
-      JOIN (SELECT loser_id id,target_id FROM {r}nih_applied UNION SELECT target_id,target_id FROM {r}nih_applied) x ON x.id=wm.stable_id""")
+      JOIN (SELECT loser_id id,target_id FROM {r}nih_applied UNION SELECT target_id,target_id FROM {r}nih_applied) x ON x.id=wm.stable_id
+      EXCEPT SELECT * FROM ({list_legs.removed_pairs_sql(c)})""")   # a pinned SUPPRESS row is an explained removal
     c.zero("NIH_MAPPED_LINKS_PRESERVED", f"SELECT m.* FROM {r}nih_missing_mapped m LEFT SEMI JOIN {r}nih_supported s ON s.work_id=m.work_id AND s.award_id=m.award_id")
     c.counts["nih_explained_removals"] = int(c.sql(f"""SELECT count(*) n FROM {r}nih_missing_mapped m
       LEFT ANTI JOIN {r}nih_supported s ON s.work_id=m.work_id AND s.award_id=m.award_id""").collect()[0].n)

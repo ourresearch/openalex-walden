@@ -66,6 +66,7 @@ include:
   - jobs/walden_end2end.yaml
   - jobs/vector_matcher_nightly.yaml
   - jobs/nightly_grants.yaml
+  - jobs/produce_nih_pubmed_relinks.yaml
   - jobs/wunpaywall_weekly_data_feed.yaml
   - jobs/unpaywall_lakebase_stale_check.yaml
   - jobs/snapshot_full.yaml

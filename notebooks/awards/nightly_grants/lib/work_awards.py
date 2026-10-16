@@ -6,6 +6,7 @@ Release 1 reproduces it on its ACTIVE candidates (links only; identity, keys, re
 pinned legacy aliases + release aliases third, and a SHELL whose key legacy only knew through an alias (a collapsed shell, minted here as
 its own entity) last — so papers keep linking to the family's newest-year record while the shell stays an ACTIVE public entity."""
 DEPOSITED = "('crossref_work_funders','crossref_work.grants','crossref_work','europepmc_work_funders','datacite_work_funders')"   # legacy is_registry = provenance NOT IN
+import list_legs
 import nih_fold
 from stable_award_ids import generic_sql
 
@@ -18,7 +19,8 @@ LEGS = [('work_funder','paper_id','award_ids',True,1,False,False),
         ('datacite_work_funders','work_id','award_ids',True,4,True,False),
         ('europepmc_work_funders','work_id','award_ids',True,4,True,False),
         ('kaken_work_funders','work_id','award_ids',True,3,False,False),
-        ('relink','work_id','target_award_id',False,4,True,True)]
+        ('relink','work_id','target_award_id',False,4,True,True),
+        (list_legs.NUMBER_LEG,'work_id','number',False,4,True,True)]   # number-kind ADD lists (list_legs.py), registry mode like relink
 
 
 def leg_sql():
@@ -138,18 +140,21 @@ def run(c):
       JOIN {r}awards_candidate a ON a.id=x.stable_id WHERE k.key_type='NATIVE' AND k.namespace='gtr' AND x.status='ACTIVE') x
       ON x.source_record_id=cast(g.id AS STRING) WHERE g.work_id IS NOT NULL""")
     c.artifact('work_unmatched',f"SELECT *,CASE WHEN generic_targets>1 OR sharp_targets>1 THEN 'AMBIGUOUS' ELSE 'NO_CANDIDATE' END disposition FROM {r}work_matches WHERE stable_id IS NULL")
-    c.artifact('work_links',f"""SELECT work_id,stable_id,priority FROM {r}work_matches WHERE stable_id IS NOT NULL
-      UNION ALL SELECT work_id,stable_id,priority FROM {r}gtr_work_matches""")
+    list_legs.resolve_adds(c)
+    c.artifact('work_links',f"""SELECT work_id,stable_id,priority,source='{list_legs.NUMBER_LEG}' from_list FROM {r}work_matches WHERE stable_id IS NOT NULL
+      UNION ALL SELECT work_id,stable_id,priority,false FROM {r}gtr_work_matches
+      UNION ALL {list_legs.links_sql(c)}""")
     survivors=work_survivors(c)
     move=bool(c.config.get('move_merged_work_links',True))
     # NEW (09-29): links on merged-away works move to the surviving work, before the one final (work, award) dedupe.
-    c.artifact('work_links_moved',f"""SELECT coalesce(m.survivor_work_id,l.work_id) work_id,l.work_id original_work_id,l.stable_id,l.priority
+    c.artifact('work_links_moved',f"""SELECT coalesce(m.survivor_work_id,l.work_id) work_id,l.work_id original_work_id,l.stable_id,l.priority,l.from_list
       FROM {r}work_links l LEFT JOIN {survivors} m ON {'true' if move else 'false'} AND m.loser_work_id=l.work_id""")
-    c.artifact('work_awards_candidate',f"""WITH links AS (SELECT work_id,stable_id,priority FROM {r}work_links_moved)
+    c.artifact('work_awards_listed',f"""WITH links AS (SELECT work_id,stable_id,priority FROM {r}work_links_moved)
       SELECT l.work_id,named_struct('id',concat('https://openalex.org/G',a.id),'display_name',a.display_name,
         'funder_award_id',a.funder_award_id,'funder_id',a.funder.id,'funder_display_name',a.funder.display_name) award,:rid release_id
       FROM links l JOIN {r}awards_candidate a ON a.id=l.stable_id
       QUALIFY row_number() OVER(PARTITION BY l.work_id,a.id ORDER BY l.priority)=1""")
+    list_legs.apply(c,survivors,move,r+'work_awards_listed')   # -> work_awards_candidate (minus SUPPRESS rows) + list_audit
     c.zero('WORK_MATCH_HAS_DOCUMENT',f"SELECT DISTINCT stable_id FROM {r}work_matches WHERE stable_id IS NOT NULL EXCEPT SELECT id FROM {r}awards_candidate")
     c.zero('WORK_EMITTED_ACTIVE',f"SELECT w.* FROM {r}work_awards_candidate w LEFT ANTI JOIN {r}resolve_candidate e ON w.award.id=concat('https://openalex.org/G',e.owner_id) AND e.status='ACTIVE'")
     c.zero('WORK_HAS_DOCUMENT',f"SELECT w.* FROM {r}work_awards_candidate w LEFT ANTI JOIN {r}awards_candidate a ON w.award.id=concat('https://openalex.org/G',a.id)")

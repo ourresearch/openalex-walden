@@ -57,9 +57,14 @@ try:
         c.artifact("bindings_final_carry", f"SELECT observation_key,stable_id,family,coalesce(payload.provenance,family) source FROM {c.r}bindings_final")
         c.swap({c.p + "award_bindings_last": c.r + "bindings_final_carry", c.p + "award_merge_doi_pairs": c.r + "merge_doi_pairs"})
         o = c.outputs
-        c.swap({o["awards"]: c.r + "awards_candidate", o["aliases"]: c.r + "aliases_candidate",
+        # audit superset first, work_awards, then tonight's exact audit: a SUPPRESSed link's funder is never lost (list_legs.audit_superset)
+        first = work_awards.list_legs.audit_superset(c)
+        c.swap({**({o["list_audit"]: first} if first else {}),
+                o["awards"]: c.r + "awards_candidate", o["aliases"]: c.r + "aliases_candidate",
                 o["work_awards"]: c.r + "work_awards_candidate", o["api"]: c.r + "api_candidate",
                 **({o["relations"]: c.r + "relations_candidate"} if "relations" in o else {})})
+        if first:
+            c.swap({o["list_audit"]: c.r + "list_audit"})
         if mode == "elasticsearch":
             sync_awards.publish(c, search)
         build_awards.mark_published(c)

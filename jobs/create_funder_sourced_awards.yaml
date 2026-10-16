@@ -202,15 +202,6 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: European_Commission_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateEuropeanCommissionAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: FAPESP_Awards
           email_notifications: {}
           environment_key: Default
@@ -679,15 +670,6 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: Gates_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateGatesAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: Gateway_to_Research_Awards
           email_notifications: {}
           environment_key: Default
@@ -750,15 +732,6 @@ resources:
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateInnovateUKAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: KAKEN_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateKAKENAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -840,15 +813,6 @@ resources:
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateNSERCAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: NSF_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateNSFAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -948,15 +912,6 @@ resources:
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateVinnovaAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Wellcome_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWellcomeAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -3787,7 +3742,6 @@ resources:
             - task_key: TSCAlliance_Awards
             - task_key: NIST_Awards
             - task_key: Independent_Research_Fund_Denmark_Awards
-            - task_key: KAKEN_Awards
             - task_key: ERC_Awards
             - task_key: Swedish_Research_Council_Awards
             - task_key: NIH_Awards
@@ -3800,10 +3754,7 @@ resources:
             - task_key: DOD_Awards
             - task_key: Crossref_Awards_Insert
             - task_key: DataCite_Awards_Insert
-            - task_key: European_Commission_Awards
             - task_key: NWO_Awards
-            - task_key: NSF_Awards
-            - task_key: Gates_Awards
             - task_key: BMBF_Awards
             - task_key: Forte_Awards
             - task_key: CIHR_Awards
@@ -3819,7 +3770,6 @@ resources:
             - task_key: ANR_Awards
             - task_key: ISCIII_Awards
             - task_key: DOE_Awards
-            - task_key: Wellcome_Awards
             - task_key: Research_Council_Norway_Awards
             - task_key: HRC_Awards
             - task_key: Backfill_Awards

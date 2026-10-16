@@ -1,0 +1,43 @@
+# NIH PubMed relinks: PubMed GrantList -> NIH core project rows for the registry-mode relink leg of Nightly Grants.
+# One SQL notebook, one target (openalex.awards.award_relink_map, insert-only MERGE, election 'nih_pubmed_nightly').
+# 01:30 UTC = 18:30 PDT / 17:30 PST, before Nightly Grants binds its inputs (03:00 UTC). The notebook refuses to start outside 01:00-02:30 UTC
+# and to write after 02:40 UTC or once a Nightly run has started; no queueing. It fails closed (no write) if last night's Nightly is incomplete, the NIH fold is not fully bound,
+# any guard fails, or more than max_rows rows would be added.
+# Deployed PAUSED; unpause by changing pause_status in a later push (a UI unpause is reset by the next bundle deploy).
+resources:
+  jobs:
+    Produce_Nih_Pubmed_Relinks:
+      name: Produce NIH PubMed Relinks
+      description: Nightly incremental PubMed GrantList -> NIH project rows for award_relink_map (insert-only).
+      tags: {lane: awards}
+      schedule:
+        quartz_cron_expression: "0 30 1 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED
+      email_notifications:
+        on_failure:
+          - rohan@openalex.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 2700
+      tasks:
+        - task_key: produce_nih_pubmed_relinks
+          notebook_task:
+            notebook_path: notebooks/awards/ProduceNihPubmedRelinks
+            source: GIT
+            base_parameters:
+              relink_map: openalex.awards.award_relink_map
+              max_rows: "50000"   # fuse: more rows in one night stops the run; nothing is written
+          environment_key: Default
+          timeout_seconds: 2700
+          max_retries: 0
+      environments:
+        - environment_key: Default
+          spec:
+            client: "2"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: false   # a late (queued) start has no valid window; the notebook also refuses starts outside 01:00-02:30 UTC

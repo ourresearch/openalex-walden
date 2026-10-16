@@ -7,6 +7,7 @@ Changes for the nightly: a pair failing the proof is HELD for the night (counted
 still stops the run. Link conservation stays strict (no loser links, every loser link mapped to the target, target links still
 supported by a producer are kept, target extras must be explained). The 09-24 exact count contract becomes a report.
 """
+import list_legs
 from stable_award_ids import literal
 
 LINEAGE_TWIN_CLASS = 'PUBLIC_GTR_LINEAGE_TWIN'
@@ -81,7 +82,8 @@ def link_conservation(c):
     c.artifact('uk_loser_edges', f"""SELECT b.* FROM {r}uk_candidate_edges b JOIN {r}uk_applied m ON b.award_id=concat('https://openalex.org/G',m.loser_id)""")
     c.artifact('uk_mapped_expected', f"""SELECT DISTINCT b.work_id,concat('https://openalex.org/G',m.target_id) award_id
       FROM {r}uk_links_before b JOIN {r}uk_applied m ON b.award_id=concat('https://openalex.org/G',m.loser_id)""")
-    c.artifact('uk_missing_mapped', f"SELECT * FROM {r}uk_mapped_expected EXCEPT SELECT * FROM {r}uk_candidate_edges")
+    c.artifact('uk_missing_mapped', f"""SELECT * FROM {r}uk_mapped_expected EXCEPT SELECT * FROM {r}uk_candidate_edges
+      EXCEPT SELECT * FROM ({list_legs.removed_pairs_sql(c)})""")   # a pinned SUPPRESS row is an explained removal
     c.artifact('uk_missing_target', f"""SELECT b.* FROM {r}uk_links_before b JOIN {r}uk_applied m ON b.award_id=concat('https://openalex.org/G',m.target_id)
       EXCEPT SELECT * FROM {r}uk_candidate_edges""")
     c.artifact('uk_target_extra', f"""SELECT b.* FROM {r}uk_candidate_edges b JOIN {r}uk_applied m ON b.award_id=concat('https://openalex.org/G',m.target_id)
@@ -89,9 +91,11 @@ def link_conservation(c):
     c.artifact('uk_link_producers', f"""SELECT work_id,concat('https://openalex.org/G',stable_id) award_id,source FROM {r}work_matches WHERE stable_id IS NOT NULL
       UNION ALL SELECT g.work_id,concat('https://openalex.org/G',x.stable_id),'gtr_native' FROM gtr_v g
         JOIN {r}keys_candidate k ON k.key_type='NATIVE' AND k.namespace='gtr' AND k.source_record_id=cast(g.id AS STRING)
-        JOIN {r}resolve_candidate x ON x.owner_id=k.stable_id AND x.status='ACTIVE' WHERE g.work_id IS NOT NULL""")
+        JOIN {r}resolve_candidate x ON x.owner_id=k.stable_id AND x.status='ACTIVE' WHERE g.work_id IS NOT NULL
+      UNION ALL SELECT work_id,award_id,'list_add' FROM ({list_legs.added_pairs_sql(c)})""")
     c.artifact('uk_unaccounted_extra', f"SELECT e.* FROM {r}uk_target_extra e LEFT ANTI JOIN {r}uk_link_producers p ON p.work_id=e.work_id AND p.award_id=e.award_id")
-    c.artifact('uk_supported_missing_target', f"SELECT e.* FROM {r}uk_missing_target e LEFT SEMI JOIN {r}uk_link_producers p ON p.work_id=e.work_id AND p.award_id=e.award_id")
+    c.artifact('uk_supported_missing_target', f"""SELECT e.* FROM {r}uk_missing_target e LEFT SEMI JOIN {r}uk_link_producers p ON p.work_id=e.work_id AND p.award_id=e.award_id
+      LEFT ANTI JOIN ({list_legs.removed_pairs_sql(c)}) s ON s.work_id=e.work_id AND s.award_id=e.award_id""")   # a pinned SUPPRESS row is an explained removal
     c.zero('UK_LINEAGE_NO_LOSER_LINKS', f"SELECT * FROM {r}uk_loser_edges")
     c.zero('UK_LINEAGE_MAPPED_LINKS_PRESERVED', f"SELECT * FROM {r}uk_missing_mapped")
     c.zero('UK_LINEAGE_TARGET_LINKS_PRESERVED', f"SELECT * FROM {r}uk_supported_missing_target")
