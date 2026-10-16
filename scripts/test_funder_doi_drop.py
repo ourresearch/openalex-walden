@@ -29,8 +29,9 @@ def ids_struct(sql):
 def test_funders_api_keeps_doi_as_side_id():
     # Round 3 (standup 10-15): funder DOIs stay public, demoted to a historical side identifier / backup crosswalk key.
     api = next(s for s in cells('notebooks/funders/CreateFundersAPI.ipynb') if 'CREATE OR REPLACE TABLE openalex.funders.funders_api AS' in s)
-    dev = next(s for s in cells('notebooks/funders/CreateOrUpdateFunders.ipynb') if '-- funders_api_1' in s)
-    for sql in (api, dev):
+    # funders-daily-split (10-15): the daily notebook no longer carries a dev copy of this build; CreateFundersAPI is the only one.
+    assert not any('-- funders_api_1' in s for s in cells('notebooks/funders/CreateOrUpdateFunders.ipynb'))
+    for sql in (api,):
         ids = ids_struct(sql)
         assert 'f.crossref_id  AS crossref' in ids and 'f.doi          AS doi' in ids
         assert 'CAST(NULL' not in ids

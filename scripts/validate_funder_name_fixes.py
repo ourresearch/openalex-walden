@@ -25,7 +25,10 @@ SET_VAR_CELL = ["-- Top-level SET VAR (rejected inside BEGIN...END on the DBSQL 
 
 def validate():
     funders = sources(FUNDER_DIR / 'CreateOrUpdateFunders.ipynb')
-    alias_cell = next(s for s in funders if '-- name_aliases:' in s)
+    # The reviewed alias and twin-merge mirrors live in PublishFunderNameRelease (the lookup publisher); the daily has no
+    # dev lookup copy any more (moved out of the repo with the rest of the dev harness).
+    release = sources(FUNDER_DIR / 'PublishFunderNameRelease.ipynb')
+    alias_cell = next(s for s in release if '-- name_aliases:' in s)
     aliases = list(csv.DictReader((FUNDER_DIR / 'name_aliases.csv').open(newline='')))
     csv_aliases = [(r['name_key'], int(r['funder_id']), r['rule']) for r in aliases]
     sql_aliases = [(bytes.fromhex(k).decode('utf-8'), int(fid), rule)
@@ -37,13 +40,15 @@ def validate():
 
     edits = list(csv.DictReader((FUNDER_DIR / 'edits.csv').open(newline='')))
     csv_merges = [(int(r['funder_id']), int(r['target'])) for r in edits if r['action'] == 'merge']
-    twin_cell = next(s for s in funders if '-- name_twin_merges:' in s)
+    twin_cell = next(s for s in release if '-- name_twin_merges:' in s)
     sql_merges = [(int(a), int(b)) for a, b in re.findall(r'\((\d+)L,(\d+)L\)', twin_cell)]
     assert csv_merges == sql_merges and len(csv_merges) == 0
     deferred=list(csv.DictReader((FUNDER_DIR / 'deferred_merges.csv').open(newline='')))
     assert len(deferred)==59 and all(r['action']=='merge' for r in deferred)
     assert 'WHERE false' in twin_cell
     assert all(c.startswith('%sql') for c in funders), 'Registry notebook must be SQL only'
+    assert all(c.startswith('%sql') for c in sources(FUNDER_DIR / 'SeedFunders.ipynb')), 'Seed notebook must be SQL only'
+    assert not any(':mode' in s for s in funders), 'Daily notebook has no mode: the seed is SeedFunders.ipynb'
     edits_cell=next(s for s in funders if '-- registry_edits:' in s)
     assert 'WHERE false' in edits_cell, 'Deferred edits must stay inert'
     assert [(int(a),int(b)) for a,b in re.findall(r"\(\d+L,'merge',(\d+)L,'(\d+)',CAST\(NULL AS STRING\)\)",edits_cell)] == csv_merges
@@ -55,9 +60,9 @@ def validate():
     merge = merge[merge.index('-- edit_merge:'):merge.index('-- edit_merge_ids')]
     fields = set(re.findall(r'f\.(\w+)\s*=', merge.split('UPDATE SET', 1)[1]))
     assert fields == {'status', 'merged_into_id', 'updated_date', 'run_id'}, fields
-    for s in (alias_cell, twin_cell, next(s for s in funders if '-- name_lookup:' in s)):
-        assert s.startswith("%sql\nBEGIN\nIF :mode = 'daily' AND trim(:prefix) <> 'openalex.funders.' THEN\n"), 'Production lookup must use explicit publisher'
-        assert "CREATE OR REPLACE TABLE IDENTIFIER(trim(:prefix)" in s
+    assert not any("trim(:prefix) <> 'openalex.funders.'" in s for s in funders), 'No dev-only harness in the daily notebook'
+    for s in (alias_cell, twin_cell):
+        assert s.startswith("%sql\nBEGIN\nIF :phase = 'stage' THEN\n") and "CREATE TABLE IDENTIFIER(:release_prefix ||" in s
         assert not re.search(r'FROM\s+\S*nm1012_jev_', s, re.I)
 
     cr_cells = sources(ROOT / 'notebooks/awards/CreateCrossrefWorkFunders.ipynb')
@@ -106,7 +111,11 @@ def validate():
     assert len(deferred)==59 and all(r['action']=='merge' for r in deferred)
     assert 'WHERE false' in twin_cell
     assert all(c.startswith('%sql') for c in cells if c.lstrip().startswith(('%python','%sql')))
-    assert any('Use PublishFunderNameRelease stage/activate' in s for s in funders)
+    # Production lookup publication is PublishFunderNameRelease (stage/activate) plus the daily's own re-sign; the daily's
+    # dev-only lookup cells never write the production lookup.
+    assert [i for i, s in enumerate(funders) if 'openalex.funders.funder_name_lookup' in s] == \
+        [i for i, s in enumerate(funders) if s.startswith(('%sql\n-- name_lookup_resign_pin:', '%sql\n-- resign_name_lookup:'))], \
+        'Only the pin and the re-sign touch the production lookup'
     cr_evidence = next(s for s in cr_cells if 'CREATE OR REPLACE TABLE openalex.awards.crossref_work_funder_evidence' in s)
     assert 'crossref_no_doi_main_cut' in cr_evidence
     assert 'LEFT ANTI JOIN preserved old USING(work_id,funder_id)' in cr_evidence

@@ -1,35 +1,33 @@
 # Funders registry: SQL cells, ROR-only creation, existing fields/DOIs preserved.
-# Development prefix and PAUSED schedule until a separately approved cutover.
-# Production daily publishes compat only; existing 04:00 CreateFundersAPI job owns API/ES.
+# Production daily registry after accepted cutover; activation is shipped in YAML.
+# Production daily publishes compat and re-signs the name lookup for it; existing 04:00 CreateFundersAPI job owns API/ES.
+# Daily loop only (no mode parameter); the one-time registry seed is notebooks/funders/SeedFunders, run by hand, no job.
 resources:
   jobs:
     Create_Or_Update_Funders:
       name: Funders
-      description: Dev funder registry; paused pending production cutover.
-      tags: {stage: dev, lane: funders}
+      description: Production funder registry; existing fields and DOIs preserved.
+      tags: {stage: prod, lane: funders}
       schedule:
         quartz_cron_expression: "0 45 21 * * ?"
         timezone_id: UTC
-        pause_status: PAUSED   # deployed paused; unpause by changing this line in a later push (a UI unpause is reset by the next bundle deploy)
+        pause_status: UNPAUSED   # accepted forward state; YAML owns activation across later deploys
       email_notifications:
         on_failure:
           - rohan@openalex.org
         no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
-      timeout_seconds: 3600
+      timeout_seconds: 7200   # >= task 3000 + retry interval 600 + retried task 3000, so the one retry can actually run
       tasks:
         - task_key: fetch_resolve_publish
           notebook_task:
             notebook_path: notebooks/funders/CreateOrUpdateFunders
             source: GIT
             base_parameters:
-              prefix: openalex_dev.rohan_lab.ff1013_registry_
-              allow_prod: ""
-              seed_source: openalex_dev.rohan_lab.ff1013_registry_seed
-              seed_version: "0"
-              mode: daily
+              prefix: openalex.funders.
+              allow_prod: "openalex.funders."
               run_id: "{{job.run_id}}"
-              max_mints: "200"   # fuse: more mints in one night stops the run for a person; nothing is applied
+              max_mints: "280"   # fuse: more mints in one night stops the run for a person; nothing is applied. First run: 234-235 measured + 45 margin (MAXMINTS-EVIDENCE 10-14); set back to "200" after the first clean night
           environment_key: Default
           timeout_seconds: 3000
           max_retries: 1
