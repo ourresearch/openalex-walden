@@ -7,11 +7,12 @@ country_lookup AS (
 ),
 country_map AS (
   SELECT
-    MAP_FROM_ENTRIES(COLLECT_LIST(CASE WHEN value <> '*' THEN STRUCT(
+    -- ARRAY_SORT: entry order never depends on the scan (keys are unique, award_country.read_lookup refuses duplicates).
+    MAP_FROM_ENTRIES(ARRAY_SORT(COLLECT_LIST(CASE WHEN value <> '*' THEN STRUCT(
       CONCAT(provenance_scope, '|', value) AS k,
-      CASE WHEN confidence IN ('high', 'medium') THEN iso2 ELSE '' END AS v) END)) AS code,
-    MAP_FROM_ENTRIES(COLLECT_LIST(CASE WHEN value = '*' THEN STRUCT(
-      provenance_scope AS k, confidence IN ('high', 'medium') AS v) END)) AS usable_source
+      CASE WHEN confidence IN ('high', 'medium') THEN iso2 ELSE '' END AS v) END))) AS code,
+    MAP_FROM_ENTRIES(ARRAY_SORT(COLLECT_LIST(CASE WHEN value = '*' THEN STRUCT(
+      provenance_scope AS k, confidence IN ('high', 'medium') AS v) END))) AS usable_source
   FROM country_lookup
 ),
 -- Country code of every affiliation on the award. A row for this provenance and value decides on its own (RWJF's 'MA' is
@@ -171,14 +172,18 @@ deduped AS (SELECT DISTINCT award_id, institution_id FROM guarded WHERE country_
 institution_awarded_per_award AS (
   SELECT
     d.award_id,
-    COLLECT_LIST(STRUCT(
+    -- ARRAY_SORT (pa1014-det): COLLECT_LIST order follows the shuffle, and the content hash covers this array, so unsorted it
+    -- re-stamped updated_date on ~116k awards a night (prod 10-11 -> 10-12: 115,700 order-only changes). id is the first field and
+    -- unique per award (deduped + INSTITUTION_API_UNIQUE), so the sort is a total order on the whole element. The order is the id
+    -- URL's string order (I10 before I9). create_api.previous_sorted hashes yesterday's arrays sorted the same way (no one-time re-stamp).
+    ARRAY_SORT(COLLECT_LIST(STRUCT(
       CONCAT('https://openalex.org/I', CAST(i.id AS STRING)) AS id,
       i.display_name,
       i.ror,
       i.country_code,
       i.type,
       i.lineage
-    )) AS institution_awarded
+    ))) AS institution_awarded
   FROM deduped d
   JOIN institutions_api_v i ON d.institution_id = i.id
   GROUP BY d.award_id

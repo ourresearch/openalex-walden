@@ -132,16 +132,18 @@ def run(c):
     c.count("recipients_awards_shares_off", f"""(SELECT award_id FROM {r}recipients_selected GROUP BY 1
       HAVING abs(sum(share)-1.0) > 0.02) x""")                 # information: a publisher whose shares do not sum to 100%
     vocab = " ".join(f"WHEN '{k}' THEN '{v}'" for k, v in VOCABULARIES.items())
-    order = "(l, r) -> CASE WHEN l.share > r.share THEN -1 WHEN l.share < r.share THEN 1 WHEN l.k < r.k THEN -1 WHEN l.k > r.k THEN 1 ELSE 0 END"
+    # pa1014-det: element order is a total order on the whole element (largest share first, then the code, then every other field),
+    # so no tie is left to the shuffle; the old comparator (share, code) tied on a region code reported under two vocabularies.
+    # Sorting a struct whose first field is -share gives the same order as before wherever the old one was total.
     c.artifact("awards_candidate_before_recipients", f"SELECT * FROM {r}awards_candidate")
     c.artifact("recipient_arrays", f"""WITH countries AS (SELECT s.award_id,
-          array_sort(collect_list(named_struct('share',s.share,'k',s.country_code,'country_code',s.country_code,
-            'amount_usd',round(a.amount_usd*s.share,2),'basis',s.basis)),{order}) items
+          sort_array(collect_list(named_struct('neg_share',-s.share,'country_code',s.country_code,
+            'amount_usd',round(a.amount_usd*s.share,2),'basis',s.basis,'share',s.share))) items
         FROM {r}recipients_selected s JOIN {r}awards_candidate_before_recipients a ON a.id=s.award_id WHERE s.kind='country' GROUP BY s.award_id),
       regions AS (SELECT s.award_id,
-          array_sort(collect_list(named_struct('share',s.share,'k',s.region_code,'code',s.region_code,
+          sort_array(collect_list(named_struct('neg_share',-s.share,'code',s.region_code,
             'vocabulary',CASE s.region_vocabulary {vocab} ELSE 'publisher' END,
-            'display_name',CASE WHEN s.region_vocabulary='1' THEN n.name END)),{order}) items
+            'display_name',CASE WHEN s.region_vocabulary='1' THEN n.name END,'share',s.share))) items
         FROM {r}recipients_selected s LEFT JOIN ({region_relation_sql(c.config['package_root'])}) n ON n.code=s.region_code AND s.region_vocabulary='1'
         WHERE s.kind='region' GROUP BY s.award_id)
       SELECT coalesce(c.award_id,g.award_id) award_id,

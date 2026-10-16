@@ -38,6 +38,18 @@ def hash_expression(base, cols):
             f"ELSE xxhash64(concat_ws('|',CAST(({old}) AS STRING),to_json(recipients_full))) END")
 
 
+SORTED_ON_READ=('institution_awarded','institution_awarded_full')
+
+
+def previous_sorted(prev,cols):
+    """Yesterday's table with institution_awarded(_full) sorted as api_payload.sql now builds them (pa1014-det). Before that patch the
+    arrays were stored in shuffle order; hashing yesterday as stored would re-stamp ~115k awards (10-14 replay: 114,787) whose
+    institutions did not change. Sorting is idempotent, so this stays harmless once every stored array is sorted."""
+    if not set(SORTED_ON_READ)<=set(cols):
+        return prev
+    return (f"(SELECT * EXCEPT({','.join(SORTED_ON_READ)}),"+",".join(f"array_sort({x}) {x}" for x in SORTED_ON_READ)+f" FROM {prev}) p")
+
+
 def answers_relation(c):
     """The affiliation matcher's answers (optional input `affiliation_answers`, oxjob #1386): a string it has answered takes its
     institution ids, every other string stays on the legacy lookup. Not configured = every string on the legacy lookup."""
@@ -65,7 +77,7 @@ def run(c):
       (SELECT count(*) FROM {prev} WHERE size(institution_awarded)>0) prev_n) WHERE now_n<(1-{fuse})*prev_n""")
     base=(Path(c.config['package_root'])/'sql/api_hash_expression.sql').read_text().strip()
     prev_cols=set(c.sql(f'SELECT * FROM {prev} LIMIT 0').columns)
-    c.artifact('previous_api_hash',f'SELECT id,updated_date,{hash_expression(base,prev_cols)} content_hash FROM {prev}')
+    c.artifact('previous_api_hash',f'SELECT id,updated_date,{hash_expression(base,prev_cols)} content_hash FROM {previous_sorted(prev,prev_cols)}')
     c.zero('PREVIOUS_API_HASH_UNIQUE',f'SELECT id FROM {r}previous_api_hash GROUP BY id HAVING count(*)<>1')
     expression=hash_expression(base,prev_cols|set(LINK_COLUMNS)|set(FLOW_COLUMNS)|{'recipients_full'})
     c.artifact('new_api_hash',f'SELECT id,{expression} content_hash FROM {r}api_payload')
