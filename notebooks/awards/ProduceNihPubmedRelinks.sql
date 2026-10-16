@@ -9,6 +9,8 @@
 -- MAGIC   published election (Nightly scratch `openalex.awards.ngr_*`), is ACTIVE, is not a fold loser, and is not already linked or mapped.
 -- MAGIC - Incremental: PubMed rows changed (greatest of `ingested_at`, `openalex_updated_dt`) in (watermark - 14 days, max change time]. Watermark = max(created_date) of this tag in the
 -- MAGIC   map (each run stamps its rows with its source cutoff), so a rerun on the same source adds nothing and creates no table version.
+-- MAGIC - Not ready (before 2026-10-19 01:00 UTC, fold not bound, item-7 class not declared, nihA/nihB missing): success, nothing written;
+-- MAGIC   still not ready from 2026-10-21 01:00 UTC: fail.
 -- MAGIC - Fail closed: every guard raises before the MERGE (only the postcondition runs after it); more than `max_rows` (<= 50k) rows stops the run; nothing is ever deleted.
 
 -- COMMAND ----------
@@ -35,9 +37,70 @@ SELECT CASE WHEN nihp_map = 'openalex.awards.award_relink_map' AND NOT (hour(cur
 
 -- COMMAND ----------
 
+-- Readiness (not a breach): until every condition holds the run writes nothing and ends as a SUCCESS with one line naming the unmet
+-- condition (cell `readiness`); every later guard, the row build and the MERGE are gated on nihp_ready = 'READY'. A production run that
+-- is still not ready on or after 2026-10-21 01:00 UTC FAILS, so a dormant job is noticed. Conditions, in order:
+--  1. NOT_BEFORE (production only): on or after 2026-10-19 01:00 UTC (Sun 18:00 PDT).
+--  2. The NIH yearly fold is complete and correctly bound: each of nih-all-00/01/02 is in the production manifest with exactly the reviewed
+--     fold-list count (npy1007r_all_newest_manifest v0, as literals), and every listed loser resolves, in last night's election, either to
+--     itself as GONE (at most 39: losers already GONE before the fold) or to its declared target (or that target's own ACTIVE terminal);
+--     none is still its own record, missing, or resolving elsewhere; NULL/unknown states fail. Before that, a project's newest-year record
+--     can still become a loser and links the fold itself creates would be duplicated (dev 10-16, batch 00 only: 6,603 of 16,625 rows
+--     elected a nih-all-01/02 loser, 8,529 duplicated a fold move).
+--  3. grants-job's item-7 standing class for this tag is declared (openalex_dev.rohan_lab.pfold_relink_standing_classes, the table its
+--     per-night acceptance reads): insert-only, max_works_per_night >= max_rows, and (production) active_from <= now.
+--  4. The nihA/nihB relink sets are still in the production map (the 4 election counts at least their 10-16 values).
+DECLARE OR REPLACE VARIABLE nihp_ready STRING DEFAULT 'NOT_EVALUATED'
+
+-- COMMAND ----------
+
+SET VAR nihp_ready = (
+  SELECT CASE
+    WHEN nihp_map = 'openalex.awards.award_relink_map' AND current_timestamp() < TIMESTAMP'2026-10-19 01:00:00 UTC'
+      THEN 'NOT_BEFORE: production runs start on or after 2026-10-19 01:00 UTC'
+    WHEN coalesce(f.b00, 0) <> 631298 OR coalesce(f.b01, 0) <> 625949 OR coalesce(f.b02, 0) <> 628072
+      THEN 'FOLD_INCOMPLETE: manifest rows nih-all-00/01/02 = ' || coalesce(f.b00, 0) || '/' || coalesce(f.b01, 0) || '/' || coalesce(f.b02, 0) || ', expected 631298/625949/628072'
+    WHEN coalesce(f.not_valid, 1) <> 0 OR coalesce(f.rows, 0) <> coalesce(f.losers, -1) OR coalesce(f.gone, 999) > 39
+      THEN 'FOLD_NOT_BOUND: invalid ' || coalesce(f.not_valid, -1) || ', resolver rows ' || coalesce(f.rows, -1) || ' for ' || coalesce(f.losers, -1) || ' losers, GONE ' || coalesce(f.gone, -1) || ' (<= 39)'
+    WHEN coalesce(c.n_ok, 0) = 0
+      THEN 'ITEM7_CLASS_NOT_DECLARED: no active insert-only nih_pubmed_nightly row with max_works_per_night >= max_rows in pfold_relink_standing_classes'
+    WHEN NOT coalesce(ab.ok, false)
+      THEN 'NIHAB_SETS_MISSING: nihA core/ic_serial, nihB core/ic_serial = ' || coalesce(ab.counts, '?') || ', expected >= 445008/370084/946081/474786'
+    ELSE 'READY' END
+  FROM (SELECT 1 one) base
+  LEFT JOIN (SELECT count(*) rows, count(DISTINCT m.loser_id) losers,
+    count_if(m.batch_id = 'nih-all-00') b00, count_if(m.batch_id = 'nih-all-01') b01, count_if(m.batch_id = 'nih-all-02') b02,
+    -- valid = GONE on itself, or ACTIVE on the declared target / that target's ACTIVE terminal; NULL or anything else is invalid
+    count_if(NOT coalesce((x.status = 'GONE' AND x.stable_id = m.loser_id)
+      OR (x.status = 'ACTIVE' AND x.stable_id <> m.loser_id AND (x.stable_id = m.target_id OR x.stable_id = tx.stable_id)), false)) not_valid,
+    count_if(x.status = 'GONE') gone
+  FROM openalex.awards.award_migration_manifest m
+  LEFT JOIN openalex.awards.ngr_resolve_candidate x ON x.owner_id = m.loser_id
+  LEFT JOIN openalex.awards.ngr_resolve_candidate tx ON tx.owner_id = m.target_id AND tx.status = 'ACTIVE'
+  WHERE m.evidence_class = 'NIH_PROJECT_YEAR_FOLD' AND m.batch_id IN ('nih-all-00','nih-all-01','nih-all-02')) f ON true
+  LEFT JOIN (SELECT count(*) n_ok FROM openalex_dev.rohan_lab.pfold_relink_standing_classes
+    WHERE election = 'nih_pubmed_nightly' AND insert_only AND max_works_per_night >= CAST(:max_rows AS INT)
+      AND (nihp_map <> 'openalex.awards.award_relink_map' OR active_from <= current_timestamp())) c ON true
+  LEFT JOIN (SELECT count_if(election = 'ce1014_nihA:pubmed_nih_core') >= 445008 AND count_if(election = 'ce1014_nihA:pubmed_nih_ic_serial') >= 370084
+      AND count_if(election = 'ce1014_nihB:pubmed_nih_core') >= 946081 AND count_if(election = 'ce1014_nihB:pubmed_nih_ic_serial') >= 474786 ok,
+      count_if(election = 'ce1014_nihA:pubmed_nih_core') || '/' || count_if(election = 'ce1014_nihA:pubmed_nih_ic_serial') || '/'
+        || count_if(election = 'ce1014_nihB:pubmed_nih_core') || '/' || count_if(election = 'ce1014_nihB:pubmed_nih_ic_serial') counts
+    FROM openalex.awards.award_relink_map WHERE election LIKE 'ce1014_nih%') ab ON true)
+
+-- COMMAND ----------
+
+-- The run's one readiness line. Not ready: SUCCESS with nothing written (all later steps skip); production past the deadline: FAIL.
+SELECT CASE WHEN nihp_ready <=> 'READY' THEN 'READY: writing allowed if every guard passes'
+  WHEN nihp_map = 'openalex.awards.award_relink_map' AND current_timestamp() >= TIMESTAMP'2026-10-21 01:00:00 UTC'
+    THEN raise_error('NOT_READY_PAST_DEADLINE (2026-10-21 01:00 UTC): ' || coalesce(nihp_ready, 'NULL') || '; nothing written')
+  ELSE 'NOT READY, nothing will be written (success): ' || coalesce(nihp_ready, 'NULL') END readiness
+
+-- COMMAND ----------
+
 -- Last night's election must be complete and consistent: no Nightly run in progress, the served links and the scratch election tables
 -- all come from the latest SUCCEEDED run (each table's last data commit inside that run's window). Otherwise skip tonight (fail closed).
-SELECT CASE WHEN n.run_id IS NULL OR n.finished_at IS NULL THEN raise_error('NO_SUCCEEDED_NIGHTLY_RUN')
+SELECT CASE WHEN NOT (nihp_ready <=> 'READY') THEN 'skipped: not ready'
+  WHEN n.run_id IS NULL OR n.finished_at IS NULL THEN raise_error('NO_SUCCEEDED_NIGHTLY_RUN')
   WHEN coalesce(n.open_runs, 1) <> 0 THEN raise_error('NIGHTLY_RUN_IN_PROGRESS: Nightly Grants has a run without finished_at')
   WHEN coalesce(n.good_tables, 0) <> 7 THEN raise_error('SCRATCH_NOT_FROM_LATEST_SUCCEEDED_RUN: ' || coalesce(n.bad_list, '?'))
   WHEN NOT coalesce(n.served_ok, false) THEN raise_error('SERVED_LINKS_NOT_FROM_LATEST_SUCCEEDED_RUN')
@@ -63,31 +126,6 @@ FROM (SELECT 1 one) base LEFT JOIN (
 
 -- COMMAND ----------
 
--- The NIH yearly fold must be complete and correctly bound before any row is produced. Each of nih-all-00/01/02 is in the production
--- manifest with exactly the reviewed fold-list count (npy1007r_all_newest_manifest v0, as literals), and every listed loser resolves, in last
--- night's election, either to itself as a non-ACTIVE (GONE) record (at most 39: the listed losers already GONE before the fold) or to its declared target (or that target's own ACTIVE terminal); none is still its
--- own record, none is missing, none resolves elsewhere. Before that, a project's newest-year record can still become a loser and links the
--- fold itself will create would be duplicated (dev 10-16, only batch 00 loaded: 6,603 of 16,625 rows elected a nih-all-01/02 loser,
--- 8,529 duplicated a fold move).
-SELECT CASE WHEN coalesce(f.b00, 0) <> 631298 OR coalesce(f.b01, 0) <> 625949 OR coalesce(f.b02, 0) <> 628072
-    THEN raise_error('FOLD_INCOMPLETE: manifest rows nih-all-00/01/02 = ' || coalesce(f.b00, 0) || '/' || coalesce(f.b01, 0) || '/' || coalesce(f.b02, 0) || ', expected 631298/625949/628072')
-  WHEN coalesce(f.not_valid, 1) <> 0 OR coalesce(f.rows, 0) <> coalesce(f.losers, -1) OR coalesce(f.gone, 999) > 39
-    THEN raise_error('FOLD_NOT_BOUND: invalid ' || coalesce(f.not_valid, -1) || ', resolver rows ' || coalesce(f.rows, -1) || ' for ' || coalesce(f.losers, -1) || ' losers, GONE ' || coalesce(f.gone, -1) || ' (<= 39)')
-  ELSE 'fold complete: ' || f.losers || ' losers bound (' || f.gone || ' GONE)' END fold_state
-FROM (SELECT 1 one) base LEFT JOIN (
-  SELECT count(*) rows, count(DISTINCT m.loser_id) losers,
-    count_if(m.batch_id = 'nih-all-00') b00, count_if(m.batch_id = 'nih-all-01') b01, count_if(m.batch_id = 'nih-all-02') b02,
-    -- valid = GONE on itself, or ACTIVE on the declared target / that target's ACTIVE terminal; NULL or anything else is invalid
-    count_if(NOT coalesce((x.status = 'GONE' AND x.stable_id = m.loser_id)
-      OR (x.status = 'ACTIVE' AND x.stable_id <> m.loser_id AND (x.stable_id = m.target_id OR x.stable_id = tx.stable_id)), false)) not_valid,
-    count_if(x.status = 'GONE') gone
-  FROM openalex.awards.award_migration_manifest m
-  LEFT JOIN openalex.awards.ngr_resolve_candidate x ON x.owner_id = m.loser_id
-  LEFT JOIN openalex.awards.ngr_resolve_candidate tx ON tx.owner_id = m.target_id AND tx.status = 'ACTIVE'
-  WHERE m.evidence_class = 'NIH_PROJECT_YEAR_FOLD' AND m.batch_id IN ('nih-all-00','nih-all-01','nih-all-02')) f ON true
-
--- COMMAND ----------
-
 -- Watermark (from the target itself; no state table). First run: the P5/nihA/nihB lists used locations_mapped v9157 (10-14 06:00 UTC);
 -- the window never starts before 10-13 (older PubMed rows belong to those lists). A row's change time is greatest(ingested_at, openalex_updated_dt) (6% of a week's changed PubMed rows only move
 -- openalex_updated_dt). Look back 14 days so rows mapped or changed late are reconsidered; overlap is harmless (mapped/served keys skip).
@@ -104,11 +142,12 @@ SET VAR nihp_wm_from = (SELECT greatest(coalesce(max(created_date) - INTERVAL 14
 
 -- COMMAND ----------
 
-SET VAR nihp_wm_to = (SELECT max(greatest(ingested_at, coalesce(openalex_updated_dt, ingested_at))) FROM openalex.works.locations_mapped WHERE provenance = 'pubmed')
+SET VAR nihp_wm_to = (SELECT max(greatest(ingested_at, coalesce(openalex_updated_dt, ingested_at))) FROM openalex.works.locations_mapped WHERE provenance = 'pubmed' AND nihp_ready <=> 'READY')
 
 -- COMMAND ----------
 
-SELECT CASE WHEN nihp_wm_to IS NULL THEN raise_error('SOURCE_EMPTY: no PubMed change time in locations_mapped')
+SELECT CASE WHEN NOT (nihp_ready <=> 'READY') THEN 'skipped: not ready'
+  WHEN nihp_wm_to IS NULL THEN raise_error('SOURCE_EMPTY: no PubMed change time in locations_mapped')
   WHEN nihp_wm_to < (SELECT max(created_date) FROM IDENTIFIER(nihp_map) WHERE election = 'nih_pubmed_nightly') THEN raise_error('SOURCE_WENT_BACKWARDS: max change time below the last stamp')
   WHEN nihp_wm_to < current_timestamp() - INTERVAL 3 DAYS THEN raise_error('SOURCE_STALE: newest PubMed change is more than 3 days old')
   ELSE 'window ' || nihp_wm_from || ' .. ' || nihp_wm_to END source_window
@@ -269,7 +308,7 @@ SET VAR (nihp_rows, nihp_funnel) = (
       'already_served', count_if(already_served), 'in_map', count_if(in_map), 'elects_loser', count_if(is_loser),
       'work_not_served', count_if(NOT work_served), 'kept', count_if(kept), 'kept_core', count_if(kept AND route = 'core'),
       'kept_ic_serial', count_if(kept AND route = 'ic_serial'))
-  FROM o)
+  FROM o WHERE nihp_ready <=> 'READY')
 
 -- COMMAND ----------
 
@@ -281,7 +320,7 @@ SELECT nihp_funnel.candidates, nihp_funnel.elects, nihp_funnel.elects_intended, 
 -- COMMAND ----------
 
 -- Guards on exactly the rows the MERGE will insert (fail closed; nothing has been written yet).
-SELECT CASE
+SELECT CASE WHEN NOT (nihp_ready <=> 'READY') THEN 'skipped: not ready'
   WHEN nihp_funnel.kept > CAST(:max_rows AS INT) OR size(nihp_rows) > CAST(:max_rows AS INT) THEN raise_error('FUSE: ' || nihp_funnel.kept || ' rows tonight, more than ' || :max_rows || '; nothing written. Review the night (50k is the hard ceiling)')
   WHEN g.dup_keys > 0 THEN raise_error('DUPLICATE_KEYS: ' || g.dup_keys)
   WHEN g.bad_funder > 0 THEN raise_error('NOT_NIH_PARENT_ROWS: ' || g.bad_funder)
@@ -309,11 +348,11 @@ FROM (
 -- The one write: insert-only, keyed on (work_id, target_funder_id, target_award_id). Skipped when there is nothing to add (no empty commit).
 -- Right before writing: the Nightly has not started and (production) it is still before 02:40 UTC; else stop with nothing written.
 BEGIN
-  IF size(nihp_rows) > 0 AND (EXISTS (SELECT 1 FROM openalex.awards.award_nightly_runs WHERE finished_at IS NULL)
+  IF nihp_ready <=> 'READY' AND size(nihp_rows) > 0 AND (EXISTS (SELECT 1 FROM openalex.awards.award_nightly_runs WHERE finished_at IS NULL)
       OR (nihp_map = 'openalex.awards.award_relink_map' AND NOT (hour(current_timestamp()) = 1 OR (hour(current_timestamp()) = 2 AND minute(current_timestamp()) < 40)))) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LATE_OR_NIGHTLY_STARTED: nothing written';
   END IF;
-  IF size(nihp_rows) > 0 THEN
+  IF nihp_ready <=> 'READY' AND size(nihp_rows) > 0 THEN
     MERGE INTO IDENTIFIER(nihp_map) t
     USING (SELECT r.work_id, r.src_funder_id, r.src_award_id, r.target_funder_id, r.target_award_id, r.n_registry_awards, r.target_start_year,
              'nih_pubmed_nightly' election, nihp_wm_to created_date FROM (SELECT explode(nihp_rows) r)) s
@@ -327,7 +366,8 @@ END
 
 -- Postcondition (after the commit): every row is in the map under this run's tag and stamp. A failure here means the MERGE committed;
 -- read the map back by tag + stamp before any retry.
-SELECT CASE WHEN p.landed <> size(nihp_rows) THEN raise_error('POSTCONDITION: ' || p.landed || ' of ' || size(nihp_rows) || ' rows landed')
+SELECT CASE WHEN NOT (nihp_ready <=> 'READY') THEN 'skipped: not ready, nothing written'
+  WHEN p.landed <> size(nihp_rows) THEN raise_error('POSTCONDITION: ' || p.landed || ' of ' || size(nihp_rows) || ' rows landed')
   ELSE 'landed ' || p.landed END postcondition
 FROM (SELECT count(*) landed FROM (SELECT explode(nihp_rows) r) f JOIN IDENTIFIER(nihp_map) x
   ON x.work_id = f.r.work_id AND x.target_funder_id = f.r.target_funder_id AND x.target_award_id = f.r.target_award_id
