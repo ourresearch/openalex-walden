@@ -1,0 +1,45 @@
+resources:
+  jobs:
+    Unsub_Institution_Metrics_Export:
+      name: Unsub Institution Metrics Export
+      description: |
+        Writes the work-level datasets Unsub (jump-api) builds its per-institution citation and
+        authorship counts from: oa_work, oa_work_institution (lineage-expanded) and oa_work_refs,
+        as Parquet under s3://openalex-sandbox/unsub/institution_metrics/<run_date>/. Read-only on
+        openalex.works.openalex_works. jump-api's weekly job COPYs a new run into Redshift (oxjob #1717).
+      email_notifications:
+        on_failure:
+          - kyle@ourresearch.org
+      schedule:
+        # monthly, 09:00 UTC on the 2nd: well after the 05:00 UTC End 2 End
+        quartz_cron_expression: 0 0 9 2 * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: export_unsub_institution_metrics
+          notebook_task:
+            notebook_path: notebooks/unsub/ExportInstitutionMetricsSources
+            source: GIT
+          job_cluster_key: unsub-export-cluster
+      job_clusters:
+        - job_cluster_key: unsub-export-cluster
+          new_cluster:
+            spark_version: 16.4.x-scala2.12
+            # explodes authorships x institutions x lineage and ~2B reference edges for 7 years of works
+            node_type_id: m5d.2xlarge
+            num_workers: 8
+            runtime_engine: PHOTON
+            aws_attributes:
+              availability: ON_DEMAND
+              zone_id: auto
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 64
+            data_security_mode: SINGLE_USER
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
