@@ -22,7 +22,7 @@ resources:
         # days). The notebook refuses to run if today's works ES sync hasn't started.
         quartz_cron_expression: 0 0 20 * * ?
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: PAUSED   # 2026-10-16: paused while Jason decides whether a public what-changed signal fits the paid sync model
       max_concurrent_runs: 1
       parameters:
         - name: mode
