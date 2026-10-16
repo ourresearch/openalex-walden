@@ -291,10 +291,14 @@ spark.sql(f"CREATE OR REPLACE TABLE {STATE} CLUSTER BY (entity, id) AS SELECT * 
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {RUNS} (run_id STRING, run_ts TIMESTAMP, mode STRING, seed BOOLEAN,
               counts STRING, changes STRING, removed BIGINT, files INT, bytes_gz BIGINT, copied INT,
               indexnow_queued BIGINT, seconds DOUBLE)""")
-spark.createDataFrame([Row(run_id=RUN_ID, run_ts=RUN_TS.replace(tzinfo=None), mode=MODE, seed=seed,
-                           counts=json.dumps(counts), changes=json.dumps(changes), removed=int(removed),
-                           files=len(stats), bytes_gz=sum(s.bytes_gz for s in stats), copied=len(to_copy),
-                           indexnow_queued=int(queued), seconds=time.time() - T0)]).write.mode("append").saveAsTable(RUNS)
+# Built on the table's own schema: inferring from Python ints makes BIGINT, which Delta won't append to the INT
+# columns (DELTA_FAILED_TO_MERGE_FIELDS on the 2026-10-15 seed run).
+run_row = dict(run_id=RUN_ID, run_ts=RUN_TS.replace(tzinfo=None), mode=MODE, seed=seed,
+               counts=json.dumps(counts), changes=json.dumps(changes), removed=int(removed),
+               files=len(stats), bytes_gz=sum(s.bytes_gz for s in stats), copied=len(to_copy),
+               indexnow_queued=int(queued), seconds=time.time() - T0)
+runs_schema = spark.table(RUNS).schema
+spark.createDataFrame([tuple(run_row[f.name] for f in runs_schema)], runs_schema).write.mode("append").saveAsTable(RUNS)
 
 # Stage prefixes older than the last 3 runs go.
 runs = sorted({o["Key"].split("/")[1] for page in client.get_paginator("list_objects_v2").paginate(

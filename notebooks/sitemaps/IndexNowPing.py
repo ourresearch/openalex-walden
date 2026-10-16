@@ -26,7 +26,6 @@ if not os.path.exists(os.path.join(REPO_ROOT, "utils", "indexnow.py")):
 sys.path.insert(0, REPO_ROOT)
 from utils import indexnow as ix  # noqa: E402
 
-from pyspark.sql import Row  # noqa: E402
 
 dbutils.widgets.text("send", "false")
 dbutils.widgets.text("max_urls", "1000000")
@@ -54,9 +53,13 @@ t0 = time.time()
 res = ix.ping(urls, send=SEND, max_urls=MAX_URLS)
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {LOG} (run_id STRING, at TIMESTAMP, sent BOOLEAN, queued BIGINT,
               urls BIGINT, batches INT, statuses STRING, stopped_reason STRING, seconds DOUBLE)""")
-spark.createDataFrame([Row(run_id=run_id, at=datetime.now(timezone.utc).replace(tzinfo=None), sent=SEND,
-                           queued=int(total), urls=res.sent_urls, batches=res.sent_batches,
-                           statuses=json.dumps(res.statuses[-20:]), stopped_reason=res.stopped_reason,
-                           seconds=time.time() - t0)]).write.mode("append").saveAsTable(LOG)
+# Built on the table's own schema: inferred Python ints are BIGINT (Delta won't append them to `batches INT`) and a
+# None stopped_reason has no type at all.
+log_row = dict(run_id=run_id, at=datetime.now(timezone.utc).replace(tzinfo=None), sent=SEND,
+               queued=int(total), urls=int(res.sent_urls), batches=int(res.sent_batches),
+               statuses=json.dumps(res.statuses[-20:]), stopped_reason=res.stopped_reason,
+               seconds=time.time() - t0)
+log_schema = spark.table(LOG).schema
+spark.createDataFrame([tuple(log_row[f.name] for f in log_schema)], log_schema).write.mode("append").saveAsTable(LOG)
 if res.stopped_reason:
     raise RuntimeError(f"IndexNow stopped: {res.stopped_reason} after {res.sent_urls:,} URLs")

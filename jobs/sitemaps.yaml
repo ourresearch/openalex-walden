@@ -1,6 +1,7 @@
 # Sitemaps + IndexNow for openalex.org record pages (oxjob #1689).
-# In databricks.yml `include:` since 2026-10-15 (Jason's yes): deployed paused, dry_run. Turning it on (publish,
-# IndexNow, UNPAUSED): work/build-sitemaps.md in oxjobs working/search-engines-see-record-pages, "Schedule it".
+# In databricks.yml `include:` since 2026-10-15 (Jason's yes). Seed published 2026-10-15; on nightly from 2026-10-16:
+# publish, IndexNow capped at 100,000 URLs a night for the first week (raise to 1,000,000 after a week of 200/202 in
+# openalex.sitemaps.indexnow_log). History: work/build-sitemaps.md in oxjobs working/search-engines-see-record-pages.
 resources:
   jobs:
     Sitemaps:
@@ -21,15 +22,15 @@ resources:
         # days). The notebook refuses to run if today's works ES sync hasn't started.
         quartz_cron_expression: 0 0 20 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       max_concurrent_runs: 1
       parameters:
         - name: mode
-          default: "dry_run"          # "publish" once approved
+          default: "publish"          # "dry_run" builds to dryrun/<run> and touches nothing live
         - name: indexnow_send
-          default: "false"            # "true" once approved
+          default: "true"
         - name: indexnow_max_urls
-          default: "1000000"
+          default: "100000"           # first week; then 1000000
         - name: changed_days
           default: "7"
         - name: changed_max_urls
