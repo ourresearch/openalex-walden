@@ -63,10 +63,21 @@ fv = (spark.table("openalex.funders.funders")
                   F.array("display_name"),
                   F.coalesce(F.from_json("alternate_titles", "array<string>"), F.array())
               )).alias("nm")))
+# Funders withdrawn in batch dd1016-b3 (no ROR, no award, no work link) still count toward ambiguity, as negative ids that can
+# never be a target: removing them must not turn a name they shared into a unique match (measured 10-15 on the 2,193 set: 118
+# agency strings would move to another live funder). Earlier ledger batches are left as they are today.
+wd = (spark.table("openalex.funders.deleted_funders").where(F.col("batch") == "dd1016-b3")
+      .select((-F.col("funder_id")).alias("funder_id"),
+              F.explode(F.array_union(
+                  F.array(F.get_json_object("before_image_json", "$.display_name")),
+                  F.coalesce(F.from_json(F.get_json_object("before_image_json", "$.alternate_titles"), "array<string>"), F.array())
+              )).alias("nm"))
+      .where(F.col("nm").isNotNull()))
+fv = fv.unionByName(wd)
 fv = fv.select(F.lower(F.trim(F.regexp_replace("nm", r"\s+", " "))).alias("nl"), "funder_id")
 counts = (fv.groupBy("nl")
           .agg(F.countDistinct("funder_id").alias("c"), F.max("funder_id").alias("fid"))
-          .where("c = 1"))
+          .where("c = 1 AND fid > 0"))
 unambig = {r["nl"]: r["fid"] for r in counts.collect()}
 print("unambiguous registry names:", len(unambig))
 

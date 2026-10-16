@@ -283,10 +283,18 @@ stale_ids = [i for i in es_ids if i not in table_ids and i not in REDIRECT_PROTE
 print(f"index docs: {len(es_ids)}, table rows: {len(table_ids)}, stale: {len(stale_ids)}")
 
 # A broken/empty funders_api must never mass-delete the index. Expected volume is
-# merge losers only (a handful at a time).
+# merge losers only (a handful at a time). Funders withdrawn on purpose are listed in the
+# reviewed openalex.funders.deleted_funders ledger (e.g. batch dd1016-b3: 2,191 ids with no ROR,
+# no award and no work link); they do not count toward the cap. Anything else stale still does.
 MAX_STALE = 2000
-if len(stale_ids) > MAX_STALE:
-    raise Exception(f"{len(stale_ids)} stale docs exceeds safety cap {MAX_STALE} — "
+withdrawn_ids = {
+    f"https://openalex.org/F{r.funder_id}"
+    for r in spark.sql("SELECT DISTINCT funder_id FROM openalex.funders.deleted_funders").collect()
+}
+unexpected_stale = [i for i in stale_ids if i not in withdrawn_ids]
+print(f"stale: {len(stale_ids) - len(unexpected_stale)} withdrawn (ledger), {len(unexpected_stale)} other")
+if len(unexpected_stale) > MAX_STALE:
+    raise Exception(f"{len(unexpected_stale)} stale docs not in the withdrawal ledger exceeds safety cap {MAX_STALE} — "
                     "funders_api looks wrong, refusing to delete")
 
 if stale_ids:

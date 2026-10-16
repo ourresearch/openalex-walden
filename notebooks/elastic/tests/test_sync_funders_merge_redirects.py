@@ -52,7 +52,7 @@ class FakeES:
         return {"_id": id, "_source": self.store[index][id]}
 
 
-def _run(merges, api_ids, store, cells=None, extra=None, on_mget=None):
+def _run(merges, api_ids, store, cells=None, extra=None, on_mget=None, ledger=()):
     es = FakeES(store)
     es.on_mget = on_mget
     api_reads = list(api_ids) if isinstance(api_ids, list) else None
@@ -85,7 +85,9 @@ def _run(merges, api_ids, store, cells=None, extra=None, on_mget=None):
             return mock.MagicMock()
 
         def sql(self, q):
-            if "merge_into_id IS NOT NULL" in q:
+            if "deleted_funders" in q:                 # the withdrawal ledger (dd1016-b3 ES cap exemption)
+                rows = [types.SimpleNamespace(funder_id=i) for i in ledger]
+            elif "merge_into_id IS NOT NULL" in q:
                 rows = [types.SimpleNamespace(funder_id=a, merge_into_id=b) for a, b in merges.items()]
             else:
                 ids = api_reads.pop(0) if api_reads is not None else api_ids
@@ -265,3 +267,27 @@ def test_r3_chain_through_a_live_intermediate_is_a_conflict():
     with pytest.raises(Exception, match="not overwritten"):
         _run({1: 3}, {2, 3}, store)
     assert F + "1" in store[FUNDERS] and store[MERGE] == on_file
+
+
+# ---------------------------------------------------------------- dd1016-b3 withdrawals (no ROR, no award)
+def _dd1016(ledger):
+    merges = _pairs()
+    winners = set(merges.values())
+    live = winners | set(range(1, 35000))                      # funders_api after the drop
+    withdrawn = set(range(100000, 106593))                     # 6,593 withdrawn: not merged, not in funders_api
+    store = _store(live | withdrawn, WELLCOME)
+    return _run(merges, live, store, ledger=withdrawn if ledger else ()), live, withdrawn
+
+
+def test_dd1016_withdrawals_delete_cleanly_under_redirects():
+    (es, g), live, withdrawn = _dd1016(ledger=True)
+    deleted = {o[2] for o in es.ops if o[0] == "delete" and o[1] == FUNDERS}
+    assert {F + str(i) for i in withdrawn} <= deleted                       # all 6,593 entity docs go
+    assert not {F + str(i) for i in live} & deleted                        # no live funder touched
+    assert not [k for k in es.store[MERGE] if int(k[len(F):]) in withdrawn]  # no redirect: they are not merged losers
+    assert g["unexpected_stale"] == [] or all(int(i[len(F):]) not in withdrawn for i in g["unexpected_stale"])
+
+
+def test_dd1016_withdrawals_without_ledger_trip_the_cap():
+    with pytest.raises(Exception, match="safety cap"):
+        _dd1016(ledger=False)
