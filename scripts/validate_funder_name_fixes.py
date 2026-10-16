@@ -91,10 +91,22 @@ def validate():
         assert "'duplicate_name_identity'" in reader
         assert 'conflict_display_owners' in reader
         assert not re.search(r'FROM\s+\S*nm1012_jev_', reader, re.I)
-        # DOI may be retained as raw metadata/nullable telemetry, never as matching input.
+        # FundRef DOI is a demoted backup join key (standup 10-15): read only through the shared funder_fundref_owners view.
+        # Crossref: ROR, then names; the DOI fills no-name refs and confirms same-funder names. DataCite: ROR, DOI, names, with
+        # DOI/name conflicts held. Name holds never apply to ROR or DOI matches. No legacy DOI CTEs/paths.
         assert 'conflict_doi' not in reader and 'doi_owners AS (' not in reader
         assert '10.13039' not in reader and 'Crossref DOI' not in reader
         assert 'doi_name_conflict' not in reader
+        assert "LEFT JOIN funder_fundref_owners d ON d.fk=e.fk AND e.fk<>''" in reader
+        if reader is candidates:  # Crossref: name answer wins a DOI/name conflict (coordinator 10-15); DOI fills no-name refs
+            assert 'coalesce(CASE WHEN r.owners=1 THEN r.funder_id END,CASE WHEN n.funder_id IS NULL OR n.funder_id=d.funder_id THEN d.funder_id END,n.funder_id) funder_id' in reader
+            assert "CASE WHEN r.owners=1 THEN 'ROR' WHEN d.funder_id IS NOT NULL AND (n.funder_id IS NULL OR n.funder_id=d.funder_id) THEN 'FundRef DOI' ELSE n.name_rule END resolution_path" in reader
+        else:  # DataCite: DOI path, and a disagreeing name holds the pair for identity review
+            assert 'coalesce(CASE WHEN r.owners=1 THEN r.funder_id END,d.funder_id,n.funder_id) funder_id' in reader
+            assert "CASE WHEN r.owners=1 THEN 'ROR' WHEN d.funder_id IS NOT NULL THEN 'FundRef DOI' ELSE n.name_rule END resolution_path" in reader
+        assert "resolution_path<>'ROR' AND h.reason" not in reader and "resolution_path<>'ROR' AND (n.owners" not in reader
+        assert "resolution_path NOT IN ('ROR','FundRef DOI') AND h.reason IS NOT NULL THEN h.reason" in reader
+        assert "resolution_path NOT IN ('ROR','FundRef DOI') AND (n.owners>1 OR t.owners>1) THEN 'duplicate_name_identity'" in reader
         assert 'funder_reference_cut' in reader
     for cells in (cr_cells, dc_cells):
         assert any("funder_name_lookup STRING DEFAULT 'openalex.funders.funder_name_lookup'" in c for c in cells)
@@ -107,6 +119,16 @@ def validate():
         # DBSQL warehouses reject SET VAR inside BEGIN...END: set both variables top-level, right after the gate.
         assert 'SET VAR' not in gate and gate.rstrip().endswith('END;')
         assert cells[cells.index(gate)+1].splitlines()[1:] == SET_VAR_CELL
+        fundref = [c for c in cells if 'CREATE OR REPLACE TEMP VIEW funder_fundref_owners' in c]
+        activation = next(c for c in cells if 'assert_true(funder_names_active' in c)
+        assert len(fundref) == 1 and cells.index(fundref[0]) == cells.index(activation) + 1, 'FundRef view must follow the activation assert'
+        assert fundref[0].startswith('%sql\n') and 'SET VAR' not in fundref[0] and 'IDENTIFIER(' not in fundref[0] and 'BEGIN' not in fundref[0]
+        for k in ('FROM openalex.funders.deleted_funders', 'LEFT ANTI JOIN deleted d ON d.fk=k.fk', 'LEFT ANTI JOIN deleted g ON g.funder_id=k.funder_id',
+                  "WHERE r.status='active'", 'o.owners=1', 'LEFT ANTI JOIN catalogue_keys c ON c.fk=x.fk',
+                  'CASE WHEN o.owners=1 AND s.id IS NOT NULL THEN o.funder_id END funder_id',
+                  't.funder_id=o.funder_id AND t.merge_into_id IS NULL', 'openalex.funders.funders_api s ON s.id=t.funder_id'):
+            assert k in fundref[0], k
+        assert 'openalex_dev.' not in fundref[0]
         deferred=list(csv.DictReader((FUNDER_DIR / 'deferred_merges.csv').open(newline='')))
     assert len(deferred)==59 and all(r['action']=='merge' for r in deferred)
     assert 'WHERE false' in twin_cell
@@ -116,6 +138,15 @@ def validate():
     assert [i for i, s in enumerate(funders) if 'openalex.funders.funder_name_lookup' in s] == \
         [i for i, s in enumerate(funders) if s.startswith(('%sql\n-- name_lookup_resign_pin:', '%sql\n-- resign_name_lookup:'))], \
         'Only the pin and the re-sign touch the production lookup'
+    assert [c for c in cr_cells if 'TEMP VIEW funder_fundref_owners' in c] == [c for c in dc_cells if 'TEMP VIEW funder_fundref_owners' in c], 'FundRef view differs between readers'
+    cr_refs = next(s for s in cr_cells if 'CREATE OR REPLACE TEMP VIEW crossref_funder_references' in s)
+    assert "sha2(to_json(named_struct('native_id',lower(lm.native_id),'name',f.name,'ror',f.ror,'awards',array_sort(f.awards))),256) reference_key" in cr_refs, 'Crossref reference_key must not change (immutable cut)'
+    assert "13039/)?([0-9]+)$',1) fk," in cr_refs
+    dc_refs = next(s for s in dc_cells if 'CREATE OR REPLACE TEMP VIEW datacite_funder_references' in s)
+    assert "sha2(to_json(named_struct('native_id',native_id,'name',funder_name,'ror',rk,'award_number',award_number,'award_uri',award_uri)),256) reference_key" in dc_refs, 'DataCite reference_key must not change (immutable cut)'
+    assert "13039/([0-9]+)/?$',1) AS fk," in dc_refs
+    assert "coalesce(e.resolution_path='FundRef DOI' AND e.name_funder_id<>e.funder_id,false) identity_disagreement" in dc
+    assert "e.resolution_path NOT IN ('ROR','FundRef DOI') AND p.funder_id IS NULL THEN 'name_policy'" in dc
     cr_evidence = next(s for s in cr_cells if 'CREATE OR REPLACE TABLE openalex.awards.crossref_work_funder_evidence' in s)
     assert 'crossref_no_doi_main_cut' in cr_evidence
     assert 'LEFT ANTI JOIN preserved old USING(work_id,funder_id)' in cr_evidence
@@ -151,6 +182,7 @@ def validate():
     assert [(int(a),int(b)) for a,b in re.findall(r'\((\d+)L,(\d+)L\)',reported_source)] == csv_merges
     assert 'CASE WHEN funder_names_active THEN coalesce(m.survivor_id,s.funder_id) ELSE s.funder_id END' in reported_source
     assert 'SELECT DISTINCT s.work_id' in reported_source
+    assert not any('fundref' in c.lower() or '10.13039' in c for c in reported), 'FunderReported has no DOI input: no FundRef step'
     package=FUNDER_DIR/'release/integrated'
     manifest=json.loads((package/'steps.json').read_text())
     expected={f"{i:03d}_{step['phase'].lower()}.sql" for i,step in enumerate(manifest)}
@@ -163,7 +195,7 @@ def validate():
     assert 'DROP VIEW openalex.funders.funders;' in (package/'ROLLBACK.sql').read_text()
     assert 'ALTER TABLE openalex.funders.funders_v41_table RENAME TO openalex.funders.funders;' in (package/'ROLLBACK.sql').read_text()
     assert 'early rollback forbidden' in (package/'ROLLBACK.sql').read_text()
-    print('PASS: 204 aliases, 0 active merges (59 deferred), preserved fields, no-DOI forward readers, immutable reference cuts, literal history preservation, required catalogue-bound lookup, production-only publication, unscheduled dev-default release job')
+    print('PASS: 204 aliases, 0 active merges (59 deferred), preserved fields, forward readers ROR -> names with FundRef DOI backup key (fills no-name refs; Crossref name wins conflicts, DataCite holds them; deleted funders never match), immutable reference cuts, literal history preservation, required catalogue-bound lookup, production-only publication, unscheduled dev-default release job')
 
 
 if __name__ == '__main__':
