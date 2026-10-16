@@ -20,7 +20,7 @@ resources:
         # so just re-run that date manually to correct it.
         quartz_cron_expression: 0 0 22 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       parameters:
         - name: snapshot_date
           default: "{{job.start_time.iso_date}}"

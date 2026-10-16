@@ -8,7 +8,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 30 0 * * ?"
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       email_notifications:
         on_failure:
           - rohan@openalex.org

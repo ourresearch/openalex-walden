@@ -5,7 +5,7 @@ resources:
       schedule:
         quartz_cron_expression: 0 0 10 ? * *
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: create_sources_api
           notebook_task:

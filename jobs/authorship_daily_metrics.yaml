@@ -27,7 +27,7 @@ resources:
         # are idempotent per snapshot_date; change events are append-only.
         quartz_cron_expression: 0 30 22 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       parameters:
         - name: snapshot_date
           default: "{{job.start_time.iso_date}}"

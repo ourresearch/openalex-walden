@@ -30,7 +30,7 @@ resources:
         # (22:00) and Authorship Daily Metrics (22:30).
         quartz_cron_expression: 0 0 19 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       max_concurrent_runs: 1
       parameters:
         - name: max_works

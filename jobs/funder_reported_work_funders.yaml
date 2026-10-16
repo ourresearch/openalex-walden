@@ -24,7 +24,7 @@ resources:
         # SUCCESS; +3,261,084 inserted, second run 0-row idempotent) and three
         # downstream E2E cycles (08-29/30/31 05:00Z) consumed the union clean.
         # Audit + verification: grants-work/routing-audit-20260831 (local).
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: create_funder_reported_work_funders
           notebook_task:

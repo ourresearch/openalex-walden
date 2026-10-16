@@ -3,7 +3,7 @@ resources:
     Sync_Institutions_to_Elasticsearch:
       name: Sync Institutions to Elasticsearch
       trigger:
-        pause_status: PAUSED
+        pause_status: UNPAUSED
         periodic:
           interval: 1
           unit: DAYS

@@ -25,7 +25,7 @@ resources:
         # 10:00); build_queue waits up to wait_e2e_hours for a late run. Before Study Design (19:00 UTC).
         quartz_cron_expression: 0 0 18 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       max_concurrent_runs: 1
       timeout_seconds: 43200
       parameters:

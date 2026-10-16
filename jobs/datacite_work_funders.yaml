@@ -7,7 +7,7 @@ resources:
         # picks up our table on the same day. NWO/Hakai at 01:30, Crossref at 02:00.
         quartz_cron_expression: 0 0 2 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: create_datacite_work_funders
           notebook_task:
