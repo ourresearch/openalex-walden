@@ -18,6 +18,10 @@ MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
 MAX_AFFILIATION_STRING_LENGTH = 1000
 unallowed_types = ["component", "grant"]
+# oxjob #1722: notices that carry the notice word as a trailing title element (Cureus: ["<article title>",
+# "Correction"]). Keeping only title[0] gave the notice its article's exact title, so the type cascade
+# typed it article and title keys joined it to the article. Lowercase, exact match on the trimmed element.
+NOTICE_TITLE_ELEMENTS = ["correction", "retraction", "expression of concern"]
 
 # Affiliation-as-Author Fix - Publishers excluded from filtering
 # These publishers have < 0.1% affected rate and should not have their records modified
@@ -356,7 +360,10 @@ def crossref_parsed():
         .filter(F.col("_change_type").isin("insert", "update_postimage", "delete"))        
         .filter(~F.col("type").isin(unallowed_types))
         .withColumn("native_id_namespace", F.lit("doi"))
-        .withColumn("title", F.substring(F.get(F.col("title"), 0), 0, MAX_TITLE_LENGTH))
+        .withColumn("title", F.substring(
+            F.when((F.size("title") > 1) & F.lower(F.trim(F.get(F.col("title"), F.size("title") - 1))).isin(*NOTICE_TITLE_ELEMENTS),
+                   F.concat_ws(": ", F.trim(F.get(F.col("title"), F.size("title") - 1)), F.get(F.col("title"), 0)))
+             .otherwise(F.get(F.col("title"), 0)), 0, MAX_TITLE_LENGTH))
         .withColumn("normalized_title", normalize_title_udf(F.col("title")))
         .withColumn(
             "authors",
