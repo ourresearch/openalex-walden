@@ -1,0 +1,35 @@
+{
+  "owner": "Rohan",
+  "status": "dev-only; proof pending",
+  "registry": [
+    "openalex.funders.funder",
+    "openalex.funders.funder_id",
+    "openalex.funders.funder_source_record",
+    "openalex.funders.funder_decision",
+    "openalex.funders.f_ids_ever_issued",
+    "openalex.funders.ror_successor_baseline",
+    "openalex.funders.fundref_predecessor_bridge",
+    "openalex.funders.funders_compat"
+  ],
+  "served_view": "openalex.funders.funders",
+  "lookup": "openalex.funders.funder_name_lookup",
+  "frozen_release_prefix": "openalex.funders.nm1013_integrated_",
+  "reader_inputs": [
+    "openalex.awards.crossref_no_doi_main_cut",
+    "openalex.awards.crossref_funder_reference_cut",
+    "openalex.awards.datacite_funder_reference_cut"
+  ],
+  "downstream": [
+    "openalex.awards.crossref_work_funders",
+    "openalex.awards.datacite_work_funders",
+    "openalex.awards.funder_reported_work_funders",
+    "openalex.awards.work_awards",
+    "openalex.awards.awards_api",
+    "openalex.awards.award_entities",
+    "openalex.awards.award_keys",
+    "openalex.works.openalex_works",
+    "openalex.funders.funders_api"
+  ],
+  "basis_refresh": false,
+  "rollback": "integrated/ROLLBACK.sql; before readers resume only"
+}

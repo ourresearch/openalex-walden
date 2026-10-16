@@ -1,9 +1,6 @@
-# Funders: read committed FundRef predecessor crosswalks and ROR's daily copy, resolve every record against
-# the funder registry (ROR-only mints; existing fields frozen by default), run the id checks, then rebuild the compat view and funders_api.
-# v0 writes ONLY to openalex_dev (the notebook refuses any other prefix). It runs after the ROR job (~20:10-20:20 UTC) and before
-# Sync Funders to Elasticsearch (04:00 UTC). One-time seed pins the current funders version: run the notebook by hand with mode=seed.
-# Switching prod over (funders.funders -> compat view, this job replacing ROR Funder Proposals + the API build) is a later,
-# reviewed change; see grants-work/funder-registry-20261006/README.md.
+# Funders registry: SQL cells, ROR-only creation, existing fields/DOIs preserved.
+# Development prefix and PAUSED schedule until a separately approved cutover.
+# Production daily publishes compat only; existing 04:00 CreateFundersAPI job owns API/ES.
 resources:
   jobs:
     Create_Or_Update_Funders:
@@ -26,7 +23,10 @@ resources:
             notebook_path: notebooks/funders/CreateOrUpdateFunders
             source: GIT
             base_parameters:
-              prefix: openalex_dev.rohan_lab.fr1006_
+              prefix: openalex_dev.rohan_lab.ff1013_registry_
+              allow_prod: ""
+              seed_source: openalex_dev.rohan_lab.ff1013_registry_seed
+              seed_version: "0"
               mode: daily
               run_id: "{{job.run_id}}"
               max_mints: "200"   # fuse: more mints in one night stops the run for a person; nothing is applied

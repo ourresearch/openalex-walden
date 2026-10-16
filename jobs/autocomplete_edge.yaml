@@ -14,7 +14,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.common.keywords_api
@@ -59,7 +59,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.sources.sources_api
@@ -104,7 +104,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.institutions.institutions_api
@@ -149,7 +149,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.funders.funders_api
@@ -194,7 +194,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.publishers.publishers_api
@@ -239,7 +239,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.common.concepts_api
@@ -284,7 +284,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.common.topics_api
@@ -329,7 +329,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.awards.awards_api
@@ -374,7 +374,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.authors.openalex_authors
@@ -419,7 +419,7 @@ resources:
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         table_update:
           table_names:
             - openalex.common.keywords_api
@@ -470,7 +470,7 @@ resources:
         # 14:00 UTC: after the last source of the night (openalex.authors.openalex_authors, ~12:30 UTC) plus its refresh
         quartz_cron_expression: 0 0 14 * * ?
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       max_concurrent_runs: 1
       tasks:
         - task_key: check

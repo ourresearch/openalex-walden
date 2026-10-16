@@ -1,0 +1,3 @@
+-- REVIEW ONLY; owner Rohan; each production action requires fresh authorization.
+-- Report live derived metric differences; never gate them or write served API
+SELECT count(*) compared_rows,count_if(NOT(a.works_count<=>b.works_count)) works_count_changed,count_if(NOT(a.cited_by_count<=>b.cited_by_count)) cited_by_count_changed,count_if(NOT(a.awards_count<=>b.awards_count)) awards_count_changed,count_if(NOT(a.summary_stats<=>b.summary_stats)) summary_stats_changed,count_if(NOT(a.counts_by_year<=>b.counts_by_year)) counts_by_year_changed,count_if(NOT(a.roles<=>b.roles)) roles_changed FROM openalex.funders.funders_api_cutover_check a JOIN openalex.funders.funders_api b USING(id);

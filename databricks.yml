@@ -16,6 +16,7 @@ include:
   - jobs/autocomplete_edge.yaml
   - jobs/create_or_update_awards.yaml
   - jobs/create_or_update_funders.yaml
+  - jobs/funder_name_release.yaml
   - jobs/ror_funder_proposals.yaml
   - jobs/authors.yaml
   - jobs/meta_tags_daily.yaml

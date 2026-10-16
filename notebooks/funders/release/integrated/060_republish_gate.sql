@@ -1,0 +1,3 @@
+-- REVIEW ONLY; owner Rohan; each production action requires fresh authorization.
+-- Catalogue equals approved after image after second publish
+SELECT count(*) differences,assert_true(count(*)=0,'republish undid names release') FROM ((SELECT * EXCEPT(merge_into_id),merge_into_id FROM openalex.funders.funders EXCEPT ALL SELECT * EXCEPT(merge_into_id),merge_into_id FROM openalex.funders.nm1013_integrated_catalogue_after) UNION ALL (SELECT * EXCEPT(merge_into_id),merge_into_id FROM openalex.funders.nm1013_integrated_catalogue_after EXCEPT ALL SELECT * EXCEPT(merge_into_id),merge_into_id FROM openalex.funders.funders));

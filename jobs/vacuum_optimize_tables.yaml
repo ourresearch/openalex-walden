@@ -5,7 +5,7 @@ resources:
       schedule:
         quartz_cron_expression: 0 0 6 ? * SUN
         timezone_id: UTC
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       email_notifications:
         on_failure:
           - casey@ourresearch.org

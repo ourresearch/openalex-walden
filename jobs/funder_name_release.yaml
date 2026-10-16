@@ -1,0 +1,31 @@
+# Unscheduled release operator job. Each stage/activate invocation requires its own
+# frozen-artifact approval. This job does not run the work-funder readers.
+resources:
+  jobs:
+    Funder_Name_Release:
+      name: Funders Name Release
+      description: Stage a production-only catalogue and lookup; explicit activation after review.
+      max_concurrent_runs: 1
+      parameters:
+        - name: phase
+          default: stage
+        - name: release_prefix
+          default: openalex_dev.rohan_lab.ff1013_release_
+        - name: registry_prefix
+          default: openalex_dev.rohan_lab.ff1013_registry_
+        - name: catalogue
+          default: openalex_dev.rohan_lab.ff1013_release_input
+        - name: lookup
+          default: openalex_dev.rohan_lab.ff1013_release_published
+      tasks:
+        - task_key: publish_catalogue_then_lookup
+          notebook_task:
+            notebook_path: notebooks/funders/PublishFunderNameRelease
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true

@@ -3,7 +3,7 @@ resources:
     Institutions:
       name: Institutions
       trigger:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
         periodic:
           interval: 1
           unit: DAYS

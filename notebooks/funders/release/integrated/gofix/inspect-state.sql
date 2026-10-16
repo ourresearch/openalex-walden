@@ -1,0 +1,1 @@
+SELECT table_name,table_type FROM openalex.information_schema.tables WHERE table_schema='funders' AND table_name IN ('funders','funders_v41_table','funders_compat','funder_name_lookup') ORDER BY table_name;
