@@ -112,6 +112,20 @@ def test_indexes_validate_and_flat_top_index_has_no_nesting():
     assert top.index("works-abstract-00001") < top.index("sources-00001") < top.index("changed-00001")
 
 
+def test_no_change_signals_means_no_lastmod_anywhere():
+    """Jason, 2026-10-17: the sitemaps say nothing about what changed. A row with lastmod None is written as a
+    bare <loc>, and the indexes then carry no <lastmod> either; both still validate."""
+    lxml = pytest.importorskip("lxml.etree")
+    gz, st = sm.build_file("works-abstract", 1, [("works", 2741809807, None), ("works", 2741809808, None)])
+    xml = gzip.decompress(gz)
+    _schema("sitemap.xsd").assertValid(lxml.fromstring(xml))
+    assert b"lastmod" not in xml and st.urls == 2 and st.lastmod is None
+    out = sm.build_indexes([st])
+    for data in out.values():
+        _schema("siteindex.xsd").assertValid(lxml.fromstring(data))
+        assert b"lastmod" not in data
+
+
 def test_gzip_is_deterministic():
     assert sm.gzip_deterministic(b"abc") == sm.gzip_deterministic(b"abc")
 

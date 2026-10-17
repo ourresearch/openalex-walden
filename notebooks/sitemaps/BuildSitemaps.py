@@ -18,6 +18,13 @@
 # MAGIC    `sitemap.xml`, then delete stale `live/` files; swap the state table; queue IndexNow URLs for
 # MAGIC    `IndexNowPing`; log the run.
 # MAGIC
+# MAGIC **Change signals are off by default (Jason, 2026-10-17):** "we shouldn't share anything about what has changed
+# MAGIC with anybody". With `change_signals=false` the files and indexes carry no `<lastmod>` and there is no `changed`
+# MAGIC group, so the sitemaps are the same plain URL lists for every visitor; nothing is queued for IndexNow either.
+# MAGIC `source=state` re-publishes the record set of the published state table as is (no recompute, no state swap):
+# MAGIC used on 2026-10-17 to re-publish the 15 Oct first run's 269M URLs without dates. A refresh that adds new records
+# MAGIC is a separate call (the 90-day idea, aligned with the quarterly snapshot).
+# MAGIC
 # MAGIC `mode=dry_run` (default) does 1-4 into `dryrun/<run_id>/` and `<state>_dryrun` (diffed against the
 # MAGIC published state, read-only), and publishes nothing. Served at https://openalex.org/sitemap.xml by the openalex-gui Nitro middleware
 # MAGIC `server/middleware/02.sitemaps.ts` (bucket `live/` prefix).
@@ -62,6 +69,8 @@ dbutils.widgets.text("r2_account_id", "a452eddbbe06eb7d02f4879cee70d29c")
 dbutils.widgets.text("changed_days", "7")
 dbutils.widgets.text("changed_max_urls", "1000000")
 dbutils.widgets.text("require_es_sync_today", "true")
+dbutils.widgets.dropdown("change_signals", "false", ["false", "true"])   # lastmod, the changed group, IndexNow queue
+dbutils.widgets.dropdown("source", "current", ["current", "state"])      # state = re-publish the published set as is
 # Testing only: keep ids with pmod(id, N) = 0 in every entity ("" = everything). A sample can't be published.
 dbutils.widgets.text("sample_mod", "")
 
@@ -77,6 +86,10 @@ RUNS = "openalex.sitemaps.runs"
 BUCKET = dbutils.widgets.get("bucket")
 CHANGED_DAYS = int(dbutils.widgets.get("changed_days"))
 CHANGED_MAX = int(dbutils.widgets.get("changed_max_urls"))
+CHANGE_SIGNALS = dbutils.widgets.get("change_signals") == "true"
+FROM_STATE = dbutils.widgets.get("source") == "state"
+if FROM_STATE and (not PUBLISH or CHANGE_SIGNALS):
+    raise ValueError("source=state is a re-publish of the published set: mode=publish, change_signals=false")
 RUN_TS = datetime.now(timezone.utc).replace(microsecond=0)
 RUN_ID = RUN_TS.strftime("%Y%m%dT%H%M%SZ")
 RUN_TS_LIT = RUN_TS.strftime("%Y-%m-%d %H:%M:%S")
@@ -102,7 +115,8 @@ def s3():
     return boto3.client("s3", **R2)
 
 
-log(f"run {RUN_ID} mode={MODE} state={STATE} stage=r2://{BUCKET}/{STAGE}/ sample_mod={SAMPLE_MOD or '-'}")
+log(f"run {RUN_ID} mode={MODE} source={'state' if FROM_STATE else 'current'} change_signals={CHANGE_SIGNALS} "
+    f"state={STATE} stage=r2://{BUCKET}/{STAGE}/ sample_mod={SAMPLE_MOD or '-'}")
 
 # COMMAND ----------
 
@@ -110,7 +124,7 @@ log(f"run {RUN_ID} mode={MODE} state={STATE} stage=r2://{BUCKET}/{STAGE}/ sample
 
 # COMMAND ----------
 
-if dbutils.widgets.get("require_es_sync_today").lower() == "true":
+if dbutils.widgets.get("require_es_sync_today").lower() == "true" and not FROM_STATE:
     last = spark.sql("SELECT max(last_sync_started_at) AS t FROM openalex.works.elastic_sync_state "
                      "WHERE index_name = 'works'").collect()[0].t
     if last is None or last.date() < RUN_TS.date():
@@ -125,20 +139,27 @@ if dbutils.widgets.get("require_es_sync_today").lower() == "true":
 # COMMAND ----------
 
 spark.sql("CREATE SCHEMA IF NOT EXISTS openalex.sitemaps")
-where = f"pmod(id, {int(SAMPLE_MOD)}) = 0" if SAMPLE_MOD else ""
-spark.sql("CREATE OR REPLACE TEMP VIEW sm_current AS\n" +
-          "\nUNION ALL\n".join(sm.current_records_sql(e, where) for e in sm.ENTITIES))
-
-seed = not spark.catalog.tableExists(STATE)
-if not seed:
-    spark.sql(f"CREATE OR REPLACE TEMP VIEW sm_prev AS SELECT * FROM {STATE}" + (f" WHERE {where}" if where else ""))
-spark.sql(f"CREATE OR REPLACE TABLE {NEXT} CLUSTER BY (entity, id) AS\n" +
-          sm.next_state_sql("sm_current", None if seed else "sm_prev", RUN_TS_LIT))
-counts = {r.grp: r.n for r in spark.sql(f"SELECT grp, count(*) AS n FROM {NEXT} GROUP BY grp").collect()}
-changes = {r.change: r.n for r in spark.sql(f"SELECT change, count(*) AS n FROM {NEXT} GROUP BY change").collect()}
-removed = 0 if seed else spark.sql(f"SELECT count(*) AS n FROM ({sm.removed_sql('sm_current', 'sm_prev')})").collect()[0].n
+if FROM_STATE:  # the published set as is: nothing recomputed, nothing new listed
+    if not spark.catalog.tableExists(STATE):
+        raise RuntimeError(f"source=state but {STATE} doesn't exist")
+    NEXT, seed, removed = STATE, False, 0
+    counts = {r.grp: r.n for r in spark.sql(f"SELECT grp, count(*) AS n FROM {NEXT} GROUP BY grp").collect()}
+    changes = {"republished": sum(counts.values())}
+else:
+    where = f"pmod(id, {int(SAMPLE_MOD)}) = 0" if SAMPLE_MOD else ""
+    spark.sql("CREATE OR REPLACE TEMP VIEW sm_current AS\n" +
+              "\nUNION ALL\n".join(sm.current_records_sql(e, where) for e in sm.ENTITIES))
+    seed = not spark.catalog.tableExists(STATE)
+    if not seed:
+        spark.sql(f"CREATE OR REPLACE TEMP VIEW sm_prev AS SELECT * FROM {STATE}" + (f" WHERE {where}" if where else ""))
+    spark.sql(f"CREATE OR REPLACE TABLE {NEXT} CLUSTER BY (entity, id) AS\n" +
+              sm.next_state_sql("sm_current", None if seed else "sm_prev", RUN_TS_LIT))
+    counts = {r.grp: r.n for r in spark.sql(f"SELECT grp, count(*) AS n FROM {NEXT} GROUP BY grp").collect()}
+    changes = {r.change: r.n for r in spark.sql(f"SELECT change, count(*) AS n FROM {NEXT} GROUP BY change").collect()}
+    removed = 0 if seed else spark.sql(f"SELECT count(*) AS n FROM ({sm.removed_sql('sm_current', 'sm_prev')})").collect()[0].n
 log(f"{'SEED run (no previous state)' if seed else 'incremental'}: {sum(counts.values()):,} records; "
     f"by group {json.dumps(counts)}; changes {json.dumps(changes)}; removed {removed:,}")
+counts.pop(sm.CHANGED_GROUP, None)  # a state table never holds it; the changed group is built below, if at all
 for g in counts:
     assert g in sm.ALL_GROUPS, f"unknown group {g}"
 
@@ -158,19 +179,23 @@ log(f"{len(hist):,} id buckets packed into {n_main_files:,} files")
 
 main_rows = (st.withColumn("bucket", F.floor(F.col("id") / sm.BUCKET_WIDTH))
              .join(F.broadcast(assign_df), ["grp", "bucket"])
-             .select("grp", "file_no", "entity", "id", F.expr(sm.LASTMOD_W3C_SQL).alias("lm"),
+             .select("grp", "file_no", "entity", "id",
+                     (F.expr(sm.LASTMOD_W3C_SQL) if CHANGE_SIGNALS else F.lit(None).cast("string")).alias("lm"),
                      F.col("id").alias("ord")))
-changed = spark.sql(sm.changed_sql(NEXT, RUN_TS_LIT, CHANGED_DAYS, CHANGED_MAX))
-changed_rows = (changed.withColumn("ord", F.row_number().over(  # <= changed_max_urls rows: one window is fine
-                    Window.orderBy("prio", F.desc("lastmod"), "entity", "id")))
-                .select(F.lit(sm.CHANGED_GROUP).alias("grp"),
-                        (F.floor((F.col("ord") - 1) / sm.MAX_URLS_PER_FILE) + 1).alias("file_no"),
-                        "entity", "id", F.expr(sm.LASTMOD_W3C_SQL).alias("lm"), "ord"))
-counts[sm.CHANGED_GROUP] = changed.count()
-log(f"changed group: {counts[sm.CHANGED_GROUP]:,} URLs (last {CHANGED_DAYS} days, cap {CHANGED_MAX:,})")
-
-all_rows = main_rows.unionByName(changed_rows)
-n_files = n_main_files + -(-counts[sm.CHANGED_GROUP] // sm.MAX_URLS_PER_FILE)
+all_rows, n_files = main_rows, n_main_files
+if CHANGE_SIGNALS:
+    changed = spark.sql(sm.changed_sql(NEXT, RUN_TS_LIT, CHANGED_DAYS, CHANGED_MAX))
+    changed_rows = (changed.withColumn("ord", F.row_number().over(  # <= changed_max_urls rows: one window is fine
+                        Window.orderBy("prio", F.desc("lastmod"), "entity", "id")))
+                    .select(F.lit(sm.CHANGED_GROUP).alias("grp"),
+                            (F.floor((F.col("ord") - 1) / sm.MAX_URLS_PER_FILE) + 1).alias("file_no"),
+                            "entity", "id", F.expr(sm.LASTMOD_W3C_SQL).alias("lm"), "ord"))
+    counts[sm.CHANGED_GROUP] = changed.count()
+    log(f"changed group: {counts[sm.CHANGED_GROUP]:,} URLs (last {CHANGED_DAYS} days, cap {CHANGED_MAX:,})")
+    all_rows = main_rows.unionByName(changed_rows)
+    n_files += -(-counts[sm.CHANGED_GROUP] // sm.MAX_URLS_PER_FILE)
+else:
+    log("change signals off: no lastmod, no changed group")
 R2_CONF, BUCKET_B, STAGE_B = R2, BUCKET, STAGE
 
 
@@ -277,7 +302,7 @@ log(f"published: {len(to_copy):,} files copied, {len(indexes)} indexes, {len(sta
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {QUEUE} (run_id STRING, url STRING, kind STRING, priority INT,
               lastmod TIMESTAMP) CLUSTER BY (run_id)""")
 queued = 0
-if not seed:  # the seed run marks every record new: nothing to ping
+if not seed and CHANGE_SIGNALS and not FROM_STATE:  # seed: every record new; signals off: nothing to ping
     url_sql = ("concat('https://openalex.org/', entity, '/', CASE entity "
                + " ".join(f"WHEN '{e.name}' THEN '{e.prefix}'" for e in sm.ENTITIES) + " END, id)")
     spark.sql(f"""INSERT INTO {QUEUE}
@@ -287,7 +312,8 @@ if not seed:  # the seed run marks every record new: nothing to ping
       SELECT '{RUN_ID}', {url_sql}, 'removed', 2, TIMESTAMP'{RUN_TS_LIT}'
       FROM ({sm.removed_sql('sm_current', 'sm_prev')})""")
     queued = spark.sql(f"SELECT count(*) AS n FROM {QUEUE} WHERE run_id = '{RUN_ID}'").collect()[0].n
-spark.sql(f"CREATE OR REPLACE TABLE {STATE} CLUSTER BY (entity, id) AS SELECT * FROM {NEXT}")
+if not FROM_STATE:  # a re-publish leaves the state as it was
+    spark.sql(f"CREATE OR REPLACE TABLE {STATE} CLUSTER BY (entity, id) AS SELECT * FROM {NEXT}")
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {RUNS} (run_id STRING, run_ts TIMESTAMP, mode STRING, seed BOOLEAN,
               counts STRING, changes STRING, removed BIGINT, files INT, bytes_gz BIGINT, copied INT,
               indexnow_queued BIGINT, seconds DOUBLE)""")

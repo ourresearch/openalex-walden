@@ -253,15 +253,18 @@ _INDEX_TAIL = b"</sitemapindex>\n"
 
 
 def urlset_bytes(rows: Iterable[tuple[str, object]]) -> tuple[bytes, int, str | None]:
-    """rows: (url, lastmod) in output order. Returns (uncompressed XML, url count, max lastmod as W3C).
+    """rows: (url, lastmod or None) in output order. Returns (uncompressed XML, url count, max lastmod as W3C).
     Raises if a limit is broken, so a bad file is never published."""
     buf = io.BytesIO()
     buf.write(_URLSET_HEAD)
     n, mx = 0, None
     for url, lastmod in rows:
-        lm = w3c(lastmod)
-        mx = lm if mx is None or lm > mx else mx
-        buf.write(f"<url><loc>{escape(url)}</loc><lastmod>{lm}</lastmod></url>\n".encode())
+        if lastmod is None:  # change signals off (Jason, 2026-10-17): no <lastmod>, so no index lastmod either
+            buf.write(f"<url><loc>{escape(url)}</loc></url>\n".encode())
+        else:
+            lm = w3c(lastmod)
+            mx = lm if mx is None or lm > mx else mx
+            buf.write(f"<url><loc>{escape(url)}</loc><lastmod>{lm}</lastmod></url>\n".encode())
         n += 1
     buf.write(_URLSET_TAIL)
     data = buf.getvalue()
