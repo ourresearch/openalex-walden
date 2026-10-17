@@ -34,8 +34,11 @@
 # COMMAND ----------
 
 dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verify", "revert_cited", "wave_e", "repoint_citations",
-                                           "doi_split_stage", "doi_split", "doi_split_verify"])
+                                           "doi_split_stage", "list_split_stage", "doi_split", "doi_split_verify",
+                                           "doi_split_repoint_citations"])
 dbutils.widgets.text("doi_like", "")
+dbutils.widgets.text("source_sql", "")
+dbutils.widgets.text("allow_cited", "no")
 dbutils.widgets.text("cited_min", "1")
 dbutils.widgets.text("min_keys", "4")
 dbutils.widgets.text("max_keys", "0")
@@ -55,6 +58,8 @@ HOLD_CITED_OVER = int(dbutils.widgets.get("hold_cited_over"))
 TARGET = dbutils.widgets.get("target_table")
 CONFIRM = dbutils.widgets.get("confirm") == "yes"
 DOI_LIKE = dbutils.widgets.get("doi_like").strip().lower()
+SOURCE_SQL = dbutils.widgets.get("source_sql").strip()
+ALLOW_CITED = dbutils.widgets.get("allow_cited") == "yes"
 REVIEW = f"{TARGET}_cited_review"
 AUDIT = f"{TARGET}_wave{WAVE}_audit"
 REVERT_AUDIT = f"{TARGET}_revert_cited{CITED_MIN}_audit"
@@ -519,6 +524,13 @@ if MODE == "repoint_citations":
 # MAGIC `doi_split`         dry run; `confirm = yes`, outside 04:00-08:00 UTC: freeze `<target>_audit`, then the DELETEs.
 # MAGIC                     Refuses when a moving DOI has inbound `work_references` edges (no repoint here).
 # MAGIC `doi_split_verify`  the morning after.
+# MAGIC
+# MAGIC `list_split_stage` (dedup charter § 3G, 2026-10-17) stages the same target from `source_sql`, a SELECT returning
+# MAGIC `old_work_id`, `doi` (a DOI to move off that work) and `reason`, for splits that are a rule rather than a DOI family
+# MAGIC (a conference paper fused with its journal article; another journal's article). The work keeps its shown DOI.
+# MAGIC `source_sql` must only list DOIs whose records the title tier cannot pull back: the work keeps a record of the
+# MAGIC same class (Crossref / DataCite). With `allow_cited = yes`, `doi_split` moves DOIs that carry citations, and
+# MAGIC `doi_split_repoint_citations` moves their `work_references` edges onto the new works the morning after.
 
 # COMMAND ----------
 
@@ -592,6 +604,58 @@ if MODE == "doi_split_stage":
 
 # COMMAND ----------
 
+if MODE == "list_split_stage":
+    if not SOURCE_SQL:
+        raise Exception("source_sql must be a SELECT returning old_work_id, doi, reason")
+    if spark.catalog.tableExists(TARGET) and one(f"SELECT COUNT(*) AS n FROM {TARGET} WHERE executed_at IS NOT NULL")["n"]:
+        raise Exception(f"{TARGET} has executed rows; stage into a new target_table")
+    spark.sql(f"""
+      CREATE OR REPLACE TABLE {TARGET} AS
+      WITH src AS (
+        SELECT DISTINCT CAST(old_work_id AS BIGINT) AS old_work_id, NULLIF({DOI_CLEAN.format('lower(doi)')}, '') AS doi_clean, reason
+        FROM ({SOURCE_SQL})
+      ),
+      live AS (
+        SELECT provenance, native_id_namespace, native_id, NULLIF(merge_key.doi, '') AS anchor_doi,
+               NULLIF({DOI_CLEAN.format('merge_key.doi')}, '') AS doi_clean, substr(title, 1, 120) AS title
+        FROM {LWT}
+        WHERE lower({DOI_CLEAN.format('merge_key.doi')}) IN (SELECT doi_clean FROM src)
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY provenance, native_id_namespace, native_id ORDER BY updated_date DESC) = 1
+      ),
+      a AS (
+        SELECT l.*, r.work_id AS old_work_id, r.work_id_source AS old_work_id_source, s.reason
+        FROM live l
+        JOIN {REGISTRY} r USING (provenance, native_id_namespace, native_id)
+        JOIN src s ON s.old_work_id = r.work_id AND s.doi_clean = lower(l.doi_clean)
+      ),
+      w AS (
+        SELECT a.old_work_id, COUNT(DISTINCT a.doi_clean) + 1 AS n_dois, COUNT(*) AS n_anchors,
+               MAX({DOI_CLEAN.format("lower(regexp_replace(ow.doi, '^https://doi.org/', ''))")}) AS keep_doi,
+               MAX(COALESCE(ow.cited_by_count, 0)) AS cited_by_count
+        FROM a LEFT JOIN {WORKS} ow ON ow.id = a.old_work_id
+        GROUP BY a.old_work_id
+      )
+      SELECT a.provenance, a.native_id_namespace, a.native_id, a.anchor_doi, a.doi_clean, a.title,
+             a.old_work_id, a.old_work_id_source, w.n_dois, w.n_anchors, w.keep_doi, w.cited_by_count,
+             MIN(m.id) AS doi_resolves_elsewhere, a.reason,
+             current_timestamp() AS staged_at, CAST(NULL AS TIMESTAMP) AS executed_at
+      FROM a
+      JOIN w ON w.old_work_id = a.old_work_id
+      LEFT JOIN {MAP} m ON {DOI_CLEAN.format('m.doi')} = a.doi_clean AND m.id <> a.old_work_id
+      WHERE lower(a.doi_clean) <> COALESCE(w.keep_doi, '')
+      GROUP BY ALL""")
+    for r in rows(f"""
+        SELECT reason, COUNT(*) AS anchors_to_move, COUNT(DISTINCT old_work_id) AS works, COUNT(DISTINCT doi_clean) AS dois_to_move,
+               COUNT(DISTINCT CASE WHEN doi_resolves_elsewhere IS NOT NULL THEN doi_clean END) AS dois_already_on_another_work,
+               MAX(cited_by_count) AS max_cited
+        FROM {TARGET} GROUP BY reason"""):
+        print(r)
+    for r in rows(f"""SELECT provenance, native_id_namespace, old_work_id_source, COUNT(*) AS anchors FROM {TARGET}
+                      GROUP BY ALL ORDER BY anchors DESC"""):
+        print("  ", r)
+
+# COMMAND ----------
+
 if MODE == "doi_split":
     scope = f"SELECT * FROM {TARGET} WHERE executed_at IS NULL"
     plan = one(f"""SELECT COUNT(*) AS pins_to_delete, COUNT(DISTINCT old_work_id) AS works,
@@ -609,8 +673,8 @@ if MODE == "doi_split":
     print({**plan, **maprows, **edges})
     if plan["pins_to_delete"] == 0:
         dbutils.notebook.exit("nothing to split")
-    if edges["citation_edges_on_moving_dois"]:
-        raise Exception("moving DOIs carry citations: split them with wave_e + repoint_citations instead")
+    if edges["citation_edges_on_moving_dois"] and not ALLOW_CITED:
+        raise Exception("moving DOIs carry citations: pass allow_cited=yes and run doi_split_repoint_citations the morning after")
     if not CONFIRM:
         dbutils.notebook.exit("dry run only: pass confirm=yes to split")
     if 4 <= datetime.datetime.utcnow().hour < 8:
@@ -675,3 +739,32 @@ if MODE == "doi_split_verify":
     out = {**res, **shared}
     print(out)
     dbutils.notebook.exit(str(out))
+
+# COMMAND ----------
+
+if MODE == "doi_split_repoint_citations":
+    if not spark.catalog.tableExists(SPLIT_AUDIT):
+        raise Exception(f"{SPLIT_AUDIT} does not exist: run doi_split first")
+    # as repoint_citations: the work each moved DOI's record actually landed on (the registry), one row per (old work, DOI)
+    moved = f"""
+      SELECT x.old_work_id, lower(x.doi_clean) AS doi_clean, MIN(r.work_id) AS new_work_id
+      FROM {SPLIT_AUDIT} x
+      JOIN {REGISTRY} r ON r.provenance = x.provenance AND r.native_id_namespace = x.native_id_namespace
+                       AND r.native_id = x.native_id
+      WHERE r.work_id IS NOT NULL AND r.work_id <> x.old_work_id
+      GROUP BY x.old_work_id, lower(x.doi_clean)"""
+    plan = one(f"""SELECT COUNT(*) AS dois_that_moved, COUNT(DISTINCT old_work_id) AS old_works,
+                          COUNT(DISTINCT new_work_id) AS new_works FROM ({moved})""")
+    edges = one(f"""SELECT COUNT(*) AS citation_edges_to_repoint FROM openalex.works.work_references r
+                    JOIN ({moved}) v ON {DOI_CLEAN.format('lower(r.doi)')} = v.doi_clean AND r.cited_work_id = v.old_work_id""")
+    print({**plan, **edges})
+    if not CONFIRM:
+        dbutils.notebook.exit("dry run only: pass confirm=yes to repoint citations")
+    n = spark.sql(f"""
+      MERGE INTO openalex.works.work_references r
+      USING ({moved}) v
+        ON {DOI_CLEAN.format('lower(r.doi)')} = v.doi_clean AND r.cited_work_id = v.old_work_id
+      WHEN MATCHED THEN UPDATE SET r.cited_work_id = v.new_work_id, r.updated_timestamp = current_timestamp()
+    """).collect()[0].num_affected_rows
+    print({"edges_repointed": n})
+    dbutils.notebook.exit(str({"edges_repointed": n}))
