@@ -23,6 +23,7 @@ resources:
                                  version work; twin_scope_sql = the source ids in scope (empty = corpus-wide)
           class_mode=crossref_preprint  oxjob #1099: a Crossref preprint and its journal article (Crossref relation is-preprint-of /
                                  has-preprint) on two works; winner = the article's work
+          class_mode=pair_list   dedup § 3G: pairs a rule chose elsewhere; pair_sql = winner_work_id, loser_work_id, signals
       max_concurrent_runs: 1
       parameters:
         - name: mode
@@ -59,6 +60,8 @@ resources:
           default: "SELECT endpoint_id FROM openalex.sources.endpoint_to_source WHERE is_journal_host"
         - name: twin_scope_sql
           default: "SELECT source_id FROM openalex_dev.sources.ojs_coverage"
+        - name: pair_sql
+          default: ""
       tasks:
         - task_key: merge_identical_key_works
           notebook_task:
@@ -82,6 +85,7 @@ resources:
               confirm: "{{job.parameters.confirm}}"
               feed_scope_sql: "{{job.parameters.feed_scope_sql}}"
               twin_scope_sql: "{{job.parameters.twin_scope_sql}}"
+              pair_sql: "{{job.parameters.pair_sql}}"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub

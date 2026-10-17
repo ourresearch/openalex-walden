@@ -138,7 +138,8 @@ dbutils.widgets.dropdown("mode", "stage", ["stage", "dry_run", "execute", "verif
 dbutils.widgets.text("target_table", "openalex.works.oxjob1256_identical_key_merge_target")
 dbutils.widgets.text("wave_size", "1500000")
 dbutils.widgets.text("wave", "1")
-dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint", "two_doi_guarded"])
+dbutils.widgets.dropdown("class_mode", "title_key", ["title_key", "same_doi", "exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint", "two_doi_guarded", "pair_list"])
+dbutils.widgets.text("pair_sql", "")
 dbutils.widgets.text("feed_scope_sql", "SELECT endpoint_id FROM openalex.sources.endpoint_to_source WHERE is_journal_host")
 dbutils.widgets.text("twin_scope_sql", "SELECT source_id FROM openalex_dev.sources.ojs_coverage")
 dbutils.widgets.text("tiers", "1,2")
@@ -165,6 +166,8 @@ PREPRINT_IS_SAME = dbutils.widgets.get("preprint_is_same") == "yes"
 FEED_SCOPE_SQL = dbutils.widgets.get("feed_scope_sql").strip()
 # zenodo_twin / version_group: the sources in scope (a query returning source_id BIGINT); empty = corpus-wide
 TWIN_SCOPE_SQL = dbutils.widgets.get("twin_scope_sql").strip()
+# pair_list: a query returning winner_work_id, loser_work_id, signals (the rule that chose the pair)
+PAIR_SQL = dbutils.widgets.get("pair_sql").strip()
 # earlier targets whose executed losers must not be staged again (locations_mapped still shows them until the nightly rebuild)
 PRIOR_TARGETS = [t.strip() for t in dbutils.widgets.get("prior_targets").split(",") if t.strip()]
 # losers cited at least this often are held for a labelled review instead of merging (empty = no cap)
@@ -239,6 +242,8 @@ def class_sql():
         return crossref_preprint_class_sql()
     if CLASS_MODE == "two_doi_guarded":
         return two_doi_guarded_class_sql()
+    if CLASS_MODE == "pair_list":
+        return pair_list_class_sql()
     return f"""
     WITH k AS (
       SELECT merge_key.title_author AS ta, work_id,
@@ -571,6 +576,34 @@ DECLARED_VERSION_SIGNALS = "'declared_is_version_of'"
 DECLARED_VERSION_HOLD = """CASE WHEN NOT r.title_same THEN 'title_differs'
                 WHEN r.pmid_conflict THEN 'pmid_conflict'
                 WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
+                WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
+                WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
+                END"""
+
+
+def pair_list_class_sql():
+    """Pair-list class (dedup charter § 3G, 2026-10-17): pairs a rule chose outside this notebook, from `pair_sql` (winner_work_id,
+    loser_work_id, signals), e.g. an arXiv preprint work joining the journal article of a paper that also has a conference version
+    (Casey 2026-10-17: the version the preprint declares, else the journal article). Both works must be live. Execute re-keys the
+    loser's records onto the winner like declared_version; key sharing is group-scoped like crossref_preprint (a key also on the
+    paper's conference work holds a loser only when the loser has a doi / pmid / arxiv-less record); `ta` = 'lst:<winner id>'."""
+    if not PAIR_SQL:
+        raise Exception("class_mode=pair_list needs pair_sql (winner_work_id, loser_work_id, signals)")
+    doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx\\\\.)?doi\\\\.org/|doi:)', ''), '[^a-z0-9./-]', '')"
+    return f"""
+    WITH live AS (SELECT w.* FROM {WORKS} w LEFT ANTI JOIN {MERGED} m ON m.loser_work_id = w.id),
+    src AS (SELECT DISTINCT CAST(winner_work_id AS BIGINT) AS winner_work_id, CAST(loser_work_id AS BIGINT) AS loser_work_id,
+                   CAST(signals AS STRING) AS signals FROM ({PAIR_SQL})),
+    wf AS (SELECT id, {doi_clean.format(c='doi')} AS d, publication_year AS yr, type, primary_location.source.id AS src,
+                  COALESCE(cited_by_count, 0) AS cites FROM live),
+    r1 AS (
+      SELECT x.id AS a, y.id AS b, x.d AS da, y.d AS db, x.yr AS ya, y.yr AS yb, x.cites AS ca, y.cites AS cb,
+             x.type AS ta_type, y.type AS tb_type, FALSE AS biblio_differs, (x.src IS NOT NULL AND x.src = y.src) AS src_same,
+             s.signals AS pair_signals, y.id AS winner_work_id, x.id AS loser_work_id
+      FROM src s JOIN wf x ON x.id = s.loser_work_id JOIN wf y ON y.id = s.winner_work_id
+      WHERE x.id <> y.id),""" + pair_class_tail("r.pair_signals", PAIR_LIST_HOLD, group_scoped=True).replace("concat('sig:', r.winner_work_id)", "concat('lst:', r.winner_work_id)")
+
+PAIR_LIST_HOLD = """CASE WHEN mu.loser_work_id IS NOT NULL THEN 'multi_winner'
                 WHEN wn.winner_work_id IS NOT NULL THEN 'chained'
                 WHEN sh.loser_work_id IS NOT NULL THEN 'loser_key_shared'
                 END"""
@@ -1192,7 +1225,7 @@ if MODE == "stage":
                   if HOLD_CITED_OVER is not None else "c0.hold_reason")
     # version_group (oxjob #1581): a held version stays its own work without holding back its siblings, so a key's
     # executable losers get a wave even when another loser of the key is held (2026-10-07: 69,935 losers went waveless)
-    per_loser = CLASS_MODE in ("version_group", "two_doi_guarded")
+    per_loser = CLASS_MODE in ("version_group", "two_doi_guarded", "pair_list")
     if CLASS_MODE == "two_doi_guarded":
         build_two_doi_features()
     if CLASS_MODE == "version_group":
@@ -1302,7 +1335,7 @@ if MODE == "execute":
                                         AND l.native_id = substring(a.entity_id, locate(':', a.entity_id) + 1) AND l.work_id = a.loser_work_id
                                      WHEN MATCHED THEN UPDATE SET l.work_id = a.winner_work_id, l.openalex_updated_dt = current_timestamp()""").collect()[0].num_updated_rows
     note(curations_audit=CUR_AUDIT, curations_repointed=curations, curation_locations_repointed=curated_locs)
-    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint", "two_doi_guarded") or PREPRINT_IS_SAME:
+    if CLASS_MODE in ("exact_signature", "declared_version", "feed_twin", "zenodo_twin", "legacy_twin", "version_group", "crossref_preprint", "two_doi_guarded", "pair_list") or PREPRINT_IS_SAME:
         # the loser's records carry keys the winner does not hold; bind every key combination they carry to the winner
         # so the nightly MapWorkIds re-resolves them there instead of minting. Undo: DELETE the aliases table's rows from the map.
         ALIASES = f"{TARGET}_wave{WAVE}_aliases"
