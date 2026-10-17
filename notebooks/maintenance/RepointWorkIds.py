@@ -531,10 +531,12 @@ if MODE == "repoint_citations":
 # MAGIC `source_sql` must only list DOIs whose records the title tier cannot pull back: the work keeps a record of the
 # MAGIC same class (Crossref / DataCite). With `allow_cited = yes`, `doi_split` moves DOIs that carry citations, and
 # MAGIC `doi_split_repoint_citations` moves their `work_references` edges onto the new works the morning after.
+# MAGIC A `new_work_id` column in `source_sql` makes it a move (an arXiv preprint off the conference paper's work onto the journal
+# MAGIC article's): execute also deletes the records' arXiv / PMID rows on the old work and aliases their keys onto `new_work_id`.
 
 # COMMAND ----------
 
-if MODE.startswith("doi_split"):
+if MODE.startswith("doi_split") or MODE == "list_split_stage":
     SPLIT_AUDIT = f"{TARGET}_audit"
     DOI_CLEAN = "regexp_replace({}, '[^a-zA-Z0-9\\./-]', '')"  # MapWorkIds' doi_clean / map_doi_lookup, verbatim
 
@@ -609,21 +611,26 @@ if MODE == "list_split_stage":
         raise Exception("source_sql must be a SELECT returning old_work_id, doi, reason")
     if spark.catalog.tableExists(TARGET) and one(f"SELECT COUNT(*) AS n FROM {TARGET} WHERE executed_at IS NOT NULL")["n"]:
         raise Exception(f"{TARGET} has executed rows; stage into a new target_table")
+    # an optional `new_work_id` column makes it a move: execute aliases the DOI's records onto that work instead of letting them mint
+    new_col = ("CAST(new_work_id AS BIGINT)" if "new_work_id" in spark.sql(f"SELECT * FROM ({SOURCE_SQL}) LIMIT 0").columns
+               else "CAST(NULL AS BIGINT)")
     spark.sql(f"""
       CREATE OR REPLACE TABLE {TARGET} AS
       WITH src AS (
-        SELECT DISTINCT CAST(old_work_id AS BIGINT) AS old_work_id, NULLIF({DOI_CLEAN.format('lower(doi)')}, '') AS doi_clean, reason
+        SELECT DISTINCT CAST(old_work_id AS BIGINT) AS old_work_id, NULLIF({DOI_CLEAN.format('lower(doi)')}, '') AS doi_clean, reason,
+               {new_col} AS new_work_id
         FROM ({SOURCE_SQL})
       ),
       live AS (
         SELECT provenance, native_id_namespace, native_id, NULLIF(merge_key.doi, '') AS anchor_doi,
-               NULLIF({DOI_CLEAN.format('merge_key.doi')}, '') AS doi_clean, substr(title, 1, 120) AS title
+               NULLIF({DOI_CLEAN.format('merge_key.doi')}, '') AS doi_clean, substr(title, 1, 120) AS title,
+               merge_key.pmid AS anchor_pmid, merge_key.arxiv AS anchor_arxiv, merge_key.title_author AS anchor_title_author
         FROM {LWT}
         WHERE lower({DOI_CLEAN.format('merge_key.doi')}) IN (SELECT doi_clean FROM src)
         QUALIFY ROW_NUMBER() OVER (PARTITION BY provenance, native_id_namespace, native_id ORDER BY updated_date DESC) = 1
       ),
       a AS (
-        SELECT l.*, r.work_id AS old_work_id, r.work_id_source AS old_work_id_source, s.reason
+        SELECT l.*, r.work_id AS old_work_id, r.work_id_source AS old_work_id_source, s.reason, s.new_work_id
         FROM live l
         JOIN {REGISTRY} r USING (provenance, native_id_namespace, native_id)
         JOIN src s ON s.old_work_id = r.work_id AND s.doi_clean = lower(l.doi_clean)
@@ -637,7 +644,7 @@ if MODE == "list_split_stage":
       )
       SELECT a.provenance, a.native_id_namespace, a.native_id, a.anchor_doi, a.doi_clean, a.title,
              a.old_work_id, a.old_work_id_source, w.n_dois, w.n_anchors, w.keep_doi, w.cited_by_count,
-             MIN(m.id) AS doi_resolves_elsewhere, a.reason,
+             MIN(m.id) AS doi_resolves_elsewhere, a.reason, a.new_work_id, a.anchor_pmid, a.anchor_arxiv, a.anchor_title_author,
              current_timestamp() AS staged_at, CAST(NULL AS TIMESTAMP) AS executed_at
       FROM a
       JOIN w ON w.old_work_id = a.old_work_id
@@ -695,12 +702,27 @@ if MODE == "doi_split":
                         WHERE m.doi IS NOT NULL
                           AND EXISTS (SELECT 1 FROM {SPLIT_AUDIT} x WHERE x.old_work_id = m.id
                                       AND x.doi_clean = {DOI_CLEAN.format('m.doi')})""").collect()[0].num_affected_rows
+    moves = {}
+    if "new_work_id" in spark.table(SPLIT_AUDIT).columns:
+        # a move (list_split_stage with new_work_id): the arXiv / PMID rows would pull the records back to the old work, so they
+        # go too, and the records' keys are aliased onto the new work so the nightly binds them there on the doi tier
+        moves["id_rows_deleted"] = spark.sql(f"""DELETE FROM {MAP} m
+                        WHERE EXISTS (SELECT 1 FROM {SPLIT_AUDIT} x WHERE x.new_work_id IS NOT NULL AND x.old_work_id = m.id
+                                      AND (m.arxiv = x.anchor_arxiv OR m.pmid = x.anchor_pmid))""").collect()[0].num_affected_rows
+        moves["alias_rows_inserted"] = spark.sql(f"""INSERT INTO {MAP} (id, doi, pmid, arxiv, title_author, created_date, updated_date)
+                        SELECT DISTINCT x.new_work_id, x.anchor_doi, x.anchor_pmid, x.anchor_arxiv, x.anchor_title_author,
+                               current_date(), current_timestamp()
+                        FROM {SPLIT_AUDIT} x
+                        WHERE x.new_work_id IS NOT NULL
+                          AND NOT EXISTS (SELECT 1 FROM {MAP} m WHERE m.id = x.new_work_id AND m.doi <=> x.anchor_doi
+                                          AND m.pmid <=> x.anchor_pmid AND m.arxiv <=> x.anchor_arxiv
+                                          AND m.title_author <=> x.anchor_title_author)""").collect()[0].num_inserted_rows
     spark.sql(f"""MERGE INTO {TARGET} t
                   USING (SELECT DISTINCT provenance, native_id_namespace, native_id FROM {SPLIT_AUDIT}) a
                     ON t.provenance = a.provenance AND t.native_id_namespace = a.native_id_namespace
                    AND t.native_id = a.native_id AND t.executed_at IS NULL
                   WHEN MATCHED THEN UPDATE SET t.executed_at = current_timestamp()""")
-    out = dict(audit_table=SPLIT_AUDIT, audited=n, pins_deleted=pins, map_rows_deleted=ids)
+    out = dict(audit_table=SPLIT_AUDIT, audited=n, pins_deleted=pins, map_rows_deleted=ids, **moves)
     assert pins == n, f"pins {pins} != audited {n}"
     print(out)
     dbutils.notebook.exit(str(out))
