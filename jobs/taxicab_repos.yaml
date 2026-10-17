@@ -70,7 +70,7 @@ resources:
         # oxjob #1712: retry failed fetches (taxicab.ipynb select_retry_urls). Only this job retries,
         # so overlapping TaxiCab runs never take the same URLs.
         - name: retry_failed
-          default: "false"
+          default: "true"
         - name: retry_limit
           default: "50000"
         - name: paced_per_hour
