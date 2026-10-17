@@ -98,8 +98,8 @@
 # MAGIC the DataCite records article / preprint or the Crossref type; not figshare.com, Sage Journals Data or 10.48580) and the concept work
 # MAGIC holds none, the article's work wins and the concept work joins it (preprint policy: the published side keeps its id). A Crossref
 # MAGIC record of a group DOI itself (ICPSR) is not another primary record; `winner_junk` is a title-less winner only.
-# MAGIC `over_cap`: a work carries at most 100 version DOIs besides its concept DOI (counting those it already has and every one a loser brings), the most recent first (Casey 2026-10-07: giant living datasets
-# MAGIC are set aside for a location cap); the older ones wait here. `signals` = how the group was found (`declared` / `suffix`) + `title` / `author` when they agree, for stratified review.
+# MAGIC No version cap (Casey 2026-10-17): the 10-07 `over_cap` hold (100 versions a work, "giant living datasets are set aside for a location cap") went once #1673's `locations_full` gave works any number of locations.
+# MAGIC `signals` = how the group was found (`declared` / `suffix`) + `title` / `author` when they agree, for stratified review.
 # MAGIC Execute re-keys the losers' keys onto the winner like exact_signature; `ta` = 'vgr:<winner id>'. Sized 2026-10-07: ~6.7M
 # MAGIC losers (Zenodo 2.77M, Figshare 2.70M, other 1.25M).
 # MAGIC
@@ -1010,26 +1010,9 @@ def build_version_group_tables():
 
 
 def version_group_class_sql():
-    """The version-group pairs from `build_version_group_tables` (`<target>_vg_t`), with the version cap applied."""
-    # a work holds at most VERSION_GROUP_CAP version DOIs besides its concept DOI (counting the DataCite DOIs it already carries,
-    # and every DataCite DOI a loser brings: a concept work joining an article anchor brings its merged versions);
-    # the most recent versions join first (publication date, then `.vN`, then newest id)
-    return f"""
-    WITH t AS (SELECT * FROM {TARGET}_vg_t),
-    dois AS (SELECT l.work_id, COUNT(DISTINCT lower(l.native_id)) AS n FROM {LM} l
-             WHERE l.provenance = 'datacite' AND l.work_id IN (SELECT winner_work_id FROM t UNION SELECT loser_work_id FROM t) GROUP BY l.work_id)
-    SELECT v.* EXCEPT (hold_reason, rk, n_on),
-           CASE WHEN v.hold_reason IS NULL AND v.rk + GREATEST(COALESCE(v.n_on, 0), 0) > {VERSION_GROUP_CAP} THEN 'over_cap'
-                ELSE v.hold_reason END AS hold_reason
-    FROM (SELECT t.*, h.n - 1 AS n_on, SUM(GREATEST(COALESCE(ld.n, 1), 1)) OVER (PARTITION BY t.winner_work_id, t.hold_reason IS NULL
-                                                 ORDER BY w.publication_date DESC NULLS LAST,
-                                                          TRY_CAST(regexp_extract(lower(w.doi), '[.]v([0-9]+)$', 1) AS INT) DESC NULLS LAST,
-                                                          t.loser_work_id DESC ROWS UNBOUNDED PRECEDING) AS rk
-          FROM t LEFT JOIN {WORKS} w ON w.id = t.loser_work_id LEFT JOIN dois h ON h.work_id = t.winner_work_id
-          LEFT JOIN dois ld ON ld.work_id = t.loser_work_id) v"""
-
-
-VERSION_GROUP_CAP = 100
+    """The version-group pairs from `build_version_group_tables` (`<target>_vg_t`). No version cap since 2026-10-17 (Casey: #1673's
+    locations_full holds any number of locations, the reason the 10-07 cap waited for)."""
+    return f"SELECT * FROM {TARGET}_vg_t"
 # registrants whose `.vN` / IsVersionOf records copy an article's title without being it: publisher supplement portals (figshare.com,
 # Sage Journals Data) and ChecklistBank-style derived datasets (10.48580); never an article anchor (oxjob #1581 round 2)
 VERSION_GROUP_SUPPLEMENT_PREFIXES = "('10.6084', '10.48580', '10.25384')"
@@ -1042,7 +1025,7 @@ VERSION_GROUP_SIGNALS = """concat_ws('+', r.how, CASE WHEN r.title_same THEN 'ti
                                 CASE WHEN r.article_anchor THEN 'article_anchor' END)"""
 def version_group_hold():
     """In mode=stage, `release_hold=software` stages version_group without the software hold (Casey 2026-10-08: software
-    releases of one concept merge too); every other hold and the over_cap limit still apply."""
+    releases of one concept merge too); every other hold still applies."""
     if MODE == "stage" and "software" in [h.strip() for h in RELEASE_HOLD.split(",")]:
         return VERSION_GROUP_HOLD.replace("                WHEN r.software THEN 'software'\n", "")
     return VERSION_GROUP_HOLD
