@@ -60,7 +60,9 @@ resources:
           # type dataset / other are then served with topics = [] and catalogue_record = true (the ledger keeps their raw scores).
           default: ""
         - name: max_nc_share
-          # topics_merge_v2 refuses a build whose not-classifiable share is over this (corpus: 0.096)
+          # topics_merge_v2 refuses a build whose not-classifiable share among queued works WITH an abstract is over this
+          # (0.2-6.1% over the 15 builds to 19 Oct). The all-works share has its own ceiling, max_nc_share_all (0.70, notebook default):
+          # it swings 3-37% with how many title-only records the queue holds (19 Oct: 16,159 PNNL EMSL DataCite records, 36.5%).
           default: "0.30"
         - name: dry_run
           default: "false"

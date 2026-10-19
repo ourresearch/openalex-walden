@@ -3,7 +3,11 @@
 # MAGIC # Topics nightly 3/3: append the new works to work_topics_v2 (oxjob #1531)
 # MAGIC
 # MAGIC Refuses (appends nothing, fails the task) when this build's ledger rows in `<state_prefix>raw` do not equal the queue, when the
-# MAGIC not-classifiable share is over `max_nc_share` (0.30; the corpus is 9.6%), or when any topic id is not in `openalex.common.topics`.
+# MAGIC not-classifiable share among queued works WITH an abstract is over `max_nc_share` (0.30; 0.2-6.1% over the 15 builds to 19 Oct),
+# MAGIC when the share over ALL queued works is over `max_nc_share_all` (0.70), or when any topic id is not in `openalex.common.topics`.
+# MAGIC The abstract share is the model-health signal. The all-works share swings 3-37% with how many title-only records the queue holds
+# MAGIC (19 Oct: 16,159 new PNNL EMSL DataCite records, "Data for EMSL Project N from <month>", rightly not-classifiable, took it to
+# MAGIC 36.5% and failed the End 2 End while the abstract share was 1.0%); its ceiling still catches a model that fails on everything.
 # MAGIC Then builds the served rows with the PLAN § 2b builder (keep identical to it: top 3 after dropping the not-classifiable class,
 # MAGIC score = ROUND(prob, 4) as FLOAT, ids / names from the vocabulary tables, `[]` for not-classifiable works) into
 # MAGIC `<state_prefix>append_rows`, checks them (one row per work, the served struct type, sizes, nothing unresolved, none already
@@ -23,12 +27,13 @@ import datetime as dt
 import json
 
 for name, default in [("state_prefix", "openalex.works.work_topics_v2_"), ("target", "openalex.works.work_topics_v2"), ("max_nc_share", "0.30"),
-                      ("works_table", "openalex.works.openalex_works_base"),
+                      ("max_nc_share_all", "0.70"), ("works_table", "openalex.works.openalex_works_base"),
                       ("catalogue_sources_table", ""), ("dry_run", "false")]:
     dbutils.widgets.text(name, default)
 P = dbutils.widgets.get("state_prefix").strip()
 TARGET = dbutils.widgets.get("target").strip()
-MAX_NC = float(dbutils.widgets.get("max_nc_share"))
+MAX_NC = float(dbutils.widgets.get("max_nc_share"))            # among queued works with an abstract
+MAX_NC_ALL = float(dbutils.widgets.get("max_nc_share_all"))    # among all queued works
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
 WORKS = dbutils.widgets.get("works_table").strip()
 CAT = dbutils.widgets.get("catalogue_sources_table").strip()
@@ -78,11 +83,19 @@ g = one(f"""SELECT count(*) AS rows, count(DISTINCT r.work_id) AS ids,
   CROSS JOIN (SELECT collect_set(CAST(topic_id AS INT)) AS ids FROM openalex.common.topics) t
   WHERE r.build_id = '{build_id}'""")
 log(f"gate 1 for build {build_id}: {g.asDict()} (queue {n:,})")
+# The model-health share: queued works that carry an abstract (title-only records are often rightly not classifiable).
+a = one(f"""SELECT count_if(w.has_abs) AS n_abs, count_if(w.has_abs AND r.not_classifiable) AS nc_abs
+  FROM {RAW} r LEFT JOIN (SELECT id, max(abstract_inverted_index IS NOT NULL) AS has_abs FROM {WORKS}
+                          WHERE id IN (SELECT work_id FROM {RAW} WHERE build_id = '{build_id}') GROUP BY id) w ON w.id = r.work_id
+  WHERE r.build_id = '{build_id}'""")
+log(f"gate 1 abstract share: {a.asDict()}")
 bad = []
 if not (g.rows == g.ids == n and g.missing == 0 and g.extra == 0):
     bad.append(f"ledger rows {g.rows:,} / ids {g.ids:,} / missing {g.missing:,} / extra {g.extra:,} != queue {n:,}")
-if g.rows and g.nc / g.rows > MAX_NC:
-    bad.append(f"not-classifiable share {g.nc / g.rows:.3f} > {MAX_NC}")
+if a.n_abs and a.nc_abs / a.n_abs > MAX_NC:
+    bad.append(f"not-classifiable share among {a.n_abs:,} works with an abstract {a.nc_abs / a.n_abs:.3f} > {MAX_NC}")
+if g.rows and g.nc / g.rows > MAX_NC_ALL:
+    bad.append(f"not-classifiable share over all works {g.nc / g.rows:.3f} > {MAX_NC_ALL}")
 if g.unresolved:
     bad.append(f"{g.unresolved:,} works carry a topic id not in openalex.common.topics")
 if bad:
