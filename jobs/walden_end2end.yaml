@@ -184,20 +184,10 @@ resources:
             notebook_path: notebooks/end2end/CreateLocationsMapped
             source: GIT
             warehouse_id: 4d37bf76372a2901
-        # oxjob #1170: location curations from users-api POST /curations, read by Apply_Location_Curations.
-        - task_key: Sync_Location_Curations
-          timeout_seconds: 1200
-          max_retries: 1
-          min_retry_interval_millis: 60000
-          notebook_task:
-            notebook_path: notebooks/end2end/SyncLocationCurations
-            source: GIT
-            warehouse_id: 3996dc0a9b183ce3
         - task_key: Apply_Location_Curations
           timeout_seconds: 1200
           depends_on:
             - task_key: Locations_Mapped
-            - task_key: Sync_Location_Curations
           notebook_task:
             notebook_path: notebooks/end2end/ApplyLocationCurations
             source: GIT
