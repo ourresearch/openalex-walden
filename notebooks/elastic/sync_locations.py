@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
-    "table_name": "openalex.works.locations_mapped_curated",
+    "table_name": "openalex.works.locations_mapped",
     "index_name": "locations-v3"
 }
 
