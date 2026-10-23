@@ -1,0 +1,87 @@
+resources:
+  jobs:
+    Bronze_Recheck_Draw:
+      name: Bronze Recheck Draw
+      # oxjob #1290: once a quarter, pick the bronze PDF URLs to re-check (bronze_recheck_draw) and write
+      # them as the source table of a TaxiCab Campaign (#1790), which does the fetching under its pilot,
+      # stop rule, host breaker and dollar cap. Manual: run with dry_run=false and a new pass_id, then
+      # insert the campaign row (SQL in the notebook header).
+      max_concurrent_runs: 1
+      parameters:
+        - name: pass_id
+          default: "2026-10"
+        - name: groups
+          default: "oup,cambridge,springer,sciencedirect,tandf,nature,aip,aps,sage,elsevier_doiorg,elsevier_society,acs,aha,karger,degruyter,thieme,iucr"
+        - name: dry_run
+          default: "true"
+      tasks:
+        - task_key: draw
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/scraping/bronze_recheck_draw
+            source: GIT
+            base_parameters:
+              pass_id: "{{job.parameters.pass_id}}"
+              groups: "{{job.parameters.groups}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          timeout_seconds: 7200
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+
+    Bronze_Recheck_Score:
+      name: Bronze Recheck Score and Apply
+      # oxjob #1290: score the pass's fresh fetches against the register (closures from cleared groups go
+      # to openalex.pdf.pdf_removed), then flip those pdf_works rows (is_oa=false, updated_date bumped).
+      # Every 6 h while a pass runs; PAUSED between passes.
+      schedule:
+        quartz_cron_expression: 0 40 1/6 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      parameters:
+        - name: pass_id
+          default: "2026-10"
+        - name: dry_run
+          default: "false"
+        - name: max_rows
+          default: "1000000"
+      tasks:
+        - task_key: score
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/scraping/bronze_recheck_score
+            source: GIT
+            base_parameters:
+              pass_id: "{{job.parameters.pass_id}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          timeout_seconds: 7200
+        - task_key: apply
+          depends_on:
+            - task_key: score
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/scraping/bronze_recheck_apply
+            source: GIT
+            base_parameters:
+              pass_id: "{{job.parameters.pass_id}}"
+              dry_run: "{{job.parameters.dry_run}}"
+              max_rows: "{{job.parameters.max_rows}}"
+          timeout_seconds: 3600
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+            dependencies:
+              - boto3
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
