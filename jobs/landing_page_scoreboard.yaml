@@ -1,0 +1,39 @@
+resources:
+  jobs:
+    Landing_Page_Scoreboard:
+      name: Landing Page Scoreboard
+      description: |
+        Landing-page scoreboard (oxjob #1789, charter plans/landing-pages.md). Nightly: rewrites the last 3 fetch
+        days of openalex.monitoring.landing_page_funnel (per host: fetched -> stored -> parsed -> fields, Zyte cost)
+        and openalex.monitoring.landing_page_alerts. Reads taxicab_results, parsed_pages, meta_tags; writes only
+        those two monitoring tables. Fails only when yesterday has no fetch rows. SQL: monitoring/landing_pages/.
+      max_concurrent_runs: 1
+      schedule:
+        # 13:00 UTC: Parseland lags fetches by ~5 h (p99 12 h), so yesterday (UTC) is fully parsed by now.
+        quartz_cron_expression: 0 0 13 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      parameters:
+        - name: end_date
+          default: ""
+        - name: days_back
+          default: "3"
+      tasks:
+        - task_key: scoreboard
+          notebook_task:
+            notebook_path: notebooks/monitoring/LandingPageScoreboard
+            source: GIT
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 600000
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
