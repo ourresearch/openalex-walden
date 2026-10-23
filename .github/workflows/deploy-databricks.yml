@@ -8,14 +8,19 @@ on:
       - 'jobs/**'
       - 'notebooks/**'
 
+# oxjob #1782: actions pinned to commit SHAs (a moved tag or branch can't swap in code that sees
+# DATABRICKS_CLIENT_SECRET), and the workflow token can only read the repo.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Databricks CLI
-        uses: databricks/setup-cli@main
+        uses: databricks/setup-cli@8de769ec2543ee05e456ee2121350efc7efc4bda # main as of 2026-10-23
 
       - name: Validate bundle
         env:
@@ -33,7 +38,7 @@ jobs:
 
       - name: Notify Slack (success)
         if: success()
-        uses: slackapi/slack-github-action@v2
+        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
@@ -53,7 +58,7 @@ jobs:
 
       - name: Notify Slack (failure)
         if: failure()
-        uses: slackapi/slack-github-action@v2
+        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
