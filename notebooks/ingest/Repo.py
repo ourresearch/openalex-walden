@@ -333,16 +333,15 @@ def repo_items():
 
 # COMMAND ----------
 
-@dlt.table(
-  name="repo_parsed"
-)
-def repo_parsed():
-  # oxjob #1407: placeholder-host ids (ojs.pkp.sfu.ca, generic.eprints.org, localhost, ojs.localhost)
-  # are keyed on the endpoint's own pmh_url host, from the endpoint registry read once per update and
-  # inlined as a literal map (no join, so no stateful-plan change). Endpoints whose placeholder
-  # records were already stored are excluded until Phase B moves them (oai_ids_excluded).
-  id_hosts = read_endpoint_hosts(spark)
-  return (dlt.read_stream("repo_items")
+def parse_repo_records(df, id_hosts, abstract=None, issue=None, volume=None, first_page=None, last_page=None,
+                       dedupe=True):
+  """repo_parsed's column rules for any stream of oai_dc-shaped records (`ns0:header`, `ns0:metadata`.`ns1:dc`,
+  repository_id, ingested_at): repo_items (the live harvest) and hal_tei_parsed (HAL rebuilt from its TEI, oxjob
+  #1786). The keyword columns replace what oai_dc can't carry; with the defaults the plan is exactly repo_parsed's.
+  dedupe=False skips the (native_id, datestamp) dedup, whose streaming state keeps the FIRST copy forever: the HAL
+  TEI stream lets every copy through so the latest harvest (and a re-emitted CDF row, via _commit_version) wins
+  in repo_works' _sequence instead."""
+  return (df
     .filter(F.col("ns0:metadata").isNotNull())  # doaj deleted articles have no metadata
     # oxjob #1407: native_id is the OAI header id, except that a placeholder host is replaced by the
     # endpoint's own host: oai:ojs.pkp.sfu.ca:article/1 -> oai:et.ippt.pan.pl:article/1. Without it,
@@ -353,7 +352,7 @@ def repo_parsed():
     .withColumn("oai_identifier", F.col("`ns0:header`.`ns0:identifier`"))
     .transform(lambda df: with_rekeyed_native_id(df, id_hosts, "repository_id"))
     .withColumn("updated_date", F.col("`ns0:header`.`ns0:datestamp`"))
-    .dropDuplicates(["native_id", "updated_date"])
+    .transform(lambda d: d.dropDuplicates(["native_id", "updated_date"]) if dedupe else d)
     .withColumn("native_id_namespace", F.lit("pmh"))
     .withColumn("title", F.substring(F.col("`ns0:metadata`.`ns1:dc`.`dc:title`"), 0, MAX_TITLE_LENGTH))
     .withColumn("normalized_title", normalize_title_udf(F.col("title")))
@@ -501,14 +500,15 @@ def repo_parsed():
     .withColumn(
         "updated_date", F.col("updated_date").cast("date")
     )  # cast updated_date from timestamp to date
-    .withColumn("issue", F.lit(None).cast("string"))
-    .withColumn("volume", F.lit(None).cast("string"))
-    .withColumn("first_page", F.lit(None).cast("string"))
-    .withColumn("last_page", F.lit(None).cast("string"))
+    .withColumn("issue", F.lit(None).cast("string") if issue is None else issue)
+    .withColumn("volume", F.lit(None).cast("string") if volume is None else volume)
+    .withColumn("first_page", F.lit(None).cast("string") if first_page is None else first_page)
+    .withColumn("last_page", F.lit(None).cast("string") if last_page is None else last_page)
     .withColumn("is_retracted", F.lit(None).cast("boolean"))
     .withColumn(
         "abstract",
-        F.substring(F.col("`ns0:metadata`.`ns1:dc`.`dc:description`").getItem(0), 0, MAX_ABSTRACT_LENGTH)
+        F.substring(F.col("`ns0:metadata`.`ns1:dc`.`dc:description`").getItem(0) if abstract is None else abstract,
+                    0, MAX_ABSTRACT_LENGTH)
     )
     .withColumn("source_name", F.col("`ns0:metadata`.`ns1:dc`.`dc:source`"))
     .withColumn("publisher", F.col("`ns0:metadata`.`ns1:dc`.`dc:publisher`"))
@@ -664,9 +664,55 @@ def repo_parsed():
         "mesh",
         "is_oa",
         F.col("repository_id").alias("endpoint_id"),
-        "ingested_at"
+        "ingested_at",
+        *(["_commit_version"] if "_commit_version" in df.columns else []),  # CDF sources only (oxjob #1786)
     )
+  )
+
+
+@dlt.table(
+  name="repo_parsed"
 )
+def repo_parsed():
+  # oxjob #1407: placeholder-host ids (ojs.pkp.sfu.ca, generic.eprints.org, localhost, ojs.localhost)
+  # are keyed on the endpoint's own pmh_url host, from the endpoint registry read once per update and
+  # inlined as a literal map (no join, so no stateful-plan change). Endpoints whose placeholder
+  # records were already stored are excluded until Phase B moves them (oai_ids_excluded).
+  id_hosts = read_endpoint_hosts(spark)
+  return parse_repo_records(dlt.read_stream("repo_items"), id_hosts)
+
+
+# oxjob #1786: HAL from its TEI. openalex.repo.hal_tei_parsed (HAL TEI pipeline, HalTei.py) holds, per harvested
+# record, the oai_dc record HAL would serve for it, rebuilt from the TEI, so every derived column (ids, type, version,
+# licence, dates, URLs) comes from the same rules as repo_parsed. Three columns come from the TEI instead: the abstract
+# (the real one in the document's language; oai_dc led with HAL's 'International audience' flag, #1635) and the
+# volume/issue/pages oai_dc has no field for. Same native_id (oai:HAL:<id>v<N>) and endpoint_id as the oai_dc row it
+# replaces, so W-ids and sources stay put. Read through CDF like repo_parsed_irdb.
+HAL_TEI_PARSED_TABLE = "openalex.repo.hal_tei_parsed"
+
+
+@dlt.table(
+    name="repo_parsed_hal_tei",
+    temporary=True,
+    comment="HAL records rebuilt from TEI (oxjob #1786), parsed with repo_parsed's rules"
+)
+def repo_parsed_hal_tei():
+    id_hosts = read_endpoint_hosts(spark)
+    src = (
+        spark.readStream
+            .option("readChangeFeed", "true")
+            .table(HAL_TEI_PARSED_TABLE)
+            .filter(F.col("_change_type").isin("insert", "update_postimage"))
+            .drop("_change_type", "_commit_timestamp")  # _commit_version feeds _sequence, as for backfill/IRDB
+    )
+    return parse_repo_records(
+        src, id_hosts, dedupe=False,
+        abstract=F.col("tei_abstract"),
+        issue=F.col("tei_issue"),
+        volume=F.col("tei_volume"),
+        first_page=F.col("tei_first_page"),
+        last_page=F.col("tei_last_page"),
+    )
 
 # COMMAND ----------
 
@@ -711,14 +757,7 @@ def repo_parsed_irdb():
     )
 
 
-@dlt.table(name="repo_enriched",
-           comment="repo data after full parsing and author/feature enrichment.")
-def repo_enriched():
-    df_parsed_backfill = dlt.read_stream("repo_parsed_backfill")
-    df_parsed_input = dlt.read_stream("repo_parsed")
-    df_parsed_irdb = dlt.read_stream("repo_parsed_irdb")
-    
-    walden_works_schema_with_raw_type = StructType([
+walden_works_schema_with_raw_type = StructType([
         StructField("provenance", StringType(), True), StructField("native_id", StringType(), True),
         StructField("native_id_namespace", StringType(), True), StructField("title", StringType(), True),
         StructField("normalized_title", StringType(), True),
@@ -768,20 +807,13 @@ def repo_enriched():
         # oxjob #837/#880: CDF commit version of the backfill/IRDB source row (NULL -> 0 for
         # repo_parsed); a re-emitted row must outrank the stored one. Dropped before repo_works.
         StructField("_commit_version", LongType(), True)
-    ])
+])
 
-    # Apply consistent schema and transformations
-    df_walden_works = apply_initial_processing(df_parsed_input, "repo", walden_works_schema_with_raw_type)
-    df_backfill_walden_works = apply_initial_processing(df_parsed_backfill, "repo_backfill", walden_works_schema_with_raw_type)
-    df_irdb_walden_works = apply_initial_processing(df_parsed_irdb, "repo", walden_works_schema_with_raw_type)
 
-    # Combine all three streams
-    combined_df = (
-        df_walden_works
-        .unionByName(df_backfill_walden_works, allowMissingColumns=True)
-        .unionByName(df_irdb_walden_works, allowMissingColumns=True)
-    )
-
+def finish_repo_enriched(combined_df, source_rank=None):
+    """repo_enriched's rules after the union: policy and endpoint filters, the date guard, _sequence, the provenance
+    restamp, enrichment and merge keys. Shared with repo_enriched_hal_tei (oxjob #1786). source_rank replaces the
+    repo-over-backfill rank in _sequence, for a stream that must win ties on the same datestamp."""
     # oxjob #881: THE gate. repo_parsed_backfill and repo_parsed_irdb are raw CDF passthroughs
     # with no filtering of their own, so 20,874,419 records reached repo_works past rules we had
     # already agreed to -- 20,872,994 of them (99.99%) from backfill. Applying it on the union
@@ -818,16 +850,19 @@ def repo_enriched():
     # version now ranks ahead of the hash, so a re-emit always outranks its stored version; the
     # hash stays the tiebreak for genuine duplicates. Same design as locations_parsed (#837 Phase 3).
     _hash_cols = [c for c in combined_df.columns if c != "_commit_version"]
-    combined_df = combined_df.withColumn(
-        "_sequence",
-        F.struct(
-            F.col("updated_date"),
-            F.when(F.col("provenance") == "repo", F.lit(1)).otherwise(F.lit(0)),
-            F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp")),
-            F.coalesce(F.col("_commit_version"), F.lit(0)).cast("long"),
-            F.xxhash64(*[F.col(c) for c in _hash_cols])
-        )
-    )
+    _seq_fields = [
+        F.col("updated_date"),
+        F.when(F.col("provenance") == "repo", F.lit(1)).otherwise(F.lit(0)),
+        F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp")),
+        F.coalesce(F.col("_commit_version"), F.lit(0)).cast("long"),
+        F.xxhash64(*[F.col(c) for c in _hash_cols])
+    ]
+    if source_rank is not None:
+        # oxjob #1786: Spark names the struct's fields after their expressions, and every CDC flow into repo_works must
+        # carry one identical sequence type, so the replacement rank takes the default's field name.
+        _names = combined_df.select(F.struct(*_seq_fields).alias("s")).schema["s"].dataType.fieldNames()
+        _seq_fields = [c.alias(n) for c, n in zip(_seq_fields[:1] + [source_rank] + _seq_fields[2:], _names)]
+    combined_df = combined_df.withColumn("_sequence", F.struct(*_seq_fields))
 
     # backfill feed keeps its identity through _sequence above; the published
     # value is always repo. Restamped BEFORE merge-key computation ON PURPOSE
@@ -841,6 +876,39 @@ def repo_enriched():
     df_enriched = enrich_with_features_and_author_keys(combined_df)
 
     return apply_final_merge_key_and_filter(df_enriched, keep_when=_IS_DELETE)
+
+
+@dlt.table(name="repo_enriched",
+           comment="repo data after full parsing and author/feature enrichment.")
+def repo_enriched():
+    df_parsed_backfill = dlt.read_stream("repo_parsed_backfill")
+    df_parsed_input = dlt.read_stream("repo_parsed")
+    df_parsed_irdb = dlt.read_stream("repo_parsed_irdb")
+
+    # Apply consistent schema and transformations
+    df_walden_works = apply_initial_processing(df_parsed_input, "repo", walden_works_schema_with_raw_type)
+    df_backfill_walden_works = apply_initial_processing(df_parsed_backfill, "repo_backfill", walden_works_schema_with_raw_type)
+    df_irdb_walden_works = apply_initial_processing(df_parsed_irdb, "repo", walden_works_schema_with_raw_type)
+
+    # Combine all three streams
+    combined_df = (
+        df_walden_works
+        .unionByName(df_backfill_walden_works, allowMissingColumns=True)
+        .unionByName(df_irdb_walden_works, allowMissingColumns=True)
+    )
+    return finish_repo_enriched(combined_df)
+
+
+# oxjob #1786: HAL rebuilt from TEI gets its own stream and its own CDC flow into repo_works (below), not a fourth branch
+# of the union above: adding a source to repo_enriched's streaming query would invalidate its checkpoint. Rank 2 in
+# _sequence: on the same datestamp the TEI row beats the oai_dc row (rank 1) for the same native_id, so the oai_dc HAL
+# harvest can run alongside until its endpoints are retired; a newer oai_dc datestamp still wins until the TEI
+# harvest delivers that datestamp too (the next day).
+@dlt.table(name="repo_enriched_hal_tei",
+           comment="HAL records rebuilt from TEI (oxjob #1786) after repo_enriched's rules; second CDC source of repo_works")
+def repo_enriched_hal_tei():
+    df = apply_initial_processing(dlt.read_stream("repo_parsed_hal_tei"), "repo", walden_works_schema_with_raw_type)
+    return finish_repo_enriched(df, source_rank=F.lit(2))
 
 dlt.create_streaming_table(
     name="repo_works",
@@ -868,4 +936,15 @@ dlt.apply_changes(
     # were dropped in three separate places, so a record could never leave repo_works.
     apply_as_deletes=F.expr("_change_type = 'delete'"),
     except_column_list=["_sequence", "set_spec", "dc_format", "_change_type", "_commit_version"]
+)
+
+# oxjob #1786: the second flow, HAL from TEI. Same keys, sequence type, deletes and dropped columns as the flow above.
+dlt.create_auto_cdc_flow(
+    target="repo_works",
+    source="repo_enriched_hal_tei",
+    keys=["native_id"],
+    sequence_by="_sequence",
+    apply_as_deletes=F.expr("_change_type = 'delete'"),
+    except_column_list=["_sequence", "set_spec", "dc_format", "_change_type", "_commit_version"],
+    name="repo_works_hal_tei",
 )
