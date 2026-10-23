@@ -23,9 +23,16 @@ import pyspark.sql.functions as F
 dbutils.widgets.text("endpoint_map", "openalex.transient.oxjob1786_hal_endpoints", "native_id -> endpoint_id map")
 dbutils.widgets.text("out_prefix", "openalex.transient.oxjob1786", "scratch table prefix")
 dbutils.widgets.text("sample_mod", "0", "0 = every record; N = only records with pmod(hash(oai_id), N) = 0")
+dbutils.widgets.text("reuse_parsed", "false", "true = keep <out_prefix>_hal_tei_parsed from an earlier run")
 ENDPOINT_MAP = dbutils.widgets.get("endpoint_map")
 OUT = dbutils.widgets.get("out_prefix")
 SAMPLE_MOD = int(dbutils.widgets.get("sample_mod"))
+REUSE_PARSED = dbutils.widgets.get("reuse_parsed").lower() == "true"
+
+# The pipelines' Spark settings, so the same code behaves the same: DLT runs with ANSI off (Repo.py indexes possibly
+# empty arrays, e.g. filter(ids, ...)[0]), and the Repo pipeline sets timeParserPolicy CORRECTED (jobs/repo_pipeline.yaml).
+spark.conf.set("spark.sql.ansi.enabled", "false")
+spark.conf.set("spark.sql.legacy.timeParserPolicy", "CORRECTED")
 
 _dlt = types.ModuleType("dlt")
 
@@ -61,8 +68,9 @@ print("loaded HalTei.py and Repo.py")
 items = spark.read.table("openalex.repo.hal_tei_items")
 if SAMPLE_MOD:
     items = items.filter(F.expr(f"pmod(hash(oai_id), {SAMPLE_MOD}) = 0"))
-parsed = hal["build_hal_tei_parsed"](items, spark.read.table(ENDPOINT_MAP))
-parsed.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_hal_tei_parsed")
+if not (REUSE_PARSED and spark.catalog.tableExists(f"{OUT}_hal_tei_parsed")):
+    parsed = hal["build_hal_tei_parsed"](items, spark.read.table(ENDPOINT_MAP))
+    parsed.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_hal_tei_parsed")
 n_parsed = spark.table(f"{OUT}_hal_tei_parsed").count()
 n_err = spark.table(f"{OUT}_hal_tei_parsed").filter("tei_error IS NOT NULL OR `ns0:metadata` IS NULL").count()
 print(f"hal_tei_parsed: {n_parsed} rows, {n_err} with a parse error or no metadata")
