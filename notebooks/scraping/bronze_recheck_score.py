@@ -164,7 +164,7 @@ pre = todo.withColumn("shape_idx", F.expr(shape_sql())).withColumn("pre", F.expr
        WHEN lower(coalesce(content_type, '')) LIKE '%html%' THEN 'body'
        ELSE concat('no_information:content ', coalesce(content_type, 'none')) END"""))
 # Materialize once (serverless has no .cache()); everything below reads the stage.
-STAGE = "openalex.taxicab.bronze_recheck_score_stage"
+STAGE = f"{results_table}_stage"
 pre.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(STAGE)
 pre = spark.table(STAGE)
 counts = {r["pre"]: r["count"] for r in pre.groupBy("pre").count().collect()}
