@@ -250,7 +250,7 @@ def _clean(s):
     if not s:
         return s
     s = re.sub(r"<br\s*/?>", " ", html.unescape(s), flags=re.I)
-    return re.sub(r"[\s  ]+", " ", s).strip() or None
+    return re.sub(r"[\s\u00a0\u202f]+", " ", s).strip() or None
 
 
 def _first(xs):
