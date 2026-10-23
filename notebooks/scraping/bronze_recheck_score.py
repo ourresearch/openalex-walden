@@ -63,7 +63,7 @@ RULES = {
     "oup": [(r"^https?://academic\.oup\.com/.*article-abstract", None)],
     "aip": [(r"^https?://pubs\.aip\.org/.*article-abstract", None)],
     "springer": [(r"^https?://link\.springer\.com/article/", None)],
-    "aps": [(r"^https?://link\.aps\.org/.*/abstract/", None)],
+    "aps": [(r"^https?://(journals|link)\.aps\.org/.*/abstract/", None)],  # PDFs resolve to journals.aps.org/<j>/abstract/
     "cambridge": [(r"^https?://www\.cambridge\.org/.*/article/abs/", None)],
     "sciencedirect": [(SD_ABS, None)],
     "nature": [(NATURE, None)],
