@@ -61,7 +61,9 @@ def load(rel_path):
 
 hal = load("../ingest/HalTei.py")
 repo = load("../ingest/Repo.py")
-print("loaded HalTei.py and Repo.py")
+# hal_tei_parsed's dc struct is a hand copy of Repo.py's repository_schema `ns1:dc`; they must match exactly
+assert hal["_dc_struct"] == repo["repository_schema"]["ns0:metadata"].dataType["ns1:dc"].dataType, "dc struct drifted"
+print("loaded HalTei.py and Repo.py; dc structs match")
 
 # COMMAND ----------
 
@@ -78,17 +80,7 @@ print(f"hal_tei_parsed: {n_parsed} rows, {n_err} with a parse error or no metada
 # COMMAND ----------
 
 src = spark.table(f"{OUT}_hal_tei_parsed").withColumn("_commit_version", F.lit(0).cast("long"))
-# {} instead of read_endpoint_hosts(spark): the endpoint registry only re-keys placeholder hosts (ojs.pkp.sfu.ca,
-# localhost, ...), never oai:HAL:, and a user without the openalex_sources grant can't read it.
-parsed_repo = repo["parse_repo_records"](
-    src, {}, dedupe=False,
-    abstract=F.col("tei_abstract"), issue=F.col("tei_issue"), volume=F.col("tei_volume"),
-    first_page=F.col("tei_first_page"), last_page=F.col("tei_last_page"),
-)
-enriched = repo["finish_repo_enriched"](
-    repo["apply_initial_processing"](parsed_repo, "repo", repo["walden_works_schema_with_raw_type"]),
-    source_rank=F.lit(2),
-)
+enriched = repo["enrich_hal_tei"](repo["parse_hal_tei_records"](src))  # the pipeline's own two steps
 enriched.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_repo_enriched_hal_tei")
 print("repo_enriched_hal_tei:", spark.table(f"{OUT}_repo_enriched_hal_tei").count(), "rows")
 print("_sequence type:", spark.table(f"{OUT}_repo_enriched_hal_tei").schema["_sequence"].dataType.simpleString())

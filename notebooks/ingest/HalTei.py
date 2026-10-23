@@ -235,13 +235,19 @@ HAL_EUREPO_TYPE = {
     "UNDEFINED": "preprint", "PATENT": "patent", "LECTURE": "lecture",
 }  # every other code (OTHER, IMG, ISSUE, BLOG, NOTICE, PROCEEDINGS, HDR, VIDEO, TRAD, SOFTWARE, SON, MAP, CREPORT) -> other
 AUDIENCE_LABEL = {"1": "National audience", "2": "International audience", "3": "No audience"}
-# sourceDesc/biblStruct idno types -> the dc:identifier prefix HAL writes ("DOI: 10.1016/...")
+# monogr idno types -> the dc:identifier prefix HAL writes ("ISBN: ...")
 MONOGR_ID_PREFIX = {"isbn": "ISBN", "nnt": "NNT", "patentNumber": "Patent N°", "reportNumber": "Report N°"}
-SKIP_SOURCE_IDS = {"hdl"}  # HAL puts handles in dc:relation only
+# biblStruct idno types HAL also writes into dc:relation (altIdentifier/<kind>/<id>); hdl goes there only
+ALT_ID_KIND = {"doi": "doi", "pubmed": "pmid", "arxiv": "arxiv", "hdl": "hdl"}
 
 
 def _t(el):
+    """All text inside el (itertext, unlike HalTei.py's _text, which reads only el.text)."""
     return "".join(el.itertext()).strip() if el is not None else None
+
+
+def _all(el, path):
+    return el.findall(path) if el is not None else []
 
 
 def _clean(s):
@@ -250,7 +256,7 @@ def _clean(s):
     if not s:
         return s
     s = re.sub(r"<br\s*/?>", " ", html.unescape(s), flags=re.I)
-    return re.sub(r"[\s\u00a0\u202f]+", " ", s).strip() or None
+    return re.sub(r"[\s  ]+", " ", s).strip() or None
 
 
 def _first(xs):
@@ -258,7 +264,9 @@ def _first(xs):
 
 
 def _pages(pp):
-    """'60-70' -> ('60', '70'); '25' -> ('25', None); 'pp. 1 - 8' -> ('1', '8')."""
+    """'60-70' -> ('60', '70'); 'pp. 1 - 8' -> ('1', '8'); '25' -> ('25', None).
+    A lone number stays first_page only (Crossref/PubMed copy it to last_page): HAL's pp is often just the start page
+    or an article number ('107817'), and first == last would read as a one-page item in the type rules."""
     if not pp:
         return None, None
     s = re.sub(r"^\s*(pp?\.?)\s*", "", pp.strip(), flags=re.I)
@@ -299,13 +307,12 @@ def tei_to_dc(tei_xml):
             if org:
                 creators.append(org)
 
-    # abstracts, notes
+    # abstracts; dc:description as HAL writes it (comment notes, audience label, abstracts) feeds the version regex only
     abstracts = [(a.get(XML_LANG), html.unescape("\n".join(_t(p) for p in a.findall(f"{TEI_NS}p") if _t(p)) or _t(a) or "").strip())
                  for a in bf.findall(f"{TEI_NS}profileDesc/{TEI_NS}abstract")]
     abstracts = [a for a in abstracts if a[1]]
     best_abs = next((a for a in abstracts if a[0] == lang), _first(abstracts))
     notes = [(n.get("type"), n.get("n"), _t(n)) for n in bf.findall(f"{TEI_NS}notesStmt/{TEI_NS}note")]
-    audience = _first([n[1] for n in notes if n[0] == "audience"])
     description = [n[2] for n in notes if n[0] in ("commentary", "description") and n[2]]
     description += [AUDIENCE_LABEL.get(n[1], n[2]) for n in notes if n[0] == "audience" and (n[1] in AUDIENCE_LABEL or n[2])]
     description += [a[1] for a in abstracts]
@@ -327,54 +334,51 @@ def tei_to_dc(tei_xml):
     edition = bf.find(f"{TEI_NS}editionStmt/{TEI_NS}edition[@type='current']")
     if edition is None:
         edition = bf.find(f"{TEI_NS}editionStmt/{TEI_NS}edition")
-    files = [r.get("target") for r in (edition.findall(f"{TEI_NS}ref") if edition is not None else [])
-             if r.get("type") == "file" and r.get("target")]
+    file_refs = [r for r in _all(edition, f"{TEI_NS}ref") if r.get("type") == "file" and r.get("target")]
+    files = [r.get("target") for r in file_refs]
     bs = bf.find(f"{TEI_NS}sourceDesc/{TEI_NS}biblStruct")
     monogr = bs.find(f"{TEI_NS}monogr") if bs is not None else None
-    identifier = []
-    for i in (monogr.findall(f"{TEI_NS}idno") if monogr is not None else []):
-        if i.get("type") in MONOGR_ID_PREFIX and _t(i):
-            identifier.append(f"{MONOGR_ID_PREFIX[i.get('type')]}: {_t(i)}")
+    identifier = [f"{MONOGR_ID_PREFIX[i.get('type')]}: {_t(i)}" for i in _all(monogr, f"{TEI_NS}idno")
+                  if i.get("type") in MONOGR_ID_PREFIX and _t(i)]
     identifier += [x for x in (pub.get("halId"), pub.get("halUri")) if x] + files
     relation = []
-    for i in (bs.findall(f"{TEI_NS}idno") if bs is not None else []):
+    for i in _all(bs, f"{TEI_NS}idno"):
         typ, val = i.get("type") or "", _t(i)
         if not val:
             continue
-        if typ.lower() == "doi":
-            val = val.lower()  # HAL's oai_dc lowercases DOIs; the TEI keeps the depositor's case
-        if typ.lower() in ("doi", "pubmed", "arxiv"):
-            kind = "pmid" if typ.lower() == "pubmed" else typ.lower()
+        kind = ALT_ID_KIND.get(typ.lower())
+        if kind == "doi":
+            val = val.lower()  # HAL's oai_dc lowercases DOIs (as our stored rows have them); the TEI keeps the depositor's case
+        if kind:
             relation.append(f"info:eu-repo/semantics/altIdentifier/{kind}/{val}")
-        if typ in SKIP_SOURCE_IDS:
-            relation.append(f"info:eu-repo/semantics/altIdentifier/hdl/{val}")
-            continue
-        identifier.append(f"{typ.upper()}: {val}")
+        if kind != "hdl":
+            identifier.append(f"{typ.upper()}: {val}")
 
-    # rights, ordered so Repo.py's pick (first creativecommons.org value, else the first value) means: the CC licence
-    # if there is one, else open access when a file is out of embargo, else the licence URL (normalises to nothing).
-    # HAL's oai_dc lists the licence URL first, so "HAL Authorization" + a free PDF came out as no licence and not OA
-    # on records harvested after HAL reordered dc:rights, and as other-oa before: a coin flip on harvest date.
+    # Licence: dc:rights is ordered so Repo.py's pick (the first creativecommons.org value, else the first value; keep
+    # this in step with Repo.py raw_license) means: the CC licence if there is one, else open access when the file is out
+    # of embargo, else the licence URL (normalises to nothing). HAL's oai_dc lists the licence URL first, so "HAL
+    # Authorization" + a free PDF came out as no licence and not OA on records harvested after HAL reordered dc:rights,
+    # and as other-oa before: a coin flip on harvest date.
+    # shortcut: the embargo is checked once, at parse time; a record parsed under embargo stays closed until HAL
+    # re-stamps it (oai_dc behaved the same way).
     lic = [l.get("target") for l in bf.findall(f"{TEI_NS}publicationStmt/{TEI_NS}availability/{TEI_NS}licence") if l.get("target")]
     today = datetime.date.today().isoformat()
-    embargo_ends = [d.get("notBefore") for r in (edition.findall(f"{TEI_NS}ref") if edition is not None else [])
-                    if r.get("type") == "file" for d in r.findall(f"{TEI_NS}date") if d.get("notBefore")]
+    embargo_ends = [d.get("notBefore") for r in file_refs for d in r.findall(f"{TEI_NS}date") if d.get("notBefore")]
     file_open = bool(files) and all(e[:10] <= today for e in embargo_ends)
     rights = [x for x in lic if "creativecommons.org" in x]
     rights += ["info:eu-repo/semantics/OpenAccess"] if file_open else []
     rights += [x for x in lic if "creativecommons.org" not in x]
 
     # source (Spark keeps the last dc:source: HAL's citation string, or a publisher-link ref after it)
-    src = [pub.get("halRef")] + [_t(r) for r in (bs.findall(f"{TEI_NS}ref") if bs is not None else []) if r.get("type") == "publisher" and _t(r)]
+    src = [pub.get("halRef")] + [_t(r) for r in _all(bs, f"{TEI_NS}ref") if r.get("type") == "publisher" and _t(r)]
     src = [s for s in src if s]
     imprint = monogr.find(f"{TEI_NS}imprint") if monogr is not None else None
-    publishers = [_t(p) for p in (imprint.findall(f"{TEI_NS}publisher") if imprint is not None else []) if _t(p)]
+    publishers = [_t(p) for p in _all(imprint, f"{TEI_NS}publisher") if _t(p)]
     scope = {}
-    for b in (imprint.findall(f"{TEI_NS}biblScope") if imprint is not None else []):
+    for b in _all(imprint, f"{TEI_NS}biblScope"):
         scope.setdefault(b.get("unit"), _t(b))
     first_page, last_page = _pages(scope.get("pp"))
-    produced = _first([d.text.strip() for d in (edition.findall(f"{TEI_NS}date") if edition is not None else [])
-                       if d.get("type") == "whenProduced" and d.text])
+    produced = _first([d.text.strip() for d in _all(edition, f"{TEI_NS}date") if d.get("type") == "whenProduced" and d.text])
 
     set_spec = [f"type:{code}"] if code else []
     set_spec += ["collection:" + s.get("n") for s in bf.findall(f"{TEI_NS}seriesStmt/{TEI_NS}idno")
@@ -401,11 +405,8 @@ def tei_to_dc(tei_xml):
         },
         "set_spec": set_spec,
         "abstract": best_abs[1] if best_abs else None,
-        "abstract_lang": best_abs[0] if best_abs else None,
-        "abstracts": [{"lang": a[0], "text": a[1]} for a in abstracts],
-        "audience": audience,
-        "volume": (scope.get("volume") or None) and scope["volume"][:100],
-        "issue": (scope.get("issue") or None) and scope["issue"][:100],
+        "volume": (scope.get("volume") or "")[:100] or None,
+        "issue": (scope.get("issue") or "")[:100] or None,
         "first_page": first_page,
         "last_page": last_page,
     }
@@ -424,9 +425,6 @@ _tei_dc_type = StructType([
     StructField("dc", _dc_struct),
     StructField("set_spec", ArrayType(StringType())),
     StructField("abstract", StringType()),
-    StructField("abstract_lang", StringType()),
-    StructField("abstracts", ArrayType(StructType([StructField("lang", StringType()), StructField("text", StringType())]))),
-    StructField("audience", StringType()),
     StructField("volume", StringType()),
     StructField("issue", StringType()),
     StructField("first_page", StringType()),
@@ -445,12 +443,16 @@ def tei_to_dc_safe(tei_xml):
         return {"error": f"{type(e).__name__}: {e}"[:1000]}
 
 
+# The pipeline's python.udf.maxRecordsPerBatch=1 (set for the file parser's big files) applies here too: rows are
+# pickled one at a time. Measured fine: the dry run parsed all 5.1M stored records in ~10 min on serverless.
 tei_to_dc_udf = F.udf(tei_to_dc_safe, _tei_dc_type)
 
 # endpoint_id of each HAL record = the oai_dc endpoint that delivered it last (frozen at the cutover), so the record's
 # source (INRIA, HAL AMU, ... or HAL) and every location hash stay put. endpoint_id sits in the location and work hashes
 # and keys same-URL dedup. New records: their earlier version's endpoint, else the portal of the three whose oai_dc
 # feed is exactly one collection, else hal_tei (bound to the HAL source).
+# shortcut: the map is frozen at the cutover, so a record the oai_dc harvest first delivers after it, while that harvest
+# still runs, gets hal_tei / a portal here; re-take the map when the oai_dc HAL endpoints are retired (oxjob #1786 PLAN).
 HAL_ENDPOINT_MAP_TABLE = "openalex.repo.hal_oai_dc_endpoints"
 HAL_TEI_ENDPOINT_ID = "hal_tei"
 PORTAL_COLLECTION_ENDPOINTS = [
@@ -464,10 +466,7 @@ def build_hal_tei_parsed(items, endpoint_map):
     """hal_tei_items rows (stream or batch) + the endpoint map -> hal_tei_parsed rows, in repo_items' oai_dc shape."""
     by_native = endpoint_map.select(F.col("native_id").alias("oai_id"), F.col("endpoint_id").alias("_ep_native"))
     by_hal = endpoint_map.groupBy("hal_id").agg(F.max_by("endpoint_id", "hal_version").alias("_ep_hal"))
-    portal = None
-    for coll, ep in PORTAL_COLLECTION_ENDPOINTS:
-        cond = F.array_contains(F.col("p.set_spec"), coll)
-        portal = F.when(cond, F.lit(ep)) if portal is None else portal.when(cond, F.lit(ep))
+    portals = [F.when(F.array_contains(F.col("p.set_spec"), coll), F.lit(ep)) for coll, ep in PORTAL_COLLECTION_ENDPOINTS]
     return (
         items
         .filter(F.col("hal_id").isNotNull() & ~F.col("is_deleted") & F.col("tei").isNotNull())
@@ -481,15 +480,12 @@ def build_hal_tei_parsed(items, endpoint_map):
                 F.col("p.set_spec").alias("ns0:setSpec"),
             ).alias("ns0:header"),
             F.when(F.col("p.dc").isNotNull(), F.struct(F.col("p.dc").alias("ns1:dc"))).alias("ns0:metadata"),
-            F.coalesce("_ep_native", "_ep_hal", portal, F.lit(HAL_TEI_ENDPOINT_ID)).alias("repository_id"),
+            F.coalesce(F.col("_ep_native"), F.col("_ep_hal"), *portals, F.lit(HAL_TEI_ENDPOINT_ID)).alias("repository_id"),
             "ingested_at",
             "oai_id",
             "hal_id",
             "hal_version",
             F.col("p.abstract").alias("tei_abstract"),
-            F.col("p.abstract_lang").alias("tei_abstract_lang"),
-            F.col("p.abstracts").alias("tei_abstracts"),
-            F.col("p.audience").alias("tei_audience"),
             F.col("p.volume").alias("tei_volume"),
             F.col("p.issue").alias("tei_issue"),
             F.col("p.first_page").alias("tei_first_page"),

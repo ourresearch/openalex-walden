@@ -697,16 +697,20 @@ HAL_TEI_PARSED_TABLE = "openalex.repo.hal_tei_parsed"
     comment="HAL records rebuilt from TEI (oxjob #1786), parsed with repo_parsed's rules"
 )
 def repo_parsed_hal_tei():
-    id_hosts = read_endpoint_hosts(spark)
-    src = (
+    return parse_hal_tei_records(
         spark.readStream
             .option("readChangeFeed", "true")
             .table(HAL_TEI_PARSED_TABLE)
             .filter(F.col("_change_type").isin("insert", "update_postimage"))
             .drop("_change_type", "_commit_timestamp")  # _commit_version feeds _sequence, as for backfill/IRDB
     )
+
+
+def parse_hal_tei_records(df):
+    """hal_tei_parsed rows -> repo_parsed rows. Shared with notebooks/maintenance/HalTeiCutoverDryRun.py. No endpoint
+    registry ({}): it only re-keys placeholder hosts (ojs.pkp.sfu.ca, localhost, ...), never oai:HAL:."""
     return parse_repo_records(
-        src, id_hosts, dedupe=False,
+        df, {}, dedupe=False,
         abstract=F.col("tei_abstract"),
         issue=F.col("tei_issue"),
         volume=F.col("tei_volume"),
@@ -907,8 +911,13 @@ def repo_enriched():
 @dlt.table(name="repo_enriched_hal_tei",
            comment="HAL records rebuilt from TEI (oxjob #1786) after repo_enriched's rules; second CDC source of repo_works")
 def repo_enriched_hal_tei():
-    df = apply_initial_processing(dlt.read_stream("repo_parsed_hal_tei"), "repo", walden_works_schema_with_raw_type)
-    return finish_repo_enriched(df, source_rank=F.lit(2))
+    return enrich_hal_tei(dlt.read_stream("repo_parsed_hal_tei"))
+
+
+def enrich_hal_tei(df):
+    """repo_parsed_hal_tei rows -> repo_enriched_hal_tei rows. Shared with HalTeiCutoverDryRun.py."""
+    return finish_repo_enriched(apply_initial_processing(df, "repo", walden_works_schema_with_raw_type),
+                                source_rank=F.lit(2))
 
 dlt.create_streaming_table(
     name="repo_works",
@@ -927,24 +936,18 @@ dlt.create_streaming_table(
 # moves) gives old versions their own content keys — 33M stale variants
 # resurrected. DLT cannot chain apply_changes (targets can't be streamed), so
 # same-URL dedup lives in the batch layer (CreateSuperLocations), not here.
-dlt.apply_changes(
+# One set of CDC settings for every flow into repo_works (oxjob #1786: two flows must agree on keys, sequence and
+# columns, or they break or drift apart).
+REPO_WORKS_CDC = dict(
     target="repo_works",
-    source="repo_enriched",
     keys=["native_id"],
     sequence_by="_sequence",
     # oxjob #881: the pipeline can finally express "this record went away". Previously deletes
     # were dropped in three separate places, so a record could never leave repo_works.
     apply_as_deletes=F.expr("_change_type = 'delete'"),
-    except_column_list=["_sequence", "set_spec", "dc_format", "_change_type", "_commit_version"]
-)
-
-# oxjob #1786: the second flow, HAL from TEI. Same keys, sequence type, deletes and dropped columns as the flow above.
-dlt.create_auto_cdc_flow(
-    target="repo_works",
-    source="repo_enriched_hal_tei",
-    keys=["native_id"],
-    sequence_by="_sequence",
-    apply_as_deletes=F.expr("_change_type = 'delete'"),
     except_column_list=["_sequence", "set_spec", "dc_format", "_change_type", "_commit_version"],
-    name="repo_works_hal_tei",
 )
+dlt.apply_changes(source="repo_enriched", **REPO_WORKS_CDC)
+
+# oxjob #1786: the second flow, HAL from TEI (named; the flow above keeps its default name, "repo_works").
+dlt.create_auto_cdc_flow(source="repo_enriched_hal_tei", name="repo_works_hal_tei", **REPO_WORKS_CDC)
