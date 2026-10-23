@@ -28,6 +28,11 @@ near 7.5M, the change's owner pre-clears the scheduled run with
 `openalex.works.e2e_overrides` that every gate reads through `openalex.works.e2e_override_active()`,
 and say so in #dev. Do not start a second manual End 2 End in the evening:
 it collides with the 05:00 UTC schedule, and pausing the schedule does not survive a bundle deploy.
+**Every manual End 2 End run, full or selected tasks, sets the `reason` job parameter** to
+`'<oxjob>: <why>, <who>'` (UI: "Run now with different parameters"; CLI: `databricks jobs run-now --json
+'{"job_id": 616701029470182, "job_parameters": {"reason": "1170: test location curations, rohan"}}'`). Databricks
+records only the service principal as a run's creator, so this is how the nightly shepherd learns who ran it and why
+(oxjob #1642; on 22 Oct a manual full run reached nobody's notes).
 Over ~10M also crosses the ES mega-sync threshold (replicas dropped). The override flags are per
 consequence class (`guardrails_override`, `deleted_works_guard_override`,
 `deleted_locations_guard_override`, `wunpaywall_guard_override`); bypass only the one that fired.

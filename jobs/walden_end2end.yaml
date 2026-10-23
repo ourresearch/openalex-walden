@@ -653,7 +653,7 @@ resources:
         git_branch: main
       queue:
         enabled: true
-      # Every parameter here is a circuit-breaker bypass. Job parameters propagate to
+      # Every parameter here but the last (reason) is a circuit-breaker bypass. Job parameters propagate to
       # every notebook task automatically, so no task re-declares them; each notebook
       # reads the widget under exactly this name. One switch per consequence class —
       # Each notebook resolves its flag through openalex.works.e2e_override_active(flag, param):
@@ -680,4 +680,10 @@ resources:
           default: "false"
         - name: wunpaywall_guard_override
           default: "false"
+        # Not a bypass (oxjob #1642): a manual run, any run the 05:00 UTC schedule didn't start, says why here as
+        # '<oxjob>: <why>, <who>'. Databricks records the service principal as every run's creator, so this is the only
+        # place the starter's name and reason travel with the run; the nightly shepherd copies it into its record.
+        # No task reads it.
+        - name: reason
+          default: ""
       performance_target: PERFORMANCE_OPTIMIZED
