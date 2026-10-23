@@ -19,6 +19,7 @@ Need a fold changed? Change `host_key.sql` here, never a private mapping in a la
 |---|---|---|
 | `landing_page_funnel` | fetch_date x host x attempt (first / repeat) x id_namespace (doi / pmh) | `funnel.sql`, nightly |
 | `landing_page_alerts` | alert_date x host x id_namespace x rule | `alerts.sql`, nightly |
+| `landing_page_host_state` | snapshot_date x host: Crossref works' landing-page age, fresh-and-useful, fields the page adds over Crossref | `host_state.sql`, nightly (as of yesterday) |
 | `landing_page_doi_prefixes` | DOI prefix -> dominant host | `doi_prefixes.sql`, by hand |
 | `landing_page_zyte_prices` | Zyte domain x valid_from | `zyte_prices.sql`, by hand, monthly |
 
@@ -33,7 +34,7 @@ rates, on 200+ fetches; `confirmed` on the second day running or past 40 points;
 50 largest DOI hosts. `many_hosts_drop`: 5+ of those 50 trip the same day (harvester, Zyte or Parseland trouble);
 always pages. Every threshold sits in the `params` block at the top of `alerts.sql`. Backfill 1 Sep-22 Oct 2026:
 ~4 incidents a week, nearly all real (Zyte 400 bans, timeouts).
-Paging rows wake oxjob #1789 through a desk task (`~/plexus/tasks.d/landing-page-alarms.sh`).
+New paging rows become a Sentry event (project `databricks-jobs`, one issue per host + rule) and a wake-up on oxjob #1789, through a desk task (`~/plexus/tasks.d/landing-page-alarms.sh`, every 30 min).
 
 ## Running it
 

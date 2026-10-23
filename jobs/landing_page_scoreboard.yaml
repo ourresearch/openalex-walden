@@ -5,8 +5,10 @@ resources:
       description: |
         Landing-page scoreboard (oxjob #1789, charter plans/landing-pages.md). Nightly: rewrites the last 3 fetch
         days of openalex.monitoring.landing_page_funnel (per host: fetched -> stored -> parsed -> fields, Zyte cost)
-        and openalex.monitoring.landing_page_alerts. Reads taxicab_results, parsed_pages, meta_tags; writes only
-        those two monitoring tables. Fails only when yesterday has no fetch rows. SQL: monitoring/landing_pages/.
+        and openalex.monitoring.landing_page_alerts, plus a works-side snapshot (landing_page_host_state: freshness
+        and what landing pages add over Crossref, per host). Reads taxicab_results, parsed_pages, meta_tags,
+        landing_page_works, crossref_works; writes only those three monitoring tables. Fails only when yesterday has
+        no fetch rows. SQL: notebooks/monitoring/landing_pages/.
       max_concurrent_runs: 1
       schedule:
         # 13:00 UTC: Parseland lags fetches by ~5 h (p99 12 h), so yesterday (UTC) is fully parsed by now.

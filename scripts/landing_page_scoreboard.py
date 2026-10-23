@@ -18,7 +18,7 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SQL_DIR = os.path.join(HERE, "..", "monitoring", "landing_pages")
+SQL_DIR = os.path.join(HERE, "..", "notebooks", "monitoring", "landing_pages")
 
 
 def statements(text):
@@ -78,7 +78,7 @@ def windows(start, end, chunk_days):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("what", choices=["ddl", "prefixes", "funnel", "alerts"])
+    ap.add_argument("what", choices=["ddl", "prefixes", "funnel", "alerts", "host_state"])
     ap.add_argument("--start", type=dt.date.fromisoformat)
     ap.add_argument("--end", type=dt.date.fromisoformat, help="exclusive")
     ap.add_argument("--chunk-days", type=int, default=30, help="each funnel chunk rescans taxicab_results once")

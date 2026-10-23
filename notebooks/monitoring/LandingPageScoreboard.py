@@ -4,21 +4,22 @@
 # MAGIC
 # MAGIC Nightly. Rewrites the last `days_back` fetch days (UTC) of `openalex.monitoring.landing_page_funnel`
 # MAGIC (fetch -> stored -> parsed -> fields, per host) and `openalex.monitoring.landing_page_alerts`, from the SQL in
-# MAGIC `monitoring/landing_pages/`. Re-scoring 3 days lets late parses land (Parseland lags fetches by ~5 h, p99 12 h);
+# MAGIC `notebooks/monitoring/landing_pages/`. Re-scoring 3 days lets late parses land (Parseland lags fetches by ~5 h, p99 12 h);
 # MAGIC the newest day scored is yesterday, so today's half-parsed day is never judged.
 # MAGIC
-# MAGIC Reads `taxicab.taxicab_results`, `parseland.parsed_pages`, `landing_page.meta_tags`; writes only those two
+# MAGIC Also writes `openalex.monitoring.landing_page_host_state`, the works side (freshness and what landing pages add
+# MAGIC over Crossref, per host), one snapshot as of yesterday. Reads `taxicab.taxicab_results`, `parseland.parsed_pages`,
+# MAGIC `landing_page.meta_tags`, `landing_page.landing_page_works`, `crossref.crossref_works`; writes only those three
 # MAGIC monitoring tables. Fails (so Sentry hears through the desk failure bridge) only when the scoreboard itself is
-# MAGIC broken: no fetch rows for yesterday. Alarms are rows, not failures; a desk task turns new paging rows into a
-# MAGIC wake-up for oxjob #1789. Tables, functions and the host key: `monitoring/landing_pages/README.md`.
+# MAGIC broken: no fetch rows for yesterday. Alarms are rows, not failures; a desk task turns new paging rows into a Sentry
+# MAGIC event and a wake-up for oxjob #1789. Tables, functions and the host key: `landing_pages/README.md` (next to this notebook).
 
 # COMMAND ----------
 
 import os
 from datetime import datetime, timedelta, timezone
 
-REPO_ROOT = os.path.abspath(os.path.join(os.getcwd(), "..", ".."))
-SQL_DIR = os.path.join(REPO_ROOT, "monitoring", "landing_pages")
+SQL_DIR = os.path.join(os.getcwd(), "landing_pages")  # notebooks/monitoring/landing_pages: walden only tracks *.sql under notebooks/
 
 dbutils.widgets.text("end_date", "", "exclusive end day YYYY-MM-DD (blank = today UTC)")
 dbutils.widgets.text("days_back", "3", "fetch days to rewrite, ending the day before end_date")
@@ -31,14 +32,17 @@ print(f"window [{START}, {END})")
 # COMMAND ----------
 
 # Each file is one statement (the backfill runner, scripts/landing_page_scoreboard.py, runs the same files).
-for name in ("funnel.sql", "alerts.sql"):
+# host_state.sql is the works side, one snapshot "as of" yesterday (~1 min).
+yesterday = (END - timedelta(days=1)).isoformat()
+for name, start, end in (("funnel.sql", START.isoformat(), END.isoformat()),
+                         ("alerts.sql", START.isoformat(), END.isoformat()),
+                         ("host_state.sql", yesterday, END.isoformat())):
     t0 = datetime.now()
-    spark.sql(open(os.path.join(SQL_DIR, name)).read().format(start=START.isoformat(), end=END.isoformat()))
+    spark.sql(open(os.path.join(SQL_DIR, name)).read().format(start=start, end=end))
     print(f"{name}: {(datetime.now() - t0).seconds}s")
 
 # COMMAND ----------
 
-yesterday = (END - timedelta(days=1)).isoformat()
 rows = spark.sql(f"""
   SELECT count(*) n, coalesce(sum(fetches), 0) fetches, count(DISTINCT host) hosts
   FROM openalex.monitoring.landing_page_funnel WHERE fetch_date = DATE'{yesterday}'
