@@ -21,6 +21,8 @@ resources:
               queue_table: "openalex.taxicab.rescrape_queue"
               max_per_host: "10"
               doi_host_key: "host"
+              # oxjob #1790: TaxiCab Campaign sets a campaign's own Zyte API key name
+              zyte_key: ""
           job_cluster_key: Taxicab_Rescrape_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_Rescrape_job_cluster
@@ -62,3 +64,5 @@ resources:
           default: "10"
         - name: doi_host_key
           default: "host"
+        - name: zyte_key
+          default: ""
