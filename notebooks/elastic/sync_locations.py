@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
-    "table_name": "openalex.works.locations_mapped",
+    "table_name": "openalex.works.locations_mapped_curated",
     "index_name": "locations-v3"
 }
 
@@ -290,6 +290,18 @@ WHERE NOT (c.doi <=> s.doi)""")
     else:
         non_ra_changed = spark.table(NON_RA_DOI_CURRENT).select("id")
     print(f"Non-RA doi changes since the last clean sync: {non_ra_changed.count():,}")
+    # oxjob #1170: a curation changes a row of the curated view without re-stamping it, so the locations whose
+    # curations were added or deleted since the watermark come from the change feed of location_curations. If the
+    # feed doesn't reach back that far (new table), re-send every curated location: a few thousand rows.
+    try:
+        curation_changed = spark.sql(f"""SELECT DISTINCT location_id AS id
+FROM table_changes('openalex.works.location_curations', TIMESTAMP'{sync_since.strftime("%Y-%m-%d %H:%M:%S")}')""")
+        curation_changed.count()
+    except Exception as e:
+        print(f"Change feed unavailable from {sync_since} ({type(e).__name__}); re-sending every curated location")
+        curation_changed = spark.sql("SELECT DISTINCT location_id AS id FROM openalex.works.location_curations")
+    print(f"Locations with curation changes since the last clean sync: {curation_changed.count():,}")
+    non_ra_changed = non_ra_changed.unionByName(curation_changed).distinct()
     stamped = F.coalesce(
         F.col("openalex_updated_dt") >= F.lit(sync_since.strftime("%Y-%m-%d %H:%M:%S")).cast("timestamp"), F.lit(False))
     df = df.filter(stamped).unionByName(df.filter(~stamped).join(non_ra_changed, "id", "left_semi"))
