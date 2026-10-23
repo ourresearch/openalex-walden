@@ -525,8 +525,8 @@ def tick(c):
     spent, total = cycle_spend(c), total_zyte_estimate(s)
     budget = min(c["cap_usd"] - spent, s["zyte_total_cap_usd"] - total)
     print(f"[{c['campaign']}] cycle spend ~${spent:,.2f} of ${c['cap_usd']:,.0f}; all Zyte ~${total:,.0f} of ${s['zyte_total_cap_usd']:,.0f}")
-    if budget <= 0:
-        which = "campaign cap" if c["cap_usd"] - spent <= 0 else "total Zyte cap"
+    if budget < 0.01:
+        which = "campaign cap" if c["cap_usd"] - spent < 0.01 else "total Zyte cap"
         set_status(c, "paused", f"{which} reached (campaign ~${spent:,.2f}, all Zyte ~${total:,.0f})")
         write_spend(c)
         return
