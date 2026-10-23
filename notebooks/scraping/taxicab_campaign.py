@@ -20,7 +20,7 @@
 # MAGIC
 # MAGIC **Stop rule** (a stopped host gets no more URLs from this campaign), judged after every wave:
 # MAGIC - *walled* (#1105's rule): blocked fetches (soft block, 202, 403, 429, fbi.gov redirect) ≥ 20 and
-# MAGIC   above max(2%, the host's 7-day blocked share in `taxicab_results` + 2 points);
+# MAGIC   above max(2%, the host's 7-day blocked share in the scoreboard funnel + 2 points);
 # MAGIC - *nothing back*: under `min_useful_share` (50%) of 100+ fetches came back useful (stored page) or
 # MAGIC   as a clear answer (404/410);
 # MAGIC - *too expensive*: estimated Zyte $ per 1,000 useful-or-answer fetches over `max_usd_per_1k_useful`
@@ -31,7 +31,8 @@
 # MAGIC **Dollar caps, two layers.** (a) Zyte enforces each campaign key's own spending limit for the
 # MAGIC billing cycle (Zyte dashboard → Spending Alerts → API key, "Pause processing requests"), so a campaign
 # MAGIC can never spend the main key's money or stop new-content scraping. (b) This guard estimates spend
-# MAGIC (fetches × per-domain price from `zyte_prices`, × `cost_margin`) and pauses before Zyte's limit:
+# MAGIC (fetches × per-host price from `openalex.monitoring.landing_page_zyte_prices`, × `cost_margin`)
+# MAGIC and pauses before Zyte's limit:
 # MAGIC it pauses the campaign at `cap_usd` for the billing cycle (from the 2nd of the month), trims a wave
 # MAGIC to fit what is left, and pauses everything if all campaigns plus steady use would pass
 # MAGIC `zyte_total_cap_usd` ($9K; Zyte pauses ALL usage at $12K). Spend per campaign per cycle is written
@@ -59,6 +60,10 @@ from pyspark.sql import functions as F
 
 RESCRAPE_JOB_ID = 866093356324381   # TaxiCab Rescrape
 DB = "openalex.taxicab"
+# Shared with the landing-page scoreboard (#1789) so campaign numbers join its funnel:
+HOST_FN = "openalex.monitoring.landing_page_host"    # (url, resolved_url, native_id_namespace, native_id)
+PRICES = "openalex.monitoring.landing_page_zyte_prices"
+FUNNEL = "openalex.monitoring.landing_page_funnel"
 BREAKER = f"{DB}.host_breaker"      # #1712's shared per-host breaker; skipped if absent
 
 DEFAULTS = {
@@ -76,9 +81,9 @@ DEFAULTS = {
     "max_usd_per_1k_useful": 15.0,
     "allow_hosts": [],
     "campaign_fail_share": 0.9,
-    # $ per 1,000 fetches for a domain missing from zyte_prices: #1290 measured the bronze long tail
-    # at $0.19-0.29 per 1,000 works (EXPLORE § 1)
-    "default_usd_per_1k": 0.30,
+    # $ per 1,000 fetches for a host missing from the price table; None = the table's '*' row
+    # ($40 per 1M requests, repositories and small journals, #1290). Hosts priced above that are listed.
+    "default_usd_per_1k": None,
     "cost_margin": 1.25,             # re-asks, recipes with extra calls, price drift
     "zyte_total_cap_usd": 9000,
     "steady_usd_per_day": 100,       # non-campaign Zyte use; observed $51-80/day in Oct 2026
@@ -123,7 +128,7 @@ q(f"""CREATE TABLE IF NOT EXISTS {DB}.campaigns (
   campaign STRING, source_table STRING, zyte_key STRING, cap_usd DOUBLE, status STRING,
   status_reason STRING, settings STRING, created_at TIMESTAMP, updated_at TIMESTAMP) USING DELTA""")
 q(f"""CREATE TABLE IF NOT EXISTS {DB}.campaign_urls (
-  campaign STRING, url STRING, native_id STRING, native_id_namespace STRING, host STRING, domain STRING,
+  campaign STRING, url STRING, native_id STRING, native_id_namespace STRING, host STRING,
   priority INT, shuffle DOUBLE, wave INT, attempts INT) USING DELTA""")
 q(f"""CREATE TABLE IF NOT EXISTS {DB}.campaign_hosts (
   campaign STRING, host STRING, state STRING, reason STRING, updated_at TIMESTAMP) USING DELTA""")
@@ -131,30 +136,14 @@ q(f"""CREATE TABLE IF NOT EXISTS {DB}.campaign_waves (
   campaign STRING, wave INT, run_id BIGINT, status STRING, queued INT, est_usd DOUBLE,
   started_at TIMESTAMP, ended_at TIMESTAMP, landed INT, note STRING) USING DELTA""")
 q(f"""CREATE TABLE IF NOT EXISTS {DB}.campaign_results (
-  campaign STRING, wave INT, url STRING, host STRING, domain STRING, taxicab_id STRING, status_code INT,
+  campaign STRING, wave INT, url STRING, host STRING, taxicab_id STRING, status_code INT,
   resolved_url STRING, content_type STRING, is_soft_block BOOLEAN, error STRING, processed_date TIMESTAMP,
   outcome STRING, est_usd DOUBLE) USING DELTA""")
 q(f"""CREATE TABLE IF NOT EXISTS {DB}.campaign_spend (
   campaign STRING, zyte_key STRING, cycle_start TIMESTAMP, est_usd DOUBLE, cap_usd DOUBLE, fetches BIGINT,
   useful BIGINT, status STRING, updated_at TIMESTAMP) USING DELTA""")
-q(f"""CREATE TABLE IF NOT EXISTS {DB}.zyte_prices (
-  domain STRING, usd_per_1k_fetches DOUBLE, source STRING, measured_through DATE) USING DELTA""")
 
 # COMMAND ----------
-
-def host_col(url_col):
-    return F.lower(F.expr(f"try_parse_url({url_col}, 'HOST')"))
-
-
-def domain_col(host):
-    """Registered domain, which is what Zyte prices by: last two labels, three under a ccTLD with a
-    short second level (co.uk, ac.jp, go.jp)."""
-    d2 = F.regexp_extract(host, r"([^.]+\.[^.]+)$", 1)
-    d3 = F.regexp_extract(host, r"([^.]+\.[^.]+\.[^.]+)$", 1)
-    tld = F.regexp_extract(host, r"\.([^.]+)$", 1)
-    sld = F.regexp_extract(host, r"([^.]+)\.[^.]+$", 1)
-    return F.when((F.length(tld) == 2) & (F.length(sld) <= 3) & (d3 != ""), d3).otherwise(d2)
-
 
 # Outcome of one taxicab_results row (columns unqualified)
 BLOCKED = ("(coalesce(is_soft_block, false) OR status_code IN (202, 403, 429) "
@@ -168,7 +157,7 @@ OUTCOME = f"""CASE
   ELSE 'failed' END"""
 # Zyte doesn't bill bans; an unknown campaign key is refused before any Zyte call
 FREE = "(outcome = 'ban' OR coalesce(error, '') LIKE '%unknown zyte_key%')"
-RESULT_COLS = ["campaign", "wave", "url", "host", "domain", "taxicab_id", "status_code", "resolved_url",
+RESULT_COLS = ["campaign", "wave", "url", "host", "taxicab_id", "status_code", "resolved_url",
                "content_type", "is_soft_block", "error", "processed_date", "outcome", "est_usd"]
 
 
@@ -189,8 +178,15 @@ def set_status(c, status, reason):
     print(f"[{c['campaign']}] status -> {status}: {reason}")
 
 
-def prices():
-    return spark.table(f"{DB}.zyte_prices").select("domain", "usd_per_1k_fetches")
+def prices(s):
+    """(host, usd_per_1k) from the scoreboard's price table, newest price per host, and the default."""
+    p = q(f"""SELECT price_key AS host, usd_per_million_requests * requests_per_fetch / 1000 AS usd_per_1k
+              FROM (SELECT *, row_number() OVER (PARTITION BY price_key ORDER BY valid_from DESC) AS rn
+                    FROM {PRICES} WHERE valid_from <= current_date()) WHERE rn = 1""")
+    default = s["default_usd_per_1k"]
+    if default is None:
+        default = p.filter("host = '*'").collect()[0].usd_per_1k
+    return p.filter("host <> '*'"), float(default)
 
 # COMMAND ----------
 
@@ -204,10 +200,10 @@ def load_urls(c):
         src.select("url", "native_id", "native_id_namespace", priority.alias("priority"))
         .filter(F.col("url").isNotNull())
         .dropDuplicates(["url"])
-        .withColumn("host", host_col("url"))
+        # registered domain (Zyte prices by it); a doi.org link gets its DOI prefix's publisher
+        .withColumn("host", F.expr(f"{HOST_FN}(url, NULL, native_id_namespace, native_id)"))
         .filter(F.col("host").isNotNull() & (F.col("host") != "localhost") & ~F.col("host").rlike(r"^[0-9.\[\]:]+$"))
-        .withColumn("domain", domain_col(F.col("host")))
-        .select(F.lit(c["campaign"]).alias("campaign"), "url", "native_id", "native_id_namespace", "host", "domain",
+        .select(F.lit(c["campaign"]).alias("campaign"), "url", "native_id", "native_id_namespace", "host",
                 F.coalesce("priority", F.lit(0)).alias("priority"), F.rand().alias("shuffle"),
                 F.lit(None).cast("int").alias("wave"), F.lit(0).alias("attempts"))
     )
@@ -226,18 +222,16 @@ def wave_rows(c, wv, since):
         .filter("rn = 1").drop("rn")
     )
     u = (spark.table(f"{DB}.campaign_urls").filter((F.col("campaign") == c["campaign"]) & (F.col("wave") == wv))
-         .select("campaign", "wave", "url", "host", F.col("domain").alias("url_domain")))
+         .select("campaign", "wave", "url", "host"))
     t = latest.select("url", "taxicab_id", "status_code", "resolved_url", "content_type", "is_soft_block", "error",
                       "processed_date")
-    # doi.org links are resolved by the harvester for free; Zyte bills the publisher's domain
-    price_domain = F.when(F.col("url_domain") == "doi.org", domain_col(host_col("resolved_url"))).otherwise(F.col("url_domain"))
+    price, default = prices(s)
     return (
         u.join(t, "url", "left")
-        .withColumn("domain", price_domain)
         .withColumn("outcome", F.expr(OUTCOME))
-        .join(prices(), "domain", "left")
+        .join(price, "host", "left")
         .withColumn("est_usd", F.when(F.col("outcome").isNull() | F.expr(FREE), F.lit(0.0))
-                    .otherwise(F.coalesce("usd_per_1k_fetches", F.lit(s["default_usd_per_1k"])) / 1000))
+                    .otherwise(F.coalesce("usd_per_1k", F.lit(default)) / 1000))
         .select(*RESULT_COLS)
     )
 
@@ -310,14 +304,11 @@ def judge_hosts(c, wv):
     s = settings(c)
     camp = sq(c["campaign"])
     hosts_in_wave = f"SELECT DISTINCT host FROM {DB}.campaign_results WHERE campaign = {camp} AND wave = {wv}"
-    baseline = (
-        spark.table(f"{DB}.taxicab_results")
-        .filter(F.col("processed_date") >= F.lit(now() - timedelta(days=7)))
-        .withColumn("host", host_col("url"))
-        .join(spark.sql(hosts_in_wave), "host", "left_semi")
-        .groupBy("host").agg(F.avg(F.expr(BLOCKED).cast("double")).alias("b7"))
-    )
-    baseline.createOrReplaceTempView("baseline")
+    # 7-day blocked share of the host's first attempts, from the scoreboard (#1789)
+    q(f"""CREATE OR REPLACE TEMP VIEW baseline AS
+          SELECT host, sum(fail_soft_block + fail_403 + fail_429) / sum(fetches) AS b7
+          FROM {FUNNEL} WHERE attempt = 'first' AND fetch_date >= date_sub(current_date(), 7)
+            AND host IN ({hosts_in_wave}) GROUP BY host""")
     stats = q(f"""
       WITH wv AS (
         SELECT host, count(*) AS n, sum(CASE WHEN outcome = 'blocked' THEN 1 ELSE 0 END) AS blocked
@@ -391,12 +382,14 @@ def plan_wave(c, budget_usd):
     """Next wave: per-host quotas by pilot stage, round-robin by host, trimmed to the budget."""
     s = settings(c)
     camp = sq(c["campaign"])
+    prices(s)[0].createOrReplaceTempView("host_prices")
+    default = prices(s)[1]
     skip = breaker_hosts()
     skip_sql = f"AND u.host NOT IN ({', '.join(sq(h) for h in skip)})" if skip else ""
     planned = q(f"""
       WITH done AS (SELECT host, count(*) AS n FROM {DB}.campaign_results WHERE campaign = {camp} GROUP BY host),
       pool AS (
-        SELECT u.url, u.native_id, u.native_id_namespace, u.host, u.domain, coalesce(h.state, 'pilot1') AS state,
+        SELECT u.url, u.native_id, u.native_id_namespace, u.host, coalesce(h.state, 'pilot1') AS state,
                coalesce(d.n, 0) AS done_n,
                row_number() OVER (PARTITION BY u.host ORDER BY u.priority DESC, u.shuffle) AS rn
         FROM {DB}.campaign_urls u
@@ -409,8 +402,8 @@ def plan_wave(c, budget_usd):
                              ELSE {s['host_wave_cap']} END AS q
         FROM pool),
       picked AS (
-        SELECT quota.*, coalesce(p.usd_per_1k_fetches, {s['default_usd_per_1k']}) / 1000 * {s['cost_margin']} AS est_usd
-        FROM quota LEFT JOIN {DB}.zyte_prices p ON p.domain = quota.domain
+        SELECT quota.*, coalesce(p.usd_per_1k, {default}) / 1000 * {s['cost_margin']} AS est_usd
+        FROM quota LEFT JOIN host_prices p ON p.host = quota.host
         WHERE rn <= q ORDER BY rn, host LIMIT {int(s['wave_size'])}),
       costed AS (
         SELECT *, sum(est_usd) OVER (ORDER BY rn, host ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cum_usd
@@ -441,7 +434,8 @@ def launch_wave(c, plan):
           current_timestamp(), NULL, NULL, {sq(f'{plan.hosts} hosts')})""")
     params = {"queue_table": qt, "rescrape_queue_only": "true", "url_limit": str(plan.n + 100),
               "harvest_workers": str(s["harvest_workers"]), "max_per_host": str(s["max_per_host"]),
-              "lookback_days": "3", "doi_host_key": "host"}
+              # prefix: doi.org links are capped per DOI prefix, not unlimited
+              "lookback_days": "3", "doi_host_key": "prefix"}
     if c["zyte_key"]:
         params["zyte_key"] = c["zyte_key"]
     try:
