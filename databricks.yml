@@ -62,6 +62,7 @@ include:
   - jobs/taxicab_repos.yaml
   - jobs/taxicab_landing_page_pdfs.yaml
   - jobs/taxicab_rescrape.yaml
+  - jobs/taxicab_campaign.yaml
   - jobs/parseland_reparse.yaml
   - jobs/parse_pdfs.yaml
   - jobs/reparse_campaign_stager.yaml
