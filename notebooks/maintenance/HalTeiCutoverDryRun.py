@@ -70,8 +70,10 @@ print(f"hal_tei_parsed: {n_parsed} rows, {n_err} with a parse error or no metada
 # COMMAND ----------
 
 src = spark.table(f"{OUT}_hal_tei_parsed").withColumn("_commit_version", F.lit(0).cast("long"))
+# {} instead of read_endpoint_hosts(spark): the endpoint registry only re-keys placeholder hosts (ojs.pkp.sfu.ca,
+# localhost, ...), never oai:HAL:, and a user without the openalex_sources grant can't read it.
 parsed_repo = repo["parse_repo_records"](
-    src, repo["read_endpoint_hosts"](spark), dedupe=False,
+    src, {}, dedupe=False,
     abstract=F.col("tei_abstract"), issue=F.col("tei_issue"), volume=F.col("tei_volume"),
     first_page=F.col("tei_first_page"), last_page=F.col("tei_last_page"),
 )
