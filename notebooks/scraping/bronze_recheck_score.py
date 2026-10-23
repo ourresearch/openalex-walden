@@ -68,7 +68,7 @@ RULES = {
     "sciencedirect": [(SD_ABS, None)],
     "nature": [(NATURE, None)],
     "tandf": [("AT_PDF_URL", None)],
-    "sage": [(r"^https?://journals\.sagepub\.com/doi/abs/", r"Restricted access")],
+    "sage": [(r"^https?://journals\.sagepub\.com/doi/abs/", r'class="meta-panel__access[^"]*"[^>]*>(?:\s|<[^>]+>)*Restricted access')],  # the article's own badge, not a teaser
     "aha": [(r"^https?://www\.ahajournals\.org/doi/abs/", r"get full access to this article")],
     "karger": [(r"^https?://(www\.)?karger\.com/[a-z]+/article-abstract/", r"Pay-Per-View|BUY THIS")],
     "degruyter": [(r"^https?://www\.degruyter(brill)?\.com/unauthorizedDownload/", None)],
@@ -81,6 +81,12 @@ RULES = {
     "ieee": [(r"^https?://ieeexplore\.ieee\.org/Xplore/login\.jsp\?.*authDecision=-203", None)],
     "acm": [(r"^https?://dl\.acm\.org/doi/abs/", r"Get Access")],
 }
+# Closed side only (as #1105 treated IOP): the harvester got the PDF AND the paywall page for the same URL
+# (share of re-fetched paywall-shape URLs that also served a PDF, Oct 2025-Oct 2026: Sage 28%, IUCr 21%,
+# Thieme 7%, Karger 6%, De Gruyter 4/8, IEEE 10/16). The paywall page offers a purchase or carries a
+# "Restricted access" article badge, so the article isn't free to the public and the PDF came through access
+# a reader doesn't have (#1291). Here a not_open in the pass wins over any PDF fetch.
+CLOSED_SIDE_ONLY = {"sage", "iucr", "thieme", "karger", "degruyter", "ieee"}
 NO_404_CLOSE = {"elsevier_doiorg"}  # a doi.org 404 says the DOI didn't resolve, not that the file is gone
 
 CHROME_STUB = re.compile(r"chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai|type=\"application/pdf\"", re.I)
@@ -253,12 +259,14 @@ if dry_run:
 
 res.write.mode("append").saveAsTable(results_table)
 
-# Newest verdict per URL decides; only cleared groups reach pdf_removed (the commit point).
+# Newest verdict per URL decides (closed-side-only groups: any not_open); only cleared groups reach pdf_removed.
 spark.sql(f"""
 MERGE INTO {removed_table} t
 USING (
   SELECT pdf_url, doi, grp, resolved_url, status_code, reason, processed_date
-  FROM (SELECT *, row_number() OVER (PARTITION BY pdf_url ORDER BY processed_date DESC) AS rn
+  FROM (SELECT *, row_number() OVER (PARTITION BY pdf_url ORDER BY
+                 (verdict = 'not_open' AND grp IN ({",".join("'" + g + "'" for g in CLOSED_SIDE_ONLY)})) DESC,
+                 processed_date DESC) AS rn
         FROM {results_table} WHERE pass_id = '{pass_id}' AND verdict IN ('open', 'not_open'))
   WHERE rn = 1 AND verdict = 'not_open' AND cleared
 ) s ON t.pdf_url = s.pdf_url
