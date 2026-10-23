@@ -83,4 +83,9 @@ src = spark.table(f"{OUT}_hal_tei_parsed").withColumn("_commit_version", F.lit(0
 enriched = repo["enrich_hal_tei"](repo["parse_hal_tei_records"](src))  # the pipeline's own two steps
 enriched.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_repo_enriched_hal_tei")
 print("repo_enriched_hal_tei:", spark.table(f"{OUT}_repo_enriched_hal_tei").count(), "rows")
-print("_sequence type:", spark.table(f"{OUT}_repo_enriched_hal_tei").schema["_sequence"].dataType.simpleString())
+_seq = enriched.schema["_sequence"].dataType
+print("_sequence type:", _seq.json())
+# repo_works' existing flow carries an all-nullable struct<updated_date, col2..col5>; DLT refuses a second flow whose
+# sequence type differs in anything, nullability included.
+assert [f.name for f in _seq.fields] == ["updated_date", "col2", "col3", "col4", "col5"], _seq.json()
+assert all(f.nullable for f in _seq.fields), _seq.json()
