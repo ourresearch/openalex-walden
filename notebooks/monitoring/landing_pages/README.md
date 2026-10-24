@@ -31,7 +31,8 @@ domain's price (refresh from the Zyte dashboard stats API; recipe in #1290 EXPLO
 
 `useful_rate_drop`: a host's first-attempt useful rate more than 20 points under the median of its 7 previous daily
 rates, on 200+ fetches; `confirmed` on the second day running or past 40 points; pages when confirmed on one of the
-50 largest DOI hosts. `many_hosts_drop`: 5+ of those 50 trip the same day (harvester, Zyte or Parseland trouble);
+50 largest DOI hosts, or on a repository (pmh) host with 3,000+ fetches that day and a drop of 40+ points (added
+24 Oct 2026: ~2-3 more incidents a week, all real in the 1 Sep-23 Oct backfill). `many_hosts_drop`: 5+ of those 50 trip the same day (harvester, Zyte or Parseland trouble);
 always pages. Every threshold sits in the `params` block at the top of `alerts.sql`. Backfill 1 Sep-22 Oct 2026:
 ~4 incidents a week, nearly all real (Zyte 400 bans, timeouts).
 New paging rows become a Sentry event (project `databricks-jobs`, one issue per host + rule) and a wake-up on oxjob #1789, through a desk task (`~/plexus/tasks.d/landing-page-alarms.sh`, every 30 min).

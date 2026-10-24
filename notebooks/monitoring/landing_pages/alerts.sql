@@ -10,7 +10,10 @@
 --   fetches. A median, not a pooled rate: campaign days of 100K+ fetches would otherwise set the baseline alone
 --   (springer.com, 16-17 Sep 2026).
 -- severity confirmed = it also tripped the day before, or the drop is over `confirm_line`. page = confirmed on one
---   of the `top_n` largest DOI hosts by first-attempt fetches over the 30 days before.
+--   of the `top_n` largest DOI hosts by first-attempt fetches over the 30 days before, or confirmed on a repository
+--   (pmh) host with >= `repo_day_min` fetches that day and a drop of >= `repo_line`. The repository bar would have
+--   opened ~18 incidents in 1 Sep-23 Oct 2026, all real (Zyte 400 bans, shell pages, 5xx); without it Leiden
+--   (95% -> 17%) and luke.fi (95% -> 0%) on 20-22 Oct 2026 reached nobody.
 -- many_hosts_drop: `many_hosts` or more of those hosts trip the same day (any severity): a harvester, Zyte or
 --   Parseland problem rather than one publisher. Always pages. (A corpus-wide rate was tried first: one big campaign
 --   on a failing host, Cairn 17-21 Sep 2026, dragged it under the line on its own.)
@@ -18,7 +21,7 @@ INSERT INTO openalex.monitoring.landing_page_alerts
 REPLACE WHERE alert_date >= DATE'{start}' AND alert_date < DATE'{end}'
 WITH params AS (
   SELECT 0.20 drop_line, 0.40 confirm_line, 200 day_min, 50 baseline_day_min, 3 baseline_days_min, 50 top_n,
-         5 many_hosts
+         5 many_hosts, 3000 repo_day_min, 0.40 repo_line
 ),
 hosts AS (
   SELECT fetch_date, host, id_namespace, sum(fetches) fetches, sum(stored) stored, sum(useful) / sum(fetches) rate,
@@ -60,7 +63,9 @@ trips AS (
 x AS (
   SELECT t.*,
     (t.baseline_rate - t.rate > (SELECT confirm_line FROM params) OR y.host IS NOT NULL) confirmed,
-    (r.host IS NOT NULL AND t.id_namespace = 'doi') top
+    (r.host IS NOT NULL AND t.id_namespace = 'doi') top,
+    (t.id_namespace = 'pmh' AND t.fetches >= (SELECT repo_day_min FROM params)
+     AND t.baseline_rate - t.rate >= (SELECT repo_line FROM params)) big_repo
   FROM trips t
   LEFT JOIN trips y ON y.host = t.host AND y.id_namespace = t.id_namespace AND y.fetch_date = t.fetch_date - INTERVAL 1 DAY
   LEFT JOIN ranked r ON r.host = t.host AND r.fetch_date = t.fetch_date
@@ -68,7 +73,7 @@ x AS (
 )
 SELECT fetch_date alert_date, host, id_namespace, 'useful_rate_drop' rule,
   CASE WHEN confirmed THEN 'confirmed' ELSE 'watch' END severity,
-  confirmed AND top page,
+  confirmed AND (top OR big_repo) page,
   fetches, rate useful_rate, baseline_rate, CAST(baseline_days AS INT) baseline_days,
   round(100 * (baseline_rate - rate), 1) drop_points, stored / fetches stored_rate,
   concat(top_fail.k, ' ', top_fail.n) top_failure,
