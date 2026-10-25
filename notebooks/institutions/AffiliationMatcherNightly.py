@@ -65,6 +65,7 @@ dbutils.widgets.text("shard", "", "with queue_table: k/n answers only the string
 dbutils.widgets.text("target_table", "", "with queue_table: where answers go (never the answers table); strings already there are skipped (restart-safe)")
 dbutils.widgets.text("vote_ids", "legacy", "ES neighbour votes: final = each neighbour's institution_ids_final (live answers); legacy = pre-swap ids from vote_ids_table for the strings the swap changed (#1386 charter NOW row 7)")
 dbutils.widgets.text("vote_ids_table", "openalex.institutions.affiliation_matcher_legacy_votes", "with vote_ids=legacy: raw_affiliation_string -> institution_ids voted instead")
+dbutils.widgets.text("nightly_neighbour_votes", "live", "with vote_ids=legacy: live = a neighbour the nightly itself answered (created after the swap, no pre-swap ids) votes its live ids; none = it votes nothing, so every vote comes from the pre-swap system (#1386 charter row 5: 16% of the vote weight new strings see by 25 Oct)")
 dbutils.widgets.text("cards_exclude_table", "", "simulation only (#1393): drop these institutions (column institution_id) from the cards, e.g. to rebuild the world before a ROR dump")
 dbutils.widgets.text("sweep_ids_table", "", "with queue_table: new-card sweep (#1393) — institutions being swept (column institution_id); a string none of them reaches in lex2/dense is written with decider 'no_swept_candidate' and not matched further")
 
@@ -79,6 +80,8 @@ CARDS_MODE = dbutils.widgets.get("cards").strip().lower()
 VOTE_IDS = dbutils.widgets.get("vote_ids").strip().lower()
 VOTE_IDS_TABLE = dbutils.widgets.get("vote_ids_table").strip()
 assert VOTE_IDS in ("final", "legacy"), VOTE_IDS
+NIGHTLY_NB_VOTES = dbutils.widgets.get("nightly_neighbour_votes").strip().lower()
+assert NIGHTLY_NB_VOTES in ("live", "none"), NIGHTLY_NB_VOTES
 USE_JEV = dbutils.widgets.get("jev").strip().lower() == "true"
 DECIDER_MODE = dbutils.widgets.get("decider_mode").strip().lower()
 assert DECIDER_MODE in ("student", "no_model"), DECIDER_MODE
@@ -189,7 +192,7 @@ if DECIDER_MODE == "student":
     student = st.load(f"{ART}/student_me5b_full", base_dir=f"{ART}/base_multilingual-e5-base")
     log(f"student loaded on {student[2]}")
 chooser_sha = hashlib.sha256(open(f"{CHOOSERS}/{JEV_CHOOSER}.json", "rb").read() + open(f"{CHOOSERS}/{FIRST}.json", "rb").read()).hexdigest()[:10]
-MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "") + ("/livecounts" if CARDS_MODE == "live" and dbutils.widgets.get("live_works_counts").strip().lower() == "live" else "") + ("/legacyvotes" if VOTE_IDS == "legacy" else "")
+MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "") + ("/livecounts" if CARDS_MODE == "live" and dbutils.widgets.get("live_works_counts").strip().lower() == "live" else "") + ("/legacyvotes" if VOTE_IDS == "legacy" else "") + ("-nonightly" if VOTE_IDS == "legacy" and NIGHTLY_NB_VOTES == "none" else "")
 log(f"index: {len(ix.inst):,} institutions, {len(ix.variants):,} name variants; matcher_version {MATCHER_VERSION}")
 
 names = nm.names_for_dense(ix)
@@ -234,7 +237,18 @@ def legacy_ids_of(names):
     df = spark.createDataFrame([(n,) for n in names], "raw_affiliation_string STRING")
     rows = spark.table(VOTE_IDS_TABLE).join(F.broadcast(df), "raw_affiliation_string").collect()
     out = {r.raw_affiliation_string: [int(i) for i in (r.institution_ids or [])] for r in rows}
-    log(f"  legacy votes: {len(out):,} of {len(names):,} neighbour strings changed at the swap ({time.time() - t:.0f}s)")
+    n_legacy, n_quiet = len(out), 0
+    if NIGHTLY_NB_VOTES == "none" and spark.catalog.tableExists(ANSWERS):
+        # neighbours with no pre-swap answer (answered by this job since the swap) vote nothing: their live ids are the
+        # matcher's own past answers, which echo its errors (#1386 charter row 5)
+        quiet = (spark.table(ANSWERS).where("tier = 'nightly'").select("raw_affiliation_string")
+                 .join(F.broadcast(df), "raw_affiliation_string").collect())
+        for r in quiet:
+            if r.raw_affiliation_string not in out:
+                out[r.raw_affiliation_string] = []
+                n_quiet += 1
+    log(f"  legacy votes: {n_legacy:,} of {len(names):,} neighbour strings changed at the swap; "
+        f"{n_quiet:,} answered by the nightly vote nothing ({time.time() - t:.0f}s)")
     return out
 
 
