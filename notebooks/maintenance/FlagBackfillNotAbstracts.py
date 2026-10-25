@@ -59,36 +59,32 @@ print(f"filter {FILTER_COMMIT}: {len(SRC):,} bytes of code, {sum(1 for l in TSV.
 
 # COMMAND ----------
 
-_state = {}
+def _make_reason(src, tsv):
+    """parseland-lib's not_abstract module, loaded from the pinned source, with its list from tsv.
+    Returns reason(text): None for an abstract, else 'list' | 'wording' | 'template' | 'empty'."""
+    ns = {"__name__": "not_abstract", "__file__": "not_abstract.py"}
+    exec(compile(src, "not_abstract.py", "exec"), ns)
+    known = frozenset(ns["key"](line.split("\t")[-1]) for line in tsv.splitlines() if line and not line.startswith("#"))
+    ns["_known"] = lambda: known  # the module reads data/not_abstracts.tsv next to itself; same lines
+
+    def reason(text):
+        if not ns["is_not_abstract"](text):
+            return None
+        plain = ns["_plain"](text)
+        k = ns["_key_of"](plain)
+        if not k:
+            return "empty"
+        if k in known:
+            return "list"
+        if len(k) <= 200 and ns["_KEY_RE"].fullmatch(k):
+            return "wording"
+        return "template"
+
+    return reason
 
 
-def _checker():
-    """parseland-lib's not_abstract module, loaded from the pinned source, with its list from TSV."""
-    if "reason" not in _state:
-        ns = {"__name__": "not_abstract", "__file__": "not_abstract.py"}
-        exec(compile(SRC, "not_abstract.py", "exec"), ns)
-        known = frozenset(ns["key"](line.split("\t")[-1]) for line in TSV.splitlines() if line and not line.startswith("#"))
-        ns["_known"] = lambda: known  # the module reads data/not_abstracts.tsv next to itself; same lines
-
-        def reason(text):
-            if not ns["is_not_abstract"](text):
-                return None
-            plain = ns["_plain"](text)
-            k = ns["_key_of"](plain)
-            if not k:
-                return "empty"
-            if k in known:
-                return "list"
-            if len(k) <= 200 and ns["_KEY_RE"].fullmatch(k):
-                return "wording"
-            return "template"
-
-        _state["reason"] = reason
-    return _state["reason"]
-
-
-# Driver self-test: the decisions the module's own tests pin.
-_r = _checker()
+# Driver self-test on its own instance: the UDF must not capture a loaded module (it doesn't pickle).
+_r = _make_reason(SRC, TSV)
 assert _r("No abstract available.") == "list"  # on the hand-read list, which is checked first
 assert _r("No abstract is available for this paper.") == "wording"
 assert _r("\u2014") == "empty"
@@ -96,11 +92,16 @@ assert _r("This datasheet on Mesorchis covers Identity.") == "template"
 assert _r("Established in 1964, the IUCN Red List of Threatened Species has evolved to become the world’s most "
           "comprehensive information source on the global conservation status of animal, fungi and plant species.") == "list"
 assert _r("We measured the effect of nitrogen on maize yield in 40 field trials and found a 12% increase.") is None
+del _r
+
+_worker = {}  # empty on the driver, so the UDF pickles only code and two strings; filled once per worker
 
 
 @F.pandas_udf(T.StringType())
 def not_abstract_reason(texts: pd.Series) -> pd.Series:
-    r = _checker()
+    r = _worker.get("reason")
+    if r is None:
+        r = _worker["reason"] = _make_reason(SRC, TSV)
     return texts.map(lambda t: r(t) if isinstance(t, str) else None)
 
 
