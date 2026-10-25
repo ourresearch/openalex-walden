@@ -22,6 +22,7 @@ Need a fold changed? Change `host_key.sql` here, never a private mapping in a la
 | `landing_page_host_state` | snapshot_date x host: Crossref works' landing-page age, fresh-and-useful, fields the page adds over Crossref | `host_state.sql`, nightly (as of yesterday) |
 | `landing_page_doi_prefixes` | DOI prefix -> dominant host | `doi_prefixes.sql`, by hand |
 | `landing_page_zyte_prices` | Zyte domain x valid_from | `zyte_prices.sql`, by hand, monthly |
+| `landing_page_alert_acks` | host x id_namespace x failure class, with owner job and end date | `alert_acks.sql`, by hand (`ddl`) |
 
 Useful = stored PDF, or stored HTML where Parseland found authors or an abstract. Judge lanes on `attempt = 'first'`:
 retry-lane and re-fetch rows fail by design. Zyte cost is an estimate: fetches x billed requests per fetch x the
@@ -35,13 +36,17 @@ rates, on 200+ fetches; `confirmed` on the second day running or past 40 points;
 24 Oct 2026: ~2-3 more incidents a week, all real in the 1 Sep-23 Oct backfill). `many_hosts_drop`: 5+ of those 50 trip the same day (harvester, Zyte or Parseland trouble);
 always pages. Every threshold sits in the `params` block at the top of `alerts.sql`. Backfill 1 Sep-22 Oct 2026:
 ~4 incidents a week, nearly all real (Zyte 400 bans, timeouts).
+**Acks** (`alert_acks.sql`, added 25 Oct 2026): a known failure class on one host, owned by a lane, until an end date.
+The row is still written; it does not page (or count toward `many_hosts_drop`) while the useful rate with that class
+left out holds up, so a Parseland break on an acked host still pages, and `top_failure` says whether the ack applied.
+First one: mdpi.com DOI soft blocks (Akamai challenge on ~48% of first fetches, ~100% most weekends), #1790, to 30 Nov.
 New paging rows become a Sentry event (project `databricks-jobs`, one issue per host + rule) and a wake-up on oxjob #1789, through a desk task (`~/plexus/tasks.d/landing-page-alarms.sh`, every 30 min).
 
 ## Running it
 
 Nightly job `Landing Page Scoreboard` (`jobs/landing_page_scoreboard.yaml`, 13:00 UTC, last 3 days). By hand:
 
-    python3 scripts/landing_page_scoreboard.py ddl         # tables, functions, prices (idempotent)
+    python3 scripts/landing_page_scoreboard.py ddl         # tables, functions, prices, acks (idempotent)
     python3 scripts/landing_page_scoreboard.py prefixes    # rebuild the DOI-prefix fold (first setup: after ddl)
     python3 scripts/landing_page_scoreboard.py funnel --start 2026-08-01 --end 2026-10-24
     python3 scripts/landing_page_scoreboard.py alerts --start 2026-09-01 --end 2026-10-24

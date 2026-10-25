@@ -2,7 +2,7 @@
 """Run the landing-page scoreboard SQL from a laptop or desk (oxjob #1789): DDL once, backfills by hand.
 The nightly job runs the same SQL files from notebooks/monitoring/LandingPageScoreboard.py.
 
-    python3 scripts/landing_page_scoreboard.py ddl        # tables, host-key functions, Zyte prices (idempotent)
+    python3 scripts/landing_page_scoreboard.py ddl        # tables, host-key functions, Zyte prices, alarm acks (idempotent)
     python3 scripts/landing_page_scoreboard.py prefixes   # rebuild the DOI-prefix fold; then re-run funnel for 14+ days
     python3 scripts/landing_page_scoreboard.py funnel --start 2026-09-01 --end 2026-10-24 [--chunk-days 7]
     python3 scripts/landing_page_scoreboard.py alerts --start 2026-09-08 --end 2026-10-24
@@ -84,7 +84,7 @@ def main():
     ap.add_argument("--chunk-days", type=int, default=30, help="each funnel chunk rescans taxicab_results once")
     a = ap.parse_args()
     if a.what in ("ddl", "prefixes"):
-        for f in ("tables.sql", "host_key.sql", "zyte_prices.sql") if a.what == "ddl" else ("doi_prefixes.sql",):
+        for f in ("tables.sql", "host_key.sql", "zyte_prices.sql", "alert_acks.sql") if a.what == "ddl" else ("doi_prefixes.sql",):
             for s in sql_file(f):
                 run(s)
         return

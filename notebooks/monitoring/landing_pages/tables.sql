@@ -96,3 +96,15 @@ CREATE TABLE IF NOT EXISTS openalex.monitoring.landing_page_host_state (
 )
 CLUSTER BY (snapshot_date, host)
 COMMENT 'Landing-page scoreboard, works side (oxjob #1789): per host, how fresh Crossref works'' landing pages are and what they add over Crossref. Weekly. Written by notebooks/monitoring/landing_pages/host_state.sql.';
+
+CREATE TABLE IF NOT EXISTS openalex.monitoring.landing_page_alert_acks (
+  host STRING COMMENT 'landing_page_host',
+  id_namespace STRING COMMENT 'doi or pmh',
+  failure STRING COMMENT 'the known failure class, as top_failure names it: soft_block, 403, 429, 5xx, timeout, 400, 404, other, stored_but_not_useful',
+  owner_job STRING COMMENT 'oxjob that owns the fix, e.g. #1790',
+  reason STRING,
+  from_date DATE COMMENT 'first fetch day the ack covers',
+  until_date DATE COMMENT 'last fetch day the ack covers; the alarm re-arms after it',
+  created_at TIMESTAMP
+)
+COMMENT 'Landing-page scoreboard alarm acks (oxjob #1789): a known, owned failure on one host stops paging while the rest of its pages hold up. Rows live in notebooks/monitoring/landing_pages/alert_acks.sql (lps.sh ddl rewrites the table); read by alerts.sql.';
