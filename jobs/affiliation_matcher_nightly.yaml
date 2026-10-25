@@ -14,8 +14,9 @@ resources:
       timeout_seconds: 3000
       max_concurrent_runs: 1
       parameters:
+        # oxjob #1386 (25 Oct): 60, not 14, so a backfill spike waits instead of aging out (the queue is newest first)
         - name: since_days
-          default: "14"
+          default: "60"
         - name: max_strings
           default: "60000"
         - name: max_minutes

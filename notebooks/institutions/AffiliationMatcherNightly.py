@@ -13,7 +13,9 @@
 # MAGIC 89.6% exact on test v2; Jev on 18.6% of strings at b = 0.2 lifts it to 90.4%), or `no_model` = the no-Jev chooser (82.5%; Jev
 # MAGIC on 62.9% at b = 0.05 lifts it to ≈ 89.9% on test v1). A string the deadline cuts keeps its first-pass answer.
 # MAGIC
-# MAGIC Queue: lookup strings created in the last `since_days` days with no answers row. Does nothing until the corpus
+# MAGIC Queue: lookup strings created in the last `since_days` days with no answers row, newest first (oxjob #1386, 25 Oct:
+# MAGIC oldest-first ran ≈ 13 days behind after the October backfills and 943K strings aged out of a 14-day window; newest
+# MAGIC first, tonight's strings publish with the new matcher's answers the same night). Does nothing until the corpus
 # MAGIC answers are loaded (`scripts/affiliation_matcher_swap.py load`), so it can ship before the swap.
 # MAGIC
 # MAGIC Restart-safe: works in chunks of `chunk_strings`, each MERGEd (insert-only) before the next starts.
@@ -43,7 +45,7 @@ from utils.affiliation_matcher.decider import Features  # noqa: E402
 from utils.affiliation_matcher.retrieve import Index  # noqa: E402
 
 dbutils.widgets.text("answers_table", "openalex.institutions.affiliation_matcher_answers", "where answers go")
-dbutils.widgets.text("since_days", "14", "queue: lookup strings created in the last N days with no answer")
+dbutils.widgets.text("since_days", "60", "queue: lookup strings created in the last N days with no answer, newest first")
 dbutils.widgets.text("max_strings", "60000", "queue cap per run (a backlog drains over nights; the rest keep the legacy answer meanwhile)")
 dbutils.widgets.text("max_minutes", "26", "stop starting chunks after this many minutes: End 2 End has ≈ 37 min of slack including cluster start")
 dbutils.widgets.text("chunk_strings", "20000", "strings per chunk (one MERGE each)")
@@ -135,8 +137,10 @@ SELECT l.raw_affiliation_string AS s, to_json(l.model_response) AS mr
 FROM {LOOKUP} l
 {done_join}
 WHERE l.created_datetime >= current_timestamp() - INTERVAL {SINCE_DAYS} DAYS
+  -- older unanswered strings are the corpus run (oxjob 1385) skips: no works on 27 Sep (1.8M, about 95% still without works)
+  AND l.created_datetime >= TIMESTAMP '2026-09-27'
   AND l.raw_affiliation_string IS NOT NULL AND trim(l.raw_affiliation_string) <> ''
-ORDER BY l.created_datetime
+ORDER BY l.created_datetime DESC
 LIMIT {MAX_STRINGS}
 """).collect()
 strings = [r.s for r in queue]
