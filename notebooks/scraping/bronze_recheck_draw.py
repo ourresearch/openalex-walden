@@ -14,12 +14,16 @@
 # MAGIC   last saw) and a priority. The scorer reads it.
 # MAGIC * `source_table`: `url, native_id, native_id_namespace, priority`, the input of the **TaxiCab
 # MAGIC   Campaign** guard (#1790), which runs the fetches: per-host pilot, stop rule, #1712's host breaker,
-# MAGIC   its own Zyte key and a dollar cap. Start the campaign by hand once the guards are live:
+# MAGIC   its own Zyte key and a dollar cap. Start the campaign by hand, pilot only first: with
+# MAGIC   `host_wave_cap` 0 the guard runs each host's pilot (200, then up to 1,000 URLs) and then pauses
+# MAGIC   itself ("next wave doesn't fit"), so the pilot can be read before any full wave:
 # MAGIC   ```sql
 # MAGIC   INSERT INTO openalex.taxicab.campaigns (campaign, source_table, zyte_key, cap_usd, status, settings, created_at, updated_at)
-# MAGIC   VALUES ('bronze-2026-10', 'openalex.taxicab.bronze_recheck_urls', 'campaign-bronze', 300, 'active',
-# MAGIC           '{"host_wave_cap": 6000, "max_per_host": 20}', current_timestamp(), current_timestamp());
+# MAGIC   VALUES ('bronze-2026-10', 'openalex.taxicab.bronze_recheck_urls', 'campaign-bronze', 10, 'active',
+# MAGIC           '{"host_wave_cap": 0, "max_per_host": 20, "wave_size": 60000}', current_timestamp(), current_timestamp());
 # MAGIC   ```
+# MAGIC   Then the waves: `UPDATE openalex.taxicab.campaigns SET cap_usd = <pass price x 1.1>, status = 'active',
+# MAGIC   settings = '{"host_wave_cap": 9000, "max_per_host": 30, "wave_size": 60000}' WHERE campaign = 'bronze-2026-10'`.
 # MAGIC
 # MAGIC **Which URLs.** Bronze works whose only OA location is a journal's publisher PDF with no licence
 # MAGIC (#1105's cohort), with a DOI, on a register group in `groups`. A URL is re-fetched when taxicab never
