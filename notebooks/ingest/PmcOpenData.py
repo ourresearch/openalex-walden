@@ -217,8 +217,12 @@ for chunk_no in range(n_chunks):
     out = (part.repartition(max(1, n_part // ROWS_PER_TASK))
            .mapInPandas(read_partition, schema=ARTICLE_SCHEMA))
     out.write.mode("append").saveAsTable(ARTICLES)
-    stats = spark.sql(f"""SELECT count_if(error IS NULL) ok, count_if(error IS NOT NULL) failed FROM {ARTICLES}
-                          WHERE fetched_at >= timestamp'{time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(t - 5))}'""").first()
+    # exact: rows fetched since this chunk began for this chunk's own (key, etag)s
+    stats = (spark.table(ARTICLES)
+             .filter(F.col("fetched_at") >= F.lit(time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(t - 5))).cast("timestamp"))
+             .join(part.select("key", "etag"), ["key", "etag"], "left_semi")
+             .agg(F.count_if(F.col("error").isNull()).alias("ok"), F.count_if(F.col("error").isNotNull()).alias("failed"))
+             .first())
     ok, failed = int(stats.ok), int(stats.failed)
     total_ok += ok
     total_failed += failed
