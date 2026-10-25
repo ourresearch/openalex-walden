@@ -106,11 +106,16 @@ def strip_query(u):
     return re.sub(r"[?#].*$", "", u or "")
 
 
+# AT_PDF_URL only means something when the location's URL is a PDF link: some "pdf_url"s are abstract or reader pages
+# (T&F /doi/abs/, /doi/epdf/), where HTML is the normal answer whether or not the article is free (reader check 25 Oct).
+PDF_LIKE = r"(?i)(/pdf/|\.pdf($|[?#]))"
+
+
 def shape_matches(grp, pdf_url, resolved_url):
     """Index of the first matching rule for this group, or None."""
     for i, (shape, _) in enumerate(RULES.get(grp, [])):
         if shape == "AT_PDF_URL":
-            if not resolved_url or strip_query(resolved_url) == strip_query(pdf_url):
+            if re.search(PDF_LIKE, pdf_url or "") and (not resolved_url or strip_query(resolved_url) == strip_query(pdf_url)):
                 return i
         elif re.search(shape, resolved_url or "", re.I):
             return i
@@ -159,8 +164,8 @@ def shape_sql():
     for grp, rules in RULES.items():
         for i, (shape, _) in enumerate(rules):
             if shape == "AT_PDF_URL":
-                cond = ("(resolved_url IS NULL OR regexp_replace(resolved_url, '[?#].*$', '') = "
-                        "regexp_replace(pdf_url, '[?#].*$', ''))")
+                cond = ("(pdf_url RLIKE '" + PDF_LIKE.replace("\\", "\\\\") + "' AND (resolved_url IS NULL OR "
+                        "regexp_replace(resolved_url, '[?#].*$', '') = regexp_replace(pdf_url, '[?#].*$', '')))")
             else:
                 cond = "coalesce(resolved_url, '') RLIKE '(?i)" + shape.replace("\\", "\\\\").replace("'", "\\'") + "'"
             whens.append(f"WHEN grp = '{grp}' AND {cond} THEN {i}")
