@@ -89,7 +89,9 @@ def _checker():
 
 # Driver self-test: the decisions the module's own tests pin.
 _r = _checker()
-assert _r("No abstract available.") == "wording"
+assert _r("No abstract available.") == "list"  # on the hand-read list, which is checked first
+assert _r("No abstract is available for this paper.") == "wording"
+assert _r("\u2014") == "empty"
 assert _r("This datasheet on Mesorchis covers Identity.") == "template"
 assert _r("Established in 1964, the IUCN Red List of Threatened Species has evolved to become the world’s most "
           "comprehensive information source on the global conservation status of animal, fungi and plant species.") == "list"
