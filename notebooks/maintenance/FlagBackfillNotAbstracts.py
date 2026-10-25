@@ -120,13 +120,28 @@ FROM {SOURCE_TABLE} bf LEFT JOIN {REPAIR_TABLE} r ON bf.work_id = r.work_id
 """).where(F.col("abstract").isNotNull() & (F.length("abstract") <= MAX_LEN))
 
 flagged = (eff.withColumn("reason", not_abstract_reason("abstract"))
-              .where(F.col("reason").isNotNull())
-              .select("work_id", "reason", F.length("abstract").alias("text_len"),
-                      F.lit(FILTER_COMMIT).alias("filter_commit"), F.current_timestamp().alias("built_at")))
+              .where(F.col("reason").isNotNull()))
 flagged.createOrReplaceTempView("flagged_backfill")
 
+# Owner guard (list texts only). A list text is shared by 100+ works, so it is nobody's abstract... except the one
+# item it describes: a book's blurb on its own record (it sits on every chapter too), or the paper behind a "featured
+# abstract" a site shows on all its articles. Keep a list row out when the work's own title words appear in the
+# text: >= 2 title words of 5+ letters, covering at least half of them (25 Oct 2026: 7,621 of 601,218 list rows, e.g.
+# "Drugs Handbook 2012-2013", "Shakespeare and Animals"; chapters like "Oxybuprocaine." never match). Templates
+# carry the title by construction, so the guard doesn't apply to them.
+# shortcut: word overlap, not meaning; a series blurb that repeats a series title is also kept out (it stays junk).
+spark.sql(r"""
+INSERT OVERWRITE TARGET_TABLE
+SELECT work_id, reason, text_len, filter_commit, built_at FROM (
+  SELECT f.work_id, f.reason, length(f.abstract) AS text_len, 'FILTER_COMMIT' AS filter_commit, current_timestamp() AS built_at,
+         size(coalesce(w.tw, array())) AS n_title,
+         size(filter(coalesce(w.tw, array()), x -> instr(lower(f.abstract), x) > 0)) AS n_hit
+  FROM flagged_backfill f
+  LEFT JOIN (SELECT id, filter(array_distinct(split(regexp_replace(lower(title), '[^\\p{L}\\p{N}]+', ' '), ' ')), x -> length(x) >= 5) AS tw
+             FROM openalex.works.openalex_works) w ON w.id = f.work_id)
+WHERE NOT (reason = 'list' AND n_hit >= 2 AND n_hit * 2 >= n_title)
+""".replace("TARGET_TABLE", TARGET_TABLE).replace("FILTER_COMMIT", FILTER_COMMIT))
 # INSERT OVERWRITE replaces the rows atomically: CreateWorksBase never sees the table missing or half-built.
-spark.sql(f"INSERT OVERWRITE {TARGET_TABLE} SELECT * FROM flagged_backfill")
 
 # COMMAND ----------
 
