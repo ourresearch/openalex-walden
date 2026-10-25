@@ -46,7 +46,7 @@ threads = int(dbutils.widgets.get("threads"))
 removed_table = dbutils.widgets.get("removed_table").strip()
 dry_run = dbutils.widgets.get("dry_run").strip().lower() == "true"
 
-RULE_VERSION = "2026-10-23"
+RULE_VERSION = "2026-10-25"
 SOURCE = f"oxjob #1290 bronze re-check {pass_id}"
 
 # COMMAND ----------
@@ -59,21 +59,26 @@ NATURE = r"^https?://www\.nature\.com/articles/[^/?#]+$"
 SD_ABS = r"^https?://www\.sciencedirect\.com/science/article/abs/pii/"
 ELS_SOCIETY_ABS = r"^https?://[a-z0-9.-]+/article/S?[0-9]{4}-[0-9]{3}[0-9X]\([0-9]{2}\)[0-9A-Z-]+/abstract"
 ELS_ACCESS = r"Get Access|Purchase"
+OUP_ABS = r"^https?://academic\.oup\.com/.*article-abstract"
+# Silverchair's own access block on the article (ACS moved to Silverchair in 2026: its PDF links now redirect to
+# /<journal>/article-abstract/...?redirectedFrom=PDF). The site menu also says "Purchase", so match the block only.
+SILVERCHAIR_ACCESS = r"Pay-Per-View Access|You do not currently have access to this content"
 RULES = {
-    "oup": [(r"^https?://academic\.oup\.com/.*article-abstract", None)],
+    "oup": [(OUP_ABS, None)],
     "aip": [(r"^https?://pubs\.aip\.org/.*article-abstract", None)],
     "springer": [(r"^https?://link\.springer\.com/article/", None)],
     "aps": [(r"^https?://(journals|link)\.aps\.org/.*/abstract/", None)],  # PDFs resolve to journals.aps.org/<j>/abstract/
     "cambridge": [(r"^https?://www\.cambridge\.org/.*/article/abs/", None)],
     "sciencedirect": [(SD_ABS, None)],
     "nature": [(NATURE, None)],
-    "tandf": [("AT_PDF_URL", None)],
+    "tandf": [("AT_PDF_URL", None), (OUP_ABS, None)],  # journals that moved to OUP (e.g. Biosci Biotechnol Biochem)
     "sage": [(r"^https?://journals\.sagepub\.com/doi/abs/", r'class="meta-panel__access[^"]*"[^>]*>(?:\s|<[^>]+>)*Restricted access')],  # the article's own badge, not a teaser
     "aha": [(r"^https?://www\.ahajournals\.org/doi/abs/", r"get full access to this article")],
     "karger": [(r"^https?://(www\.)?karger\.com/[a-z]+/article-abstract/", r"Pay-Per-View|BUY THIS")],
     "degruyter": [(r"^https?://www\.degruyter(brill)?\.com/unauthorizedDownload/", None)],
     "iucr": [(r"^https?://journals\.iucr\.org/paper\?.*buy=y", r"Buy article")],
-    "acs": [("AT_PDF_URL", r"please review the available access options")],
+    "acs": [("AT_PDF_URL", r"please review the available access options"),
+            (r"^https?://pubs\.acs\.org/[a-z0-9]+/article-abstract/", SILVERCHAIR_ACCESS)],
     "thieme": [(r"^https?://www\.thieme-connect\.(de|com)/products/ejournals/abstract/", r"Buy Article")],
     "elsevier_society": [(ELS_SOCIETY_ABS, ELS_ACCESS)],
     "elsevier_doiorg": [(SD_ABS, None), (ELS_SOCIETY_ABS, ELS_ACCESS)],
