@@ -176,7 +176,11 @@ pre = spark.table(STAGE)
 counts = {r["pre"]: r["count"] for r in pre.groupBy("pre").count().collect()}
 need_body = counts.get("body", 0)
 print(f"pass {pass_id}: {sum(counts.values()):,} fresh fetches to score; {need_body:,} need a page body")
-assert need_body <= max_bodies, f"{need_body:,} bodies to read > max_bodies {max_bodies:,}; raise it or score in parts"
+if need_body > max_bodies:
+    # Score in parts: the oldest max_bodies pages now, the rest stay unscored for the next run.
+    later = pre.filter("pre = 'body'").orderBy(F.desc("processed_date")).limit(need_body - max_bodies)
+    pre = pre.join(later.select("pdf_url", "processed_date"), ["pdf_url", "processed_date"], "left_anti")
+    print(f"  reading {max_bodies:,} bodies this run; {need_body - max_bodies:,} wait for the next run")
 
 # COMMAND ----------
 
@@ -260,6 +264,8 @@ if dry_run:
 res.write.mode("append").saveAsTable(results_table)
 
 # Newest verdict per URL decides (closed-side-only groups: any not_open); only cleared groups reach pdf_removed.
+# Cleared is read from gate_table now, not from the row's `cleared` (the gate as it stood at scoring), so
+# rows scored before their group was cleared close at the first run after it.
 spark.sql(f"""
 MERGE INTO {removed_table} t
 USING (
@@ -268,13 +274,16 @@ USING (
                  (verdict = 'not_open' AND grp IN ({",".join("'" + g + "'" for g in CLOSED_SIDE_ONLY)})) DESC,
                  processed_date DESC) AS rn
         FROM {results_table} WHERE pass_id = '{pass_id}' AND verdict IN ('open', 'not_open'))
-  WHERE rn = 1 AND verdict = 'not_open' AND cleared
+  WHERE rn = 1 AND verdict = 'not_open'
+    AND grp IN (SELECT grp FROM {gate_table} WHERE rule_version = '{RULE_VERSION}')
 ) s ON t.pdf_url = s.pdf_url
 WHEN NOT MATCHED THEN INSERT (pdf_url, doi, host, resolved_url, status_code, reason, checked_at, source, applied_at)
   VALUES (s.pdf_url, s.doi, s.grp, s.resolved_url, s.status_code, s.reason, s.processed_date, '{SOURCE}', NULL)
 """)
 pending = spark.sql(f"SELECT count(*) FROM {removed_table} WHERE source = '{SOURCE}' AND applied_at IS NULL").collect()[0][0]
 held = spark.sql(f"""SELECT grp, count(DISTINCT pdf_url) FROM {results_table}
-                     WHERE pass_id = '{pass_id}' AND verdict = 'not_open' AND NOT cleared GROUP BY grp""").collect()
+                     WHERE pass_id = '{pass_id}' AND verdict = 'not_open'
+                       AND grp NOT IN (SELECT grp FROM {gate_table} WHERE rule_version = '{RULE_VERSION}')
+                     GROUP BY grp""").collect()
 print(f"pdf_removed: {pending:,} rows from {SOURCE} waiting for bronze_recheck_apply")
 print(f"not_open held back (group not cleared): {[(r[0], r[1]) for r in held]}")
