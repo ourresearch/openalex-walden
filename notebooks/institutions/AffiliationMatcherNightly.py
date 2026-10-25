@@ -230,6 +230,9 @@ if SWEEP is not None:
 
 # COMMAND ----------
 
+_NIGHTLY_ANSWERED = None
+
+
 def legacy_ids_of(names):
     """vote_ids=legacy: the pre-swap ids of the listed neighbour strings (runs in the neighbour thread, beside lex2/dense)."""
     from pyspark.sql import functions as F
@@ -241,8 +244,10 @@ def legacy_ids_of(names):
     if NIGHTLY_NB_VOTES == "none" and spark.catalog.tableExists(ANSWERS):
         # neighbours with no pre-swap answer (answered by this job since the swap) vote nothing: their live ids are the
         # matcher's own past answers, which echo its errors (#1386 charter row 5)
-        quiet = (spark.table(ANSWERS).where("tier = 'nightly'").select("raw_affiliation_string")
-                 .join(F.broadcast(df), "raw_affiliation_string").collect())
+        global _NIGHTLY_ANSWERED
+        if _NIGHTLY_ANSWERED is None:  # once per run: ≈ 40K strings a night since 28 Sep, so ≈ 1M rows, not the 165M-row table per chunk
+            _NIGHTLY_ANSWERED = spark.table(ANSWERS).where("tier = 'nightly'").select("raw_affiliation_string").cache()
+        quiet = _NIGHTLY_ANSWERED.join(F.broadcast(df), "raw_affiliation_string").collect()
         for r in quiet:
             if r.raw_affiliation_string not in out:
                 out[r.raw_affiliation_string] = []
