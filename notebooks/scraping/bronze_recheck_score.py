@@ -71,7 +71,9 @@ RULES = {
     "cambridge": [(r"^https?://www\.cambridge\.org/.*/article/abs/", None)],
     "sciencedirect": [(SD_ABS, None)],
     "nature": [(NATURE, None)],
-    "tandf": [("AT_PDF_URL", None), (OUP_ABS, None)],  # journals that moved to OUP (e.g. Biosci Biotechnol Biochem)
+    # Not OUP's shape for T&F journals that moved to OUP (Biosci Biotechnol Biochem): the harvester is redirected to
+    # OUP's abstract, but a reader's browser gets T&F's PDF (reader check 25 Oct, 2 of 2).
+    "tandf": [("AT_PDF_URL", None)],
     "sage": [(r"^https?://journals\.sagepub\.com/doi/abs/", r'class="meta-panel__access[^"]*"[^>]*>(?:\s|<[^>]+>)*Restricted access')],  # the article's own badge, not a teaser
     "aha": [(r"^https?://www\.ahajournals\.org/doi/abs/", r"get full access to this article")],
     "karger": [(r"^https?://(www\.)?karger\.com/[a-z]+/article-abstract/", r"Pay-Per-View|BUY THIS")],
