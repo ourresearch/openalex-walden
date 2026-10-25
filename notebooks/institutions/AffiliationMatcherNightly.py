@@ -48,6 +48,7 @@ dbutils.widgets.text("max_strings", "60000", "queue cap per run (a backlog drain
 dbutils.widgets.text("max_minutes", "26", "stop starting chunks after this many minutes: End 2 End has ≈ 37 min of slack including cluster start")
 dbutils.widgets.text("chunk_strings", "20000", "strings per chunk (one MERGE each)")
 dbutils.widgets.text("artifacts", "/Volumes/openalex/works/models/affiliation_matcher/v1", "chooser JSON + name-embedding cache")
+dbutils.widgets.text("choosers", "", "folder holding the chooser JSONs (chooser_me5b_full_ror / chooser_jev_ror / chooser_nojev / chooser_jev); blank = artifacts (oxjob #1386 charter row 5: choosers retrained on post-swap neighbour votes)")
 dbutils.widgets.text("live_works_counts", "frozen", "with cards=live: frozen = institutions in the frozen snapshot keep its works_count (the chooser's training distribution), new ones take their live count; live = every count live")
 dbutils.widgets.text("cards", "frozen", "frozen = the decider's institutions + lineage snapshot (#1363 FROZEN_DECIDER.md); live = rebuild from walden tables")
 dbutils.widgets.text("decider_mode", "student", "student = #1363 decider v1 (student p + v1 chooser) first; no_model = the no-Jev chooser first")
@@ -73,6 +74,7 @@ MAX_STRINGS = int(dbutils.widgets.get("max_strings"))
 MAX_MINUTES = float(dbutils.widgets.get("max_minutes"))
 CHUNK = int(dbutils.widgets.get("chunk_strings"))
 ART = dbutils.widgets.get("artifacts").rstrip("/")
+CHOOSERS = (dbutils.widgets.get("choosers").strip() or ART).rstrip("/")
 CARDS_MODE = dbutils.widgets.get("cards").strip().lower()
 VOTE_IDS = dbutils.widgets.get("vote_ids").strip().lower()
 VOTE_IDS_TABLE = dbutils.widgets.get("vote_ids_table").strip()
@@ -177,16 +179,16 @@ ix = Index(CARDS)
 # decider v1.1 (#1363 FROZEN_DECIDER.md): the student-mode choosers add ROR parent/child/related features
 F = Features(ix, LINEAGE, ror_rel=ROR_REL)
 JEV_CHOOSER = "chooser_jev_ror" if DECIDER_MODE == "student" else "chooser_jev"
-dec_jev = gbt.load_decider(f"{ART}/{JEV_CHOOSER}.json", F)
+dec_jev = gbt.load_decider(f"{CHOOSERS}/{JEV_CHOOSER}.json", F)
 FIRST = "chooser_me5b_full_ror" if DECIDER_MODE == "student" else "chooser_nojev"
-dec_first = gbt.load_decider(f"{ART}/{FIRST}.json", F)
+dec_first = gbt.load_decider(f"{CHOOSERS}/{FIRST}.json", F)
 FIRST_NAME = "student" if DECIDER_MODE == "student" else "no_jev"
 student = None
 if DECIDER_MODE == "student":
     from utils.affiliation_matcher import student as st  # noqa: E402
     student = st.load(f"{ART}/student_me5b_full", base_dir=f"{ART}/base_multilingual-e5-base")
     log(f"student loaded on {student[2]}")
-chooser_sha = hashlib.sha256(open(f"{ART}/{JEV_CHOOSER}.json", "rb").read() + open(f"{ART}/{FIRST}.json", "rb").read()).hexdigest()[:10]
+chooser_sha = hashlib.sha256(open(f"{CHOOSERS}/{JEV_CHOOSER}.json", "rb").read() + open(f"{CHOOSERS}/{FIRST}.json", "rb").read()).hexdigest()[:10]
 MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "") + ("/livecounts" if CARDS_MODE == "live" and dbutils.widgets.get("live_works_counts").strip().lower() == "live" else "") + ("/legacyvotes" if VOTE_IDS == "legacy" else "")
 log(f"index: {len(ix.inst):,} institutions, {len(ix.variants):,} name variants; matcher_version {MATCHER_VERSION}")
 
