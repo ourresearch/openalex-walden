@@ -1,0 +1,140 @@
+resources:
+  jobs:
+    Match_Locations_To_Works_Shadow:
+      name: Match Locations To Works (shadow)
+      description: |
+        Shadow of the location -> work matching model (oxjob #1668): every morning after the nightly's MapWorkIds, decides for
+        each record that reached the title tier (title-bound, minted or parked; PID binds never reach it) whether it binds to an
+        existing work or mints, and writes the decision next to what the nightly did. Never writes location_work_ids or
+        work_id_map. Steps: prepare (pins the night from Delta history: location_work_ids MERGE NEW / OLD, openalex_works V;
+        blocking keys, frame, seeds, SQL-channel candidates, qwen3 seed vectors) -> go_gate (stops when the night has no
+        MapWorkIds MERGE yet or was already decided) -> knn (exact kNN over work_embeddings_qwen3 on GPUs) -> features ->
+        score_xgb (openalex.works.location_work_matcher@challenger, hard rules first) -> score_qwen (Qwen3.5-9B + ep2_9b on
+        Modal, app location-work-matcher; XGBoost alone if Modal is down) -> write_decisions
+        (openalex.works.location_work_match_decisions, one row per night in openalex.works.location_work_match_runs).
+        Intermediate tables openalex.works.location_work_match_* are overwritten each night. Rerun a night: parameters
+        night = YYYY-MM-DD, force = true.
+      timeout_seconds: 21600
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: 0 0 8 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      parameters:
+        - name: night
+          # YYYY-MM-DD (UTC) of the nightly to shadow; '' = today
+          default: ""
+        - name: mode
+          default: shadow
+        - name: force
+          # redo a night that is already decided
+          default: "false"
+        - name: parts
+          # corpus tasks for the kNN (two run per GPU)
+          default: "80"
+        - name: volume_dir
+          default: /Volumes/openalex/works/data/location_work_match
+        - name: endpoint
+          default: https://wordslikethis--location-work-matcher-api.modal.run
+        - name: secret_scope
+          default: modal
+        - name: secret_key
+          default: location_matcher_token
+        - name: warehouse_id
+          # the warehouse the Modal app exports the prompts through (DEV-WH, X-Large serverless)
+          default: 3996dc0a9b183ce3
+        - name: max_usd
+          # score_qwen falls back to XGBoost alone when its Modal estimate is over this
+          default: "60"
+        - name: max_minutes
+          default: "240"
+        - name: shard_records
+          default: "4000"
+        - name: run_id
+          default: "{{job.run_id}}"
+      tasks:
+        - task_key: prepare
+          notebook_task:
+            notebook_path: notebooks/location_matching/PrepareMatchInputs
+            source: GIT
+          environment_key: Default
+        - task_key: go_gate
+          depends_on:
+            - task_key: prepare
+          condition_task:
+            op: EQUAL_TO
+            left: "{{tasks.prepare.values.go}}"
+            right: "true"
+        - task_key: knn
+          depends_on:
+            - task_key: go_gate
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/location_matching/KnnSearch
+            source: GIT
+          job_cluster_key: knn_gpu
+        - task_key: features
+          depends_on:
+            - task_key: knn
+          notebook_task:
+            notebook_path: notebooks/location_matching/RunMatchSql
+            base_parameters:
+              sql: features.sql
+            source: GIT
+          environment_key: Default
+        - task_key: score_xgb
+          depends_on:
+            - task_key: features
+          notebook_task:
+            notebook_path: notebooks/location_matching/ScoreXgboost
+            source: GIT
+          environment_key: Xgb
+        - task_key: score_qwen
+          depends_on:
+            - task_key: score_xgb
+          notebook_task:
+            notebook_path: notebooks/location_matching/ScoreQwenModal
+            source: GIT
+          environment_key: Default
+        - task_key: write_decisions
+          depends_on:
+            - task_key: score_qwen
+          notebook_task:
+            notebook_path: notebooks/location_matching/WriteDecisions
+            source: GIT
+          environment_key: Default
+      job_clusters:
+        - job_cluster_key: knn_gpu
+          new_cluster:
+            spark_version: 16.4.x-gpu-ml-scala2.13
+            node_type_id: g5.2xlarge         # 1 x A10G: deep pools (GPU stockout playbook); 3.4e9 query-vector pairs / s per GPU
+            driver_node_type_id: g5.4xlarge
+            autoscale:
+              min_workers: 4
+              max_workers: 20
+            aws_attributes:
+              zone_id: auto
+              availability: ON_DEMAND
+            spark_conf:
+              spark.task.resource.gpu.amount: "0.5"
+              spark.sql.execution.arrow.maxRecordsPerBatch: "8192"
+            custom_tags:
+              oxjob: "1668"
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+        - environment_key: Xgb
+          spec:
+            environment_version: "4"
+            dependencies:
+              - xgboost==2.1.3
+              - mlflow
