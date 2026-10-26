@@ -10,10 +10,15 @@ resources:
         blocking keys, frame, seeds, SQL-channel candidates, qwen3 seed vectors) -> go_gate (stops when the night has no
         MapWorkIds MERGE yet or was already decided) -> knn (exact kNN over work_embeddings_qwen3 on GPUs) -> features ->
         score_xgb (openalex.works.location_work_matcher@challenger, hard rules first) -> score_qwen (Qwen3.5-9B + ep2_9b on
-        Modal, app location-work-matcher; XGBoost alone if Modal is down) -> write_decisions
+        Modal, app location-work-matcher) -> write_decisions
         (openalex.works.location_work_match_decisions, one row per night in openalex.works.location_work_match_runs).
         Intermediate tables openalex.works.location_work_match_* are overwritten each night. Rerun a night: parameters
-        night = YYYY-MM-DD, force = true.
+        night = YYYY-MM-DD, force = true. No fallback (Casey 2026-10-26): when any step cannot run in full (no GPUs, Modal down,
+        Qwen over max_usd, unscored records) the run fails; it never decides with less than the full stack.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
       timeout_seconds: 21600
       max_concurrent_runs: 1
       schedule:
@@ -44,7 +49,7 @@ resources:
           # the warehouse the Modal app exports the prompts through (DEV-WH, X-Large serverless)
           default: 3996dc0a9b183ce3
         - name: max_usd
-          # score_qwen falls back to XGBoost alone when its Modal estimate is over this
+          # score_qwen fails the run when its Modal estimate is over this (raise it on purpose for a big night)
           default: "60"
         - name: max_minutes
           default: "240"

@@ -8,9 +8,8 @@
 # MAGIC candidate, `qwen/rows.py row()` of oxjob #1668), POSTs the prompt table to the app's `/start` (bearer token from secret scope
 # MAGIC `modal`), polls `/status`, checks the shard files and loads `location_work_match_qwen` (seed_id, cid, p).
 # MAGIC
-# MAGIC Fallback, not failure: when the estimate is over `max_usd`, the call fails or it runs past `max_minutes`, the task sets
-# MAGIC `qwen_ok = false`, leaves `location_work_match_qwen` empty and `write_decisions` uses XGBoost alone (bind at >= 0.9156), as
-# MAGIC the nightly will when Modal is down.
+# MAGIC No fallback (Casey 2026-10-26): when the estimate is over `max_usd`, the call fails, runs past `max_minutes` or leaves any
+# MAGIC prompt unscored, the task fails and so does the run. The matcher never decides with less than the full stack.
 
 # COMMAND ----------
 
@@ -46,10 +45,7 @@ def log(msg):
     print(f"{dt.datetime.utcnow():%Y-%m-%d %H:%M:%S} UTC  {msg}", flush=True)
 
 
-def finish(ok, note, usd=0.0):
-    if not ok:
-        spark.sql(f"CREATE OR REPLACE TABLE {T}qwen (seed_id BIGINT, cid BIGINT, p DOUBLE, adapter STRING)")
-    dbutils.jobs.taskValues.set(key="qwen_ok", value="true" if ok else "false")
+def finish(note, usd=0.0):
     dbutils.jobs.taskValues.set(key="qwen_usd_est", value=float(usd))
     dbutils.jobs.taskValues.set(key="qwen_note", value=note[:500])
     dbutils.jobs.taskValues.set(key="seconds", value=round(time.time() - T0, 1))
@@ -86,9 +82,9 @@ est = n * 0.23 * (4.54 + 8 * 0.0473 + 96 * 0.008) / 3600 + 1.5   # 0.23 GPU-s / 
 log(f"{n:,} records ({n_pairs:,} pairs) for Qwen; estimate ${est:.2f} (max_usd {MAX_USD})")
 if n == 0:
     spark.sql(f"CREATE OR REPLACE TABLE {T}qwen (seed_id BIGINT, cid BIGINT, p DOUBLE, adapter STRING)")
-    finish(True, "no records above 0.01: nothing for Qwen")
+    finish("no records above 0.01: nothing for Qwen")
 if est > MAX_USD:
-    finish(False, f"estimate ${est:.2f} over max_usd {MAX_USD}: XGBoost alone tonight")
+    raise RuntimeError(f"Qwen estimate ${est:.2f} over max_usd {MAX_USD}: raise max_usd on purpose to score this night")
 
 # COMMAND ----------
 
@@ -136,12 +132,8 @@ try:
         f"{res['shard_seconds']:.0f} shard-s, ~${res['usd_est']:.2f}, wall {res['wall_s']:.0f} s, errors {len(res['errors'])}")
     if res["errors"] or res["shards_done"] != res["shards"] or res["records"] != n or res["exported"] != n:
         raise RuntimeError(f"incomplete scoring: {json.dumps({k: v for k, v in res.items() if k != 'results'})[:1500]}")
-except Exception as e:   # dbutils.notebook.exit is never called inside this try
-    failure = repr(e)[:400]
-else:
-    failure = None
-if failure:
-    finish(False, f"Qwen unavailable ({failure}): XGBoost alone tonight")
+except Exception as e:
+    raise RuntimeError(f"Qwen did not run in full: {e!r}"[:1500])
 
 # COMMAND ----------
 
@@ -151,5 +143,5 @@ q.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{T}qwe
 c = spark.sql(f"""SELECT count(*) AS pairs, count(DISTINCT seed_id) AS seeds,
     (SELECT count(*) FROM {T}qwen_rows r LEFT ANTI JOIN {T}qwen q ON q.seed_id = r.seed_id) AS missing FROM {T}qwen""").collect()[0]
 if c.missing or c.seeds != n:
-    finish(False, f"Qwen scores do not cover the prompts ({c.asDict()}): XGBoost alone tonight")
-finish(True, f"Qwen scored {c.seeds:,} records / {c.pairs:,} pairs", res["usd_est"])
+    raise RuntimeError(f"Qwen scores do not cover the prompts: {c.asDict()}")
+finish(f"Qwen scored {c.seeds:,} records / {c.pairs:,} pairs", res["usd_est"])
