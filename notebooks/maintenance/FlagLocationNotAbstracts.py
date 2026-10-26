@@ -20,10 +20,17 @@
 # MAGIC   Volume below and checked by sha256.
 # MAGIC - **Keyed by text, not by record**, so a new record carrying a known junk text is caught the night it
 # MAGIC   arrives. A new *kind* of junk (or a per-record template on a new record) waits for the next build.
-# MAGIC - **Owner guard lives in CreateSuperLocations**, on the record's own title: a hand-read list text is a
-# MAGIC   book's or series' blurb, so it is kept on the record it describes (`is_list` marks those texts).
-# MAGIC - **Revert:** remove the join in CreateSuperLocations, or `TRUNCATE` this table. Never DROP it while
-# MAGIC   CreateSuperLocations reads it: a missing table fails the nightly.
+# MAGIC - **Owner rows** (`openalex.abstracts.not_abstract_owner_rows`): a hand-read list text is a book's or
+# MAGIC   series' blurb, so it stays on the record it describes: >= 2 of the record's title words (5+ letters),
+# MAGIC   and at least half of them, appear in the text (the backfill filter's rule). Landing-page and PDF rows
+# MAGIC   carry no title, so theirs comes from the Crossref record of their DOI, else the repository record of
+# MAGIC   their pmh id. CreateSuperLocations leaves these records' abstracts alone.
+# MAGIC - **Templates count on landing pages and Crossref only** (CreateSuperLocations applies that). They were
+# MAGIC   built for landing pages; on repository, DataCite and PDF records the bar (26 Oct 2026) found real
+# MAGIC   descriptions they match: "Presenter: ... Abstract: ..." slide decks, quoted library catalog notes,
+# MAGIC   reports that open with "The views expressed in this report ..." and go on to a summary.
+# MAGIC - **Revert:** remove the join in CreateSuperLocations, or `TRUNCATE` these tables. Never DROP them while
+# MAGIC   CreateSuperLocations reads them: a missing table fails the nightly.
 # MAGIC
 # MAGIC MANUAL TRIGGER ONLY (re-run when the filter changes; INSERT OVERWRITE keeps the table present).
 
@@ -46,6 +53,7 @@ SHA256 = {
 }
 SOURCE_TABLE = "openalex.works.locations_parsed"
 TARGET_TABLE = "openalex.abstracts.not_abstract_texts"
+OWNER_TABLE = "openalex.abstracts.not_abstract_owner_rows"
 # Longest list text is 1,835 characters of key; templates need <= 1,500 plain and wordings <= 200 of key.
 # Raw text longer than this cannot match (markup inflates, so the cap is generous); it skips the Python UDF.
 MAX_LEN = 6000
@@ -154,6 +162,50 @@ FROM flagged_texts
 
 # COMMAND ----------
 
+# Owner rows: the records a hand-read list text describes (see the header). shortcut: word overlap, not meaning; a
+# series blurb that repeats its series title on every issue is also kept (it stays junk there).
+spark.sql(f"""
+CREATE TABLE IF NOT EXISTS {OWNER_TABLE} (
+  provenance STRING, native_id STRING, abstract_hash BIGINT, title STRING, built_at TIMESTAMP
+) COMMENT 'oxjob #1800: records whose abstract is a hand-read not-abstract list text that describes the record itself (its title words appear in the text). CreateSuperLocations keeps these abstracts. Built by notebooks/maintenance/FlagLocationNotAbstracts.'
+""")
+spark.sql(r"""
+INSERT OVERWRITE OWNER_TABLE
+WITH lt AS (SELECT abstract_hash, text_len FROM TARGET_TABLE WHERE is_list),
+r AS (
+  SELECT lp.provenance, lp.native_id, lp.abstract, lt.abstract_hash, lp.title,
+         lower(get(filter(lp.ids, x -> x.namespace = 'doi').id, 0)) AS doi,
+         get(filter(lp.ids, x -> x.namespace = 'pmh').id, 0) AS pmh
+  FROM SOURCE_TABLE lp JOIN lt ON lt.abstract_hash = xxhash64(lp.abstract) AND lt.text_len = length(lp.abstract)
+),
+cr AS (
+  SELECT lower(native_id) AS doi, max(title) AS title FROM SOURCE_TABLE
+  WHERE provenance = 'crossref' AND title IS NOT NULL AND lower(native_id) IN (SELECT doi FROM r WHERE title IS NULL)
+  GROUP BY 1
+),
+rp AS (
+  SELECT native_id AS pmh, max(title) AS title FROM SOURCE_TABLE
+  WHERE provenance IN ('repo', 'repo_backfill') AND title IS NOT NULL AND native_id IN (SELECT pmh FROM r WHERE title IS NULL)
+  GROUP BY 1
+),
+t AS (
+  SELECT r.provenance, r.native_id, r.abstract_hash, r.abstract, coalesce(r.title, cr.title, rp.title) AS title
+  FROM r LEFT JOIN cr ON r.title IS NULL AND cr.doi = r.doi LEFT JOIN rp ON r.title IS NULL AND rp.pmh = r.pmh
+),
+w AS (
+  SELECT *, filter(array_distinct(split(regexp_replace(lower(coalesce(title, '')), '[^\\p{L}\\p{N}]+', ' '), ' ')),
+                   x -> length(x) >= 5) AS tw
+  FROM t
+),
+h AS (SELECT *, size(filter(tw, x -> instr(lower(abstract), x) > 0)) AS hits FROM w)
+SELECT provenance, native_id, abstract_hash, max(title) AS title, current_timestamp() AS built_at
+FROM h WHERE hits >= 2 AND 2 * hits >= size(tw)
+GROUP BY provenance, native_id, abstract_hash
+""".replace("OWNER_TABLE", OWNER_TABLE).replace("TARGET_TABLE", TARGET_TABLE).replace("SOURCE_TABLE", SOURCE_TABLE))
+
+# COMMAND ----------
+
 display(spark.sql(f"""
 SELECT reason, count(*) AS texts, sum(n_rows) AS records, max(filter_commit) AS filter_commit
 FROM {TARGET_TABLE} GROUP BY reason ORDER BY 3 DESC"""))
+display(spark.sql(f"SELECT provenance, count(*) AS owner_rows FROM {OWNER_TABLE} GROUP BY 1 ORDER BY 2 DESC"))
