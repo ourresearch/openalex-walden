@@ -75,3 +75,33 @@ def test_non_cc_behaviour_unchanged():
     assert normalize_license("https://creativecommons.org/publicdomain/zero/1.0/") == "public-domain"
     assert normalize_license("https://www.elsevier.com/tdm/userlicense/1.0/") is None
     assert normalize_license("info:eu-repo/semantics/openAccess") == "other-oa"
+
+
+"""Tests for the merge_key id filter (oxjob #1864: a related id is never the record's own)."""
+
+from openalex.dlt.normalize import MERGE_KEY_IDENTITY_RELATIONS, merge_key_id_filter
+
+
+def test_identity_relations_feed_merge_key():
+    for rel in ("self", "IsIdenticalTo", "IsVariantFormOf", "IsOriginalFormOf", "IsVersionOf", "HasVersion",
+                "IsNewVersionOf", "IsPreviousVersionOf"):
+        assert rel.lower() in MERGE_KEY_IDENTITY_RELATIONS
+
+
+def test_related_ids_never_feed_merge_key():
+    # live 2026-10-26: Cites put 6,352 DataCite rows on the arXiv paper they cite (BERT, Adam, PPO, GPT-4 ...);
+    # IsDerivedFrom put 45,816 datasets onto the PubMed article they came from
+    for rel in ("Cites", "References", "IsCitedBy", "IsReferencedBy", "IsSupplementTo", "IsSupplementedBy",
+                "IsDescribedBy", "Describes", "IsDerivedFrom", "IsSourceOf", "IsPublishedIn", "IsPartOf", "HasPart",
+                "Requires", "IsRequiredBy", "IsDocumentedBy", "Documents", "IsReviewedBy", "Reviews", "Continues",
+                "HasMetadata", "IsMetadataFor", "IsCompiledBy", "Compiles", "Obsoletes", "IsObsoletedBy"):
+        assert rel.lower() not in MERGE_KEY_IDENTITY_RELATIONS
+
+
+def test_filter_expression_shape():
+    sql = merge_key_id_filter("arxiv")
+    assert sql.startswith("filter(ids, x -> x.namespace = 'arxiv' and x.id is not null and (")
+    # sources that tag no relation (Crossref, PubMed, repo, MAG; PDF writes 'None') keep their ids
+    assert "x.relationship is null or lower(x.relationship) in (" in sql
+    assert "'cites'" not in sql and "'self'" in sql
+    assert merge_key_id_filter("pmid").startswith("filter(ids, x -> x.namespace = 'pmid'")

@@ -113,6 +113,22 @@ def clean_native_id(df, column_name="native_id"): # NOT USED by Crossref or Data
             .withColumn(column_name, F.regexp_replace(F.col(column_name), r"[^a-zA-Z0-9./:-]", ""))
     )
 
+# oxjob #1864: a related id is never the record's own (Casey 2026-10-07, dedup charter). DataCite carries its
+# relatedIdentifiers in `ids` with their relationType, so a Dagstuhl paper that `Cites` arXiv:1810.04805 got
+# merge_key.arxiv = BERT's id and MapWorkIds' arxiv tier merged it into BERT (27,360 DataCite rows on 15,172 works;
+# 53,147 more on PMIDs, mostly datasets `IsDerivedFrom` an article). Only these relations say the id names the same
+# item; NULL / 'None' are sources that tag no relation (Crossref, PubMed, repo, MAG, PDF).
+MERGE_KEY_IDENTITY_RELATIONS = ("self", "none", "isidenticalto", "isvariantformof", "isoriginalformof",
+                                "isversionof", "hasversion", "isnewversionof", "ispreviousversionof")
+
+
+def merge_key_id_filter(namespace):
+    """SQL lambda: the record's `ids` in `namespace` that may feed merge_key (identity relations only)."""
+    rels = ", ".join(f"'{r}'" for r in MERGE_KEY_IDENTITY_RELATIONS)
+    return (f"filter(ids, x -> x.namespace = '{namespace}' and x.id is not null "
+            f"and (x.relationship is null or lower(x.relationship) in ({rels})))")
+
+
 def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
     # oxjob #880 (Casey 2026-09-03): title_author is a title-derived key or NULL, nothing else.
     # The old first branch wrote native_id + provenance for bad/short/NULL titles so those
@@ -131,8 +147,8 @@ def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
             .withColumn(MERGE_COLUMN_NAME,
                 F.struct(
                     F.element_at(F.expr("filter(ids, x -> x.namespace = 'doi' and x.id is not null)"), 1).getField("id").alias("doi"),
-                    F.element_at(F.expr("filter(ids, x -> x.namespace = 'pmid' and x.id is not null)"), 1).getField("id").alias("pmid"),
-                    F.element_at(F.expr("filter(ids, x -> x.namespace = 'arxiv' and x.id is not null)"), 1).getField("id").alias("arxiv"),
+                    F.element_at(F.expr(merge_key_id_filter("pmid")), 1).getField("id").alias("pmid"),
+                    F.element_at(F.expr(merge_key_id_filter("arxiv")), 1).getField("id").alias("arxiv"),
                     F.when(F.coalesce(F.col("normalized_title"), F.lit("")) == "", F.lit(None).cast("string"))
                      .otherwise(F.col("_title_key"))
                      .alias("title_author")
