@@ -14,11 +14,13 @@ from openalex.dlt.normalize import normalize_title_udf, normalize_license, norma
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
 # oxjob #1644: fill a publication date the rule below drops. That rule takes the string-earliest of ALL dates[] (any
-# dateType), and nulls it when it falls before 1900, so 998K null-year works had a real publicationYear: 91% are old works
-# (e-rara 1771 dissertations, 1856 Greek imprints), the rest modern records whose Created / Other date is old (a 2020 scan
-# of an 1871 drawing). Used only where the rule gives NULL (or year 10000+), so no servable date moves; the candidate set is
-# #126's reviewed one (Issued / Available / Copyrighted + publicationYear, earliest wins), floor 1500. #126 replaces
-# the whole rule later; this only fills its NULLs. Placeholder years (0, "0000") stay NULL.
+# dateType), and nulls it when it falls before 1900, so ~1M null-year works had a real old publicationYear: e-rara 1771
+# dissertations, 1856 imprints. Used only where the rule gives NULL (or year 10000+), and only when the year found is before
+# 1900, so no servable date moves; the candidate set is #126's reviewed one (Issued / Available / Copyrighted +
+# publicationYear, earliest wins), floor 1500. Bar (fresh Opus 5.5 draw vs landing pages, 26 Oct): pre-1900 fills 87/89
+# right or the start of the source's span. Left NULL on purpose: modern records of old originals (a 2020 scan of an 1871
+# drawing), where the item's year sits in Created, which #126 keeps out (0/10 right with publicationYear). Placeholder
+# years (0, "0000") stay NULL. #126 replaces the whole rule later; this only fills its NULLs.
 DATACITE_DATE_FILL_EXPR = r"""
 array_min(filter(
   concat(
@@ -30,7 +32,7 @@ array_min(filter(
                           THEN make_date(int(substr(x.date, 1, 4)), 1, 1) END),
     array(CASE WHEN attributes.publicationYear BETWEEN 1500 AND year(current_date()) + 1
                THEN make_date(int(attributes.publicationYear), 1, 1) END)),
-  y -> y IS NOT NULL AND year(y) >= 1500 AND y <= date_add(current_date(), 30)))
+  y -> y IS NOT NULL AND year(y) BETWEEN 1500 AND 1899))
 """
 
 # COMMAND ----------
