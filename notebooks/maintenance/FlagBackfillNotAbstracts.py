@@ -29,6 +29,7 @@
 
 import hashlib
 import os
+import re
 
 import pandas as pd
 from pyspark.sql import functions as F
@@ -82,8 +83,14 @@ def _make_reason(src, tsv):
             return "list"
         if len(k) <= 200 and ns["_KEY_RE"].fullmatch(k):
             return "wording"
+        # The meeting-abstract presenter line (#1794's template, built for landing pages) also opens real conference
+        # abstracts in this backfill ("Presenter: Y. Muraki (...) Recent neutrino oscillation experiments limit ...":
+        # 4 of 281 judged own, 26 Oct), so it doesn't count here.
+        if presenter.match(plain):
+            return None
         return "template"
 
+    presenter = re.compile(r"(?:presenter|presenting author(?: contact details)?|author block|primary author)\s*:")
     return reason
 
 
@@ -100,6 +107,7 @@ assert _r("Journal Article Yeardley Get access J. O. H.-P. Search for other work
           "Google Scholar Notes and Queries, Volume s6-VIII, Issue 196, 6 October 1883, Page 268") == "template"
 assert _r("EDITORIAL article Front. Neurol., 30 August 2023Sec. Epilepsy Volume 14 - 2023 | "
           "https://doi.org/10.3389/fneur.2023.1270702") == "template"
+assert _r("Presenter: Nora Singh BA | Hartford Hospital") is None  # presenter lines don't count in the backfill
 del _r
 
 _worker = {}  # empty on the driver, so the UDF pickles only code and two strings; filled once per worker
