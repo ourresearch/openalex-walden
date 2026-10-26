@@ -45,11 +45,11 @@ import pandas as pd
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
-# 33c4609 (26 Oct): + Silverchair page furniture and Frontiers headers (#1857); '< word' is no longer a tag.
-FILTER_COMMIT = "33c4609"
+# a3e36f8 (26 Oct): + short Silverchair page furniture and Frontiers headers (#1857); '< word' is no longer a tag.
+FILTER_COMMIT = "a3e36f8"
 LIB_DIR = f"/Volumes/openalex/default/libraries/parseland_not_abstract/{FILTER_COMMIT}"
 SHA256 = {
-    "not_abstract.py": "0aaa4826f3f341769b80da0d93fe38eab1900559ba688d7750f28c1c3b9cb37f",
+    "not_abstract.py": "2c30b1f05b641836d228c3af151b03aaf3cfd1713ad21629aab383670ed54f38",
     "data/not_abstracts.tsv": "3b8364f731da214c35fa0701c796f1ee7213593be6bceae42f2d2fa467115115",
 }
 SOURCE_TABLE = "openalex.works.locations_parsed"
