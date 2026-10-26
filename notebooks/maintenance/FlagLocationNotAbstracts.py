@@ -45,10 +45,11 @@ import pandas as pd
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
-FILTER_COMMIT = "6b90a3b"
+# 33c4609 (26 Oct): + Silverchair page furniture and Frontiers headers (#1857); '< word' is no longer a tag.
+FILTER_COMMIT = "33c4609"
 LIB_DIR = f"/Volumes/openalex/default/libraries/parseland_not_abstract/{FILTER_COMMIT}"
 SHA256 = {
-    "not_abstract.py": "aaf2b47fafc18d0d991cf9494c66382905673254d27dd86576beeeb0cf58c496",
+    "not_abstract.py": "0aaa4826f3f341769b80da0d93fe38eab1900559ba688d7750f28c1c3b9cb37f",
     "data/not_abstracts.tsv": "3b8364f731da214c35fa0701c796f1ee7213593be6bceae42f2d2fa467115115",
 }
 SOURCE_TABLE = "openalex.works.locations_parsed"
@@ -119,6 +120,8 @@ assert _r("<< ABSTRACT Starting with French Painting Today (1953) this chapter c
           "framed contemporary French art for local audiences, and what those audiences made of it in turn. >>"
           ) is None  # the module alone calls this punctuation only
 assert _r("<jats:title>Abstract</jats:title>") is not None  # a bare JATS label is still junk
+assert _r("Neurology| June 01 2004 Pseudotumor Cerebri and Sickle Cell Disease https://doi.org/10.1542/gr.11-6-64 "
+          "Views Icon Views Article contents Figures & tables Share Icon Share Cite Icon Cite") == "template"
 del _r
 
 _worker = {}  # empty on the driver, so the UDF pickles only code and two strings; filled once per worker
