@@ -673,7 +673,7 @@ TWO_DOI_NONPAPER = ("('dataset', 'software', 'collection', 'audiovisual', 'image
                     "'sound', 'interactiveresource', 'service', 'event', 'datapaper', 'computationalnotebook', 'outputmanagementplan', "
                     "'studyregistration', 'instrument')")
 TWO_DOI_NONPAPER_TYPES = ("('dataset', 'other', 'peer-review', 'supplementary-materials', 'reference-entry', 'standard', 'paratext', 'software', "
-                          "'erratum', 'retraction', 'grant', 'libguides', 'editorial', 'letter', 'review', 'book-review')")
+                          "'erratum', 'retraction', 'grant', 'libguides', 'editorial', 'letter', 'review', 'book-review', 'physical-object')")
 
 
 def build_two_doi_features():
