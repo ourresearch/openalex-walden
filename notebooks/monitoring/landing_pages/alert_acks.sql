@@ -7,4 +7,7 @@ INSERT OVERWRITE openalex.monitoring.landing_page_alert_acks
 VALUES
   ('mdpi.com', 'doi', 'soft_block', '#1790',
    'Akamai Bot Manager challenge (meta refresh to ?bm-verify=) on ~48% of first fetches since Aug 2026 and ~100% on most weekends, a soft block since harvest-task:232 (24 Oct 2026). Re-fetches get the article 78-98% of the time (#1789 README, 25 Oct 2026).',
-   DATE'2026-10-25', DATE'2026-11-30', TIMESTAMP'2026-10-25 14:00:00')
+   DATE'2026-10-25', DATE'2026-11-30', TIMESTAMP'2026-10-25 14:00:00'),
+  ('spiedigitallibrary.org', 'doi', 'soft_block', '#1790',
+   'Bot wall on SPIE PDF links (the links Parseland finds on SPIE pages, fetched by TaxiCab Landing Page PDFs) since ~23 Oct 2026, a soft block since harvest-task:232; landing pages store fine (83% useful on 25 Oct). #1802 phase-2 re-fetches of SPIE pages make bursts of these links (888 on 25 Oct). #1712 breaker holds the host back (#1789 README, 26 Oct 2026).',
+   DATE'2026-10-25', DATE'2026-11-30', TIMESTAMP'2026-10-26 13:30:00')
