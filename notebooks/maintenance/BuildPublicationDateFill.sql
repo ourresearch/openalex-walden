@@ -1,7 +1,8 @@
 -- Databricks notebook source
 -- oxjob #1644: build openalex.works.publication_date_fill, the one-time date fill CreateWorksBase uses where no location
--- gives a work a date. It holds, for every work with no publication year (or year 10000+), the date its own records
--- carry and the ingest parse dropped: repository dc:date values (pre-1900 dates, catalogue forms; the same rule as
+-- gives a work a date. It holds, for every work with no publication year that the record-reading resolver gave a
+-- year (ResolvePublicationYears: Jev reads all the work's records; accepted at confidence >= 0.95; audited 26 Oct,
+-- oxjobs #1644 EXPLORE § 12-14), that year, with the month and day of the date its records carry when the year agrees: repository dc:date values (pre-1900 dates, catalogue forms; the same rule as
 -- DC_DATE_FILL_EXPR in notebooks/ingest/Repo.py and RepoBackfill.py) and pre-1900 DataCite years (DATACITE_DATE_FILL_EXPR
 -- in notebooks/ingest/DataCite.py). A DataCite date wins over a repository one, as DataCite outranks repo locations.
 -- The ingest parsers get the same rules later (#1644 branch oxjob-1644-date-fill); this table retires once they ship and
@@ -126,8 +127,21 @@ filled AS (
     coalesce(t.src_id, t.src_ep, CASE WHEN dc_fill.d IS NOT NULL THEN regexp_extract(t.doi, '(10\.[0-9]+)', 1) END, 'unknown') AS src_key
   FROM targets t LEFT JOIN dc_fill USING (work_id) LEFT JOIN repo_fill USING (work_id)
   WHERE coalesce(dc_fill.d, repo_fill.d) IS NOT NULL
+),
+-- the gate: a year the record-reading resolver accepted (ResolvePublicationYears, prompt jev-v1, confidence >= 0.95).
+-- The regex date above only supplies the month and day when its year is the resolver's year.
+accepted AS (
+  SELECT r.work_id,
+    CASE WHEN year(f.fill_publication_date) = r.year THEN f.fill_publication_date ELSE make_date(r.year, 1, 1) END
+      AS fill_publication_date,
+    CASE WHEN year(f.fill_publication_date) = r.year THEN concat('jev-v1+', f.fill_source) ELSE 'jev-v1' END AS fill_source,
+    q.src_key
+  FROM openalex.works.publication_year_resolved r
+  JOIN openalex.works.publication_year_queue q USING (work_id)
+  LEFT JOIN filled f USING (work_id)
+  WHERE r.prompt_version = 'jev-v1' AND r.year IS NOT NULL AND r.conf >= 0.95
 )
 SELECT work_id, fill_publication_date, fill_source, current_timestamp() AS built_at
-FROM filled
+FROM accepted
 -- collections whose year is a placeholder (Jason's pre-1900 audit; scratch/analyze_audit.py, evidence/denylist_cells.json)
-WHERE NOT (FALSE);
+WHERE NOT ((src_key = 'https://openalex.org/S4306400126' AND year(fill_publication_date) = 1730) OR (src_key = 'https://openalex.org/S4306400359' AND year(fill_publication_date) = 1880) OR (src_key = 'https://openalex.org/S4306400518' AND year(fill_publication_date) = 1890) OR (src_key = 'https://openalex.org/S4306401134' AND year(fill_publication_date) = 1850) OR (src_key = 'https://openalex.org/S4306402217' AND year(fill_publication_date) = 1840) OR (src_key = 'https://openalex.org/S4306402217' AND year(fill_publication_date) = 1850) OR (src_key = 'https://openalex.org/S4306402611' AND year(fill_publication_date) = 1786) OR (src_key = 'https://openalex.org/S4306402611' AND year(fill_publication_date) = 1881) OR (src_key = 'https://openalex.org/S7407064294' AND year(fill_publication_date) = 1891));
