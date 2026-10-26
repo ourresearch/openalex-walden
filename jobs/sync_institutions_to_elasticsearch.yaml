@@ -8,7 +8,17 @@ resources:
           interval: 1
           unit: DAYS
       tasks:
+        - task_key: lineage_works_counts
+          notebook_task:
+            notebook_path: notebooks/institutions/CreateInstitutionLineageWorksCounts
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+          timeout_seconds: 3600
+          max_retries: 1
+          min_retry_interval_millis: 600000
         - task_key: create_institutions_api
+          depends_on:
+            - task_key: lineage_works_counts
           notebook_task:
             notebook_path: notebooks/institutions/CreateInstitutionsApi
             source: GIT
