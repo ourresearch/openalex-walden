@@ -27,8 +27,9 @@ now = spark.sql("SELECT current_timestamp()").collect()[0][0]
 
 # table maintenance adds commits but no data (10-04: a VACUUM moved institutions_api v1816 -> v1818 and tripped this
 # check while the edge was current), so staleness is measured from the newest commit that can change rows
+# 10-22: COMPUTE STATS (awards_api v1304) tripped it too: the edge had the latest data, Jason got a failure mail
 MAINTENANCE = ("VACUUM START", "VACUUM END", "OPTIMIZE", "SET TBLPROPERTIES", "UNSET TBLPROPERTIES", "ANALYZE",
-               "SET COLUMN COMMENT", "CHANGE COLUMN", "ADD CONSTRAINT", "DROP CONSTRAINT", "REORG")
+               "COMPUTE STATS", "SET COLUMN COMMENT", "CHANGE COLUMN", "ADD CONSTRAINT", "DROP CONSTRAINT", "REORG")
 
 
 def last_data_commit(src):
