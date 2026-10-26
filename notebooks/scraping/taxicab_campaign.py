@@ -36,12 +36,24 @@
 # MAGIC
 # MAGIC **Dollar caps, two layers.** (a) Zyte enforces each campaign key's own spending limit for the
 # MAGIC billing cycle (Zyte dashboard → Spending Alerts → API key, "Pause processing requests"), so a campaign
-# MAGIC can never spend the main key's money or stop new-content scraping. (b) This guard estimates spend
-# MAGIC (fetches × the scoreboard's price for the billed host, `openalex.monitoring.landing_page_zyte_prices`,
-# MAGIC × `cost_margin`) and pauses before Zyte's limit: it pauses the campaign at `cap_usd` for the billing
+# MAGIC can never spend the main key's money or stop new-content scraping. (b) This guard counts spend in
+# MAGIC Zyte's dollars and pauses before Zyte's limit: it pauses the campaign at `cap_usd` for the billing
 # MAGIC cycle (from the 2nd of the month), trims a wave to fit what is left, and pauses if steady use plus every
 # MAGIC campaign (open waves included) would pass `zyte_total_cap_usd` ($9K; Zyte pauses ALL usage at $12K).
 # MAGIC Spend per campaign per cycle is written to `campaign_spend` for the charter's daily check.
+# MAGIC
+# MAGIC **How spend is counted.** Each fetch gets a raw estimate: the scoreboard's price for the host it
+# MAGIC reached (`openalex.monitoring.landing_page_zyte_prices`). That runs ~2x low for doi.org links (26 Oct
+# MAGIC 2026, #1790 EXPLORE § 8): when Taxicab's free HEAD lookup of the DOI fails (Cloudflare publishers),
+# MAGIC Zyte is asked for doi.org itself and bills doi.org's rate, often with browser rendering, though
+# MAGIC `resolved_url` shows the publisher. So the guard scales the raw estimate by each Zyte key's measured
+# MAGIC ratio, Zyte's billed $ ÷ raw estimate over its recent complete UTC days, from
+# MAGIC `campaign_key_costs` (one row per key per day: written each tick from Zyte's Stats API when secret
+# MAGIC `webscraper/zyte_stats_api_key` exists, else by hand from the dashboard: Stats → Usage, API Keys = the
+# MAGIC key, Price). Spend = raw × ratio × `calibrated_margin` (1.1, for mix drift between readings); a key
+# MAGIC with no reading yet falls back to raw × `cost_margin` (1.25), as before. The ratio never goes below 1.
+# MAGIC Per-host "too expensive" stops still use the raw estimate × `cost_margin` (a key-wide ratio says
+# MAGIC nothing about which host is dear).
 # MAGIC
 # MAGIC **Run a campaign:** put its URLs in a table with `url, native_id, native_id_namespace` (and an
 # MAGIC optional int `priority`, higher first; `native_id` is a bare DOI for namespace `doi`), then
@@ -56,8 +68,11 @@
 
 # COMMAND ----------
 
+import base64
 import json
 import re
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from databricks.sdk import WorkspaceClient
@@ -72,6 +87,10 @@ HOST_FN = f"{MON}.landing_page_host"    # (url, resolved_url, native_id_namespac
 PRICES = f"{MON}.landing_page_zyte_prices"
 FUNNEL = f"{MON}.landing_page_funnel"
 BREAKER = f"{DB}.host_breaker"          # #1712's shared per-host breaker; skipped if absent
+KEY_COSTS = f"{DB}.campaign_key_costs"  # Zyte's billed $ per campaign key per UTC day
+ZYTE_ORG = 122441
+ZYTE_STATS_URL = "https://zyte-api-stats.zyte.com/api/stats"   # docs.zyte.com/zyte-api/usage/stats
+CALIBRATION_DAYS = 7                    # complete UTC days of Zyte readings a key's ratio is measured over
 
 DEFAULTS = {
     "wave_size": 20000,
@@ -92,7 +111,8 @@ DEFAULTS = {
     # $ per 1,000 fetches for a host missing from the price table; None = the table's '*' row
     # ($40 per 1M requests, repositories and small journals, #1290). Hosts priced above that are listed.
     "default_usd_per_1k": None,
-    "cost_margin": 1.25,             # re-asks, recipes with extra calls, price drift
+    "cost_margin": 1.25,             # re-asks, recipes with extra calls, price drift (keys with no Zyte reading)
+    "calibrated_margin": 1.1,        # on top of a key's measured Zyte ratio: mix drift between readings
     "zyte_total_cap_usd": 9000,
     "steady_usd_per_day": 100,       # non-campaign Zyte use; observed $51-80/day in Oct 2026
     "quiet_hours_utc": [3, 4, 5],    # no new waves while new-content runs peak (04:00 UTC) and End 2 End starts (05:00)
@@ -158,6 +178,9 @@ q(f"""CREATE TABLE IF NOT EXISTS {DB}.campaign_results (
 q(f"""CREATE TABLE IF NOT EXISTS {DB}.campaign_spend (
   campaign STRING, zyte_key STRING, cycle_start TIMESTAMP, est_usd DOUBLE, cap_usd DOUBLE, fetches BIGINT,
   stored BIGINT, status STRING, updated_at TIMESTAMP) USING DELTA""")
+# A reading counts for its day once read_at is after the day's end (a partial day is replaced later)
+q(f"""CREATE TABLE IF NOT EXISTS {KEY_COSTS} (
+  zyte_key STRING, day DATE, zyte_usd DOUBLE, billed_requests BIGINT, source STRING, read_at TIMESTAMP) USING DELTA""")
 
 # COMMAND ----------
 
@@ -236,9 +259,80 @@ def cycle_totals():
     return {r.campaign: r for r in rows}
 
 
+def read_zyte_stats():
+    """Zyte's billed $ per campaign key per UTC day from its Stats API into KEY_COSTS. Needs the Zyte
+    *dashboard* API key (not a Zyte API key) in secret webscraper/zyte_stats_api_key; without it the rows
+    are written by hand from the dashboard and this does nothing."""
+    try:
+        api_key = dbutils.secrets.get("webscraper", "zyte_stats_api_key")
+    except Exception:
+        return
+    auth = "Basic " + base64.b64encode(f"{api_key}:".encode()).decode()
+    keys = [r.zyte_key for r in q(f"SELECT DISTINCT zyte_key FROM {DB}.campaigns WHERE coalesce(zyte_key, '') <> ''").collect()]
+    start = (now() - timedelta(days=CALIBRATION_DAYS + 2)).strftime("%Y-%m-%dT00:00:00Z")
+    rows = []
+    for key in keys:
+        query = urllib.parse.urlencode({"organization_id": ZYTE_ORG, "start_time": start, "groupby_time": "day",
+                                        "end_time": now().strftime("%Y-%m-%dT%H:%M:%SZ"), "apikey_labels": key})
+        req = urllib.request.Request(f"{ZYTE_STATS_URL}?{query}", headers={"Authorization": auth})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                results = json.load(resp).get("results", [])
+        except Exception as e:  # never print the request: it carries the key
+            print(f"WARNING: Zyte Stats API read for {key} failed ({type(e).__name__}); using the readings on file")
+            continue
+        for r in results:
+            billed = sum(sc.get("count") or 0 for sc in r.get("status_codes") or [] if sc.get("code") == 200)
+            rows.append((key, r["day"][:10], float(r["cost_microusd_total"]) / 1e6, billed))
+    if rows:
+        spark.createDataFrame(rows, "zyte_key STRING, day STRING, zyte_usd DOUBLE, billed_requests BIGINT") \
+            .createOrReplaceTempView("zyte_readings")
+        q(f"""MERGE INTO {KEY_COSTS} t
+              USING (SELECT zyte_key, CAST(day AS DATE) AS day, zyte_usd, billed_requests FROM zyte_readings) s
+              ON t.zyte_key = s.zyte_key AND t.day = s.day
+              WHEN MATCHED THEN UPDATE SET zyte_usd = s.zyte_usd, billed_requests = s.billed_requests,
+                source = 'zyte stats api', read_at = current_timestamp()
+              WHEN NOT MATCHED THEN INSERT (zyte_key, day, zyte_usd, billed_requests, source, read_at)
+                VALUES (s.zyte_key, s.day, s.zyte_usd, s.billed_requests, 'zyte stats api', current_timestamp())""")
+
+
+def key_ratios():
+    """Per Zyte key: (Zyte's billed $ ÷ the raw estimate, days) over its last CALIBRATION_DAYS complete UTC
+    days that have a full-day reading and no wave still unscored; keys with under $1 of raw estimate on
+    such days are left out (no ratio). Never below 1: the guard doesn't count less than its price table."""
+    rows = q(f"""
+      WITH k AS (
+        SELECT zyte_key, day, zyte_usd FROM {KEY_COSTS} WHERE read_at >= date_add(day, 1) AND day < current_date()),
+      open_ AS (   -- a wave's rows reach campaign_results only when it is scored
+        SELECT c.zyte_key, min(CAST(w.started_at AS DATE)) AS first_open
+        FROM {DB}.campaign_waves w JOIN {DB}.campaigns c USING (campaign)
+        WHERE w.status IN ('launching', 'fetching') GROUP BY 1),
+      raw AS (
+        SELECT c.zyte_key, CAST(r.processed_date AS DATE) AS day, sum(r.est_usd) AS raw_usd
+        FROM {DB}.campaign_results r JOIN {DB}.campaigns c USING (campaign)
+        WHERE r.processed_date >= date_sub(current_date(), {CALIBRATION_DAYS + 40}) GROUP BY 1, 2),
+      j AS (
+        SELECT k.zyte_key, k.zyte_usd, raw.raw_usd, row_number() OVER (PARTITION BY k.zyte_key ORDER BY k.day DESC) AS rn
+        FROM k JOIN raw USING (zyte_key, day) LEFT JOIN open_ o USING (zyte_key)
+        WHERE (o.first_open IS NULL OR k.day < o.first_open) AND raw.raw_usd > 0)
+      SELECT zyte_key, sum(zyte_usd) AS usd, sum(raw_usd) AS raw, count(*) AS n_days
+      FROM j WHERE rn <= {CALIBRATION_DAYS} GROUP BY zyte_key HAVING sum(raw_usd) >= 1""").collect()
+    return {r.zyte_key: (max(1.0, r.usd / r.raw), int(r.n_days)) for r in rows}
+
+
+RATIOS = {}         # zyte_key -> (ratio, days); set once per run in the last cell
+CAMPAIGN_KEYS = {}  # campaign -> zyte_key
+
+
+def cost_factor(zyte_key, s):
+    """Raw estimate -> Zyte dollars for spend on this key."""
+    ratio = RATIOS.get(zyte_key)
+    return ratio[0] * s["calibrated_margin"] if ratio else s["cost_margin"]
+
+
 def spent(c, s, totals):
     r = totals.get(c["campaign"])
-    return (float(r.usd) if r else 0.0) * s["cost_margin"]
+    return (float(r.usd) if r else 0.0) * cost_factor(c["zyte_key"], s)
 
 
 def write_spend(c, s, totals):
@@ -258,7 +352,7 @@ def total_zyte_estimate(s, totals):
     """Steady (non-campaign) use so far this cycle, plus every campaign's scored spend and open waves."""
     days = (now() - cycle_start()).total_seconds() / 86400
     open_waves = one(f"SELECT coalesce(sum(est_usd), 0) FROM {DB}.campaign_waves WHERE status IN ('launching', 'fetching')")
-    scored = sum(float(r.usd) for r in totals.values()) * s["cost_margin"]
+    scored = sum(float(r.usd) * cost_factor(CAMPAIGN_KEYS.get(name), s) for name, r in totals.items())
     return s["steady_usd_per_day"] * days + scored + float(open_waves)
 
 # COMMAND ----------
@@ -507,7 +601,11 @@ def advance(c, s, totals):
         return
     so_far, total = spent(c, s, totals), total_zyte_estimate(s, totals)
     budget = min(c["cap_usd"] - so_far, s["zyte_total_cap_usd"] - total)
-    print(f"[{c['campaign']}] cycle spend ~${so_far:,.2f} of ${c['cap_usd']:,.0f}; all Zyte ~${total:,.0f} of ${s['zyte_total_cap_usd']:,.0f}")
+    ratio = RATIOS.get(c["zyte_key"])
+    basis = (f"Zyte ratio x{ratio[0]:.2f} over {ratio[1]} day(s) x {s['calibrated_margin']}" if ratio
+             else f"no Zyte reading for {c['zyte_key']}: estimate x {s['cost_margin']}")
+    print(f"[{c['campaign']}] cycle spend ~${so_far:,.2f} of ${c['cap_usd']:,.0f} ({basis}); "
+          f"all Zyte ~${total:,.0f} of ${s['zyte_total_cap_usd']:,.0f}")
     if budget < 0.01:
         which = "campaign cap" if c["cap_usd"] - so_far < 0.01 else "total Zyte cap"
         set_status(c, "paused", f"{which} reached (campaign ~${so_far:,.2f}, all Zyte ~${total:,.0f})")
@@ -579,5 +677,9 @@ campaigns = [r.asDict() for r in q(f"""SELECT * FROM {DB}.campaigns
            OR campaign IN (SELECT campaign FROM {DB}.campaign_waves WHERE status IN ('launching', 'fetching'))) {where}""").collect()]
 if not campaigns:
     dbutils.notebook.exit("no active campaign")
+read_zyte_stats()
+RATIOS = key_ratios()
+CAMPAIGN_KEYS = {r.campaign: r.zyte_key for r in q(f"SELECT campaign, zyte_key FROM {DB}.campaigns").collect()}
+print("Zyte ratio per key (billed $ / raw estimate):", {k: f"x{v[0]:.2f} over {v[1]} day(s)" for k, v in RATIOS.items()} or "none yet")
 for c in campaigns:
     tick(c)
