@@ -28,9 +28,6 @@ resources:
             source: GIT
             base_parameters:
               max_minutes: "150"
-              chunk_size: "200000"
-              threads: "16"
-              rows_per_task: "2000"
           max_retries: 1
           min_retry_interval_millis: 600000
           timeout_seconds: 14400

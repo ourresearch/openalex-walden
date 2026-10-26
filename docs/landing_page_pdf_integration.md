@@ -88,7 +88,8 @@ Matching strategies:
 - Landing page: ≤5 affiliations per author
 
 ### is_corresponding
-- From crossref, pubmed and **landing_page** (key-based or positional match); every flagged source counts, unranked
+- From crossref, pubmed and **landing_page** rows (key-based or positional match), unranked: every flagged row counts
+  (in practice only landing_page rows carry flags, often several per DOI)
 - PDF is_corresponding is not used
 - **pmc_oa** (`openalex.pubmed_central.pmc_oa_authors`, from `notebooks/ingest/PmcOpenData`, oxjob #1793): fill-only.
   Its flags count only on DOIs where no non-PDF source flags anyone and no `works_legacy.work_authors` row flags

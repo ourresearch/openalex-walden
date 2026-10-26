@@ -30,11 +30,11 @@
 import gzip
 import io
 import json
+import math
 import os
 import re
 import sys
 import time
-import urllib.request
 
 REPO_ROOT = os.path.abspath(os.path.join(os.getcwd(), "..", ".."))
 if not os.path.exists(os.path.join(REPO_ROOT, "utils", "pmc_jats.py")):
@@ -48,7 +48,7 @@ from utils import pmc_jats  # noqa: E402
 
 import pandas as pd  # noqa: E402
 from pyspark.sql import functions as F  # noqa: E402
-from pyspark.sql.types import (ArrayType, BooleanType, IntegerType, LongType, StringType, StructField,  # noqa: E402
+from pyspark.sql.types import (ArrayType, BooleanType, IntegerType, StringType, StructField,  # noqa: E402
                                StructType, TimestampType)
 
 dbutils.widgets.text("schema", "openalex.pubmed_central", "target schema")
@@ -144,10 +144,11 @@ todo = spark.table(INVENTORY).join(done, ["key", "etag"], "left_anti")
 if ONLY_SQL:
     todo = todo.join(spark.sql(ONLY_SQL).select("pmcid").distinct(), "pmcid", "left_semi")
 todo = todo.select("key", "etag", "last_modified", "pmcid", "version")
-n_todo = todo.count()
 if MAX_ARTICLES:
-    n_todo = min(n_todo, MAX_ARTICLES)
-n_chunks = max(1, -(-n_todo // CHUNK))
+    todo = todo.limit(MAX_ARTICLES)
+todo = todo.cache()
+n_todo = todo.count()
+n_chunks = math.ceil(n_todo / CHUNK)
 print(f"to do: {n_todo:,} article versions in {n_chunks} chunks of <= {CHUNK:,}"
       + (f" (restricted by only_pmcids_sql)" if ONLY_SQL else ""))
 if DRY_RUN or n_todo == 0:
@@ -159,7 +160,6 @@ def read_partition(batches):
     """Runs on executors: metadata JSON + JATS front for each key, THREADS at a time. Every failure is a row."""
     import datetime as _dt
     import json as _json
-    import re as _re
     import sys as _sys
     from concurrent.futures import ThreadPoolExecutor
     if REPO_ROOT not in _sys.path:
@@ -169,16 +169,12 @@ def read_partition(batches):
     cols = [f.name for f in ARTICLE_SCHEMA.fields]
 
     def one(rec):
-        row = dict.fromkeys(cols)  # every column present: a missing key would become NaN, which Arrow can't convert
-        row.update({"key": rec["key"], "etag": rec["etag"], "last_modified": rec["last_modified"], "pmcid": rec["pmcid"],
+        row = {"key": rec["key"], "etag": rec["etag"], "last_modified": rec["last_modified"], "pmcid": rec["pmcid"],
                "version": int(rec["version"]), "parser_version": _pj.PARSER_VERSION,
-               "fetched_at": _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None), "error": None})
+               "fetched_at": _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)}
         try:
             md = _json.loads(_pj.http_get(f"{_pj.BUCKET_HTTPS}/{rec['key']}"))
-            doi = (md.get("doi") or "").strip().lower() or None
-            if doi:
-                doi = _re.sub(r"^(https?://(dx\.)?doi\.org/|doi:)", "", doi)
-            row.update(pmid=str(md["pmid"]) if md.get("pmid") else None, doi=doi, title=(md.get("title") or "")[:2000] or None,
+            row.update(pmid=str(md["pmid"]) if md.get("pmid") else None, doi=md.get("doi") or None, title=(md.get("title") or "")[:2000] or None,
                        is_pmc_openaccess=md.get("is_pmc_openaccess"), is_manuscript=md.get("is_manuscript"),
                        is_retracted=md.get("is_retracted"), is_historical_ocr=md.get("is_historical_ocr"),
                        license_code=md.get("license_code"), xml_url=md.get("xml_url"), pdf_url=md.get("pdf_url"))
@@ -193,33 +189,31 @@ def read_partition(batches):
     with ThreadPoolExecutor(THREADS) as pool:
         for pdf in batches:
             rows = list(pool.map(one, pdf.to_dict("records")))
+            # missing keys and NaN -> None: Spark's array converter can't iterate a NaN (a row without JATS)
             out = pd.DataFrame(rows, columns=cols).astype(object).where(lambda d: d.notna(), None)
             out["version"] = out["version"].astype("int32")
             out["n_affs"] = out["n_affs"].astype("Int32")
-            yield out[cols]
+            yield out
 
 
 run_id = f"{time.strftime('%Y%m%dT%H%M%S')}-{INVENTORY_DATE}"
-todo = todo.withColumn("_chunk", F.pmod(F.xxhash64("key"), F.lit(n_chunks))).cache()
+todo = todo.withColumn("_chunk", F.pmod(F.xxhash64("key"), F.lit(n_chunks)))
+n_tasks_min = spark.sparkContext.defaultParallelism
 total_ok = total_failed = 0
 for chunk_no in range(n_chunks):
     if (time.time() - T0) / 60 > MAX_MINUTES:
         print(f"stopping before chunk {chunk_no}: {MAX_MINUTES} minutes used")
         break
-    if MAX_ARTICLES and total_ok + total_failed >= MAX_ARTICLES:
-        break
     t = time.time()
     part = todo.filter(F.col("_chunk") == chunk_no).drop("_chunk")
-    if MAX_ARTICLES:
-        part = part.limit(MAX_ARTICLES - total_ok - total_failed)
     n_part = part.count()
-    out = (part.repartition(max(1, n_part // ROWS_PER_TASK))
+    out = (part.repartition(max(n_tasks_min, n_part // ROWS_PER_TASK))
            .mapInPandas(read_partition, schema=ARTICLE_SCHEMA))
     out.write.mode("append").saveAsTable(ARTICLES)
-    # exact: rows fetched since this chunk began for this chunk's own (key, etag)s
+    # this chunk's rows: fetched since it began, same key hash (never re-runs the to-do plan, which the write changed)
     stats = (spark.table(ARTICLES)
              .filter(F.col("fetched_at") >= F.lit(time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(t - 5))).cast("timestamp"))
-             .join(part.select("key", "etag"), ["key", "etag"], "left_semi")
+             .filter(F.pmod(F.xxhash64("key"), F.lit(n_chunks)) == chunk_no)
              .agg(F.count_if(F.col("error").isNull()).alias("ok"), F.count_if(F.col("error").isNotNull()).alias("failed"))
              .first())
     ok, failed = int(stats.ok), int(stats.failed)
@@ -247,7 +241,7 @@ latest = spark.sql(f"""
   SELECT * FROM {ARTICLES}
   WHERE error IS NULL AND doi IS NOT NULL AND size(authors) > 0 AND NOT coalesce(is_retracted, false)
   QUALIFY row_number() OVER (PARTITION BY key ORDER BY fetched_at DESC) = 1
-""")
+""").withColumn("doi", normalize_doi_spark_col(F.col("doi"))).filter("doi != ''")
 per_doi = (latest
            .withColumn("_rank", F.expr("""row_number() OVER (PARTITION BY doi ORDER BY
                 coalesce(is_manuscript, false) ASC, version DESC, pmcid DESC)"""))
@@ -259,8 +253,7 @@ authors_df = per_doi.select(
         'affiliations', transform(a.affiliations, x -> named_struct('name', x, 'department', CAST(NULL AS STRING), 'ror_id', CAST(NULL AS STRING))),
         'is_corresponding', a.is_corresponding))""").alias("authors"),
     "fetched_at",
-).withColumn("doi", normalize_doi_spark_col(F.col("doi"))).filter("doi IS NOT NULL AND doi != ''") \
- .withColumn("authors", udf_last_name_only(F.col("authors"))).withColumns({
+).withColumn("authors", udf_last_name_only(F.col("authors"))).withColumns({
     "authors_exist": F.expr("concat_ws('', authors[0].given, authors[0].family, authors[0].name) != ''"),
     "affiliations_exist": F.expr("exists(authors, a -> nvl(size(a.affiliations), 0) > 0)"),
     "is_corresponding_exists": F.expr("exists(authors, a -> a.is_corresponding = true)"),

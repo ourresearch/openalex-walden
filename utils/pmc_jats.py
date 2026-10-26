@@ -33,42 +33,40 @@ def https_url(s3_url_or_key):
     return f"{BUCKET_HTTPS}/{key.lstrip('/')}"
 
 
-def http_get(url, timeout=30, tries=4):
+def _get(url, read, timeout=30, tries=4):
+    """GET with retries and exponential backoff; 403/404 fail at once. `read(response)` returns the bytes kept."""
     last = None
     for i in range(tries):
         try:
             with urllib.request.urlopen(url, timeout=timeout) as r:
-                return r.read()
+                return read(r)
         except Exception as e:  # noqa: BLE001 - retried, then raised with context
-            last = e
-            code = getattr(e, "code", None)
-            if code in (403, 404):
-                break
-            time.sleep(0.5 * (2 ** i))
-    raise RuntimeError(f"GET {url}: {last!r}")
-
-
-def fetch_front(url, timeout=30, tries=4):
-    """Stream a JATS object until </front>; returns the bytes read (the whole object if it has no </front>)."""
-    last = None
-    for i in range(tries):
-        try:
-            buf = bytearray()
-            with urllib.request.urlopen(url, timeout=timeout) as r:
-                while len(buf) < _MAX_FRONT_BYTES:
-                    chunk = r.read(32768)
-                    if not chunk:
-                        break
-                    buf += chunk
-                    if _FRONT_END in buf[-len(chunk) - 16:]:
-                        break
-            return bytes(buf)
-        except Exception as e:  # noqa: BLE001
             last = e
             if getattr(e, "code", None) in (403, 404):
                 break
             time.sleep(0.5 * (2 ** i))
     raise RuntimeError(f"GET {url}: {last!r}")
+
+
+def _read_until_front(r):
+    buf = bytearray()
+    while len(buf) < _MAX_FRONT_BYTES:
+        chunk = r.read(32768)
+        if not chunk:
+            break
+        buf += chunk
+        if _FRONT_END in buf[-len(chunk) - 16:]:
+            break
+    return bytes(buf)
+
+
+def http_get(url, timeout=30, tries=4):
+    return _get(url, lambda r: r.read(), timeout, tries)
+
+
+def fetch_front(url, timeout=30, tries=4):
+    """Stream a JATS object until </front>; returns the bytes read (the whole object if it has no </front>)."""
+    return _get(url, _read_until_front, timeout, tries)
 
 
 def _strip_ns(root):
@@ -126,7 +124,7 @@ def parse_front(raw):
     meta = root.find("./front/article-meta")
     if meta is None:
         meta = root.find(".//article-meta")
-    out = {"parser_version": PARSER_VERSION, "article_type": root.get("article-type"), "authors": [],
+    out = {"article_type": root.get("article-type"), "authors": [],
            "has_abstract": False, "corresp_notes": False, "n_affs": 0}
     if meta is None:
         return out
@@ -180,7 +178,7 @@ def parse_front(raw):
                     linked.append(t)
             corresp = c.get("corresp") == "yes" or c.find(".//xref[@ref-type='corresp']") is not None
             authors.append({"given": given, "family": family, "name": name, "orcid": orcid,
-                            "affiliations": linked, "is_corresponding": bool(corresp)})
+                            "affiliations": linked, "is_corresponding": corresp})
     if authors and len(affs_all) == 1 and not any(a["affiliations"] for a in authors):
         for a in authors:
             a["affiliations"] = [affs_all[0]]
