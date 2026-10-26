@@ -48,6 +48,61 @@ PMC_VERSION_FROM_SET_SPEC_EXPR = """
       END
     END
 """
+# oxjob #1644: fill a missing dc:date publication date. The published_date parse below reads five strict formats and
+# drops anything before 1900, so 14.5M null-year works (11.3M xpac) had a date in their record and none on the work:
+# pre-1900 dates (Gallica 1848), catalogue forms ([2019], 1863., c1931., [1874?], MDCCII. [1702], Meiji 18 [1885]),
+# 20180625, 18.02.1886, 1940-00-00, ISO with an offset or fraction, open serial runs (1958-), "June 25, 2018".
+# Used only where that parse gives NULL (coalesce), so no record's date that exists today moves. Earliest value wins;
+# copyright years (c1931) count only when nothing else parses; NULL when an unread value holds a year 2+ older than the
+# pick (a digitisation date beside an original we can't read). Floor 1500 = the clamp in repo_enriched; decades,
+# centuries, "nach / before / between" spans and RFC-822 timestamps stay NULL on purpose. Measured on the full table
+# 2026-10-26: 8.58M null-year works gain a date (bar: oxjobs #1644 EXPLORE). Source of truth: oxjobs #1644
+# scratch/fill_expr.py. Keep byte-identical with Repo.py; replace DATES with the array<string> of dc:date values.
+DC_DATE_FILL_EXPR = r"""
+element_at(transform(array(transform(
+      transform(
+        flatten(transform(DATES, x -> split(x, '[;|]'))),
+        x -> regexp_replace(trim(regexp_replace(x, '^\\s*<[^>]+>', '')), '^[\\[\\(]+|[\\]\\)\\.\\?;,:~-]+$', '')),
+      t -> named_struct('t', t, 'd', CASE
+        WHEN t RLIKE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN
+          CASE WHEN substr(t, 6, 2) BETWEEN '01' AND '12' THEN
+                 coalesce(to_date(try_to_timestamp(substr(t, 1, 10), 'yyyy-MM-dd')),
+                          make_date(int(substr(t, 1, 4)), int(substr(t, 6, 2)), 1))
+               ELSE make_date(int(substr(t, 1, 4)), 1, 1) END
+        WHEN t RLIKE '^[0-9]{4}-[0-9]{2}$' THEN
+          CASE WHEN substr(t, 6, 2) BETWEEN '01' AND '12' THEN make_date(int(substr(t, 1, 4)), int(substr(t, 6, 2)), 1)
+               ELSE make_date(int(substr(t, 1, 4)), 1, 1) END
+        WHEN t RLIKE '^[0-9]{4}-[1-9]$' THEN make_date(int(substr(t, 1, 4)), int(substr(t, 6, 1)), 1)
+        WHEN t RLIKE '^[0-9]{8}$' THEN to_date(try_to_timestamp(t, 'yyyyMMdd'))
+        WHEN t RLIKE '^[0-9]{4}$' THEN make_date(int(t), 1, 1)
+        WHEN t RLIKE '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$' THEN
+          to_date(try_to_timestamp(regexp_replace(t, '[./]', '-'), 'yyyy-M-d'))
+        WHEN t RLIKE '^[0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{4}$' THEN
+          CASE WHEN int(regexp_extract(t, '^([0-9]+)', 1)) > 12 AND int(regexp_extract(t, '^[0-9]+[./-]([0-9]+)', 1)) <= 12
+                 THEN to_date(try_to_timestamp(regexp_replace(t, '[./]', '-'), 'd-M-yyyy'))
+               WHEN int(regexp_extract(t, '^[0-9]+[./-]([0-9]+)', 1)) > 12 AND int(regexp_extract(t, '^([0-9]+)', 1)) <= 12
+                 THEN to_date(try_to_timestamp(regexp_replace(t, '[./]', '-'), 'M-d-yyyy'))
+               ELSE make_date(int(regexp_extract(t, '([0-9]{4})$', 1)), 1, 1) END
+        WHEN t RLIKE '^(?i)(ca\\.?|c\\.?|circa|cop\\.?|©|copyright|approx\\.?|approximately|year|date|datum|fecha|ann[eé]e|anno)\\s*:?\\s*[0-9]{4}$'
+          THEN make_date(int(regexp_extract(t, '([0-9]{4})$', 1)), 1, 1)
+        WHEN t RLIKE '^[0-9]{4}\\s*(-|–|/|\\.\\.)\\s*([0-9]{2}|[0-9]{4})$'
+          THEN make_date(int(substr(t, 1, 4)), 1, 1)
+        WHEN t RLIKE '^[0-9]{4}\\s+[0-9]{4}$' AND substr(t, 1, 4) = substr(t, -4, 4)
+          THEN make_date(int(substr(t, 1, 4)), 1, 1)
+        WHEN t RLIKE '\\[\\s*(i\\.\\s*e\\.\\s*)?[0-9]{4}$'
+          THEN make_date(int(regexp_extract(t, '([0-9]{4})$', 1)), 1, 1)
+        WHEN t RLIKE '^(?i)(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|spring|summer|fall|autumn|winter|janvier|f[eé]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[eé]cembre|januar|februar|m[aä]rz|juni|juli|oktober|dezember|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|dicembre|janeiro|fevereiro|mar[cç]o|maio|junho|julho|setembro|outubro|novembro|dezembro)\\.?\\s+([0-9]{1,2}(st|nd|rd|th)?,?\\s+)?(de\\s+)?[0-9]{4}$'
+          OR t RLIKE '^(?i)[0-9]{1,2}\\.?\\s+(de\\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|spring|summer|fall|autumn|winter|janvier|f[eé]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[eé]cembre|januar|februar|m[aä]rz|juni|juli|oktober|dezember|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|dicembre|janeiro|fevereiro|mar[cç]o|maio|junho|julho|setembro|outubro|novembro|dezembro)\\.?\\s+(de\\s+)?[0-9]{4}$'
+          THEN make_date(int(regexp_extract(t, '([0-9]{4})$', 1)), 1, 1)
+        WHEN t RLIKE '^(?i)[0-9]{4}\\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|spring|summer|fall|autumn|winter|janvier|f[eé]vrier|mars|avril|mai|juin|juillet|ao[uû]t|septembre|octobre|novembre|d[eé]cembre|januar|februar|m[aä]rz|juni|juli|oktober|dezember|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|dicembre|janeiro|fevereiro|mar[cç]o|maio|junho|julho|setembro|outubro|novembro|dezembro)(\\s+[0-9]{1,2})?$'
+          THEN make_date(int(substr(t, 1, 4)), 1, 1)
+      END,
+                        'c', t RLIKE '^(?i)(c|cop\\.?|©|copyright)\\s*[0-9]{4}$'))), p ->
+  element_at(transform(array(coalesce(
+      array_min(filter(transform(filter(p, x -> NOT x.c), x -> x.d), y -> y IS NOT NULL AND year(y) >= 1500 AND y <= date_add(current_date(), 30))),
+      array_min(filter(transform(filter(p, x -> x.c), x -> x.d), y -> y IS NOT NULL AND year(y) >= 1500 AND y <= date_add(current_date(), 30))))), m ->
+    CASE WHEN exists(p, x -> x.d IS NULL AND array_min(transform(regexp_extract_all(x.t, '(1[5-9][0-9]{2}|20[0-2][0-9])', 1), k -> int(k))) < year(m) - 1) THEN NULL ELSE m END), 1)), 1)
+"""
 # oxjob #880: the title normalizer had drifted into a local copy here; one definition, in the wheel.
 from openalex.dlt.normalize import normalize_title_udf
 
@@ -464,7 +519,7 @@ parsed_df = clean_df \
         expr(PMC_VERSION_FROM_SET_SPEC_EXPR),
         detect_version_udf(col("cleaned_xml"), col("oai_identifier")))) \
     .withColumn("language", normalize_language_code_udf(regexp_extract(col("cleaned_xml"), r"<dc:language.*?>(.*?)</dc:language>", 1))) \
-    .withColumn("published_date",
+    .withColumn("published_date", coalesce(
         expr("""
             array_min(
                 filter(
@@ -491,7 +546,8 @@ parsed_df = clean_df \
                     d -> d is not null and year(d) >= 1900
                 )
             )
-        """)) \
+        """),
+        expr(DC_DATE_FILL_EXPR.replace("DATES", "regexp_extract_all(cleaned_xml, '<dc:date.*?>(.*?)</dc:date>')")))) \
     .withColumn("created_date", col("published_date")) \
     .withColumn("updated_date", to_date(
         regexp_extract(col("cleaned_xml"), r"<datestamp>(.*?)</datestamp>", 1))) \

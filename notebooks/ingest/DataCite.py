@@ -13,6 +13,26 @@ import pandas as pd
 from openalex.dlt.normalize import normalize_title_udf, normalize_license, normalize_license_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
 
+# oxjob #1644: fill a publication date the rule below drops. That rule takes the string-earliest of ALL dates[] (any
+# dateType), and nulls it when it falls before 1900, so 998K null-year works had a real publicationYear: 91% are old works
+# (e-rara 1771 dissertations, 1856 Greek imprints), the rest modern records whose Created / Other date is old (a 2020 scan
+# of an 1871 drawing). Used only where the rule gives NULL (or year 10000+), so no servable date moves; the candidate set is
+# #126's reviewed one (Issued / Available / Copyrighted + publicationYear, earliest wins), floor 1500. #126 replaces
+# the whole rule later; this only fills its NULLs. Placeholder years (0, "0000") stay NULL.
+DATACITE_DATE_FILL_EXPR = r"""
+array_min(filter(
+  concat(
+    transform(filter(coalesce(attributes.dates, array()), x -> lower(x.dateType) IN ('issued', 'available', 'copyrighted')),
+              x -> CASE WHEN x.date RLIKE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN to_date(try_to_timestamp(substr(x.date, 1, 10), 'yyyy-MM-dd'))
+                        WHEN x.date RLIKE '^[0-9]{4}-[0-9]{2}$' AND substr(x.date, 6, 2) BETWEEN '01' AND '12'
+                          THEN make_date(int(substr(x.date, 1, 4)), int(substr(x.date, 6, 2)), 1)
+                        WHEN x.date RLIKE '^[0-9]{4}' AND int(substr(x.date, 1, 4)) >= 1500
+                          THEN make_date(int(substr(x.date, 1, 4)), 1, 1) END),
+    array(CASE WHEN attributes.publicationYear BETWEEN 1500 AND year(current_date()) + 1
+               THEN make_date(int(attributes.publicationYear), 1, 1) END)),
+  y -> y IS NOT NULL AND year(y) >= 1500 AND y <= date_add(current_date(), 30)))
+"""
+
 # COMMAND ----------
 
 
@@ -228,6 +248,10 @@ def datacite_parsed():
             "published_date",
             F.when(F.year(F.col("published_date")) >= 1900, F.col("published_date")).otherwise(F.lit(None))
         )
+        # oxjob #1644: also replace year 10000+ (BORIS deposits carry Available +10000-01-01, which "+" sorts first in the
+        # string-min above); a date that cannot be served is as missing as a NULL.
+        .withColumn("published_date", F.coalesce(
+            F.when(F.year(F.col("published_date")) < 10000, F.col("published_date")), F.expr(DATACITE_DATE_FILL_EXPR)))
         .withColumn("created_date", F.to_date(F.col("attributes.created")))
         .withColumn("updated_date", F.to_date(F.col("attributes.updated")))
         .withColumn("updated_ts", F.to_timestamp(F.col("attributes.updated")))
