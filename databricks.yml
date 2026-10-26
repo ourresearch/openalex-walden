@@ -44,6 +44,7 @@ include:
   - jobs/sync_locations_to_elasticsearch.yaml
   - jobs/sync_publishers_to_elasticsearch.yaml
   - jobs/sync_sources_to_elasticsearch.yaml
+  - jobs/sync_merged_ids.yaml
   - jobs/sync_topic_hierarchy_to_elasticsearch.yaml
   - jobs/vacuum_optimize_tables.yaml
   - jobs/expunge_deletes_authors.yaml

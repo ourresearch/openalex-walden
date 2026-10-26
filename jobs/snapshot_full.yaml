@@ -140,6 +140,20 @@ resources:
           max_retries: 1
           min_retry_interval_millis: 300000
           timeout_seconds: 1800
+        # oxjob #1124: loser -> winner maps → {fmt}/{authors,sources}/merged_ids.csv.gz in both
+        # format trees. After export_authors + export_sources (each rm -r's its directory first);
+        # update_meta depends on it so its _temp/ scratch is gone before the finalizer's cleanup.
+        - task_key: export_merged_ids
+          depends_on:
+            - task_key: export_authors
+            - task_key: export_sources
+          notebook_task:
+            notebook_path: notebooks/snapshot/export_merged_ids
+            source: GIT
+          environment_key: serverless
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 1800
         - task_key: update_meta
           depends_on:
             - task_key: export_works
@@ -154,6 +168,7 @@ resources:
             - task_key: export_concepts
             - task_key: export_common_entities
             - task_key: export_deleted_works
+            - task_key: export_merged_ids
           notebook_task:
             notebook_path: notebooks/snapshot/update_meta
             source: GIT

@@ -1,0 +1,47 @@
+# oxjob #1124: merged author and source IDs resolve to the surviving record.
+# Builds openalex.{authors,sources}.merged_{author,source}_ids from the merge ledgers and mirrors
+# them into ES merge-authors / merge-sources (read by openalex-elastic-api for the 301 and for
+# loser IDs in filters). 09:30 CT: after the Authors job (07:00 CT) has deleted that day's emptied
+# profiles, so each loser's redirect is in ES before Sync Authors removes its doc next morning.
+# The snapshot's {authors,sources}/merged_ids.csv.gz come from these tables (export_merged_ids).
+resources:
+  jobs:
+    Sync_Merged_Ids_to_Elasticsearch:
+      name: Sync Merged IDs to Elasticsearch
+      schedule:
+        quartz_cron_expression: 0 30 9 * * ?
+        timezone_id: America/Chicago
+        pause_status: UNPAUSED
+      parameters:
+        # true = drop and rebuild the ES index from the map (repairs a doc-count mismatch)
+        - name: full_resync
+          default: "false"
+        # true = accept a map that shrank more than 2% since the last run
+        - name: shrink_guard_override
+          default: "false"
+      tasks:
+        - task_key: merged_authors
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_merged_ids
+            source: GIT
+            base_parameters:
+              entity: authors
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 7200
+        - task_key: merged_sources
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_merged_ids
+            source: GIT
+            base_parameters:
+              entity: sources
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 3600
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
