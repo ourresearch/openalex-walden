@@ -34,17 +34,21 @@ import pandas as pd
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
-FILTER_COMMIT = "4245f4f"
+# 33c4609 (26 Oct): adds Silverchair page furniture ("Search for other works by this author on ...", "Cite Icon Cite";
+# ~781K works) and Frontiers headers (16.6K), both from this backfill (#1857), plus #1794's meeting-abstract lines.
+FILTER_COMMIT = "33c4609"
 LIB_DIR = f"/Volumes/openalex/default/libraries/parseland_not_abstract/{FILTER_COMMIT}"
 SHA256 = {
-    "not_abstract.py": "85403be7e157e0bf47b23d95ccca0973a99799abf4e4c67a409728d1cf777c45",
+    "not_abstract.py": "0aaa4826f3f341769b80da0d93fe38eab1900559ba688d7750f28c1c3b9cb37f",
     "data/not_abstracts.tsv": "3b8364f731da214c35fa0701c796f1ee7213593be6bceae42f2d2fa467115115",
 }
 SOURCE_TABLE = "openalex.abstracts.abstracts_backfill"
 REPAIR_TABLE = "openalex.abstracts.abstracts_backfill_repair"
-TARGET_TABLE = "openalex.abstracts.abstracts_backfill_not_abstract"
-# Longest list text is 1,835 characters; templates need <= 1,500 and wordings <= 200 after cleaning.
-# Anything longer than this cannot match, so it skips the Python UDF.
+# A dry run writes elsewhere first (job parameter target_table), to diff a new filter commit against the live table.
+dbutils.widgets.text("target_table", "openalex.abstracts.abstracts_backfill_not_abstract")
+TARGET_TABLE = dbutils.widgets.get("target_table")
+# Longest list text is 1,835 characters; templates need <= 1,500 and wordings <= 200 after cleaning. Page furniture
+# can sit anywhere, but texts over this length are left alone on purpose (they may be full text with a real abstract).
 MAX_LEN = 6000
 
 blobs = {}
@@ -92,6 +96,10 @@ assert _r("This datasheet on Mesorchis covers Identity.") == "template"
 assert _r("Established in 1964, the IUCN Red List of Threatened Species has evolved to become the world’s most "
           "comprehensive information source on the global conservation status of animal, fungi and plant species.") == "list"
 assert _r("We measured the effect of nitrogen on maize yield in 40 field trials and found a 12% increase.") is None
+assert _r("Journal Article Yeardley Get access J. O. H.-P. Search for other works by this author on: Oxford Academic "
+          "Google Scholar Notes and Queries, Volume s6-VIII, Issue 196, 6 October 1883, Page 268") == "template"
+assert _r("EDITORIAL article Front. Neurol., 30 August 2023Sec. Epilepsy Volume 14 - 2023 | "
+          "https://doi.org/10.3389/fneur.2023.1270702") == "template"
 del _r
 
 _worker = {}  # empty on the driver, so the UDF pickles only code and two strings; filled once per worker
