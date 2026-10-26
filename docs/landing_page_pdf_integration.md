@@ -75,8 +75,9 @@ See `CreateCrossrefSuperAuthorships.ipynb` (keyed by DOI) and `CreateRepoSuperAu
 - **Repo**: repo/repo_backfill(1) / landing_page(2) — PDF is NOT used for names
 
 ### Affiliations (merged from multiple sources)
-- **Crossref**: crossref > pubmed > pdf (≤2 cap) > landing_page (≤5 cap) > pmc_oa (PMC open data, oxjob #1793; fills
-  only authors no other source gives an affiliation)
+- **Crossref**: crossref > pubmed > pdf (≤2 cap) > landing_page (≤5 cap), then pmc_oa (PMC open data, oxjob #1793)
+  fills only authors left with no affiliation. pmc_oa is not in `crossref_base`: it is applied after every match and
+  fallback above, so it can't change which authors match by key or by position
 - **Repo**: repo > pdf (≤2 cap) > landing_page (≤5 cap)
 
 Matching strategies:
