@@ -166,10 +166,13 @@ def read_partition(batches):
         _sys.path.insert(0, REPO_ROOT)
     from utils import pmc_jats as _pj
 
+    cols = [f.name for f in ARTICLE_SCHEMA.fields]
+
     def one(rec):
-        row = {"key": rec["key"], "etag": rec["etag"], "last_modified": rec["last_modified"], "pmcid": rec["pmcid"],
+        row = dict.fromkeys(cols)  # every column present: a missing key would become NaN, which Arrow can't convert
+        row.update({"key": rec["key"], "etag": rec["etag"], "last_modified": rec["last_modified"], "pmcid": rec["pmcid"],
                "version": int(rec["version"]), "parser_version": _pj.PARSER_VERSION,
-               "fetched_at": _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None), "error": None}
+               "fetched_at": _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None), "error": None})
         try:
             md = _json.loads(_pj.http_get(f"{_pj.BUCKET_HTTPS}/{rec['key']}"))
             doi = (md.get("doi") or "").strip().lower() or None
@@ -187,14 +190,10 @@ def read_partition(batches):
             row["error"] = repr(e)[:500]
         return row
 
-    cols = [f.name for f in ARTICLE_SCHEMA.fields]
     with ThreadPoolExecutor(THREADS) as pool:
         for pdf in batches:
             rows = list(pool.map(one, pdf.to_dict("records")))
-            out = pd.DataFrame(rows)
-            for c in cols:
-                if c not in out:
-                    out[c] = None
+            out = pd.DataFrame(rows, columns=cols).astype(object).where(lambda d: d.notna(), None)
             out["version"] = out["version"].astype("int32")
             out["n_affs"] = out["n_affs"].astype("Int32")
             yield out[cols]
