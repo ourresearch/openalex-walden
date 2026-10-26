@@ -866,14 +866,15 @@ def finish_repo_enriched(combined_df, source_rank=None):
         # carry one identical sequence type, so the replacement rank takes the default's field name.
         _names = combined_df.select(F.struct(*_seq_fields).alias("s")).schema["s"].dataType.fieldNames()
         _seq_fields = [c.alias(n) for c, n in zip(_seq_fields[:1] + [source_rank] + _seq_fields[2:], _names)]
-        # Nullability is part of the type: repo_enriched's struct is all-nullable (a union of three streams), a
-        # single stream's literals and coalesces are not, and DLT then refuses the second flow ("different
-        # sequencing types", 23 Oct 16:07 CT). Cast to the same fields, every one nullable.
-        _seq_type = combined_df.select(F.struct(*_seq_fields).alias("s")).schema["s"].dataType
-        _nullable = StructType([StructField(f.name, f.dataType, True) for f in _seq_type.fields])
-        combined_df = combined_df.withColumn("_sequence", F.struct(*_seq_fields).cast(_nullable))
-    else:
-        combined_df = combined_df.withColumn("_sequence", F.struct(*_seq_fields))
+    # Nullability is part of the type, and every CDC flow into repo_works must carry one identical sequence type, or
+    # DLT refuses the update ("different sequencing types": #1786, 23 Oct 16:07 CT). The literals and coalesces above
+    # are non-nullable. In an incremental update repo_works reads repo_enriched's struct back from the stored table,
+    # all-nullable; when repo_enriched is rebuilt in the same update (a selective full refresh) it keeps the query's
+    # non-nullable fields, and the refresh failed at analysis (oxjob #1828, 26 Oct). So cast on BOTH paths: the same
+    # fields, every one nullable.
+    _seq_type = combined_df.select(F.struct(*_seq_fields).alias("s")).schema["s"].dataType
+    _nullable = StructType([StructField(f.name, f.dataType, True) for f in _seq_type.fields])
+    combined_df = combined_df.withColumn("_sequence", F.struct(*_seq_fields).cast(_nullable))
 
     # backfill feed keeps its identity through _sequence above; the published
     # value is always repo. Restamped BEFORE merge-key computation ON PURPOSE
