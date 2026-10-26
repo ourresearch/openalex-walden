@@ -1,0 +1,330 @@
+# oxjob #1386: answer every affiliation string the nightly matcher hasn't reached, off the End 2 End path.
+# The nightly (affiliation_matcher_nightly.yaml, inside End 2 End) answers about 40K strings a night, newest first; ordinary
+# nights bring 20K-60K new strings and backfill nights 150K-300K, so some wait on the 2023 model's ids (25 Oct 2026: 943K had
+# aged out). Daily at 10:30 CT, after End 2 End's matcher window and the 09:00 new-institutions sweep's check. `check`
+# (serverless, seconds) queues the unanswered strings since 27 Sep and picks 1 GPU shard per 150K strings (at most 6);
+# match_k runs only when k < shards. Each shard is the nightly notebook with the nightly's production settings (student
+# mode, live cards, legacy neighbour votes) into a scratch table; `apply` inserts the answers like the nightly does and
+# logs them (affiliation_matcher_backlog_log = the revert list). Worst case a day: 6 shards x 2.5 h x ~$3.8 + Jev 6 x $6
+# ≈ $93; an ordinary day is 1 shard, under 30 min. Code: notebooks/institutions/AffiliationMatcherBacklog.py.
+resources:
+  jobs:
+    Affiliation_Matcher_Backlog:
+      name: Affiliation Matcher Backlog
+      schedule:
+        quartz_cron_expression: "0 30 10 * * ?"
+        timezone_id: America/Chicago
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 14400
+      tasks:
+        - task_key: check
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherBacklog
+            source: GIT
+            base_parameters:
+              step: check
+          environment_key: Default
+          timeout_seconds: 1800
+        - task_key: use_0
+          depends_on:
+            - task_key: check
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.check.values.shards}}"
+            right: "0"
+        - task_key: match_0
+          depends_on:
+            - task_key: use_0
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherNightly
+            source: GIT
+            base_parameters:
+              queue_table: openalex.institutions.affiliation_matcher_backlog_queue
+              shard: "0/{{tasks.check.values.shards}}"
+              target_table: openalex.institutions.affiliation_matcher_backlog_answers_0
+              cards: live
+              max_strings: "5000000"
+              max_minutes: "110"
+              jev_deadline_min: "60"
+              jev_rps: "40"
+              jev_threads: "32"
+              max_usd: "6"
+          job_cluster_key: matcher-gpu-0
+          timeout_seconds: 9000
+        - task_key: use_1
+          depends_on:
+            - task_key: check
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.check.values.shards}}"
+            right: "1"
+        - task_key: match_1
+          depends_on:
+            - task_key: use_1
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherNightly
+            source: GIT
+            base_parameters:
+              queue_table: openalex.institutions.affiliation_matcher_backlog_queue
+              shard: "1/{{tasks.check.values.shards}}"
+              target_table: openalex.institutions.affiliation_matcher_backlog_answers_1
+              cards: live
+              max_strings: "5000000"
+              max_minutes: "110"
+              jev_deadline_min: "60"
+              jev_rps: "40"
+              jev_threads: "32"
+              max_usd: "6"
+          job_cluster_key: matcher-gpu-1
+          timeout_seconds: 9000
+        - task_key: use_2
+          depends_on:
+            - task_key: check
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.check.values.shards}}"
+            right: "2"
+        - task_key: match_2
+          depends_on:
+            - task_key: use_2
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherNightly
+            source: GIT
+            base_parameters:
+              queue_table: openalex.institutions.affiliation_matcher_backlog_queue
+              shard: "2/{{tasks.check.values.shards}}"
+              target_table: openalex.institutions.affiliation_matcher_backlog_answers_2
+              cards: live
+              max_strings: "5000000"
+              max_minutes: "110"
+              jev_deadline_min: "60"
+              jev_rps: "40"
+              jev_threads: "32"
+              max_usd: "6"
+          job_cluster_key: matcher-gpu-2
+          timeout_seconds: 9000
+        - task_key: use_3
+          depends_on:
+            - task_key: check
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.check.values.shards}}"
+            right: "3"
+        - task_key: match_3
+          depends_on:
+            - task_key: use_3
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherNightly
+            source: GIT
+            base_parameters:
+              queue_table: openalex.institutions.affiliation_matcher_backlog_queue
+              shard: "3/{{tasks.check.values.shards}}"
+              target_table: openalex.institutions.affiliation_matcher_backlog_answers_3
+              cards: live
+              max_strings: "5000000"
+              max_minutes: "110"
+              jev_deadline_min: "60"
+              jev_rps: "40"
+              jev_threads: "32"
+              max_usd: "6"
+          job_cluster_key: matcher-gpu-3
+          timeout_seconds: 9000
+        - task_key: use_4
+          depends_on:
+            - task_key: check
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.check.values.shards}}"
+            right: "4"
+        - task_key: match_4
+          depends_on:
+            - task_key: use_4
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherNightly
+            source: GIT
+            base_parameters:
+              queue_table: openalex.institutions.affiliation_matcher_backlog_queue
+              shard: "4/{{tasks.check.values.shards}}"
+              target_table: openalex.institutions.affiliation_matcher_backlog_answers_4
+              cards: live
+              max_strings: "5000000"
+              max_minutes: "110"
+              jev_deadline_min: "60"
+              jev_rps: "40"
+              jev_threads: "32"
+              max_usd: "6"
+          job_cluster_key: matcher-gpu-4
+          timeout_seconds: 9000
+        - task_key: use_5
+          depends_on:
+            - task_key: check
+          condition_task:
+            op: GREATER_THAN
+            left: "{{tasks.check.values.shards}}"
+            right: "5"
+        - task_key: match_5
+          depends_on:
+            - task_key: use_5
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherNightly
+            source: GIT
+            base_parameters:
+              queue_table: openalex.institutions.affiliation_matcher_backlog_queue
+              shard: "5/{{tasks.check.values.shards}}"
+              target_table: openalex.institutions.affiliation_matcher_backlog_answers_5
+              cards: live
+              max_strings: "5000000"
+              max_minutes: "110"
+              jev_deadline_min: "60"
+              jev_rps: "40"
+              jev_threads: "32"
+              max_usd: "6"
+          job_cluster_key: matcher-gpu-5
+          timeout_seconds: 9000
+        - task_key: apply
+          depends_on:
+            - task_key: match_0
+            - task_key: match_1
+            - task_key: match_2
+            - task_key: match_3
+            - task_key: match_4
+            - task_key: match_5
+          run_if: ALL_DONE
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationMatcherBacklog
+            source: GIT
+            base_parameters:
+              step: apply
+              backlog_run: "{{job.run_id}}"
+          environment_key: Default
+          timeout_seconds: 3600
+          max_retries: 2
+          min_retry_interval_millis: 600000
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      job_clusters:
+        - job_cluster_key: matcher-gpu-0
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              ebs_volume_count: 0
+            node_type_id: g6e.4xlarge
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
+        - job_cluster_key: matcher-gpu-1
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              ebs_volume_count: 0
+            node_type_id: g6e.4xlarge
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
+        - job_cluster_key: matcher-gpu-2
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              ebs_volume_count: 0
+            node_type_id: g6e.4xlarge
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
+        - job_cluster_key: matcher-gpu-3
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              ebs_volume_count: 0
+            node_type_id: g6e.4xlarge
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
+        - job_cluster_key: matcher-gpu-4
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              ebs_volume_count: 0
+            node_type_id: g6e.4xlarge
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
+        - job_cluster_key: matcher-gpu-5
+          new_cluster:
+            cluster_name: ""
+            spark_version: 15.4.x-gpu-ml-scala2.12
+            spark_conf:
+              spark.master: "local[*]"
+              spark.databricks.cluster.profile: singleNode
+            custom_tags:
+              ResourceClass: SingleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              ebs_volume_count: 0
+            node_type_id: g6e.4xlarge
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
