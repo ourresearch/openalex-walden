@@ -91,6 +91,45 @@ def _null_if_placeholder(col):
 def _is_placeholder_or_empty(col):
     return col.isNull() | (F.length(F.trim(col)) == 0) | F.lower(col).rlike(PLACEHOLDER_NAME_REGEX)
 
+# oxjob #1865: the date chain below can pick a FUTURE date that the record itself does not call its publication
+# date: a Submitted/Accepted/Valid/Created/Collected/Updated/Other date (e.g. Submitted 2029 beside Issued 2026),
+# an embargo-end Available date beside an earlier publicationYear (LBS: publicationYear 2005, "Available
+# 2030-07-31 = Embargo end date"), a "2099 permanent embargo" Other date, or a " 2028-12-30" string whose leading
+# space wins the string array_min. Those works then top every newest-first list. This expression runs only when
+# the chain's pick is after today, and only reads dates the record already carries:
+#   1. pick's year > publicationYear: the record says it was published earlier. Take its earliest Issued date on
+#      or before 31 Dec of publicationYear, else 1 Jan of publicationYear.
+#   2. publicationYear not in the future: drop future dates of non-publication dateTypes and rerun the same
+#      chain (Submitted first, string min, registration), never earlier than 1 Jan of publicationYear.
+# A record that itself states a future publication (future publicationYear, or a future Issued/Available date in
+# its own publicationYear) is left as it is: overriding a record's stated date is a separate decision (#1865).
+# #126's full dateType redesign would replace both this and the chain. Python twin + tests: oxjob #1865 work/rules.py.
+_DC_NOT_FUTURE = "NOT coalesce(try_cast(d.date AS DATE) > current_date(), false)"
+_DC_PUB_TYPE = "lower(d.dateType) IN ('issued', 'available', 'copyrighted')"
+_DC_PY = "CAST(attributes.publicationYear AS INT)"
+_DC_PY_JAN1 = f"CASE WHEN attributes.publicationYear BETWEEN 1000 AND 9999 THEN make_date({_DC_PY}, 1, 1) END"
+_DC_KEPT_DATES = f"filter(attributes.dates, d -> {_DC_PUB_TYPE} OR {_DC_NOT_FUTURE})"
+DATACITE_FUTURE_DATE_FIX_SQL = f"""
+CASE
+  WHEN published_date IS NULL OR published_date <= current_date() THEN published_date
+  WHEN attributes.publicationYear BETWEEN 1000 AND 9999 AND year(published_date) > attributes.publicationYear THEN
+    coalesce(
+      array_min(filter(
+        transform(filter(attributes.dates, d -> lower(d.dateType) = 'issued'), d -> try_cast(d.date AS DATE)),
+        x -> x >= DATE'1900-01-01' AND x <= make_date({_DC_PY}, 12, 31))),
+      {_DC_PY_JAN1})
+  WHEN (attributes.publicationYear IS NULL OR attributes.publicationYear <= year(current_date()))
+       AND exists(attributes.dates, d -> NOT coalesce({_DC_PUB_TYPE}, false) AND try_cast(d.date AS DATE) > current_date()) THEN
+    greatest(
+      coalesce(
+        try_cast(array_min(filter({_DC_KEPT_DATES}, d -> lower(d.dateType) = 'submitted').date) AS DATE),
+        try_cast(array_min({_DC_KEPT_DATES}.date) AS DATE),
+        least(try_cast(attributes.registered AS DATE), try_cast(attributes.created AS DATE))),
+      {_DC_PY_JAN1})
+  ELSE published_date
+END
+"""
+
 @dlt.table(
     name="datacite_parsed",
     comment="Datacite works table in the Walden schema",
@@ -224,6 +263,7 @@ def datacite_parsed():
                 )
             ),
         )
+        .withColumn("published_date", F.expr(DATACITE_FUTURE_DATE_FIX_SQL))  # oxjob #1865
         .withColumn(
             "published_date",
             F.when(F.year(F.col("published_date")) >= 1900, F.col("published_date")).otherwise(F.lit(None))
