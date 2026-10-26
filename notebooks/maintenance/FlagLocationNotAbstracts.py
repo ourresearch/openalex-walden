@@ -30,7 +30,9 @@
 # COMMAND ----------
 
 import hashlib
+import html
 import os
+import re
 
 import pandas as pd
 from pyspark.sql import functions as F
@@ -67,12 +69,19 @@ def _make_reason(src, tsv):
     exec(compile(src, "not_abstract.py", "exec"), ns)
     known = frozenset(ns["key"](line.split("\t")[-1]) for line in tsv.splitlines() if line and not line.startswith("#"))
     ns["_known"] = lambda: known  # the module reads data/not_abstracts.tsv next to itself; same lines
+    bounded_tag = re.compile(r"<[^<>]{0,300}>")
 
     def reason(text):
         if not ns["is_not_abstract"](text):
             return None
         plain = ns["_plain"](text)
         k = ns["_key_of"](plain)
+        # The module strips any '<' ... '>' run as a tag, so a real abstract wrapped in '<< ... >>' collapses to nothing
+        # ("<< ABSTRACT Starting with French Painting Today (1953) ..."; 5 texts on 26 Oct 2026). Keep a text whose
+        # reading with bounded tags still has words the key lost. Errs toward keeping (inline tags split words here).
+        bounded = bounded_tag.sub(" ", html.unescape(html.unescape(text)).lower())
+        if len(ns["_WORD_RE"].findall(bounded)) > len(k.split()) + 5:
+            return None
         if not k:
             return "empty"
         if k in known:
@@ -96,6 +105,12 @@ assert _r("Established in 1964, the IUCN Red List of Threatened Species has evol
 assert _r("<jats:title>Abstract</jats:title><jats:p>We measured the effect of nitrogen on maize yield in 40 field "
           "trials and found a 12% increase.</jats:p>") is None
 assert _r("Author: BARBARA SANTICH The French Australian Review 77 ... This article continues the story.") is None
+assert _r("<< ABSTRACT Starting with French Painting Today (1953) this chapter considers developments in exhibitions "
+          "from the 1950s to 1980s. This was a time when most cultural exchange between France and Australia ran "
+          "through touring shows, and the chapter follows how curators, critics and dealers in Sydney and Melbourne "
+          "framed contemporary French art for local audiences, and what those audiences made of it in turn. >>"
+          ) is None  # the module alone calls this punctuation only
+assert _r("<jats:title>Abstract</jats:title>") is not None  # a bare JATS label is still junk
 del _r
 
 _worker = {}  # empty on the driver, so the UDF pickles only code and two strings; filled once per worker
