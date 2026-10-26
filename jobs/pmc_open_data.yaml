@@ -1,0 +1,57 @@
+resources:
+  jobs:
+    PMC_Open_Data:
+      name: PMC Open Data
+      description: |
+        Reads PubMed Central's public bucket s3://pmc-oa-opendata (NLM) instead of scraping PMC pages
+        (oxjob #1793). The bucket's daily S3 inventory (published ~01:00 UTC) gives the diff; each new or
+        changed article version's metadata JSON and JATS front are read (utils/pmc_jats.py). Writes ONLY
+        openalex.pubmed_central.pmc_oa_inventory / _articles / _progress / _authors; pmc_oa_authors (one
+        row per DOI, Walden author keys) feeds CreateCrossrefSuperAuthorships, fill-only: corresponding
+        flags where no other source flags one, affiliations for authors no other source gives one.
+        The first backfill (~8M versions) is the same job run by hand with a large max_minutes.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        # after the bucket's 01:00 UTC inventory, before Walden End 2 End (05:00 UTC)
+        quartz_cron_expression: 0 0 2 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: Read_PMC_Open_Data
+          job_cluster_key: pmc_cluster
+          notebook_task:
+            notebook_path: notebooks/ingest/PmcOpenData
+            source: GIT
+            base_parameters:
+              max_minutes: "150"
+          max_retries: 1
+          min_retry_interval_millis: 600000
+          timeout_seconds: 14400
+      job_clusters:
+        - job_cluster_key: pmc_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+            node_type_id: m5d.2xlarge
+            driver_node_type_id: m5d.4xlarge
+            num_workers: 4
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            custom_tags:
+              oxjob: "1793"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
