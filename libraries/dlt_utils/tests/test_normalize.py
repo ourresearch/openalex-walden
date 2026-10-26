@@ -105,3 +105,12 @@ def test_filter_expression_shape():
     assert "x.relationship is null or lower(x.relationship) in (" in sql
     assert "'cites'" not in sql and "'self'" in sql
     assert merge_key_id_filter("pmid").startswith("filter(ids, x -> x.namespace = 'pmid'")
+
+
+def test_arxiv_id_the_record_declares_a_version_of_still_counts():
+    # Dagstuhl tags a paper's own full version `Cites arXiv:X` beside `IsVersionOf 10.48550/arXiv.X`
+    # (checked on Databricks 26 Oct: own-preprint and v2-suffix cases keep the key, a plain citation does not)
+    arxiv = merge_key_id_filter("arxiv")
+    assert "exists(ids, y -> y.namespace = 'doi'" in arxiv
+    assert "concat('10.48550/arxiv.', lower(regexp_replace(x.id, '(?i)^arxiv:|v[0-9]+$', '')))" in arxiv
+    assert "10.48550" not in merge_key_id_filter("pmid")

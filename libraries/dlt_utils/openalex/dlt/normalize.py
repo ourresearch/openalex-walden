@@ -123,10 +123,20 @@ MERGE_KEY_IDENTITY_RELATIONS = ("self", "none", "isidenticalto", "isvariantformo
 
 
 def merge_key_id_filter(namespace):
-    """SQL lambda: the record's `ids` in `namespace` that may feed merge_key (identity relations only)."""
+    """SQL lambda: the record's `ids` in `namespace` that may feed merge_key (identity relations only).
+
+    arXiv also takes an id the record itself declares with an identity relation on its arXiv DOI: Dagstuhl (DROPS) tags a
+    paper's own full version `Cites arXiv:2311.15883` next to `IsVersionOf 10.48550/arXiv.2311.15883` (1,987 LIPIcs /
+    OASIcs papers on their preprint's work, 26 Oct), and the arxiv tier is how they join that preprint at arrival.
+    """
     rels = ", ".join(f"'{r}'" for r in MERGE_KEY_IDENTITY_RELATIONS)
+    declared = ""
+    if namespace == "arxiv":
+        declared = (f" or exists(ids, y -> y.namespace = 'doi' and y.relationship is not null"
+                    f" and lower(y.relationship) in ({rels})"
+                    f" and lower(y.id) = concat('10.48550/arxiv.', lower(regexp_replace(x.id, '(?i)^arxiv:|v[0-9]+$', ''))))")
     return (f"filter(ids, x -> x.namespace = '{namespace}' and x.id is not null "
-            f"and (x.relationship is null or lower(x.relationship) in ({rels})))")
+            f"and (x.relationship is null or lower(x.relationship) in ({rels}){declared}))")
 
 
 def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
