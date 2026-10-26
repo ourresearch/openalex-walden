@@ -81,7 +81,7 @@ w_pm AS (
   SELECT w.id AS work_id, p.pubmed_values
   FROM openalex.works.openalex_works w
   JOIN pm_vals p ON p.pmid = CAST(regexp_extract(w.ids['pmid'], '(\\\\d+)$', 1) AS BIGINT)
-  WHERE NOT w.is_xpac AND w.ids['pmid'] IS NOT NULL
+  WHERE w.ids['pmid'] IS NOT NULL
 ),
 tag AS (
   -- tagger_values keeps the tagger's full output (incl. other-primary-research, for oxjob #1362); study_designs

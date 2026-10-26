@@ -86,8 +86,7 @@ SELECT w.id AS work_id, w.title, w.primary_location.source.display_name AS venue
 FROM openalex.works.openalex_works w
 LEFT ANTI JOIN {TAGGER} t
   ON w.id = t.work_id AND t.tagger_version IN ({sd.sql_versions()})
-WHERE NOT w.is_xpac
-  AND w.type IN ({TYPES})
+WHERE w.type IN ({TYPES})  -- xpac works too since oxjob #1649 (the old NOT w.is_xpac had no written reason)
   AND w.title IS NOT NULL AND length(w.title) >= 10
   AND w.abstract IS NOT NULL AND length(w.abstract) >= {MIN_ABS}
   AND (w.publication_year IS NULL OR w.publication_year >= {MIN_YEAR})
