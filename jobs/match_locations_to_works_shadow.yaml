@@ -10,7 +10,9 @@ resources:
         blocking keys, frame, seeds, SQL-channel candidates, qwen3 seed vectors) -> go_gate (stops when the night has no
         MapWorkIds MERGE yet or was already decided) -> knn (exact kNN over work_embeddings_qwen3 on GPUs) -> features ->
         score_xgb (openalex.works.location_work_matcher@challenger, hard rules first) -> score_qwen (Qwen3.5-9B + ep2_9b on
-        Modal, app location-work-matcher) -> write_decisions
+        Modal, app location-work-matcher) -> write_decisions. The heavy SQL runs on PROD-WH (lwm.py); keys + embed start
+        together, candidates run alongside knn; write_decisions records the critical path (task execution times, no cluster
+        start-up) in location_work_match_runs.seconds.
         (openalex.works.location_work_match_decisions, one row per night in openalex.works.location_work_match_runs).
         Intermediate tables openalex.works.location_work_match_* are overwritten each night. Rerun a night: parameters
         night = YYYY-MM-DD, force = true. No fallback (Casey 2026-10-26): when any step cannot run in full (no GPUs, Modal down,
@@ -70,10 +72,40 @@ resources:
             op: EQUAL_TO
             left: "{{tasks.prepare.values.go}}"
             right: "true"
-        - task_key: knn
+        - task_key: keys
+          # blocking keys of every work at V; in the nightly this can run before the night's records arrive
           depends_on:
             - task_key: go_gate
               outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/location_matching/RunMatchSql
+            base_parameters:
+              sql: keys.sql
+            source: GIT
+          environment_key: Default
+        - task_key: embed
+          depends_on:
+            - task_key: go_gate
+              outcome: "true"
+          notebook_task:
+            notebook_path: notebooks/location_matching/RunMatchSql
+            base_parameters:
+              sql: embed.sql
+            source: GIT
+          environment_key: Default
+        - task_key: candidates
+          # runs alongside the GPU search
+          depends_on:
+            - task_key: keys
+          notebook_task:
+            notebook_path: notebooks/location_matching/RunMatchSql
+            base_parameters:
+              sql: candidates.sql
+            source: GIT
+          environment_key: Default
+        - task_key: knn
+          depends_on:
+            - task_key: embed
           notebook_task:
             notebook_path: notebooks/location_matching/KnnSearch
             source: GIT
@@ -81,10 +113,11 @@ resources:
         - task_key: features
           depends_on:
             - task_key: knn
+            - task_key: candidates
           notebook_task:
             notebook_path: notebooks/location_matching/RunMatchSql
             base_parameters:
-              sql: features.sql
+              sql: knn_rank.sql,features.sql
             source: GIT
           environment_key: Default
         - task_key: score_xgb

@@ -8,7 +8,9 @@ notebooks/topics/nightly/modal_topics_nightly.py.
   the Modal Volume `location-work-matcher` (/data/<build_id>/in/<shard>.jsonl.gz), then maps `Scorer.score` over the shards.
 - `Scorer`: Qwen/Qwen3.5-9B + LoRA adapter ep2_9b (oxjob #1668: 2 epochs on 37,828 Opus pick-one records; bind at p >= 0.887),
   merged, bf16, HF transformers, one GPU per container. A row = the record and its shortlist (prefix) + one slot per candidate
-  ("c<i> =>" then " ?"); p = softmax over the ' yes' / ' no' logits one position before the slot. One forward pass per record.
+  ("c<i> =>" then " ?"); p = softmax over the ' yes' / ' no' logits one position before the slot. One forward pass per record:
+  that reproduces the replay's scores exactly. Batching (`_batched`, kept for `parity`) was tested 2026-10-26 on 1,500 replay
+  records: ~10% faster but 2 decisions (0.13%) differ from the certified scoring, so the job does not use it.
   Output parquet per shard: seed_id BIGINT, cid BIGINT, p DOUBLE, shard STRING, PUT to the Unity Catalog Volume.
 
 Volumes: `oxjob1668-qwen` at /vol (adapter models/ep2_9b, read only); `location-work-matcher` at /data (exported prompt shards).
@@ -24,7 +26,7 @@ import time
 import modal
 
 APP = "location-work-matcher"
-VERSION_MARK = "location-work-matcher v1 2026-10-26"
+VERSION_MARK = "location-work-matcher v3 2026-10-26 (one record per pass)"
 BASE, ADAPTER = "Qwen/Qwen3.5-9B", "/vol/models/ep2_9b"
 app = modal.App(APP)
 mvol = modal.Volume.from_name("oxjob1668-qwen")
@@ -39,6 +41,7 @@ DBX = modal.Secret.from_name("oxjob-databricks")
 
 MAXC = 8                  # max GPU containers
 MAXLEN = 12000            # tokens per record (training cap)
+BATCH_TOKENS, BATCH_ROWS = 24000, 16
 DEFAULT_WAREHOUSE = "3996dc0a9b183ce3"
 PRICE_PER_S = (4.54 + 8 * 0.0473 + 96 * 0.008) / 3600   # H200 + 8 cpu + 96 GiB, $/container-second (Modal billing is the truth)
 TABLE_RX = re.compile(r"^openalex\.(works|transient)\.[A-Za-z0-9_]{1,120}$")
@@ -78,21 +81,93 @@ class Scorer:
         self.tok = AutoTokenizer.from_pretrained(BASE)
         model = AutoModelForImageTextToText.from_pretrained(BASE, dtype=torch.bfloat16, attn_implementation="sdpa").to("cuda")
         self.model = PeftModel.from_pretrained(model, ADAPTER).merge_and_unload().eval()
+        T = lambda x: self.tok(x, add_special_tokens=False)["input_ids"]
+        self.Y, self.N = T(" yes")[0], T(" no")[0]
+        self.pad = self.tok.pad_token_id if self.tok.pad_token_id is not None else 0
 
-    @modal.method()
-    def score(self, build_id: str, shard: int, out_dir: str):
-        """Score /data/<build_id>/in/<shard>.jsonl.gz and PUT <out_dir>/<shard>.parquet to the UC Volume."""
-        import io, httpx, torch, pyarrow as pa, pyarrow.parquet as pq
-        t0 = time.time(); dvol.reload()
-        rows = [json.loads(l) for l in gzip.open(f"/data/{build_id}/in/{shard:04d}.jsonl.gz", "rt")]
-        seeds, cids, ps = [], [], []
+    def _one(self, rows):
+        """One forward pass per record (the replay's scoring)."""
+        import torch
+        out = []
         with torch.no_grad():
             for r in rows:
                 ids, slots, Y, N = ids_for(self.tok, r)
                 keep = torch.tensor([pos - 1 for pos, _ in slots], device="cuda")
-                lg = self.model(input_ids=torch.tensor([ids], device="cuda"), logits_to_keep=keep).logits[0][:, [Y, N]].float()
-                for (_, key), two in zip(slots, lg):
-                    seeds.append(int(r["seed_id"])); cids.append(int(key)); ps.append(torch.softmax(two, -1)[0].item())
+                lg = self.model(input_ids=torch.tensor([ids], device="cuda"), logits_to_keep=keep, use_cache=False).logits[0][:, [Y, N]].float()
+                out += [(int(r["seed_id"]), int(key), torch.softmax(two, -1)[0].item()) for (_, key), two in zip(slots, lg)]
+        return out
+
+    def _batched(self, rows):
+        """Records sorted by length, right-padded batches; logits only at the batch's slot positions."""
+        import torch
+        enc = []
+        for r in rows:
+            ids, slots, _, _ = ids_for(self.tok, r)
+            enc.append((len(ids), ids, slots, int(r["seed_id"])))
+        enc.sort(key=lambda e: e[0])
+        out, i = [], 0
+        with torch.no_grad():
+            while i < len(enc):
+                j, L = i, 0
+                while j < len(enc) and j - i < BATCH_ROWS and (j == i or (j - i + 1) * max(L, enc[j][0]) <= BATCH_TOKENS):
+                    L = max(L, enc[j][0]); j += 1
+                batch = enc[i:j]
+                x = torch.full((len(batch), L), self.pad, dtype=torch.long)
+                m = torch.zeros((len(batch), L), dtype=torch.long)
+                for b, e in enumerate(batch):
+                    x[b, :e[0]] = torch.tensor(e[1]); m[b, :e[0]] = 1
+                keep = sorted({pos - 1 for e in batch for pos, _ in e[2]})
+                at = {q: n for n, q in enumerate(keep)}
+                lg = self.model(input_ids=x.cuda(), attention_mask=m.cuda(), logits_to_keep=torch.tensor(keep, device="cuda"),
+                                use_cache=False).logits[:, :, [self.Y, self.N]].float()
+                pr = torch.softmax(lg, -1)[..., 0].cpu()
+                for b, e in enumerate(batch):
+                    out += [(e[3], int(key), pr[b, at[pos - 1]].item()) for pos, key in e[2]]
+                i = j
+        return out
+
+    @modal.method()
+    def parity(self, rows_file: str, scores_file: str, n: int = 1000, batch_tokens: int = BATCH_TOKENS, batch_rows: int = BATCH_ROWS):
+        """On the first n records of a replay file (oxjob1668-qwen volume): stored scores (the replay's one-at-a-time run) vs
+        one-at-a-time now (control: GPU / kernel noise) vs batched now; per-pair differences, top-candidate decision flips at
+        0.887, records per second of both ways on this container's GPU."""
+        global BATCH_TOKENS, BATCH_ROWS
+        BATCH_TOKENS, BATCH_ROWS = batch_tokens, batch_rows
+        rows = [json.loads(l) for _, l in zip(range(n), open(f"/vol/{rows_file}"))]
+        want = {}
+        for l in open(f"/vol/{scores_file}"):
+            j = json.loads(l); want[(int(j["seed_id"]), int(j["cid"]))] = float(j["p"])
+        t = time.time(); one = self._one(rows); t_1 = time.time() - t
+        t = time.time(); bat = self._batched(rows); t_b = time.time() - t
+
+        def top(pairs):
+            best = {}
+            for (s_, c), p_ in pairs:
+                if p_ > best.get(s_, (-1, None))[0]:
+                    best[s_] = (p_, c)
+            return best
+        dec = lambda pc: pc[1] if pc and pc[0] >= 0.887 else None
+        seeds = {s_ for s_, _, _ in one}
+        ref = {"stored": {k: v for k, v in want.items() if k[0] in seeds}, "one_now": {(s_, c): p_ for s_, c, p_ in one},
+               "batched_now": {(s_, c): p_ for s_, c, p_ in bat}}
+        out = {"records": len(rows), "pairs": len(ref["one_now"]), "batch_tokens": batch_tokens, "batch_rows": batch_rows,
+               "one_at_a_time_records_per_s": round(n / t_1, 2), "batched_records_per_s": round(n / t_b, 2)}
+        for a, b in (("stored", "one_now"), ("stored", "batched_now"), ("one_now", "batched_now")):
+            d = [abs(ref[a][k] - ref[b][k]) for k in ref[b] if k in ref[a]]
+            ta, tb = top(ref[a].items()), top(ref[b].items())
+            flips = [s_ for s_ in seeds if dec(ta.get(s_)) != dec(tb.get(s_))]
+            out[f"{a}_vs_{b}"] = {"max_abs_diff": round(max(d), 5), "mean_abs_diff": round(sum(d) / len(d), 6),
+                                  "pairs_over_0.01": sum(x > 0.01 for x in d), "decision_flips": len(flips), "flip_seeds": flips[:10]}
+        return out
+
+    @modal.method()
+    def score(self, build_id: str, shard: int, out_dir: str):
+        """Score /data/<build_id>/in/<shard>.jsonl.gz and PUT <out_dir>/<shard>.parquet to the UC Volume."""
+        import io, httpx, pyarrow as pa, pyarrow.parquet as pq
+        t0 = time.time(); dvol.reload()
+        rows = [json.loads(l) for l in gzip.open(f"/data/{build_id}/in/{shard:04d}.jsonl.gz", "rt")]
+        scored = self._one(rows)
+        seeds, cids, ps = [s for s, _, _ in scored], [c for _, c, _ in scored], [p for _, _, p in scored]
         t_gpu = time.time() - t0
         sh = f"{shard:04d}"
         t = pa.table({"seed_id": pa.array(seeds, pa.int64()), "cid": pa.array(cids, pa.int64()), "p": pa.array(ps, pa.float64()),

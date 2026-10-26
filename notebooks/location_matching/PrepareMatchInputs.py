@@ -6,14 +6,19 @@
 # MAGIC
 # MAGIC Pins the night from Delta history: NEW = the night's first `location_work_ids` MERGE (MapWorkIds), OLD = the MERGE before
 # MAGIC it, V = the last `openalex_works` version before NEW (the works as the records found them). Exits with `go = false` when the
-# MAGIC night has no MERGE yet or was already decided (unless `force`). Then builds the inputs: `sql/keys.sql` (blocking keys of
-# MAGIC every work at V), `sql/frame.sql` (the anchors that reached the title tier or minted / parked) and `sql/build.sql` (seeds,
-# MAGIC SQL-channel candidates, qwen3 seed vectors).
+# MAGIC night has no MERGE yet or was already decided (unless `force`). Then builds `sql/frame.sql` (the anchors that reached the
+# MAGIC title tier or minted / parked) and `sql/seeds.sql` on PROD-WH. The work keys, embeddings and candidates are their own tasks,
+# MAGIC so the candidate lookup runs alongside the GPU search.
 
 # COMMAND ----------
 
 import datetime as dt
+import os
+import sys
 import time
+
+sys.path.insert(0, os.getcwd())
+import lwm  # noqa: E402
 
 for name, default in [("night", ""), ("mode", "shadow"), ("force", "false")]:
     dbutils.widgets.text(name, default)
@@ -24,23 +29,7 @@ T = "openalex.works.location_work_match_"
 T0 = time.time()
 
 
-def log(msg):
-    print(f"{dt.datetime.utcnow():%Y-%m-%d %H:%M:%S} UTC  {msg}", flush=True)
-
-
-def run_sql(path, pins):
-    """Run a `;`-separated SQL file (statements split on a line holding only `;`) with __KEY__ placeholders filled from pins."""
-    text = open(path).read()
-    for k, v in pins.items():
-        text = text.replace(f"__{k}__", str(v))
-    for stmt in [s.strip() for s in text.split("\n;\n") if s.strip()]:
-        t = time.time()
-        df = spark.sql(stmt)
-        body = "\n".join(l for l in stmt.splitlines() if not l.lstrip().startswith("--")).lstrip().upper()
-        log(f"{path}: {time.time() - t:.0f}s  {body[:80]!r}")
-        if body.startswith(("SELECT", "WITH")):
-            for r in df.limit(60).collect():
-                print("   ", r.asDict())
+log = lwm.log
 
 # COMMAND ----------
 
@@ -71,8 +60,8 @@ else:
         spark.sql(f"DELETE FROM {T}runs WHERE night = DATE'{NIGHT}' AND mode = '{MODE}'")
         spark.sql(f"""INSERT INTO {T}runs (night, mode, status, started_at, lwi_new, lwi_old, works_version)
           VALUES (DATE'{NIGHT}', '{MODE}', 'running', current_timestamp(), {new.version}, {old.version}, {v})""")
-        for f in ("sql/keys.sql", "sql/frame.sql", "sql/build.sql"):
-            run_sql(f, pins)
+        for f in ("sql/frame.sql", "sql/seeds.sql"):
+            lwm.run_sql_file(f, pins)
         for k, val in pins.items():
             dbutils.jobs.taskValues.set(key=k, value=int(val))
 

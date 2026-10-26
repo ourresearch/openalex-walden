@@ -15,9 +15,14 @@
 
 import datetime as dt
 import json
+import os
+import sys
 import time
 import urllib.error
 import urllib.request
+
+sys.path.insert(0, os.getcwd())
+import lwm  # noqa: E402
 
 from pyspark.sql import Window, functions as F
 
@@ -54,10 +59,7 @@ def finish(note, usd=0.0):
 
 # COMMAND ----------
 
-text = open("sql/qwen_pairs.sql").read().replace("__V__", str(V))
-for stmt in [s.strip() for s in text.split("\n;\n") if s.strip()]:
-    df = spark.sql(stmt)
-print(df.collect()[0].asDict())
+lwm.run_sql_file("sql/qwen_pairs.sql", {"V": V})
 
 
 @F.udf("struct<prefix:string, seats:string>")

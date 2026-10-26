@@ -5,9 +5,9 @@
 # MAGIC Exact kNN of the night's seed vectors (`location_work_match_seed_vecs`) against every work vector in
 # MAGIC `openalex.vector_search.work_embeddings_qwen3`, inside Databricks (no Elasticsearch). One pass over the corpus: each task
 # MAGIC keeps the top K of its corpus slice per query (fp16 matmul selects, fp32 dot scores); a query's global top K is the top K of
-# MAGIC the task tops. Only works that existed before the run (in `location_work_match_keys`) are kept, then ranked 1-10, in the
-# MAGIC shape `features.sql` reads (score = (1 + cos) / 2, Elasticsearch's cosine score). Runs on the job's GPU cluster
-# MAGIC (1-GPU workers, two tasks per GPU). Checked 2026-10-24 against SQL (max |diff| 1.7e-7) and Elasticsearch (90% of its top 10).
+# MAGIC the task tops, written to `location_work_match_knn_raw` (+ `knn_q`, query index -> seed). `sql/knn_rank.sql` (features task)
+# MAGIC keeps the works that existed before the run and ranks 1-10. Runs on the job's GPU cluster (1-GPU workers, two tasks per
+# MAGIC GPU), alongside the candidate lookup. Checked 2026-10-24 against SQL (max |diff| 1.7e-7) and Elasticsearch (90% of its top 10).
 
 # COMMAND ----------
 
@@ -100,13 +100,4 @@ log(f"search {time.time() - t:.0f}s")
 
 # COMMAND ----------
 
-spark.sql(f"""
-  CREATE OR REPLACE TABLE {T}knn AS
-  WITH g AS (SELECT qi, wid, cos, row_number() OVER (PARTITION BY qi ORDER BY cos DESC, wid) AS r FROM {T}knn_raw),
-  v AS (SELECT g.qi, g.wid, g.cos FROM g JOIN {T}keys k ON k.id = g.wid WHERE g.r <= {K}),
-  r AS (SELECT qi, wid, cos, row_number() OVER (PARTITION BY qi ORDER BY cos DESC, wid) AS rank FROM v)
-  SELECT q.seed_id, CAST(r.rank AS INT) AS rank, concat('https://openalex.org/W', r.wid) AS es_id, CAST((1 + r.cos) / 2 AS DOUBLE) AS score
-  FROM r JOIN {T}knn_q q USING (qi) WHERE r.rank <= 10""")
-s = spark.sql(f"SELECT count(*) AS n, count(DISTINCT seed_id) AS seeds FROM {T}knn").collect()[0]
-log(f"{T}knn: {s.n:,} rows, {s.seeds:,} seeds")
 dbutils.jobs.taskValues.set(key="seconds", value=round(time.time() - T0, 1))
