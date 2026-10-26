@@ -140,30 +140,31 @@ resources:
           max_retries: 3
           min_retry_interval_millis: 300000
           retry_on_timeout: true
-        # oxjob #1099: merge preprint and article works whose declared link (Crossref is-preprint-of / has-preprint, arXiv DataCite IsVersionOf) appeared
-        # after both were pinned; MapWorkIds then re-resolves the losers' records onto the winner in this run.
-        - task_key: Merge_Declared_Preprints
+        # oxjob #1099, #1057: merge works whose declared link appeared after both were pinned, one class per kind of link (preprint <-> article:
+        # Crossref is-preprint-of / has-preprint, arXiv DataCite IsVersionOf; part_of: a DataCite dataset IsPartOf a dataset); MapWorkIds then
+        # re-resolves the losers' records onto the winner in this run.
+        - task_key: Merge_Declared_Links
           depends_on:
             - task_key: Locations_with_Types
           notebook_task:
-            notebook_path: notebooks/end2end/MergeDeclaredPreprints
+            notebook_path: notebooks/end2end/MergeDeclaredLinks
             source: GIT
             warehouse_id: 4d37bf76372a2901
           timeout_seconds: 2400
         # Passes whether the merge succeeded, failed or timed out: MapWorkIds runs either way.
-        - task_key: Merge_Declared_Preprints_Gate
+        - task_key: Merge_Declared_Links_Gate
           timeout_seconds: 1200
           depends_on:
-            - task_key: Merge_Declared_Preprints
+            - task_key: Merge_Declared_Links
           run_if: ALL_DONE
-          # Fails only when Merge_Declared_Preprints never ran (upstream failed), so a repair re-runs this gate after it.
+          # Fails only when Merge_Declared_Links never ran (upstream failed), so a repair re-runs this gate after it.
           sql_task:
             warehouse_id: 4d37bf76372a2901
             file:
               path: notebooks/end2end/gate_guarded_task_ran.sql
               source: GIT
             parameters:
-              guarded_state: "{{tasks.Merge_Declared_Preprints.result_state}}"
+              guarded_state: "{{tasks.Merge_Declared_Links.result_state}}"
           max_retries: 2
           min_retry_interval_millis: 60000
           retry_on_timeout: true
@@ -171,7 +172,7 @@ resources:
           timeout_seconds: 1200
           depends_on:
             - task_key: Locations_with_Types
-            - task_key: Merge_Declared_Preprints_Gate
+            - task_key: Merge_Declared_Links_Gate
           notebook_task:
             notebook_path: notebooks/end2end/MapWorkIds
             source: GIT

@@ -616,7 +616,7 @@ def crossref_preprint_class_sql():
     answers on the warehouse, 2026-10-07). Key sharing is group-scoped like version_group: an article with several declared
     preprints is one group, and a shared title key only holds a loser with a doi/pmid/arxiv-less record (the first stage held
     160,823 on title keys of other preprint versions, OSF placeholders and Figshare copies; the preprint's DOI alias wins first).
-    Manual backfill waves only: new pairs merge every night in `Merge_Declared_Preprints` (notebooks/end2end/MergeDeclaredPreprints),
+    Manual backfill waves only: new pairs merge every night in the preprint class of `Merge_Declared_Links` (notebooks/end2end/MergeDeclaredLinks),
     which reads the shared view `openalex.works.preprint_link_pairs` and holds on content (title / abstract), not authors (the array
     author test here gave run-varying answers in both directions, 2026-10-09)."""
     doi_clean = "regexp_replace(regexp_replace(lower(trim({c})), '^(https?://(dx\\\\.)?doi\\\\.org/|doi:)', ''), '[^a-z0-9./-]', '')"

@@ -1,4 +1,4 @@
--- Gate for an optional End 2 End step (Merge_Declared_Preprints, Affiliation_Matcher_Nightly, Vector_Matcher; run_if ALL_DONE).
+-- Gate for an optional End 2 End step (Merge_Declared_Links, Affiliation_Matcher_Nightly, Vector_Matcher; run_if ALL_DONE).
 -- Passes when the guarded task ran, whatever its result (success, failed, timedout, canceled): the downstream task then runs
 -- with or without that step's output. Fails when the guarded task never ran because its own upstream failed or was
 -- canceled. The downstream task is skipped in that case anyway (it depends on the same upstream), and a FAILED gate is
