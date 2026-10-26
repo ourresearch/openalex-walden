@@ -228,7 +228,9 @@ for chunk_no in range(n_chunks):
     print(f"chunk {chunk_no + 1}/{n_chunks}: {ok:,} ok, {failed:,} failed in {secs:.0f}s "
           f"({n_part / max(secs, 1):.0f}/s); run total {total_ok:,} ok / {total_failed:,} failed; "
           f"ETA {left / max(rate, 1e-9) / 60:.0f} min")
-    if n_part and failed > 0.2 * n_part:
+    # Systemic failures only: a few dozen versions whose metadata names an XML the bucket lacks (404) stay error rows,
+    # retried each run, and are often a day's whole to-do.
+    if n_part >= 1000 and failed > 0.2 * n_part:
         raise RuntimeError(f"chunk {chunk_no}: {failed}/{n_part} failed; first errors in {ARTICLES} (error IS NOT NULL)")
 
 # COMMAND ----------

@@ -12,12 +12,13 @@ Rules (EXPLORE § 2-3 of #1793):
 - Affiliations: an author's <xref ref-type="aff" rid=...> targets, or an <aff> nested in the contrib. When no author
   links to any aff, a single article-level aff applies to every author; several unlinked affs apply to nobody.
 """
+import html.entities
 import re
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
 
-PARSER_VERSION = "pmc-jats-1"
+PARSER_VERSION = "pmc-jats-2"  # 2: affiliation text skips <institution-id>; named entities decoded
 BUCKET_HTTPS = "https://pmc-oa-opendata.s3.amazonaws.com"
 _FRONT_END = b"</front>"
 _MAX_FRONT_BYTES = 4 * 1024 * 1024
@@ -88,7 +89,15 @@ def _front_root(raw):
     try:
         return _strip_ns(ET.fromstring(raw))
     except ET.ParseError:
-        return _strip_ns(ET.fromstring(_NAMED_ENTITY.sub(b" ", raw)))
+        return _strip_ns(ET.fromstring(_NAMED_ENTITY.sub(_decode_entity, raw)))
+
+
+def _decode_entity(m):
+    """HTML named entity (the DTD we drop declares them) -> its UTF-8 text, XML-escaped; unknown -> space."""
+    ch = html.entities.html5.get(m.group(0)[1:].decode("ascii", "replace"))
+    if ch is None:
+        return b" "
+    return ch.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").encode("utf-8")
 
 
 def _text(el, skip=("label",)):
@@ -113,8 +122,9 @@ def _text(el, skip=("label",)):
 
 
 def _aff_text(aff):
-    # Leading <sup>1</sup> markers act as labels too.
-    t = _text(aff, skip=("label", "sup", "fn"))
+    # Leading <sup>1</sup> markers act as labels too. <institution-id> holds GRID / ISNI / ROR / Ringgold ids, which
+    # would otherwise be glued onto the name ("grid.412301.5Institut für ...").
+    t = _text(aff, skip=("label", "sup", "fn", "institution-id"))
     return t[:1000] if len(t) > 3 else None
 
 
