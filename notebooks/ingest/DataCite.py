@@ -20,9 +20,14 @@ from openalex.dlt.transform import apply_initial_processing, apply_final_merge_k
 # publicationYear, earliest wins), floor 1500. Bar (fresh Opus 5.5 draw vs landing pages, 26 Oct): pre-1900 fills 87/89
 # right or the start of the source's span. Left NULL on purpose: modern records of old originals (a 2020 scan of an 1871
 # drawing), where the item's year sits in Created, which #126 keeps out (0/10 right with publicationYear). Placeholder
-# years (0, "0000") stay NULL. #126 replaces the whole rule later; this only fills its NULLs.
+# years (0, "0000") stay NULL, and so do year-only century boundaries (1500, 1501 ... 1801: placeholders as often as
+# not) and records holding a date range wider than 5 years (v3, Jason's pre-1900 audit). #126 replaces the whole rule later.
 DATACITE_DATE_FILL_EXPR = r"""
-array_min(filter(
+CASE WHEN exists(coalesce(attributes.dates, array()),
+                 x -> x.date RLIKE '^[0-9]{4}[^/]*/[0-9]{4}'
+                      AND abs(int(regexp_extract(x.date, '/([0-9]{4})', 1)) - int(substr(x.date, 1, 4))) > 5)
+     THEN NULL
+ELSE array_min(filter(
   concat(
     transform(filter(coalesce(attributes.dates, array()), x -> lower(x.dateType) IN ('issued', 'available', 'copyrighted')),
               x -> CASE WHEN x.date RLIKE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN to_date(try_to_timestamp(substr(x.date, 1, 10), 'yyyy-MM-dd'))
@@ -32,7 +37,9 @@ array_min(filter(
                           THEN make_date(int(substr(x.date, 1, 4)), 1, 1) END),
     array(CASE WHEN attributes.publicationYear BETWEEN 1500 AND year(current_date()) + 1
                THEN make_date(int(attributes.publicationYear), 1, 1) END)),
-  y -> y IS NOT NULL AND year(y) BETWEEN 1500 AND 1899))
+  y -> y IS NOT NULL AND year(y) BETWEEN 1500 AND 1899
+       AND NOT (month(y) = 1 AND day(y) = 1 AND year(y) IN (1500, 1501, 1600, 1601, 1700, 1701, 1800, 1801))))
+END
 """
 
 # COMMAND ----------

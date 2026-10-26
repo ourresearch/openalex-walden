@@ -11,9 +11,9 @@
 -- COMMAND ----------
 
 CREATE OR REPLACE TEMPORARY FUNCTION dc_date_fill(dates ARRAY<STRING>) RETURNS DATE RETURN
-element_at(transform(array(transform(
+CASE WHEN exists(dates, x -> x RLIKE '(?i)(centur|si[eè]cle|siglo|secolo|jahrhundert|jahrh|\\bjh\\.|\\bsz\\.|\\b1[0-9](st|nd|rd|th)\\b|\\b(xv|xvi|xvii|xviii|xix|xx)\\b|(?<![0-9])[0-9]{2}(--|\\.\\.|xx|uu|\\?\\?)|(?<![0-9])[0-9]{3}(-|\\?|x|u)(?![0-9]))') THEN NULL ELSE element_at(transform(array(transform(
       transform(
-        flatten(transform(dates, x -> split(x, '[;|]'))),
+        flatten(transform(filter(dates, x -> size(regexp_extract_all(x, '([12][0-9]{3})', 1)) <= 3), x -> split(x, '[;|]'))),
         x -> regexp_replace(trim(regexp_replace(x, '^\\s*<[^>]+>', '')), '^[\\[\\(]+|[\\]\\)\\.\\?;,:~-]+$', '')),
       t -> named_struct('t', t, 'd', CASE
         WHEN t RLIKE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN
@@ -23,7 +23,8 @@ element_at(transform(array(transform(
                ELSE make_date(int(substr(t, 1, 4)), 1, 1) END
         WHEN t RLIKE '^[0-9]{4}-[0-9]{2}$' THEN
           CASE WHEN substr(t, 6, 2) BETWEEN '01' AND '12' THEN make_date(int(substr(t, 1, 4)), int(substr(t, 6, 2)), 1)
-               ELSE make_date(int(substr(t, 1, 4)), 1, 1) END
+               WHEN int(substr(t, 6, 2)) - int(substr(t, 3, 2)) BETWEEN 0 AND 5 THEN make_date(int(substr(t, 1, 4)), 1, 1)
+          END
         WHEN t RLIKE '^[0-9]{4}-[1-9]$' THEN make_date(int(substr(t, 1, 4)), int(substr(t, 6, 1)), 1)
         WHEN t RLIKE '^[0-9]{8}$' THEN to_date(try_to_timestamp(t, 'yyyyMMdd'))
         WHEN t RLIKE '^[0-9]{4}$' THEN make_date(int(t), 1, 1)
@@ -37,8 +38,12 @@ element_at(transform(array(transform(
                ELSE make_date(int(regexp_extract(t, '([0-9]{4})$', 1)), 1, 1) END
         WHEN t RLIKE '^(?i)(ca\\.?|c\\.?|circa|cop\\.?|©|copyright|approx\\.?|approximately|year|date|datum|fecha|ann[eé]e|anno)\\s*:?\\s*[0-9]{4}$'
           THEN make_date(int(regexp_extract(t, '([0-9]{4})$', 1)), 1, 1)
-        WHEN t RLIKE '^[0-9]{4}\\s*(-|–|/|\\.\\.)\\s*([0-9]{2}|[0-9]{4})$'
-          THEN make_date(int(substr(t, 1, 4)), 1, 1)
+        WHEN t RLIKE '^[0-9]{4}\\s*(-|–|/|\\.\\.)\\s*[0-9]{4}$'
+          THEN CASE WHEN int(regexp_extract(t, '([0-9]{4})$', 1)) - int(substr(t, 1, 4)) BETWEEN 0 AND 5
+                    THEN make_date(int(substr(t, 1, 4)), 1, 1) END
+        WHEN t RLIKE '^[0-9]{4}\\s*(-|–|/)\\s*[0-9]{2}$'
+          THEN CASE WHEN int(regexp_extract(t, '([0-9]{2})$', 1)) - int(substr(t, 3, 2)) BETWEEN 0 AND 5
+                    THEN make_date(int(substr(t, 1, 4)), 1, 1) END
         WHEN t RLIKE '^[0-9]{4}\\s+[0-9]{4}$' AND substr(t, 1, 4) = substr(t, -4, 4)
           THEN make_date(int(substr(t, 1, 4)), 1, 1)
         WHEN t RLIKE '\\[\\s*(i\\.\\s*e\\.\\s*)?[0-9]{4}$'
@@ -51,9 +56,9 @@ element_at(transform(array(transform(
       END,
                         'c', t RLIKE '^(?i)(c|cop\\.?|©|copyright)\\s*[0-9]{4}$'))), p ->
   element_at(transform(array(coalesce(
-      array_min(filter(transform(filter(p, x -> NOT x.c), x -> x.d), y -> y IS NOT NULL AND year(y) >= 1500 AND y <= date_add(current_date(), 30))),
-      array_min(filter(transform(filter(p, x -> x.c), x -> x.d), y -> y IS NOT NULL AND year(y) >= 1500 AND y <= date_add(current_date(), 30))))), m ->
-    CASE WHEN exists(p, x -> x.d IS NULL AND array_min(transform(regexp_extract_all(x.t, '(1[5-9][0-9]{2}|20[0-2][0-9])', 1), k -> int(k))) < year(m) - 1) THEN NULL ELSE m END), 1)), 1);
+      array_min(filter(transform(filter(p, x -> NOT x.c), x -> x.d), y -> y IS NOT NULL AND year(y) >= 1500 AND y <= date_add(current_date(), 30) AND NOT (month(y) = 1 AND day(y) = 1 AND year(y) IN (1500, 1501, 1600, 1601, 1700, 1701, 1800, 1801)))),
+      array_min(filter(transform(filter(p, x -> x.c), x -> x.d), y -> y IS NOT NULL AND year(y) >= 1500 AND y <= date_add(current_date(), 30) AND NOT (month(y) = 1 AND day(y) = 1 AND year(y) IN (1500, 1501, 1600, 1601, 1700, 1701, 1800, 1801)))))), m ->
+    CASE WHEN exists(p, x -> x.d IS NULL AND array_min(transform(regexp_extract_all(x.t, '(1[5-9][0-9]{2}|20[0-2][0-9])', 1), k -> int(k))) < year(m) - 1) THEN NULL ELSE m END), 1)), 1) END;
 
 -- COMMAND ----------
 
@@ -95,7 +100,11 @@ dc AS (
   FROM openalex.datacite.datacite_items WHERE lower(id) IN (SELECT doi FROM dc_locs) GROUP BY 1
 ),
 dc_fill AS (
-  SELECT dc_locs.work_id, min(array_min(filter(
+  SELECT dc_locs.work_id, min(CASE WHEN exists(coalesce(attributes.dates, array()),
+                 x -> x.date RLIKE '^[0-9]{4}[^/]*/[0-9]{4}'
+                      AND abs(int(regexp_extract(x.date, '/([0-9]{4})', 1)) - int(substr(x.date, 1, 4))) > 5)
+     THEN NULL
+ELSE array_min(filter(
   concat(
     transform(filter(coalesce(attributes.dates, array()), x -> lower(x.dateType) IN ('issued', 'available', 'copyrighted')),
               x -> CASE WHEN x.date RLIKE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN to_date(try_to_timestamp(substr(x.date, 1, 10), 'yyyy-MM-dd'))
@@ -105,7 +114,9 @@ dc_fill AS (
                           THEN make_date(int(substr(x.date, 1, 4)), 1, 1) END),
     array(CASE WHEN attributes.publicationYear BETWEEN 1500 AND year(current_date()) + 1
                THEN make_date(int(attributes.publicationYear), 1, 1) END)),
-  y -> y IS NOT NULL AND year(y) BETWEEN 1500 AND 1899))) AS d
+  y -> y IS NOT NULL AND year(y) BETWEEN 1500 AND 1899
+       AND NOT (month(y) = 1 AND day(y) = 1 AND year(y) IN (1500, 1501, 1600, 1601, 1700, 1701, 1800, 1801))))
+END) AS d
   FROM dc_locs JOIN dc USING (doi) GROUP BY dc_locs.work_id
 )
 SELECT t.work_id, coalesce(dc_fill.d, repo_fill.d) AS fill_publication_date,
