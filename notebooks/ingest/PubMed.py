@@ -161,6 +161,52 @@ MAX_AFFILIATION_STRING_LENGTH = 1000
 
 # COMMAND ----------
 
+# oxjob #1863: PubMed's issue date when PubDate has no Year. Some records give the issue date only as a
+# PubDate.MedlineDate string ("1950 Oct-Dec", "1996 Mar-Apr", "2011-2012 Winter", "1945 Dec 22-29"; ~2.5M PMIDs).
+# The old code fell back to created_date, i.e. MedlineCitation.DateCompleted: the day NLM finished indexing the
+# record, which put OLDMEDLINE papers from the 1940s-60s in 1998-2004. DateCompleted is never a publication date.
+# Rule (data-bugs charter, "What right means", 2026-10-26): PubDate Year/Month/Day; else the first year in
+# MedlineDate, with its first month name and, when the day follows that month directly ("1945 Dec 22-29"), the
+# day; seasons and quarters keep the year only (month 1, as PubDate Year+Season always has); else the
+# PubMedPubDate PubStatus="pubmed" history date; else NULL. Pure SQL, so the same text backfills existing rows.
+# shortcut: month names match by prefix after a word start ("Marine" would read as March); only the month can be
+# wrong that way, never the year. Tests: notebooks/ingest/tests/test_pubmed_medline_date.py.
+_MEDLINE_MONTHS = {
+    "jan": 1, "ene": 1, "feb": 2, "fev": 2, "fév": 2, "mar": 3, "mär": 3, "mrz": 3, "apr": 4, "abr": 4, "avr": 4,
+    "may": 5, "mai": 5, "jun": 6, "juin": 6, "jul": 7, "juil": 7, "aug": 8, "ago": 8, "aout": 8, "août": 8,
+    "sep": 9, "set": 9, "oct": 10, "okt": 10, "out": 10, "nov": 11, "dec": 12, "déc": 12, "dic": 12, "dez": 12,
+}
+
+
+def medline_date_fallback_sql(medline_date, history):
+    """SQL for a DATE from a PubDate.MedlineDate string column, else the 'pubmed' history date, else NULL.
+
+    medline_date: SQL expression of the MedlineDate string; history: SQL expression of the
+    PubmedData.History.PubMedPubDate array (structs with Year, Month, Day, _PubStatus).
+    """
+    tokens = "|".join(sorted(_MEDLINE_MONTHS, key=len, reverse=True))
+    year = (f"try_cast(nullif(regexp_extract({medline_date}, "
+            f"'(?<![0-9])(1[5-9][0-9][0-9]|20[0-9][0-9])(?![0-9])', 1), '') AS INT)")
+    month_token = f"lower(regexp_extract({medline_date}, '(?i)(?<![a-zà-ÿ])({tokens})', 1))"
+    month = ("CASE " + " ".join(f"WHEN {month_token} = '{t}' THEN {m}" for t, m in _MEDLINE_MONTHS.items())
+             + " END")
+    day = (f"try_cast(nullif(regexp_extract({medline_date}, "
+           f"'(?i)^\\\\s*[12][0-9][0-9][0-9]\\\\s+({tokens})[a-zà-ÿ]*\\\\.?,?\\\\s+([0-9]{{1,2}})(?![0-9])', 2), '') AS INT)")
+    medline = (f"CASE WHEN {year} IS NOT NULL THEN make_date({year}, coalesce({month}, 1), "
+               f"CASE WHEN {month} IS NOT NULL AND {day} BETWEEN 1 AND day(last_day(make_date({year}, {month}, 1))) "
+               f"THEN {day} ELSE 1 END) END")
+    hist = f"get(filter({history}, x -> x._PubStatus = 'pubmed'), 0)"
+    history_date = (f"CASE WHEN {hist}.Year BETWEEN 1500 AND 2100 AND {hist}.Month BETWEEN 1 AND 12 "
+                    f"THEN date_add(make_date(CAST({hist}.Year AS INT), CAST({hist}.Month AS INT), 1), "
+                    f"CAST(least(greatest(coalesce({hist}.Day, 1), 1), 31) AS INT) - 1) END")
+    return f"coalesce({medline}, {history_date})"
+
+
+PUBMED_DATE_FALLBACK_SQL = medline_date_fallback_sql(
+    "MedlineCitation.Article.Journal.JournalIssue.PubDate.MedlineDate", "PubmedData.History.PubMedPubDate")
+
+# COMMAND ----------
+
 # Parsed Table
 @dlt.table(
     name="pubmed_parsed",
@@ -284,10 +330,8 @@ def pubmed_parsed():
                 F.col(
                     "MedlineCitation.Article.Journal.JournalIssue.PubDate.Year"
                 ).isNull(),
-                F.when(
-                    F.col("created_date").isNotNull(),
-                    F.col("created_date")  # Use created_date if published_date is null
-                ).otherwise(F.lit(None))
+                # oxjob #1863: MedlineDate, else the 'pubmed' history date; never created_date (DateCompleted)
+                F.expr(PUBMED_DATE_FALLBACK_SQL)
             ).otherwise(
                 F.to_date(
                     F.concat_ws(
