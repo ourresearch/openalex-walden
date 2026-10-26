@@ -187,9 +187,9 @@ def medline_date_fallback_sql(medline_date, history):
     tokens = "|".join(sorted(_MEDLINE_MONTHS, key=len, reverse=True))
     year = (f"try_cast(nullif(regexp_extract({medline_date}, "
             f"'(?<![0-9])(1[5-9][0-9][0-9]|20[0-9][0-9])(?![0-9])', 1), '') AS INT)")
-    month_token = f"lower(regexp_extract({medline_date}, '(?i)(?<![a-zà-ÿ])({tokens})', 1))"
-    month = ("CASE " + " ".join(f"WHEN {month_token} = '{t}' THEN {m}" for t, m in _MEDLINE_MONTHS.items())
-             + " END")
+    month_map = "map(" + ", ".join(f"'{t}', {m}" for t, m in _MEDLINE_MONTHS.items()) + ")"
+    month = (f"try_element_at({month_map}, "
+             f"lower(regexp_extract({medline_date}, '(?i)(?<![a-zà-ÿ])({tokens})', 1)))")
     day = (f"try_cast(nullif(regexp_extract({medline_date}, "
            f"'(?i)^\\\\s*[12][0-9][0-9][0-9]\\\\s+({tokens})[a-zà-ÿ]*\\\\.?,?\\\\s+([0-9]{{1,2}})(?![0-9])', 2), '') AS INT)")
     medline = (f"CASE WHEN {year} IS NOT NULL THEN make_date({year}, coalesce({month}, 1), "
