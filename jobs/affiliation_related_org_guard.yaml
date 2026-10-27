@@ -1,0 +1,32 @@
+# oxjob #1832: related-org guard. Daily, after the Affiliation Matcher Backlog job: on strings the matcher answered in the
+# last 3 days that link a university and an organization ROR lists as related to it, drop the university when the string
+# names it only inside the related record's own name or inside a hospital phrase (patch layer 7's rule, names_u v7: judged
+# 655/665 on a fresh blind draw and 223/231 on new strings, 26-27 Oct). About 230 strings a day. MERGEs only rows still equal
+# to their before ids, logs every row to oxjob1395_patches (layer 7, basis related_org_daily:*), fails above 20,000 strings.
+# Until the matcher's Jev teacher is retrained on the fixed question (#1832 PLAN step 4); then delete this job.
+# Revert: pause the job; undo a day by MERGEing before_ids back from its patches rows where institution_ids = after_ids.
+resources:
+  jobs:
+    Affiliation_Related_Org_Guard:
+      name: Affiliation Related-Org Guard
+      schedule:
+        quartz_cron_expression: "0 0 15 * * ?"
+        timezone_id: America/Chicago
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      tasks:
+        - task_key: guard
+          sql_task:
+            file:
+              path: notebooks/institutions/affiliation_related_org_guard.sql
+              source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main

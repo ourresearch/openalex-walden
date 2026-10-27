@@ -30,6 +30,7 @@ include:
   - jobs/affiliation_matcher_nightly.yaml
   - jobs/affiliation_matcher_sweep.yaml
   - jobs/affiliation_matcher_backlog.yaml
+  - jobs/affiliation_related_org_guard.yaml
   - jobs/sync_all_works_to_elasticsearch.yaml
   - jobs/sync_authors_to_elasticsearch.yaml
   - jobs/sync_awards_to_elasticsearch.yaml
