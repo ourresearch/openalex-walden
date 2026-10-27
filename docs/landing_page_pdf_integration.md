@@ -75,7 +75,9 @@ See `CreateCrossrefSuperAuthorships.ipynb` (keyed by DOI) and `CreateRepoSuperAu
 - **Repo**: repo/repo_backfill(1) / landing_page(2) — PDF is NOT used for names
 
 ### Affiliations (merged from multiple sources)
-- **Crossref**: crossref > pubmed > pdf (≤2 cap) > landing_page (≤5 cap)
+- **Crossref**: crossref > pubmed > pdf (≤2 cap) > landing_page (≤5 cap), then pmc_oa (PMC open data, oxjob #1793)
+  fills only authors left with no affiliation. pmc_oa is not in `crossref_base`: it is applied after every match and
+  fallback above, so it can't change which authors match by key or by position
 - **Repo**: repo > pdf (≤2 cap) > landing_page (≤5 cap)
 
 Matching strategies:
@@ -87,8 +89,13 @@ Matching strategies:
 - Landing page: ≤5 affiliations per author
 
 ### is_corresponding
-- From **landing_page only** (key-based or positional match)
+- From crossref, pubmed and **landing_page** rows (key-based or positional match), unranked: every flagged row counts
+  (in practice only landing_page rows carry flags, often several per DOI)
 - PDF is_corresponding is not used
+- **pmc_oa** (`openalex.pubmed_central.pmc_oa_authors`, from `notebooks/ingest/PmcOpenData`, oxjob #1793): fill-only.
+  Its flags count only on DOIs where no non-PDF source flags anyone and no `works_legacy.work_authors` row flags
+  anyone on the work (a second flagged source fans out the join, #736; a source flag outranks legacy in
+  CreateWorksBase). Only TRUE flags are passed on.
 
 ## Super Locations: How Fields Get Merged
 
