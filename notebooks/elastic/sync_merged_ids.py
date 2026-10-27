@@ -4,9 +4,10 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Merged author and source IDs: one loser -> winner map per entity (oxjob #1124)
+# MAGIC ### Merged author, source and work IDs: one loser -> winner map per entity (oxjob #1124, works #1037)
 # MAGIC
-# MAGIC A merged-away author or source ID keeps working (Jason, 2026-10-26, "Kyle's way"). This notebook
+# MAGIC A merged-away ID resolves to the survivor, best effort with no permanence promise (Jason, 2026-10-26 "Kyle's way";
+# MAGIC works and the no-promise wording 2026-10-27, #1037). This notebook
 # MAGIC builds the map from the merge ledgers we already keep, follows chains to a live winner, writes
 # MAGIC `openalex.authors.merged_author_ids` / `openalex.sources.merged_source_ids` (the snapshot's
 # MAGIC `merged_ids.csv.gz`, see `notebooks/snapshot/export_merged_ids`), and mirrors it into the
@@ -21,6 +22,8 @@
 # MAGIC   snapshot `merged_ids` files (`s3://openalex/legacy-data/merged_ids/authors/`, frozen 2025-10-14)
 # MAGIC   minus the "deleted author" target A5317838346 and the null author A9999999999.
 # MAGIC - sources: the registry's `openalex_sources.public.source_merge` plus the legacy files.
+# MAGIC - works (2026-10-27, #1037): `openalex.works.merged_work_ids` plus the legacy files minus the "Deleted Work"
+# MAGIC   placeholder W4285719527. Map table `openalex.works.merged_work_ids_map` (the ledger owns the plain name).
 # MAGIC
 # MAGIC **Rules.** One edge per loser (the latest). A loser that is live again (the matcher refilled it)
 # MAGIC is left out: its own record answers. A chain whose end is not live after 8 hops is left out:
@@ -34,7 +37,7 @@
 from pyspark.sql import functions as F
 from elasticsearch import Elasticsearch, helpers
 
-dbutils.widgets.dropdown("entity", "authors", ["authors", "sources"])
+dbutils.widgets.dropdown("entity", "authors", ["authors", "sources", "works"])
 dbutils.widgets.text("max_shrink_fraction", "0.02")
 dbutils.widgets.text("shrink_guard_override", "false")
 dbutils.widgets.text("full_resync", "false")
@@ -71,6 +74,21 @@ CFG = {
         "es_index": "merge-sources",
         "shards": 1,
         "partitions": 8,
+    },
+    # works (Jason 2026-10-27 17:33 CT, #1037): best effort, no permanence promise. The ledger table is already
+    # called merged_work_ids, so the map takes a _map suffix. Legacy rows into W4285719527 ("Deleted Work"
+    # placeholder, 11.2M) are deletions, not merges.
+    "works": {
+        "prefix": "W",
+        "live": "openalex.works.openalex_works",
+        "map": "openalex.works.merged_work_ids_map",
+        "synced": "openalex.works.merged_work_ids_map_in_es",
+        "legacy_table": "openalex.works.work_merge_edges_legacy",
+        "legacy_s3": "s3://openalex/legacy-data/merged_ids/works/",
+        "legacy_exclude": ("W4285719527",),
+        "es_index": "merge-works",
+        "shards": 2,
+        "partitions": 512,
     },
 }[ENTITY]
 P = CFG["prefix"]
@@ -153,6 +171,16 @@ if ENTITY == "authors":
       UNION ALL
       SELECT loser_id, winner_id, merge_date, 'legacy_merged_ids', 1 FROM {CFG['legacy_table']}
     """
+elif ENTITY == "works":
+    # every works merge path logs here (merge waves, version groups, #1349 dead-ID repoints); CreateWorksEnriched
+    # already repoints citations through it
+    edges_sql = f"""
+      SELECT loser_work_id AS loser_id, winner_work_id AS winner_id, CAST(merged_at AS DATE) AS merge_date,
+             'merged_work_ids' AS ledger, 2 AS prio
+      FROM openalex.works.merged_work_ids
+      UNION ALL
+      SELECT loser_id, winner_id, merge_date, 'legacy_merged_ids', 1 FROM {CFG['legacy_table']}
+    """
 else:
     edges_sql = f"""
       SELECT loser_id, winner_id, CAST(merged_at AS DATE) AS merge_date, 'source_merge' AS ledger, 2 AS prio
@@ -172,12 +200,19 @@ spark.sql(f"""
   WHERE rn = 1
 """)
 spark.sql(f"CREATE OR REPLACE TEMP VIEW e AS SELECT * FROM {EDGES}")
-spark.sql(f"CREATE OR REPLACE TEMP VIEW live AS SELECT DISTINCT id FROM {CFG['live']}")
 
-live_n = spark.sql("SELECT COUNT(*) AS n FROM live").first().n
+live_n = spark.sql(f"SELECT COUNT(*) AS n FROM {CFG['live']}").first().n
 if live_n == 0:
     raise Exception(f"ABORT: {CFG['live']} is empty; refusing to build the map.")
 print(f"live {ENTITY}: {live_n:,}")
+# the chain walk only needs liveness for IDs that appear in an edge (463M live works vs ~40M edges)
+LIVE = CFG["map"] + "_live"
+spark.sql(f"""
+  CREATE OR REPLACE TABLE {LIVE} AS
+  SELECT DISTINCT l.id FROM {CFG['live']} l
+  LEFT SEMI JOIN (SELECT loser_id AS id FROM {EDGES} UNION SELECT winner_id FROM {EDGES}) x ON l.id = x.id
+""")
+spark.sql(f"CREATE OR REPLACE TEMP VIEW live AS SELECT id FROM {LIVE}")
 spark.sql("SELECT ledger, COUNT(*) AS edges FROM e GROUP BY ledger ORDER BY ledger").show()
 
 # COMMAND ----------

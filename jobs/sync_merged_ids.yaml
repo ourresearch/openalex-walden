@@ -38,6 +38,16 @@ resources:
           max_retries: 1
           min_retry_interval_millis: 300000
           timeout_seconds: 3600
+        # #1037 (Jason 2026-10-27 17:33 CT): merged work IDs, best effort
+        - task_key: merged_works
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_merged_ids
+            source: GIT
+            base_parameters:
+              entity: works
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 7200
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
