@@ -40,6 +40,18 @@ CREATE TABLE IF NOT EXISTS openalex.monitoring.landing_page_funnel (
   html_citation_meta BIGINT COMMENT 'stored HTML with citation_title / dc.title meta and no wall or login page title',
   html_wall_title BIGINT COMMENT 'stored HTML whose page title is a bot wall (Just a moment, captcha, ...)',
   html_login_title BIGINT COMMENT 'stored HTML whose page title is a login page',
+  -- link_* added 27 Oct 2026 on the live table with ALTER TABLE ... ADD COLUMNS (...) AFTER html_login_title
+  link_fetches BIGINT COMMENT 'doi fetches of a URL other than doi.org (PDF links Parseland found, campaign OA-location URLs); 0 for pmh',
+  link_stored BIGINT,
+  link_useful BIGINT,
+  link_fail_soft_block BIGINT,
+  link_fail_403 BIGINT,
+  link_fail_429 BIGINT,
+  link_fail_5xx BIGINT,
+  link_fail_timeout BIGINT,
+  link_fail_400 BIGINT,
+  link_fail_404 BIGINT,
+  link_fail_other BIGINT,
   zyte_requests_est DOUBLE COMMENT 'fetches x billed Zyte requests per fetch (monitoring.landing_page_zyte_prices)',
   zyte_usd_est DOUBLE COMMENT 'zyte_requests_est x price per request for the domain we asked Zyte for',
   computed_at TIMESTAMP

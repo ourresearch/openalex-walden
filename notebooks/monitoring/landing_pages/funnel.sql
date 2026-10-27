@@ -10,6 +10,11 @@ WITH win AS (
          coalesce(is_soft_block, false) sb,
          coalesce(status_code, -1) = 200 AND NOT coalesce(is_soft_block, false) stored,
          content_type ct,
+         -- link = a doi fetch of a URL other than doi.org: PDF links Parseland found on our pages, or OA-location
+         -- URLs a campaign re-checks. A re-parse or campaign makes thousands of them first fetches at once, at
+         -- their own (lower) useful rate, so the alarm judges them apart from landing pages (26-27 Oct 2026).
+         coalesce(native_id_namespace, 'none') = 'doi'
+           AND coalesce(openalex.monitoring.landing_page_netloc(url), '') NOT IN ('doi.org', 'dx.doi.org') lk,
          openalex.monitoring.landing_page_host(url, resolved_url, native_id_namespace, native_id) host,
          -- Zyte bills the URL we asked for: the requested URL's host, or for a doi.org URL the resolved one (Taxicab
          -- resolves DOIs with its own free HEAD first), or doi.org itself when that lookup failed and Zyte followed it.
@@ -61,9 +66,15 @@ price AS (
 j AS (
   SELECT w.fetch_date, w.host, w.id_namespace,
     CASE WHEN w.processed_date > p.first_seen THEN 'repeat' ELSE 'first' END attempt,
-    w.sc, w.sb, w.stored,
+    w.stored, w.lk,
     w.stored AND w.ct = 'pdf' stored_pdf,
     w.stored AND w.ct = 'html' stored_html,
+    -- one failure class per unstored fetch (NULL when stored), so totals and the link share use the same rules
+    CASE WHEN w.sb THEN 'soft_block' WHEN w.stored THEN NULL
+         WHEN w.sc IN (401, 403) THEN '403' WHEN w.sc = 429 THEN '429' WHEN w.sc IN (500, 502, 503, 520) THEN '5xx'
+         WHEN w.sc IN (0, 504) THEN 'timeout' WHEN w.sc = 400 THEN '400' WHEN w.sc IN (404, 410) THEN '404'
+         ELSE 'other' END fc,
+    w.stored AND (w.ct = 'pdf' OR (w.ct = 'html' AND (pp.au = 1 OR pp.abs = 1))) uf,
     pp.taxicab_id IS NOT NULL parsed, pp.err, pp.au, pp.aff, pp.corr, pp.abs, pp.pdfl, pp.lic,
     mt.taxicab_id IS NOT NULL has_mt, mt.cit, mt.wall, mt.login,
     coalesce(pk.requests_per_fetch, pd.requests_per_fetch) req,
@@ -80,14 +91,14 @@ SELECT fetch_date, host, attempt, id_namespace,
   count_if(stored) stored,
   count_if(stored_pdf) stored_pdf,
   count_if(stored_html) stored_html,
-  count_if(sb) fail_soft_block,
-  count_if(NOT sb AND sc IN (401, 403)) fail_403,
-  count_if(NOT sb AND sc = 429) fail_429,
-  count_if(NOT sb AND sc IN (500, 502, 503, 520)) fail_5xx,
-  count_if(NOT sb AND sc IN (0, 504)) fail_timeout,
-  count_if(NOT sb AND sc = 400) fail_400,
-  count_if(NOT sb AND sc IN (404, 410)) fail_404,
-  count_if(NOT stored AND NOT sb AND sc NOT IN (401, 403, 429, 500, 502, 503, 520, 0, 504, 400, 404, 410)) fail_other,
+  count_if(fc = 'soft_block') fail_soft_block,
+  count_if(fc = '403') fail_403,
+  count_if(fc = '429') fail_429,
+  count_if(fc = '5xx') fail_5xx,
+  count_if(fc = 'timeout') fail_timeout,
+  count_if(fc = '400') fail_400,
+  count_if(fc = '404') fail_404,
+  count_if(fc = 'other') fail_other,
   count_if(stored_html AND parsed) parsed,
   count_if(stored_html AND err = 1) parse_error,
   count_if(stored_html AND au = 1) has_authors,
@@ -96,11 +107,23 @@ SELECT fetch_date, host, attempt, id_namespace,
   count_if(stored_html AND abs = 1) has_abstract,
   count_if(stored_html AND pdfl = 1) has_pdf_link,
   count_if(stored_html AND lic = 1) has_license,
-  count_if(stored_pdf OR (stored_html AND (au = 1 OR abs = 1))) useful,
+  count_if(uf) useful,
   count_if(stored_html AND has_mt) html_meta_read,
   count_if(stored_html AND cit = 1 AND wall = 0 AND login = 0) html_citation_meta,
   count_if(stored_html AND wall = 1) html_wall_title,
   count_if(stored_html AND login = 1) html_login_title,
+  -- the link share of the counts above (doi only; landing pages = total minus link)
+  count_if(lk) link_fetches,
+  count_if(lk AND stored) link_stored,
+  count_if(lk AND uf) link_useful,
+  count_if(lk AND fc = 'soft_block') link_fail_soft_block,
+  count_if(lk AND fc = '403') link_fail_403,
+  count_if(lk AND fc = '429') link_fail_429,
+  count_if(lk AND fc = '5xx') link_fail_5xx,
+  count_if(lk AND fc = 'timeout') link_fail_timeout,
+  count_if(lk AND fc = '400') link_fail_400,
+  count_if(lk AND fc = '404') link_fail_404,
+  count_if(lk AND fc = 'other') link_fail_other,
   sum(req) zyte_requests_est,
   sum(req * usd_m / 1e6) zyte_usd_est,
   current_timestamp() computed_at

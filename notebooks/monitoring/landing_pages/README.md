@@ -17,7 +17,7 @@ Need a fold changed? Change `host_key.sql` here, never a private mapping in a la
 
 | table | grain | written by |
 |---|---|---|
-| `landing_page_funnel` | fetch_date x host x attempt (first / repeat) x id_namespace (doi / pmh) | `funnel.sql`, nightly |
+| `landing_page_funnel` | fetch_date x host x attempt (first / repeat) x id_namespace (doi / pmh); `link_*` = the link share | `funnel.sql`, nightly |
 | `landing_page_alerts` | alert_date x host x id_namespace x rule | `alerts.sql`, nightly |
 | `landing_page_host_state` | snapshot_date x host: Crossref works' landing-page age, fresh-and-useful, fields the page adds over Crossref | `host_state.sql`, nightly (as of yesterday) |
 | `landing_page_doi_prefixes` | DOI prefix -> dominant host | `doi_prefixes.sql`, by hand |
@@ -40,6 +40,13 @@ always pages. Every threshold sits in the `params` block at the top of `alerts.s
 The row is still written; it does not page (or count toward `many_hosts_drop`) while the useful rate with that class
 left out holds up, so a Parseland break on an acked host still pages, and `top_failure` says whether the ack applied.
 First one: mdpi.com DOI soft blocks (Akamai challenge on ~48% of first fetches, ~100% most weekends), #1790, to 30 Nov.
+**Landing pages and links are judged apart** (27 Oct 2026). A doi fetch of any URL other than doi.org is a *link*:
+a PDF link Parseland found on one of our pages (walden's TaxiCab Landing Page PDFs job), or an OA-location URL a
+campaign re-checks. The funnel's `link_*` columns hold that share of each row (landing pages = total minus link; 0 for
+pmh). `useful_rate_drop` and `many_hosts_drop` read landing pages only; `link_useful_drop` and `many_hosts_link_drop`
+apply the same rule to links on their own baseline. Why: a re-parse or campaign makes thousands of links first
+fetches in a burst, at their own lower rate; on 26 Oct 2026 that mix shift alone paged 7 hosts (#1802's freshness
+phase 1 PDF links, #1290's bronze pass on acs.org) while each one's landing-page rate held at 83-91%.
 New paging rows become a Sentry event (project `databricks-jobs`, one issue per host + rule) and a wake-up on oxjob #1789, through a desk task (`~/plexus/tasks.d/landing-page-alarms.sh`, every 30 min).
 
 ## Running it
