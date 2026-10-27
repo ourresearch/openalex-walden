@@ -141,7 +141,7 @@ resources:
           min_retry_interval_millis: 300000
           retry_on_timeout: true
         # oxjob #1099, #1057: merge works whose declared link appeared after both were pinned, one class per kind of link (preprint <-> article:
-        # Crossref is-preprint-of / has-preprint, arXiv DataCite IsVersionOf; part_of: a DataCite dataset IsPartOf a dataset); MapWorkIds then
+        # Crossref is-preprint-of / has-preprint, arXiv DataCite IsVersionOf; part_of off since 2026-10-27); MapWorkIds then
         # re-resolves the losers' records onto the winner in this run.
         - task_key: Merge_Declared_Links
           depends_on:
