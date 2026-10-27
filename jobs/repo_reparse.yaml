@@ -1,0 +1,41 @@
+resources:
+  jobs:
+    Repo_Reparse:
+      name: Repo Reparse
+      description: |
+        oxjob #1828: read chosen repository endpoints' raw OAI files again with today's Repo.py schema into
+        openalex.repo.repo_reparse_items, which the Repo pipeline feeds into repo_works as its third CDC flow
+        (repo_works_reparse). For a parser change that needs a field repo_items never stored (first use: Persée's
+        dcterms:accessRights). See the notebook header.
+
+        MANUAL TRIGGER ONLY, no schedule. Run mode=dry_run first (scratch tables + a diff against repo_works), size the
+        works it re-stamps, file a rider for the night it rides, then mode=write. Endpoint ids are the folder names
+        under s3://openalex-ingest/repositories/.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      max_concurrent_runs: 1
+      parameters:
+        - name: endpoint_ids
+          default: ""
+        - name: mode
+          default: "dry_run"
+        - name: out_prefix
+          default: "openalex.transient.repo_reparse"
+      tasks:
+        - task_key: repo_reparse
+          notebook_task:
+            notebook_path: notebooks/ingest/RepoReparse
+            source: GIT
+            base_parameters:
+              endpoint_ids: "{{job.parameters.endpoint_ids}}"
+              mode: "{{job.parameters.mode}}"
+              out_prefix: "{{job.parameters.out_prefix}}"
+          timeout_seconds: 7200
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD

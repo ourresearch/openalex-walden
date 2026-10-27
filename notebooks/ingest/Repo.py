@@ -718,6 +718,39 @@ def parse_hal_tei_records(df):
         last_page=F.col("tei_last_page"),
     )
 
+
+# oxjob #1828: re-parsed raw files. openalex.repo.repo_reparse_items (notebooks/ingest/RepoReparse.py, run on demand)
+# holds chosen endpoints' raw OAI files read again with today's repository_schema. repo_items stores the parsed struct,
+# not the XML, so a field added to the schema later never reaches records stored before it: a refresh re-reads
+# repo_items, and a re-harvest is dropped by repo_parsed's streaming dedup (it keeps the FIRST copy of each
+# (native_id, datestamp) forever). First use: Persée's dcterms:accessRights (CC BY-NC-SA), in the schema since 27 Sep
+# (4afa5d56), after ~838K Persée records were stored. Same shape as the HAL TEI flow: its own stream, no dedup, rank 2
+# in _sequence (below), its own CDC flow into repo_works. Deletes in the side table are not forwarded: a re-parse only
+# ever replaces a record, never removes one.
+REPO_REPARSE_ITEMS_TABLE = "openalex.repo.repo_reparse_items"
+
+
+@dlt.table(
+    name="repo_parsed_reparse",
+    temporary=True,
+    comment="Raw repository files re-read with today's schema (oxjob #1828), parsed with repo_parsed's rules"
+)
+def repo_parsed_reparse():
+    return parse_reparse_records(
+        spark.readStream
+            .option("readChangeFeed", "true")
+            .table(REPO_REPARSE_ITEMS_TABLE)
+            .filter(F.col("_change_type").isin("insert", "update_postimage"))
+            .drop("_change_type", "_commit_timestamp"),  # _commit_version feeds _sequence: a re-run re-emits and wins
+        read_endpoint_hosts(spark),
+    )
+
+
+def parse_reparse_records(df, id_hosts):
+    """repo_reparse_items rows -> repo_parsed rows. Shared with RepoReparse.py's dry run. Same endpoint re-key as
+    repo_parsed, so a record keeps its native_id."""
+    return parse_repo_records(df, id_hosts, dedupe=False)
+
 # COMMAND ----------
 
 
@@ -927,6 +960,21 @@ def enrich_hal_tei(df):
     return finish_repo_enriched(apply_initial_processing(df, "repo", walden_works_schema_with_raw_type),
                                 source_rank=F.lit(2))
 
+
+# oxjob #1828: the re-parse stream, rank 2 like HAL TEI: on the same datestamp the re-parsed row beats the stored
+# repo_items row (rank 1) and the backfill row (rank 0) for the same native_id. A newer datestamp still wins whatever
+# its rank, so a later harvest replaces it (and carries the new field itself); an older re-parsed copy changes nothing.
+@dlt.table(name="repo_enriched_reparse",
+           comment="Re-parsed raw repository files (oxjob #1828) after repo_enriched's rules; third CDC source of repo_works")
+def repo_enriched_reparse():
+    return enrich_reparse(dlt.read_stream("repo_parsed_reparse"))
+
+
+def enrich_reparse(df):
+    """repo_parsed_reparse rows -> repo_enriched_reparse rows. Shared with RepoReparse.py's dry run."""
+    return finish_repo_enriched(apply_initial_processing(df, "repo", walden_works_schema_with_raw_type),
+                                source_rank=F.lit(2))
+
 dlt.create_streaming_table(
     name="repo_works",
     comment="Final repository works table with unique identifiers",
@@ -959,3 +1007,6 @@ dlt.apply_changes(source="repo_enriched", **REPO_WORKS_CDC)
 
 # oxjob #1786: the second flow, HAL from TEI (named; the flow above keeps its default name, "repo_works").
 dlt.create_auto_cdc_flow(source="repo_enriched_hal_tei", name="repo_works_hal_tei", **REPO_WORKS_CDC)
+
+# oxjob #1828: the third flow, raw files re-parsed with today's schema.
+dlt.create_auto_cdc_flow(source="repo_enriched_reparse", name="repo_works_reparse", **REPO_WORKS_CDC)
