@@ -24,6 +24,8 @@ resources:
           default: "openalex.transient.repo_reparse"
       tasks:
         - task_key: repo_reparse
+          # serverless's default environment failed to pip install the dlt_utils wheel (27 Oct); version 4 works
+          environment_key: Default
           notebook_task:
             notebook_path: notebooks/ingest/RepoReparse
             source: GIT
@@ -32,6 +34,10 @@ resources:
               mode: "{{job.parameters.mode}}"
               out_prefix: "{{job.parameters.out_prefix}}"
           timeout_seconds: 7200
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
