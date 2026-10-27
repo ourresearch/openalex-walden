@@ -86,20 +86,27 @@ raw = (
     .schema(repo["repository_schema"])
     .load([f"s3a://openalex-ingest/repositories/{e}/" for e in ENDPOINTS])
     .withColumn("repository_id", F.regexp_extract(F.col("_metadata.file_path"), r"repositories/([^/]+)/", 1))
+    # S3's LastModified in whole seconds; repo_items got the file event's milliseconds, so a re-sent record's
+    # ingested_at moves by under a second. Harmless: rank 2 already orders it ahead of the stored copy.
     .withColumn("ingested_at", F.col("_metadata.file_modification_time"))
     .withColumn("file_path", F.col("_metadata.file_path"))
 )
-# One row per (endpoint, OAI id, datestamp): a record delivered in several files is the same record; keep the latest
-# delivery. A record with no OAI id has no key in repo_works.
-_copy = Window.partitionBy(
-    "repository_id", F.col("`ns0:header`.`ns0:identifier`"), F.col("`ns0:header`.`ns0:datestamp`")
-).orderBy(F.col("ingested_at").desc(), F.col("file_path").desc())
+# Keep the copy the pipeline kept. repo_parsed drops every later copy of a (native_id, datestamp) it has seen, so when
+# a record arrives in several files, or from two endpoints of one repository (Persée has two), repo_works holds the
+# FIRST delivery's copy. The re-parse must re-send that copy: letting a later one win moved 131K Persée locations to
+# the other endpoint's source in the 27 Oct dry run. Keyed after the #1407 re-key, as repo_parsed is, so placeholder-
+# host records of different journals never drop each other. A record with no OAI id has no key in repo_works.
+# shortcut: "first" = earliest S3 mtime, which is the order Auto Loader read files in except within one batch.
+ID_HOSTS = repo["read_endpoint_hosts"](spark)
+_first = Window.partitionBy("native_id", F.col("`ns0:header`.`ns0:datestamp`")) \
+    .orderBy(F.col("ingested_at").asc(), F.col("file_path").asc())
 items = (
     raw
     .filter(F.col("`ns0:header`.`ns0:identifier`").isNotNull())
-    .withColumn("_copy", F.row_number().over(_copy))
+    .withColumn("oai_identifier", F.col("`ns0:header`.`ns0:identifier`"))
+    .transform(lambda d: repo["with_rekeyed_native_id"](d, ID_HOSTS, "repository_id"))
+    .withColumn("_copy", F.row_number().over(_first))
     .filter("_copy = 1")
-    .drop("_copy")
     .select("`ns0:header`", "`ns0:metadata`", "repository_id", "ingested_at", "file_path")
 )
 
@@ -119,7 +126,7 @@ if MODE == "dry_run":
 
     # The flow's own two steps; _commit_version as the CDF read would add it.
     src = items_t.withColumn("_commit_version", F.lit(1).cast("long"))
-    enriched = repo["enrich_reparse"](repo["parse_reparse_records"](src, repo["read_endpoint_hosts"](spark)))
+    enriched = repo["enrich_reparse"](repo["parse_reparse_records"](src, ID_HOSTS))
     enriched.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_enriched")
     _seq = spark.table(f"{OUT}_enriched").schema["_sequence"].dataType
     print("_sequence type:", _seq.json())
