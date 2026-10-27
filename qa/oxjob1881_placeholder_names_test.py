@@ -7,6 +7,7 @@
 2. EXPLAINs every statement the change touched (UpdateWorkAuthors' MERGE, MatchAuthors' batch / mint seats / decisions,
    Vector_Cards), read straight from the files with the scratch function name, so a typo or a wrong column fails here,
    not in the End 2 End.
+3. Runs Guardrails check 2 (recent works missing an author id; placeholder seats excluded) for real.
 
     python3 qa/oxjob1881_placeholder_names_test.py
 Needs the `databricks` CLI authenticated; writes only the scratch function openalex.transient.qa_oxjob1881_placeholder_name.
@@ -100,6 +101,18 @@ def main():
         except RuntimeError as e:
             print("FAIL EXPLAIN", label, str(e)[:500])
             fails += 1
+    # Guardrails check 2 (fail at 5%): placeholder seats are not "missing" an author id. Run for real, not just EXPLAIN:
+    # a SQL function inside a FILTER/EXISTS lambda fails only at execution ("Cannot find column index for attribute").
+    g = cell_with("Guardrails.ipynb", "missing_author_ids_query = \"\"\"").split('missing_author_ids_query = """', 1)[1].split('"""', 1)[0]
+    assert SCRATCH in scratch(g), "Guardrails check 2: the #1881 exclusion is missing"
+    try:
+        row = run(scratch(g))[0]
+        ok = row[0] is not None and int(row[0]) > 0
+        print(("ok  " if ok else "FAIL"), "RUN Guardrails check 2:", f"{row[1]} / {row[0]} recent works missing an author id")
+        fails += not ok
+    except RuntimeError as e:
+        print("FAIL RUN Guardrails check 2", str(e)[:500])
+        fails += 1
     print("PASS" if not fails else f"{fails} FAILED")
     sys.exit(1 if fails else 0)
 
