@@ -1,0 +1,49 @@
+resources:
+  jobs:
+    Location_Work_Match_Vectors:
+      name: Location Work Match Vectors
+      description: |
+        GPU-ready copy of openalex.vector_search.work_embeddings_qwen3 for the location -> work matcher's kNN (oxjob #1668):
+        once a day after the 15:00 UTC embedding job, the table at one version is written as unit-normalised fp16 numpy shards
+        (1,024 parts, ~1 TB) to /Volumes/openalex/works/data/location_work_match/vectors/<build>/ with a manifest, and
+        current.json names the newest complete build (2 builds kept). KnnSearch (job Match Locations To Works) reads it when it
+        is at least as new as the table's last data change, else it reads the table itself (same exact search, slower).
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      timeout_seconds: 10800
+      max_concurrent_runs: 1
+      schedule:
+        # the embedding job writes 15:05-15:25 UTC; OPTIMIZE / VACUUM later in the day change no vectors
+        quartz_cron_expression: 0 41 17 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: export
+          notebook_task:
+            notebook_path: notebooks/location_matching/ExportVectorShards
+            source: GIT
+          job_cluster_key: export_cpu
+      job_clusters:
+        - job_cluster_key: export_cpu
+          new_cluster:
+            spark_version: 16.4.x-scala2.13
+            node_type_id: r5d.2xlarge
+            driver_node_type_id: r5d.2xlarge
+            autoscale:
+              min_workers: 4
+              max_workers: 16
+            aws_attributes:
+              zone_id: auto
+              availability: ON_DEMAND
+            spark_conf:
+              spark.sql.execution.arrow.maxRecordsPerBatch: "8192"
+            custom_tags:
+              oxjob: "1668"
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main

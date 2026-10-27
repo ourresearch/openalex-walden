@@ -79,6 +79,7 @@ include:
   - jobs/snapshot_full.yaml
   - jobs/topics.yaml
   - jobs/match_locations_to_works_shadow.yaml
+  - jobs/location_work_match_vectors.yaml
   - jobs/register_topic_classifier.yaml
   - jobs/sdg_frontfill.yaml
   - jobs/register_sdg_classifier.yaml

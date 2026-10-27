@@ -148,7 +148,7 @@ resources:
             node_type_id: g5.2xlarge         # 1 x A10G: deep pools (GPU stockout playbook); 3.4e9 query-vector pairs / s per GPU
             driver_node_type_id: g5.4xlarge
             autoscale:
-              min_workers: 4
+              min_workers: 16   # start near full size: the search is GPU-bound now (export), a 4 -> 20 ramp only adds wall time
               max_workers: 20
             aws_attributes:
               zone_id: auto
