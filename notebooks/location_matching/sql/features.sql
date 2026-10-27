@@ -113,11 +113,18 @@ SELECT DISTINCT side, id, kind, t FROM t WHERE t IS NOT NULL AND t <> ''
 CREATE OR REPLACE TABLE openalex.works.location_work_match_fcnt AS
 SELECT side, id, kind, count(*) AS n FROM openalex.works.location_work_match_ftok GROUP BY 1, 2, 3
 ;
-CREATE OR REPLACE TABLE openalex.works.location_work_match_fov AS
-SELECT p.seed_id, p.cid, r.kind, count(*) AS inter
+-- Each pair's record tokens first, then the work's tokens on (work, kind, token): the same counts as the training statement,
+-- in an order the planner cannot turn into a token-level join of every record with every work (2026-10-26: that plan ran
+-- 65 min on PROD-WH before it was cancelled; the replay's 6 s plan was pair-first).
+CREATE OR REPLACE TABLE openalex.works.location_work_match_fpr AS
+SELECT p.seed_id, p.cid, r.kind, r.t
 FROM (SELECT DISTINCT seed_id, cid FROM openalex.works.location_work_match_fp) p
 JOIN openalex.works.location_work_match_ftok r ON r.side = 'r' AND r.id = p.seed_id
-JOIN openalex.works.location_work_match_ftok w ON w.side = 'w' AND w.id = p.cid AND w.kind = r.kind AND w.t = r.t
+;
+CREATE OR REPLACE TABLE openalex.works.location_work_match_fov AS
+SELECT pr.seed_id, pr.cid, pr.kind, count(*) AS inter
+FROM openalex.works.location_work_match_fpr pr
+JOIN openalex.works.location_work_match_ftok w ON w.side = 'w' AND w.id = pr.cid AND w.kind = pr.kind AND w.t = pr.t
 GROUP BY 1, 2, 3
 ;
 -- Declared relations between the record and the work, by class, in either direction: the record declares one to a DOI the
