@@ -27,7 +27,7 @@
 from datetime import datetime, timezone
 from elasticsearch import Elasticsearch, helpers
 
-dbutils.widgets.text("index_name", "sources-v3", "ES index name")
+dbutils.widgets.text("index_name", "sources", "ES index name")  # alias (oxjob #1882)
 dbutils.widgets.text("table_name", "openalex.sources.sources_api", "Authoritative table")
 dbutils.widgets.text("max_deletes", "2000", "Abort if diff exceeds this (mass-delete cap)")
 dbutils.widgets.text("min_table_count", "250000", "Abort if table smaller than this (bad-read detector)")

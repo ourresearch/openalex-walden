@@ -19,7 +19,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
     "table_name": "openalex.sources.sources_api",
-    "index_name": "sources-v3"
+    "index_name": "sources"  # alias -> sources-v4 (names folded, oxjob #1882); rebuilds swap the alias
 }
 
 def send_partition_to_elastic(partition, index_name):
