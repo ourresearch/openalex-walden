@@ -11,7 +11,8 @@ WITH raw_exploded AS (
 nm AS (
   SELECT r.* , wa.raw_affiliation_strings AS wa_aff
   FROM raw_exploded r INNER JOIN openalex.works.work_authors wa ON r.work_id = wa.work_id AND r.author_sequence = wa.author_sequence
-  WHERE wa.author_id IS NULL AND ((r.work_id > 7000000000 AND r.created_date >= to_timestamp('2025-12-20')) OR r.work_id IN (SELECT work_id FROM openalex.authors.author_rematch_worklist)))
+  WHERE wa.author_id IS NULL AND ((r.work_id > 7000000000 AND r.created_date >= to_timestamp('2025-12-20')) OR r.work_id IN (SELECT work_id FROM openalex.authors.author_rematch_worklist))
+    AND (openalex.authors.placeholder_author_name(r.authorship.raw_author_name) IS NULL OR NULLIF(TRIM(r.authorship.raw_orcid), '') IS NOT NULL))  -- oxjob #1881
 SELECT work_id, author_sequence, CAST(NULL AS BIGINT) AS author_id, authorship.raw_author_name AS raw_name,
   COALESCE(slice(FILTER(authorship.raw_affiliation_strings, x -> x IS NOT NULL AND x <> ''), 1, 2), slice(FILTER(wa_aff, x -> x IS NOT NULL AND x <> ''), 1, 2)) AS aff_strings,
   FILTER(TRANSFORM(authorship.institutions, i -> i.display_name), x -> x IS NOT NULL) AS inst_names, subfield, venue, publication_year,
