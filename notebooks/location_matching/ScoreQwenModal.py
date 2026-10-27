@@ -9,7 +9,8 @@
 # MAGIC `modal`), polls `/status`, checks the shard files and loads `location_work_match_qwen` (seed_id, cid, p).
 # MAGIC
 # MAGIC No fallback (Casey 2026-10-26): when the estimate is over `max_usd`, the call fails, runs past `max_minutes` or leaves any
-# MAGIC prompt unscored, the task fails and so does the run. The matcher never decides with less than the full stack.
+# MAGIC prompt without a row, the task fails and so does the run. One named exception (Casey 2026-10-27): a record whose prompt
+# MAGIC fills the token cap before its first candidate comes back as an `over_cap` row and write_decisions mints it.
 
 # COMMAND ----------
 
@@ -83,7 +84,7 @@ n_pairs = spark.table(f"{T}qwen_pairs").count()
 est = n * 0.23 * (4.54 + 8 * 0.0473 + 96 * 0.008) / 3600 + 1.5   # 0.23 GPU-s / record on HF (10-15 / 10-24 shadow), plus model loads
 log(f"{n:,} records ({n_pairs:,} pairs) for Qwen; estimate ${est:.2f} (max_usd {MAX_USD})")
 if n == 0:
-    spark.sql(f"CREATE OR REPLACE TABLE {T}qwen (seed_id BIGINT, cid BIGINT, p DOUBLE, adapter STRING)")
+    spark.sql(f"CREATE OR REPLACE TABLE {T}qwen (seed_id BIGINT, cid BIGINT, p DOUBLE, adapter STRING, over_cap BOOLEAN)")
     finish("no records above 0.01: nothing for Qwen")
 if est > MAX_USD:
     raise RuntimeError(f"Qwen estimate ${est:.2f} over max_usd {MAX_USD}: raise max_usd on purpose to score this night")
@@ -139,11 +140,12 @@ except Exception as e:
 
 # COMMAND ----------
 
-q = (spark.read.schema("seed_id BIGINT, cid BIGINT, p DOUBLE, shard STRING").parquet(f"{out_dir}/*.parquet")
-     .select("seed_id", "cid", "p", F.lit(ADAPTER).alias("adapter")))
+q = (spark.read.schema("seed_id BIGINT, cid BIGINT, p DOUBLE, over_cap BOOLEAN, shard STRING").parquet(f"{out_dir}/*.parquet")
+     .select("seed_id", "cid", "p", F.lit(ADAPTER).alias("adapter"), F.coalesce("over_cap", F.lit(False)).alias("over_cap")))
 q.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{T}qwen")
-c = spark.sql(f"""SELECT count(*) AS pairs, count(DISTINCT seed_id) AS seeds,
+c = spark.sql(f"""SELECT count(p) AS pairs, count(DISTINCT seed_id) AS seeds, count_if(over_cap) AS over_cap,
     (SELECT count(*) FROM {T}qwen_rows r LEFT ANTI JOIN {T}qwen q ON q.seed_id = r.seed_id) AS missing FROM {T}qwen""").collect()[0]
 if c.missing or c.seeds != n:
     raise RuntimeError(f"Qwen scores do not cover the prompts: {c.asDict()}")
-finish(f"Qwen scored {c.seeds:,} records / {c.pairs:,} pairs", res["usd_est"])
+dbutils.jobs.taskValues.set(key="qwen_over_cap", value=int(c.over_cap))
+finish(f"Qwen scored {c.seeds - c.over_cap:,} records / {c.pairs:,} pairs; {c.over_cap} over the token cap (mint)", res["usd_est"])

@@ -1,6 +1,8 @@
 -- Match_Locations_To_Works (oxjob #1668) 6/6: one decision per seed record for night __NIGHT__ (mode __MODE__), next to what
 -- the nightly did. The model (strategy 2026-10-15): no candidate or XGBoost top < 0.01 -> mint; else bind Qwen's top when
--- p >= 0.887, else mint. No fallback (Casey 2026-10-26): every record at >= 0.01 has a Qwen score or the run has already failed.
+-- p >= 0.887, else mint. No fallback (Casey 2026-10-26): every record at >= 0.01 has a Qwen score or the run has already failed,
+-- with one named exception (Casey 2026-10-27): qwen_over_cap = the record's prompt fills the token cap before its first
+-- candidate, so Qwen saw nothing to compare; it mints. A record with no Qwen row at all is qwen_missing and fails the night.
 -- A model bind only ever names a work that existed before the run. cmp: same_bind / both_mint / other_work (both bind, different works) / model_mints
 -- (the nightly binds, the model mints) / model_binds (the nightly mints or parks, the model binds). rule_pick = the model's work
 -- is the title tier's own pick; emb_only = the model's work came only from the embedding neighbours.
@@ -20,7 +22,7 @@ WITH x AS (
   FROM openalex.works.location_work_match_xgb GROUP BY seed_id
 ),
 q AS (
-  SELECT seed_id, max_by(cid, p) AS q_cid, max(p) AS q_p, max(adapter) AS adapter
+  SELECT seed_id, max_by(cid, p) AS q_cid, max(p) AS q_p, max(adapter) AS adapter, bool_or(over_cap) AS over_cap
   FROM openalex.works.location_work_match_qwen GROUP BY seed_id
 ),
 d AS (
@@ -29,6 +31,7 @@ d AS (
     x.x_cid, x.x_p, q.q_cid, q.q_p, x.model_version, q.adapter,
     CASE WHEN x.x_p IS NULL THEN 'no_candidates'
          WHEN x.x_p < 0.01 THEN 'xgb_mint'
+         WHEN q.over_cap AND q.q_p IS NULL THEN 'qwen_over_cap'
          WHEN q.q_p IS NULL THEN 'qwen_missing'
          WHEN q.q_p >= 0.887 THEN 'qwen_bind'
          ELSE 'qwen_mint' END AS layer

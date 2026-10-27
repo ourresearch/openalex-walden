@@ -36,7 +36,7 @@ log = lwm.log
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {T}runs (night DATE, mode STRING, status STRING, started_at TIMESTAMP, finished_at TIMESTAMP,
   lwi_new BIGINT, lwi_old BIGINT, works_version BIGINT, records BIGINT, with_candidates BIGINT, to_qwen BIGINT, qwen_ok BOOLEAN,
   qwen_usd_est DOUBLE, model_binds BIGINT, nightly_binds BIGINT, same_bind BIGINT, both_mint BIGINT, model_binds_nightly_mints BIGINT,
-  model_mints_nightly_binds BIGINT, other_work BIGINT, seconds MAP<STRING, DOUBLE>, notes STRING) CLUSTER BY (night)
+  model_mints_nightly_binds BIGINT, other_work BIGINT, seconds MAP<STRING, DOUBLE>, notes STRING, qwen_over_cap BIGINT) CLUSTER BY (night)
   COMMENT 'Match Locations To Works (oxjob #1668): one row per night and mode, written by the job (status running -> done)'""")
 
 merges = spark.sql("""SELECT version, timestamp FROM (DESCRIBE HISTORY openalex.works.location_work_ids)

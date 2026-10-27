@@ -11,7 +11,10 @@ notebooks/topics/nightly/modal_topics_nightly.py.
   ("c<i> =>" then " ?"); p = softmax over the ' yes' / ' no' logits one position before the slot. One forward pass per record:
   that reproduces the replay's scores exactly. Batching (`_batched`, kept for `parity`) was tested 2026-10-26 on 1,500 replay
   records: ~10% faster but 2 decisions (0.13%) differ from the certified scoring, so the job does not use it.
-  Output parquet per shard: seed_id BIGINT, cid BIGINT, p DOUBLE, shard STRING, PUT to the Unity Catalog Volume.
+  Output parquet per shard: seed_id BIGINT, cid BIGINT, p DOUBLE, over_cap BOOLEAN, shard STRING, PUT to the Unity Catalog
+  Volume. over_cap (Casey 2026-10-27): the record's prompt reaches the MAXLEN token cap before even its first candidate fits
+  (2026-10-27: a mojibake Cyrillic record), so there is nothing to score; that one case gets a row (cid / p null, over_cap true)
+  and the job mints it. Any other failure still fails the shard and the night.
 
 Volumes: `oxjob1668-qwen` at /vol (adapter models/ep2_9b, read only); `location-work-matcher` at /data (exported prompt shards).
 Secrets: `location-work-matcher-token` (LOCATION_MATCH_TOKEN; the same value is in Databricks secret scope `modal`, key
@@ -26,7 +29,7 @@ import time
 import modal
 
 APP = "location-work-matcher"
-VERSION_MARK = "location-work-matcher v3 2026-10-26 (one record per pass)"
+VERSION_MARK = "location-work-matcher v4 2026-10-27 (one record per pass; over-cap marked)"
 BASE, ADAPTER = "Qwen/Qwen3.5-9B", "/vol/models/ep2_9b"
 app = modal.App(APP)
 mvol = modal.Volume.from_name("oxjob1668-qwen")
@@ -86,16 +89,20 @@ class Scorer:
         self.pad = self.tok.pad_token_id if self.tok.pad_token_id is not None else 0
 
     def _one(self, rows):
-        """One forward pass per record (the replay's scoring)."""
+        """One forward pass per record (the replay's scoring). Returns (scored pairs, seed ids whose prompt leaves no room for a
+        single candidate under MAXLEN)."""
         import torch
-        out = []
+        out, over = [], []
         with torch.no_grad():
             for r in rows:
                 ids, slots, Y, N = ids_for(self.tok, r)
+                if not slots:   # the record alone fills the cap: nothing to score (only this case; no exception is caught)
+                    over.append(int(r["seed_id"]))
+                    continue
                 keep = torch.tensor([pos - 1 for pos, _ in slots], device="cuda")
                 lg = self.model(input_ids=torch.tensor([ids], device="cuda"), logits_to_keep=keep, use_cache=False).logits[0][:, [Y, N]].float()
                 out += [(int(r["seed_id"]), int(key), torch.softmax(two, -1)[0].item()) for (_, key), two in zip(slots, lg)]
-        return out
+        return out, over
 
     def _batched(self, rows):
         """Records sorted by length, right-padded batches; logits only at the batch's slot positions."""
@@ -137,7 +144,7 @@ class Scorer:
         want = {}
         for l in open(f"/vol/{scores_file}"):
             j = json.loads(l); want[(int(j["seed_id"]), int(j["cid"]))] = float(j["p"])
-        t = time.time(); one = self._one(rows); t_1 = time.time() - t
+        t = time.time(); one, _ = self._one(rows); t_1 = time.time() - t
         t = time.time(); bat = self._batched(rows); t_b = time.time() - t
 
         def top(pairs):
@@ -166,12 +173,15 @@ class Scorer:
         import io, httpx, pyarrow as pa, pyarrow.parquet as pq
         t0 = time.time(); dvol.reload()
         rows = [json.loads(l) for l in gzip.open(f"/data/{build_id}/in/{shard:04d}.jsonl.gz", "rt")]
-        scored = self._one(rows)
-        seeds, cids, ps = [s for s, _, _ in scored], [c for _, c, _ in scored], [p for _, _, p in scored]
+        scored, over = self._one(rows)
+        seeds = [s for s, _, _ in scored] + over
+        cids = [c for _, c, _ in scored] + [None] * len(over)
+        ps = [p for _, _, p in scored] + [None] * len(over)
+        flags = [False] * len(scored) + [True] * len(over)
         t_gpu = time.time() - t0
         sh = f"{shard:04d}"
         t = pa.table({"seed_id": pa.array(seeds, pa.int64()), "cid": pa.array(cids, pa.int64()), "p": pa.array(ps, pa.float64()),
-                      "shard": pa.array([sh] * len(seeds), pa.string())})
+                      "over_cap": pa.array(flags, pa.bool_()), "shard": pa.array([sh] * len(seeds), pa.string())})
         buf = io.BytesIO(); pq.write_table(t, buf, compression="zstd"); body = buf.getvalue()
         H = {"Authorization": f"Bearer {os.environ['DATABRICKS_TOKEN']}", "Content-Type": "application/octet-stream"}
         for att in range(5):
@@ -182,7 +192,7 @@ class Scorer:
                 print("PUT retry", shard, repr(e)[:200], flush=True); time.sleep(10 * (att + 1))
         else:
             raise RuntimeError(f"shard {shard}: PUT failed")
-        return {"shard": shard, "records": len(rows), "pairs": len(seeds), "gpu_s": round(t_gpu, 1), "total_s": round(time.time() - t0, 1),
+        return {"shard": shard, "records": len(rows), "pairs": len(scored), "over_cap": len(over), "gpu_s": round(t_gpu, 1), "total_s": round(time.time() - t0, 1),
                 "rps": round(len(rows) / max(t_gpu, 1e-6), 2), "bytes": len(body)}
 
 
@@ -248,7 +258,8 @@ def run_all(table_in: str, out_dir: str, build_id: str, warehouse: str):
         else: results.append(r); print(r, flush=True)
     shard_s = sum(r["total_s"] for r in results)
     return {"shards": len(shards), "shards_done": len(results), "errors": errors, "records": sum(r["records"] for r in results),
-            "exported": exp["rows"], "pairs": sum(r["pairs"] for r in results), "export_s": round(t_export, 1),
+            "exported": exp["rows"], "pairs": sum(r["pairs"] for r in results), "over_cap": sum(r.get("over_cap", 0) for r in results),
+            "export_s": round(t_export, 1),
             "shard_seconds": round(shard_s, 1), "usd_est": round(shard_s * PRICE_PER_S, 3), "wall_s": round(time.time() - t0, 1),
             "version": VERSION_MARK, "results": sorted(results, key=lambda r: r["shard"])}
 

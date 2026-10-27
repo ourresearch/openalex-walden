@@ -41,7 +41,8 @@ if missing:
 s = spark.sql(f"""SELECT count(*) AS records, count(xgb_work) AS with_candidates, count_if(xgb_p >= 0.01) AS to_qwen,
     count(model_work) AS model_binds, count_if(nightly_decision = 'title_bind') AS nightly_binds,
     count_if(cmp = 'same_bind') AS same_bind, count_if(cmp = 'both_mint') AS both_mint, count_if(cmp = 'model_binds') AS model_binds_nightly_mints,
-    count_if(cmp = 'model_mints') AS model_mints_nightly_binds, count_if(cmp = 'other_work') AS other_work
+    count_if(cmp = 'model_mints') AS model_mints_nightly_binds, count_if(cmp = 'other_work') AS other_work,
+    count_if(layer = 'qwen_over_cap') AS qwen_over_cap
   FROM {T}decisions WHERE night = DATE'{NIGHT}' AND mode = '{MODE}'""").collect()[0].asDict()
 secs = {}
 for task in ("prepare", "keys", "embed", "candidates", "knn", "features", "score_xgb", "score_qwen"):
@@ -72,7 +73,8 @@ spark.sql(f"""UPDATE {T}runs SET status = 'done', finished_at = current_timestam
     records = {s['records']}, with_candidates = {s['with_candidates']}, to_qwen = {s['to_qwen']}, qwen_ok = true,
     qwen_usd_est = {usd}, model_binds = {s['model_binds']}, nightly_binds = {s['nightly_binds']}, same_bind = {s['same_bind']},
     both_mint = {s['both_mint']}, model_binds_nightly_mints = {s['model_binds_nightly_mints']},
-    model_mints_nightly_binds = {s['model_mints_nightly_binds']}, other_work = {s['other_work']}, seconds = map({smap}),
+    model_mints_nightly_binds = {s['model_mints_nightly_binds']}, other_work = {s['other_work']}, qwen_over_cap = {s['qwen_over_cap']},
+    seconds = map({smap}),
     notes = :note
   WHERE night = DATE'{NIGHT}' AND mode = '{MODE}'""", args={"note": note})
 summary = {"night": NIGHT, "mode": MODE, **s, "qwen_usd_est": usd, "seconds": secs}
