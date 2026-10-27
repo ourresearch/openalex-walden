@@ -719,14 +719,9 @@ def parse_hal_tei_records(df):
     )
 
 
-# oxjob #1828: re-parsed raw files. openalex.repo.repo_reparse_items (notebooks/ingest/RepoReparse.py, run on demand)
-# holds chosen endpoints' raw OAI files read again with today's repository_schema. repo_items stores the parsed struct,
-# not the XML, so a field added to the schema later never reaches records stored before it: a refresh re-reads
-# repo_items, and a re-harvest is dropped by repo_parsed's streaming dedup (it keeps the FIRST copy of each
-# (native_id, datestamp) forever). First use: Persée's dcterms:accessRights (CC BY-NC-SA), in the schema since 27 Sep
-# (4afa5d56), after ~838K Persée records were stored. Same shape as the HAL TEI flow: its own stream, no dedup, rank 2
-# in _sequence (below), its own CDC flow into repo_works. Deletes in the side table are not forwarded: a re-parse only
-# ever replaces a record, never removes one.
+# oxjob #1828: raw files re-read with today's schema, for a field repo_items never stored (why and how to run it:
+# notebooks/ingest/RepoReparse.py). Same shape as the HAL TEI flow: its own stream, no dedup, rank 2 in _sequence,
+# its own CDC flow into repo_works. Deletes in the side table are not forwarded: a re-parse only replaces a record.
 REPO_REPARSE_ITEMS_TABLE = "openalex.repo.repo_reparse_items"
 
 
@@ -964,16 +959,16 @@ def enrich_hal_tei(df):
 # oxjob #1828: the re-parse stream, rank 2 like HAL TEI: on the same datestamp the re-parsed row beats the stored
 # repo_items row (rank 1) and the backfill row (rank 0) for the same native_id. A newer datestamp still wins whatever
 # its rank, so a later harvest replaces it (and carries the new field itself); an older re-parsed copy changes nothing.
+# So once re-parsed, a record no longer takes a refresh of repo_parsed / repo_enriched: refresh the two *_reparse tables
+# with them (jobs/repo_pipeline.yaml).
 @dlt.table(name="repo_enriched_reparse",
            comment="Re-parsed raw repository files (oxjob #1828) after repo_enriched's rules; third CDC source of repo_works")
 def repo_enriched_reparse():
     return enrich_reparse(dlt.read_stream("repo_parsed_reparse"))
 
 
-def enrich_reparse(df):
-    """repo_parsed_reparse rows -> repo_enriched_reparse rows. Shared with RepoReparse.py's dry run."""
-    return finish_repo_enriched(apply_initial_processing(df, "repo", walden_works_schema_with_raw_type),
-                                source_rank=F.lit(2))
+# The same rules and rank as HAL TEI, one body: every flow into repo_works must carry one identical _sequence type.
+enrich_reparse = enrich_hal_tei  # shared with RepoReparse.py's dry run
 
 dlt.create_streaming_table(
     name="repo_works",

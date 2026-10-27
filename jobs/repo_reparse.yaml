@@ -3,10 +3,8 @@ resources:
     Repo_Reparse:
       name: Repo Reparse
       description: |
-        oxjob #1828: read chosen repository endpoints' raw OAI files again with today's Repo.py schema into
-        openalex.repo.repo_reparse_items, which the Repo pipeline feeds into repo_works as its third CDC flow
-        (repo_works_reparse). For a parser change that needs a field repo_items never stored (first use: Persée's
-        dcterms:accessRights). See the notebook header.
+        oxjob #1828: re-read chosen endpoints' raw OAI files with today's Repo.py schema into
+        openalex.repo.repo_reparse_items (Repo.py's third CDC flow into repo_works). Why: the notebook header.
 
         MANUAL TRIGGER ONLY, no schedule. Run mode=dry_run first (scratch tables + a diff against repo_works), size the
         works it re-stamps, file a rider for the night it rides, then mode=write. Endpoint ids are the folder names

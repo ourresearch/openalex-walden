@@ -10,6 +10,11 @@
 #     pre-#911 rows to their true mtimes, which sit OUTSIDE TaxiCab's lookback window.
 #     The #542 ingested_after guard is therefore legacy; keep it until the first
 #     post-#911 full refresh verifies no flood.
+#   - Rank-2 side flows (HAL TEI #1786, re-parse #1828) win same-datestamp ties against
+#     repo_parsed. A selective refresh of repo_parsed + repo_enriched for a parser fix
+#     therefore skips every record those flows hold (Persée since 27 Oct) unless the
+#     selection also names repo_parsed_reparse + repo_enriched_reparse (and the two
+#     *_hal_tei tables, if the fix is in shared parse code).
 resources:
   pipelines:
     repo_pipeline:

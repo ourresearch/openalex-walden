@@ -16,14 +16,19 @@
 # MAGIC (repo_parsed's streaming dedup keeps the first copy of each record forever). First use: Persée's
 # MAGIC `dcterms:accessRights` (CC BY-NC-SA), in the schema since 27 Sep, after ~838K Persée records were stored.
 # MAGIC
-# MAGIC **mode=dry_run** (default) writes only `<out_prefix>_*` scratch tables: the items, the rows the flow would send to
-# MAGIC `repo_works` (the pipeline's own functions, under a stub `dlt`), and a diff against `repo_works`.
-# MAGIC **mode=write** MERGEs the items into the target: new and changed records in, these endpoints' records no longer in
-# MAGIC the files out (the flow ignores deletes). A re-run with the same schema changes nothing; after a schema change it
-# MAGIC re-emits every record whose parsed struct changed.
+# MAGIC Both modes first stage the raw copies and the chosen copy per record in `<out_prefix>_raw` / `<out_prefix>_items`.
+# MAGIC **mode=dry_run** (default) then writes only scratch tables: the rows the flow would send to `repo_works` (the
+# MAGIC pipeline's own functions, under a stub `dlt`) and a diff against `repo_works`.
+# MAGIC **mode=write** MERGEs the items into `openalex.repo.repo_reparse_items`: new and changed records in, these
+# MAGIC endpoints' records no longer in the files out (the flow ignores deletes). A re-run with the same schema changes
+# MAGIC nothing; after a schema change it re-emits every record whose parsed struct changed.
 # MAGIC
 # MAGIC Every record a write changes is re-sent to `repo_works` and wins its tie, so size the works it re-stamps from the
 # MAGIC dry run and file a rider before the night it rides.
+# MAGIC
+# MAGIC **After a re-parse, a refresh of Repo's main tables no longer reaches these records**: they sit at rank 2, and a
+# MAGIC re-sent repo_items copy (rank 1, same datestamp) loses to them. Include `repo_parsed_reparse` and
+# MAGIC `repo_enriched_reparse` in any such refresh (jobs/repo_pipeline.yaml).
 
 # COMMAND ----------
 
@@ -35,13 +40,13 @@ import types
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
+from openalex.dlt.oai_ids import read_endpoint_hosts, with_rekeyed_native_id
+
 dbutils.widgets.text("endpoint_ids", "", "comma-separated endpoint ids (folders under repositories/)")
-dbutils.widgets.dropdown("mode", "dry_run", ["dry_run", "write"], "dry_run: scratch tables only; write: MERGE into target")
-dbutils.widgets.text("target", "openalex.repo.repo_reparse_items", "side table Repo.py reads")
-dbutils.widgets.text("out_prefix", "openalex.transient.repo_reparse", "dry run: scratch table prefix")
+dbutils.widgets.dropdown("mode", "dry_run", ["dry_run", "write"], "dry_run: scratch tables only; write: MERGE into the side table")
+dbutils.widgets.text("out_prefix", "openalex.transient.repo_reparse", "scratch table prefix")
 ENDPOINTS = [e.strip() for e in dbutils.widgets.get("endpoint_ids").split(",") if e.strip()]
 MODE = dbutils.widgets.get("mode")
-TARGET = dbutils.widgets.get("target")
 OUT = dbutils.widgets.get("out_prefix")
 assert ENDPOINTS, "endpoint_ids is empty"
 assert all(re.fullmatch(r"[A-Za-z0-9_-]+", e) for e in ENDPOINTS), f"bad endpoint id in {ENDPOINTS}"
@@ -71,13 +76,17 @@ sys.modules["dlt"] = _dlt
 _repo_path = os.path.join(os.getcwd(), "Repo.py")  # notebooks/ingest in a GIT-sourced run
 repo = {"spark": spark, "dbutils": dbutils, "__name__": "repo_reparse"}
 exec(compile(open(_repo_path).read(), _repo_path, "exec"), repo)
-print("loaded Repo.py")
+TARGET = repo["REPO_REPARSE_ITEMS_TABLE"]
+print(f"loaded Repo.py; target {TARGET}")
 
 # COMMAND ----------
 
 # repo_items' read, in batch: same reader options, same derived columns. recursiveFileLookup because the files sit in
-# <endpoint>/<yyyy>/<mm>/<dd>/ folders (Auto Loader recurses by itself).
-raw = (
+# <endpoint>/<yyyy>/<mm>/<dd>/ folders (Auto Loader recurses by itself). Keyed after the #1407 re-key, as repo_parsed
+# is, so placeholder-host records of different journals never collide. Staged once: serverless has no cache, and every
+# later step would otherwise list and parse the S3 files again.
+ID_HOSTS = read_endpoint_hosts(spark)
+(
     spark.read
     .format("xml")
     .option("rowTag", "ns0:record")
@@ -90,45 +99,52 @@ raw = (
     # ingested_at moves by under a second. Harmless: rank 2 already orders it ahead of the stored copy.
     .withColumn("ingested_at", F.col("_metadata.file_modification_time"))
     .withColumn("file_path", F.col("_metadata.file_path"))
-)
-# Keep the copy the pipeline kept. repo_parsed drops every later copy of a (native_id, datestamp) it has seen, so when
-# a record arrives in several files, or from two endpoints of one repository (Persée has two), repo_works holds the
-# FIRST delivery's copy. The re-parse must re-send that copy: letting a later one win moved 131K Persée locations to
-# the other endpoint's source in the 27 Oct dry run. Keyed after the #1407 re-key, as repo_parsed is, so placeholder-
-# host records of different journals never drop each other. A record with no OAI id has no key in repo_works.
-# shortcut: "first" = earliest S3 mtime, which is the order Auto Loader read files in except within one batch.
-ID_HOSTS = repo["read_endpoint_hosts"](spark)
-_first = Window.partitionBy("native_id", F.col("`ns0:header`.`ns0:datestamp`")) \
-    .orderBy(F.col("ingested_at").asc(), F.col("file_path").asc())
-items = (
-    raw
-    .filter(F.col("`ns0:header`.`ns0:identifier`").isNotNull())
+    .filter(F.col("`ns0:header`.`ns0:identifier`").isNotNull())  # no OAI id = no key in repo_works
     .withColumn("oai_identifier", F.col("`ns0:header`.`ns0:identifier`"))
-    .transform(lambda d: repo["with_rekeyed_native_id"](d, ID_HOSTS, "repository_id"))
-    .withColumn("_copy", F.row_number().over(_first))
+    .transform(lambda d: with_rekeyed_native_id(d, ID_HOSTS, "repository_id"))
+    .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_raw")
+)
+raw = spark.table(f"{OUT}_raw")
+WORKS = spark.table("openalex.repo.repo_works")
+# repo_works rows for these records only, before any wide join (a left join can't broadcast its 218M-row right side).
+stored = WORKS.join(F.broadcast(raw.select("native_id").distinct()), "native_id", "left_semi")
+
+# Re-send the copy the pipeline holds. A record often arrives in several files, or from two endpoints of one repository
+# (Persée has two), and repo_parsed keeps whichever copy of a (native_id, datestamp) it read first. So per (native_id,
+# datestamp): the copy from the endpoint repo_works holds the record under, else the earliest delivery. Letting the
+# latest copy win moved 131K Persée locations to the other endpoint's source in the 27 Oct dry run.
+_pick = Window.partitionBy("native_id", F.col("`ns0:header`.`ns0:datestamp`")).orderBy(
+    (F.col("repository_id") == F.col("_stored_endpoint")).desc_nulls_last(),
+    F.col("ingested_at").asc(), F.col("file_path").asc())
+(
+    raw.join(stored.select("native_id", F.col("endpoint_id").alias("_stored_endpoint")), "native_id", "left")
+    .withColumn("_copy", F.row_number().over(_pick))
     .filter("_copy = 1")
     .select("`ns0:header`", "`ns0:metadata`", "repository_id", "ingested_at", "file_path")
+    .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_items")
 )
+items = spark.table(f"{OUT}_items")
+# HAL's records already come in through the HAL TEI flow at the same rank 2; a tie there has no defined winner.
+assert items.filter(F.col("`ns0:header`.`ns0:identifier`").startswith("oai:HAL:")).isEmpty(), \
+    "HAL records are re-parsed by the HAL TEI flow (oxjob #1786), not here"
+print(f"{OUT}_items:")
+items.groupBy("repository_id").agg(
+    F.count("*").alias("records"),
+    F.countDistinct("`ns0:header`.`ns0:identifier`").alias("oai_ids"),
+    F.count_if(F.size("`ns0:metadata`.`ns1:dc`.`ns4:accessRights`") > 0).alias("with_accessRights"),
+    F.count_if(F.size("`ns0:metadata`.`ns1:dc`.`ns4:license`") > 0).alias("with_license"),
+    F.countDistinct("file_path").alias("files"),
+).show(truncate=False)
 
 # COMMAND ----------
 
 if MODE == "dry_run":
-    items.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_items")
-    items_t = spark.table(f"{OUT}_items")
-    print(f"{OUT}_items:")
-    items_t.groupBy("repository_id").agg(
-        F.count("*").alias("records"),
-        F.countDistinct("`ns0:header`.`ns0:identifier`").alias("oai_ids"),
-        F.count_if(F.size("`ns0:metadata`.`ns1:dc`.`ns4:accessRights`") > 0).alias("with_accessRights"),
-        F.count_if(F.size("`ns0:metadata`.`ns1:dc`.`ns4:license`") > 0).alias("with_license"),
-        F.countDistinct("file_path").alias("files"),
-    ).show(truncate=False)
-
     # The flow's own two steps; _commit_version as the CDF read would add it.
-    src = items_t.withColumn("_commit_version", F.lit(1).cast("long"))
-    enriched = repo["enrich_reparse"](repo["parse_reparse_records"](src, ID_HOSTS))
-    enriched.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_enriched")
-    _seq = spark.table(f"{OUT}_enriched").schema["_sequence"].dataType
+    src = items.withColumn("_commit_version", F.lit(1).cast("long"))
+    repo["enrich_reparse"](repo["parse_reparse_records"](src, ID_HOSTS)) \
+        .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_enriched")
+    en = spark.table(f"{OUT}_enriched")
+    _seq = en.schema["_sequence"].dataType
     print("_sequence type:", _seq.json())
     # repo_works' flows all carry an all-nullable struct<updated_date, col2..col5>; DLT refuses a flow whose sequence
     # type differs in anything, nullability included (oxjob #1786).
@@ -141,25 +157,22 @@ if MODE == "dry_run":
     # What the flow would do to repo_works. Per native_id the flow's winner is its highest _sequence. It replaces the
     # stored row when its updated_date is at least as new: rank 2 wins every tie against rank 0 (backfill) and 1 (live).
     # shortcut: a stored row that itself came from a rank-2 flow (HAL TEI) would need the full _sequence; repo_works
-    # does not keep it. Fine for non-HAL endpoints.
-    works_cols = [c for c in spark.table("openalex.repo.repo_works").columns if c != "native_id"]
-    en = spark.table(f"{OUT}_enriched")
-    cmp_cols = [c for c in works_cols if c in en.columns]
+    # does not keep it. HAL never comes through here (assert above).
+    cmp_cols = [c for c in WORKS.columns if c != "native_id" and c in en.columns]
     winners = (
         en.groupBy("native_id")
         .agg(F.max_by(F.struct(*cmp_cols), "_sequence").alias("n"), F.count("*").alias("copies"))
         .select("native_id", "copies", "n.*")
     )
-    stored = spark.table("openalex.repo.repo_works").select(
-        "native_id", F.lit(True).alias("_stored"), *[F.col(c).alias(f"old_{c}") for c in cmp_cols])
-    j = winners.join(stored, "native_id", "left")
+    old = stored.select("native_id", F.lit(True).alias("_stored"), *[F.col(c).alias(f"old_{c}") for c in cmp_cols])
     changed = F.filter(
         F.array(*[F.when(~F.col(c).eqNullSafe(F.col(f"old_{c}")), F.lit(c)) for c in cmp_cols]),
         lambda x: x.isNotNull())
     newer_or_same = (F.coalesce("updated_date", F.lit("0001-01-01").cast("date"))
                      >= F.coalesce("old_updated_date", F.lit("0001-01-01").cast("date")))
-    diff = (
-        j.withColumn("changed_cols", changed)
+    (
+        winners.join(old, "native_id", "left")
+        .withColumn("changed_cols", changed)
         .withColumn("kind",
                     F.when(F.col("_stored").isNull(), "insert")
                     .when(~newer_or_same, "loses")
@@ -169,8 +182,8 @@ if MODE == "dry_run":
                 "endpoint_id", "old_endpoint_id", "license", "old_license", "is_oa", "old_is_oa",
                 "version", "old_version", "type", "old_type", "updated_date", "old_updated_date",
                 "ingested_at", "old_ingested_at")
+        .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_diff")
     )
-    diff.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_diff")
     d = spark.table(f"{OUT}_diff")
     print("kind:")
     d.groupBy("kind").count().orderBy("kind").show()
@@ -181,13 +194,14 @@ if MODE == "dry_run":
     d.filter("kind = 'update'").groupBy("old_license", "license", "old_is_oa", "is_oa").count() \
         .orderBy(F.desc("count")).show(40, truncate=False)
     # Works the update rows reach (repo locations are keyed provenance 'repo', namespace 'pmh', native_id).
-    reach = d.filter("kind IN ('update', 'insert')").join(
-        spark.table("openalex.works.location_work_ids")
-        .filter("provenance = 'repo' AND native_id_namespace = 'pmh'")
-        .select("native_id", "work_id"),
-        "native_id", "left")
-    reach.agg(F.count("*").alias("records"), F.countDistinct("work_id").alias("works"),
-              F.count_if(F.col("work_id").isNull()).alias("no_work_yet")).show()
+    touched = d.filter("kind IN ('update', 'insert')").select("native_id")
+    work_ids = (spark.table("openalex.works.location_work_ids")
+                .filter("provenance = 'repo' AND native_id_namespace = 'pmh'")
+                .join(F.broadcast(touched), "native_id", "left_semi")
+                .select("native_id", "work_id"))
+    touched.join(work_ids, "native_id", "left").agg(
+        F.count("*").alias("records"), F.countDistinct("work_id").alias("works"),
+        F.count_if(F.col("work_id").isNull()).alias("no_work_yet")).show()
 
 # COMMAND ----------
 
@@ -198,14 +212,13 @@ if MODE == "write":
          .tableProperty("delta.autoOptimize.optimizeWrite", "true")
          .create())
         print(f"created {TARGET}")
-    items.createOrReplaceTempView("repo_reparse_source")
     endpoint_list = ", ".join(f"'{e}'" for e in ENDPOINTS)  # validated above
     # Row-level MERGE, never an overwrite: an overwrite is not a row-level change feed and breaks the pipeline's
     # readChangeFeed stream until a full refresh (jobs/repo_backfill.yaml). Unchanged records are left alone, so a
     # re-run re-sends only what a schema change actually changed.
-    metrics = spark.sql(f"""
+    spark.sql(f"""
         MERGE INTO {TARGET} t
-        USING repo_reparse_source s
+        USING {OUT}_items s
         ON t.repository_id = s.repository_id
            AND t.`ns0:header`.`ns0:identifier` = s.`ns0:header`.`ns0:identifier`
            AND t.`ns0:header`.`ns0:datestamp` <=> s.`ns0:header`.`ns0:datestamp`
@@ -213,8 +226,7 @@ if MODE == "write":
           THEN UPDATE SET *
         WHEN NOT MATCHED THEN INSERT *
         WHEN NOT MATCHED BY SOURCE AND t.repository_id IN ({endpoint_list}) THEN DELETE
-    """)
-    metrics.show(truncate=False)
+    """).show(truncate=False)
     spark.table(TARGET).filter(F.col("repository_id").isin(ENDPOINTS)).groupBy("repository_id").agg(
         F.count("*").alias("records"),
         F.count_if(F.size("`ns0:metadata`.`ns1:dc`.`ns4:accessRights`") > 0).alias("with_accessRights"),
