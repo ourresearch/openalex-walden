@@ -20,6 +20,19 @@ resources:
           notebook_task:
             notebook_path: notebooks/elastic/sync_sources
             source: GIT
+        # oxjob #1124: refresh the merged-source map right after the sync removes merged-away sources, so a
+        # source merged yesterday resolves from ~05:20 CT (was 09:30 CT in Sync Merged IDs to Elasticsearch)
+        - task_key: merged_sources
+          depends_on:
+            - task_key: sync_sources_to_elasticsearch
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_merged_ids
+            source: GIT
+            base_parameters:
+              entity: sources
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 3600
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub

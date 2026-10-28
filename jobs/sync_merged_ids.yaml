@@ -29,15 +29,7 @@ resources:
           max_retries: 1
           min_retry_interval_millis: 300000
           timeout_seconds: 7200
-        - task_key: merged_sources
-          notebook_task:
-            notebook_path: notebooks/elastic/sync_merged_ids
-            source: GIT
-            base_parameters:
-              entity: sources
-          max_retries: 1
-          min_retry_interval_millis: 300000
-          timeout_seconds: 3600
+        # merged_sources runs in Sync Sources to Elasticsearch, right after the sources sync (#1124, 2026-10-28)
         # #1037 (Jason 2026-10-27 17:33 CT): merged work IDs, best effort
         - task_key: merged_works
           notebook_task:
