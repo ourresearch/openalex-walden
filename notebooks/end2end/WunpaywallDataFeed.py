@@ -140,6 +140,33 @@ elif record_count > LARGE_RECORD_COUNT and wunpaywall_guard_override:
 
 # COMMAND ----------
 
+# Deleted DOIs (oxjob #1914): the running list of DOIs removed from Unpaywall because OpenAlex removed them (Crossref
+# grants, Crossref's deleted-DOI listing), one JSON line each: {"doi", "deleted", "reason"}. Subscribers download it at
+# api.unpaywall.org/{mode}-feed/changefile/deleted_dois.jsonl.gz?api_key=... (help.openalex.org/access/unpaywall). It is
+# not in the changefile listing, so clients that read every listed file as records are unaffected. A DOI that comes
+# back leaves the list and is re-sent in a changefile. Never blocks the changefile: on error it prints and goes on.
+deleted_table = "openalex.unpaywall.unpaywall_deleted_dois"
+try:
+    if spark.catalog.tableExists(deleted_table):
+        deleted_df = spark.table(deleted_table).select(F.to_json(F.struct(
+            F.col("doi"),
+            F.date_format("deleted_date", "yyyy-MM-dd'T'HH:mm:ss'Z'").alias("deleted"),
+            F.col("reason"),
+        )).alias("value")).orderBy("value")
+        deleted_count = deleted_df.count()
+        deleted_tmp = f"s3://{s3_bucket}/{s3_prefix}temp_deleted_{datetime.utcnow().strftime('%Y%m%dT%H%M%S')}/"
+        deleted_df.coalesce(1).write.format("text").mode("overwrite").option("compression", "gzip").save(deleted_tmp)
+        deleted_part = [f.path for f in dbutils.fs.ls(deleted_tmp) if f.name.startswith("part-") and f.name.endswith(".gz")][0]
+        dbutils.fs.cp(deleted_part, f"s3://{s3_bucket}/{s3_prefix}/deleted_dois.jsonl.gz")
+        dbutils.fs.rm(deleted_tmp, recurse=True)
+        print(f"Wrote {deleted_count:,} deleted DOIs to s3://{s3_bucket}/{s3_prefix}/deleted_dois.jsonl.gz")
+    else:
+        print(f"{deleted_table} does not exist yet; no deletions list")
+except Exception as e:
+    print(f"WARNING: deleted-DOI list not written: {e}")
+
+# COMMAND ----------
+
 if record_count == 0:
     print("No records found to export. Job completed.")
     dbutils.notebook.exit("No records found to export")
