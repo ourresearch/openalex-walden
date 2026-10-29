@@ -159,14 +159,36 @@ resources:
             source: GIT
           environment_key: serverless
           timeout_seconds: 1800
-        # oxjob #1124: loser -> winner maps → {fmt}/{authors,sources}/merged_ids.csv.gz in both
+        # oxjob #1917: rebuild the merged-works map from tonight's openalex_works before
+        # export_merged_ids reads it. The map counts a loser only once it has left openalex_works,
+        # so the 09:30 CT build (Sync Merged IDs to Elasticsearch) still saw tonight's losers as
+        # live and works/merged_ids.csv.gz lacked every merge of the night (28 Oct 0 of 1,102,
+        # 29 Oct 0 of 1,122). Same notebook as the 09:30 run (map + ES merge-works), so the
+        # night's losers also redirect before Delete_Works_from_Elasticsearch drops them. The
+        # 09:30 run stays as the backstop for a skipped snapshot (it then finds an empty diff).
+        # ~20-25 min (8-hop chain walk). If a late snapshot overlaps the 09:30 run, the next run's
+        # ES count check can fail once: rerun Sync Merged IDs with full_resync=true.
+        - task_key: refresh_merged_works_map
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_merged_ids
+            source: GIT
+            base_parameters:
+              entity: works
+          environment_key: serverless
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 5400
+        # oxjob #1124: loser -> winner maps → {fmt}/{authors,sources,works}/merged_ids.csv.gz in both
         # format trees. A leaf after update_meta (so after export_authors + export_sources, which
         # rm -r their directories): a failure here never blocks the manifests, smoke tests or the
         # public sync. Cleans its own _temp/merged_ids_* scratch. Runs in ~2 min, long before
-        # sync_to_public (after smoke_tests) lists the entity folders.
+        # sync_to_public (after smoke_tests) lists the entity folders. ALL_DONE (#1917): a failed
+        # map refresh still exports, with the 09:30 CT map.
         - task_key: export_merged_ids
           depends_on:
             - task_key: update_meta
+            - task_key: refresh_merged_works_map
+          run_if: ALL_DONE
           notebook_task:
             notebook_path: notebooks/snapshot/export_merged_ids
             source: GIT
