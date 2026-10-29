@@ -34,6 +34,8 @@ dbutils.widgets.text("nprobe", "32")
 dbutils.widgets.text("exact_sample", "200")         # queries also searched exactly, for tonight's recall@10
 dbutils.widgets.text("min_recall", "0.75")          # backfill r2 measured 0.823 at nprobe 32 (SQ8); exact scoring here
 dbutils.widgets.text("append_vectors", "true")
+dbutils.widgets.text("check_sample", "0")           # tests only: recompute this many backfill works (never written) and
+                                                    # report how many of their 10 match the backfill's list
 
 MODE = dbutils.widgets.get("mode")
 assert MODE in ("write", "dry_run"), MODE
@@ -43,6 +45,8 @@ NPROBE = int(dbutils.widgets.get("nprobe"))
 N_EXACT = int(dbutils.widgets.get("exact_sample"))
 MIN_RECALL = float(dbutils.widgets.get("min_recall"))
 APPEND = dbutils.widgets.get("append_vectors").lower() == "true"
+N_CHECK = int(dbutils.widgets.get("check_sample"))
+BACKFILL_ALGO, BACKFILL_VEC_AT = "qwen3-knn-v1.2", "2026-10-27 16:20:00"   # the 27 Oct backfill and its vectors' time
 
 E = "openalex.vector_search.work_embeddings_qwen3"
 W = "openalex.works.openalex_works"
@@ -108,18 +112,32 @@ spark.sql("CACHE TABLE rw_pick_c AS SELECT * FROM rw_pick")
 lo = spark.sql("SELECT MIN(embedded_at) m, COUNT(*) n FROM rw_pick_c").first()
 step(f"picked {lo.n:,} ids; oldest vector {lo.m}")
 lo_ts = (lo.m or __import__("datetime").datetime(2100, 1, 1)).strftime("%Y-%m-%d %H:%M:%S.%f")
+# check rows (tests): backfill works whose vector is the one the backfill used, read from the vector table's own copy
+# (16 list groups only, so partition pruning keeps the read small); staged, never appended or written
+check_sql = "" if N_CHECK <= 0 else f"""
+  UNION ALL
+  SELECT * FROM (
+    SELECT b.work_id, 'check' AS reason, b.vec_at AS embedded_at, b.v
+    FROM {B} b JOIN {R} r ON r.work_id = b.work_id
+    WHERE b.lg IN ({",".join(str(x) for x in range(0, 1024, 64))}) AND b.vec_at = TIMESTAMP '{BACKFILL_VEC_AT}'
+      AND r.algorithm = '{BACKFILL_ALGO}' AND pmod(xxhash64(b.work_id, 1648), 1000) < 2
+    ORDER BY xxhash64(b.work_id, 16481) LIMIT {N_CHECK})"""
 spark.sql(f"""
 CREATE OR REPLACE TABLE {QT} AS
-SELECT CAST(ROW_NUMBER() OVER (ORDER BY p.reason, p.work_id) - 1 AS INT) AS qi, p.work_id, p.reason, p.embedded_at,
-       rw_fp16b(e.embedding) AS v, w.type, COALESCE(w.is_retracted, false) AS is_retracted
-FROM rw_pick_c p
-JOIN (SELECT CAST(work_id AS BIGINT) AS work_id, embedding, embedded_at FROM {E}
-      WHERE embedded_at >= TIMESTAMP '{lo_ts}') e ON e.work_id = p.work_id AND e.embedded_at = p.embedded_at
-JOIN {W} w ON w.id = p.work_id
+WITH q AS (
+  SELECT p.work_id, p.reason, p.embedded_at, rw_fp16b(e.embedding) AS v
+  FROM rw_pick_c p
+  JOIN (SELECT CAST(work_id AS BIGINT) AS work_id, embedding, embedded_at FROM {E}
+        WHERE embedded_at >= TIMESTAMP '{lo_ts}') e ON e.work_id = p.work_id AND e.embedded_at = p.embedded_at
+  {check_sql}
+)
+SELECT CAST(ROW_NUMBER() OVER (ORDER BY q.reason, q.work_id) - 1 AS INT) AS qi, q.work_id, q.reason, q.embedded_at, q.v,
+       w.type, COALESCE(w.is_retracted, false) AS is_retracted
+FROM q JOIN {W} w ON w.id = q.work_id
 """)
 cnt = {r.reason: r.n for r in spark.sql(f"SELECT reason, COUNT(*) n FROM {QT} GROUP BY 1").collect()}
 NQ = sum(cnt.values())
-stats.update({"n_new": cnt.get("new", 0), "n_reembed": cnt.get("reembed", 0), "n_queries": NQ})
+stats.update({"n_new": cnt.get("new", 0), "n_reembed": cnt.get("reembed", 0), "n_check": cnt.get("check", 0), "n_queries": NQ})
 step(f"queries: {NQ:,} ({cnt})")
 if NQ > MAX_QUERIES:
     raise RuntimeError(f"{NQ:,} queries > max_queries={MAX_QUERIES:,}: refusing unattended; re-run with a larger max_queries if intended")
@@ -176,7 +194,7 @@ if APPEND:
     spark.sql(f"""
 INSERT INTO {B} (lg, list_id, work_id, v, type, is_retracted, vec_at)
 SELECT CAST(h.list_id DIV {LISTS_PER_GROUP} AS INT), CAST(h.list_id AS INT), q.work_id, q.v, q.type, q.is_retracted, q.embedded_at
-FROM {QT} q JOIN rw_home h ON h.qi = q.qi
+FROM (SELECT * FROM {QT} WHERE reason <> 'check') q JOIN rw_home h ON h.qi = q.qi
 LEFT ANTI JOIN {B} b ON b.work_id = q.work_id AND b.vec_at = q.embedded_at
 DISTRIBUTE BY CAST(h.list_id DIV {LISTS_PER_GROUP} AS INT)""")
     stats["appended"] = spark.table(B).count() - before
@@ -360,6 +378,14 @@ o = spark.sql(f"""SELECT COUNT(*) n, COUNT(DISTINCT work_id) d, COUNT_IF(size(re
 stats.update({"out_rows": o.n, "out_nonempty": o.nonempty, "out_full10": o.full10, "out_avg_len": float(o.avg_len or 0)})
 step(f"lists: {o.n:,} rows ({o.d:,} distinct), {o.nonempty:,} non-empty, {o.full10:,} with 10, mean length {o.avg_len}")
 assert o.n == o.d == NQ, "one row per query expected"
+if N_CHECK > 0:
+    c = spark.sql(f"""SELECT COUNT(*) n, AVG(size(array_intersect(o.related_works, r.related_works))) overlap,
+      AVG(size(r.related_works)) backfill_len, AVG(size(o.related_works)) new_len
+      FROM {OUT} o JOIN {R} r ON r.work_id = o.work_id WHERE o.reason = 'check'""").first()
+    stats.update({"check_n": c.n, "check_overlap": round(float(c.overlap or 0), 3), "check_backfill_len": round(float(c.backfill_len or 0), 3),
+                  "check_new_len": round(float(c.new_len or 0), 3)})
+    step(f"check vs backfill on {c.n} works: {stats['check_overlap']} of the backfill's {stats['check_backfill_len']} also listed "
+         f"(new length {stats['check_new_len']})")
 
 # COMMAND ----------
 
@@ -369,7 +395,7 @@ if stats["recall10"] is not None and stats["recall_n"] >= min(50, NQ) and stats[
     raise RuntimeError(f"recall@10 {stats['recall10']} below {MIN_RECALL}: lists not written")
 if MODE == "write":
     m = spark.sql(f"""
-MERGE INTO {R} t USING {OUT} s ON t.work_id = s.work_id
+MERGE INTO {R} t USING (SELECT * FROM {OUT} WHERE reason <> 'check') s ON t.work_id = s.work_id
 WHEN MATCHED THEN UPDATE SET t.related_works = s.related_works, t.scores = s.scores, t.algorithm = s.algorithm,
      t.computed_at = s.computed_at
 WHEN NOT MATCHED THEN INSERT (work_id, related_works, scores, algorithm, computed_at)
