@@ -29,6 +29,11 @@
 # MAGIC   built for landing pages; on repository, DataCite and PDF records the bar (26 Oct 2026) found real
 # MAGIC   descriptions they match: "Presenter: ... Abstract: ..." slide decks, quoted library catalog notes,
 # MAGIC   reports that open with "The views expressed in this report ..." and go on to a summary.
+# MAGIC - **Short stand-ins** (oxjob #1800, 29 Oct 2026): short texts repeated across many works ("v", ":unav",
+# MAGIC   "PhD", "Mode of access: Internet.") that only name the item, its kind, date or status. Judged one text at a
+# MAGIC   time by Opus 5.5 under the charter's stand-in rule; the flagged texts live in `SHORT_TABLE`, and every
+# MAGIC   rebuild re-derives their (hash, length) keys from `locations_parsed` with reason `short_stand_in`, which
+# MAGIC   applies to every provenance. A length cut alone failed its bar (real photo and figure captions).
 # MAGIC - **Revert:** remove the join in CreateSuperLocations, or `TRUNCATE` these tables. Never DROP them while
 # MAGIC   CreateSuperLocations reads them: a missing table fails the nightly.
 # MAGIC
@@ -55,6 +60,8 @@ SHA256 = {
 SOURCE_TABLE = "openalex.works.locations_parsed"
 TARGET_TABLE = "openalex.abstracts.not_abstract_texts"
 OWNER_TABLE = "openalex.abstracts.not_abstract_owner_rows"
+# oxjob #1800 (29 Oct 2026): judged short stand-in texts (trimmed), the source of truth for reason short_stand_in.
+SHORT_TABLE = "openalex.abstracts.not_abstract_short_texts"
 # Longest list text is 1,835 characters of key; templates need <= 1,500 plain and wordings <= 200 of key.
 # Raw text longer than this cannot match (markup inflates, so the cap is generous); it skips the Python UDF.
 MAX_LEN = 6000
@@ -160,6 +167,17 @@ INSERT OVERWRITE {TARGET_TABLE}
 SELECT abstract_hash, text_len, reason = 'list' AS is_list, reason, n_rows, provenances,
        left(abstract, 500) AS sample_text, '{FILTER_COMMIT}' AS filter_commit, current_timestamp() AS built_at
 FROM flagged_texts
+UNION ALL
+-- Short stand-ins (see the header): every record whose trimmed text is a judged one, keyed like the rest.
+SELECT s.abstract_hash, s.text_len, FALSE AS is_list, 'short_stand_in' AS reason, s.n_rows, s.provenances,
+       left(s.abstract, 500) AS sample_text, s.rubric AS filter_commit, current_timestamp() AS built_at
+FROM (
+  SELECT xxhash64(lp.abstract) AS abstract_hash, length(lp.abstract) AS text_len, first(lp.abstract) AS abstract,
+         count(*) AS n_rows, collect_set(lp.provenance) AS provenances, first(st.rubric) AS rubric
+  FROM {SOURCE_TABLE} lp JOIN {SHORT_TABLE} st ON st.text = trim(lp.abstract)
+  WHERE lp.abstract IS NOT NULL AND length(lp.abstract) <= 200
+  GROUP BY 1, 2
+) s LEFT ANTI JOIN flagged_texts f ON f.abstract_hash = s.abstract_hash AND f.text_len = s.text_len
 """)
 # INSERT OVERWRITE replaces the rows atomically: CreateSuperLocations never sees the table missing or half-built.
 

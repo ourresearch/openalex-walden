@@ -20,6 +20,9 @@
 # MAGIC - **One-time build, like `abstracts_backfill_repair` (#807).** The backfill never changes, so the
 # MAGIC   table only needs rebuilding when the filter does: upload the new commit's two files, change
 # MAGIC   `FILTER_COMMIT` and the hashes, re-run.
+# MAGIC - **Short stand-ins** (oxjob #1800, 29 Oct 2026): a work whose backfill text (trimmed) is one of the judged
+# MAGIC   short stand-in texts in `SHORT_TABLE` ("v", "PhD", "Mode of access: Internet.") is flagged with reason
+# MAGIC   `short_stand_in`; FlagLocationNotAbstracts' header says how those texts were judged.
 # MAGIC - **Revert:** remove the anti-join from CreateWorksBase (one line), or `TRUNCATE` this table. Never
 # MAGIC   DROP it while CreateWorksBase reads it: a missing table fails the nightly.
 # MAGIC
@@ -45,6 +48,7 @@ SHA256 = {
 }
 SOURCE_TABLE = "openalex.abstracts.abstracts_backfill"
 REPAIR_TABLE = "openalex.abstracts.abstracts_backfill_repair"
+SHORT_TABLE = "openalex.abstracts.not_abstract_short_texts"  # oxjob #1800: judged short stand-in texts (trimmed)
 # A dry run writes elsewhere first (job parameter target_table), to diff a new filter commit against the live table.
 dbutils.widgets.text("target_table", "openalex.abstracts.abstracts_backfill_not_abstract")
 TARGET_TABLE = dbutils.widgets.get("target_table")
@@ -138,6 +142,7 @@ FROM {SOURCE_TABLE} bf LEFT JOIN {REPAIR_TABLE} r ON bf.work_id = r.work_id
 flagged = (eff.withColumn("reason", not_abstract_reason("abstract"))
               .where(F.col("reason").isNotNull()))
 flagged.createOrReplaceTempView("flagged_backfill")
+eff.createOrReplaceTempView("eff_backfill")
 
 # Owner guard (list texts only). A list text is shared by 100+ works, so it is nobody's abstract... except the one
 # item it describes: a book's blurb on its own record (it sits on every chapter too), or the paper behind a "featured
@@ -156,7 +161,13 @@ SELECT work_id, reason, text_len, filter_commit, built_at FROM (
   LEFT JOIN (SELECT id, filter(array_distinct(split(regexp_replace(lower(title), '[^\\p{L}\\p{N}]+', ' '), ' ')), x -> length(x) >= 5) AS tw
              FROM openalex.works.openalex_works) w ON w.id = f.work_id)
 WHERE NOT (reason = 'list' AND n_hit >= 2 AND n_hit * 2 >= n_title)
-""".replace("TARGET_TABLE", TARGET_TABLE).replace("FILTER_COMMIT", FILTER_COMMIT))
+UNION ALL
+-- Short stand-ins (see the header).
+SELECT e.work_id, 'short_stand_in' AS reason, length(e.abstract) AS text_len, st.rubric AS filter_commit,
+       current_timestamp() AS built_at
+FROM eff_backfill e JOIN SHORT_TABLE st ON st.text = trim(e.abstract)
+LEFT ANTI JOIN flagged_backfill f ON f.work_id = e.work_id
+""".replace("TARGET_TABLE", TARGET_TABLE).replace("FILTER_COMMIT", FILTER_COMMIT).replace("SHORT_TABLE", SHORT_TABLE))
 # INSERT OVERWRITE replaces the rows atomically: CreateWorksBase never sees the table missing or half-built.
 
 # COMMAND ----------
