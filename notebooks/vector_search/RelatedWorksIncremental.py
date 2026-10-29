@@ -2,9 +2,9 @@
 # MAGIC %md
 # MAGIC # Related works for new and re-embedded works (nightly, oxjob #1648)
 # MAGIC
-# MAGIC Gives every work that has a Qwen3 vector but no related works (new works, ~120K a day) its list, and recomputes the
-# MAGIC lists of works whose vector changed since their list was made (re-embedded after a title / abstract / venue change),
-# MAGIC up to `reembed_cap` a night, oldest first. Runs in `jobs/embed_qwen3_nightly.yaml` right after the embed task, so the
+# MAGIC Gives every work that has a Qwen3 vector but no related works (new works, ~120K a day) its list. It can also recompute
+# MAGIC the lists of works whose vector changed since their list was made (re-embedded after a title / abstract / venue change),
+# MAGIC up to `reembed_cap` a night, oldest first; that is off (0) because it measured no better than the lists they have. Runs in `jobs/embed_qwen3_nightly.yaml` right after the embed task, so the
 # MAGIC next Walden End 2 End (`CreateWorksEnriched` reads `openalex.works.work_related_works`) serves the lists.
 # MAGIC
 # MAGIC Same method and policy as the 27 Oct backfill (policy v1.2): the 10 nearest works by cosine on the Qwen3 vector; never
@@ -28,7 +28,10 @@
 # COMMAND ----------
 
 dbutils.widgets.text("mode", "write")               # write | dry_run
-dbutils.widgets.text("reembed_cap", "500000")       # re-embedded works per night (new works are never capped)
+dbutils.widgets.text("reembed_cap", "0")            # re-embedded works per night (new works are never capped). 0 by default:
+                                                    # on 300 re-embedded works (29 Oct, blind paired judge) the list from the new
+                                                    # vector graded 1.96 vs 1.99 for the list they have (diff -0.02, 95% -0.09 to
+                                                    # +0.04): every list would change and re-stamp for no measurable gain
 dbutils.widgets.text("max_queries", "3000000")      # guardrail: refuse an absurd night before scanning
 dbutils.widgets.text("nprobe", "32")
 dbutils.widgets.text("exact_sample", "200")         # queries also searched exactly, for tonight's recall@10

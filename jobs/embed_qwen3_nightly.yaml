@@ -9,7 +9,7 @@
 #               SDG head → openalex.works.works_sdg_jev, which the next Walden End 2 End merges into
 #               sustainable_development_goals. Runs beside stage/sync, so a failure never holds up the vectors.
 #   5. related_works — RelatedWorksIncremental (oxjob #1648): related works for the works that have a vector but no list
-#               (tonight's new works) plus up to reembed_cap re-embedded works -> openalex.works.work_related_works, which the next
+#               (tonight's new works; re-embedded works only if reembed_cap > 0, default 0) -> openalex.works.work_related_works, which the next
 #               Walden End 2 End serves (CreateWorksEnriched). One scan of work_vectors_ivf on its own cluster, ~$3-5; fails before
 #               writing if tonight's recall@10 is under min_recall. Runs beside the other tasks, so a failure holds up nothing.
 # The sync only runs if the embed task succeeds. All four are idempotent; a failed run is simply re-run.
