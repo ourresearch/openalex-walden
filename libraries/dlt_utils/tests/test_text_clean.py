@@ -115,8 +115,10 @@ def test_formula_wrapper_separates_from_prose():
 
 def test_unknown_tag_defaults_to_space():
     # Splitting leaves two real searchable words; welding creates a junk token that matches
-    # nothing, so an unrecognised tag takes the recoverable failure.
-    assert tc.clean_title("alpha<weirdtag>beta") == "alpha beta"
+    # nothing, so an unrecognised tag takes the recoverable failure. (An unknown name counts as a
+    # tag when it is closed later or carries an attribute value; oxjob #1928.)
+    assert tc.clean_title("alpha<weirdtag>beta</weirdtag>") == "alpha beta"
+    assert tc.clean_title('alpha<weirdtag class="x">beta') == "alpha beta"
 
 def test_math_inequality_preserved():
     # "< 0.05" and "a > b" are NOT tags (space after '<') -> preserved.
@@ -127,17 +129,18 @@ def test_truncated_trailing_tag_removed():
     # OAI titles truncated at a length cap leave a dangling unclosed tag.
     assert tc.clean_title("Preparation of an <i") == "Preparation of an"
     assert tc.clean_title("Identification of </jats:p") == "Identification of"
+    assert tc.clean_title("u ( 0 ) = 0 , D T</mml:") == "u ( 0 ) = 0 , D T"
 
 
 # --- SECURITY: decoding must not arm XSS (strip-all-tags => inert) ----------- #
 
 def _no_markup(s):
-    """No angle-bracket tags and no live event handlers survive."""
-    assert tc.strip_tags(s) == s or True  # sanity: strip_tags callable
-    # after cleaning there must be no tag-shaped substring and no on*= handler
+    """No markup-named tag and no live event handler or script URL survives. A `<` before a word
+    that is not markup is text and may stay (oxjob #1928), so the check is on names, not on `<`."""
     import re
-    assert not re.search(r"<(?:/[a-zA-Z]|[a-zA-Z])", s), f"tag survived: {s!r}"
-    assert "onerror=" not in s.lower() and "onload=" not in s.lower(), f"handler survived: {s!r}"
+    for m in re.finditer(r"</?([A-Za-z][A-Za-z0-9._-]*)", s):
+        assert m.group(1).lower() not in tc._MARKUP_NAMES - tc._WORD_NAMES, f"tag survived: {s!r}"
+    assert not re.search(r"(?i)\bon[a-z]+\s*=|javascript:", s), f"handler survived: {s!r}"
 
 def test_injection_script():
     _no_markup(tc.clean_title("Title &lt;script&gt;alert(1)&lt;/script&gt;"))
@@ -155,10 +158,113 @@ def test_injection_svg_onload():
     _no_markup(tc.clean_title("Title &lt;svg/onload=alert(1)&gt;"))
 
 
+def test_injection_unknown_element_with_handler():
+    # Browsers run handlers on unknown elements too; a tag-shaped span carrying one always goes.
+    _no_markup(tc.clean_title("Title &lt;x onclick=alert(1)&gt;"))
+    _no_markup(tc.clean_title("Title &lt;x onclick=alert(1) (y&gt;"))
+    _no_markup(tc.clean_title('Title &lt;a href="javascript:alert(1)"&gt;x&lt;/a&gt;'))
+
+def test_injection_script_with_bare_attribute_and_dangerous_bare_elements():
+    _no_markup(tc.clean_title("Title &lt;script x&gt;alert(1)"))
+    for name in ("script", "svg", "math", "iframe", "style", "noscript", "template", "textarea"):
+        out = tc.clean_title(f"Title &lt;{name}&gt;payload")
+        assert f"<{name}" not in out.lower(), out
+
+def test_injection_handler_in_a_stretch_that_is_not_a_clean_tag():
+    # A browser reads "<i onclick=... x ... >" as one tag even with text in between; it must not survive.
+    _no_markup(tc.clean_title("a &lt;i onclick=alert(1) x&lt;b&gt;y and p&gt;0.05"))
+    _no_markup(tc.clean_title("a &lt;img src=x onerror=alert(1) &lt;3&gt;"))
+    assert tc.clean_title("onset (&lt;age 25 years) one = 5 and p&gt;0.05") == "onset (<age 25 years) one = 5 and p>0.05"
+
+def test_cut_off_tags_at_the_end():
+    for s, want in [("of the algebra <mml:math xmlns:", "of the algebra"), ("P ( Y n = k <mml:mo st", "P ( Y n = k"),
+                    ("in an economy<span xml:lang", "in an economy"), ('see <a href="http://x.org/a', "see"),
+                    ("comment </p --> more", "comment more"),
+                    ("D(P/spl par/Q)</spl infin/. We ask when p>0", "D(P/spl par/Q)</spl infin/. We ask when p>0"),
+                    ("Δt <p for a buildup test", "Δt <p for a buildup test"), ("values at <LOD in", "values at <LOD in")]:
+        assert tc.clean_title(s) == want, (s, tc.clean_title(s))
+
+
+def test_injection_truncated_handler_at_end():
+    _no_markup(tc.clean_title("Title &lt;x onmouseover=alert(1)"))
+
+
+# --- A less-than that is not markup is text (oxjob #1928) ------------------- #
+# The old rule removed every '<'+letter up to the next '>' (or the end of the text), cutting a median
+# 17 words from ~24K Crossref abstracts. Cases below are real deposits (DOIs in comments).
+
+def test_inequality_before_a_word_keeps_the_rest_of_the_abstract():
+    # 10.1071/mf9941007 kept 21 of 277 words; 10.1046/j.1365-2796.1997.90111000.x 12 of 102.
+    s = "otoliths of juveniles (&lt;I00 days old) were read. Ages agreed in 90% of fish &gt;1 year old."
+    assert tc.clean_title(s) == "otoliths of juveniles (<I00 days old) were read. Ages agreed in 90% of fish >1 year old."
+    s = "developed severe, systemic, early onset (&lt;age 25 years) disease. The proband had p&gt;0.05."
+    assert tc.clean_title(s) == "developed severe, systemic, early onset (<age 25 years) disease. The proband had p>0.05."
+
+def test_inequality_chains_and_detection_limits():
+    assert tc.clean_title("in the range 30&lt;Rλ&lt;130 we find") == "in the range 30<Rλ<130 we find"     # 10.1063/1.868219
+    assert tc.clean_title("salinity CK&lt;RSA&lt;RS&lt;RSB was") == "salinity CK<RSA<RS<RSB was"     # 10.1002/ldr.5442
+    assert tc.clean_title("patients who had &lt;VGPR (P = 0.05) and") == "patients who had <VGPR (P = 0.05) and"
+    assert tc.clean_title("losartan &lt;telmisartan &lt;irbesartan via CYP2C9") == "losartan <telmisartan <irbesartan via CYP2C9"
+    assert tc.clean_title("values were &lt;LOD") == "values were <LOD"              # trailing, not a cut-off tag
+    assert tc.clean_title("for all 0&lt;x&lt;1 and p&lt;a.") == "for all 0<x<1 and p<a."
+
+def test_angle_quoted_titles_and_names_stay():
+    assert tc.clean_title("Study on Close-Up Shots in Film &lt;The Throne&gt;(2015)") == (
+        "Study on Close-Up Shots in Film <The Throne>(2015)")
+    assert tc.clean_title("&lt;Hygrophila phlomoides&gt; Nees (Acanthaceae), a new record") == (
+        "<Hygrophila phlomoides> Nees (Acanthaceae), a new record")
+    assert tc.clean_title("life was &lt;the only Sun in the sky&gt;, and") == "life was <the only Sun in the sky>, and"
+    assert tc.clean_title("&lt;uo&gt; and &lt;uu&gt; for /wu/") == "<uo> and <uu> for /wu/"     # graphemes
+    assert tc.clean_title("Film &lt;Comment&gt; review") == "Film <Comment> review"           # a word, no markup around
+    assert tc.clean_title("write to &lt;fimte@fimte.org&gt;") == "write to <fimte@fimte.org>"
+    assert tc.clean_title("see &lt;http://www.adaa.org/&gt;") == "see <http://www.adaa.org/>"
+
+def test_word_named_tags_are_markup_inside_marked_up_text():
+    assert tc.clean_title("<sec><title>Background</title><p>We study</p></sec>") == "Background We study"
+    assert tc.clean_title("<jats:title>Background") == "Background"
+
+def test_markup_still_removed_next_to_text_less_thans():
+    s = "&lt;jats:p&gt;Doses &lt;5 mg and &lt;LOD in &lt;i&gt;E. coli&lt;/i&gt;&lt;/jats:p&gt;"
+    assert tc.clean_title(s) == "Doses <5 mg and <LOD in E. coli"
+    assert tc.clean_title('a <span style="font-size: 12pt;>x</span> b') == "a x b"   # malformed but markup
+    assert tc.clean_title("grade <I (n=5) vs grade >II") == "grade <I (n=5) vs grade >II"  # not markup
+
+def test_reversed_tags_are_repaired():
+    # USP theses and some IEEE titles arrive with every tag's brackets swapped.
+    assert tc.clean_title("em &gt;i&lt;Pinus&gt;/i&lt; tropicais") == "em Pinus tropicais"
+    assert tc.clean_title("&gt;b&lt;Consumo de peixe&gt;/b&lt;: análise") == "Consumo de peixe: análise"
+    assert tc.clean_title("Cr&gt;sup&lt;4+&gt;/sup&lt; ions") == "Cr4+ ions"
+    assert tc.clean_title("for j&gt;i&lt;n and k") == "for j>i<n and k"   # no swapped closing tag: prose
+    # Real tags side by side are not swapped ones: ">/p<" here ends </sup> and starts <sup>.
+    assert tc.clean_title("n&lt;sup&gt;+&lt;/sup&gt;/p&lt;sup&gt;+&lt;/sup&gt; poly-Si") == "n+/p+ poly-Si"
+    assert tc.clean_title("(Al<sub>2</sub>O<sub>3</sub>/B<sub>4</sub>C)") == "(Al2O3/B4C)"
+    assert tc.clean_title("HER2<sup>+</sup>/HR<sup>−</sup> Trial") == "HER2+/HR− Trial"
+
+def test_attribute_check_stays_linear():
+    # An unquoted value that could stop at any `/` made the attribute pattern backtrack
+    # exponentially ("x=a/b=a/b=..."): 30 segments took minutes, so one deposit could stall a task.
+    import time
+    t = time.perf_counter()
+    tc.strip_tags('<a href=http://x.org/q?a=1' + '/b=2' * 60 + '">x')
+    tc.strip_tags('<jats:p x=a' + '/b=a' * 60 + '">x')
+    assert time.perf_counter() - t < 1.0
+    assert tc.clean_title('<a href=http://x.org/q?a=1>link</a> text') == "link text"
+
+
+def test_emergent_tag_is_stripped_in_the_same_call():
+    # Removing inner markup can leave a new tag-shaped span; the result must already be final,
+    # because the ES sync cleans the stored abstract again (#191.1).
+    s = "velocity &lt;<jats:italic>u</jats:italic>&gt; across"
+    once = tc.clean_text(s)
+    assert tc.clean_text(once) == once
+
+
 # --- Idempotency + None-safety ---------------------------------------------- #
 
 def test_idempotent():
-    for s in ["Universit&eacute;", "UniversitÃ©", "<i>x</i> &lt;b&gt;", "clean text"]:
+    for s in ["Universit&eacute;", "UniversitÃ©", "<i>x</i> &lt;b&gt;", "clean text",
+              "(&lt;I00 days old) &gt; x", "Film &lt;The Throne&gt;", "&gt;i&lt;Pinus&gt;/i&lt;",
+              "a &lt;<i>u</i>&gt; b", "values &lt;LOD", "<sec><title>T</title></sec> &lt;Comment&gt;"]:
         once = tc.clean_title(s)
         assert tc.clean_title(once) == once, f"not idempotent: {s!r}"
 
