@@ -643,7 +643,11 @@ dlt.create_auto_cdc_flow(
     sequence_by="updated_date",
     except_column_list=["_change_type", "_commit_version", "_commit_timestamp"],
     apply_as_deletes="lower(_change_type) = 'delete'",  # 👈 Enable DELETE detection
-    ignore_null_updates=True                            # 👈 Optional safety for sparse updates
+    # oxjob #1918: every update is a whole Crossref record, so the newest deposit replaces the row.
+    # With True, a field the registrant removed (NULL in the new parse) kept its old value forever:
+    # 12,088 Springer reference entries kept bulk contributor lists Springer deleted on 13-14 Oct 2026
+    # (933,872 authorships), plus 2,358 withdrawn abstracts. Same rule as #994 for landing pages.
+    ignore_null_updates=False
 )
 
 # COMMAND ----------
