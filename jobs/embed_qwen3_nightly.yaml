@@ -1,4 +1,4 @@
-# Nightly refresh of the semantic-search vectors (oxjob #1275). Four tasks:
+# Nightly refresh of the semantic-search vectors (oxjob #1275). Five tasks:
 #   1. embed  — EmbedQwen3Incremental: new/changed/missing works → work_embeddings_qwen3 (serverless, ai_query)
 #   2. stage  — stage_vector_sync_qwen3.sql on the serverless SQL warehouse: rows embedded in the last 2 days, joined to
 #               their filter fields and filter_hash → vector_sync_staging_qwen3
@@ -8,6 +8,10 @@
 #   4. sdg_score — sdg_jev_head_score incremental (oxjob #1300): scores the vectors just embedded with the Jev-trained
 #               SDG head → openalex.works.works_sdg_jev, which the next Walden End 2 End merges into
 #               sustainable_development_goals. Runs beside stage/sync, so a failure never holds up the vectors.
+#   5. related_works — RelatedWorksIncremental (oxjob #1648): related works for the works that have a vector but no list
+#               (tonight's new works) plus up to reembed_cap re-embedded works -> openalex.works.work_related_works, which the next
+#               Walden End 2 End serves (CreateWorksEnriched). One scan of work_vectors_ivf on its own cluster, ~$3-5; fails before
+#               writing if tonight's recall@10 is under min_recall. Runs beside the other tasks, so a failure holds up nothing.
 # The sync only runs if the embed task succeeds. All four are idempotent; a failed run is simply re-run.
 resources:
   jobs:
@@ -62,6 +66,17 @@ resources:
               mode: incremental
           environment_key: Default
           timeout_seconds: 7200
+        # oxjob #1648: related works for tonight's new and re-embedded works (minutes; one scan of the vector table)
+        - task_key: related_works
+          depends_on:
+            - task_key: embed
+          notebook_task:
+            notebook_path: notebooks/vector_search/RelatedWorksIncremental
+            source: GIT
+            base_parameters:
+              mode: write
+          job_cluster_key: related_works_cluster
+          timeout_seconds: 10800
         - task_key: stage
           depends_on:
             - task_key: embed
@@ -83,6 +98,26 @@ resources:
           job_cluster_key: vector_sync_cluster
           timeout_seconds: 21600
       job_clusters:
+        - job_cluster_key: related_works_cluster   # oxjob #1648: scans the 954 GB vector table once (~$3-5 a night)
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: rd-fleet.8xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            spark_conf:
+              spark.sql.execution.arrow.maxRecordsPerBatch: "8192"
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 8
         - job_cluster_key: vector_sync_cluster
           new_cluster:
             cluster_name: ""

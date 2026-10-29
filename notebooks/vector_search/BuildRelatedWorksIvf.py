@@ -120,7 +120,7 @@ t = time.time()
  .repartition(1024, "lg").sortWithinPartitions("lg", "list_id")
  .write.format("delta").mode("overwrite").option("overwriteSchema", "true").partitionBy("lg")
  .saveAsTable(TARGET))
-spark.sql(f"""COMMENT ON TABLE {TARGET} IS 'oxjob #1648: every work''s Qwen3 vector (float16, 2 KB) with its IVF list (131,072 lists,
+spark.sql(f"""COMMENT ON TABLE {TARGET} IS 'oxjob #1648: the Qwen3 vector of every work (float16, 2 KB) with its IVF list (131,072 lists,
 lg = list_id DIV 128). Built by BuildRelatedWorksIvf from the 27 Oct backfill export; RelatedWorksIncremental appends new and
 re-embedded works each night (a re-embedded work can have more than one row: vec_at says which is newest).'""")
 print(f"written in {(time.time() - t) / 60:.1f} min")
