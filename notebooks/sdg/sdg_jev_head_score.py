@@ -94,6 +94,8 @@ print("thresholds:", dict(zip(range(1, 18), THRESHOLDS)))
 def sdg_probs(emb: pd.Series) -> pd.Series:
     """17 calibrated scores per work: sigmoid(W·x + b), then the per-goal isotonic map
     (np.interp on the fitted breakpoints, clipped at both ends == sklearn out_of_bounds='clip')."""
+    if len(emb) == 0:   # Spark can hand the UDF an empty batch (night of 29 Oct 2026: 3 failed tries)
+        return pd.Series([], dtype=object)
     X = np.stack(emb.values).astype(np.float32)
     raw = 1.0 / (1.0 + np.exp(-(X @ W.T + B)))
     out = np.empty_like(raw)
