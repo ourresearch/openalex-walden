@@ -32,7 +32,8 @@ dbutils.widgets.text("reembed_cap", "500000")       # re-embedded works per nigh
 dbutils.widgets.text("max_queries", "3000000")      # guardrail: refuse an absurd night before scanning
 dbutils.widgets.text("nprobe", "32")
 dbutils.widgets.text("exact_sample", "200")         # queries also searched exactly, for tonight's recall@10
-dbutils.widgets.text("min_recall", "0.75")          # backfill r2 measured 0.823 at nprobe 32 (SQ8); exact scoring here
+dbutils.widgets.text("min_recall", "0.85")          # dry run 29 Oct: 0.927 on 2,000 (backfill r2 GPU, 8-bit codes: 0.823);
+                                                    # a 200-query sample moves ~0.015, so 0.85 trips only on a real fault
 dbutils.widgets.text("append_vectors", "true")
 dbutils.widgets.text("check_sample", "0")           # tests only: recompute this many backfill works (never written) and
                                                     # report how many of their 10 match the backfill's list
