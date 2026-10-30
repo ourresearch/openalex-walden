@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Fail when notebook SQL holds a dollar sign that a Databricks job run would blank (oxjob #1932).
+r"""Fail when notebook SQL holds a dollar sign that a Databricks job run would blank (oxjob #1932).
 
 A job run treats `$1`, `$name` and `${name}` in notebook SQL as legacy widget parameters and sends ''
 in their place, while an interactive or API run sends the text as written. So '$2 $1' in a
 regexp_replace works when you test it and becomes ' ' every night (MatchAuthors' 'Last, First' flip,
-17 Jul - 30 Oct 2026: weekly author-id churn on ~25K profiles; ProduceNihPubmedRelinks' NIH key
-build; #1910's title cleaner). System query history shows what the warehouse received.
+seen in every End 2End from 17 Oct 2026 on: weekly author-id churn on ~25K profiles;
+ProduceNihPubmedRelinks' NIH key build; #1910's title cleaner). System query history shows what the
+warehouse received. Databricks documents no switch to turn this off.
 
 Write the backreference so the SQL text has no such dollar: concat(chr(36), '2 ', chr(36), '1')
-is folded to '$2 $1' by the optimizer. A backslash before the dollar ('\\\\$1') also survives.
+is folded to '$2 $1' by the optimizer. A backslash right before the dollar also survives (the
+awards notebooks' '\\\\$1').
 
 Checked: SQL cells of .ipynb notebooks (SQL notebooks and %sql cells), Databricks SQL source
 notebooks (.sql), %sql cells of Python source notebooks, and plain .sql files under notebooks/.
@@ -21,86 +23,64 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 
-BAD_NEXT = re.compile(r"[0-9A-Za-z_{]")
-SKIP_MAGIC = ("%md", "%python", "%py", "%scala", "%r", "%sh", "%pip", "%run", "%fs", "%conda")
+DOLLAR = re.compile(r"\$[0-9A-Za-z_{]")
 
 
 def scan_sql(text):
     """Yield (line_no, snippet) for each dollar a job run would blank. Line numbers are 1-based within text."""
-    i, n, line = 0, len(text), 1
-    state = "code"            # code | sq | dq | bt | line_comment | block_comment | body
-    body_state = "code"       # inside $$ ... $$: code | sq | dq | comment (Python)
+    # state: code (SQL) | body (Python inside $$ ... $$) | str | comment | block; `after` is where a str or comment returns to
+    state, after, quote = "code", "code", ""
+    i, n = 0, len(text)
     while i < n:
-        c = text[i]
-        nxt = text[i + 1] if i + 1 < n else ""
-        if c == "\n":
-            line += 1
-            if state == "line_comment":
-                state = "code"
-            if state == "body" and body_state == "comment":
-                body_state = "code"
+        c, nxt = text[i], text[i + 1:i + 2]
+        if state == "comment":
+            if c == "\n":
+                state = after
             i += 1
             continue
-        if state == "line_comment":
-            i += 1
+        if state == "block":
+            state, i = ("code", i + 2) if text.startswith("*/", i) else ("block", i + 1)
             continue
-        if state == "block_comment":
-            if c == "*" and nxt == "/":
-                state, i = "code", i + 2
-            else:
-                i += 1
-            continue
-        if c == "$" and nxt == "$":           # $$ delimiter opens or closes a function body
-            if state == "code":
-                state, body_state = "body", "code"
-            elif state == "body" and body_state == "code":
-                state = "code"
+        if c == "$" and nxt == "$":               # $$ opens or closes a function body; inside a string it is text
+            state = {"code": "body", "body": "code"}.get(state, state)
             i += 2
             continue
-        if c == "$" and BAD_NEXT.match(nxt) and not (i > 0 and text[i - 1] == "\\"):
-            if not (state == "body" and body_state == "comment"):
-                start = text.rfind("\n", 0, i) + 1
-                end = text.find("\n", i)
-                yield line, text[start:end if end >= 0 else n].strip()[:160]
+        if DOLLAR.match(text, i) and text[i - 1:i] != "\\":
+            start, end = text.rfind("\n", 0, i) + 1, text.find("\n", i)
+            yield text.count("\n", 0, i) + 1, text[start:end if end >= 0 else n].strip()[:160]
             i += 1
             continue
-        if state == "body":
-            if body_state == "code":
-                if c == "#":
-                    body_state = "comment"
-                elif c in "'\"":
-                    body_state, quote = "str", c
-            elif body_state == "str":
-                if c == "\\":
-                    i += 2
-                    continue
-                if c == quote:
-                    body_state = "code"
-            i += 1
-            continue
-        if state == "code":
-            if c == "-" and nxt == "-":
-                state, i = "line_comment", i + 2
+        if state == "str":
+            if c == "\\" and quote != "`":
+                i += 2
                 continue
-            if c == "/" and nxt == "*":
-                state, i = "block_comment", i + 2
-                continue
-            if c == "'":
-                state = "sq"
-            elif c == '"':
-                state = "dq"
-            elif c == "`":
-                state = "bt"
+            if c == quote:
+                state = after
             i += 1
             continue
-        # inside a quoted string or identifier
-        if c == "\\" and state in ("sq", "dq"):
-            i += 2
-            continue
-        if (state == "sq" and c == "'") or (state == "dq" and c == '"') or (state == "bt" and c == "`"):
-            state = "code"
+        # state is code or body
+        if state == "code" and text.startswith("--", i) or state == "body" and c == "#":
+            state, after = "comment", state
+        elif state == "code" and text.startswith("/*", i):
+            state, i = "block", i + 1
+        elif c in "'\"" or (state == "code" and c == "`"):
+            state, after, quote = "str", state, c
         i += 1
+
+
+def source_cells(txt, prefix):
+    """Cells of a Databricks source-format notebook (prefix '--' for .sql, '#' for .py) that hold SQL."""
+    magic = f"{prefix} MAGIC "
+    for k, cell in enumerate(txt.split(f"{prefix} COMMAND ----------")):
+        lines = cell.split("\n")
+        magics = [l[len(magic):].strip() for l in lines if l.startswith(f"{prefix} MAGIC")]
+        if magics and magics[0] == "%sql":
+            body = [l[len(magic):] if l.startswith(magic) else "" for l in lines]
+            yield f"cell {k}", "\n".join(b for b in body if b.strip() != "%sql")
+        elif not magics and prefix == "--":
+            yield f"cell {k}", cell
 
 
 def sql_cells(path):
@@ -120,24 +100,15 @@ def sql_cells(path):
             head = src.lstrip()
             if head.startswith("%sql"):
                 yield f"cell {k}", src.split("\n", 1)[1] if "\n" in src else ""
-            elif lang == "sql" and not head.startswith(SKIP_MAGIC):
+            elif lang == "sql" and not head.startswith("%"):
                 yield f"cell {k}", src
     elif path.endswith(".sql"):
         if txt.startswith("-- Databricks notebook source"):
-            for k, cell in enumerate(txt.split("-- COMMAND ----------")):
-                lines = cell.split("\n")
-                magic = [l for l in lines if l.startswith("-- MAGIC")]
-                if not magic or magic[0].strip() == "-- MAGIC %sql":
-                    yield f"cell {k}", "\n".join(l for l in lines if not l.startswith("-- MAGIC"))
+            yield from source_cells(txt, "--")
         else:
             yield "file", txt
     elif path.endswith(".py") and txt.startswith("# Databricks notebook source"):
-        for k, cell in enumerate(txt.split("# COMMAND ----------")):
-            lines = cell.split("\n")
-            magic = [l for l in lines if l.startswith("# MAGIC")]
-            if magic and magic[0].strip() == "# MAGIC %sql":
-                body = [l[len("# MAGIC "):] if l.startswith("# MAGIC ") else "" for l in lines]
-                yield f"cell {k}", "\n".join(b for b in body if b.strip() != "%sql")
+        yield from source_cells(txt, "#")
 
 
 def check(roots):
@@ -155,10 +126,9 @@ def check(roots):
                     problems.append(f"{p}: could not read ({e})")
                     continue
                 for label, sql in cells:
-                    per_line = {}
-                    for ln, snippet in scan_sql(sql):
-                        per_line.setdefault(ln, [snippet, 0])[1] += 1
-                    for ln, (snippet, k) in per_line.items():
+                    if not DOLLAR.search(sql):    # every finding needs this pattern; skips ~99% of cells
+                        continue
+                    for (ln, snippet), k in Counter(scan_sql(sql)).items():
                         where = f"{label} line {ln}" if label != "file" else f"line {ln}"
                         problems.append(f"{p}: {where}: {k} x: {snippet}")
     return problems
@@ -178,11 +148,14 @@ def self_test():
         "SELECT 'it''s $1'": 1,
         "COMMENT 'MARC fields: $a kept'": 1,
     }
-    bad = [(sql, want, len(list(scan_sql(sql)))) for sql, want in cases.items() if len(list(scan_sql(sql))) != want]
-    for sql, want, got in bad:
-        print(f"self-test FAIL: want {want} got {got}: {sql!r}")
-    print(f"self-test: {len(cases) - len(bad)}/{len(cases)} passed")
-    return not bad
+    failed = 0
+    for sql, want in cases.items():
+        got = len(list(scan_sql(sql)))
+        if got != want:
+            failed += 1
+            print(f"self-test FAIL: want {want} got {got}: {sql!r}")
+    print(f"self-test: {len(cases) - failed}/{len(cases)} passed")
+    return not failed
 
 
 if __name__ == "__main__":
