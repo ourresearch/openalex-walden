@@ -10,7 +10,7 @@ resources:
         work_id_map. Steps: prepare (pins the night from Delta history: location_work_ids MERGE NEW / OLD, openalex_works V;
         blocking keys, frame, seeds, SQL-channel candidates, qwen3 seed vectors) -> go_gate (stops while End 2 End is running,
         when the night has no MapWorkIds MERGE yet, or when it was already decided) -> knn (exact kNN over work_embeddings_qwen3 on GPUs) -> features ->
-        score_xgb (openalex.works.location_work_matcher@challenger, hard rules first) -> score_qwen (Qwen3.5-9B + ep2_9b on
+        score_xgb (openalex.works.location_work_matcher@challenger, hard rules first) -> score_qwen (Qwen3.5-9B + ep2_9b_old on
         Modal, app location-work-matcher) -> write_decisions. The heavy SQL runs on PROD-WH (lwm.py); keys + embed start
         together, candidates run alongside knn; write_decisions records the critical path (task execution times, no cluster
         start-up) in location_work_match_runs.seconds.
@@ -52,8 +52,9 @@ resources:
           # the warehouse the Modal app exports the prompts through (DEV-WH, X-Large serverless)
           default: 3996dc0a9b183ce3
         - name: max_usd
-          # score_qwen fails the run when its Modal estimate is over this (raise it on purpose for a big night)
-          default: "60"
+          # score_qwen fails the run when its Modal estimate is over this (Casey 2026-10-30: 60 -> 100 after a 705K-record night
+          # estimated $65.27; a normal night is $5-14)
+          default: "100"
         - name: max_minutes
           default: "240"
         - name: shard_records

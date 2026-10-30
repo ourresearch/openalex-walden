@@ -3,7 +3,7 @@
 # MAGIC # Match Locations To Works 5/6: Qwen on Modal (oxjob #1668)
 # MAGIC
 # MAGIC Records whose top XGBoost score is >= 0.01 go to the fine-tuned Qwen (app `location-work-matcher`, `modal_location_matcher.py`
-# MAGIC in this folder; Qwen/Qwen3.5-9B + adapter ep2_9b; vLLM does not run on Databricks). `sql/qwen_pairs.sql` builds each record's
+# MAGIC in this folder; Qwen/Qwen3.5-9B + adapter ep2_9b_old; vLLM does not run on Databricks). `sql/qwen_pairs.sql` builds each record's
 # MAGIC top 10 candidates in the judge format; this notebook turns them into the training prompt (record + shortlist, one slot per
 # MAGIC candidate, `qwen/rows.py row()` of oxjob #1668), POSTs the prompt table to the app's `/start` (bearer token from secret scope
 # MAGIC `modal`), polls `/status`, checks the shard files and loads `location_work_match_qwen` (seed_id, cid, p).
@@ -41,7 +41,7 @@ RUN = dbutils.widgets.get("run_id").strip()
 NIGHT = dbutils.jobs.taskValues.get(taskKey="prepare", key="night", debugValue="")
 V = dbutils.jobs.taskValues.get(taskKey="prepare", key="V", debugValue=dbutils.widgets.get("V"))
 T = "openalex.works.location_work_match_"
-ADAPTER = "ep2_9b"
+ADAPTER = "ep2_9b_old"
 HEAD = ("Incoming bibliographic record and a shortlist of existing works. For each candidate answer yes only if the record "
         "is the same work (a copy, or the preprint / published version of it); otherwise no. At most one yes.\n")
 T0 = time.time()

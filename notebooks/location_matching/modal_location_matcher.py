@@ -6,7 +6,8 @@ notebooks/topics/nightly/modal_topics_nightly.py.
   done (with per-shard results) / failed.
 - `run_all`: exports the prompt table once through the Databricks SQL statement API (EXTERNAL_LINKS) into one file per shard on
   the Modal Volume `location-work-matcher` (/data/<build_id>/in/<shard>.jsonl.gz), then maps `Scorer.score` over the shards.
-- `Scorer`: Qwen/Qwen3.5-9B + LoRA adapter ep2_9b (oxjob #1668: 2 epochs on 37,828 Opus pick-one records; bind at p >= 0.887),
+- `Scorer`: Qwen/Qwen3.5-9B + LoRA adapter ep2_9b_old (oxjob #1902's retrain of #1668's ep2_9b: 2 epochs on its 37,828 Opus pick-one
+  records + 10,006 old-work records; bind at p >= 0.910; Casey 2026-10-30),
   merged, bf16, HF transformers, one GPU per container. A row = the record and its shortlist (prefix) + one slot per candidate
   ("c<i> =>" then " ?"); p = softmax over the ' yes' / ' no' logits one position before the slot. One forward pass per record:
   that reproduces the replay's scores exactly. Batching (`_batched`, kept for `parity`) was tested 2026-10-26 on 1,500 replay
@@ -16,7 +17,7 @@ notebooks/topics/nightly/modal_topics_nightly.py.
   (2026-10-27: a mojibake Cyrillic record), so there is nothing to score; that one case gets a row (cid / p null, over_cap true)
   and the job mints it. Any other failure still fails the shard and the night.
 
-Volumes: `oxjob1668-qwen` at /vol (adapter models/ep2_9b, read only); `location-work-matcher` at /data (exported prompt shards).
+Volumes: `oxjob1668-qwen` at /vol (adapter models/ep2_9b_old, read only); `location-work-matcher` at /data (exported prompt shards).
 Secrets: `location-work-matcher-token` (LOCATION_MATCH_TOKEN; the same value is in Databricks secret scope `modal`, key
 `location_matcher_token`), `oxjob-databricks` (DATABRICKS_HOST / DATABRICKS_TOKEN: reads the prompt table, writes the UC Volume).
 Deploy from a checkout:  modal deploy notebooks/location_matching/modal_location_matcher.py"""
@@ -30,7 +31,7 @@ import modal
 
 APP = "location-work-matcher"
 VERSION_MARK = "location-work-matcher v4 2026-10-27 (one record per pass; over-cap marked)"
-BASE, ADAPTER = "Qwen/Qwen3.5-9B", "/vol/models/ep2_9b"
+BASE, ADAPTER = "Qwen/Qwen3.5-9B", "/vol/models/ep2_9b_old"
 app = modal.App(APP)
 mvol = modal.Volume.from_name("oxjob1668-qwen")
 dvol = modal.Volume.from_name("location-work-matcher", create_if_missing=True, version=2)
@@ -137,7 +138,7 @@ class Scorer:
     def parity(self, rows_file: str, scores_file: str, n: int = 1000, batch_tokens: int = BATCH_TOKENS, batch_rows: int = BATCH_ROWS):
         """On the first n records of a replay file (oxjob1668-qwen volume): stored scores (the replay's one-at-a-time run) vs
         one-at-a-time now (control: GPU / kernel noise) vs batched now; per-pair differences, top-candidate decision flips at
-        0.887, records per second of both ways on this container's GPU."""
+        0.910, records per second of both ways on this container's GPU."""
         global BATCH_TOKENS, BATCH_ROWS
         BATCH_TOKENS, BATCH_ROWS = batch_tokens, batch_rows
         rows = [json.loads(l) for _, l in zip(range(n), open(f"/vol/{rows_file}"))]
@@ -153,7 +154,7 @@ class Scorer:
                 if p_ > best.get(s_, (-1, None))[0]:
                     best[s_] = (p_, c)
             return best
-        dec = lambda pc: pc[1] if pc and pc[0] >= 0.887 else None
+        dec = lambda pc: pc[1] if pc and pc[0] >= 0.910 else None
         seeds = {s_ for s_, _, _ in one}
         ref = {"stored": {k: v for k, v in want.items() if k[0] in seeds}, "one_now": {(s_, c): p_ for s_, c, p_ in one},
                "batched_now": {(s_, c): p_ for s_, c, p_ in bat}}
