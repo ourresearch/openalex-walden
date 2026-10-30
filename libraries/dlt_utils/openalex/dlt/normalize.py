@@ -139,6 +139,20 @@ def merge_key_id_filter(namespace):
             f"and (x.relationship is null or lower(x.relationship) in ({rels}){declared}))")
 
 
+# oxjob #1940: arXiv's own DataCite record (DOI 10.48550/arXiv.<id>) names its paper only in that DOI, so it carried no
+# merge_key.arxiv (0 of 3,222,679 on 30 Oct) and MapWorkIds could join it to the paper's arXiv record (`oai:arXiv.org:<id>`,
+# key `arXiv:<id>`) only by title: 139,059 sat on a second work. Every live arXiv DOI is lowercase and matches one of
+# these two id shapes; arXiv DOIs carry no version suffix. `[.]` instead of `\.` keeps the SQL free of escapes.
+ARXIV_DOI_PATTERN = "^10[.]48550/arxiv[.]([a-z][a-z.-]*/[0-9]{7}|[0-9]{4}[.][0-9]{4,5})$"
+
+
+def arxiv_key_from_own_doi(doi_sql):
+    """SQL: `arXiv:<id>` (the form arXiv's OAI records carry) when the DOI is arXiv's DOI for paper <id>, else NULL."""
+    d = f"lower(trim({doi_sql}))"
+    return (f"CASE WHEN {d} RLIKE '{ARXIV_DOI_PATTERN}' "
+            f"THEN concat('arXiv:', regexp_extract({d}, '{ARXIV_DOI_PATTERN}', 1)) END")
+
+
 def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
     # oxjob #880 (Casey 2026-09-03): title_author is a title-derived key or NULL, nothing else.
     # The old first branch wrote native_id + provenance for bad/short/NULL titles so those
@@ -158,7 +172,12 @@ def create_merge_column(df, MERGE_COLUMN_NAME="merge_key"):
                 F.struct(
                     F.element_at(F.expr("filter(ids, x -> x.namespace = 'doi' and x.id is not null)"), 1).getField("id").alias("doi"),
                     F.element_at(F.expr(merge_key_id_filter("pmid")), 1).getField("id").alias("pmid"),
-                    F.element_at(F.expr(merge_key_id_filter("arxiv")), 1).getField("id").alias("arxiv"),
+                    # oxjob #1940: a record whose own DOI is arXiv's DOI for a paper is that arXiv paper
+                    F.coalesce(
+                        F.element_at(F.expr(merge_key_id_filter("arxiv")), 1).getField("id"),
+                        F.expr(arxiv_key_from_own_doi(
+                            "element_at(filter(ids, x -> x.namespace = 'doi' and x.id is not null), 1).id")),
+                    ).alias("arxiv"),
                     F.when(F.coalesce(F.col("normalized_title"), F.lit("")) == "", F.lit(None).cast("string"))
                      .otherwise(F.col("_title_key"))
                      .alias("title_author")

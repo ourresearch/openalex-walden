@@ -114,3 +114,39 @@ def test_arxiv_id_the_record_declares_a_version_of_still_counts():
     assert "exists(ids, y -> y.namespace = 'doi'" in arxiv
     assert "concat('10.48550/arxiv.', lower(regexp_replace(x.id, '(?i)^arxiv:|v[0-9]+$', '')))" in arxiv
     assert "10.48550" not in merge_key_id_filter("pmid")
+
+
+"""Tests for the arXiv key taken from arXiv's own DOI (oxjob #1940)."""
+
+import re
+
+from openalex.dlt.normalize import ARXIV_DOI_PATTERN, arxiv_key_from_own_doi
+
+
+def _key(doi):
+    # the SQL's own logic, in Python: lower + trim, full-pattern match, `arXiv:` + group 1
+    d = doi.strip().lower()
+    m = re.match(ARXIV_DOI_PATTERN, d)
+    return f"arXiv:{m.group(1)}" if m else None
+
+
+def test_arxiv_doi_gives_the_oai_records_key():
+    # arXiv's OAI records carry `arXiv:<id>`, the id lowercase (3,230,513 of 3,230,513 on 30 Oct)
+    assert _key("10.48550/arxiv.2610.13100") == "arXiv:2610.13100"
+    assert _key("10.48550/arXiv.1810.04805") == "arXiv:1810.04805"
+    assert _key(" 10.48550/ARXIV.0704.0001 ") == "arXiv:0704.0001"
+    assert _key("10.48550/arxiv.hep-th/9711200") == "arXiv:hep-th/9711200"
+    assert _key("10.48550/arxiv.math.ag/0309136") == "arXiv:math.ag/0309136"
+
+
+def test_other_dois_give_no_key():
+    for doi in ("10.5281/zenodo.23236157", "10.1023/a:1026654312961", "10.48550/arxiv.", "10.48550/arxiv.2101.00001v2",
+                "10.48550/arxiv.2101.00001/x", "10.48551/arxiv.2101.00001", "x10.48550/arxiv.2101.00001"):
+        assert _key(doi) is None, doi
+
+
+def test_sql_shape():
+    sql = arxiv_key_from_own_doi("d")
+    assert sql == (f"CASE WHEN lower(trim(d)) RLIKE '{ARXIV_DOI_PATTERN}' "
+                   f"THEN concat('arXiv:', regexp_extract(lower(trim(d)), '{ARXIV_DOI_PATTERN}', 1)) END")
+    assert "\\" not in sql and "'" not in ARXIV_DOI_PATTERN
