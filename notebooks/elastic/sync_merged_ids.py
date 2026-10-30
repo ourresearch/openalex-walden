@@ -20,7 +20,8 @@
 # MAGIC   reverted); profkit seat-move runs (`openalex.authors.profkit_seatmv_runs`, not reverted), where
 # MAGIC   a profile whose every moved seat went to one profile counts as merged into it; and the pre-2026
 # MAGIC   snapshot `merged_ids` files (`s3://openalex/legacy-data/merged_ids/authors/`, frozen 2025-10-14)
-# MAGIC   minus the "deleted author" target A5317838346 and the null author A9999999999.
+# MAGIC   minus the "deleted author" target A5317838346 and the null author A9999999999; and renamed (re-minted)
+# MAGIC   profiles whose seats all moved to one new ID (`openalex.authors.author_rename_edges`, #1932).
 # MAGIC - sources: the registry's `openalex_sources.public.source_merge` plus the legacy files.
 # MAGIC - works (2026-10-27, #1037): `openalex.works.merged_work_ids` plus the legacy files minus the "Deleted Work"
 # MAGIC   placeholder W4285719527. Map table `openalex.works.merged_work_ids_map` (the ledger owns the plain name).
@@ -150,6 +151,33 @@ if ENTITY == "authors":
 
 # COMMAND ----------
 
+# MAGIC %md #### Authors: renamed (re-minted) profiles, copied from their finders' scratch tables
+# MAGIC #1932 (2026-10-30): a profile whose every seat moved to one new ID is the same profile under another ID,
+# MAGIC so it resolves like a merge. Scratch tables in openalex.transient get purged, so rows are kept here.
+
+# COMMAND ----------
+
+RENAMES = "openalex.authors.author_rename_edges"
+RENAME_SOURCES = ["openalex.transient.oxjob1932_dead_author_ids"]  # dead_id, current_id, night, seats, dead_seats
+
+if ENTITY == "authors":
+    spark.sql(f"""
+      CREATE TABLE IF NOT EXISTS {RENAMES} (loser_id BIGINT, winner_id BIGINT, merge_date DATE, source STRING)
+      COMMENT 'Renamed (re-minted) author IDs -> successor; whole moves only. Read by notebooks/elastic/sync_merged_ids (oxjob #1124, #1932)'
+    """)
+    for src in RENAME_SOURCES:
+        if spark.catalog.tableExists(src):
+            spark.sql(f"""
+              MERGE INTO {RENAMES} t
+              USING (SELECT dead_id AS loser_id, current_id AS winner_id, night AS merge_date, '{src}' AS source
+                     FROM {src} WHERE seats = dead_seats) s
+              ON t.loser_id = s.loser_id
+              WHEN NOT MATCHED THEN INSERT *
+            """)
+    print(f"{RENAMES}: {spark.table(RENAMES).count():,} rows")
+
+# COMMAND ----------
+
 # MAGIC %md #### Edges: one per loser, the latest
 
 # COMMAND ----------
@@ -168,6 +196,8 @@ if ENTITY == "authors":
       GROUP BY from_author_id
       -- merged = every moved seat went to one profile (none blanked, none split)
       HAVING COUNT(*) = 1 AND max_by(to_author_id, seats) IS NOT NULL
+      UNION ALL
+      SELECT loser_id, winner_id, merge_date, 'rematch_renames', 2 FROM {RENAMES}
       UNION ALL
       SELECT loser_id, winner_id, merge_date, 'legacy_merged_ids', 1 FROM {CFG['legacy_table']}
     """
