@@ -45,7 +45,7 @@ FROM h
 -- plus `bound` (the work a title_bind seed was bound to, always included).
 --   id: shares a DOI / PMID / URL / repository native id (key on <= 50 works)   top 20 by title Jaccard
 --   ti: identical normalized title                                             top 20 by same author, then year gap
---   ay: same first-author key, year within 2                                   top 5 by title Jaccard (> 0)
+--   ay: same first-author key, year within 2 (key + years on <= 5000 works)    top 5 by title Jaccard (> 0)
 --   mh: any MinHash band (band on <= 5000 works), Jaccard >= 0.4, year gap <= 3 top 5 by title Jaccard
 CREATE OR REPLACE TABLE openalex.works.location_work_match_cands AS
 WITH s AS (SELECT * FROM openalex.works.location_work_match_seed_feat),
@@ -55,7 +55,10 @@ ck AS (SELECT f.id AS cid, t.k FROM F f LATERAL VIEW explode(f.keys) t AS k WHER
 kn AS (SELECT k, count(DISTINCT cid) AS nk FROM ck GROUP BY k),
 c_id AS (SELECT sk.seed_id, ck.cid, 'id' AS ch FROM sk JOIN ck ON ck.k = sk.k JOIN kn ON kn.k = sk.k WHERE kn.nk <= 50),
 c_ti AS (SELECT s.seed_id, f.id AS cid, 'ti' AS ch FROM s JOIN F f ON f.nt = s.nt),
-c_ay AS (SELECT s.seed_id, f.id AS cid, 'ay' AS ch FROM s JOIN F f ON f.akey = s.akey AND abs(f.yr - s.yr) <= 2),
+an AS (SELECT akey, yr, count(*) AS n FROM F WHERE akey IN (SELECT akey FROM s) GROUP BY akey, yr),
+sa AS (SELECT s.seed_id, s.akey, s.yr FROM s JOIN an ON an.akey = s.akey AND abs(an.yr - s.yr) <= 2
+  GROUP BY s.seed_id, s.akey, s.yr HAVING sum(an.n) <= 5000),
+c_ay AS (SELECT sa.seed_id, f.id AS cid, 'ay' AS ch FROM sa JOIN F f ON f.akey = sa.akey AND abs(f.yr - sa.yr) <= 2),
 sb AS (SELECT seed_id, b FROM s LATERAL VIEW explode(bands) t AS b),
 cb AS (SELECT f.id AS cid, t.b FROM F f LATERAL VIEW explode(f.bands) t AS b WHERE t.b IN (SELECT b FROM sb)),
 bn AS (SELECT b, count(*) AS nb FROM cb GROUP BY b),

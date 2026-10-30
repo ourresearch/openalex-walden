@@ -5,8 +5,9 @@
 # MAGIC Shadow mode: runs after the nightly's MapWorkIds and never writes `location_work_ids` or `work_id_map`.
 # MAGIC
 # MAGIC Pins the night from Delta history: NEW = the night's first `location_work_ids` MERGE (MapWorkIds), OLD = the MERGE before
-# MAGIC it, V = the last `openalex_works` version before NEW (the works as the records found them). Exits with `go = false` when the
-# MAGIC night has no MERGE yet or was already decided (unless `force`). Then builds `sql/frame.sql` (the anchors that reached the
+# MAGIC it, V = the last `openalex_works` version before NEW (the works as the records found them). Exits with `go = false` while an
+# MAGIC End 2 End run is in progress (Casey 2026-10-30: the shadow never runs during one; the job tries hourly), when the night
+# MAGIC has no MERGE yet, or when it was already decided (unless `force`). Then builds `sql/frame.sql` (the anchors that reached the
 # MAGIC title tier or minted / parked) and `sql/seeds.sql` on PROD-WH. The work keys, embeddings and candidates are their own tasks,
 # MAGIC so the candidate lookup runs alongside the GPU search.
 
@@ -26,6 +27,7 @@ NIGHT = dbutils.widgets.get("night").strip() or dt.datetime.utcnow().strftime("%
 MODE = dbutils.widgets.get("mode").strip()
 FORCE = dbutils.widgets.get("force").strip().lower() == "true"
 T = "openalex.works.location_work_match_"
+END2END_JOB = 616701029470182
 T0 = time.time()
 
 
@@ -42,8 +44,11 @@ spark.sql(f"""CREATE TABLE IF NOT EXISTS {T}runs (night DATE, mode STRING, statu
 merges = spark.sql("""SELECT version, timestamp FROM (DESCRIBE HISTORY openalex.works.location_work_ids)
   WHERE operation = 'MERGE' ORDER BY version""").collect()
 night_merges = [m for m in merges if m.timestamp.strftime("%Y-%m-%d") == NIGHT]
-go = bool(night_merges)
-if not go:
+end2end = list(lwm.client().jobs.list_runs(job_id=END2END_JOB, active_only=True))
+go = bool(night_merges) and not end2end
+if end2end:
+    log(f"End 2 End run {end2end[0].run_id} is in progress: the shadow waits for it to finish")
+elif not go:
     log(f"no location_work_ids MERGE on {NIGHT} yet: the nightly has not reached MapWorkIds")
 else:
     new = night_merges[0]

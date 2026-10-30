@@ -3,12 +3,13 @@ resources:
     Match_Locations_To_Works_Shadow:
       name: Match Locations To Works (shadow)
       description: |
-        Shadow of the location -> work matching model (oxjob #1668): every morning after the nightly's MapWorkIds, decides for
+        Shadow of the location -> work matching model (oxjob #1668): once a day after the nightly's End 2 End run has finished
+        (tried hourly 06:00-23:00 UTC; prepare exits while End 2 End is in progress, Casey 2026-10-30), decides for
         each record that reached the title tier (title-bound, minted or parked; PID binds never reach it) whether it binds to an
         existing work or mints, and writes the decision next to what the nightly did. Never writes location_work_ids or
         work_id_map. Steps: prepare (pins the night from Delta history: location_work_ids MERGE NEW / OLD, openalex_works V;
-        blocking keys, frame, seeds, SQL-channel candidates, qwen3 seed vectors) -> go_gate (stops when the night has no
-        MapWorkIds MERGE yet or was already decided) -> knn (exact kNN over work_embeddings_qwen3 on GPUs) -> features ->
+        blocking keys, frame, seeds, SQL-channel candidates, qwen3 seed vectors) -> go_gate (stops while End 2 End is running,
+        when the night has no MapWorkIds MERGE yet, or when it was already decided) -> knn (exact kNN over work_embeddings_qwen3 on GPUs) -> features ->
         score_xgb (openalex.works.location_work_matcher@challenger, hard rules first) -> score_qwen (Qwen3.5-9B + ep2_9b on
         Modal, app location-work-matcher) -> write_decisions. The heavy SQL runs on PROD-WH (lwm.py); keys + embed start
         together, candidates run alongside knn; write_decisions records the critical path (task execution times, no cluster
@@ -24,7 +25,7 @@ resources:
       timeout_seconds: 21600
       max_concurrent_runs: 1
       schedule:
-        quartz_cron_expression: 0 0 8 * * ?
+        quartz_cron_expression: 0 0 6-23 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       parameters:

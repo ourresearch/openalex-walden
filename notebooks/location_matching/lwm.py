@@ -23,21 +23,33 @@ def client():
     return _w
 
 
-def run_statement(stmt, warehouse=PROD_WH, max_rows=60):
-    """Run one statement, poll until done, raise on failure; return up to max_rows result rows as dicts."""
+def run_statement(stmt, warehouse=PROD_WH, max_rows=60, max_minutes=30):
+    """Run one statement, poll until done, raise on failure; return up to max_rows result rows as dicts. A statement past
+    max_minutes, or one whose task is cancelled, is cancelled on the warehouse too (a cancelled run left one running 2.5 h
+    on PROD-WH, 2026-10-30)."""
     w, t = client(), time.time()
     r = w.statement_execution.execute_statement(statement=stmt, warehouse_id=warehouse, wait_timeout="0s")
-    while r.status.state in (StatementState.PENDING, StatementState.RUNNING):
-        time.sleep(5)
-        for attempt in range(6):   # the API's read timeout is transient; the statement keeps running server-side
-            try:
-                r = w.statement_execution.get_statement(r.statement_id)
-                break
-            except Exception as e:
-                log(f"poll retry {attempt + 1}: {str(e)[:120]}")
-                time.sleep(30)
-        else:
-            raise RuntimeError(f"gave up polling statement {r.statement_id}")
+    try:
+        while r.status.state in (StatementState.PENDING, StatementState.RUNNING):
+            if time.time() - t > max_minutes * 60:
+                raise TimeoutError(f"statement {r.statement_id} still running after {max_minutes} min")
+            time.sleep(5)
+            for attempt in range(6):   # the API's read timeout is transient; the statement keeps running server-side
+                try:
+                    r = w.statement_execution.get_statement(r.statement_id)
+                    break
+                except Exception as e:
+                    log(f"poll retry {attempt + 1}: {str(e)[:120]}")
+                    time.sleep(30)
+            else:
+                raise RuntimeError(f"gave up polling statement {r.statement_id}")
+    except BaseException:
+        try:
+            w.statement_execution.cancel_execution(r.statement_id)
+            log(f"cancelled statement {r.statement_id}")
+        except Exception as e:
+            log(f"could not cancel statement {r.statement_id}: {str(e)[:120]}")
+        raise
     body = "\n".join(l for l in stmt.splitlines() if not l.lstrip().startswith("--")).lstrip()
     log(f"{r.status.state.value} {time.time() - t:.0f}s  {body[:90]!r}")
     if r.status.state != StatementState.SUCCEEDED:
