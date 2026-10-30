@@ -1,0 +1,30 @@
+name: Check notebook SQL
+
+# oxjob #1932: a Databricks job run blanks `$1`, `$name` and `${name}` in notebook SQL (legacy widget
+# substitution), so a regexp backreference that works when tested becomes '' every night. This fails the
+# commit when notebook SQL holds such a dollar; scripts/check_notebook_sql_dollar.py says how to write it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'notebooks/**'
+      - 'scripts/check_notebook_sql_dollar.py'
+      - '.github/workflows/check-notebook-sql.yml'
+  pull_request:
+    paths:
+      - 'notebooks/**'
+      - 'scripts/check_notebook_sql_dollar.py'
+
+permissions:
+  contents: read
+
+jobs:
+  dollar-signs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Checker self-test
+        run: python3 scripts/check_notebook_sql_dollar.py --self-test
+      - name: No dollar sign a job run would blank
+        run: python3 scripts/check_notebook_sql_dollar.py notebooks
