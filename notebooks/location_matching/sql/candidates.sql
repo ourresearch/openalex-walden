@@ -44,25 +44,32 @@ FROM h
 -- oxjob #1668 candidate works for every seed record: #1577 cands.sql channels against openalex_works v17025 features,
 -- plus `bound` (the work a title_bind seed was bound to, always included).
 --   id: shares a DOI / PMID / URL / repository native id (key on <= 50 works)   top 20 by title Jaccard
---   ti: identical normalized title                                             top 20 by same author, then year gap
+--   ti: identical normalized title (title on <= 5000 works)                    top 20 by same author, then year gap
 --   ay: same first-author key, year within 2 (key + years on <= 5000 works)    top 5 by title Jaccard (> 0)
 --   mh: any MinHash band (band on <= 5000 works), Jaccard >= 0.4, year gap <= 3 top 5 by title Jaccard
+-- Every cap is applied to both sides before the join, so no plan builds the uncapped pairs (10-30: an LHD wave and 3,647 GBIF
+-- 'Occurrence Download' records ran past 30 min when the caps sat after the join).
 CREATE OR REPLACE TABLE openalex.works.location_work_match_cands AS
 WITH s AS (SELECT * FROM openalex.works.location_work_match_seed_feat),
 F AS (SELECT * FROM openalex.works.location_work_match_keys),
 sk AS (SELECT seed_id, k FROM s LATERAL VIEW explode(keys) t AS k),
-ck AS (SELECT f.id AS cid, t.k FROM F f LATERAL VIEW explode(f.keys) t AS k WHERE t.k IN (SELECT k FROM sk)),
-kn AS (SELECT k, count(DISTINCT cid) AS nk FROM ck GROUP BY k),
-c_id AS (SELECT sk.seed_id, ck.cid, 'id' AS ch FROM sk JOIN ck ON ck.k = sk.k JOIN kn ON kn.k = sk.k WHERE kn.nk <= 50),
-c_ti AS (SELECT s.seed_id, f.id AS cid, 'ti' AS ch FROM s JOIN F f ON f.nt = s.nt),
+fk AS (SELECT f.id AS cid, t.k FROM F f LATERAL VIEW explode(f.keys) t AS k WHERE t.k IN (SELECT k FROM sk)),
+kn AS (SELECT k FROM fk GROUP BY k HAVING count(DISTINCT cid) <= 50),
+c_id AS (SELECT a.seed_id, b.cid, 'id' AS ch FROM (SELECT * FROM sk WHERE k IN (SELECT k FROM kn)) a
+  JOIN (SELECT * FROM fk WHERE k IN (SELECT k FROM kn)) b ON b.k = a.k),
+tn AS (SELECT nt FROM F WHERE nt IN (SELECT nt FROM s) GROUP BY nt HAVING count(*) <= 5000),
+c_ti AS (SELECT a.seed_id, b.id AS cid, 'ti' AS ch FROM (SELECT seed_id, nt FROM s WHERE nt IN (SELECT nt FROM tn)) a
+  JOIN (SELECT id, nt FROM F WHERE nt IN (SELECT nt FROM tn)) b ON b.nt = a.nt),
 an AS (SELECT akey, yr, count(*) AS n FROM F WHERE akey IN (SELECT akey FROM s) GROUP BY akey, yr),
 sa AS (SELECT s.seed_id, s.akey, s.yr FROM s JOIN an ON an.akey = s.akey AND abs(an.yr - s.yr) <= 2
   GROUP BY s.seed_id, s.akey, s.yr HAVING sum(an.n) <= 5000),
-c_ay AS (SELECT sa.seed_id, f.id AS cid, 'ay' AS ch FROM sa JOIN F f ON f.akey = sa.akey AND abs(f.yr - sa.yr) <= 2),
+sy AS (SELECT seed_id, akey, yr + d AS yr FROM sa LATERAL VIEW explode(sequence(-2, 2)) t AS d),
+c_ay AS (SELECT sy.seed_id, f.id AS cid, 'ay' AS ch FROM sy JOIN F f ON f.akey = sy.akey AND f.yr = sy.yr),
 sb AS (SELECT seed_id, b FROM s LATERAL VIEW explode(bands) t AS b),
-cb AS (SELECT f.id AS cid, t.b FROM F f LATERAL VIEW explode(f.bands) t AS b WHERE t.b IN (SELECT b FROM sb)),
-bn AS (SELECT b, count(*) AS nb FROM cb GROUP BY b),
-c_mh AS (SELECT sb.seed_id, cb.cid, 'mh' AS ch FROM sb JOIN cb ON cb.b = sb.b JOIN bn ON bn.b = sb.b WHERE bn.nb <= 5000),
+fb AS (SELECT f.id AS cid, t.b FROM F f LATERAL VIEW explode(f.bands) t AS b WHERE t.b IN (SELECT b FROM sb)),
+bn AS (SELECT b FROM fb GROUP BY b HAVING count(*) <= 5000),
+c_mh AS (SELECT a.seed_id, b.cid, 'mh' AS ch FROM (SELECT * FROM sb WHERE b IN (SELECT b FROM bn)) a
+  JOIN (SELECT * FROM fb WHERE b IN (SELECT b FROM bn)) b ON b.b = a.b),
 c_bd AS (SELECT seed_id, work_id AS cid, 'bound' AS ch FROM openalex.works.location_work_match_seeds WHERE decision = 'title_bind'),
 u AS (SELECT * FROM c_id UNION SELECT * FROM c_ti UNION SELECT * FROM c_ay UNION SELECT * FROM c_mh UNION SELECT * FROM c_bd),
 x AS (
