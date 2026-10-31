@@ -66,7 +66,18 @@ resources:
       #   - photon ON crashed repo_enriched's Pandas-UDF stage ("Python worker exited
       #     unexpectedly") -- its off-heap reservation squeezes the Python sandbox.
       #     Keep photon OFF whenever the UDF stages run.
-      serverless: true
+      # oxjob #1642 (31 Oct 2026, 01:40 CT) TEMPORARY: classic photon-off profile for night 2026-10-31.
+      # repo_enriched_hal_tei died 5x with UDF_PYSPARK_ERROR.OOM on serverless, at Arrow batch 125 and at 25: HAL
+      # TEI's 30 Oct harvest packs 187 hyperauthorship rows over 60 KB into 63K (the night before: 3), which the
+      # serverless Python sandbox can't hold and classic r5d.8xlarge photon-off can (#911 note above). Same code and
+      # output; compute only. Revert this commit (serverless) in daytime once a durable fix for those rows is chosen.
+      serverless: false
+      photon: false
+      clusters:
+        - label: default
+          node_type_id: r5d.8xlarge
+          driver_node_type_id: r5d.8xlarge
+          num_workers: 8
       continuous: false
       development: false
       edition: ADVANCED
@@ -87,7 +98,7 @@ resources:
         # (hal_tei_parsed v9, 63K rows) held 1,406 records over 30 KB of metadata and 187 over 60 KB (the night
         # before: 123 and 3), so 125-row batches of hyperauthorship-sized rows overflowed the sandbox. The UDFs are
         # row-wise: batch size changes chunking only, never output. Raise again only with the classic profile above.
-        spark.sql.execution.arrow.maxRecordsPerBatch: "25"
+        spark.sql.execution.arrow.maxRecordsPerBatch: "125"  # 25 did not help on serverless (31 Oct); 125 on classic
       tags:
         environment: prod
         workflow: repo
