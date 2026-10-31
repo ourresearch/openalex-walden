@@ -7,8 +7,8 @@ resources:
         reviewed article's abstract (its landing page or PDF carries the article's text):
         openalex.abstracts.peer_review_borrowed_abstracts (CreateSuperLocations NULLs those rows) and
         openalex.abstracts.peer_review_borrowed_backfill (copied into abstracts_backfill_not_abstract,
-        reason peer_review_borrowed, which CreateWorksBase anti-joins). Same rule as the 29-30 Oct build;
-        only adds, never updates or deletes. Stops before writing above 20,000 new rows (a normal week is
+        reason peer_review_borrowed, which CreateWorksBase anti-joins). Same rules as the 29-31 Oct builds
+        (word for word, and near copies: label peer-review-nearcopy-v1:<rule>); only adds, never updates or deletes. Stops before writing above 20,000 new rows (a normal week is
         ~1K). Dry run: job parameter dry_run=true. Revert one run: the notebook's first cell.
       email_notifications:
         on_failure:
@@ -30,6 +30,7 @@ resources:
             source: GIT
             base_parameters:
               dry_run: "false"
+              max_new_rows: "20000"
           timeout_seconds: 5400
       environments:
         - environment_key: Default
@@ -42,4 +43,6 @@ resources:
       parameters:
         - name: dry_run
           default: "false"
+        - name: max_new_rows
+          default: "20000"
       performance_target: STANDARD
