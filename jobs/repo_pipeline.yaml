@@ -82,7 +82,12 @@ resources:
         # on classic r5d.8xlarge photon-off. 125 quarters the per-batch spike; raise to
         # 2000 with the classic full-refresh profile above (proven 08-26/08-28).
         # oxjob #945: raised to "2000" for the 09-01 classic-profile refresh, reverted here.
-        spark.sql.execution.arrow.maxRecordsPerBatch: "125"
+        # oxjob #1642 (31 Oct 2026, 01:25 CT): 125 -> 25. repo_enriched_hal_tei died 4x in the nightly with
+        # UDF_PYSPARK_ERROR.OOM (serverless Python sandbox) in this same Pandas-UDF stage: HAL TEI's 30 Oct harvest
+        # (hal_tei_parsed v9, 63K rows) held 1,406 records over 30 KB of metadata and 187 over 60 KB (the night
+        # before: 123 and 3), so 125-row batches of hyperauthorship-sized rows overflowed the sandbox. The UDFs are
+        # row-wise: batch size changes chunking only, never output. Raise again only with the classic profile above.
+        spark.sql.execution.arrow.maxRecordsPerBatch: "25"
       tags:
         environment: prod
         workflow: repo
