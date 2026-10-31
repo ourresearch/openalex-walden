@@ -106,6 +106,7 @@ include:
   - jobs/clean_abstracts_backfill.yaml
   - jobs/flag_backfill_not_abstracts.yaml
   - jobs/flag_location_not_abstracts.yaml
+  - jobs/refresh_peer_review_borrowed_abstracts.yaml
   - jobs/seed_work_id_map_digit_aliases.yaml
   - jobs/repoint_work_ids.yaml
   - jobs/seed_work_id_map_doi_rows.yaml

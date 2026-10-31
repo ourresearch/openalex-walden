@@ -1,0 +1,45 @@
+resources:
+  jobs:
+    Refresh_Peer_Review_Borrowed_Abstracts:
+      name: Refresh Peer Review Borrowed Abstracts
+      description: |
+        oxjob #1790: weekly, adds new rows to the two lists that stop a Crossref peer review showing the
+        reviewed article's abstract (its landing page or PDF carries the article's text):
+        openalex.abstracts.peer_review_borrowed_abstracts (CreateSuperLocations NULLs those rows) and
+        openalex.abstracts.peer_review_borrowed_backfill (copied into abstracts_backfill_not_abstract,
+        reason peer_review_borrowed, which CreateWorksBase anti-joins). Same rule as the 29-30 Oct build;
+        only adds, never updates or deletes. Stops before writing above 20,000 new rows (a normal week is
+        ~1K). Dry run: job parameter dry_run=true. Revert one run: the notebook's first cell.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        # Sunday 18:00 UTC: after the nightly End 2 End publishes (~15:30 UTC), before the next one (05:00 UTC).
+        quartz_cron_expression: 0 0 18 ? * SUN
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      tasks:
+        - task_key: refresh
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/maintenance/RefreshPeerReviewBorrowedAbstracts
+            source: GIT
+            base_parameters:
+              dry_run: "false"
+          timeout_seconds: 5400
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      parameters:
+        - name: dry_run
+          default: "false"
+      performance_target: STANDARD
