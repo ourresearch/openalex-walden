@@ -72,6 +72,17 @@ resources:
             notebook_path: notebooks/authors/DeleteEmptiedAuthors
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        # oxjob #1949: send this build to Elasticsearch right away. Sync Authors used to run on its own 05:00 CT cron,
+        # before this 12:00 UTC build, so the list API and /works author filters ran ~22 h behind single GETs and the
+        # snapshot. ALL_DONE: it also runs when Delete_Emptied_Authors' guard trips, so a held delete never stalls the
+        # list API (the delete pass drains every unsent ledger row; the update pass looks back 2 days). Desk's
+        # Sentry bridge still reports the upstream failure (SUCCESS_WITH_FAILURES counts as a failure).
+        - task_key: Sync_Authors_to_Elasticsearch
+          depends_on:
+            - task_key: Delete_Emptied_Authors
+          run_if: ALL_DONE
+          run_job_task:
+            job_id: ${resources.jobs.Sync_Authors_to_Elasticsearch.id}
       environments:
         - environment_key: Default
           spec:

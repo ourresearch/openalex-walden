@@ -5,10 +5,13 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
+      # oxjob #1949: runs as the last task of the Authors job (jobs/authors.yaml), right after each build. The 05:00 CT
+      # cron ran before that 12:00 UTC build, so every build reached the list API ~22 h late. Paused, not removed:
+      # revert = UNPAUSED here and drop the Authors task.
       schedule:
         quartz_cron_expression: 35 0 5 * * ?
         timezone_id: America/Chicago
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       tasks:
         - task_key: sync_authors
           job_cluster_key: sync_authors_cluster
