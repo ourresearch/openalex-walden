@@ -465,7 +465,10 @@ resources:
         # watermark-driven (elastic_sync_state, keyed locations-v3).
         # Serialized after the works sync on the shared cluster.
         - task_key: Sync_Locations_to_Elasticsearch
-          timeout_seconds: 5400
+          # oxjob #1642 (31 Oct 2026): 90 min timed out on night 2026-10-31 (43,980,449 re-stamped works on ONE daytime
+          # writer: the works sync ran 07:31-10:36 CT, so this one ran 10:36-12:07 in US daytime). 30 Oct: 50 min for
+          # 31.6M. Scale with the night: 4 h covers a 60M night on one writer; the stall alarm is the shepherd's watch.py.
+          timeout_seconds: 14400
           depends_on:
             - task_key: Sync_to_Elasticsearch
           notebook_task:
