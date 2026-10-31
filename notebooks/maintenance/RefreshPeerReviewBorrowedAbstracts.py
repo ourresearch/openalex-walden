@@ -230,6 +230,75 @@ if not DRY_RUN and new_nc:
 
 # COMMAND ----------
 
+# MAGIC %md ## 1c. Siblings: another copy of a listed text on the same review
+# MAGIC
+# MAGIC A row of the same DOI whose normalized text, or its first / last 150 normalized chars, equals a listed row's is
+# MAGIC the same borrowed text (e.g. the paper's PDF next to its abstract page on a Copernicus comment DOI). Rule
+# MAGIC `sibling`; `SCRATCH_LK` (the listed rows' keys per DOI) also feeds the backfill check in 2b.
+
+# COMMAND ----------
+
+SCRATCH_LK = "openalex.transient.oxjob1790_pr_listed_keys_weekly"
+SCRATCH_SIB = "openalex.transient.oxjob1790_pr_sibling_weekly"
+
+spark.sql(rf"""
+CREATE OR REPLACE TABLE {SCRATCH_LK} AS
+WITH listed AS (
+  SELECT provenance, native_id, abstract_hash, text_len FROM {BORROWED}
+  UNION SELECT provenance, native_id, abstract_hash, text_len FROM {SCRATCH_NC}
+  UNION SELECT provenance, native_id, abstract_hash, text_len FROM borrowed_new),
+t AS (
+  SELECT get(filter(lp.ids, x -> x.namespace = 'doi').id, 0) AS doi, {NORM.format('lp.abstract')} AS nt
+  FROM openalex.works.locations_parsed lp
+  JOIN listed l ON l.provenance = lp.provenance AND l.native_id = lp.native_id
+    AND l.abstract_hash = xxhash64(lp.abstract) AND l.text_len = length(lp.abstract)
+  WHERE lp.provenance IN ('landing_page', 'pdf') AND lp.abstract IS NOT NULL)
+SELECT DISTINCT doi, k FROM (
+  SELECT doi, explode(array(xxhash64(nt),
+                            CASE WHEN length(nt) >= 150 THEN xxhash64(substring(nt, 1, 150)) END,
+                            CASE WHEN length(nt) >= 150 THEN xxhash64(substring(nt, -150, 150)) END)) AS k
+  FROM t WHERE length(nt) >= 40)
+WHERE k IS NOT NULL
+""")
+
+spark.sql(rf"""
+CREATE OR REPLACE TABLE {SCRATCH_SIB} AS
+WITH r AS (
+  SELECT lp.provenance, lp.native_id, get(filter(lp.ids, x -> x.namespace = 'doi').id, 0) AS doi,
+         xxhash64(lp.abstract) AS abstract_hash, length(lp.abstract) AS text_len, {NORM.format('lp.abstract')} AS nt
+  FROM openalex.works.locations_parsed lp
+  WHERE lp.provenance IN ('landing_page', 'pdf') AND lp.abstract IS NOT NULL AND trim(lp.abstract) <> ''
+    AND get(filter(lp.ids, x -> x.namespace = 'doi').id, 0) IN (SELECT DISTINCT doi FROM {SCRATCH_LK})
+    AND regexp_extract(get(filter(lp.ids, x -> x.namespace = 'doi').id, 0), '^(10\\.[0-9]+)/', 1) NOT IN {OWN_TEXT_PREFIXES}),
+h AS (
+  SELECT r.*, xxhash64(nt) AS h_full,
+         CASE WHEN length(nt) >= 150 THEN xxhash64(substring(nt, 1, 150)) END AS h_first,
+         CASE WHEN length(nt) >= 150 THEN xxhash64(substring(nt, -150, 150)) END AS h_last
+  FROM r
+  LEFT ANTI JOIN {BORROWED} b ON b.provenance = r.provenance AND b.native_id = r.native_id AND b.abstract_hash = r.abstract_hash AND b.text_len = r.text_len
+  LEFT ANTI JOIN {SCRATCH_NC} c ON c.provenance = r.provenance AND c.native_id = r.native_id AND c.abstract_hash = r.abstract_hash AND c.text_len = r.text_len
+  LEFT ANTI JOIN borrowed_new n ON n.provenance = r.provenance AND n.native_id = r.native_id AND n.abstract_hash = r.abstract_hash AND n.text_len = r.text_len
+  WHERE length(r.nt) >= 40)
+SELECT h.provenance, h.native_id, min(h.doi) AS doi, h.abstract_hash, h.text_len, 'sibling' AS rule
+FROM h JOIN {SCRATCH_LK} lk ON lk.doi = h.doi AND lk.k IN (h.h_full, h.h_first, h.h_last)
+GROUP BY h.provenance, h.native_id, h.abstract_hash, h.text_len
+""")
+new_sib = spark.table(SCRATCH_SIB).count()
+print(f"{BORROWED}: {new_sib:,} new sibling rows")
+assert new_sib <= MAX_NEW_ROWS, f"{new_sib:,} new sibling rows > {MAX_NEW_ROWS:,}: read a sample before raising the cap"
+
+if not DRY_RUN and new_sib:
+    write(f"""
+    INSERT INTO {BORROWED} (provenance, native_id, doi, abstract_hash, text_len, matched_work_id, matched_doi, n_matched, label_version, created_at)
+    SELECT n.provenance, n.native_id, n.doi, n.abstract_hash, n.text_len, NULL, NULL, NULL,
+           concat('{NEARCOPY_LABEL}:', n.rule), timestamp'{RUN_TS}'
+    FROM {SCRATCH_SIB} n
+    LEFT ANTI JOIN {BORROWED} b
+      ON b.provenance = n.provenance AND b.native_id = n.native_id AND b.abstract_hash = n.abstract_hash AND b.text_len = n.text_len
+    """)
+
+# COMMAND ----------
+
 # MAGIC %md ## 2. Legacy backfill half (same rule as #1790 work/pr_borrowed_backfill_build.sql)
 
 # COMMAND ----------
@@ -292,13 +361,21 @@ bf AS (
   FROM rw JOIN openalex.abstracts.abstracts_backfill bf ON bf.work_id = rw.work_id
   LEFT JOIN openalex.abstracts.abstracts_backfill_repair r ON r.work_id = rw.work_id),
 b2 AS (
-  SELECT *, CASE WHEN length(nt) >= 150 THEN xxhash64(substring(nt, 1, 150)) END AS h_first,
+  SELECT *, xxhash64(nt) AS h_full,
+            CASE WHEN length(nt) >= 150 THEN xxhash64(substring(nt, 1, 150)) END AS h_first,
             CASE WHEN length(nt) >= 150 THEN xxhash64(substring(nt, -150, 150)) END AS h_last
-  FROM (SELECT *, {NORM.format('abstract')} AS nt FROM bf WHERE abstract IS NOT NULL AND trim(abstract) <> ''))
-SELECT b2.work_id, b2.doi, length(b2.abstract) AS text_len, {nearcopy_rule('b2.abstract', 'b2.prefix')} AS rule
+  FROM (SELECT *, {NORM.format('abstract')} AS nt FROM bf WHERE abstract IS NOT NULL AND trim(abstract) <> '')),
+-- 1c's sibling test: the backfill text is another copy of a listed page/PDF text of the same review.
+sib AS (
+  SELECT DISTINCT b2.work_id FROM b2 JOIN {SCRATCH_LK} lk ON lk.doi = b2.doi AND lk.k IN (b2.h_full, b2.h_first, b2.h_last)
+  WHERE length(b2.nt) >= 40)
+SELECT b2.work_id, b2.doi, length(b2.abstract) AS text_len,
+  CASE WHEN b2.prefix IN {OWN_TEXT_PREFIXES} THEN NULL
+       ELSE coalesce({nearcopy_rule('b2.abstract', 'b2.prefix')}, CASE WHEN sib.work_id IS NOT NULL THEN 'sibling' END) END AS rule
 FROM b2
 LEFT JOIN (SELECT h FROM {SCRATCH_ENDS} WHERE side = 'first') f ON f.h = b2.h_first
 LEFT JOIN (SELECT h FROM {SCRATCH_ENDS} WHERE side = 'last') l ON l.h = b2.h_last
+LEFT JOIN sib ON sib.work_id = b2.work_id
 """)
 spark.sql(f"DELETE FROM {SCRATCH_NCB} WHERE rule IS NULL")
 new_ncb = spark.table(SCRATCH_NCB).count()
@@ -335,4 +412,4 @@ summary = spark.sql(f"""
          (SELECT count(*) FROM {NOT_ABSTRACT} WHERE reason = 'peer_review_borrowed' AND built_at = timestamp'{RUN_TS}') AS not_abstract_added
 """).first().asDict()
 print(summary)
-dbutils.notebook.exit(str({"run_ts": str(RUN_TS), "dry_run": DRY_RUN, "new_rows": new_rows, "new_backfill": new_backfill, "new_nearcopy": new_nc, "new_nearcopy_backfill": new_ncb, **summary}))
+dbutils.notebook.exit(str({"run_ts": str(RUN_TS), "dry_run": DRY_RUN, "new_rows": new_rows, "new_backfill": new_backfill, "new_nearcopy": new_nc, "new_sibling": new_sib, "new_nearcopy_backfill": new_ncb, **summary}))
