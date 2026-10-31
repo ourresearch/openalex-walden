@@ -43,7 +43,9 @@ SELECT CASE WHEN nihp_map = 'openalex.awards.award_relink_map' AND NOT (hour(cur
 --  1. NOT_BEFORE (production only): on or after 2026-10-19 01:00 UTC (Sun 18:00 PDT).
 --  2. The NIH yearly fold is complete and correctly bound: each of nih-all-00/01/02 is in the production manifest with exactly the reviewed
 --     fold-list count (npy1007r_all_newest_manifest v0, as literals), and every listed loser resolves, in last night's election, either to
---     itself as GONE (at most 39: losers already GONE before the fold) or to its declared target (or that target's own ACTIVE terminal);
+--     itself as GONE (at most 59: losers already GONE before the fold) or to its declared target (or that target's own ACTIVE terminal);
+--     59 = the listed losers the 10-08..10-16 Nightly runs made GONE by source loss (39 by 10-13, +15 on 10-15, +5 on 10-16), all
+--     before nih-all-01/02 were loaded (27/29 Oct); the fold held exactly those 59 pairs, and none has gone GONE since (oxjob #1875).
 --     none is still its own record, missing, or resolving elsewhere; NULL/unknown states fail. Before that, a project's newest-year record
 --     can still become a loser and links the fold itself creates would be duplicated (dev 10-16, batch 00 only: 6,603 of 16,625 rows
 --     elected a nih-all-01/02 loser, 8,529 duplicated a fold move).
@@ -60,8 +62,8 @@ SET VAR nihp_ready = (
       THEN 'NOT_BEFORE: production runs start on or after 2026-10-19 01:00 UTC'
     WHEN coalesce(f.b00, 0) <> 631298 OR coalesce(f.b01, 0) <> 625949 OR coalesce(f.b02, 0) <> 628072
       THEN 'FOLD_INCOMPLETE: manifest rows nih-all-00/01/02 = ' || coalesce(f.b00, 0) || '/' || coalesce(f.b01, 0) || '/' || coalesce(f.b02, 0) || ', expected 631298/625949/628072'
-    WHEN coalesce(f.not_valid, 1) <> 0 OR coalesce(f.rows, 0) <> coalesce(f.losers, -1) OR coalesce(f.gone, 999) > 39
-      THEN 'FOLD_NOT_BOUND: invalid ' || coalesce(f.not_valid, -1) || ', resolver rows ' || coalesce(f.rows, -1) || ' for ' || coalesce(f.losers, -1) || ' losers, GONE ' || coalesce(f.gone, -1) || ' (<= 39)'
+    WHEN coalesce(f.not_valid, 1) <> 0 OR coalesce(f.rows, 0) <> coalesce(f.losers, -1) OR coalesce(f.gone, 999) > 59
+      THEN 'FOLD_NOT_BOUND: invalid ' || coalesce(f.not_valid, -1) || ', resolver rows ' || coalesce(f.rows, -1) || ' for ' || coalesce(f.losers, -1) || ' losers, GONE ' || coalesce(f.gone, -1) || ' (<= 59)'
     WHEN coalesce(c.n_ok, 0) = 0
       THEN 'ITEM7_CLASS_NOT_DECLARED: no active insert-only nih_pubmed_nightly row with max_works_per_night >= max_rows in pfold_relink_standing_classes'
     WHEN NOT coalesce(ab.ok, false)
