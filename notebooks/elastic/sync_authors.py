@@ -15,6 +15,38 @@ log = logging.getLogger(__name__)
 
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
+# COMMAND ----------
+
+# oxjob #1642 (1 Nov 2026): don't write authors while the End 2 End's works sync is writing. Since #1949 this job runs
+# right after each 12:00 UTC Authors build, so on a night that runs late it lands on Sync_to_Elasticsearch: on 1 Nov at
+# 06:31 CT (26-node base) the two together made the API log ~340 main-ES ConnectionTimeouts in one minute. Wait (up to
+# 3 h) while that task runs. Any error in this check proceeds, so the wait can never stop the sync.
+import time
+from databricks.sdk import WorkspaceClient
+
+E2E_JOB_ID, E2E_TASK, WAIT_MAX_S = 616701029470182, "Sync_to_Elasticsearch", 3 * 3600
+
+
+def works_sync_running():
+    w = WorkspaceClient()
+    for r in w.jobs.list_runs(job_id=E2E_JOB_ID, active_only=True):
+        run = w.jobs.get_run(r.run_id)
+        if any(t.task_key == E2E_TASK and t.state and str(t.state.life_cycle_state).endswith("RUNNING") for t in run.tasks or []):
+            return True
+    return False
+
+
+t0 = time.time()
+try:
+    while works_sync_running() and time.time() - t0 < WAIT_MAX_S:
+        print(f"End 2 End {E2E_TASK} is running: waiting ({(time.time() - t0) / 60:.0f} min so far)", flush=True)
+        time.sleep(120)
+except Exception as e:
+    print(f"works-sync wait skipped: {e}")
+print(f"works-sync wait: {(time.time() - t0) / 60:.0f} min")
+
+# COMMAND ----------
+
 # index_name is a widget so a rebuild can load a fresh index beside the live one (oxjob #1531: authors-v20; #1617: authors-v21); the job yaml passes it.
 dbutils.widgets.text("index_name", "authors-v21")
 CONFIG = {
