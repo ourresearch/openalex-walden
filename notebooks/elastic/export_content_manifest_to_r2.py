@@ -10,6 +10,10 @@
 # MAGIC **Source**: `openalex.works.locations_mapped`
 # MAGIC **Target**: `s3://openalex-pdfs/_manifest/content_index/` (R2 via S3 API)
 # MAGIC
+# MAGIC **Preview** (oxjob #1951, one week from 2026-11-02): `_manifest/content_index_preview/` holds the next layout,
+# MAGIC one row per work location that has a file (work ids repeat), the same six columns plus `version` and
+# MAGIC `is_primary` (rule in `utils/content_files.py`). On the switch date `content_index/` takes this layout.
+# MAGIC
 # MAGIC Output is a directory of Parquet files, queryable as one dataset:
 # MAGIC ```python
 # MAGIC import duckdb
@@ -27,6 +31,7 @@
 
 import boto3
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
@@ -35,6 +40,7 @@ CF_ACCOUNT_ID = "a452eddbbe06eb7d02f4879cee70d29c"
 R2_ENDPOINT = f"https://{CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
 R2_BUCKET = "openalex-pdfs"
 R2_PREFIX = "_manifest/content_index"
+R2_PREVIEW_PREFIX = "_manifest/content_index_preview"
 
 R2_ACCESS_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-access-key-id")
 R2_SECRET_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-secret-access-key")
@@ -85,6 +91,32 @@ df = spark.sql("""
 
 # COMMAND ----------
 
+REPO_ROOT = os.path.abspath(os.path.join(os.getcwd(), "..", ".."))
+if not os.path.exists(os.path.join(REPO_ROOT, "utils", "content_files.py")):
+    for cand in ("/Workspace/Repos", "/Workspace/Shared"):
+        for dirpath, dirnames, filenames in os.walk(cand):
+            if "content_files.py" in filenames and dirpath.endswith("utils"):
+                REPO_ROOT = os.path.dirname(dirpath)
+                break
+sys.path.insert(0, REPO_ROOT)
+from utils.content_files import content_files_sql  # noqa: E402
+
+# New columns go last so readers of the six current columns keep working.
+preview_df = spark.sql(f"""
+    SELECT
+      CONCAT('W', work_id) AS openalex_id,
+      pdf_uuid,
+      grobid_xml_id,
+      native_id,
+      native_id_namespace,
+      updated_date,
+      version,
+      is_primary
+    FROM ({content_files_sql()})
+""")
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Write Parquet Files and Upload to R2
 
@@ -93,66 +125,55 @@ df = spark.sql("""
 # Write ~10 Parquet files (~200MB each). Default partitioning produces 2800+
 # files which is slow to write and upload. coalesce(1) is too slow (single
 # partition shuffle). repartition(10) is the sweet spot.
-dbfs_path = "/tmp/content_manifest"
-dbutils.fs.rm(dbfs_path, recurse=True)
+# Then replace the files under the R2 prefix. s3.upload_file() does multipart
+# internally; the per-file work is bandwidth-bound, so 10 concurrent files
+# saturate R2 ingest without contention.
+def export_manifest(manifest_df, r2_prefix):
+    dbfs_path = f"/tmp/{r2_prefix.split('/')[-1]}"
+    dbutils.fs.rm(dbfs_path, recurse=True)
+    manifest_df.repartition(10).write.parquet(f"dbfs:{dbfs_path}")
 
-df.repartition(10).write.parquet(f"dbfs:{dbfs_path}")
+    parquet_files = [f for f in dbutils.fs.ls(dbfs_path) if f.path.endswith(".parquet")]
+    total_size_mb = sum(f.size for f in parquet_files) / (1024 * 1024)
+    print(f"Wrote {len(parquet_files)} Parquet files, {total_size_mb:.1f} MB total")
 
-parquet_files = [f for f in dbutils.fs.ls(dbfs_path) if f.path.endswith(".parquet")]
-total_size_mb = sum(f.size for f in parquet_files) / (1024 * 1024)
-print(f"Wrote {len(parquet_files)} Parquet files, {total_size_mb:.1f} MB total")
-
-# COMMAND ----------
-
-# Delete old manifest files from R2
-print(f"Clearing old manifest at r2://{R2_BUCKET}/{R2_PREFIX}/ ...")
-paginator = s3.get_paginator("list_objects_v2")
-old_keys = []
-for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=f"{R2_PREFIX}/"):
-    for obj in page.get("Contents", []):
-        old_keys.append(obj["Key"])
-
-if old_keys:
+    print(f"Clearing old manifest at r2://{R2_BUCKET}/{r2_prefix}/ ...")
+    paginator = s3.get_paginator("list_objects_v2")
+    old_keys = []
+    for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=f"{r2_prefix}/"):
+        for obj in page.get("Contents", []):
+            old_keys.append(obj["Key"])
     # Delete in batches of 1000 (S3 API limit)
     for i in range(0, len(old_keys), 1000):
-        batch = old_keys[i:i+1000]
         s3.delete_objects(
             Bucket=R2_BUCKET,
-            Delete={"Objects": [{"Key": k} for k in batch]}
+            Delete={"Objects": [{"Key": k} for k in old_keys[i:i+1000]]}
         )
     print(f"Deleted {len(old_keys)} old files")
-else:
-    print("No old files to delete")
+
+    def _upload_file(f):
+        filename = f.path.split("/")[-1]
+        local_path = f.path.replace("dbfs:", "/dbfs")
+        s3.upload_file(local_path, R2_BUCKET, f"{r2_prefix}/{filename}")
+        return filename
+
+    print(f"Uploading {len(parquet_files)} files to r2://{R2_BUCKET}/{r2_prefix}/ ...")
+    done = 0
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for fut in as_completed([ex.submit(_upload_file, f) for f in parquet_files]):
+            fut.result()  # propagate any exception
+            done += 1
+            if done % 5 == 0 or done == len(parquet_files):
+                print(f"  Uploaded {done}/{len(parquet_files)}")
+
+    dbutils.fs.rm(dbfs_path, recurse=True)
+    print(f"\nDone. {len(parquet_files)} files ({total_size_mb:.1f} MB) → r2://{R2_BUCKET}/{r2_prefix}/")
+
 
 # COMMAND ----------
 
-# Upload new Parquet files to R2 in parallel.
-# s3.upload_file() does multipart internally; the per-file work is bandwidth-
-# bound, so 10 concurrent files saturate R2 ingest without contention.
-print(f"Uploading {len(parquet_files)} files to r2://{R2_BUCKET}/{R2_PREFIX}/ ...")
-
-
-def _upload_file(f):
-    filename = f.path.split("/")[-1]
-    local_path = f.path.replace("dbfs:", "/dbfs")
-    r2_key = f"{R2_PREFIX}/{filename}"
-    s3.upload_file(local_path, R2_BUCKET, r2_key)
-    return filename
-
-
-done = 0
-with ThreadPoolExecutor(max_workers=10) as ex:
-    for fut in as_completed([ex.submit(_upload_file, f) for f in parquet_files]):
-        fut.result()  # propagate any exception
-        done += 1
-        if done % 5 == 0 or done == len(parquet_files):
-            print(f"  Uploaded {done}/{len(parquet_files)}")
-
-print("Upload complete")
+export_manifest(df, R2_PREFIX)
 
 # COMMAND ----------
 
-# Clean up temp files
-dbutils.fs.rm(dbfs_path, recurse=True)
-
-print(f"\nDone. {len(parquet_files)} files ({total_size_mb:.1f} MB) → r2://{R2_BUCKET}/{R2_PREFIX}/")
+export_manifest(preview_df, R2_PREVIEW_PREFIX)
