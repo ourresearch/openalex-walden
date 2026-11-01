@@ -2,8 +2,10 @@
 statement API (PROD-WH by default, the warehouse End 2 End's SQL tasks use), one statement at a time (split on a line holding
 only `;`), with __KEY__ placeholders filled from pins."""
 import datetime as dt
+import difflib
 import re
 import time
+import unicodedata
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementState
@@ -75,3 +77,27 @@ def run_sql_file(path, pins, warehouse=PROD_WH):
             print("   ", row)
         out = rows
     return out
+
+
+def _ascii(s):
+    return unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
+
+
+def is_copy(a, b):
+    """Two candidate works are copies of one paper: folded titles equal (or difflib ratio >= 0.93) and >= 20 folded characters,
+    a shared author name word when both list authors (equal titles when either has none), years within 1 when both have one."""
+    ta, tb = re.sub(r"[^a-z0-9]", "", _ascii(a.get("title"))), re.sub(r"[^a-z0-9]", "", _ascii(b.get("title")))
+    if min(len(ta), len(tb)) < 20 or (ta != tb and difflib.SequenceMatcher(None, ta, tb, autojunk=False).ratio() < 0.93):
+        return False
+    wa = {w for x in a.get("authors") or [] for w in re.findall(r"[a-z]{3,}", _ascii(x))}
+    wb = {w for x in b.get("authors") or [] for w in re.findall(r"[a-z]{3,}", _ascii(x))}
+    if (wa and wb and not wa & wb) or ((not wa or not wb) and ta != tb):
+        return False
+    ya, yb = a.get("year"), b.get("year")
+    return not ya or not yb or abs(ya - yb) <= 1
+
+
+def copy_sum(cands):
+    """cands [(cid, p, summary)] for one record -> (top cid, its p plus the p of the candidates that are copies of it)."""
+    cid, p, top = max(cands, key=lambda c: c[1])
+    return cid, p + sum(pp for c, pp, s in cands if c != cid and is_copy(top, s))

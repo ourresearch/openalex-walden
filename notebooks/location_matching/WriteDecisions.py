@@ -31,6 +31,21 @@ def log(msg):
     print(f"{dt.datetime.utcnow():%Y-%m-%d %H:%M:%S} UTC  {msg}", flush=True)
 
 
+# Copy sums (2026-11-01): Qwen was trained on Opus's single pick, so when a shortlist holds two or three works that are copies of
+# one paper it splits its yes between them and none reaches 0.910 (repository re-sends: 33,880 of 46,301 splits on 10-30). A
+# record whose top is under 0.910 binds it when the top's p plus its copies' p reaches 0.910 (decisions.sql layer qwen_copy_bind).
+rows = spark.sql(f"""WITH s AS (SELECT seed_id FROM {T}qwen WHERE p IS NOT NULL GROUP BY seed_id HAVING max(p) < 0.910 AND sum(p) >= 0.910)
+  SELECT q.seed_id, q.cid, q.p, get_json_object(pr.rec_b, '$.title') AS title, get_json_object(pr.rec_b, '$.authors') AS authors,
+    CAST(get_json_object(pr.rec_b, '$.year') AS INT) AS year
+  FROM {T}qwen q JOIN s USING (seed_id) JOIN {T}qwen_pairs pr ON pr.seed_id = q.seed_id AND pr.cid = q.cid
+  WHERE q.p IS NOT NULL""").collect()
+by = {}
+for r in rows:
+    by.setdefault(r.seed_id, []).append((r.cid, r.p, {"title": r.title, "authors": json.loads(r.authors or "null"), "year": r.year}))
+sums = [(seed, *lwm.copy_sum(cands)) for seed, cands in by.items()]
+spark.createDataFrame(sums, "seed_id BIGINT, cid BIGINT, p_sum DOUBLE").write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{T}copysum")
+log(f"copy sums: {len(by):,} records under 0.910 with a total >= 0.910, {sum(s[2] >= 0.910 for s in sums):,} reach it with their copies")
+
 lwm.run_sql_file("sql/decisions.sql", {"NIGHT": NIGHT, "MODE": MODE})
 missing = spark.sql(f"SELECT count(*) AS n FROM {T}decisions WHERE night = DATE'{NIGHT}' AND mode = '{MODE}' AND layer = 'qwen_missing'").collect()[0].n
 if missing:

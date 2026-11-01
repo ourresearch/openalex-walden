@@ -1,6 +1,7 @@
 -- Match_Locations_To_Works (oxjob #1668) 6/6: one decision per seed record for night __NIGHT__ (mode __MODE__), next to what
 -- the nightly did. The model (strategy 2026-10-15): no candidate or XGBoost top < 0.01 -> mint; else bind Qwen's top when
--- p >= 0.910 (ep2_9b_old's held-out 99% point; 0.887 for ep2_9b until 2026-10-30), else mint. No fallback (Casey 2026-10-26): every record at >= 0.01 has a Qwen score or the run has already failed,
+-- p >= 0.910 (ep2_9b_old's held-out 99% point; 0.887 for ep2_9b until 2026-10-30), or when its p plus the p of the candidates
+-- that are copies of it reaches 0.910 (qwen_copy_bind, location_work_match_copysum from WriteDecisions, 2026-11-01), else mint. No fallback (Casey 2026-10-26): every record at >= 0.01 has a Qwen score or the run has already failed,
 -- with one named exception (Casey 2026-10-27): qwen_over_cap = the record's prompt fills the token cap before its first
 -- candidate, so Qwen saw nothing to compare; it mints. A record with no Qwen row at all is qwen_missing and fails the night.
 -- A model bind only ever names a work that existed before the run. cmp: same_bind / both_mint / other_work (both bind, different works) / model_mints
@@ -28,18 +29,20 @@ q AS (
 d AS (
   SELECT s.seed_id, s.provenance, s.native_id_namespace, s.native_id, s.prov, s.decision, s.work_id AS nightly_work,
     CASE WHEN s.decision = 'title_bind' THEN s.work_id END AS nightly_bind,
-    x.x_cid, x.x_p, q.q_cid, q.q_p, x.model_version, q.adapter,
+    x.x_cid, x.x_p, q.q_cid, q.q_p, x.model_version, q.adapter, c.cid AS c_cid,
     CASE WHEN x.x_p IS NULL THEN 'no_candidates'
          WHEN x.x_p < 0.01 THEN 'xgb_mint'
          WHEN q.over_cap AND q.q_p IS NULL THEN 'qwen_over_cap'
          WHEN q.q_p IS NULL THEN 'qwen_missing'
          WHEN q.q_p >= 0.910 THEN 'qwen_bind'
+         WHEN c.p_sum >= 0.910 THEN 'qwen_copy_bind'
          ELSE 'qwen_mint' END AS layer
   FROM openalex.works.location_work_match_seeds s
   LEFT JOIN x USING (seed_id) LEFT JOIN q USING (seed_id)
+  LEFT JOIN openalex.works.location_work_match_copysum c ON c.seed_id = s.seed_id
 ),
 m AS (
-  SELECT d.*, CASE layer WHEN 'qwen_bind' THEN q_cid END AS model_work FROM d
+  SELECT d.*, CASE layer WHEN 'qwen_bind' THEN q_cid WHEN 'qwen_copy_bind' THEN c_cid END AS model_work FROM d
 )
 SELECT DATE'__NIGHT__', '__MODE__', m.provenance, m.native_id_namespace, m.native_id, m.seed_id, m.prov, m.decision, m.nightly_work,
   m.model_work, m.layer, m.x_cid, m.x_p, m.q_cid, m.q_p,
