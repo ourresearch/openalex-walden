@@ -99,5 +99,5 @@ def is_copy(a, b):
 
 def copy_sum(cands):
     """cands [(cid, p, summary)] for one record -> (top cid, its p plus the p of the candidates that are copies of it)."""
-    cid, p, top = max(cands, key=lambda c: c[1])
+    cid, p, top = max(cands, key=lambda c: (c[1], c[0]))   # an exact tie goes to the higher work id, as decisions.sql
     return cid, p + sum(pp for c, pp, s in cands if c != cid and is_copy(top, s))

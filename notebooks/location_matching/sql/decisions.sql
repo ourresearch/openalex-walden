@@ -1,7 +1,7 @@
 -- Match_Locations_To_Works (oxjob #1668) 6/6: one decision per seed record for night __NIGHT__ (mode __MODE__), next to what
 -- the nightly did. The model (strategy 2026-10-15): no candidate or XGBoost top < 0.01 -> mint; else bind Qwen's top when
 -- p >= 0.910 (ep2_9b_old's held-out 99% point; 0.887 for ep2_9b until 2026-10-30), or when its p plus the p of the candidates
--- that are copies of it reaches 0.910 (qwen_copy_bind, location_work_match_copysum from WriteDecisions, 2026-11-01), else mint. No fallback (Casey 2026-10-26): every record at >= 0.01 has a Qwen score or the run has already failed,
+-- that are copies of it reaches 0.910 (qwen_copy_bind, location_work_match_copy_sums from WriteDecisions, 2026-11-01), else mint. No fallback (Casey 2026-10-26): every record at >= 0.01 has a Qwen score or the run has already failed,
 -- with one named exception (Casey 2026-10-27): qwen_over_cap = the record's prompt fills the token cap before its first
 -- candidate, so Qwen saw nothing to compare; it mints. A record with no Qwen row at all is qwen_missing and fails the night.
 -- A model bind only ever names a work that existed before the run. cmp: same_bind / both_mint / other_work (both bind, different works) / model_mints
@@ -23,7 +23,7 @@ WITH x AS (
   FROM openalex.works.location_work_match_xgb GROUP BY seed_id
 ),
 q AS (
-  SELECT seed_id, max_by(cid, p) AS q_cid, max(p) AS q_p, max(adapter) AS adapter, bool_or(over_cap) AS over_cap
+  SELECT seed_id, max_by(cid, struct(p, cid)) FILTER (WHERE p IS NOT NULL) AS q_cid, max(p) AS q_p, max(adapter) AS adapter, bool_or(over_cap) AS over_cap
   FROM openalex.works.location_work_match_qwen GROUP BY seed_id
 ),
 d AS (
@@ -39,7 +39,7 @@ d AS (
          ELSE 'qwen_mint' END AS layer
   FROM openalex.works.location_work_match_seeds s
   LEFT JOIN x USING (seed_id) LEFT JOIN q USING (seed_id)
-  LEFT JOIN openalex.works.location_work_match_copysum c ON c.seed_id = s.seed_id
+  LEFT JOIN openalex.works.location_work_match_copy_sums c ON c.seed_id = s.seed_id
 ),
 m AS (
   SELECT d.*, CASE layer WHEN 'qwen_bind' THEN q_cid WHEN 'qwen_copy_bind' THEN c_cid END AS model_work FROM d

@@ -43,7 +43,7 @@ by = {}
 for r in rows:
     by.setdefault(r.seed_id, []).append((r.cid, r.p, {"title": r.title, "authors": json.loads(r.authors or "null"), "year": r.year}))
 sums = [(seed, *lwm.copy_sum(cands)) for seed, cands in by.items()]
-spark.createDataFrame(sums, "seed_id BIGINT, cid BIGINT, p_sum DOUBLE").write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{T}copysum")
+spark.createDataFrame(sums, "seed_id BIGINT, cid BIGINT, p_sum DOUBLE").write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{T}copy_sums")
 log(f"copy sums: {len(by):,} records under 0.910 with a total >= 0.910, {sum(s[2] >= 0.910 for s in sums):,} reach it with their copies")
 
 lwm.run_sql_file("sql/decisions.sql", {"NIGHT": NIGHT, "MODE": MODE})
