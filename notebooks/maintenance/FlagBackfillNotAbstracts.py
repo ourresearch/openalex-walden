@@ -34,6 +34,12 @@
 # MAGIC   #1800's list `PDF_BACKFILL_TABLE` (built once by #1800 `work/pdf3/backfill_same_write.sql`; 28,310 on 31 Oct)
 # MAGIC   holds exactly those work_ids, reason `pdf_text`; this notebook copies them so a rebuild keeps them. Revert that
 # MAGIC   part: drop the branch below.
+# MAGIC - **Different-item pages** (oxjob #1790, 1 Nov 2026): a work whose stored landing page shows ANOTHER item (an
+# MAGIC   OECD / UN chapter's DOI on its book's page, a neighbouring article, a data record's parent article) and whose
+# MAGIC   backfill text is word for word that other item's abstract is flagged with reason `different_item`. The work_ids
+# MAGIC   are #1790's list `DIFFERENT_ITEM_TABLE` (built once by #1790 `work/diff_item_backfill_build.sql` +
+# MAGIC   `work/diff_item_publish.sql`; 10,251 on 1 Nov); this notebook copies them so a rebuild keeps them. Revert that
+# MAGIC   part: drop the branch below.
 # MAGIC - **Revert:** remove the anti-join from CreateWorksBase (one line), or `TRUNCATE` this table. Never
 # MAGIC   DROP it while CreateWorksBase reads it: a missing table fails the nightly.
 # MAGIC
@@ -62,6 +68,7 @@ REPAIR_TABLE = "openalex.abstracts.abstracts_backfill_repair"
 SHORT_TABLE = "openalex.abstracts.not_abstract_short_texts"  # oxjob #1800: judged short stand-in texts (trimmed)
 PEER_REVIEW_TABLE = "openalex.abstracts.peer_review_borrowed_backfill"  # oxjob #1790: reviews showing the article's abstract
 PDF_BACKFILL_TABLE = "openalex.abstracts.not_abstract_pdf_backfill"  # oxjob #1800: backfill copies of flagged PDF texts
+DIFFERENT_ITEM_TABLE = "openalex.abstracts.different_item_backfill"  # oxjob #1790: works showing another item's abstract
 # A dry run writes elsewhere first (job parameter target_table), to diff a new filter commit against the live table.
 dbutils.widgets.text("target_table", "openalex.abstracts.abstracts_backfill_not_abstract")
 TARGET_TABLE = dbutils.widgets.get("target_table")
@@ -193,8 +200,17 @@ FROM PDF_BACKFILL_TABLE d
 LEFT ANTI JOIN flagged_backfill f ON f.work_id = d.work_id
 LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.text = trim(e.abstract)) s ON s.work_id = d.work_id
 LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = d.work_id
+UNION ALL
+-- Different-item pages (see the header). One row per work: skip works another branch already flags.
+SELECT di.work_id, 'different_item' AS reason, di.text_len, di.label_version AS filter_commit, current_timestamp() AS built_at
+FROM DIFFERENT_ITEM_TABLE di
+LEFT ANTI JOIN flagged_backfill f ON f.work_id = di.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.text = trim(e.abstract)) s ON s.work_id = di.work_id
+LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = di.work_id
+LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = di.work_id
 """.replace("TARGET_TABLE", TARGET_TABLE).replace("FILTER_COMMIT", FILTER_COMMIT).replace("SHORT_TABLE", SHORT_TABLE)
-   .replace("PEER_REVIEW_TABLE", PEER_REVIEW_TABLE).replace("PDF_BACKFILL_TABLE", PDF_BACKFILL_TABLE))
+   .replace("PEER_REVIEW_TABLE", PEER_REVIEW_TABLE).replace("PDF_BACKFILL_TABLE", PDF_BACKFILL_TABLE)
+   .replace("DIFFERENT_ITEM_TABLE", DIFFERENT_ITEM_TABLE))
 # INSERT OVERWRITE replaces the rows atomically: CreateWorksBase never sees the table missing or half-built.
 
 # COMMAND ----------
