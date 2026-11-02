@@ -58,5 +58,24 @@ FROM m
 LEFT JOIN openalex.works.location_work_match_xgb xb ON xb.seed_id = m.seed_id AND xb.cid = m.model_work
 LEFT JOIN openalex.works.location_work_match_fp e ON e.seed_id = m.seed_id AND e.cid = m.model_work
 ;
+-- The night's shortlists, kept (the working tables are overwritten by the next run): every record's top 10 candidates by
+-- XGBoost with both scores, the title rule's pick and the channels that found each, so a later threshold, judged sample or
+-- error read can see what the model chose from.
+CREATE TABLE IF NOT EXISTS openalex.works.location_work_match_shortlists (
+  night DATE, mode STRING, provenance STRING, native_id_namespace STRING, native_id STRING, seed_id BIGINT, cid BIGINT, rank INT,
+  xgb_p DOUBLE, qwen_p DOUBLE, is_title_pick INT, channels ARRAY<STRING>, model_version INT, adapter STRING)
+CLUSTER BY (night)
+COMMENT 'Map_Work_Ids location matcher (oxjob #1668): each record''s top 10 candidate works per night with XGBoost and Qwen scores'
+;
+DELETE FROM openalex.works.location_work_match_shortlists WHERE night = DATE'__NIGHT__' AND mode = '__MODE__'
+;
+INSERT INTO openalex.works.location_work_match_shortlists
+SELECT DATE'__NIGHT__', '__MODE__', s.provenance, s.native_id_namespace, s.native_id, x.seed_id, x.cid, x.rank, x.p_raw, q.p,
+  x.is_bound, e.channels, x.model_version, q.adapter
+FROM openalex.works.location_work_match_xgb x
+JOIN openalex.works.location_work_match_seeds s ON s.seed_id = x.seed_id
+LEFT JOIN openalex.works.location_work_match_qwen q ON q.seed_id = x.seed_id AND q.cid = x.cid
+LEFT JOIN openalex.works.location_work_match_fp e ON e.seed_id = x.seed_id AND e.cid = x.cid
+WHERE x.rank <= 10;
 SELECT cmp, layer, count(*) AS n FROM openalex.works.location_work_match_decisions
 WHERE night = DATE'__NIGHT__' AND mode = '__MODE__' GROUP BY 1, 2 ORDER BY 1, 2
