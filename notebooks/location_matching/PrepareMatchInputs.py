@@ -47,9 +47,15 @@ spark.sql(f"""INSERT INTO {T}runs (night, mode, status, started_at, works_versio
   VALUES (DATE'{NIGHT}', '{MODE}', 'running', current_timestamp(), {v})""")
 for f in ("sql/frame.sql", "sql/seeds.sql"):
     lwm.run_sql_file(f, pins)
-seeds = spark.sql(f"SELECT count(*) AS n FROM {T}seeds").collect()[0].n
+seeds, found = spark.sql(f"""SELECT count(*) AS n, count(r.native_id) AS found FROM {T}seeds s
+  LEFT JOIN (SELECT DISTINCT provenance, native_id_namespace, native_id FROM {T}records) r
+  USING (provenance, native_id_namespace, native_id)""").collect()[0]
 go = seeds > 0
-log(f"{seeds:,} records for the location matcher")
+log(f"{seeds:,} records for the location matcher, {found:,} with their record")
+# Tripwire: every seed comes from locations_w_types, so a seed without its record means the inputs are broken (the matcher
+# would find no candidates and call it a new work)
+if seeds - found > 0.01 * seeds:
+    raise RuntimeError(f"{seeds - found:,} of {seeds:,} records for the location matcher have no record row")
 
 dbutils.jobs.taskValues.set(key="V", value=int(v))
 dbutils.jobs.taskValues.set(key="go", value="true" if go else "false")

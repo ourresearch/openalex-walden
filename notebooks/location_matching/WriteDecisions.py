@@ -50,6 +50,12 @@ lwm.run_sql_file("sql/decisions.sql", {"NIGHT": NIGHT, "MODE": MODE})
 missing = spark.sql(f"SELECT count(*) AS n FROM {T}decisions WHERE night = DATE'{NIGHT}' AND mode = '{MODE}' AND layer = 'qwen_missing'").collect()[0].n
 if missing:
     raise RuntimeError(f"{missing:,} records at >= 0.01 have no Qwen score: the night is not decided")
+# Tripwire before anything is pinned: on the shadow nights 1-45% of the records found no candidate work (44.6% on 10-28, a
+# dataset wave); far above that the candidate step is broken and the matcher would call every record a new work
+nc = spark.sql(f"""SELECT count(*) AS n, count_if(layer = 'no_candidates') AS nc FROM {T}decisions
+  WHERE night = DATE'{NIGHT}' AND mode = '{MODE}'""").collect()[0]
+if nc.n and nc.nc > 0.8 * nc.n:
+    raise RuntimeError(f"{nc.nc:,} of {nc.n:,} records found no candidate work (over 80%): the matcher's inputs look broken")
 
 # COMMAND ----------
 
