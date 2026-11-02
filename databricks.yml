@@ -20,7 +20,6 @@ include:
   - jobs/ror_funder_proposals.yaml
   - jobs/authors.yaml
   - jobs/meta_tags_daily.yaml
-  - jobs/deploy_check.yaml
   - jobs/landing_page_scoreboard.yaml
   - jobs/pmc_open_data.yaml
   - jobs/paywall_candidate_html.yaml
