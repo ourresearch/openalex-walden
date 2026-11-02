@@ -2,11 +2,12 @@
 -- registry, or registered NULL: NULL anchors retry nightly) into __PENDING__, then its answer by identifier into __VERDICTS__,
 -- the night's one answer table (AssignWorkIds adds the location matcher's answers and the new ids, then pins from it).
 -- Strict tier precedence doi -> pmid -> arxiv -> version_of -> has_version -> crossref_preprint over works that already exist,
--- then legacy adoption (a mag record's mag id, a repo record's PMH crosswalk id) when nothing resolves but the record is mintable.
--- First-sight records (never pinned before: not a nightly retry and not a record a merge wave or cleanup unpinned since the
--- previous registry MERGE, __REG_OLD__) stop there: the title rule's pick is kept only as `title_pick`, an input to the location
--- matcher, which decides the rest (Casey 2026-11-01). Retries and re-pinned records keep the title_author tier, so the
--- correction jobs that unpin records for MapWorkIds to re-resolve work as before.
+-- then `merged_winner`: a record a merge job unpinned since the previous registry MERGE (__REG_OLD__) goes to the winner its old
+-- work was merged into (merged_work_ids, which every merge job writes when it runs; on 2026-11-01 all ~31K re-pinned records
+-- were of this kind and 99.97% landed on the winner), then legacy adoption (a mag record's mag id, a repo record's PMH crosswalk
+-- id) when nothing resolves but the record is mintable. The title rule decides nothing (Casey 2026-11-02): its pick is kept as
+-- `title_pick`, an input to the location matcher, which decides the first-sight records (never pinned before) left without a
+-- work. A re-pinned record with no match mints (a split job's records, as before); a nightly retry with no match stays parked.
 -- doi matching is on the CLEANED form ([^a-zA-Z0-9./-] stripped) on both sides; keys are scrubbed of degenerate values here, once.
 CREATE OR REPLACE TABLE __PENDING__
 CLUSTER BY (provenance, native_id_namespace, native_id)
@@ -30,11 +31,13 @@ cr_partners AS (
   GROUP BY d
 ),
 old AS (
-  SELECT DISTINCT provenance, native_id_namespace, native_id FROM __REG_OLD__ WHERE work_id IS NOT NULL
+  SELECT provenance, native_id_namespace, native_id, MIN(work_id) AS old_work_id FROM __REG_OLD__ WHERE work_id IS NOT NULL
+  GROUP BY provenance, native_id_namespace, native_id
 )
 SELECT t.provenance, t.native_id_namespace, t.native_id,
        (r.native_id IS NOT NULL) AS is_retry,
        (r.native_id IS NULL AND o.native_id IS NULL) AS first_sight,
+       CASE WHEN r.native_id IS NULL THEN o.old_work_id END AS old_work_id,
        NULLIF(t.merge_key.doi, '')  AS doi,
        NULLIF(regexp_replace(t.merge_key.doi, '[^a-zA-Z0-9\./-]', ''), '') AS doi_clean,
        NULLIF(t.merge_key.pmid, '') AS pmid,
@@ -84,13 +87,25 @@ CREATE OR REPLACE TABLE __VERDICTS__
 CLUSTER BY (provenance, native_id_namespace, native_id)
 AS
 WITH __LOOKUPS__,
+-- the winner a re-pinned record's old work was merged into (followed through later merges), while it holds a pin
+merged_winner AS (
+  WITH m AS (SELECT loser_work_id, max_by(winner_work_id, merged_at) AS w FROM __MERGED__ GROUP BY loser_work_id),
+  o AS (SELECT DISTINCT old_work_id FROM __PENDING__ WHERE old_work_id IS NOT NULL),
+  f AS (
+    SELECT o.old_work_id, COALESCE(m3.w, m2.w, m1.w) AS w
+    FROM o JOIN m m1 ON m1.loser_work_id = o.old_work_id
+    LEFT JOIN m m2 ON m2.loser_work_id = m1.w
+    LEFT JOIN m m3 ON m3.loser_work_id = m2.w
+  )
+  SELECT f.old_work_id AS k, f.w AS v FROM f LEFT SEMI JOIN __REG__ r ON r.work_id = f.w
+),
 pmh_mapping AS (
   SELECT LOWER(pmh_id) AS pmh_id, MIN(work_id) AS legacy_work_id
   FROM openalex.works_poc.work_id_to_pmh_id_final
   GROUP BY LOWER(pmh_id)
 ),
 rs AS (
-  SELECT pd.provenance, pd.native_id_namespace, pd.native_id, pd.is_retry, pd.first_sight,
+  SELECT pd.provenance, pd.native_id_namespace, pd.native_id, pd.is_retry, pd.first_sight, mw.v AS mwv,
          pd.doi, pd.doi_clean, pd.pmid, pd.arxiv, pd.title_author,
          pd.mag_id, pd.bad_title, pd.has_version_doi_clean, pd.version_of_doi_clean,
          pd.preprint_link_dois, pd.preprint_link_is_pre,
@@ -128,18 +143,18 @@ rs AS (
   LEFT JOIN map_version_of_lookup vo ON pd.version_of_doi_clean = vo.k
   LEFT JOIN map_has_version_lookup hv ON pd.has_version_doi_clean = hv.k
   LEFT JOIN map_preprint_lookup pl ON pd.preprint_link_dois = pl.k
+  LEFT JOIN merged_winner mw ON pd.old_work_id = mw.k
 ),
 scored AS (
   SELECT rs.*,
-         -- the title tier decides only for retries and re-pinned records; for a first-sight record it is the matcher's input
-         COALESCE(rs.dv, rs.pv, rs.av, rs.vv, rs.hvv, rs.plv, CASE WHEN NOT rs.first_sight THEN rs.tav END) AS resolved_id,
+         COALESCE(rs.dv, rs.pv, rs.av, rs.vv, rs.hvv, rs.plv, rs.mwv) AS resolved_id,
          CASE WHEN rs.dv IS NOT NULL THEN 'doi'
               WHEN rs.pv IS NOT NULL THEN 'pmid'
               WHEN rs.av IS NOT NULL THEN 'arxiv'
               WHEN rs.vv IS NOT NULL THEN 'version_of'
               WHEN rs.hvv IS NOT NULL THEN 'has_version'
               WHEN rs.plv IS NOT NULL THEN 'crossref_preprint'
-              WHEN rs.tav IS NOT NULL AND NOT rs.first_sight THEN 'title_author' END AS resolved_source,
+              WHEN rs.mwv IS NOT NULL THEN 'merged_winner' END AS resolved_source,
          (rs.doi IS NOT NULL OR rs.pmid IS NOT NULL OR rs.arxiv IS NOT NULL
           OR (LENGTH(rs.title_author) > 20 AND NOT rs.bad_title AND NOT COALESCE(rs.ta_blocked, FALSE)))
            AS mintable,

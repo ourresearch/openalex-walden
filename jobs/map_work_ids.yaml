@@ -7,14 +7,14 @@ resources:
         one or a new one, and pins it in openalex.works.location_work_ids. Started by End 2 End after Locations_with_Types and
         Merge_Declared_Links; Locations_Mapped waits for it. No schedule of its own; one run at a time.
         Steps: match_locations_by_identifier (the work already holding the record's DOI / PMID / arXiv id, the work it declares
-        itself a version or preprint of, its legacy MAG / PMH id; retries and records a correction job unpinned keep the title rule)
+        itself a version or preprint of, the winner of a merge that unpinned it, its legacy MAG / PMH id; the title rule decides nothing)
         -> the location matcher on the first-sight records nothing matched (prepare -> go_gate -> keys + embed -> candidates + knn
         (exact kNN over work_embeddings_qwen3 on GPUs) -> features -> score_xgb (openalex.works.location_work_matcher@challenger,
         hard rules first) -> score_qwen (Qwen3.5-9B + ep2_9b_old on Modal, app location-work-matcher; copy sums) ->
         write_decisions (openalex.works.location_work_match_decisions)) -> assign_work_ids (new works minted, every record pinned
         once; the only writer of location_work_ids and work_id_map). The night's answers: openalex.works.location_work_ids_verdicts;
         how each record got its work: location_work_ids.work_id_source (location_matcher = the matcher's pick, new_work = a work
-        minted for it). The heavy SQL runs on PROD-WH (lwm.py). No fallback (Casey 2026-10-26 / 2026-11-01): when any step cannot
+        minted for it, merged_winner = the winner its old work was merged into). The heavy SQL runs on PROD-WH (lwm.py). No fallback (Casey 2026-10-26 / 2026-11-01): when any step cannot
         run in full (no GPUs, Modal down, Qwen over max_usd, a record without a decision) the run fails and End 2 End stops here.
       email_notifications:
         on_failure:

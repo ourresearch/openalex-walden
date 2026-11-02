@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS __RUN_STATS__ (
   anchors_retried_null BIGINT, src_doi BIGINT, src_pmid BIGINT, src_arxiv BIGINT, src_title_author BIGINT, src_mag_legacy BIGINT,
   src_pmh_legacy BIGINT, minted_range BIGINT, distinct_works BIGINT, max_work_fanin BIGINT, top_fanin_work_id BIGINT,
   registry_null_backlog BIGINT, mints_displaced BIGINT, bridge_conflicts BIGINT, converged_alias BIGINT,
-  src_location_matcher BIGINT, src_new_work BIGINT)
+  src_location_matcher BIGINT, src_new_work BIGINT, src_merged_winner BIGINT)
 ;
 -- The location matcher's answers (oxjob #1668) for the first-sight records it decided: an existing work (followed through any
 -- merge since the run's works snapshot, and only while it still holds a pin) or a new work. Its reasons are in __DECISIONS__.
@@ -204,11 +204,10 @@ THEN UPDATE SET
   target.updated_date = current_timestamp()
 ;
 -- Second pass: records still without a work pick up tonight's rows by re-reading the lookups (now including this run's
--- inserts); everything else keeps its first-pass answer. A first-sight record's title key is looked up only among the rows
--- this run inserted, so the title rule never binds it to a work that existed before the run: a record the location
--- matcher called new finds its own new work, or a same-night record's. `converged_alias` counts strongest-key-new records bound
--- to existing works (duplicates prevented at birth). A first-sight record the matcher decided that lands on a new id is
--- labelled `new_work`.
+-- inserts); everything else keeps its first-pass answer. A title key is looked up only among the rows this run inserted, so the
+-- title rule never binds a record to a work that existed before the run: a record that minted finds its own new work, or a
+-- same-night record's with the same key. A nightly retry matches by identifier only. `converged_alias` counts strongest-key-new records bound to existing works (duplicates
+-- prevented at birth). A first-sight record the matcher decided that lands on a new id is labelled `new_work`.
 CREATE OR REPLACE TABLE __VERDICTS__
 CLUSTER BY (provenance, native_id_namespace, native_id)
 AS
@@ -233,19 +232,12 @@ p2 AS (
               THEN hv.v
               WHEN LENGTH(s.title_author) > 20 AND ARRAY_CONTAINS(hv.doi_row_keys, s.title_author) THEN hv.v END AS hvv,
          pl.v AS plv,
-         CASE WHEN s.first_sight THEN CASE WHEN LENGTH(s.title_author) > 20 AND tn.n_ids <= 3 THEN tn.v END
-              WHEN LENGTH(s.title_author) > 20 AND ta.n_ids <= 3
-                   AND NOT (s.doi_clean IS NOT NULL AND d.v IS NULL
-                  AND ((s.provenance = 'crossref' AND COALESCE(wp.has_crossref, FALSE))
-                    OR (s.provenance = 'datacite' AND COALESCE(wp.has_datacite, FALSE))))
-              THEN ta.v END AS tav
+         CASE WHEN LENGTH(s.title_author) > 20 AND tn.n_ids <= 3 THEN tn.v END AS tav
   FROM __VERDICTS__ s
   LEFT JOIN map_doi_lookup d   ON s.work_id IS NULL AND s.doi_clean = d.k
   LEFT JOIN map_pmid_lookup p  ON s.work_id IS NULL AND s.pmid = p.k
   LEFT JOIN map_arxiv_lookup a ON s.work_id IS NULL AND s.arxiv = a.k
-  LEFT JOIN map_ta_lookup ta   ON s.work_id IS NULL AND NOT s.first_sight AND s.title_author = ta.k
-  LEFT JOIN map_ta_work_prov wp ON s.work_id IS NULL AND NOT s.first_sight AND wp.k = ta.v
-  LEFT JOIN map_ta_tonight tn  ON s.work_id IS NULL AND s.first_sight AND s.title_author = tn.k
+  LEFT JOIN map_ta_tonight tn  ON s.work_id IS NULL AND NOT s.is_retry AND s.title_author = tn.k
   LEFT JOIN map_version_of_lookup vo ON s.work_id IS NULL AND s.version_of_doi_clean = vo.k
   LEFT JOIN map_has_version_lookup hv ON s.work_id IS NULL AND s.has_version_doi_clean = hv.k
   LEFT JOIN map_preprint_lookup pl ON s.work_id IS NULL AND s.preprint_link_dois = pl.k
@@ -332,7 +324,7 @@ INSERT INTO __RUN_STATS__
    anchors_retried_resolved, anchors_retried_null,
    src_doi, src_pmid, src_arxiv, src_title_author, src_mag_legacy, src_pmh_legacy,
    minted_range, distinct_works, max_work_fanin, top_fanin_work_id, registry_null_backlog,
-   mints_displaced, bridge_conflicts, converged_alias, src_location_matcher, src_new_work)
+   mints_displaced, bridge_conflicts, converged_alias, src_location_matcher, src_new_work, src_merged_winner)
 WITH f AS (
   SELECT work_id, COUNT(*) AS n
   FROM __VERDICTS__
@@ -361,7 +353,8 @@ SELECT
   SUM(CASE WHEN v.established_conflict THEN 1 ELSE 0 END),
   SUM(CASE WHEN v.converged_alias THEN 1 ELSE 0 END),
   SUM(CASE WHEN v.work_id_source = 'location_matcher' THEN 1 ELSE 0 END),
-  SUM(CASE WHEN v.work_id_source = 'new_work' THEN 1 ELSE 0 END)
+  SUM(CASE WHEN v.work_id_source = 'new_work' THEN 1 ELSE 0 END),
+  SUM(CASE WHEN v.work_id_source = 'merged_winner' THEN 1 ELSE 0 END)
 FROM __VERDICTS__ v
 LEFT JOIN f ON TRUE
 HAVING MAX(v.run_ts) IS NOT NULL

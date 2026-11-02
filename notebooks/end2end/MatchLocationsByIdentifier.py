@@ -4,10 +4,11 @@
 # MAGIC
 # MAGIC Every record that needs a work tonight (absent from `location_work_ids`, or registered NULL: NULL records retry nightly)
 # MAGIC goes into `location_work_ids_pending` with its keys, and its first answer into `location_work_ids_verdicts`: the work
-# MAGIC that already holds its DOI, PMID or arXiv id, the work it declares itself a version or preprint of, or its legacy MAG / PMH
-# MAGIC id. A first-sight record (never pinned before) that none of these matches is left for the location matcher, with the title
-# MAGIC rule's pick kept as one of the matcher's inputs. Retries and records a merge wave or cleanup unpinned since the previous
-# MAGIC registry MERGE keep the title rule as before. SQL: `match_locations_by_identifier.sql` + `work_id_lookups.sql`, on PROD-WH.
+# MAGIC that already holds its DOI, PMID or arXiv id, the work it declares itself a version or preprint of, the winner its old
+# MAGIC work was merged into (a record a merge job unpinned since the previous registry MERGE), or its legacy MAG / PMH id. A
+# MAGIC first-sight record (never pinned before) that none of these matches is left for the location matcher, with the title rule's
+# MAGIC pick kept as one of the matcher's inputs; the title rule decides nothing. SQL: `match_locations_by_identifier.sql` +
+# MAGIC `work_id_lookups.sql`, on PROD-WH.
 # MAGIC The widgets name the tables so the step can run against copies; End 2 End uses the defaults.
 
 # COMMAND ----------

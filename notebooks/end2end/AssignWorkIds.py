@@ -39,7 +39,7 @@ if FRAMED:
     if int(missing):
         raise RuntimeError(f"{missing} records given to the location matcher have no decision for {NIGHT} ({MODE})")
 
-for col in ("src_location_matcher", "src_new_work"):
+for col in ("src_location_matcher", "src_new_work", "src_merged_winner"):
     present = lwm.run_statement(f"""SELECT count(*) AS n FROM {TABLES['RUN_STATS'].split('.')[0]}.information_schema.columns
       WHERE table_schema = '{TABLES['RUN_STATS'].split('.')[1]}' AND table_name = '{TABLES['RUN_STATS'].split('.')[2]}'
         AND column_name = '{col}'""")[0]["n"]
@@ -47,7 +47,7 @@ for col in ("src_location_matcher", "src_new_work"):
         lwm.run_statement(f"ALTER TABLE {TABLES['RUN_STATS']} ADD COLUMNS ({col} BIGINT)")
 
 # the map's id high-water mark and the warehouse's clock before the first insert: a new work's id is above the one, and the
-# second pass looks a first-sight record's title key up only among rows inserted after the other
+# second pass looks a title key up only among rows inserted after the other
 now = lwm.run_statement(f"SELECT max(id) AS maxid, current_date() AS d, current_timestamp() AS t FROM {TABLES['MAP']}")[0]
 pins = {"LOOKUPS": open("work_id_lookups.sql").read(), **TABLES, "NIGHT": NIGHT or now["d"], "MODE": MODE,
         "MAXID": now["maxid"], "RUN_DATE": now["d"], "RUN_START": now["t"].replace("T", " ").rstrip("Z")}
