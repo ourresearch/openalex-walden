@@ -239,6 +239,28 @@ def test_link_conservation_only_with_nih_and_strict():
     assert "evidence_class='NIH_PROJECT_YEAR_FOLD'" in q["nih_applied"]
 
 
+def test_uk_link_conservation_counts_links_moved_off_merged_works(monkeypatch):
+    """Night 2026-11-02: GROBID found 3 target links on papers merged away that night; they land on the surviving paper, so the
+    extras gate must count the moved links as produced (uk_links_before already maps papers through work_survivors)."""
+    import uk_lineage
+    monkeypatch.setattr(uk_lineage, "enabled", lambda c: True)
+
+    class C(RecordingC):
+        def sql(self, statement, params=None):
+            if "WITH marks AS" in statement:
+                return Frame([{"pairs": 0, "moved": 0, "deduplicated": 0, "final_links": 0}])
+            if "uk_supported_missing_target) n" in statement:
+                return Frame([types.SimpleNamespace(n=0)])
+            return super().sql(statement, params)
+
+    c = C(extra=("migration_manifest",))
+    uk_lineage.link_conservation(c)
+    q = dict(c.statements)
+    assert "work_links_moved WHERE work_id<>original_work_id" in q["uk_link_producers"]
+    assert "work_survivors" in q["uk_links_before"]
+    assert "uk_link_producers" in q["uk_unaccounted_extra"] and "UK_LINEAGE_TARGET_EXTRAS_UNACCOUNTED" in c.checks
+
+
 def test_work_awards_calls_link_conservation_after_uk():
     text = (ROOT / "lib" / "work_awards.py").read_text()
     assert text.index("uk_lineage.link_conservation(c)") < text.index("nih_fold.link_conservation(c)")

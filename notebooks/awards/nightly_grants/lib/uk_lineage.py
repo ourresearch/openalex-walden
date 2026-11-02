@@ -92,7 +92,10 @@ def link_conservation(c):
       UNION ALL SELECT g.work_id,concat('https://openalex.org/G',x.stable_id),'gtr_native' FROM gtr_v g
         JOIN {r}keys_candidate k ON k.key_type='NATIVE' AND k.namespace='gtr' AND k.source_record_id=cast(g.id AS STRING)
         JOIN {r}resolve_candidate x ON x.owner_id=k.stable_id AND x.status='ACTIVE' WHERE g.work_id IS NOT NULL
-      UNION ALL SELECT work_id,award_id,'list_add' FROM ({list_legs.added_pairs_sql(c)})""")
+      UNION ALL SELECT work_id,award_id,'list_add' FROM ({list_legs.added_pairs_sql(c)})
+      UNION ALL SELECT work_id,concat('https://openalex.org/G',stable_id),'merged_work_move' FROM {r}work_links_moved WHERE work_id<>original_work_id""")
+    # A producer's link on a paper merged away tonight lands on its surviving paper (work_links_moved), as uk_links_before does;
+    # without the moved leg a target link found on the merged-away paper reads as unexplained (night 2026-11-02: 3 GROBID links).
     c.artifact('uk_unaccounted_extra', f"SELECT e.* FROM {r}uk_target_extra e LEFT ANTI JOIN {r}uk_link_producers p ON p.work_id=e.work_id AND p.award_id=e.award_id")
     c.artifact('uk_supported_missing_target', f"""SELECT e.* FROM {r}uk_missing_target e LEFT SEMI JOIN {r}uk_link_producers p ON p.work_id=e.work_id AND p.award_id=e.award_id
       LEFT ANTI JOIN ({list_legs.removed_pairs_sql(c)}) s ON s.work_id=e.work_id AND s.award_id=e.award_id""")   # a pinned SUPPRESS row is an explained removal
