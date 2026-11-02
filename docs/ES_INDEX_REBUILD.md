@@ -107,6 +107,11 @@ means the swap takes effect for the API the instant the `_aliases` call lands.
    (works: template 384 fields vs 503 live on 2026-09-30). Apply the job's intended mapping changes. Save the final
    mapping as a file in the job and diff it against the old index's mapping; every difference must be intended.
    `IndexRebuild create_index` does this and asserts byte-equality after the PUT.
+   **Pending removals for the next works rebuild** (no data feeds them; a mapping field can't be deleted in place, so
+   they ride whichever rebuild comes next; create the index by hand with the live mapping minus these, as for an
+   analyzer change below): `sustainable_development_goals_aurora` (removed from the API and walden 2026-11-02, oxjob
+   #1300; ~174M works-v40 docs still carry it in `_source`, which the API excludes) and `x_sdgs` (the shadow field
+   dropped 2026-10-04, oxjob #1300; 0 docs). Delete this note once a rebuild has dropped them.
 5. **Settings.** Copy the old index's settings (analysis, sort, codec, merge policy, translog). Build-time overrides:
    `number_of_replicas: 0`, `refresh_interval: "-1"`, `index.routing.allocation.total_shards_per_node:
    ceil(shards / data nodes)` so primaries spread evenly. Record the old index's live values for step 6.

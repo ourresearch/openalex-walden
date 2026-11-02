@@ -2,6 +2,11 @@
 # MAGIC %md
 # MAGIC # Freeze Aurora's SDG tags, once → `openalex.works.works_sdg_aurora_frozen` (oxjob #1300, DEPRECATED field)
 # MAGIC
+# MAGIC **Retired 2026-11-02.** The deprecated field was removed from the API, walden and the Lakebase docs that day,
+# MAGIC and the frozen table dropped after the first clean nightly without it. Nothing reads this notebook's output
+# MAGIC now. It stays only as the way back: run it once to rebuild the copy from `work_sdg_backfill` +
+# MAGIC `works_sdg_frontfill` (both kept) if the field ever has to return.
+# MAGIC
 # MAGIC Jason, 2026-10-01: the Jev-trained head replaces Aurora in `sustainable_development_goals`; Aurora stops
 # MAGIC running, and its existing tags are kept in a field clearly marked **deprecated**,
 # MAGIC `sustainable_development_goals_aurora`, for about a month, then removed completely.

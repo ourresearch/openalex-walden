@@ -11,8 +11,8 @@
 # MAGIC
 # MAGIC **This is the source of `openalex_works.sustainable_development_goals`** since the head replaced Aurora
 # MAGIC (Jason, 2026-10-01): `CreateWorksEnriched` merges `sdgs` into the field every night; a work with no row
-# MAGIC here (no vector yet) or no goal over threshold gets an empty list, never Aurora. Aurora's last tags live
-# MAGIC on, deprecated, in `sustainable_development_goals_aurora` (`notebooks/sdg/freeze_aurora_sdgs`).
+# MAGIC here (no vector yet) or no goal over threshold gets an empty list, never Aurora. Aurora's last tags were
+# MAGIC served, deprecated, in `sustainable_development_goals_aurora` until its removal on 2026-11-02.
 # MAGIC
 # MAGIC The head weights are `HEAD_FILE` beside this notebook (git); to ship a new head, add its JSON beside this
 # MAGIC one, change `HEAD_FILE`, and run `mode=full` (incremental refuses to mix versions). The `head_path` widget
