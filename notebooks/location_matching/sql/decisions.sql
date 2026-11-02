@@ -76,6 +76,7 @@ FROM openalex.works.location_work_match_xgb x
 JOIN openalex.works.location_work_match_seeds s ON s.seed_id = x.seed_id
 LEFT JOIN openalex.works.location_work_match_qwen q ON q.seed_id = x.seed_id AND q.cid = x.cid
 LEFT JOIN openalex.works.location_work_match_fp e ON e.seed_id = x.seed_id AND e.cid = x.cid
-WHERE x.rank <= 10;
+WHERE x.rank <= 10
+;
 SELECT cmp, layer, count(*) AS n FROM openalex.works.location_work_match_decisions
 WHERE night = DATE'__NIGHT__' AND mode = '__MODE__' GROUP BY 1, 2 ORDER BY 1, 2
