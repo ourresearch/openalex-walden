@@ -34,6 +34,8 @@
 # MAGIC   time by Opus 5.5 under the charter's stand-in rule; the flagged texts live in `SHORT_TABLE`, and every
 # MAGIC   rebuild re-derives their (hash, length) keys from `locations_parsed` with reason `short_stand_in`, which
 # MAGIC   applies to every provenance. A length cut alone failed its bar (real photo and figure captions).
+# MAGIC   Since 2 Nov 2026 the table also holds repeated texts of 30-299 chars ("Digital Specimen for the physical
+# MAGIC   specimen hosted at ...") and one-off texts of 1-29 chars read by Jev, so keys are derived up to 1,000 chars.
 # MAGIC - **Revert:** remove the join in CreateSuperLocations, or `TRUNCATE` these tables. Never DROP them while
 # MAGIC   CreateSuperLocations reads them: a missing table fails the nightly.
 # MAGIC
@@ -175,7 +177,7 @@ FROM (
   SELECT xxhash64(lp.abstract) AS abstract_hash, length(lp.abstract) AS text_len, first(lp.abstract) AS abstract,
          count(*) AS n_rows, collect_set(lp.provenance) AS provenances, first(st.rubric) AS rubric
   FROM {SOURCE_TABLE} lp JOIN {SHORT_TABLE} st ON st.text = trim(lp.abstract)
-  WHERE lp.abstract IS NOT NULL AND length(lp.abstract) <= 200
+  WHERE lp.abstract IS NOT NULL AND length(lp.abstract) <= 1000  -- judged texts reach 299 chars trimmed (2 Nov 2026)
   GROUP BY 1, 2
 ) s LEFT ANTI JOIN flagged_texts f ON f.abstract_hash = s.abstract_hash AND f.text_len = s.text_len
 """)
