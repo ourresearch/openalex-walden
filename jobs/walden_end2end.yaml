@@ -168,15 +168,17 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 60000
           retry_on_timeout: true
+        # oxjob #764 / #1668: every location that needs a work tonight gets one, matched by identifier, by the location matcher
+        # (first-sight records nothing else matched, Casey 2026-11-01) or minted. A run of the Map Work Ids workflow; when any of
+        # its steps cannot run in full this task fails and the run stops here, and a repair reruns the whole workflow (nothing is
+        # pinned before its last step).
         - task_key: Map_Work_Ids
-          timeout_seconds: 1200
+          timeout_seconds: 14400
           depends_on:
             - task_key: Locations_with_Types
             - task_key: Merge_Declared_Links_Gate
-          notebook_task:
-            notebook_path: notebooks/end2end/MapWorkIds
-            source: GIT
-            warehouse_id: 4d37bf76372a2901
+          run_job_task:
+            job_id: ${resources.jobs.Map_Work_Ids.id}
         - task_key: Locations_Mapped
           timeout_seconds: 1500
           depends_on:

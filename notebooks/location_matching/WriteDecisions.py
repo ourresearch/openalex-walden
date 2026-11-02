@@ -1,12 +1,12 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Match Locations To Works 6/6: decisions (oxjob #1668)
+# MAGIC # Map_Work_Ids 2/3, the location matcher: decisions (oxjob #1668)
 # MAGIC
 # MAGIC Runs `sql/decisions.sql` for the night into
 # MAGIC `openalex.works.location_work_match_decisions`, then completes the night's row in `location_work_match_runs`: record counts,
 # MAGIC binds, the comparison with the nightly, Qwen's estimated cost, every task's seconds and the critical path (the longest chain
 # MAGIC of task execution times: no cluster start-up or queueing, the time the matcher would add to the nightly). Fails if any record that should
-# MAGIC have a Qwen score has none (no fallback, Casey 2026-10-26). Shadow mode never writes `location_work_ids` or `work_id_map`.
+# MAGIC have a Qwen score has none (no fallback, Casey 2026-10-26). Writes only the matcher's tables; `assign_work_ids` pins.
 
 # COMMAND ----------
 
@@ -19,7 +19,7 @@ import time
 sys.path.insert(0, os.getcwd())
 import lwm  # noqa: E402
 
-dbutils.widgets.text("mode", "shadow")
+dbutils.widgets.text("mode", "live")
 dbutils.widgets.text("run_id", "")
 MODE = dbutils.widgets.get("mode").strip()
 NIGHT = dbutils.jobs.taskValues.get(taskKey="prepare", key="night", debugValue="")

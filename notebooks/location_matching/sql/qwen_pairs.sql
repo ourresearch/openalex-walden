@@ -1,6 +1,6 @@
 -- Match_Locations_To_Works (oxjob #1668): Qwen input. Records whose top XGBoost score is >= 0.01 (below that they mint) with
 -- their top 10 candidates by XGBoost (hard rules already applied), both sides in the judge format the model was trained on
--- (record = its locations_mapped row; candidate = openalex_works __V__).
+-- (record = its location_work_match_records row; candidate = openalex_works __V__).
 CREATE OR REPLACE TABLE openalex.works.location_work_match_qwen_pairs AS
 WITH e AS (
   SELECT x.seed_id, x.cid, x.rank, x.p_raw FROM openalex.works.location_work_match_xgb x
@@ -13,7 +13,7 @@ r AS (
     regexp_extract(l.landing_page_url, '^https?://([^/]+)', 1) AS host,
     concat_ws(' ', l.volume, l.issue, l.first_page) AS biblio, substr(l.abstract, 1, 400) AS abstract
   FROM openalex.works.location_work_match_seeds s
-  JOIN openalex.works.locations_mapped l
+  JOIN openalex.works.location_work_match_records l
     ON l.provenance = s.provenance AND l.native_id_namespace = s.native_id_namespace AND l.native_id = s.native_id
   WHERE s.seed_id IN (SELECT seed_id FROM e)
   QUALIFY row_number() OVER (PARTITION BY s.seed_id ORDER BY l.openalex_updated_dt DESC) = 1

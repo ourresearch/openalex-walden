@@ -1,7 +1,7 @@
 -- Match_Locations_To_Works (oxjob #1668): the seeds' blocking features and their SQL-channel candidates (#1577 keys: ids,
 -- title key, MinHash bands, author + year; the title tier's own pick as `bound`) among the works in openalex_works __V__
 -- (location_work_match_keys). Runs alongside the embedding search.
--- Seed records' blocking features, built like #1577 features.sql but from the record's locations_mapped row.
+-- Seed records' blocking features, built like #1577 features.sql but from the record's locations_w_types row (location_work_match_records).
 CREATE OR REPLACE TABLE openalex.works.location_work_match_seed_feat AS
 WITH b AS (
   SELECT s.seed_id, year(l.published_date) AS yr,
@@ -13,7 +13,7 @@ WITH b AS (
       'AAAAAACEEEEIIIINOOOOOOUUUUYaaaaaaceeeeiiiinoooooouuuuyy')) AS a0,
     l.ids, l.landing_page_url, l.pdf_url, l.provenance, l.native_id
   FROM openalex.works.location_work_match_seeds s
-  JOIN openalex.works.locations_mapped l
+  JOIN openalex.works.location_work_match_records l
     ON l.provenance = s.provenance AND l.native_id_namespace = s.native_id_namespace AND l.native_id = s.native_id
   QUALIFY row_number() OVER (PARTITION BY s.seed_id ORDER BY l.openalex_updated_dt DESC) = 1
 ),

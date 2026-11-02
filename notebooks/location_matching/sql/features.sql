@@ -31,7 +31,7 @@ SELECT s.part, s.seed_id, s.decision, s.prov AS stratum_prov, s.weight, s.work_i
   get(filter(l.ids, i -> i.namespace = 'datacite_client'), 0).id AS dc_client,
   l.abstract, slice(l.authors, 1, 100) AS authors, l.ids
 FROM openalex.works.location_work_match_fseeds s
-JOIN openalex.works.locations_mapped l
+JOIN openalex.works.location_work_match_records l
   ON l.provenance = s.provenance AND l.native_id_namespace = s.native_id_namespace AND l.native_id = s.native_id
 LEFT JOIN sf ON sf.seed_id = s.seed_id
 QUALIFY row_number() OVER (PARTITION BY s.seed_id ORDER BY l.openalex_updated_dt DESC) = 1
@@ -148,7 +148,7 @@ dlx AS (
         WHEN 'isderivedfrom' THEN 'derived' WHEN 'issourceof' THEN 'derived'
         ELSE 'other' END END AS class,
     regexp_replace(lower(r.id), '^https?://(dx\\.)?doi\\.org/', '') AS target
-  FROM openalex.works.locations_mapped l
+  FROM openalex.works.locations_w_types l
   LATERAL VIEW explode(filter(l.ids, x -> x.namespace = 'doi' AND x.relationship = 'self')) a AS s
   LATERAL VIEW explode(filter(l.ids, x -> x.namespace = 'doi' AND coalesce(x.relationship, 'None') <> 'self')) b AS r
   WHERE exists(l.ids, x -> x.namespace = 'doi' AND coalesce(x.relationship, 'None') <> 'self')

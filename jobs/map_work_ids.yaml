@@ -1,42 +1,30 @@
 resources:
   jobs:
-    Match_Locations_To_Works_Shadow:
-      name: Match Locations To Works (shadow)
+    Map_Work_Ids:
+      name: Map Work Ids
       description: |
-        Shadow of the location -> work matching model (oxjob #1668): once a day after the nightly's End 2 End run has finished
-        (tried hourly 06:00-23:00 UTC; prepare exits while End 2 End is in progress, Casey 2026-10-30), decides for
-        each record that reached the title tier (title-bound, minted or parked; PID binds never reach it) whether it binds to an
-        existing work or mints, and writes the decision next to what the nightly did. Never writes location_work_ids or
-        work_id_map. Steps: prepare (pins the night from Delta history: location_work_ids MERGE NEW / OLD, openalex_works V;
-        blocking keys, frame, seeds, SQL-channel candidates, qwen3 seed vectors) -> go_gate (stops while End 2 End is running,
-        when the night has no MapWorkIds MERGE yet, or when it was already decided) -> knn (exact kNN over work_embeddings_qwen3 on GPUs) -> features ->
-        score_xgb (openalex.works.location_work_matcher@challenger, hard rules first) -> score_qwen (Qwen3.5-9B + ep2_9b_old on
-        Modal, app location-work-matcher) -> write_decisions. The heavy SQL runs on PROD-WH (lwm.py); keys + embed start
-        together, candidates run alongside knn; write_decisions records the critical path (task execution times, no cluster
-        start-up) in location_work_match_runs.seconds.
-        (openalex.works.location_work_match_decisions, one row per night in openalex.works.location_work_match_runs).
-        Intermediate tables openalex.works.location_work_match_* are overwritten each night. Rerun a night: parameters
-        night = YYYY-MM-DD, force = true. No fallback (Casey 2026-10-26): when any step cannot run in full (no GPUs, Modal down,
-        Qwen over max_usd, unscored records) the run fails; it never decides with less than the full stack.
+        End 2 End's Map_Work_Ids task (oxjob #764, #1668): gives every location that needs a work tonight its work id, an existing
+        one or a new one, and pins it in openalex.works.location_work_ids. Started by End 2 End after Locations_with_Types and
+        Merge_Declared_Links; Locations_Mapped waits for it. No schedule of its own; one run at a time.
+        Steps: match_locations_by_identifier (the work already holding the record's DOI / PMID / arXiv id, the work it declares
+        itself a version or preprint of, its legacy MAG / PMH id; retries and records a correction job unpinned keep the title rule)
+        -> the location matcher on the first-sight records nothing matched (prepare -> go_gate -> keys + embed -> candidates + knn
+        (exact kNN over work_embeddings_qwen3 on GPUs) -> features -> score_xgb (openalex.works.location_work_matcher@challenger,
+        hard rules first) -> score_qwen (Qwen3.5-9B + ep2_9b_old on Modal, app location-work-matcher; copy sums) ->
+        write_decisions (openalex.works.location_work_match_decisions)) -> assign_work_ids (new works minted, every record pinned
+        once; the only writer of location_work_ids and work_id_map). The night's answers: openalex.works.location_work_ids_verdicts;
+        how each record got its work: location_work_ids.work_id_source (location_matcher = the matcher's pick, new_work = a work
+        minted for it). The heavy SQL runs on PROD-WH (lwm.py). No fallback (Casey 2026-10-26 / 2026-11-01): when any step cannot
+        run in full (no GPUs, Modal down, Qwen over max_usd, a record without a decision) the run fails and End 2 End stops here.
       email_notifications:
         on_failure:
           - casey@ourresearch.org
         no_alert_for_skipped_runs: true
       timeout_seconds: 21600
       max_concurrent_runs: 1
-      schedule:
-        quartz_cron_expression: 0 0 6-23 * * ?
-        timezone_id: UTC
-        pause_status: UNPAUSED
       parameters:
-        - name: night
-          # YYYY-MM-DD (UTC) of the nightly to shadow; '' = today
-          default: ""
         - name: mode
-          default: shadow
-        - name: force
-          # redo a night that is already decided
-          default: "false"
+          default: live
         - name: parts
           # corpus tasks for the kNN (two run per GPU)
           default: "80"
@@ -62,7 +50,14 @@ resources:
         - name: run_id
           default: "{{job.run_id}}"
       tasks:
+        - task_key: match_locations_by_identifier
+          notebook_task:
+            notebook_path: notebooks/end2end/MatchLocationsByIdentifier
+            source: GIT
+          environment_key: Default
         - task_key: prepare
+          depends_on:
+            - task_key: match_locations_by_identifier
           notebook_task:
             notebook_path: notebooks/location_matching/PrepareMatchInputs
             source: GIT
@@ -141,6 +136,16 @@ resources:
             - task_key: score_qwen
           notebook_task:
             notebook_path: notebooks/location_matching/WriteDecisions
+            source: GIT
+          environment_key: Default
+        # runs when the matcher decided the night or had nothing to decide (go_gate false), never after a failed step
+        - task_key: assign_work_ids
+          depends_on:
+            - task_key: match_locations_by_identifier
+            - task_key: write_decisions
+          run_if: NONE_FAILED
+          notebook_task:
+            notebook_path: notebooks/end2end/AssignWorkIds
             source: GIT
           environment_key: Default
       job_clusters:

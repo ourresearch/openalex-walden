@@ -1,28 +1,41 @@
--- Match_Locations_To_Works (oxjob #1668): the night's frame = anchors first pinned by this run's MapWorkIds
--- (location_work_ids __NEW__, after the night's MERGE, minus __OLD__, after the previous MERGE) that the nightly title-bound,
--- minted or parked, with the nightly's decision. PID binds and the version / preprint tiers are out: they never reach the model.
--- Candidate works = openalex_works __V__ (the last version before the run).
+-- Map_Work_Ids 2/3, the location matcher (oxjob #1668): tonight's frame = the first-sight records match_locations_by_identifier
+-- left without a work (__VERDICTS__), minus, when the title rule has no pick for them, two kinds that bind or mint without it, as
+-- when the shadow measured the model: a record declaring a version / preprint link to a record minting or bound tonight (it binds
+-- to that work in assign_work_ids' second pass), and a record whose only identifiers are a new PMID or arXiv id (it mints on them).
+-- `decision` / `work_id` say what the title rule would have done (title_bind = its pick, the matcher's `bound` input).
 CREATE OR REPLACE TABLE openalex.works.location_work_match_frame AS
-WITH old AS (SELECT provenance, native_id_namespace, native_id, work_id FROM openalex.works.location_work_ids VERSION AS OF __OLD__),
-oldw AS (SELECT DISTINCT work_id FROM old WHERE work_id IS NOT NULL),
-nw AS (
-  SELECT n.* FROM openalex.works.location_work_ids VERSION AS OF __NEW__ n
-  LEFT ANTI JOIN old o USING (provenance, native_id_namespace, native_id)
-),
-d AS (
-  SELECT n.provenance, n.native_id_namespace, n.native_id, n.work_id, n.work_id_source, n.openalex_created_dt AS night,
-    CASE WHEN n.work_id IS NULL THEN 'park'
-         WHEN w.work_id IS NOT NULL AND n.work_id_source = 'title_author' THEN 'title_bind'
-         WHEN w.work_id IS NOT NULL THEN 'pid_bind'
-         WHEN n.work_id_source IN ('version_of', 'has_version', 'crossref_preprint', 'arxiv', 'pmid') THEN 'pid_mint'
-         WHEN n.work_id_source = 'doi' THEN 'mint_doi'
-         ELSE 'mint_nodoi' END AS decision
-  FROM nw n LEFT JOIN oldw w ON w.work_id = n.work_id
+WITH v AS (SELECT * FROM __VERDICTS__),
+f AS (
+  SELECT s.* FROM v s
+  WHERE s.first_sight AND s.work_id IS NULL
+    AND (s.title_pick IS NOT NULL OR (
+    NOT (s.doi IS NULL AND (s.pmid IS NOT NULL OR s.arxiv IS NOT NULL))
+    AND NOT EXISTS (
+      SELECT 1 FROM v x
+      WHERE s.has_version_doi_clean IS NOT NULL AND x.doi_clean = s.has_version_doi_clean
+        AND x.has_version_doi_clean IS NULL
+        AND (x.work_id IS NOT NULL OR (x.mintable AND x.doi IS NOT NULL)))
+    AND NOT EXISTS (
+      SELECT 1 FROM v x
+      WHERE s.version_of_doi_clean IS NOT NULL AND s.has_version_doi_clean IS NULL AND x.doi_clean = s.version_of_doi_clean
+        AND x.has_version_doi_clean IS NULL AND x.version_of_doi_clean IS NULL
+        AND (x.work_id IS NOT NULL OR (x.mintable AND x.doi IS NOT NULL)))
+    AND NOT EXISTS (
+      SELECT 1 FROM v x
+      WHERE s.preprint_link_is_pre AND SIZE(s.preprint_link_dois) = 1 AND x.doi_clean = s.preprint_link_dois[0]
+        AND NOT x.preprint_link_is_pre
+        AND (x.work_id IS NOT NULL OR (x.mintable AND x.doi IS NOT NULL)))))
 )
-SELECT d.*,
-  CASE WHEN d.provenance IN ('crossref', 'datacite', 'repo', 'pubmed') THEN d.provenance ELSE 'other' END AS prov,
-  xxhash64('oxjob1668', d.provenance, d.native_id_namespace, d.native_id) AS h
-FROM d
-WHERE d.decision IN ('title_bind', 'mint_doi', 'mint_nodoi', 'park')
+SELECT f.provenance, f.native_id_namespace, f.native_id, f.title_pick AS work_id,
+  CASE WHEN f.title_pick IS NOT NULL THEN 'title_author' END AS work_id_source,
+  DATE'__NIGHT__' AS night,
+  CASE WHEN f.title_pick IS NOT NULL THEN 'title_bind'
+       WHEN NOT f.mintable THEN 'park'
+       WHEN f.doi IS NOT NULL THEN 'mint_doi'
+       ELSE 'mint_nodoi' END AS decision,
+  CASE WHEN f.provenance IN ('crossref', 'datacite', 'repo', 'pubmed') THEN f.provenance ELSE 'other' END AS prov,
+  xxhash64('oxjob1668', f.provenance, f.native_id_namespace, f.native_id) AS h
+FROM f
+QUALIFY ROW_NUMBER() OVER (PARTITION BY f.provenance, f.native_id_namespace, f.native_id ORDER BY f.title_pick) = 1
 ;
 SELECT prov, decision, count(*) n FROM openalex.works.location_work_match_frame GROUP BY 1, 2 ORDER BY 1, 3 DESC
