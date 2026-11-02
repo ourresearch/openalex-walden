@@ -8,14 +8,16 @@ on:
       - 'libraries/dlt_utils/**'
       - '.github/workflows/build-dlt-utils-wheel.yml'
 
-# oxjob #1782: actions pinned to commit SHAs (a moved tag or branch can't swap in code that sees
-# DATABRICKS_CLIENT_SECRET), and the workflow token can only read the repo.
+# oxjob #1782: actions pinned to commit SHAs, and the workflow token can only read the repo.
+# oxjob #1973: Databricks login is GitHub OIDC through environment databricks-prod (main only), no stored secret.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   build-wheel:
     runs-on: ubuntu-latest
+    environment: databricks-prod
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -35,26 +37,15 @@ jobs:
 
       - name: Upload package to Volumes
         env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_AUTH_TYPE: github-oidc
+          DATABRICKS_HOST: https://dbc-ce570f73-0362.cloud.databricks.com
+          DATABRICKS_CLIENT_ID: 321056ec-06df-41ad-8227-2c238f818596
+          # The policy accepts only the account id as audience; the CLI's own default for a workspace differs.
+          DATABRICKS_TOKEN_AUDIENCE: b190576d-b916-4834-b43e-a5225948f55b
         run: |
           WHEEL=$(ls libraries/dlt_utils/dist/*.whl)
-          WHEEL_NAME=$(basename "$WHEEL")
-          TOKEN=$(curl -s -X POST "${DATABRICKS_HOST}/oidc/v1/token" \
-            -d "grant_type=client_credentials&client_id=${DATABRICKS_CLIENT_ID}&client_secret=${DATABRICKS_CLIENT_SECRET}&scope=all-apis" \
-            | jq -r '.access_token')
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
-            "${DATABRICKS_HOST}/api/2.0/fs/files/Volumes/openalex/default/libraries/${WHEEL_NAME}" \
-            -H "Authorization: Bearer ${TOKEN}" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary "@${WHEEL}")
-          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "204" ]; then
-            echo "Uploaded ${WHEEL_NAME}"
-          else
-            echo "Upload failed with HTTP ${HTTP_CODE}"
-            exit 1
-          fi
+          databricks fs cp "$WHEEL" "dbfs:/Volumes/openalex/default/libraries/$(basename "$WHEEL")" --overwrite
+          echo "Uploaded $(basename "$WHEEL")"
 
       - name: Notify Slack (success)
         if: success()

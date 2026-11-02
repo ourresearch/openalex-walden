@@ -7,15 +7,25 @@ on:
       - 'databricks.yml'
       - 'jobs/**'
       - 'notebooks/**'
+  workflow_dispatch:
 
-# oxjob #1782: actions pinned to commit SHAs (a moved tag or branch can't swap in code that sees
-# DATABRICKS_CLIENT_SECRET), and the workflow token can only read the repo.
+# oxjob #1782: actions pinned to commit SHAs, and the workflow token can only read the repo.
+# oxjob #1973: Databricks login is GitHub OIDC, no stored secret. The github-actions-deploy federation
+# policy trusts only tokens for environment databricks-prod, and that environment allows only main.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: databricks-prod
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: https://dbc-ce570f73-0362.cloud.databricks.com
+      DATABRICKS_CLIENT_ID: 321056ec-06df-41ad-8227-2c238f818596
+      # The policy accepts only the account id as audience; the CLI's own default for a workspace differs.
+      DATABRICKS_TOKEN_AUDIENCE: b190576d-b916-4834-b43e-a5225948f55b
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -23,17 +33,9 @@ jobs:
         uses: databricks/setup-cli@8de769ec2543ee05e456ee2121350efc7efc4bda # main as of 2026-10-23
 
       - name: Validate bundle
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: databricks bundle validate
 
       - name: Deploy bundle
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: databricks bundle deploy
 
       - name: Notify Slack (success)
