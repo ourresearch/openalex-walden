@@ -20,11 +20,13 @@ AS
 WITH m AS (SELECT loser_work_id, max_by(winner_work_id, merged_at) AS w FROM __MERGED__ GROUP BY loser_work_id),
 d AS (
   SELECT d.provenance, d.native_id_namespace, d.native_id,
-    CASE WHEN d.model_work IS NOT NULL THEN COALESCE(m3.w, m2.w, m1.w, d.model_work) END AS t
+    CASE WHEN d.model_work IS NOT NULL THEN COALESCE(m5.w, m4.w, m3.w, m2.w, m1.w, d.model_work) END AS t
   FROM __DECISIONS__ d
   LEFT JOIN m m1 ON m1.loser_work_id = d.model_work
   LEFT JOIN m m2 ON m2.loser_work_id = m1.w
   LEFT JOIN m m3 ON m3.loser_work_id = m2.w
+  LEFT JOIN m m4 ON m4.loser_work_id = m3.w
+  LEFT JOIN m m5 ON m5.loser_work_id = m4.w
   WHERE d.night = DATE'__NIGHT__' AND d.mode = '__MODE__'
   QUALIFY ROW_NUMBER() OVER (PARTITION BY d.provenance, d.native_id_namespace, d.native_id ORDER BY d.decided_at DESC) = 1
 ),
@@ -132,7 +134,7 @@ INSERT INTO __MAP__
 SELECT s.doi, s.pmid, s.arxiv, s.title_author,
        current_date(), current_timestamp()
 FROM __VERDICTS__ s
-WHERE s.work_id IS NULL AND s.mintable
+WHERE s.work_id IS NULL AND s.mintable AND NOT s.is_retry
   AND s.doi IS NULL AND s.pmid IS NULL AND s.arxiv IS NULL AND s.title_author IS NOT NULL
   AND NOT EXISTS (
     SELECT 1 FROM __VERDICTS__ x
@@ -205,8 +207,9 @@ THEN UPDATE SET
 ;
 -- Second pass: records still without a work pick up tonight's rows by re-reading the lookups (now including this run's
 -- inserts); everything else keeps its first-pass answer. A title key is looked up only among the rows this run inserted, so the
--- title rule never binds a record to a work that existed before the run: a record that minted finds its own new work, or a
--- same-night record's with the same key. A nightly retry matches by identifier only. `converged_alias` counts strongest-key-new records bound to existing works (duplicates
+-- title rule never binds a record to a work that existed before the run through the old map: a record that minted finds its
+-- own new work, or joins a same-night record with the same new key (where that record matched an existing work, as the old
+-- nightly joined same-night records). A nightly retry matches by identifier only. `converged_alias` counts strongest-key-new records bound to existing works (duplicates
 -- prevented at birth). A first-sight record the matcher decided that lands on a new id is labelled `new_work`.
 CREATE OR REPLACE TABLE __VERDICTS__
 CLUSTER BY (provenance, native_id_namespace, native_id)
@@ -217,7 +220,7 @@ map_ta_tonight AS (
   FROM __MAP__ m
   LEFT SEMI JOIN (SELECT DISTINCT title_author FROM __PENDING__ WHERE title_author IS NOT NULL) pk
     ON m.title_author = pk.title_author
-  WHERE m.created_date = DATE'__RUN_DATE__' AND m.updated_date >= TIMESTAMP'__RUN_START__'
+  WHERE m.created_date >= DATE'__RUN_DATE__' AND m.updated_date >= TIMESTAMP'__RUN_START__'
     AND m.title_author IS NOT NULL AND m.title_author <> ''
   GROUP BY m.title_author
 ),

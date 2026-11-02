@@ -2,7 +2,7 @@
 -- registry, or registered NULL: NULL anchors retry nightly) into __PENDING__, then its answer by identifier into __VERDICTS__,
 -- the night's one answer table (AssignWorkIds adds the location matcher's answers and the new ids, then pins from it).
 -- Strict tier precedence doi -> pmid -> arxiv -> version_of -> has_version -> crossref_preprint over works that already exist,
--- then `merged_winner`: a record a merge job unpinned since the previous registry MERGE (__REG_OLD__) goes to the winner its old
+-- then `merged_winner`: a record a merge job unpinned since the previous nightly pinned (__REG_OLD__) goes to the winner its old
 -- work was merged into (merged_work_ids, which every merge job writes when it runs; on 2026-11-01 all ~31K re-pinned records
 -- were of this kind and 99.97% landed on the winner), then legacy adoption (a mag record's mag id, a repo record's PMH crosswalk
 -- id) when nothing resolves but the record is mintable. The title rule decides nothing (Casey 2026-11-02): its pick is kept as
@@ -92,10 +92,12 @@ merged_winner AS (
   WITH m AS (SELECT loser_work_id, max_by(winner_work_id, merged_at) AS w FROM __MERGED__ GROUP BY loser_work_id),
   o AS (SELECT DISTINCT old_work_id FROM __PENDING__ WHERE old_work_id IS NOT NULL),
   f AS (
-    SELECT o.old_work_id, COALESCE(m3.w, m2.w, m1.w) AS w
+    SELECT o.old_work_id, COALESCE(m5.w, m4.w, m3.w, m2.w, m1.w) AS w
     FROM o JOIN m m1 ON m1.loser_work_id = o.old_work_id
     LEFT JOIN m m2 ON m2.loser_work_id = m1.w
     LEFT JOIN m m3 ON m3.loser_work_id = m2.w
+    LEFT JOIN m m4 ON m4.loser_work_id = m3.w
+    LEFT JOIN m m5 ON m5.loser_work_id = m4.w
   )
   SELECT f.old_work_id AS k, f.w AS v FROM f LEFT SEMI JOIN __REG__ r ON r.work_id = f.w
 ),

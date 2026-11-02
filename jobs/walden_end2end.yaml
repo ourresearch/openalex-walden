@@ -173,7 +173,7 @@ resources:
         # its steps cannot run in full this task fails and the run stops here, and a repair reruns the whole workflow (nothing is
         # pinned before its last step).
         - task_key: Map_Work_Ids
-          timeout_seconds: 14400
+          timeout_seconds: 21600
           depends_on:
             - task_key: Locations_with_Types
             - task_key: Merge_Declared_Links_Gate

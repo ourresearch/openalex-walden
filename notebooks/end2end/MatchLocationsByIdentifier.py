@@ -5,7 +5,7 @@
 # MAGIC Every record that needs a work tonight (absent from `location_work_ids`, or registered NULL: NULL records retry nightly)
 # MAGIC goes into `location_work_ids_pending` with its keys, and its first answer into `location_work_ids_verdicts`: the work
 # MAGIC that already holds its DOI, PMID or arXiv id, the work it declares itself a version or preprint of, the winner its old
-# MAGIC work was merged into (a record a merge job unpinned since the previous registry MERGE), or its legacy MAG / PMH id. A
+# MAGIC work was merged into (a record a merge job unpinned since the previous nightly pinned), or its legacy MAG / PMH id. A
 # MAGIC first-sight record (never pinned before) that none of these matches is left for the location matcher, with the title rule's
 # MAGIC pick kept as one of the matcher's inputs; the title rule decides nothing. SQL: `match_locations_by_identifier.sql` +
 # MAGIC `work_id_lookups.sql`, on PROD-WH.
@@ -28,9 +28,13 @@ for k, v in DEFAULTS.items():
 dbutils.widgets.text("reg_old_version", "")
 TABLES = {k: dbutils.widgets.get(k.lower()).strip() for k in DEFAULTS}
 
-# the registry as of its previous MERGE: a record pinned there and absent now was unpinned since by a correction job
-old = dbutils.widgets.get("reg_old_version").strip() or lwm.run_statement(
-    f"""SELECT max(version) AS v FROM (DESCRIBE HISTORY {TABLES['REG_HISTORY']}) WHERE operation = 'MERGE'""")[0]["v"]
+# the registry right after the previous nightly pinned (its first MERGE after that run's verdicts, run_stats.run_ts; other jobs
+# MERGE into the registry too): a record pinned there and absent now was unpinned since by a correction job
+old = dbutils.widgets.get("reg_old_version").strip() or lwm.run_statement(f"""
+    SELECT COALESCE(min(CASE WHEN h.timestamp >= s.ts THEN h.version END), max(h.version)) AS v
+    FROM (DESCRIBE HISTORY {TABLES['REG_HISTORY']}) h
+    CROSS JOIN (SELECT max(run_ts) AS ts FROM openalex.works.location_work_ids_run_stats) s
+    WHERE h.operation = 'MERGE'""")[0]["v"]
 lwm.log(f"previous registry MERGE: {TABLES['REG_HISTORY']} version {old}")
 pins = {"LOOKUPS": open("work_id_lookups.sql").read(),
         **{k: v for k, v in TABLES.items() if k != "REG_HISTORY"},

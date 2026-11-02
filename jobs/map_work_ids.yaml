@@ -15,7 +15,9 @@ resources:
         once; the only writer of location_work_ids and work_id_map). The night's answers: openalex.works.location_work_ids_verdicts;
         how each record got its work: location_work_ids.work_id_source (location_matcher = the matcher's pick, new_work = a work
         minted for it, merged_winner = the winner its old work was merged into). The heavy SQL runs on PROD-WH (lwm.py). No fallback (Casey 2026-10-26 / 2026-11-01): when any step cannot
-        run in full (no GPUs, Modal down, Qwen over max_usd, a record without a decision) the run fails and End 2 End stops here.
+        run in full (no GPUs, Modal down, Qwen over max_usd, a record without a decision, a tripwire) the run fails and End 2 End
+        stops here. Recover by rerunning the whole workflow (an End 2 End repair of Map_Work_Ids does that), never assign_work_ids
+        alone: it rewrites location_work_ids_verdicts in place.
       email_notifications:
         on_failure:
           - casey@ourresearch.org
@@ -24,7 +26,26 @@ resources:
       max_concurrent_runs: 1
       parameters:
         - name: mode
+          # the label on the night's location_work_match_decisions / _runs rows (End 2 End: live; a rehearsal: test)
           default: live
+        # The tables Map_Work_Ids reads and writes. End 2 End uses these defaults; a rehearsal points them at copies of the
+        # registry and map as they stood before a real night (reg_old_version = that night's previous nightly registry version).
+        - name: reg
+          default: openalex.works.location_work_ids
+        - name: map
+          default: openalex.works.work_id_map
+        - name: pending
+          default: openalex.works.location_work_ids_pending
+        - name: verdicts
+          default: openalex.works.location_work_ids_verdicts
+        - name: merged
+          default: openalex.works.merged_work_ids
+        - name: deleted
+          default: openalex.works.deleted_works
+        - name: run_stats
+          default: openalex.works.location_work_ids_run_stats
+        - name: reg_old_version
+          default: ""
         - name: parts
           # corpus tasks for the kNN (two run per GPU)
           default: "80"

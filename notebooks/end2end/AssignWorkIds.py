@@ -39,11 +39,11 @@ if FRAMED:
     if int(missing):
         raise RuntimeError(f"{missing} records given to the location matcher have no decision for {NIGHT} ({MODE})")
 
+cat, sch, tbl = TABLES['RUN_STATS'].split('.')
+cols = {r["column_name"] for r in lwm.run_statement(f"""SELECT column_name FROM {cat}.information_schema.columns
+  WHERE table_schema = '{sch}' AND table_name = '{tbl}'""", max_rows=100)}
 for col in ("src_location_matcher", "src_new_work", "src_merged_winner"):
-    present = lwm.run_statement(f"""SELECT count(*) AS n FROM {TABLES['RUN_STATS'].split('.')[0]}.information_schema.columns
-      WHERE table_schema = '{TABLES['RUN_STATS'].split('.')[1]}' AND table_name = '{TABLES['RUN_STATS'].split('.')[2]}'
-        AND column_name = '{col}'""")[0]["n"]
-    if not int(present):
+    if cols and col not in cols:   # an existing stats table gains the new counts; a new one is created with them below
         lwm.run_statement(f"ALTER TABLE {TABLES['RUN_STATS']} ADD COLUMNS ({col} BIGINT)")
 
 # the map's id high-water mark and the warehouse's clock before the first insert: a new work's id is above the one, and the
