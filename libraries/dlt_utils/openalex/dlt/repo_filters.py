@@ -124,9 +124,22 @@ ENDPOINT_SETSPEC_DELETE = {
 # NOT kept, deliberately: `sohp` (7,918 Southern Oral History Program interviews titled `A-0001` --
 # authored but degenerate-titled), `powell`/`unctshirts`/`vir_museum`/`keepsakes` (advertisements,
 # t-shirts, museum objects).
+#
+# Creighton Digital Repository (cdr.creighton.edu, DSpace 9; oxjob #1822, Casey 2026-11-02): 113,805
+# records, ~90% devotions, archives, Law Library legal documents, fable books, letters and images. The
+# daily "Daily Reflections" and "Weekly Guides for Daily Prayer" records merged by title into works of up
+# to 901 copies. Kept: theses, the nursing / OT / medicine / pharmacy communities, law faculty papers
+# (4,551 records). NOT kept yet: Research and Scholarship (com_10504_55724), the Kripke Center
+# (com_10504_64275) and the law journals -- their oai_dc carries the journal name as a second dc:title
+# and Spark keeps the LAST one, so ~6,100 works were titled "Creighton Law Review" and the like. They
+# come back with the parser fix that keeps the first dc:title.
 ENDPOINT_SETSPEC_KEEP = {
     "7ccc21dda876bd4e680": (
         "jncas", "nchh", "dmisc", "rbr", "vesalius", "minipage", "bunkers", "attic",
+    ),
+    "rxkj05pw3utbma6mcx1n": (
+        "com_10504_16", "com_10504_113922", "com_10504_21296", "com_10504_21304", "com_10504_21305",
+        "com_10504_68393", "com_10504_53", "com_10504_17", "com_10504_15906", "col_10504_154071",
     ),
 }
 

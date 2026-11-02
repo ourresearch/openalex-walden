@@ -110,6 +110,17 @@ def test_unc_is_a_keep_list_not_a_whole_endpoint_denial():
         assert not any(item_level.startswith(p) for p in kept)
 
 
+def test_creighton_keeps_scholarly_communities_only():
+    # oxjob #1822: Mission and Ministry's daily devotions merged into 900-copy works; the Law Library,
+    # archives and fable collections are item-level. Every Creighton record carries com_/col_ setSpecs.
+    kept = rf.ENDPOINT_SETSPEC_KEEP["rxkj05pw3utbma6mcx1n"]
+    for scholarly in ("com_10504_16", "com_10504_21304", "col_10504_154071"):  # theses, DNP, law faculty
+        assert scholarly in kept
+    for junk in ("com_10504_50010", "com_10504_20", "com_10504_6125", "com_10504_72844", "com_10504_6124",
+                 "com_10504_32532", "com_10504_55724", "com_10504_64275", "col_10504_34368", "com_10504_1"):
+        assert not any(junk.startswith(p) for p in kept)
+
+
 def test_keep_and_delete_structures_are_disjoint():
     # an endpoint must be governed by exactly one rule, or the filters contradict each other
     assert not set(rf.ENDPOINT_SETSPEC_KEEP) & set(rf.ENDPOINT_SETSPEC_DELETE)
