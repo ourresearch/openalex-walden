@@ -8,8 +8,10 @@
 # MAGIC This job answers every string the nightly hasn't reached, off the End 2 End path, so a spike never waits for a session.
 # MAGIC
 # MAGIC Job `Affiliation Matcher Backlog` (jobs/affiliation_matcher_backlog.yaml), daily:
-# MAGIC `step=check` (serverless, seconds): queue = lookup strings created since the corpus snapshot (27 Sep 2026) with no
-# MAGIC answers row; sets task values `pending` and `shards` (one GPU shard per `per_shard` strings, at most `max_shards`).
+# MAGIC `step=check` (serverless, seconds): queue = every pending string: no answers row, and created since the corpus
+# MAGIC snapshot (27 Sep 2026) or on a work now (`PENDING_SQL`; #1997: the corpus run skipped strings with no works on 27 Sep,
+# MAGIC and those that gained works later were in no queue); sets task values `pending` and `shards` (one GPU shard per
+# MAGIC `per_shard` strings, at most `max_shards`).
 # MAGIC Then `AffiliationMatcherNightly` with `queue_table`, `shard` k/n and `target_table` answers shard k into
 # MAGIC `<prefix>_backlog_answers_<k>` on its own GPU cluster, with the nightly's production settings. `step=apply`:
 # MAGIC checks the shard tables and inserts their answers into the answers table exactly as the nightly does (insert-only
@@ -30,7 +32,7 @@ import time
 dbutils.widgets.text("step", "check", "check | apply")
 dbutils.widgets.text("answers_table", "openalex.institutions.affiliation_matcher_answers", "answers table")
 dbutils.widgets.text("prefix", "openalex.institutions.affiliation_matcher", "state tables: <prefix>_backlog_queue, _backlog_answers_<k>, _backlog_answers, _backlog_log")
-dbutils.widgets.text("since", "2026-09-27", "queue floor: strings created before the corpus snapshot are the corpus run's to answer")
+dbutils.widgets.text("since", "2026-09-27", "corpus snapshot: older strings are pending only once they are on a work")
 dbutils.widgets.text("per_shard", "150000", "strings per GPU shard (≈ 60-90 min each with Jev to its deadline)")
 dbutils.widgets.text("max_shards", "6", "GPU shards the job defines (match_0 .. match_<n-1>)")
 dbutils.widgets.text("max_works", "2000000", "apply writes nothing and fails if more works than this could change")
@@ -47,7 +49,23 @@ MAX_WORKS = int(dbutils.widgets.get("max_works"))
 RUN = dbutils.widgets.get("backlog_run").strip() or f"manual-{int(time.time())}"
 SHARD_TABLES = [f"{P}_backlog_answers_{k}" for k in range(MAX_SHARDS)]
 LOOKUP = "openalex.institutions.affiliation_strings_lookup"
+COUNTS = "openalex.institutions.affiliation_strings_lookup_with_counts"
 T0 = time.time()
+
+# What "pending" means, written once (oxjob #1997, 3 Nov 2026). A string is pending when it has no answers row AND either
+# it was created since the corpus snapshot (SINCE) or it is on at least one work now. The corpus run (#1385) answered
+# the strings that had works on 27 Sep and skipped the ~1.8M that had none; the old queue (created >= SINCE only) never
+# reached those that gained works later: 233,157 strings on 317,970 work links on 3 Nov, stuck on the 2023 model's ids.
+# The nightly matcher inside End 2 End is only a fast lane over the newest of these; whatever it doesn't reach lands here.
+PENDING_SQL = f"""
+SELECT DISTINCT l.raw_affiliation_string
+FROM {LOOKUP} l
+LEFT ANTI JOIN {ANSWERS} a ON a.raw_affiliation_string = l.raw_affiliation_string
+LEFT JOIN (SELECT raw_affiliation_string, max(works_count) AS works_count FROM {COUNTS} GROUP BY raw_affiliation_string) w
+  ON w.raw_affiliation_string = l.raw_affiliation_string
+WHERE (l.created_datetime >= TIMESTAMP '{SINCE}' OR coalesce(w.works_count, 0) > 0)
+  AND l.raw_affiliation_string IS NOT NULL AND trim(l.raw_affiliation_string) <> ''
+"""
 assert STEP in ("check", "apply"), STEP
 
 
@@ -63,17 +81,13 @@ if STEP == "check":
         spark.sql(f"DROP TABLE IF EXISTS {t}")
     spark.sql(f"""
 CREATE OR REPLACE TABLE {QUEUE}
-COMMENT 'oxjob #1386 backlog: lookup strings since the corpus snapshot with no answers row (rebuilt each run)' AS
-SELECT DISTINCT l.raw_affiliation_string
-FROM {LOOKUP} l
-LEFT ANTI JOIN {ANSWERS} a ON a.raw_affiliation_string = l.raw_affiliation_string
-WHERE l.created_datetime >= TIMESTAMP '{SINCE}'
-  AND l.raw_affiliation_string IS NOT NULL AND trim(l.raw_affiliation_string) <> ''
+COMMENT 'oxjob #1386/#1997 backlog: every pending string (no answers row; created since the corpus snapshot, or on a work now). Rebuilt each run' AS
+{PENDING_SQL}
 """)
     pending = spark.table(QUEUE).count()
     shards = 0 if pending == 0 else min(MAX_SHARDS, math.ceil(pending / PER_SHARD))
     oldest = spark.sql(f"SELECT min(l.created_datetime) AS t FROM {QUEUE} q JOIN {LOOKUP} l USING (raw_affiliation_string)").collect()[0].t
-    log(f"queue: {pending:,} unanswered strings since {SINCE} (oldest created {oldest}); shards: {shards}")
+    log(f"queue: {pending:,} pending strings (new since {SINCE}, or older and on a work; oldest created {oldest}); shards: {shards}")
     dbutils.jobs.taskValues.set("pending", int(pending))
     dbutils.jobs.taskValues.set("shards", int(shards))
     dbutils.notebook.exit(json.dumps({"pending": int(pending), "shards": int(shards), "oldest": str(oldest)}))
