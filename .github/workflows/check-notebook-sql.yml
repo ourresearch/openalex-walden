@@ -10,11 +10,13 @@ on:
     paths:
       - 'notebooks/**'
       - 'scripts/check_notebook_sql_dollar.py'
+      - 'scripts/gen_awards_sql.py'
       - '.github/workflows/check-notebook-sql.yml'
   pull_request:
     paths:
       - 'notebooks/**'
       - 'scripts/check_notebook_sql_dollar.py'
+      - 'scripts/gen_awards_sql.py'
 
 permissions:
   contents: read
@@ -28,3 +30,5 @@ jobs:
         run: python3 scripts/check_notebook_sql_dollar.py --self-test
       - name: No dollar sign a job run would blank
         run: python3 scripts/check_notebook_sql_dollar.py notebooks
+      - name: Awards notebook is what sources.csv and sources/*.sql render
+        run: python3 scripts/gen_awards_sql.py --check
