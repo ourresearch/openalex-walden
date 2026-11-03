@@ -3,7 +3,7 @@ resources:
   jobs:
     Create_Or_Update_Awards:
       name: Awards
-      description: Refresh five explicit award sources with SQL MERGE; preserve unchanged and absent rows.
+      description: Refresh the award sources in notebooks/awards/sources.csv with SQL MERGE; preserve unchanged and absent rows.
       tags: {stage: prod, lane: awards}
       schedule:
         quartz_cron_expression: "0 30 0 * * ?"

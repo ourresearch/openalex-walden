@@ -45,7 +45,129 @@ CREATE OR REPLACE TEMP VIEW awards_sources AS SELECT * FROM VALUES
  (2, 'wellcome_trust', 22, 98, array(4320311904L), 'monthly', 1),
  (3, 'cordis', 27, 98, array(4320320300L, 4320338438L, 4320338448L), 'manual', 1),
  (4, 'gates_foundation', 4, 98, array(4320306137L), 'manual', 1),
- (5, 'kaken', 10, 98, array(4320334764L), 'monthly', 1)
+ (5, 'kaken', 10, 98, array(4320334764L), 'monthly', 1),
+ (6, 'aacr_funded_research', 560, 98, array(4320306091L), 'frozen', 1),
+ (7, 'aar_rome_prize_fellows', 172, 98, array(4320320895L), 'frozen', 1),
+ (8, 'aas_arise_grantees', 134, 98, array(4320327323L), 'frozen', 1),
+ (9, 'researchfi', 24, 98, array(4320321108L), 'frozen', 1),
+ (10, 'acmedsci', 323, 98, array(4320320241L), 'frozen', 1),
+ (11, 'ada_research_database', 496, 98, array(4320306089L), 'frozen', 1),
+ (12, 'bdns_aei', 31, 98, array(4320335598L), 'frozen', 1),
+ (13, 'aes', 325, 98, array(4320306597L), 'frozen', 1),
+ (14, 'agaur_raisc_socrata', 195, 98, array(4320334830L), 'frozen', 1),
+ (15, 'aha_report_builder', 397, 98, array(4320306230L), 'frozen', 1),
+ (16, 'ahmanson_grants_archive', 166, 98, array(4320314405L), 'frozen', 1),
+ (17, 'usaspending_ahrq', 54, 98, array(4320332177L), 'frozen', 1),
+ (18, 'alberta_innovates_projects', 483, 98, array(4320325651L), 'frozen', 1),
+ (19, 'alcohol_change_uk', 317, 98, array(4320319998L), 'frozen', 1),
+ (20, 'alliancecan_funding_programmes', 548, 98, array(4320331257L), 'frozen', 1),
+ (21, 'alliancecan_rac', 553, 98, array(4320314000L, 4320331257L), 'frozen', 1),
+ (22, 'alz_association', 269, 98, array(4320306219L), 'frozen', 1),
+ (23, 'alzheimer_nl', 263, 98, array(4320326729L), 'frozen', 1),
+ (24, 'amed_amedfind', 207, 98, array(4320311405L), 'frozen', 1),
+ (25, 'andalucia', 421, 98, array(4320326754L), 'frozen', 1),
+ (26, 'anii_projects_portal', 82, 98, array(4320310753L), 'frozen', 1),
+ (27, 'aos_kessel_laccr_research', 180, 98, array(4320313553L), 'frozen', 1),
+ (28, 'apvv', 367, 98, array(4320323251L), 'frozen', 1),
+ (29, 'aragon_boa_research_groups', 522, 98, array(4320326208L), 'frozen', 1),
+ (30, 'aramis_seri', 533, 98, array(4320335238L), 'frozen', 1),
+ (31, 'arcadia_360giving', 148, 98, array(4320313262L), 'frozen', 1),
+ (32, 'arc', 20, 98, array(4320334704L), 'frozen', 1),
+ (33, 'aris_ecris', 423, 98, array(4320322554L), 'frozen', 1),
+ (34, 'arnold_ventures_algolia', 41, 98, array(4320315359L), 'frozen', 1),
+ (35, 'arthritis_foundation_announcements', 538, 98, array(4320306237L), 'frozen', 1),
+ (36, 'autism_science_foundation', 283, 98, array(4320310295L), 'frozen', 1),
+ (37, 'autistica', 343, 98, array(4320312945L), 'frozen', 1),
+ (38, 'axa_research_fund_projects', 544, 98, array(4320321048L), 'frozen', 1),
+ (39, 'bacp', 346, 98, array(4320312936L), 'frozen', 1),
+ (40, 'balzan_prize', 76, 98, array(4320310930L), 'frozen', 1),
+ (41, 'bbrf_narsad', 137, 98, array(4320306147L), 'frozen', 1),
+ (42, 'bbva_frontiers', 66, 98, array(4320309764L), 'frozen', 1),
+ (43, 'bcrf_researchers', 539, 98, array(4320306260L), 'frozen', 1),
+ (44, 'bd2', 309, 98, array(8901078393L), 'frozen', 1),
+ (45, 'bdsra', 345, 98, array(4320308508L), 'frozen', 1),
+ (46, 'beckman_awarded_scientists', 561, 98, array(4320306253L), 'frozen', 1),
+ (47, 'beijing_bmstc', 510, 98, array(4320325902L), 'frozen', 1),
+ (48, 'beijing_nsf', 523, 98, array(4320334977L), 'frozen', 1),
+ (49, 'belspo_fris', 181, 98, array(4320321454L), 'frozen', 1),
+ (50, 'bhf_annual_reports', 395, 98, array(4320319992L), 'frozen', 1),
+ (51, 'blavatnikawards_org', 64, 98, array(4320312914L), 'frozen', 1),
+ (52, 'blood_cancer_uk', 259, 98, array(4320329013L), 'frozen', 1),
+ (53, 'blue_planet_prize', 91, 98, array(4320309996L), 'frozen', 1),
+ (54, 'foerderkatalog_bmel', 532, 98, array(4320323499L), 'frozen', 1),
+ (55, 'brace', 337, 98, array(4320312938L), 'frozen', 1),
+ (56, 'brain_aneurysm', 307, 98, array(4320314312L), 'frozen', 1),
+ (57, 'brain_canada', 387, 98, array(4320311238L), 'frozen', 1),
+ (58, 'brain_prize', 84, 98, array(4320321999L), 'frozen', 1),
+ (59, 'brain_research_uk', 281, 98, array(4320314536L), 'frozen', 1),
+ (60, 'brain_tumour_charity', 277, 98, array(4320321000L), 'frozen', 1),
+ (61, 'breakthrough_prize', 63, 98, array(4320315036L), 'frozen', 1),
+ (62, 'breast_cancer_now', 297, 98, array(4320311542L), 'frozen', 1),
+ (63, 'btfc', 311, 98, array(4320319978L), 'frozen', 1),
+ (64, 'business_finland', 433, 98, array(4320321855L, 4320328501L), 'frozen', 1),
+ (65, 'canada_council_prizes', 74, 98, array(4320319951L), 'frozen', 1),
+ (66, 'crs_operating_grant_results', 565, 98, array(4320311169L), 'frozen', 1),
+ (67, 'capes_cooperacao_internacional', 144, 98, array(4320321091L), 'frozen', 1),
+ (68, 'cariplo', 361, 98, array(4320321499L), 'frozen', 1),
+ (69, 'carlsberg_fondet', 121, 98, array(4320321504L), 'frozen', 1),
+ (70, 'carl_zeiss_stiftung', 38, 98, array(4320309895L), 'frozen', 1),
+ (71, 'carnegie_corporation', 141, 98, array(4320306125L), 'frozen', 1),
+ (72, 'ccs_funding_results', 564, 98, array(4320334576L), 'frozen', 1),
+ (73, 'dimensions_cdmrp', 237, 98, array(4320338273L), 'frozen', 1),
+ (74, 'cdti_open_data', 572, 98, array(4320321043L), 'frozen', 1),
+ (75, 'cec_business_meeting_agendas', 573, 98, array(4320308020L), 'frozen', 1),
+ (76, 'cerc_chairholders', 504, 98, array(4320321481L), 'frozen', 1),
+ (77, 'cfref_competition_results', 482, 98, array(4320326644L), 'frozen', 1),
+ (78, 'chss', 295, 98, array(4320324771L), 'frozen', 1),
+ (79, 'cifar_wp_rest', 79, 98, array(4320309949L), 'frozen', 1),
+ (80, 'cihr_opendata', 7, 98, array(4320334506L), 'frozen', 1),
+ (81, 'cirm', 253, 98, array(4320306171L), 'frozen', 1),
+ (82, 'compagnia_san_paolo_beneficiari', 512, 98, array(4320309746L), 'frozen', 1),
+ (83, 'conahcyt_snii_ckan', 83, 98, array(4320321739L), 'frozen', 1),
+ (84, 'costech_nfast_projects', 152, 98, array(4320323478L), 'frozen', 1),
+ (85, 'cottrell_scholars', 135, 98, array(4320306487L), 'frozen', 1),
+ (86, 'cprit', 377, 98, array(4320308129L), 'frozen', 1),
+ (87, 'crafoord_prize', 69, 98, array(4320320936L), 'frozen', 1),
+ (88, 'crc_chairholders', 480, 98, array(4320320994L), 'frozen', 1),
+ (89, 'crohns_colitis_uk', 285, 98, array(4320321982L), 'frozen', 1),
+ (90, 'croucher_fellows_and_scholars', 542, 98, array(4320320904L), 'frozen', 1),
+ (91, 'cruk', 342, 98, array(4320319985L), 'frozen', 1),
+ (92, 'csa_canada_proactive', 201, 98, array(4320334436L), 'frozen', 1),
+ (93, 'cure_epilepsy', 273, 98, array(4320307214L), 'frozen', 1),
+ (94, 'cure_parkinsons', 303, 98, array(4320315983L), 'frozen', 1),
+ (95, 'cyprus_rif_funded_projects', 212, 98, array(4320330084L), 'frozen', 1),
+ (96, 'czi_grants', 120, 98, array(4320315474L), 'frozen', 1),
+ (97, 'damon_runyon_drupal', 73, 98, array(4320306271L), 'frozen', 1),
+ (98, 'dan_david_prize', 68, 98, array(4320320949L), 'frozen', 1),
+ (99, 'dbu_projektdatenbank', 528, 98, array(4320309954L), 'frozen', 1),
+ (100, 'defra_science_search', 500, 98, array(4320319995L), 'frozen', 1),
+ (101, 'deutsche_krebshilfe', 222, 98, array(4320323556L), 'frozen', 2),
+ (102, 'gepris', 18, 98, array(4320320879L), 'frozen', 2),
+ (103, 'nihr_ods_dhsc', 425, 98, array(4320319994L), 'frozen', 2),
+ (104, 'diabetes_uk_europepmc_grist', 518, 98, array(4320320065L), 'frozen', 2),
+ (105, 'dnrf_dg_dk', 484, 98, array(4320320943L), 'frozen', 2),
+ (106, 'doe_sc', 381, 98, array(4320332359L), 'frozen', 2),
+ (107, 'doris_duke', 143, 98, array(4320306134L), 'frozen', 2),
+ (108, 'dreyfus_foundation', 131, 98, array(4320306315L), 'frozen', 2),
+ (109, 'edctp_grants_portal', 205, 98, array(4320338462L), 'frozen', 2),
+ (110, 'efsd_recipients', 545, 98, array(4320320870L), 'frozen', 2),
+ (111, 'ekfs', 224, 98, array(4320321672L), 'frozen', 2),
+ (112, 'embo', 241, 98, array(4320307844L), 'frozen', 2),
+ (113, 'energimyndigheten', 435, 98, array(4320322711L), 'frozen', 2),
+ (114, 'usaspending_epa', 53, 98, array(4320306107L), 'frozen', 2),
+ (115, 'erasmus_plus', 427, 98, array(4320335551L), 'frozen', 2),
+ (116, 'erc', 21, 98, array(4320338335L, 4320338352L, 4320338453L), 'frozen', 2),
+ (117, 'eruk', 335, 98, array(4320320012L), 'frozen', 2),
+ (118, 'etis_etag', 363, 98, array(4320321090L), 'frozen', 2),
+ (119, 'etis_etf', 365, 98, array(4320321018L), 'frozen', 2),
+ (120, 'fapemig_projetos_contratados', 142, 98, array(4320322980L), 'frozen', 2),
+ (121, 'fapesp_bv', 19, 98, array(4320320997L), 'frozen', 2),
+ (122, 'ffg_projektdatenbank', 489, 98, array(4320323031L), 'frozen', 2),
+ (123, 'imu_fields_medal', 50, 98, array(4320320877L), 'frozen', 2),
+ (124, 'finep_funttel', 154, 98, array(4320322904L), 'frozen', 2),
+ (125, 'fmfc', 329, 98, array(4320323274L), 'frozen', 2),
+ (126, 'fnp_laureates', 511, 98, array(4320321042L), 'frozen', 2),
+ (127, 'fnr_luxembourg', 305, 98, array(4320321038L), 'frozen', 2)
 AS t(ord, source, source_priority, row_floor_pct, funder_ids, fetch_cadence, chunk);
 
 -- COMMAND ----------
@@ -53,6 +175,131 @@ AS t(ord, source, source_priority, row_floor_pct, funder_ids, fetch_cadence, chu
 -- Each source's object, fixed for the run. A frozen row names its object. A prefix row pins its newest *.parquet:
 -- max modification time, then path, so exactly one file even on a timestamp tie.
 SET VAR awards_objects = (SELECT map_from_entries(collect_list(struct(source, object))) FROM (
+SELECT * FROM VALUES
+ ('aacr_funded_research', 's3://openalex-ingest/awards/aacr/aacr_projects.parquet'),
+ ('aar_rome_prize_fellows', 's3://openalex-ingest/awards/aar_rome_prize/aar_rome_prize_fellows.parquet'),
+ ('aas_arise_grantees', 's3://openalex-ingest/awards/aas_arise/aas_arise_grantees.parquet'),
+ ('researchfi', 's3://openalex-ingest/awards/academy_of_finland/academy_of_finland_projects.parquet'),
+ ('acmedsci', 's3://openalex-ingest/awards/acmedsci/acmedsci_awards.parquet'),
+ ('ada_research_database', 's3://openalex-ingest/awards/ada/ada_projects.parquet'),
+ ('bdns_aei', 's3://openalex-ingest/awards/aei/aei_grants.parquet'),
+ ('aes', 's3://openalex-ingest/awards/aes/aes_awards.parquet'),
+ ('agaur_raisc_socrata', 's3://openalex-ingest/awards/agaur/agaur_projects.parquet'),
+ ('aha_report_builder', 's3://openalex-ingest/awards/aha/aha_projects.parquet'),
+ ('ahmanson_grants_archive', 's3://openalex-ingest/awards/ahmanson/ahmanson_grants.parquet'),
+ ('usaspending_ahrq', 's3://openalex-ingest/awards/ahrq/ahrq_awards.parquet'),
+ ('alberta_innovates_projects', 's3://openalex-ingest/awards/alberta_innovates/alberta_innovates_projects.parquet'),
+ ('alcohol_change_uk', 's3://openalex-ingest/awards/alcohol_change_uk/alcohol_change_uk_grants.parquet'),
+ ('alliancecan_funding_programmes', 's3://openalex-ingest/awards/alliancecan/alliancecan_projects.parquet'),
+ ('alliancecan_rac', 's3://openalex-ingest/awards/alliancecan_rac/alliancecan_rac_projects.parquet'),
+ ('alz_association', 's3://openalex-ingest/awards/alz_association/alz_association_studies.parquet'),
+ ('alzheimer_nl', 's3://openalex-ingest/awards/alzheimer_nl/alzheimer_nl_grants.parquet'),
+ ('amed_amedfind', 's3://openalex-ingest/awards/amed/amed_projects.parquet'),
+ ('andalucia', 's3://openalex-ingest/awards/andalucia/andalucia_projects.parquet'),
+ ('anii_projects_portal', 's3://openalex-ingest/awards/anii/anii_projects.parquet'),
+ ('aos_kessel_laccr_research', 's3://openalex-ingest/awards/aos/aos_research_awards.parquet'),
+ ('apvv', 's3://openalex-ingest/awards/apvv/apvv_grants.parquet'),
+ ('aragon_boa_research_groups', 's3://openalex-ingest/awards/aragon_research_groups/aragon_research_groups_projects.parquet'),
+ ('aramis_seri', 's3://openalex-ingest/awards/aramis_seri/aramis_seri_projects.parquet'),
+ ('arcadia_360giving', 's3://openalex-ingest/awards/arcadia/arcadia_grants.parquet'),
+ ('arc', 's3://openalex-ingest/awards/arc/arc_projects.parquet'),
+ ('aris_ecris', 's3://openalex-ingest/awards/aris_ecris/aris_ecris_projects.parquet'),
+ ('arnold_ventures_algolia', 's3://openalex-ingest/awards/arnold_ventures/arnold_ventures_projects.parquet'),
+ ('arthritis_foundation_announcements', 's3://openalex-ingest/awards/arthritis_foundation/arthritis_foundation_projects.parquet'),
+ ('autism_science_foundation', 's3://openalex-ingest/awards/autism_science_foundation/asf_grants.parquet'),
+ ('autistica', 's3://openalex-ingest/awards/autistica/autistica_projects.parquet'),
+ ('axa_research_fund_projects', 's3://openalex-ingest/awards/axa_research_fund/axa_research_fund_projects.parquet'),
+ ('bacp', 's3://openalex-ingest/awards/bacp/bacp_grants.parquet'),
+ ('balzan_prize', 's3://openalex-ingest/awards/balzan_prize/balzan_prize_laureates.parquet'),
+ ('bbrf_narsad', 's3://openalex-ingest/awards/bbrf/bbrf_grantees.parquet'),
+ ('bbva_frontiers', 's3://openalex-ingest/awards/bbva_frontiers/bbva_frontiers_laureates.parquet'),
+ ('bcrf_researchers', 's3://openalex-ingest/awards/bcrf/bcrf_projects.parquet'),
+ ('bd2', 's3://openalex-ingest/awards/bd2/bd2_grants.parquet'),
+ ('bdsra', 's3://openalex-ingest/awards/bdsra/bdsra_grants.parquet'),
+ ('beckman_awarded_scientists', 's3://openalex-ingest/awards/beckman_foundation/beckman_foundation_projects.parquet'),
+ ('beijing_bmstc', 's3://openalex-ingest/awards/beijing_bmstc/beijing_bmstc_projects.parquet'),
+ ('beijing_nsf', 's3://openalex-ingest/awards/beijing_nsf/beijing_nsf_projects.parquet'),
+ ('belspo_fris', 's3://openalex-ingest/awards/belspo/belspo_projects.parquet'),
+ ('bhf_annual_reports', 's3://openalex-ingest/awards/bhf/bhf_projects.parquet'),
+ ('blavatnikawards_org', 's3://openalex-ingest/awards/blavatnik/blavatnik_awards.parquet'),
+ ('blood_cancer_uk', 's3://openalex-ingest/awards/blood_cancer_uk/blood_cancer_uk_projects.parquet'),
+ ('blue_planet_prize', 's3://openalex-ingest/awards/blue_planet_prize/blue_planet_prize_laureates.parquet'),
+ ('foerderkatalog_bmel', 's3://openalex-ingest/awards/bmel/bmel_projects.parquet'),
+ ('brace', 's3://openalex-ingest/awards/brace/brace_projects.parquet'),
+ ('brain_aneurysm', 's3://openalex-ingest/awards/brain_aneurysm/brain_aneurysm_grants.parquet'),
+ ('brain_canada', 's3://openalex-ingest/awards/brain_canada/brain_canada_grants.parquet'),
+ ('brain_prize', 's3://openalex-ingest/awards/brain_prize/brain_prize_laureates.parquet'),
+ ('brain_research_uk', 's3://openalex-ingest/awards/brain_research_uk/brain_research_uk_grants.parquet'),
+ ('brain_tumour_charity', 's3://openalex-ingest/awards/brain_tumour_charity/brain_tumour_charity_grants.parquet'),
+ ('breakthrough_prize', 's3://openalex-ingest/awards/breakthrough_prize/breakthrough_prize_laureates.parquet'),
+ ('breast_cancer_now', 's3://openalex-ingest/awards/breast_cancer_now/breast_cancer_now_grants.parquet'),
+ ('btfc', 's3://openalex-ingest/awards/btfc/btfc_grants.parquet'),
+ ('business_finland', 's3://openalex-ingest/awards/business_finland/business_finland_projects.parquet'),
+ ('canada_council_prizes', 's3://openalex-ingest/awards/canada_council_prizes/canada_council_prizes.parquet'),
+ ('crs_operating_grant_results', 's3://openalex-ingest/awards/cancer_research_society/cancer_research_society_projects.parquet'),
+ ('capes_cooperacao_internacional', 's3://openalex-ingest/awards/capes_cooperation/capes_cooperation_projects.parquet'),
+ ('cariplo', 's3://openalex-ingest/awards/cariplo/cariplo_grants.parquet'),
+ ('carlsberg_fondet', 's3://openalex-ingest/awards/carlsberg_fondet/carlsberg_fondet_grants.parquet'),
+ ('carl_zeiss_stiftung', 's3://openalex-ingest/awards/carl_zeiss/carl_zeiss_projects.parquet'),
+ ('carnegie_corporation', 's3://openalex-ingest/awards/carnegie/carnegie_grants.parquet'),
+ ('ccs_funding_results', 's3://openalex-ingest/awards/ccs/ccs_projects.parquet'),
+ ('dimensions_cdmrp', 's3://openalex-ingest/awards/cdmrp/cdmrp_grants.parquet'),
+ ('cdti_open_data', 's3://openalex-ingest/awards/cdti/cdti_projects.parquet'),
+ ('cec_business_meeting_agendas', 's3://openalex-ingest/awards/cec/cec_projects.parquet'),
+ ('cerc_chairholders', 's3://openalex-ingest/awards/cerc/cerc_chairs.parquet'),
+ ('cfref_competition_results', 's3://openalex-ingest/awards/cfref/cfref_projects.parquet'),
+ ('chss', 's3://openalex-ingest/awards/chss/chss_grants.parquet'),
+ ('cifar_wp_rest', 's3://openalex-ingest/awards/cifar/cifar_appointments.parquet'),
+ ('cihr_opendata', 's3://openalex-ingest/awards/cihr/cihr_projects.parquet'),
+ ('cirm', 's3://openalex-ingest/awards/cirm/cirm_grants.parquet'),
+ ('compagnia_san_paolo_beneficiari', 's3://openalex-ingest/awards/compagnia_san_paolo/compagnia_san_paolo_projects.parquet'),
+ ('conahcyt_snii_ckan', 's3://openalex-ingest/awards/conahcyt/conahcyt_snii.parquet'),
+ ('costech_nfast_projects', 's3://openalex-ingest/awards/costech/costech_nfast_projects.parquet'),
+ ('cottrell_scholars', 's3://openalex-ingest/awards/cottrell_scholars/cottrell_scholars.parquet'),
+ ('cprit', 's3://openalex-ingest/awards/cprit/cprit_grants.parquet'),
+ ('crafoord_prize', 's3://openalex-ingest/awards/crafoord_prize/crafoord_prize_laureates.parquet'),
+ ('crc_chairholders', 's3://openalex-ingest/awards/crc/crc_chairs.parquet'),
+ ('crohns_colitis_uk', 's3://openalex-ingest/awards/crohns_colitis_uk/crohns_colitis_uk_grants.parquet'),
+ ('croucher_fellows_and_scholars', 's3://openalex-ingest/awards/croucher_foundation/croucher_foundation_projects.parquet'),
+ ('cruk', 's3://openalex-ingest/awards/cruk/cruk_awards.parquet'),
+ ('csa_canada_proactive', 's3://openalex-ingest/awards/csa_canada/csa_canada_projects.parquet'),
+ ('cure_epilepsy', 's3://openalex-ingest/awards/cure_epilepsy/cure_epilepsy_grants.parquet'),
+ ('cure_parkinsons', 's3://openalex-ingest/awards/cure_parkinsons/cure_parkinsons_grants.parquet'),
+ ('cyprus_rif_funded_projects', 's3://openalex-ingest/awards/cyprus_rif/cyprus_rif_funded_projects.parquet'),
+ ('czi_grants', 's3://openalex-ingest/awards/czi/czi_grants.parquet'),
+ ('damon_runyon_drupal', 's3://openalex-ingest/awards/damon_runyon/damon_runyon_fellows.parquet'),
+ ('dan_david_prize', 's3://openalex-ingest/awards/dan_david_prize/dan_david_prize_winners.parquet'),
+ ('dbu_projektdatenbank', 's3://openalex-ingest/awards/dbu/dbu_projects.parquet'),
+ ('defra_science_search', 's3://openalex-ingest/awards/defra/defra_projects.parquet'),
+ ('deutsche_krebshilfe', 's3://openalex-ingest/awards/deutsche_krebshilfe/deutsche_krebshilfe_grants.parquet'),
+ ('gepris', 's3://openalex-ingest/awards/dfg/dfg_projects.parquet'),
+ ('nihr_ods_dhsc', 's3://openalex-ingest/awards/nihr_ods_dhsc/nihr_ods_dhsc_projects.parquet'),
+ ('diabetes_uk_europepmc_grist', 's3://openalex-ingest/awards/diabetes_uk/diabetes_uk_projects.parquet'),
+ ('dnrf_dg_dk', 's3://openalex-ingest/awards/dnrf/dnrf_projects.parquet'),
+ ('doe_sc', 's3://openalex-ingest/awards/doe_sc/doe_sc_grants.parquet'),
+ ('doris_duke', 's3://openalex-ingest/awards/doris_duke/doris_duke.parquet'),
+ ('dreyfus_foundation', 's3://openalex-ingest/awards/dreyfus/dreyfus_awardees.parquet'),
+ ('edctp_grants_portal', 's3://openalex-ingest/awards/edctp/edctp_projects.parquet'),
+ ('efsd_recipients', 's3://openalex-ingest/awards/efsd/efsd_projects.parquet'),
+ ('ekfs', 's3://openalex-ingest/awards/ekfs/ekfs_grants.parquet'),
+ ('embo', 's3://openalex-ingest/awards/embo/embo_awards.parquet'),
+ ('energimyndigheten', 's3://openalex-ingest/awards/energimyndigheten/energimyndigheten_projects.parquet'),
+ ('usaspending_epa', 's3://openalex-ingest/awards/epa/epa_awards.parquet'),
+ ('erasmus_plus', 's3://openalex-ingest/awards/erasmus_plus/erasmus_plus_projects.parquet'),
+ ('erc', 's3://openalex-ingest/awards/erc/erc_projects.parquet'),
+ ('eruk', 's3://openalex-ingest/awards/eruk/eruk_projects.parquet'),
+ ('etis_etag', 's3://openalex-ingest/awards/etis_etag/etis_etag_grants.parquet'),
+ ('etis_etf', 's3://openalex-ingest/awards/etis_etf/etis_etf_grants.parquet'),
+ ('fapemig_projetos_contratados', 's3://openalex-ingest/awards/fapemig/fapemig_projetos_contratados.parquet'),
+ ('fapesp_bv', 's3://openalex-ingest/awards/fapesp/fapesp_projects.parquet'),
+ ('ffg_projektdatenbank', 's3://openalex-ingest/awards/ffg/ffg_projects.parquet'),
+ ('imu_fields_medal', 's3://openalex-ingest/awards/fields_medal/fields_medal_laureates.parquet'),
+ ('finep_funttel', 's3://openalex-ingest/awards/finep_funttel/finep_funttel_projects.parquet'),
+ ('fmfc', 's3://openalex-ingest/awards/fmfc/fmfc_projects.parquet'),
+ ('fnp_laureates', 's3://openalex-ingest/awards/fnp/fnp_projects.parquet'),
+ ('fnr_luxembourg', 's3://openalex-ingest/awards/fnr_luxembourg/fnr_luxembourg_grants.parquet')
+AS t(source, object)
+UNION ALL
 SELECT 'nsf_award_search' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
  FROM read_files('s3://openalex-ingest/awards/nsf/*.parquet', format => 'parquet')
 UNION ALL
@@ -84,7 +331,7 @@ EXECUTE IMMEDIATE awards_sql;
 
 -- COMMAND ----------
 
--- Chunk 1 of 1: sources 1 to 5 in sources.csv order. Each source's candidate rows: its mapping over
+-- Chunk 1 of 2: sources 1 to 100 in sources.csv order. Each source's candidate rows: its mapping over
 -- its pinned object, cast to the raw contract, compared with its slice.
 CREATE OR REPLACE TEMP VIEW awards_candidate_1 AS
 WITH awards_incoming AS (
@@ -952,6 +1199,10116 @@ incoming AS (
     FROM awards_transformed
 )
 SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAACRAwards.ipynb (origin e22fdf7f): its awards-table SELECT over aacr_funded_research_input (was the
+-- staging table read from s3://openalex-ingest/awards/aacr/aacr_projects.parquet); created_date and updated_date are the run timestamp.
+-- aacr_funded_research: priority 560, frozen fetch cadence (descriptive).
+SELECT 'aacr_funded_research' AS _source, * FROM (
+WITH aacr_funded_research_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aacr/aacr_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'aacr_funded_research')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306091  -- American Association for Cancer Research
+),
+
+parsed AS (
+    SELECT
+        g.*,
+        TRY_CAST(g.year AS INT) AS yr,
+        TRANSFORM(
+            FILTER(from_json(g.people, 'array<struct<name:string,given_name:string,family_name:string,institution:string,country:string>>'),
+                   p -> NULLIF(TRIM(p.family_name), '') IS NOT NULL),
+            p -> named_struct(
+                'given_name', NULLIF(TRIM(p.given_name), ''),
+                'family_name', NULLIF(TRIM(p.family_name), ''),
+                'orcid', CAST(NULL AS STRING),
+                'role_start', CAST(NULL AS DATE),
+                'affiliation', named_struct(
+                    'name', NULLIF(TRIM(p.institution), ''),
+                    'country', NULLIF(TRIM(p.country), ''),
+                    'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+                )
+            )
+        ) AS investigators
+    FROM aacr_funded_research_input g
+    WHERE g.excluded IS NULL  -- "*Awarded by Pancreatic Cancer Action Network, administered by AACR"
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    COALESCE(
+        NULLIF(TRIM(g.project_title), ''),
+        CONCAT_WS(' ', NULLIF(TRIM(COALESCE(g.program_variant, g.program)), ''), g.year) || ': ' ||
+            CONCAT_WS(' ', NULLIF(TRIM(g.given_name), ''), NULLIF(TRIM(g.family_name), ''))
+    ) as display_name,
+    NULLIF(TRIM(g.research_summary), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE
+        WHEN g.category IN ('research-training-and-fellowships', 'Research Fellowships')
+             OR LOWER(g.program) LIKE '%fellow%' THEN 'fellowship'
+        ELSE 'research'
+    END as funding_type,
+    NULLIF(TRIM(COALESCE(g.program_variant, g.program)), '') as funder_scheme,
+    'aacr_funded_research' as provenance,
+    CASE WHEN g.yr IS NOT NULL THEN TRY_TO_DATE(CONCAT(g.yr, '-01-01'), 'yyyy-MM-dd') END as start_date,
+    CAST(NULL AS DATE) as end_date,
+    g.yr as start_year,
+    CAST(NULL AS INT) as end_year,
+    try_element_at(g.investigators, 1) as lead_investigator,   -- safe on empty arrays (§2.3)
+    try_element_at(g.investigators, 2) as co_lead_investigator,
+    CASE WHEN size(g.investigators) > 0 THEN g.investigators END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM parsed g
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        560 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAARRomePrizeAwards.ipynb (origin e22fdf7f): its awards-table SELECT over aar_rome_prize_fellows_input (was the
+-- staging table read from s3://openalex-ingest/awards/aar_rome_prize/aar_rome_prize_fellows.parquet); created_date and updated_date are the run timestamp.
+-- aar_rome_prize_fellows: priority 172, frozen fetch cadence (descriptive).
+SELECT 'aar_rome_prize_fellows' AS _source, * FROM (
+WITH aar_rome_prize_fellows_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aar_rome_prize/aar_rome_prize_fellows.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'aar_rome_prize_fellows')
+),
+aar_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320895
+),
+
+raw_prepared AS (
+    SELECT
+        *,
+        LOWER(TRIM(funder_award_id)) AS native_award_id,
+        NULLIF(TRIM(recipient_name), '') AS recipient_name_norm,
+        NULLIF(TRIM(lead_given_name), '') AS lead_given_name_norm,
+        NULLIF(TRIM(lead_family_name), '') AS lead_family_name_norm,
+        NULLIF(TRIM(co_lead_given_name), '') AS co_lead_given_name_norm,
+        NULLIF(TRIM(co_lead_family_name), '') AS co_lead_family_name_norm,
+        NULLIF(TRIM(profession), '') AS profession_norm,
+        COALESCE(NULLIF(TRIM(fellowship_name), ''), NULLIF(TRIM(source_discipline), '')) AS scheme_norm,
+        NULLIF(TRIM(project_title), '') AS project_title_norm,
+        NULLIF(TRIM(description), '') AS description_norm,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS parsed_start_date,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS parsed_end_date,
+        TRY_CAST(source_year AS INT) AS parsed_source_year
+    FROM aar_rome_prize_fellows_input
+    WHERE funder_award_id IS NOT NULL
+      AND TRIM(funder_award_id) != ''
+      AND recipient_name IS NOT NULL
+      AND TRIM(recipient_name) != ''
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 AS id,
+
+        COALESCE(
+            g.project_title_norm,
+            CONCAT('Rome Prize ', TRY_CAST(g.parsed_source_year AS STRING), ' - ', g.recipient_name_norm)
+        ) AS display_name,
+
+        g.description_norm AS description,
+
+        f.funder_id,
+        g.native_award_id AS funder_award_id,
+
+        CAST(NULL AS DOUBLE) AS amount,
+        CAST(NULL AS STRING) AS currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) AS funder,
+
+        'fellowship' AS funding_type,
+
+        COALESCE(g.scheme_norm, 'Rome Prize') AS funder_scheme,
+
+        'aar_rome_prize_fellows' AS provenance,
+
+        g.parsed_start_date AS start_date,
+        g.parsed_end_date AS end_date,
+
+        CASE
+            WHEN COALESCE(YEAR(g.parsed_start_date), g.parsed_source_year) > YEAR(current_date()) + 1 THEN NULL
+            ELSE COALESCE(YEAR(g.parsed_start_date), g.parsed_source_year)
+        END AS start_year,
+        CASE
+            WHEN COALESCE(YEAR(g.parsed_start_date), g.parsed_source_year) > YEAR(current_date()) + 1 THEN NULL
+            ELSE COALESCE(YEAR(g.parsed_end_date), g.parsed_source_year)
+        END AS end_year,
+
+        struct(
+            g.lead_given_name_norm AS given_name,
+            g.lead_family_name_norm AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            g.parsed_start_date AS role_start,
+            struct(
+                g.profession_norm AS name,
+                CAST(NULL AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        ) AS lead_investigator,
+
+        CASE
+            WHEN g.co_lead_given_name_norm IS NULL AND g.co_lead_family_name_norm IS NULL THEN CAST(NULL AS STRUCT<
+                given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+                affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+            >)
+            ELSE struct(
+                g.co_lead_given_name_norm AS given_name,
+                g.co_lead_family_name_norm AS family_name,
+                CAST(NULL AS STRING) AS orcid,
+                g.parsed_start_date AS role_start,
+                struct(
+                    g.profession_norm AS name,
+                    CAST(NULL AS STRING) AS country,
+                    CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+                ) AS affiliation
+            )
+        END AS co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+
+        NULLIF(TRIM(g.landing_page_url), '') AS landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+
+        CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+               abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000) AS works_api_url,
+
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+
+    FROM raw_prepared g
+    CROSS JOIN aar_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        172 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAASARISEAwards.ipynb (origin e22fdf7f): its awards-table SELECT over aas_arise_grantees_input (was the
+-- staging table read from s3://openalex-ingest/awards/aas_arise/aas_arise_grantees.parquet); created_date and updated_date are the run timestamp.
+-- aas_arise_grantees: priority 134, frozen fetch cadence (descriptive).
+SELECT 'aas_arise_grantees' AS _source, * FROM (
+WITH aas_arise_grantees_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aas_arise/aas_arise_grantees.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'aas_arise_grantees')
+),
+aas_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320327323
+),
+
+raw_prepared AS (
+    SELECT
+        *,
+        LOWER(TRIM(funder_award_id)) AS native_award_id,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS parsed_start_date,
+        TRY_CAST(start_year AS INT) AS parsed_start_year
+    FROM aas_arise_grantees_input
+    WHERE funder_award_id IS NOT NULL
+      AND TRIM(funder_award_id) != ''
+      AND display_name IS NOT NULL
+      AND TRIM(display_name) != ''
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 as id,
+
+        TRIM(g.display_name) as display_name,
+
+        CASE
+            WHEN g.description IS NULL OR TRIM(g.description) = '' THEN NULL
+            ELSE TRIM(g.description)
+        END as description,
+
+        f.funder_id,
+        g.native_award_id as funder_award_id,
+
+        CAST(NULL AS DOUBLE) as amount,
+        CAST(NULL AS STRING) as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        'grant' as funding_type,
+
+        NULLIF(TRIM(g.funder_scheme), '') as funder_scheme,
+
+        'aas_arise_grantees' as provenance,
+
+        g.parsed_start_date as start_date,
+        CAST(NULL AS DATE) as end_date,
+        COALESCE(YEAR(g.parsed_start_date), g.parsed_start_year) as start_year,
+        CAST(NULL AS INT) as end_year,
+
+        struct(
+            NULLIF(TRIM(g.lead_investigator_given_name), '') as given_name,
+            NULLIF(TRIM(g.lead_investigator_family_name), '') as family_name,
+            CAST(NULL AS STRING) as orcid,
+            g.parsed_start_date as role_start,
+            struct(
+                NULLIF(TRIM(g.institution), '') as name,
+                NULLIF(TRIM(g.country), '') as country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+            ) as affiliation
+        ) as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        NULLIF(TRIM(g.landing_page_url), '') as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM raw_prepared g
+    CROSS JOIN aas_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        134 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAcademyOfFinlandAwards.ipynb (origin e22fdf7f): its awards-table SELECT over researchfi_input (was the
+-- staging table read from s3://openalex-ingest/awards/academy_of_finland/academy_of_finland_projects.parquet); created_date and updated_date are the run timestamp.
+-- researchfi: priority 24, frozen fetch cadence (descriptive).
+SELECT 'researchfi' AS _source, * FROM (
+WITH researchfi_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/academy_of_finland/academy_of_finland_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'researchfi')
+),
+aka_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321108  -- Academy of Finland
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(CAST(g.project_id AS STRING))))) % 9000000000 as id,
+
+        COALESCE(NULLIF(TRIM(g.title_en), ''), g.title_fi) as display_name,
+
+        COALESCE(NULLIF(TRIM(g.description_en), ''), g.description_fi) as description,
+
+        f.funder_id,
+        g.funder_project_number as funder_award_id,
+
+        TRY_CAST(g.amount_eur AS DOUBLE) as amount,
+        'EUR' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        CASE
+            WHEN LOWER(g.funding_type) LIKE '%fellowship%' THEN 'fellowship'
+            WHEN LOWER(g.funding_type) LIKE '%postdoctoral%' THEN 'fellowship'
+            WHEN LOWER(g.funding_type) LIKE '%research fellow%' THEN 'fellowship'
+            WHEN LOWER(g.funding_type) LIKE '%academy professor%' THEN 'fellowship'
+            WHEN LOWER(g.funding_type) LIKE '%centre of excellence%' THEN 'research'
+            WHEN LOWER(g.funding_type) LIKE '%flagship%' THEN 'research'
+            WHEN LOWER(g.funding_type) LIKE '%infrastructure%' THEN 'infrastructure'
+            WHEN LOWER(g.funding_type) LIKE '%strategic%' THEN 'research'
+            WHEN LOWER(g.funding_type) LIKE '%academy project%' THEN 'grant'
+            ELSE 'grant'
+        END as funding_type,
+
+        g.call_programme as funder_scheme,
+
+        'researchfi' as provenance,
+
+        TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        TRY_CAST(g.start_year AS INT) as start_year,
+        TRY_CAST(g.end_year AS INT) as end_year,
+
+        CASE
+            WHEN g.pi_family_name IS NOT NULL THEN
+                struct(
+                    g.pi_given_name as given_name,
+                    g.pi_family_name as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        CAST(NULL AS STRING) as name,
+                        'Finland' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        CONCAT('https://research.fi/en/results/funding/', CAST(g.project_id AS STRING)) as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(CAST(g.project_id AS STRING))))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM researchfi_input g
+    CROSS JOIN aka_funder f
+    WHERE g.project_id IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        24 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAcMedSciAwards.ipynb (origin e22fdf7f): its awards-table SELECT over acmedsci_input (was the
+-- staging table read from s3://openalex-ingest/awards/acmedsci/acmedsci_awards.parquet); created_date and updated_date are the run timestamp.
+-- acmedsci: priority 323, frozen fetch cadence (descriptive).
+SELECT 'acmedsci' AS _source, * FROM (
+WITH acmedsci_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/acmedsci/acmedsci_awards.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'acmedsci')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320241  -- Academy of Medical Sciences (UK)
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,           -- amounts not published (6.7 waiver)
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        CASE WHEN g.funder_scheme LIKE '%Fellowship%' THEN 'fellowship' ELSE 'grant' END as funding_type,
+        g.funder_scheme,
+        'acmedsci' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CAST(NULL AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        CAST(NULL AS STRING) as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM acmedsci_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        323 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateADAAwards.ipynb (origin e22fdf7f): its awards-table SELECT over ada_research_database_input (was the
+-- staging table read from s3://openalex-ingest/awards/ada/ada_projects.parquet); created_date and updated_date are the run timestamp.
+-- ada_research_database: priority 496, frozen fetch cadence (descriptive).
+SELECT 'ada_research_database' AS _source, * FROM (
+WITH ada_research_database_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/ada/ada_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'ada_research_database')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306089  -- American Diabetes Association
+),
+
+g AS (
+    SELECT
+        *,
+        CASE WHEN NULLIF(TRIM(lead_family_name), '') IS NOT NULL THEN named_struct(
+            'given_name', NULLIF(TRIM(lead_given_name), ''),
+            'family_name', NULLIF(TRIM(lead_family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(institution), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) END AS lead
+    FROM ada_research_database_input
+    WHERE funder_award_id IS NOT NULL AND TRIM(funder_award_id) != ''
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,      -- ADA publishes no per-grant amounts
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    NULLIF(TRIM(g.grant_type), '') as funder_scheme,
+    'ada_research_database' as provenance,
+    TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+    TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+    COALESCE(YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')), TRY_CAST(g.grant_year AS INT)) as start_year,
+    YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+    g.lead as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CASE WHEN g.lead IS NOT NULL THEN array(g.lead) END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM g
+CROSS JOIN src_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        496 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAEIAwards.ipynb (origin e22fdf7f): its awards-table SELECT over bdns_aei_input (was the
+-- staging table read from s3://openalex-ingest/awards/aei/aei_grants.parquet); created_date and updated_date are the run timestamp.
+-- bdns_aei: priority 31, frozen fetch cadence (descriptive).
+SELECT 'bdns_aei' AS _source, * FROM (
+WITH bdns_aei_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aei/aei_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'bdns_aei')
+),
+aei_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320335598  -- Agencia Estatal de Investigación
+),
+
+grants_with_org AS (
+    SELECT
+        *,
+        TRIM(REGEXP_REPLACE(beneficiary, '^[A-Z0-9]+\\s+', '')) as org_name
+    FROM bdns_aei_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.grant_code)))) % 9000000000 as id,
+
+    g.call_title as display_name,
+
+    g.call_title as description,
+
+    f.funder_id,
+    g.grant_code as funder_award_id,
+
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    'EUR' as currency,
+
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+
+    CASE
+        WHEN g.instrument_type LIKE '%PRÉSTAMO%' THEN 'loan'
+        WHEN g.instrument_type LIKE '%SUBVENCI%' THEN 'grant'
+        ELSE 'grant'
+    END as funding_type,
+
+    g.instrument_type as funder_scheme,
+
+    'bdns_aei' as provenance,
+
+    TRY_TO_DATE(g.grant_date, 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    TRY_CAST(g.grant_year AS INT) as start_year,
+    CAST(NULL AS INT) as end_year,
+
+    struct(
+        CAST(NULL AS STRING) as given_name,
+        CAST(NULL AS STRING) as family_name,
+        CAST(NULL AS STRING) as orcid,
+        CAST(NULL AS DATE) as role_start,
+        struct(
+            g.org_name as name,
+            'ES' as country,
+            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+        ) as affiliation
+    ) as lead_investigator,
+
+    CAST(NULL AS STRUCT<
+        given_name:STRING,
+        family_name:STRING,
+        orcid:STRING,
+        role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) as co_lead_investigator,
+
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING,
+        family_name:STRING,
+        orcid:STRING,
+        role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>
+    >>>) as investigators,
+
+    g.legal_basis_url as landing_page_url,
+
+    CAST(NULL AS STRING) as doi,
+
+    concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.grant_code)))) % 9000000000) as works_api_url,
+
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+
+FROM grants_with_org g
+CROSS JOIN aei_funder f
+WHERE g.grant_code IS NOT NULL
+  AND TRIM(g.grant_code) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        31 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAESAwards.ipynb (origin e22fdf7f): its awards-table SELECT over aes_input (was the
+-- staging table read from s3://openalex-ingest/awards/aes/aes_awards.parquet); created_date and updated_date are the run timestamp.
+-- aes: priority 325, frozen fetch cadence (descriptive).
+SELECT 'aes' AS _source, * FROM (
+WITH aes_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aes/aes_awards.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'aes')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306597  -- American Epilepsy Society
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'fellowship' as funding_type,
+        g.funder_scheme as funder_scheme,
+        'aes' as provenance,
+        CASE WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL THEN TRY_TO_DATE(CONCAT(TRY_CAST(g.start_year AS INT), '-01-01'), 'yyyy-MM-dd') END as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.start_year AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United States' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM aes_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        325 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAGAURAwards.ipynb (origin e22fdf7f): its awards-table SELECT over agaur_raisc_socrata_input (was the
+-- staging table read from s3://openalex-ingest/awards/agaur/agaur_projects.parquet); created_date and updated_date are the run timestamp.
+-- agaur_raisc_socrata: priority 195, frozen fetch cadence (descriptive).
+SELECT 'agaur_raisc_socrata' AS _source, * FROM (
+WITH agaur_raisc_socrata_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/agaur/agaur_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'agaur_raisc_socrata')
+),
+agaur_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320334830  -- Agència de Gestió d'Ajuts Universitaris i de Recerca
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DOUBLE) > 0 THEN TRY_CAST(g.amount AS DOUBLE) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DOUBLE) > 0 THEN 'EUR' ELSE NULL END as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        CASE
+            WHEN LOWER(g.funder_scheme) RLIKE '(doctorat|industrial|formacio|formation|beca|fellowship|investigador|professor|jove)' THEN 'fellowship'
+            ELSE 'research'
+        END as funding_type,
+        g.funder_scheme as funder_scheme,
+        'agaur_raisc_socrata' as provenance,
+        CASE WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL
+             THEN CAST(CONCAT(g.start_year, '-01-01') AS DATE) ELSE NULL END as start_date,
+        CASE WHEN TRY_CAST(g.end_year AS INT) IS NOT NULL
+             THEN CAST(CONCAT(g.end_year, '-12-31') AS DATE) ELSE NULL END as end_date,
+        TRY_CAST(g.start_year AS INT) as start_year,
+        TRY_CAST(g.end_year AS INT) as end_year,
+        CASE
+            WHEN g.institution_name IS NOT NULL
+             AND g.institution_name != 'Estranger-Altres'
+             AND TRIM(g.institution_name) != '' THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution_name as name,
+                        'Spain' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING,
+            role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING,
+            role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        'https://analisi.transparenciacatalunya.cat/Economia/Concessions-del-RAISC-Registre-de-subvencions-i-aju/s9xt-n979' as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM agaur_raisc_socrata_input g
+    CROSS JOIN agaur_funder f
+    WHERE g.funder_award_id IS NOT NULL
+      AND TRIM(CAST(g.funder_award_id AS STRING)) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        195 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAHAAwards.ipynb (origin e22fdf7f): its awards-table SELECT over aha_report_builder_input (was the
+-- staging table read from s3://openalex-ingest/awards/aha/aha_projects.parquet); created_date and updated_date are the run timestamp.
+-- aha_report_builder: priority 397, frozen fetch cadence (descriptive).
+SELECT 'aha_report_builder' AS _source, * FROM (
+WITH aha_report_builder_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aha/aha_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'aha_report_builder')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306230  -- American Heart Association
+),
+parsed AS (
+    SELECT
+        a.*,
+        from_json(
+            a.investigators_json,
+            'array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>'
+        ) AS investigators_arr
+    FROM aha_report_builder_input a
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(p.funder_award_id)
+    ))) % 9000000000 AS id,
+    p.title AS display_name,
+    p.description,                                 -- Technical abstract (General fallback)
+    f.funder_id,
+    p.funder_award_id,
+    TRY_CAST(p.amount AS DOUBLE) AS amount,
+    p.currency,                                    -- 'USD' from script, NULL if no amount
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    p.funding_type,                                -- research / fellowship / training
+    p.funder_scheme,                               -- AHA funding mechanism
+    'aha_report_builder' AS provenance,
+    TRY_CAST(p.start_date AS DATE) AS start_date,  -- exact award dates (published)
+    TRY_CAST(p.end_date AS DATE) AS end_date,
+    TRY_CAST(p.start_year AS INT) AS start_year,
+    TRY_CAST(p.end_year AS INT) AS end_year,
+    try_element_at(p.investigators_arr, 1) AS lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) AS co_lead_investigator,
+    p.investigators_arr AS investigators,          -- all PIs (multi-PI collaboratives)
+    p.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(p.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM parsed p
+CROSS JOIN funder_resolved f
+WHERE p.funder_award_id IS NOT NULL
+  AND p.title IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        397 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAhmansonAwards.ipynb (origin e22fdf7f): its awards-table SELECT over ahmanson_grants_archive_input (was the
+-- staging table read from s3://openalex-ingest/awards/ahmanson/ahmanson_grants.parquet); created_date and updated_date are the run timestamp.
+-- ahmanson_grants_archive: priority 166, frozen fetch cadence (descriptive).
+SELECT 'ahmanson_grants_archive' AS _source, * FROM (
+WITH ahmanson_grants_archive_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/ahmanson/ahmanson_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'ahmanson_grants_archive')
+),
+ahmanson_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320314405
+),
+
+raw_prepared AS (
+    SELECT
+        *,
+        LOWER(TRIM(funder_award_id)) AS native_award_id,
+        TRY_CAST(amount AS DOUBLE) AS parsed_amount,
+        CASE WHEN TRY_CAST(amount AS DOUBLE) IS NOT NULL THEN 'USD' ELSE NULL END AS parsed_currency,
+        TRY_CAST(fiscal_year AS INT) AS parsed_year,
+        CASE
+            WHEN TRY_CAST(fiscal_year AS INT) BETWEEN 1900 AND YEAR(current_date()) + 1
+            THEN TRY_TO_DATE(CONCAT(fiscal_year, '-01-01'), 'yyyy-MM-dd')
+            ELSE NULL
+        END AS parsed_start_date
+    FROM ahmanson_grants_archive_input
+    WHERE funder_award_id IS NOT NULL
+      AND TRIM(funder_award_id) != ''
+      AND display_name IS NOT NULL
+      AND TRIM(display_name) != ''
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 AS id,
+
+        TRIM(g.display_name) AS display_name,
+
+        CASE
+            WHEN g.description IS NULL OR TRIM(g.description) = '' THEN NULL
+            ELSE TRIM(g.description)
+        END AS description,
+
+        f.funder_id,
+        g.native_award_id AS funder_award_id,
+
+        g.parsed_amount AS amount,
+        g.parsed_currency AS currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) AS id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) AS funder,
+
+        'grant' AS funding_type,
+
+        NULLIF(TRIM(g.program_area), '') AS funder_scheme,
+
+        'ahmanson_grants_archive' AS provenance,
+
+        g.parsed_start_date AS start_date,
+        CAST(NULL AS DATE) AS end_date,
+        g.parsed_year AS start_year,
+        CAST(NULL AS INT) AS end_year,
+
+        struct(
+            CAST(NULL AS STRING) AS given_name,
+            CAST(NULL AS STRING) AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            g.parsed_start_date AS role_start,
+            struct(
+                NULLIF(TRIM(g.grantee_name), '') AS name,
+                NULLIF(TRIM(g.recipient_country), '') AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        ) AS lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) AS co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+
+        NULLIF(TRIM(g.landing_page_url), '') AS landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+
+        CONCAT('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000) AS works_api_url,
+
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+
+    FROM raw_prepared g
+    CROSS JOIN ahmanson_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        166 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAHRQAwards.ipynb (origin e22fdf7f): its awards-table SELECT over usaspending_ahrq_input (was the
+-- staging table read from s3://openalex-ingest/awards/ahrq/ahrq_awards.parquet); created_date and updated_date are the run timestamp.
+-- usaspending_ahrq: priority 54, frozen fetch cadence (descriptive).
+SELECT 'usaspending_ahrq' AS _source, * FROM (
+WITH usaspending_ahrq_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/ahrq/ahrq_awards.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'usaspending_ahrq')
+),
+ahrq_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320332177  -- Agency for Healthcare Research and Quality
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.award_id_fain)))) % 9000000000 as id,
+
+        COALESCE(g.prime_award_base_transaction_description, g.transaction_description) as display_name,
+
+        COALESCE(g.prime_award_base_transaction_description, g.transaction_description) as description,
+
+        f.funder_id,
+        g.award_id_fain as funder_award_id,
+
+        TRY_CAST(g.total_obligated_amount AS DOUBLE) as amount,
+        'USD' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        CASE
+            WHEN g.assistance_type_code = '02' THEN 'grant'  -- Block Grant
+            WHEN g.assistance_type_code = '03' THEN 'grant'  -- Formula Grant
+            WHEN g.assistance_type_code = '04' THEN 'grant'  -- Project Grant
+            WHEN g.assistance_type_code = '05' THEN 'grant'  -- Cooperative Agreement
+            ELSE 'grant'
+        END as funding_type,
+
+        g.cfda_title as funder_scheme,
+
+        'usaspending_ahrq' as provenance,
+
+        TRY_TO_DATE(g.period_of_performance_start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.period_of_performance_current_end_date, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.period_of_performance_start_date, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.period_of_performance_current_end_date, 'yyyy-MM-dd')) as end_year,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        g.usaspending_permalink as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.award_id_fain)))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date,
+
+        g.recipient_name,
+        g.recipient_state_name,
+        g.recipient_country_name
+
+    FROM usaspending_ahrq_input g
+    CROSS JOIN ahrq_funder f
+    WHERE g.award_id_fain IS NOT NULL
+      AND TRIM(g.award_id_fain) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        54 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAlbertaInnovatesAwards.ipynb (origin e22fdf7f): its awards-table SELECT over alberta_innovates_projects_input (was the
+-- staging table read from s3://openalex-ingest/awards/alberta_innovates/alberta_innovates_projects.parquet); created_date and updated_date are the run timestamp.
+-- alberta_innovates_projects: priority 483, frozen fetch cadence (descriptive).
+SELECT 'alberta_innovates_projects' AS _source, * FROM (
+WITH alberta_innovates_projects_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/alberta_innovates/alberta_innovates_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'alberta_innovates_projects')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320325651  -- Alberta Innovates
+),
+
+lead AS (
+    SELECT
+        funder_award_id,
+        CASE WHEN NULLIF(TRIM(lead_family_name), '') IS NOT NULL
+                  OR NULLIF(TRIM(recipient_organization), '') IS NOT NULL THEN named_struct(
+            'given_name', NULLIF(TRIM(lead_given_name), ''),
+            'family_name', NULLIF(TRIM(lead_family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(recipient_organization), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) END AS lead_investigator
+    FROM alberta_innovates_projects_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    CASE WHEN TRY_CAST(g.amount AS DOUBLE) IS NOT NULL THEN 'CAD' END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE WHEN g.program = 'Postdoctoral Fellowships' THEN 'fellowship' ELSE 'grant' END as funding_type,
+    NULLIF(TRIM(g.program), '') as funder_scheme,
+    'alberta_innovates_projects' as provenance,
+    TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+    TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+    COALESCE(YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')), TRY_CAST(g.cohort_year AS INT)) as start_year,
+    YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+    l.lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CASE WHEN l.lead_investigator IS NOT NULL THEN array(l.lead_investigator) END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM alberta_innovates_projects_input g
+JOIN lead l ON l.funder_award_id = g.funder_award_id
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        483 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAlcoholChangeUKAwards.ipynb (origin e22fdf7f): its awards-table SELECT over alcohol_change_uk_input (was the
+-- staging table read from s3://openalex-ingest/awards/alcohol_change_uk/alcohol_change_uk_grants.parquet); created_date and updated_date are the run timestamp.
+-- alcohol_change_uk: priority 317, frozen fetch cadence (descriptive).
+SELECT 'alcohol_change_uk' AS _source, * FROM (
+WITH alcohol_change_uk_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/alcohol_change_uk/alcohol_change_uk_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'alcohol_change_uk')
+),
+acuk_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320319998  -- Alcohol Research UK (legacy/richer of the pair)
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'alcohol_change_uk' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.year_awarded AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.institution IS NOT NULL THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM alcohol_change_uk_input g
+    CROSS JOIN acuk_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        317 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAllianceCanAwards.ipynb (origin e22fdf7f): its awards-table SELECT over alliancecan_funding_programmes_input (was the
+-- staging table read from s3://openalex-ingest/awards/alliancecan/alliancecan_projects.parquet); created_date and updated_date are the run timestamp.
+-- alliancecan_funding_programmes: priority 548, frozen fetch cadence (descriptive).
+SELECT 'alliancecan_funding_programmes' AS _source, * FROM (
+WITH alliancecan_funding_programmes_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/alliancecan/alliancecan_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'alliancecan_funding_programmes')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320331257  -- Digital Research Alliance of Canada
+),
+
+lead AS (
+    SELECT
+        funder_award_id,
+        named_struct(
+            'given_name', NULLIF(TRIM(lead_given_name), ''),
+            'family_name', NULLIF(TRIM(lead_family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(institution), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) AS lead_investigator
+    FROM alliancecan_funding_programmes_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'grant' as funding_type,
+    NULLIF(TRIM(g.programme), '') as funder_scheme,
+    'alliancecan_funding_programmes' as provenance,
+    CAST(NULL AS DATE) as start_date,
+    TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+    TRY_CAST(g.year AS INT) as start_year,
+    YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+    l.lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    array(l.lead_investigator) as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM alliancecan_funding_programmes_input g
+JOIN lead l ON l.funder_award_id = g.funder_award_id
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        548 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAllianceCanRACAwards.ipynb (origin e22fdf7f): its awards-table SELECT over alliancecan_rac_input (was the
+-- staging table read from s3://openalex-ingest/awards/alliancecan_rac/alliancecan_rac_projects.parquet); created_date and updated_date are the run timestamp.
+-- alliancecan_rac: priority 553, frozen fetch cadence (descriptive).
+SELECT 'alliancecan_rac' AS _source, * FROM (
+WITH alliancecan_rac_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/alliancecan_rac/alliancecan_rac_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'alliancecan_rac')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id IN (4320314000, 4320331257)
+),
+
+g AS (
+    SELECT
+        r.*,
+        TRY_CAST(r.funder_id AS BIGINT) AS funder_id_num,
+        TRIM(r.funder_award_id) AS award_id
+    FROM alliancecan_rac_input r
+    WHERE r.funder_award_id IS NOT NULL AND TRIM(r.funder_award_id) != ''
+),
+
+lead AS (
+    SELECT
+        funder_id_num,
+        award_id,
+        CASE WHEN NULLIF(TRIM(lead_family_name), '') IS NOT NULL THEN
+        named_struct(
+            'given_name', NULLIF(TRIM(lead_given_name), ''),
+            'family_name', NULLIF(TRIM(lead_family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(institution), ''),
+                'country', 'CA',
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) END AS lead_investigator
+    FROM g
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.award_id)))) % 9000000000 as id,
+    COALESCE(NULLIF(TRIM(g.title), ''), CONCAT('RAC allocation ', g.award_id)) as display_name,
+    CONCAT_WS(' ',
+        'In-kind allocation of national advanced research computing resources (no monetary award).',
+        CONCAT(g.allocation_text, '.'),
+        CASE WHEN NULLIF(TRIM(g.summary), '') IS NOT NULL THEN CONCAT('Project summary: ', TRIM(g.summary)) END
+    ) as description,
+    f.funder_id,
+    g.award_id as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'grant' as funding_type,
+    NULLIF(TRIM(g.funder_scheme), '') as funder_scheme,
+    'alliancecan_rac' as provenance,
+    CAST(NULL AS DATE) as start_date,
+    CAST(NULL AS DATE) as end_date,
+    TRY_CAST(g.first_year AS INT) as start_year,
+    TRY_CAST(g.last_year AS INT) + 1 as end_year,
+    l.lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CASE WHEN l.lead_investigator IS NOT NULL THEN array(l.lead_investigator) END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.award_id)))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM g
+JOIN lead l ON l.funder_id_num = g.funder_id_num AND l.award_id = g.award_id
+JOIN src_funder f ON f.funder_id = g.funder_id_num
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        553 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAlzAssociationAwards.ipynb (origin e22fdf7f): its awards-table SELECT over alz_association_input (was the
+-- staging table read from s3://openalex-ingest/awards/alz_association/alz_association_studies.parquet); created_date and updated_date are the run timestamp.
+-- alz_association: priority 269, frozen fetch cadence (descriptive).
+SELECT 'alz_association' AS _source, * FROM (
+WITH alz_association_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/alz_association/alz_association_studies.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'alz_association')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306219  -- Alzheimer's Association
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'research' as funding_type,
+        g.programme as funder_scheme,
+        'alz_association' as provenance,
+        CASE WHEN TRY_CAST(g.start_year AS INT) BETWEEN 2000 AND 2027 THEN TRY_TO_DATE(CONCAT(g.start_year,'-01-01'),'yyyy-MM-dd') ELSE NULL END as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CASE WHEN TRY_CAST(g.start_year AS INT) BETWEEN 1980 AND 2030 THEN TRY_CAST(g.start_year AS INT) ELSE NULL END as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name, g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, g.country as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation
+                )
+            ELSE NULL END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        CAST(NULL AS STRING) as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM alz_association_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        269 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAlzheimerNLAwards.ipynb (origin e22fdf7f): its awards-table SELECT over alzheimer_nl_input (was the
+-- staging table read from s3://openalex-ingest/awards/alzheimer_nl/alzheimer_nl_grants.parquet); created_date and updated_date are the run timestamp.
+-- alzheimer_nl: priority 263, frozen fetch cadence (descriptive).
+SELECT 'alzheimer_nl' AS _source, * FROM (
+WITH alzheimer_nl_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/alzheimer_nl/alzheimer_nl_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'alzheimer_nl')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320326729  -- Alzheimer Nederland
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        'EUR' as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.programme as funder_scheme,
+        'alzheimer_nl' as provenance,
+        TRY_TO_DATE(g.start_date,'yyyy-MM-dd') as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CASE WHEN TRY_CAST(g.start_year AS INT) BETWEEN 1980 AND 2027 THEN TRY_CAST(g.start_year AS INT) ELSE NULL END as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'Netherlands' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        CAST(NULL AS STRING) as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM alzheimer_nl_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        263 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAMEDAwards.ipynb (origin e22fdf7f): its awards-table SELECT over amed_amedfind_input (was the
+-- staging table read from s3://openalex-ingest/awards/amed/amed_projects.parquet); created_date and updated_date are the run timestamp.
+-- amed_amedfind: priority 207, frozen fetch cadence (descriptive).
+SELECT 'amed_amedfind' AS _source, * FROM (
+WITH amed_amedfind_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/amed/amed_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'amed_amedfind')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320311405
+),
+raw_prepped AS (
+    SELECT
+        *,
+        TRY_CAST(amount AS DOUBLE) AS amount_double,
+        CASE WHEN TRY_CAST(start_year AS INT) BETWEEN 1800 AND 2100 THEN TRY_CAST(start_year AS INT) END AS start_year_int,
+        CASE WHEN TRY_CAST(end_year AS INT) BETWEEN 1800 AND 2100 THEN TRY_CAST(end_year AS INT) END AS end_year_int,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS start_date_parsed,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS end_date_parsed,
+        NULLIF(TRIM(lead_affiliation_name), '') AS leader_affiliation_name,
+        NULLIF(TRIM(lead_researcher_name), '') AS leader_name
+    FROM amed_amedfind_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT('4320311405:', LOWER(TRIM(rp.funder_award_id))))) % 9000000000 AS id,
+    rp.display_name,
+    NULLIF(TRIM(rp.description), '') AS description,
+    4320311405 AS funder_id,
+    rp.funder_award_id,
+    rp.amount_double AS amount,
+    CASE WHEN rp.amount_double IS NOT NULL THEN 'JPY' ELSE NULL END AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    CASE
+        WHEN rp.funder_scheme RLIKE '育成|フェロー|特別研究員' THEN 'fellowship'
+        ELSE 'research'
+    END AS funding_type,
+    NULLIF(TRIM(rp.funder_scheme), '') AS funder_scheme,
+    'amed_amedfind' AS provenance,
+    rp.start_date_parsed AS start_date,
+    rp.end_date_parsed AS end_date,
+    rp.start_year_int AS start_year,
+    rp.end_year_int AS end_year,
+    CASE
+        WHEN rp.leader_name IS NOT NULL OR rp.leader_affiliation_name IS NOT NULL THEN
+            struct(
+                CAST(NULL AS STRING) AS given_name,
+                rp.leader_name AS family_name,
+                CAST(NULL AS STRING) AS orcid,
+                CAST(NULL AS DATE) AS role_start,
+                struct(
+                    rp.leader_affiliation_name AS name,
+                    CASE WHEN rp.leader_affiliation_name IS NOT NULL THEN 'JP' ELSE NULL END AS country,
+                    CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+                ) AS affiliation
+            )
+        ELSE NULL
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    rp.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT('4320311405:', LOWER(TRIM(rp.funder_award_id))))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM raw_prepped rp
+CROSS JOIN funder_resolved f
+WHERE rp.funder_award_id IS NOT NULL
+  AND rp.display_name IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        207 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAndaluciaAwards.ipynb (origin e22fdf7f): its awards-table SELECT over andalucia_input (was the
+-- staging table read from s3://openalex-ingest/awards/andalucia/andalucia_projects.parquet); created_date and updated_date are the run timestamp.
+-- andalucia: priority 421, frozen fetch cadence (descriptive).
+SELECT 'andalucia' AS _source, * FROM (
+WITH andalucia_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/andalucia/andalucia_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'andalucia')
+),
+andalucia_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320326754  -- Junta de Andalucía
+),
+mapped_awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.announcement as display_name,
+        NULLIF(TRIM(g.finality), '') as description,
+        f.funder_id,
+        g.funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DOUBLE) > 0 THEN TRY_CAST(g.amount AS DOUBLE) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DOUBLE) > 0 THEN 'EUR' ELSE NULL END as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        CASE
+            WHEN LOWER(g.announcement) RLIKE '(predoctoral|postdoctoral|posdoctoral|contrat|talentia|beca)' THEN 'fellowship'
+            ELSE 'research'
+        END as funding_type,
+        NULLIF(TRIM(g.name_program), '') as funder_scheme,
+        'andalucia' as provenance,
+        TRY_TO_DATE(g.grant_date, 'yyyy-MM-dd') as start_date,
+        CAST(NULL AS DATE) as end_date,
+        COALESCE(YEAR(TRY_TO_DATE(g.grant_date, 'yyyy-MM-dd')), TRY_CAST(g.award_year AS INT)) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.institution_name IS NOT NULL AND TRIM(g.institution_name) != '' THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution_name as name,
+                        'Spain' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING,
+            role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING,
+            role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        'https://www.juntadeandalucia.es/datosabiertos/portal/dataset/subvenciones-otorgadas-por-la-junta-de-andalucia' as landing_page_url,
+        CAST(NULL AS STRING) as doi
+    FROM andalucia_input g
+    CROSS JOIN andalucia_funder f
+),
+
+awards_transformed AS (
+SELECT *,
+    concat('https://api.openalex.org/works?filter=awards.id:G', id) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM mapped_awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        421 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateANIIAwards.ipynb (origin e22fdf7f): its awards-table SELECT over anii_projects_portal_input (was the
+-- staging table read from s3://openalex-ingest/awards/anii/anii_projects.parquet); created_date and updated_date are the run timestamp.
+-- anii_projects_portal: priority 82, frozen fetch cadence (descriptive).
+SELECT 'anii_projects_portal' AS _source, * FROM (
+WITH anii_projects_portal_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/anii/anii_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'anii_projects_portal')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320310753  -- ANII Uruguay
+), typed AS (
+    SELECT
+        *,
+        TRY_CAST(amount AS DOUBLE) AS amount_double,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS start_date_typed,
+        TRY_CAST(duration_months AS INT) AS duration_months_int
+    FROM anii_projects_portal_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(a.funder_award_id)
+    ))) % 9000000000 AS id,
+    a.title AS display_name,
+    a.description,
+    f.funder_id,
+    a.funder_award_id,
+    a.amount_double AS amount,
+    CASE WHEN a.amount_double IS NOT NULL THEN a.currency ELSE NULL END AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    'research' AS funding_type,
+    a.instrument AS funder_scheme,
+    'anii_projects_portal' AS provenance,
+    a.start_date_typed AS start_date,
+    CASE
+        WHEN a.start_date_typed IS NOT NULL AND a.duration_months_int IS NOT NULL
+        THEN date_sub(add_months(a.start_date_typed, a.duration_months_int), 1)
+        ELSE NULL
+    END AS end_date,
+    YEAR(a.start_date_typed) AS start_year,
+    CASE
+        WHEN a.start_date_typed IS NOT NULL AND a.duration_months_int IS NOT NULL
+        THEN YEAR(date_sub(add_months(a.start_date_typed, a.duration_months_int), 1))
+        ELSE NULL
+    END AS end_year,
+    CASE
+        WHEN a.beneficiary_person IS NULL OR a.beneficiary_person = '' THEN NULL
+        ELSE struct(
+            a.lead_given_name AS given_name,
+            a.lead_family_name AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            CASE
+                WHEN a.beneficiary_institution IS NULL OR a.beneficiary_institution = '' THEN CAST(NULL AS STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>)
+                ELSE struct(
+                    a.beneficiary_institution AS name,
+                    'UY' AS country,
+                    CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+                )
+            END AS affiliation
+        )
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    a.source_url AS landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(a.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM typed a
+CROSS JOIN funder_resolved f
+WHERE a.funder_award_id IS NOT NULL
+  AND a.title IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        82 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAOSResearchAwards.ipynb (origin e22fdf7f): its awards-table SELECT over aos_kessel_laccr_research_input (was the
+-- staging table read from s3://openalex-ingest/awards/aos/aos_research_awards.parquet); created_date and updated_date are the run timestamp.
+-- aos_kessel_laccr_research: priority 180, frozen fetch cadence (descriptive).
+SELECT 'aos_kessel_laccr_research' AS _source, * FROM (
+WITH aos_kessel_laccr_research_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aos/aos_research_awards.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'aos_kessel_laccr_research')
+),
+aos_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320313553
+),
+
+raw_prepared AS (
+    SELECT
+        *,
+        LOWER(TRIM(funder_award_id)) AS native_award_id,
+        TRY_CAST(amount AS DOUBLE) AS parsed_amount,
+        NULLIF(TRIM(currency), '') AS parsed_currency,
+        TRY_TO_DATE(CONCAT(award_year, '-01-01'), 'yyyy-MM-dd') AS parsed_start_date,
+        TRY_TO_DATE(CONCAT(award_year, '-12-31'), 'yyyy-MM-dd') AS parsed_end_date,
+        TRY_CAST(award_year AS INT) AS parsed_award_year
+    FROM aos_kessel_laccr_research_input
+    WHERE funder_award_id IS NOT NULL
+      AND TRIM(funder_award_id) != ''
+      AND display_name IS NOT NULL
+      AND TRIM(display_name) != ''
+      AND recipient_name IS NOT NULL
+      AND TRIM(recipient_name) != ''
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 as id,
+
+        TRIM(g.display_name) as display_name,
+
+        CASE
+            WHEN g.description IS NULL OR TRIM(g.description) = '' THEN NULL
+            ELSE TRIM(g.description)
+        END as description,
+
+        f.funder_id,
+        g.native_award_id as funder_award_id,
+
+        g.parsed_amount as amount,
+        g.parsed_currency as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        NULLIF(TRIM(g.funding_type), '') as funding_type,
+        NULLIF(TRIM(g.funder_scheme), '') as funder_scheme,
+
+        'aos_kessel_laccr_research' as provenance,
+
+        g.parsed_start_date as start_date,
+        g.parsed_end_date as end_date,
+        g.parsed_award_year as start_year,
+        g.parsed_award_year as end_year,
+
+        struct(
+            NULLIF(TRIM(g.given_name), '') as given_name,
+            NULLIF(TRIM(g.family_name), '') as family_name,
+            CAST(NULL AS STRING) as orcid,
+            g.parsed_start_date as role_start,
+            struct(
+                NULLIF(TRIM(g.affiliation), '') as name,
+                CAST(NULL AS STRING) as country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+            ) as affiliation
+        ) as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        NULLIF(TRIM(g.landing_page_url), '') as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM raw_prepared g
+    CROSS JOIN aos_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        180 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAPVVAwards.ipynb (origin e22fdf7f): its awards-table SELECT over apvv_input (was the
+-- staging table read from s3://openalex-ingest/awards/apvv/apvv_grants.parquet); created_date and updated_date are the run timestamp.
+-- apvv: priority 367, frozen fetch cadence (descriptive).
+SELECT 'apvv' AS _source, * FROM (
+WITH apvv_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/apvv/apvv_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'apvv')
+),
+apvv_funder AS (
+    SELECT CAST(funder_id AS BIGINT) as funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders WHERE funder_id = 4320323251
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title), ''), CONCAT('APVV grant ', g.funder_award_id)) as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN TRY_CAST(g.amount AS DECIMAL(18,2)) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN g.currency ELSE NULL END as currency,
+        struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'apvv' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(regexp_extract(g.scheme, '([0-9]{4})', 1) AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE WHEN g.institution IS NOT NULL THEN
+            struct(CAST(NULL AS STRING) as given_name, CAST(NULL AS STRING) as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                struct(g.institution as name, 'Slovakia' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+        ELSE NULL END as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM apvv_input g
+    CROSS JOIN apvv_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        367 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAragonResearchGroupsAwards.ipynb (origin e22fdf7f): its awards-table SELECT over aragon_boa_research_groups_input (was the
+-- staging table read from s3://openalex-ingest/awards/aragon_research_groups/aragon_research_groups_projects.parquet); created_date and updated_date are the run timestamp.
+-- aragon_boa_research_groups: priority 522, frozen fetch cadence (descriptive).
+SELECT 'aragon_boa_research_groups' AS _source, * FROM (
+WITH aragon_boa_research_groups_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aragon_research_groups/aragon_research_groups_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'aragon_boa_research_groups')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320326208  -- Gobierno de Aragón
+),
+g AS (
+    SELECT *,
+        TRIM(funder_award_id) AS award_key,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS start_dt,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS end_dt
+    FROM aragon_boa_research_groups_input
+    WHERE funder_award_id IS NOT NULL AND TRIM(funder_award_id) != ''
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.award_key)))) % 9000000000 as id,
+    NULLIF(TRIM(g.group_name), '') as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    g.award_key as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    'EUR' as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    CONCAT('Grupos de investigación reconocidos por el Gobierno de Aragón ', g.period) as funder_scheme,
+    'aragon_boa_research_groups' as provenance,
+    g.start_dt as start_date,
+    g.end_dt as end_date,
+    YEAR(g.start_dt) as start_year,
+    YEAR(g.end_dt) as end_year,
+    CASE WHEN NULLIF(TRIM(g.pi_family_name), '') IS NOT NULL THEN named_struct(
+        'given_name', NULLIF(TRIM(g.pi_given_name), ''),
+        'family_name', NULLIF(TRIM(g.pi_family_name), ''),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', g.start_dt,
+        'affiliation', named_struct(
+            'name', NULLIF(TRIM(g.institution), ''),
+            'country', 'ES',
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as lead_investigator,
+    CASE WHEN NULLIF(TRIM(g.co_pi_family_name), '') IS NOT NULL THEN named_struct(
+        'given_name', NULLIF(TRIM(g.co_pi_given_name), ''),
+        'family_name', NULLIF(TRIM(g.co_pi_family_name), ''),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', g.start_dt,
+        'affiliation', named_struct(
+            'name', NULLIF(TRIM(g.institution), ''),
+            'country', 'ES',
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    g.source_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.award_key)))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM g
+CROSS JOIN src_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        522 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateARAMISSERIAwards.ipynb (origin e22fdf7f): its awards-table SELECT over aramis_seri_input (was the
+-- staging table read from s3://openalex-ingest/awards/aramis_seri/aramis_seri_projects.parquet); created_date and updated_date are the run timestamp.
+-- aramis_seri: priority 533, frozen fetch cadence (descriptive).
+SELECT 'aramis_seri' AS _source, * FROM (
+WITH aramis_seri_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aramis_seri/aramis_seri_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'aramis_seri')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320335238  -- State Secretariat for Education, Research and Innovation
+),
+g AS (
+    SELECT
+        TRIM(aramis_number) AS funder_award_id,
+        COALESCE(NULLIF(TRIM(title_en), ''), NULLIF(TRIM(title_de), ''), NULLIF(TRIM(title_fr), ''), NULLIF(TRIM(title_it), '')) AS title,
+        NULLIF(TRIM(abstract), '') AS abstract,
+        TRY_CAST(granted_total_costs_chf AS DOUBLE) AS amount,
+        NULLIF(TRIM(section), '') AS section,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS start_d,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS end_d,
+        CASE WHEN lead_family_name IS NOT NULL THEN named_struct(
+            'given_name', NULLIF(TRIM(lead_given_name), ''),
+            'family_name', NULLIF(TRIM(lead_family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(lead_institution), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) END AS lead
+    FROM aramis_seri_input
+    WHERE aramis_number IS NOT NULL AND TRIM(aramis_number) != ''
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+    g.title as display_name,
+    g.abstract as description,
+    f.funder_id,
+    g.funder_award_id,
+    g.amount,
+    'CHF' as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    g.section as funder_scheme,
+    'aramis_seri' as provenance,
+    g.start_d as start_date,
+    g.end_d as end_date,
+    YEAR(g.start_d) as start_year,
+    YEAR(g.end_d) as end_year,
+    g.lead as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CASE WHEN g.lead IS NOT NULL THEN array(g.lead) END as investigators,
+    CAST(NULL AS STRING) as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM g
+CROSS JOIN src_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        533 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateArcadiaAwards.ipynb (origin e22fdf7f): its awards-table SELECT over arcadia_360giving_input (was the
+-- staging table read from s3://openalex-ingest/awards/arcadia/arcadia_grants.parquet); created_date and updated_date are the run timestamp.
+-- arcadia_360giving: priority 148, frozen fetch cadence (descriptive).
+SELECT 'arcadia_360giving' AS _source, * FROM (
+WITH arcadia_360giving_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/arcadia/arcadia_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'arcadia_360giving')
+),
+arcadia_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320313262
+),
+
+raw_prepared AS (
+    SELECT
+        *,
+        LOWER(TRIM(funder_award_id)) AS native_award_id,
+        TRY_CAST(amount AS DOUBLE) AS parsed_amount,
+        CASE WHEN TRY_CAST(amount AS DOUBLE) IS NOT NULL THEN NULLIF(TRIM(currency), '') ELSE NULL END AS parsed_currency,
+        COALESCE(TRY_TO_DATE(award_date, 'yyyy-MM-dd'), TRY_TO_DATE(start_date, 'yyyy-MM-dd')) AS parsed_start_date,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS parsed_end_date,
+        TRY_CAST(source_year AS INT) AS parsed_start_year,
+        TRY_CAST(duration_years AS INT) AS parsed_duration_years
+    FROM arcadia_360giving_input
+    WHERE funder_award_id IS NOT NULL
+      AND TRIM(funder_award_id) != ''
+      AND display_name IS NOT NULL
+      AND TRIM(display_name) != ''
+),
+
+mapped_awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 as id,
+        TRIM(g.display_name) as display_name,
+        NULLIF(TRIM(g.description), '') as description,
+        f.funder_id,
+        g.native_award_id as funder_award_id,
+        g.parsed_amount as amount,
+        g.parsed_currency as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+        'grant' as funding_type,
+        COALESCE(NULLIF(TRIM(g.funding_area), ''), 'Arcadia grant') as funder_scheme,
+        'arcadia_360giving' as provenance,
+        g.parsed_start_date as start_date,
+        g.parsed_end_date as end_date,
+        COALESCE(YEAR(g.parsed_start_date), g.parsed_start_year) as start_year,
+        COALESCE(YEAR(g.parsed_end_date), g.parsed_start_year + g.parsed_duration_years - 1) as end_year,
+        struct(
+            CAST(NULL AS STRING) as given_name,
+            CAST(NULL AS STRING) as family_name,
+            CAST(NULL AS STRING) as orcid,
+            g.parsed_start_date as role_start,
+            struct(
+                NULLIF(TRIM(g.beneficiary), '') as name,
+                CAST(NULL AS STRING) as country,
+                CASE
+                    WHEN g.recipient_org_identifier IS NOT NULL AND TRIM(g.recipient_org_identifier) != '' THEN
+                        ARRAY(struct(TRIM(g.recipient_org_identifier) as id, '360giving_recipient_org' as type, 'source' as asserted_by))
+                    ELSE CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+                END as ids
+            ) as affiliation
+        ) as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        NULLIF(TRIM(g.landing_page_url), '') as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+               CAST(abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 AS STRING)) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM raw_prepared g
+    CROSS JOIN arcadia_funder f
+),
+
+awards_transformed AS (
+SELECT *
+FROM mapped_awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        148 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateARCAwards.ipynb (origin e22fdf7f): its awards-table SELECT over arc_input (was the
+-- staging table read from s3://openalex-ingest/awards/arc/arc_projects.parquet); created_date and updated_date are the run timestamp.
+-- arc: priority 20, frozen fetch cadence (descriptive).
+SELECT 'arc' AS _source, * FROM (
+WITH arc_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/arc/arc_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'arc')
+),
+arc_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320334704  -- Australian Research Council
+),
+
+pi_parsed AS (
+    SELECT
+        *,
+        CASE
+            WHEN lead_investigator IS NULL OR TRIM(lead_investigator) = '' THEN NULL
+            WHEN lead_investigator LIKE '%,%' THEN 
+                TRIM(SUBSTRING_INDEX(lead_investigator, ',', -1))
+            ELSE
+                TRIM(SPLIT(
+                    TRIM(REGEXP_REPLACE(lead_investigator, '^(Dr|Prof|Professor|Associate Professor|A/Prof|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Adj/Prof|Adjunct Professor)\\s+', '')),
+                    ' '
+                )[0])
+        END as pi_given_name,
+        CASE
+            WHEN lead_investigator IS NULL OR TRIM(lead_investigator) = '' THEN NULL
+            WHEN lead_investigator LIKE '%,%' THEN 
+                TRIM(SUBSTRING_INDEX(lead_investigator, ',', 1))
+            ELSE
+                TRIM(ELEMENT_AT(
+                    SPLIT(
+                        TRIM(REGEXP_REPLACE(lead_investigator, '^(Dr|Prof|Professor|Associate Professor|A/Prof|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Adj/Prof|Adjunct Professor)\\s+', '')),
+                        ' '
+                    ),
+                    -1
+                ))
+        END as pi_family_name
+    FROM arc_input
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.code)))) % 9000000000 as id,
+
+        g.title as display_name,
+
+        g.summary as description,
+
+        f.funder_id,
+        g.code as funder_award_id,
+
+        TRY_CAST(g.grant_value AS DOUBLE) as amount,
+        'AUD' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        CASE
+            WHEN LOWER(g.scheme_name) LIKE '%fellowship%' THEN 'fellowship'
+            WHEN LOWER(g.scheme_name) LIKE '%decra%' OR LOWER(g.scheme_name) LIKE '%early career%' THEN 'fellowship'
+            WHEN LOWER(g.scheme_name) LIKE '%laureate%' THEN 'fellowship'
+            WHEN LOWER(g.scheme_name) LIKE '%infrastructure%' THEN 'infrastructure'
+            WHEN LOWER(g.scheme_name) LIKE '%equipment%' THEN 'infrastructure'
+            WHEN LOWER(g.scheme_name) LIKE '%facilities%' THEN 'infrastructure'
+            WHEN LOWER(g.scheme_name) LIKE '%centre%' THEN 'infrastructure'
+            WHEN LOWER(g.scheme_name) LIKE '%project%' THEN 'research'
+            WHEN LOWER(g.scheme_name) LIKE '%discovery%' THEN 'research'
+            WHEN LOWER(g.scheme_name) LIKE '%linkage%' THEN 'research'
+            WHEN LOWER(g.scheme_name) LIKE '%industrial%' THEN 'research'
+            WHEN LOWER(g.scheme_name) LIKE '%intelligence%' THEN 'research'
+            WHEN LOWER(g.scheme_name) LIKE '%indigenous%' THEN 'research'
+            ELSE 'grant'
+        END as funding_type,
+
+        g.scheme_name as funder_scheme,
+
+        'arc' as provenance,
+
+        CASE 
+            WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL 
+            THEN TO_DATE(CONCAT(g.start_year, '-01-01')) 
+            ELSE NULL 
+        END as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        TRY_CAST(g.start_year AS INT) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+
+        CASE
+            WHEN g.lead_investigator IS NOT NULL AND TRIM(g.lead_investigator) != '' THEN
+                struct(
+                    g.pi_given_name as given_name,
+                    g.pi_family_name as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.grantee as name,
+                        'Australia' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        CONCAT('https://dataportal.arc.gov.au/RGS/Web/Grants/', g.code) as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.code)))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM pi_parsed g
+    CROSS JOIN arc_funder f
+    WHERE g.code IS NOT NULL
+      AND TRIM(g.code) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        20 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateARISAwards.ipynb (origin e22fdf7f): its awards-table SELECT over aris_ecris_input (was the
+-- staging table read from s3://openalex-ingest/awards/aris_ecris/aris_ecris_projects.parquet); created_date and updated_date are the run timestamp.
+-- aris_ecris: priority 423, frozen fetch cadence (descriptive).
+SELECT 'aris_ecris' AS _source, * FROM (
+WITH aris_ecris_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/aris_ecris/aris_ecris_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'aris_ecris')
+),
+aris_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320322554  -- ARIS (Javna agencija za znanstvenoraziskovalno in inovacijsko dejavnost RS)
+),
+mapped_awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.code)))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title_en), ''), g.title_sl) as display_name,
+        NULLIF(TRIM(g.keywords), '') as description,
+        f.funder_id,
+        g.code as funder_award_id,
+        CAST(NULL AS DOUBLE) as amount,      -- §6.7 waiver: eCRIS publishes no amounts
+        CAST(NULL AS STRING) as currency,    -- §6.7 waiver
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        CASE
+            WHEN g.mstid_prg = 'Z' THEN 'fellowship'
+            WHEN g.mstid_prg IN ('P', 'I') THEN 'research'
+            ELSE 'research'
+        END as funding_type,
+        CASE g.mstid_prg
+            WHEN 'P' THEN 'P — research programme'
+            WHEN 'I' THEN 'I — infrastructure programme'
+            WHEN 'J' THEN 'J — basic research project'
+            WHEN 'L' THEN 'L — applied research project'
+            WHEN 'V' THEN 'V — target research project'
+            WHEN 'Z' THEN 'Z — postdoctoral research project'
+            WHEN 'M' THEN 'M — CRP MIR'
+            WHEN 'N' THEN 'N — European research project (ARIS-cofunded)'
+            WHEN 'H' THEN 'H — European research project (ERA)'
+            WHEN 'R' THEN 'R — development research project'
+            WHEN 'T' THEN 'T — natural and cultural heritage project'
+            WHEN 'NI' THEN 'NI — bilateral research project (Israel)'
+            WHEN 'NC' THEN 'NC — bilateral research project (CEA)'
+            WHEN 'NK' THEN 'NK — bilateral research project (China)'
+            WHEN 'NJ' THEN 'NJ — bilateral research project (Japan)'
+            WHEN 'BI' THEN 'BI — bilateral project'
+            WHEN 'GC' THEN 'GC — Gravitation'
+            WHEN 'STR' THEN 'STR — strategic project'
+            WHEN 'MN' THEN 'RRP — mobility project'
+            WHEN 'TN' THEN 'RRP — TRL 3-6 project'
+            WHEN 'O' THEN 'O — citizen science project'
+            ELSE g.mstid_prg
+        END as funder_scheme,
+        'aris_ecris' as provenance,
+        TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+        CASE
+            WHEN g.lead_family_name IS NOT NULL OR g.lead_org_name IS NOT NULL THEN
+                struct(
+                    g.lead_given_name as given_name,
+                    g.lead_family_name as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    CASE WHEN g.lead_org_name IS NOT NULL THEN
+                        struct(
+                            g.lead_org_name as name,
+                            'Slovenia' as country,
+                            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                        )
+                    ELSE CAST(NULL AS STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>)
+                    END as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING,
+            role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING,
+            role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi
+    FROM aris_ecris_input g
+    CROSS JOIN aris_funder f
+),
+
+awards_transformed AS (
+SELECT *,
+    concat('https://api.openalex.org/works?filter=awards.id:G', id) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM mapped_awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        423 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateArnoldVenturesAwards.ipynb (origin e22fdf7f): its awards-table SELECT over arnold_ventures_algolia_input (was the
+-- staging table read from s3://openalex-ingest/awards/arnold_ventures/arnold_ventures_projects.parquet); created_date and updated_date are the run timestamp.
+-- arnold_ventures_algolia: priority 41, frozen fetch cadence (descriptive).
+SELECT 'arnold_ventures_algolia' AS _source, * FROM (
+WITH arnold_ventures_algolia_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/arnold_ventures/arnold_ventures_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'arnold_ventures_algolia')
+),
+arnold_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320315359
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.objectID)))) % 9000000000 AS id,
+    g.title AS display_name,
+    COALESCE(NULLIF(g.grant_description, ''), NULLIF(g.grant_body, '')) AS description,
+    f.funder_id,
+    g.objectID AS funder_award_id,
+    TRY_CAST(g.grant_amount AS DOUBLE) AS amount,
+    'USD' AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    'research' AS funding_type,
+    NULLIF(g.funding_source, '') AS funder_scheme,
+    'arnold_ventures_algolia' AS provenance,
+    CASE WHEN g.start_year IS NOT NULL
+         THEN TRY_TO_DATE(CONCAT(g.start_year, '-01-01'), 'yyyy-MM-dd') END AS start_date,
+    CASE WHEN g.end_year IS NOT NULL
+         THEN TRY_TO_DATE(CONCAT(g.end_year, '-12-31'), 'yyyy-MM-dd') END AS end_date,
+    TRY_CAST(g.start_year AS INT) AS start_year,
+    TRY_CAST(g.end_year AS INT) AS end_year,
+    struct(
+        CAST(NULL AS STRING) AS given_name,
+        CAST(NULL AS STRING) AS family_name,
+        CAST(NULL AS STRING) AS orcid,
+        CAST(NULL AS DATE) AS role_start,
+        struct(
+            NULLIF(g.grantee_name, '') AS name,
+            CAST(NULL AS STRING) AS country,
+            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+        ) AS affiliation
+    ) AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    g.url AS landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.objectID)))) % 9000000000) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM arnold_ventures_algolia_input g
+CROSS JOIN arnold_funder f
+WHERE g.objectID IS NOT NULL AND TRIM(g.objectID) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        41 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateArthritisFoundationAwards.ipynb (origin e22fdf7f): its awards-table SELECT over arthritis_foundation_announcements_input (was the
+-- staging table read from s3://openalex-ingest/awards/arthritis_foundation/arthritis_foundation_projects.parquet); created_date and updated_date are the run timestamp.
+-- arthritis_foundation_announcements: priority 538, frozen fetch cadence (descriptive).
+SELECT 'arthritis_foundation_announcements' AS _source, * FROM (
+WITH arthritis_foundation_announcements_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/arthritis_foundation/arthritis_foundation_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'arthritis_foundation_announcements')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306237  -- Arthritis Foundation
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    CASE WHEN TRY_CAST(g.amount AS DOUBLE) > 0 THEN TRY_CAST(g.amount AS DOUBLE) END as amount,
+    CASE WHEN TRY_CAST(g.amount AS DOUBLE) > 0 THEN 'USD' END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE WHEN g.scheme RLIKE '(?i)fellow' THEN 'fellowship' ELSE 'research' END as funding_type,
+    NULLIF(TRIM(g.scheme), '') as funder_scheme,
+    'arthritis_foundation_announcements' as provenance,
+    TRY_TO_DATE(CONCAT(g.year, '-01-01'), 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    TRY_CAST(g.year AS INT) as start_year,
+    CAST(NULL AS INT) as end_year,
+    named_struct(
+        'given_name', NULLIF(TRIM(g.lead_given_name), ''),
+        'family_name', NULLIF(TRIM(g.lead_family_name), ''),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', NULLIF(TRIM(g.institution), ''),
+            'country', CAST(NULL AS STRING),
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) as lead_investigator,
+    CASE WHEN NULLIF(TRIM(g.co_lead_family_name), '') IS NOT NULL THEN
+    named_struct(
+        'given_name', NULLIF(TRIM(g.co_lead_given_name), ''),
+        'family_name', NULLIF(TRIM(g.co_lead_family_name), ''),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', NULLIF(TRIM(g.co_lead_institution), ''),
+            'country', CAST(NULL AS STRING),
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM arthritis_foundation_announcements_input g
+CROSS JOIN src_funder f
+WHERE g.excluded = '0'
+  AND g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+  AND NULLIF(TRIM(g.title), '') IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        538 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAutismScienceFoundationAwards.ipynb (origin e22fdf7f): its awards-table SELECT over autism_science_foundation_input (was the
+-- staging table read from s3://openalex-ingest/awards/autism_science_foundation/asf_grants.parquet); created_date and updated_date are the run timestamp.
+-- autism_science_foundation: priority 283, frozen fetch cadence (descriptive).
+SELECT 'autism_science_foundation' AS _source, * FROM (
+WITH autism_science_foundation_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/autism_science_foundation/asf_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'autism_science_foundation')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi FROM openalex.funders.funders WHERE funder_id = 4320310295
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name, CAST(NULL AS STRING) as description,
+        f.funder_id, g.funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount, CAST(NULL AS STRING) as currency,
+        struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+        'fellowship' as funding_type, g.programme as funder_scheme, 'autism_science_foundation' as provenance,
+        CASE WHEN TRY_CAST(g.start_year AS INT) BETWEEN 2005 AND 2027 THEN TRY_TO_DATE(CONCAT(g.start_year,'-01-01'),'yyyy-MM-dd') ELSE NULL END as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CASE WHEN TRY_CAST(g.start_year AS INT) BETWEEN 2005 AND 2027 THEN TRY_CAST(g.start_year AS INT) ELSE NULL END as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE WHEN g.pi_family IS NOT NULL THEN
+            struct(g.pi_given as given_name, g.pi_family as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                struct(g.institution as name, 'United States' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+            ELSE NULL END as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        g.landing_page_url, CAST(NULL AS STRING) as doi, CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date, session.awards_timestamp as updated_date
+    FROM autism_science_foundation_input g CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        283 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAutisticaAwards.ipynb (origin e22fdf7f): its awards-table SELECT over autistica_input (was the
+-- staging table read from s3://openalex-ingest/awards/autistica/autistica_projects.parquet); created_date and updated_date are the run timestamp.
+-- autistica: priority 343, frozen fetch cadence (descriptive).
+SELECT 'autistica' AS _source, * FROM (
+WITH autistica_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/autistica/autistica_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'autistica')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320312945  -- Autistica
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'research' as funding_type,
+        CAST(NULL AS STRING) as funder_scheme,
+        'autistica' as provenance,
+        CASE WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL THEN TRY_TO_DATE(CONCAT(TRY_CAST(g.start_year AS INT), '-01-01'), 'yyyy-MM-dd') END as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.start_year AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM autistica_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        343 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateAXAResearchFundAwards.ipynb (origin e22fdf7f): its awards-table SELECT over axa_research_fund_projects_input (was the
+-- staging table read from s3://openalex-ingest/awards/axa_research_fund/axa_research_fund_projects.parquet); created_date and updated_date are the run timestamp.
+-- axa_research_fund_projects: priority 544, frozen fetch cadence (descriptive).
+SELECT 'axa_research_fund_projects' AS _source, * FROM (
+WITH axa_research_fund_projects_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/axa_research_fund/axa_research_fund_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'axa_research_fund_projects')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321048  -- AXA Research Fund
+),
+
+people AS (
+    SELECT
+        funder_award_id,
+        TRANSFORM(
+            FILTER(
+                from_json(people, 'array<struct<given_name:string,family_name:string,orcid:string,institution:string,department:string,country:string>>'),
+                p -> p.family_name IS NOT NULL AND TRIM(p.family_name) != ''
+            ),
+            p -> named_struct(
+                'given_name', NULLIF(TRIM(p.given_name), ''),
+                'family_name', NULLIF(TRIM(p.family_name), ''),
+                'orcid', CASE WHEN p.orcid RLIKE '^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$'
+                              THEN CONCAT('https://orcid.org/', p.orcid) END,
+                'role_start', CAST(NULL AS DATE),
+                'affiliation', named_struct(
+                    'name', NULLIF(TRIM(p.institution), ''),
+                    'country', NULLIF(TRIM(p.country), ''),
+                    'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+                )
+            )
+        ) AS investigators
+    FROM axa_research_fund_projects_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    COALESCE(NULLIF(TRIM(g.description), ''), NULLIF(TRIM(g.excerpt), '')) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE
+        WHEN lower(g.grant_type) LIKE 'post-doctoral%' THEN 'fellowship'
+        WHEN lower(g.grant_type) IN ('ph.d', 'phd', 'ph.d.') THEN 'studentship'
+        WHEN lower(g.grant_type) LIKE '%m_c_nat%' THEN 'grant'
+        ELSE 'research'
+    END as funding_type,
+    NULLIF(TRIM(g.grant_type), '') as funder_scheme,
+    'axa_research_fund_projects' as provenance,
+    COALESCE(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd'), TRY_TO_DATE(SUBSTR(g.start_date, 1, 10), 'yyyy-MM-dd')) as start_date,
+    CAST(NULL AS DATE) as end_date,
+    YEAR(COALESCE(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd'), TRY_TO_DATE(SUBSTR(g.start_date, 1, 10), 'yyyy-MM-dd'))) as start_year,
+    CAST(NULL AS INT) as end_year,
+    try_element_at(p.investigators, 1) as lead_investigator,
+    try_element_at(p.investigators, 2) as co_lead_investigator,
+    CASE WHEN size(p.investigators) > 0 THEN p.investigators END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM axa_research_fund_projects_input g
+JOIN people p ON p.funder_award_id = g.funder_award_id
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        544 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBACPAwards.ipynb (origin e22fdf7f): its awards-table SELECT over bacp_input (was the
+-- staging table read from s3://openalex-ingest/awards/bacp/bacp_grants.parquet); created_date and updated_date are the run timestamp.
+-- bacp: priority 346, frozen fetch cadence (descriptive).
+SELECT 'bacp' AS _source, * FROM (
+WITH bacp_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/bacp/bacp_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'bacp')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320312936  -- British Association for Counselling and Psychotherapy
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'research' as funding_type,
+        CAST(NULL AS STRING) as funder_scheme,
+        'bacp' as provenance,
+        CASE WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL THEN TRY_TO_DATE(CONCAT(TRY_CAST(g.start_year AS INT), '-01-01'), 'yyyy-MM-dd') END as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.start_year AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM bacp_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        346 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBalzanPrizeAwards.ipynb (origin e22fdf7f): its awards-table SELECT over balzan_prize_input (was the
+-- staging table read from s3://openalex-ingest/awards/balzan_prize/balzan_prize_laureates.parquet); created_date and updated_date are the run timestamp.
+-- balzan_prize: priority 76, frozen fetch cadence (descriptive).
+SELECT 'balzan_prize' AS _source, * FROM (
+WITH balzan_prize_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/balzan_prize/balzan_prize_laureates.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'balzan_prize')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320310930
+),
+normalized AS (
+    SELECT
+        n.*,
+        TRY_CAST(n.award_year AS INT) AS award_year_int,
+        TRY_CAST(n.source_award_amount AS DOUBLE) AS amount_double
+    FROM balzan_prize_input n
+),
+awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(
+            TRY_CAST(f.funder_id AS STRING), ':balzan-prize:', LOWER(n.funder_award_id)
+        ))) % 9000000000 AS id,
+        CONCAT('Balzan Prize ', TRY_CAST(n.award_year_int AS STRING), ' - ', n.award_field, ' - ', n.laureate_name) AS display_name,
+        NULLIF(n.citation, '') AS description,
+        f.funder_id,
+        n.funder_award_id,
+        n.amount_double AS amount,
+        NULLIF(n.currency, '') AS currency,
+        struct(
+            CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) AS funder,
+        'prize' AS funding_type,
+        NULLIF(n.award_field, '') AS funder_scheme,
+        'balzan_prize' AS provenance,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-01-01'), 'yyyy-MM-dd') AS start_date,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-12-31'), 'yyyy-MM-dd') AS end_date,
+        n.award_year_int AS start_year,
+        n.award_year_int AS end_year,
+        struct(
+            NULLIF(n.laureate_given_name, '') AS given_name,
+            NULLIF(n.laureate_family_name, '') AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            CAST(NULL AS STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>) AS affiliation
+        ) AS lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) AS co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+        n.landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+    FROM normalized n
+    CROSS JOIN funder_resolved f
+    WHERE n.funder_award_id IS NOT NULL
+      AND n.award_year_int IS NOT NULL
+      AND n.laureate_name IS NOT NULL
+),
+
+awards_transformed AS (
+SELECT
+    id,
+    display_name,
+    description,
+    funder_id,
+    funder_award_id,
+    amount,
+    currency,
+    funder,
+    funding_type,
+    funder_scheme,
+    provenance,
+    start_date,
+    end_date,
+    start_year,
+    end_year,
+    lead_investigator,
+    co_lead_investigator,
+    investigators,
+    landing_page_url,
+    doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G', TRY_CAST(id AS STRING)) AS works_api_url,
+    created_date,
+    updated_date
+FROM awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        76 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBBRFAwards.ipynb (origin e22fdf7f): its awards-table SELECT over bbrf_narsad_input (was the
+-- staging table read from s3://openalex-ingest/awards/bbrf/bbrf_grantees.parquet); created_date and updated_date are the run timestamp.
+-- bbrf_narsad: priority 137, frozen fetch cadence (descriptive).
+SELECT 'bbrf_narsad' AS _source, * FROM (
+WITH bbrf_narsad_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/bbrf/bbrf_grantees.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'bbrf_narsad')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306147  -- Brain and Behavior Research Foundation
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    CONCAT('BBRF ', COALESCE(n.grant_type, 'Grant'),
+           CASE WHEN n.grant_year IS NOT NULL THEN CONCAT(' (', n.grant_year, ')') ELSE '' END,
+           ' - ', n.name) AS display_name,
+    CASE
+        WHEN n.grant_type IS NOT NULL AND n.illness IS NOT NULL AND n.illness <> ''
+            THEN CONCAT(n.grant_type, ' awarded for ', n.illness, '-focused research.')
+        WHEN n.grant_type IS NOT NULL
+            THEN CONCAT(n.grant_type, '.')
+        ELSE NULL
+    END AS description,
+    f.funder_id,
+    n.funder_award_id,
+    CASE
+        WHEN LOWER(n.grant_type) = 'young investigator' THEN 70000.0
+        WHEN LOWER(n.grant_type) = 'independent investigator' THEN 100000.0
+        WHEN LOWER(n.grant_type) = 'distinguished investigator' THEN 100000.0
+        ELSE NULL
+    END AS amount,
+    CASE
+        WHEN LOWER(n.grant_type) RLIKE '^(young|independent|distinguished) investigator$' THEN 'USD'
+        ELSE NULL
+    END AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    CASE
+        WHEN LOWER(n.grant_type) RLIKE 'young investigator|trailblazer|early.{0,5}career' THEN 'fellowship'
+        WHEN LOWER(n.grant_type) RLIKE 'independent investigator|distinguished investigator|research' THEN 'research'
+        WHEN LOWER(n.grant_type) RLIKE 'lieber|pardes|goldman|ruane|colvin|maltz|klerman|freedman|prize|award' THEN 'prize'
+        ELSE 'research'
+    END AS funding_type,
+    n.grant_type AS funder_scheme,
+    'bbrf_narsad' AS provenance,
+    CAST(NULL AS DATE) AS start_date,
+    CAST(NULL AS DATE) AS end_date,
+    TRY_CAST(n.grant_year AS INT) AS start_year,
+    CAST(NULL AS INT) AS end_year,
+    CASE
+        WHEN n.name IS NULL OR n.name = '' THEN NULL
+        ELSE struct(
+            n.given_name AS given_name,
+            n.family_name AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                n.institution AS name,
+                n.country AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM bbrf_narsad_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.name IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        137 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBBVAFrontiersAwards.ipynb (origin e22fdf7f): its awards-table SELECT over bbva_frontiers_input (was the
+-- staging table read from s3://openalex-ingest/awards/bbva_frontiers/bbva_frontiers_laureates.parquet); created_date and updated_date are the run timestamp.
+-- bbva_frontiers: priority 66, frozen fetch cadence (descriptive).
+SELECT 'bbva_frontiers' AS _source, * FROM (
+WITH bbva_frontiers_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/bbva_frontiers/bbva_frontiers_laureates.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'bbva_frontiers')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320309764
+),
+normalized AS (
+    SELECT
+        n.*,
+        TRY_CAST(n.award_year AS INT) AS award_year_int,
+        TRY_CAST(n.source_award_amount AS DOUBLE) AS amount_double
+    FROM bbva_frontiers_input n
+),
+awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(
+            TRY_CAST(f.funder_id AS STRING), ':bbva-frontiers:', LOWER(n.funder_award_id)
+        ))) % 9000000000 AS id,
+        CONCAT('BBVA Foundation Frontiers of Knowledge Award ', TRY_CAST(n.award_year_int AS STRING), ' - ', n.award_category, ' - ', n.laureate_name) AS display_name,
+        COALESCE(NULLIF(n.award_summary, ''), NULLIF(n.contribution, ''), NULLIF(n.bio, '')) AS description,
+        f.funder_id,
+        n.funder_award_id,
+        n.amount_double AS amount,
+        NULLIF(n.currency, '') AS currency,
+        struct(
+            CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) AS funder,
+        'prize' AS funding_type,
+        NULLIF(n.award_category, '') AS funder_scheme,
+        'bbva_frontiers' AS provenance,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-01-01'), 'yyyy-MM-dd') AS start_date,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-12-31'), 'yyyy-MM-dd') AS end_date,
+        n.award_year_int AS start_year,
+        n.award_year_int AS end_year,
+        struct(
+            NULLIF(n.given_name, '') AS given_name,
+            NULLIF(n.family_name, '') AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            CAST(NULL AS STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>) AS affiliation
+        ) AS lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) AS co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+        NULLIF(n.landing_page_url, '') AS landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+    FROM normalized n
+    CROSS JOIN funder_resolved f
+    WHERE n.funder_award_id IS NOT NULL
+      AND n.award_year_int IS NOT NULL
+      AND n.laureate_name IS NOT NULL
+),
+
+awards_transformed AS (
+SELECT
+    id,
+    display_name,
+    description,
+    funder_id,
+    funder_award_id,
+    amount,
+    currency,
+    funder,
+    funding_type,
+    funder_scheme,
+    provenance,
+    start_date,
+    end_date,
+    start_year,
+    end_year,
+    lead_investigator,
+    co_lead_investigator,
+    investigators,
+    landing_page_url,
+    doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G', TRY_CAST(id AS STRING)) AS works_api_url,
+    created_date,
+    updated_date
+FROM awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        66 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBCRFAwards.ipynb (origin e22fdf7f): its awards-table SELECT over bcrf_researchers_input (was the
+-- staging table read from s3://openalex-ingest/awards/bcrf/bcrf_projects.parquet); created_date and updated_date are the run timestamp.
+-- bcrf_researchers: priority 539, frozen fetch cadence (descriptive).
+SELECT 'bcrf_researchers' AS _source, * FROM (
+WITH bcrf_researchers_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/bcrf/bcrf_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'bcrf_researchers')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306260  -- Breast Cancer Research Foundation
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    REGEXP_REPLACE(TRIM(g.research_area), '[.]$', '') as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    CAST(NULL AS STRING) as funder_scheme,
+    'bcrf_researchers' as provenance,
+    TRY_TO_DATE(CONCAT(g.investigator_since, '-01-01'), 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    TRY_CAST(g.investigator_since AS INT) as start_year,
+    CAST(NULL AS INT) as end_year,
+    named_struct(
+        'given_name', NULLIF(TRIM(g.given_name), ''),
+        'family_name', NULLIF(TRIM(g.family_name), ''),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', NULLIF(TRIM(g.institution), ''),
+            'country', NULLIF(TRIM(g.country), ''),
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM bcrf_researchers_input g
+CROSS JOIN src_funder f
+WHERE g.excluded = '0'
+  AND g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+  AND NULLIF(TRIM(g.family_name), '') IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        539 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBD2Awards.ipynb (origin e22fdf7f): its awards-table SELECT over bd2_input (was the
+-- staging table read from s3://openalex-ingest/awards/bd2/bd2_grants.parquet); created_date and updated_date are the run timestamp.
+-- bd2: priority 309, frozen fetch cadence (descriptive).
+SELECT 'bd2' AS _source, * FROM (
+WITH bd2_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/bd2/bd2_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'bd2')
+),
+funder_row AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 8901078393
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'bd2' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.year_awarded AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United States' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM bd2_input g
+    CROSS JOIN funder_row f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        309 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBDSRAAwards.ipynb (origin e22fdf7f): its awards-table SELECT over bdsra_input (was the
+-- staging table read from s3://openalex-ingest/awards/bdsra/bdsra_grants.parquet); created_date and updated_date are the run timestamp.
+-- bdsra: priority 345, frozen fetch cadence (descriptive).
+SELECT 'bdsra' AS _source, * FROM (
+WITH bdsra_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/bdsra/bdsra_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'bdsra')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320308508  -- Batten Disease Support and Research Association
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        'USD' as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        CAST(NULL AS STRING) as funder_scheme,
+        'bdsra' as provenance,
+        CASE WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL THEN TRY_TO_DATE(CONCAT(TRY_CAST(g.start_year AS INT), '-01-01'), 'yyyy-MM-dd') END as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.start_year AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        CAST(NULL AS STRING) as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM bdsra_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        345 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBeckmanFoundationAwards.ipynb (origin e22fdf7f): its awards-table SELECT over beckman_awarded_scientists_input (was the
+-- staging table read from s3://openalex-ingest/awards/beckman_foundation/beckman_foundation_projects.parquet); created_date and updated_date are the run timestamp.
+-- beckman_awarded_scientists: priority 561, frozen fetch cadence (descriptive).
+SELECT 'beckman_awarded_scientists' AS _source, * FROM (
+WITH beckman_awarded_scientists_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/beckman_foundation/beckman_foundation_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'beckman_awarded_scientists')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306253  -- Arnold and Mabel Beckman Foundation
+),
+
+parsed AS (
+    SELECT
+        g.*,
+        TRY_CAST(g.award_year AS INT) AS yr,
+        CASE WHEN NULLIF(TRIM(g.family_name), '') IS NOT NULL THEN named_struct(
+            'given_name', NULLIF(TRIM(g.given_name), ''),
+            'family_name', NULLIF(TRIM(g.family_name), ''),
+            'orcid', CASE WHEN g.orcid RLIKE '^[0-9]{4}-' THEN CONCAT('https://orcid.org/', g.orcid) END,
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(g.institution_at_award), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) END AS lead
+    FROM beckman_awarded_scientists_input g
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    COALESCE(
+        NULLIF(TRIM(g.research_title), ''),
+        CONCAT_WS(' ', NULLIF(TRIM(g.program), ''), g.award_year) || ': ' ||
+            CONCAT_WS(' ', NULLIF(TRIM(g.given_name), ''), NULLIF(TRIM(g.family_name), ''))
+    ) as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE
+        WHEN LOWER(g.program) LIKE '%fellow%' THEN 'fellowship'
+        WHEN LOWER(g.program) LIKE '%scholar%' THEN 'training'
+        ELSE 'research'
+    END as funding_type,
+    NULLIF(TRIM(g.program), '') as funder_scheme,
+    'beckman_awarded_scientists' as provenance,
+    CASE WHEN g.yr IS NOT NULL THEN TRY_TO_DATE(CONCAT(g.award_year, '-01-01'), 'yyyy-MM-dd') END as start_date,
+    CAST(NULL AS DATE) as end_date,
+    g.yr as start_year,
+    CAST(NULL AS INT) as end_year,
+    g.lead as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CASE WHEN g.lead IS NOT NULL THEN array(g.lead) END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM parsed g
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        561 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBeijingBMSTCAwards.ipynb (origin e22fdf7f): its awards-table SELECT over beijing_bmstc_input (was the
+-- staging table read from s3://openalex-ingest/awards/beijing_bmstc/beijing_bmstc_projects.parquet); created_date and updated_date are the run timestamp.
+-- beijing_bmstc: priority 510, frozen fetch cadence (descriptive).
+SELECT 'beijing_bmstc' AS _source, * FROM (
+WITH beijing_bmstc_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/beijing_bmstc/beijing_bmstc_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'beijing_bmstc')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320325902
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+
+        g.display_name as display_name,
+        CAST(NULL AS STRING) as description,
+
+        f.funder_id,
+        NULLIF(TRIM(g.funder_award_id), '') as funder_award_id,
+
+        TRY_CAST(g.amount AS DOUBLE) as amount,
+        CASE WHEN TRY_CAST(g.amount AS DOUBLE) IS NOT NULL THEN 'CNY' ELSE NULL END as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        'research' as funding_type,
+
+        NULLIF(TRIM(g.programme), '') as funder_scheme,
+
+        'beijing_bmstc' as provenance,
+
+        TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        COALESCE(YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')), TRY_CAST(g.start_year AS INT)) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+
+        CASE
+            WHEN (g.lead_family_name IS NOT NULL AND TRIM(g.lead_family_name) != '')
+              OR (g.institution IS NOT NULL AND TRIM(g.institution) != '') THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    NULLIF(TRIM(g.lead_family_name), '') as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        NULLIF(TRIM(g.institution), '') as name,
+                        'China' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        g.landing_page_url as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM beijing_bmstc_input g
+    CROSS JOIN src_funder f
+    WHERE g.display_name IS NOT NULL
+      AND TRIM(g.display_name) != ''
+      AND g.funder_award_id IS NOT NULL
+      AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        510 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBeijingNSFAwards.ipynb (origin e22fdf7f): its awards-table SELECT over beijing_nsf_input (was the
+-- staging table read from s3://openalex-ingest/awards/beijing_nsf/beijing_nsf_projects.parquet); created_date and updated_date are the run timestamp.
+-- beijing_nsf: priority 523, frozen fetch cadence (descriptive).
+SELECT 'beijing_nsf' AS _source, * FROM (
+WITH beijing_nsf_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/beijing_nsf/beijing_nsf_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'beijing_nsf')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320334977
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+
+        g.display_name as display_name,
+        CAST(NULL AS STRING) as description,
+
+        f.funder_id,
+        NULLIF(TRIM(g.funder_award_id), '') as funder_award_id,
+
+        TRY_CAST(g.amount AS DOUBLE) as amount,
+        CASE WHEN TRY_CAST(g.amount AS DOUBLE) IS NOT NULL THEN 'CNY' ELSE NULL END as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        CASE
+            WHEN g.funder_scheme LIKE '%杰出青年%' THEN 'fellowship'
+            WHEN g.funder_scheme LIKE '%青年%' THEN 'fellowship'
+            WHEN g.funder_scheme LIKE '%重点%' THEN 'research'
+            WHEN g.funder_scheme LIKE '%联合%' THEN 'research'
+            WHEN g.funder_scheme LIKE '%合作%' THEN 'research'
+            ELSE 'grant'
+        END as funding_type,
+
+        NULLIF(TRIM(g.funder_scheme), '') as funder_scheme,
+
+        'beijing_nsf' as provenance,
+
+        TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        COALESCE(YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')), TRY_CAST(g.start_year AS INT)) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+
+        CASE
+            WHEN (g.lead_family_name IS NOT NULL AND TRIM(g.lead_family_name) != '')
+              OR (g.institution IS NOT NULL AND TRIM(g.institution) != '') THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    NULLIF(TRIM(g.lead_family_name), '') as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        NULLIF(TRIM(g.institution), '') as name,
+                        'China' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        g.landing_page_url as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM beijing_nsf_input g
+    CROSS JOIN src_funder f
+    WHERE g.display_name IS NOT NULL
+      AND TRIM(g.display_name) != ''
+      AND g.funder_award_id IS NOT NULL
+      AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        523 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBELSPOAwards.ipynb (origin e22fdf7f): its awards-table SELECT over belspo_fris_input (was the
+-- staging table read from s3://openalex-ingest/awards/belspo/belspo_projects.parquet); created_date and updated_date are the run timestamp.
+-- belspo_fris: priority 181, frozen fetch cadence (descriptive).
+SELECT 'belspo_fris' AS _source, * FROM (
+WITH belspo_fris_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/belspo/belspo_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'belspo_fris')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321454   -- BELSPO (Flemish Government) (BELSPO)
+),
+base AS (
+    SELECT
+        n.funder_award_id,
+        n.title, n.abstract, n.funder_scheme, n.funding_type,
+        n.lead_given_name, n.lead_family_name,
+        n.colead_given_name, n.colead_family_name,
+        n.institution_name, n.country, n.landing_page_url,
+        TRY_TO_DATE(n.start_date, 'yyyy-MM-dd') AS sd,
+        TRY_TO_DATE(n.end_date,   'yyyy-MM-dd') AS ed,
+        f.funder_id, f.display_name AS f_name, f.ror_id, f.doi AS f_doi
+    FROM belspo_fris_input n
+    CROSS JOIN funder_resolved f
+    WHERE n.funder_award_id IS NOT NULL
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(TRY_CAST(funder_id AS STRING), ':', LOWER(funder_award_id)))) % 9000000000 AS id,
+    title AS display_name,
+    abstract AS description,
+    funder_id,
+    funder_award_id,
+    CAST(NULL AS DOUBLE) AS amount,
+    CAST(NULL AS STRING) AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(funder_id AS STRING)) AS id,
+        f_name AS display_name, ror_id AS ror_id, f_doi AS doi
+    ) AS funder,
+    funding_type,
+    funder_scheme,
+    'belspo_fris' AS provenance,
+    sd AS start_date,
+    ed AS end_date,
+    CASE WHEN YEAR(sd) > YEAR(current_date()) + 1 THEN NULL ELSE YEAR(sd) END AS start_year,
+    CASE WHEN YEAR(sd) > YEAR(current_date()) + 1 THEN NULL ELSE YEAR(ed) END AS end_year,
+    CASE WHEN lead_given_name IS NOT NULL OR lead_family_name IS NOT NULL THEN struct(
+        lead_given_name AS given_name, lead_family_name AS family_name,
+        CAST(NULL AS STRING) AS orcid, CAST(NULL AS DATE) AS role_start,
+        struct(institution_name AS name, country AS country,
+               CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids) AS affiliation
+    ) ELSE NULL END AS lead_investigator,
+    CASE WHEN colead_given_name IS NOT NULL OR colead_family_name IS NOT NULL THEN struct(
+        colead_given_name AS given_name, colead_family_name AS family_name,
+        CAST(NULL AS STRING) AS orcid, CAST(NULL AS DATE) AS role_start,
+        struct(institution_name AS name, country AS country,
+               CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids) AS affiliation
+    ) ELSE NULL END AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(TRY_CAST(funder_id AS STRING), ':', LOWER(funder_award_id)))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM base
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        181 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBHFAwards.ipynb (origin e22fdf7f): its awards-table SELECT over bhf_annual_reports_input (was the
+-- staging table read from s3://openalex-ingest/awards/bhf/bhf_projects.parquet); created_date and updated_date are the run timestamp.
+-- bhf_annual_reports: priority 395, frozen fetch cadence (descriptive).
+SELECT 'bhf_annual_reports' AS _source, * FROM (
+WITH bhf_annual_reports_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/bhf/bhf_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'bhf_annual_reports')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320319992  -- British Heart Foundation
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(b.funder_award_id)
+    ))) % 9000000000 AS id,
+    b.title AS display_name,
+    CAST(NULL AS STRING) AS description,           -- BHF publishes no abstracts
+    f.funder_id,
+    b.funder_award_id,
+    TRY_CAST(b.amount AS DOUBLE) AS amount,
+    b.currency,                                    -- 'GBP' from script, NULL if no amount
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    b.funding_type,                                -- research / fellowship / training
+    b.funder_scheme,                               -- committee/scheme heading
+    'bhf_annual_reports' AS provenance,
+    CAST(NULL AS DATE) AS start_date,              -- no exact award date published
+    CAST(NULL AS DATE) AS end_date,
+    TRY_CAST(b.report_year_start AS INT) AS start_year,   -- FY the award was made
+    CASE
+        WHEN TRY_CAST(b.report_year_start AS INT) IS NOT NULL
+         AND TRY_CAST(b.duration_months AS DOUBLE) IS NOT NULL
+        THEN TRY_CAST(b.report_year_start AS INT)
+             + CAST(CEIL(TRY_CAST(b.duration_months AS DOUBLE) / 12.0) AS INT)
+        ELSE NULL
+    END AS end_year,
+    CASE
+        WHEN b.lead_family_name IS NULL OR b.lead_family_name = '' THEN NULL
+        ELSE struct(
+            b.lead_given_name AS given_name,
+            b.lead_family_name AS family_name,
+            CAST(NULL AS STRING) AS orcid,         -- BHF publishes no ORCIDs
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                b.institution AS name,
+                CASE WHEN b.funder_scheme ILIKE '%International%'
+                     THEN CAST(NULL AS STRING) ELSE 'GB' END AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING,
+        ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING,
+        ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) AS investigators,
+    b.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(b.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM bhf_annual_reports_input b
+CROSS JOIN funder_resolved f
+WHERE b.funder_award_id IS NOT NULL
+  AND b.title IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        395 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBlavatnikAwards.ipynb (origin e22fdf7f): its awards-table SELECT over blavatnikawards_org_input (was the
+-- staging table read from s3://openalex-ingest/awards/blavatnik/blavatnik_awards.parquet); created_date and updated_date are the run timestamp.
+-- blavatnikawards_org: priority 64, frozen fetch cadence (descriptive).
+SELECT 'blavatnikawards_org' AS _source, * FROM (
+WITH blavatnikawards_org_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/blavatnik/blavatnik_awards.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'blavatnikawards_org')
+),
+blavatnik_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320312914
+), normalized AS (
+    SELECT
+        *,
+        TRY_CAST(award_year AS INT) AS award_year_int,
+        TRY_CAST(amount_usd AS DOUBLE) AS amount_double,
+        NULLIF(TRIM(currency), '') AS currency_norm,
+        NULLIF(TRIM(citation), '') AS citation_norm,
+        NULLIF(TRIM(institution), '') AS institution_norm,
+        NULLIF(TRIM(current_position), '') AS current_position_norm,
+        NULLIF(TRIM(laureate_given_name), '') AS given_name_norm,
+        NULLIF(TRIM(laureate_family_name), '') AS family_name_norm,
+        NULLIF(TRIM(laureate_name), '') AS laureate_name_norm,
+        NULLIF(TRIM(region), '') AS region_norm,
+        NULLIF(TRIM(role), '') AS role_norm,
+        NULLIF(TRIM(status), '') AS status_norm
+    FROM blavatnikawards_org_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':blavatnik:', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    CONCAT(
+        CAST(n.award_year_int AS STRING), ' Blavatnik ',
+        COALESCE(n.region_norm, 'Unknown'), ' Award ',
+        COALESCE(n.status_norm, 'Honoree'),
+        CASE WHEN n.role_norm IS NOT NULL THEN CONCAT(' - ', n.role_norm) ELSE '' END,
+        ' - ', n.laureate_name_norm
+    ) AS display_name,
+    CASE
+        WHEN TRY_CAST(n.declined AS BOOLEAN) AND n.citation_norm IS NOT NULL
+            THEN CONCAT('Declined the prize. ', n.citation_norm)
+        WHEN TRY_CAST(n.declined AS BOOLEAN) THEN 'Declined the prize.'
+        ELSE n.citation_norm
+    END AS description,
+    f.funder_id,
+    n.funder_award_id,
+    n.amount_double AS amount,
+    n.currency_norm AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name, f.ror_id, f.doi
+    ) AS funder,
+    'prize' AS funding_type,
+    CONCAT(
+        'Blavatnik ', COALESCE(n.region_norm, 'Unknown'), ' Award - ',
+        COALESCE(n.role_norm, 'Honoree'), ' ',
+        COALESCE(n.status_norm, 'Honoree')
+    ) AS funder_scheme,
+    'blavatnikawards_org' AS provenance,
+    TRY_TO_DATE(CONCAT(CAST(n.award_year_int AS STRING), '-09-01'), 'yyyy-MM-dd') AS start_date,
+    TRY_TO_DATE(CONCAT(CAST(n.award_year_int AS STRING), '-09-30'), 'yyyy-MM-dd') AS end_date,
+    n.award_year_int AS start_year,
+    n.award_year_int AS end_year,
+    struct(
+        n.given_name_norm AS given_name,
+        n.family_name_norm AS family_name,
+        CAST(NULL AS STRING) AS orcid,
+        CAST(NULL AS DATE) AS role_start,
+        struct(
+            n.institution_norm AS name,
+            CAST(NULL AS STRING) AS country,
+            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+        ) AS affiliation
+    ) AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.profile_url AS landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':blavatnik:', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM normalized n
+CROSS JOIN blavatnik_funder f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.award_year_int IS NOT NULL
+  AND n.laureate_name_norm IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        64 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBloodCancerUKAwards.ipynb (origin e22fdf7f): its awards-table SELECT over blood_cancer_uk_input (was the
+-- staging table read from s3://openalex-ingest/awards/blood_cancer_uk/blood_cancer_uk_projects.parquet); created_date and updated_date are the run timestamp.
+-- blood_cancer_uk: priority 259, frozen fetch cadence (descriptive).
+SELECT 'blood_cancer_uk' AS _source, * FROM (
+WITH blood_cancer_uk_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/blood_cancer_uk/blood_cancer_uk_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'blood_cancer_uk')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320329013  -- Blood Cancer UK
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        g.conditions as description,
+        f.funder_id,
+        g.funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.research_type as funder_scheme,
+        'blood_cancer_uk' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CAST(NULL AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM blood_cancer_uk_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        259 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBluePlanetPrizeAwards.ipynb (origin e22fdf7f): its awards-table SELECT over blue_planet_prize_input (was the
+-- staging table read from s3://openalex-ingest/awards/blue_planet_prize/blue_planet_prize_laureates.parquet); created_date and updated_date are the run timestamp.
+-- blue_planet_prize: priority 91, frozen fetch cadence (descriptive).
+SELECT 'blue_planet_prize' AS _source, * FROM (
+WITH blue_planet_prize_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/blue_planet_prize/blue_planet_prize_laureates.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'blue_planet_prize')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320309996  -- Asahi Glass Foundation
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    n.display_name,
+    n.description,
+    f.funder_id,
+    n.funder_award_id,
+    TRY_CAST(n.amount AS DOUBLE) AS amount,
+    n.currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    'prize' AS funding_type,
+    'Blue Planet Prize' AS funder_scheme,
+    'blue_planet_prize' AS provenance,
+    TRY_TO_DATE(n.start_date, 'yyyy-MM-dd') AS start_date,
+    TRY_TO_DATE(n.end_date,   'yyyy-MM-dd') AS end_date,
+    TRY_CAST(SUBSTRING(n.start_date, 1, 4) AS INT) AS start_year,
+    TRY_CAST(SUBSTRING(n.end_date,   1, 4) AS INT) AS end_year,
+    CASE
+        WHEN n.recipient_kind = 'individual' AND n.name_clean IS NOT NULL THEN struct(
+            n.given_name AS given_name,
+            n.family_name AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            TRY_TO_DATE(n.start_date, 'yyyy-MM-dd') AS role_start,
+            struct(
+                n.affiliation_name AS name,
+                CAST(NULL AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+        WHEN n.recipient_kind = 'organization' AND n.name_clean IS NOT NULL THEN struct(
+            CAST(NULL AS STRING) AS given_name,
+            CAST(NULL AS STRING) AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            TRY_TO_DATE(n.start_date, 'yyyy-MM-dd') AS role_start,
+            struct(
+                n.name_clean AS name,
+                CAST(NULL AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+        ELSE NULL
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url AS landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    n.declined,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM blue_planet_prize_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.name_clean IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        91 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBMELAwards.ipynb (origin e22fdf7f): its awards-table SELECT over foerderkatalog_bmel_input (was the
+-- staging table read from s3://openalex-ingest/awards/bmel/bmel_projects.parquet); created_date and updated_date are the run timestamp.
+-- foerderkatalog_bmel: priority 532, frozen fetch cadence (descriptive).
+SELECT 'foerderkatalog_bmel' AS _source, * FROM (
+WITH foerderkatalog_bmel_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/bmel/bmel_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'foerderkatalog_bmel')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320323499  -- Bundesministerium für Ernährung und Landwirtschaft
+),
+g AS (
+    SELECT
+        TRIM(fkz) AS funder_award_id,
+        NULLIF(TRIM(title), '') AS title,
+        TRY_CAST(amount_eur AS DOUBLE) AS amount,
+        NULLIF(TRIM(lps_text), '') AS scheme,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS start_d,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS end_d,
+        CASE WHEN NULLIF(TRIM(recipient), '') IS NOT NULL AND recipient NOT LIKE 'Keine Anzeige%' THEN TRIM(recipient) END AS inst,
+        NULLIF(TRIM(recipient_country_iso), '') AS inst_country,
+        landing_page_url
+    FROM foerderkatalog_bmel_input
+    WHERE fkz IS NOT NULL AND TRIM(fkz) != '' AND ressort = 'BMLEH'
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+    g.title as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    g.funder_award_id,
+    g.amount,
+    'EUR' as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    g.scheme as funder_scheme,
+    'foerderkatalog_bmel' as provenance,
+    g.start_d as start_date,
+    g.end_d as end_date,
+    YEAR(g.start_d) as start_year,
+    YEAR(g.end_d) as end_year,
+    CASE WHEN g.inst IS NOT NULL THEN named_struct(
+        'given_name', CAST(NULL AS STRING),
+        'family_name', CAST(NULL AS STRING),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', g.inst,
+            'country', g.inst_country,
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM g
+CROSS JOIN src_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        532 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBRACEAwards.ipynb (origin e22fdf7f): its awards-table SELECT over brace_input (was the
+-- staging table read from s3://openalex-ingest/awards/brace/brace_projects.parquet); created_date and updated_date are the run timestamp.
+-- brace: priority 337, frozen fetch cadence (descriptive).
+SELECT 'brace' AS _source, * FROM (
+WITH brace_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/brace/brace_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'brace')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320312938  -- BRACE (Alzheimer's research charity)
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'research' as funding_type,
+        g.funder_scheme as funder_scheme,
+        'brace' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CAST(NULL AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        CAST(NULL AS STRING) as name,
+                        'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM brace_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        337 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBrainAneurysmAwards.ipynb (origin e22fdf7f): its awards-table SELECT over brain_aneurysm_input (was the
+-- staging table read from s3://openalex-ingest/awards/brain_aneurysm/brain_aneurysm_grants.parquet); created_date and updated_date are the run timestamp.
+-- brain_aneurysm: priority 307, frozen fetch cadence (descriptive).
+SELECT 'brain_aneurysm' AS _source, * FROM (
+WITH brain_aneurysm_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/brain_aneurysm/brain_aneurysm_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'brain_aneurysm')
+),
+funder_row AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320314312  -- Brain Aneurysm Foundation
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        'USD' as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.sponsor as funder_scheme,
+        'brain_aneurysm' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.year_awarded AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United States' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM brain_aneurysm_input g
+    CROSS JOIN funder_row f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        307 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBrainCanadaAwards.ipynb (origin e22fdf7f): its awards-table SELECT over brain_canada_input (was the
+-- staging table read from s3://openalex-ingest/awards/brain_canada/brain_canada_grants.parquet); created_date and updated_date are the run timestamp.
+-- brain_canada: priority 387, frozen fetch cadence (descriptive).
+SELECT 'brain_canada' AS _source, * FROM (
+WITH brain_canada_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/brain_canada/brain_canada_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'brain_canada')
+),
+fndr AS (
+    SELECT CAST(funder_id AS BIGINT) as funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders WHERE funder_id = 4320311238
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title), ''), CONCAT('Brain Canada grant ', g.funder_award_id)) as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN TRY_CAST(g.amount AS DECIMAL(18,2)) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN g.currency ELSE NULL END as currency,
+        struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'brain_canada' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        YEAR(TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd')) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(g.pi_given as given_name, g.pi_family as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, g.country as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+            WHEN g.institution IS NOT NULL THEN
+                struct(CAST(NULL AS STRING) as given_name, CAST(NULL AS STRING) as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, g.country as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM brain_canada_input g
+    CROSS JOIN fndr f
+    WHERE g.funder_award_id IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        387 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBrainPrizeAwards.ipynb (origin e22fdf7f): its awards-table SELECT over brain_prize_input (was the
+-- staging table read from s3://openalex-ingest/awards/brain_prize/brain_prize_laureates.parquet); created_date and updated_date are the run timestamp.
+-- brain_prize: priority 84, frozen fetch cadence (descriptive).
+SELECT 'brain_prize' AS _source, * FROM (
+WITH brain_prize_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/brain_prize/brain_prize_laureates.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'brain_prize')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321999
+),
+normalized AS (
+    SELECT
+        n.*,
+        TRY_CAST(n.award_year AS INT) AS award_year_int,
+        TRY_CAST(n.source_total_award_amount AS DOUBLE) AS total_amount_double,
+        TRY_CAST(n.laureate_count AS INT) AS laureate_count_int
+    FROM brain_prize_input n
+),
+awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(
+            TRY_CAST(f.funder_id AS STRING), ':brain-prize:', LOWER(n.funder_award_id)
+        ))) % 9000000000 AS id,
+        CONCAT('The Brain Prize ', TRY_CAST(n.award_year_int AS STRING), ' - ', n.award_topic, ' - ', n.laureate_name) AS display_name,
+        COALESCE(NULLIF(n.year_description, ''), NULLIF(n.profile_description, '')) AS description,
+        f.funder_id,
+        n.funder_award_id,
+        CASE
+            WHEN n.total_amount_double IS NOT NULL AND n.laureate_count_int > 0
+                THEN n.total_amount_double / n.laureate_count_int
+            ELSE CAST(NULL AS DOUBLE)
+        END AS amount,
+        NULLIF(n.currency, '') AS currency,
+        struct(
+            CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) AS funder,
+        'prize' AS funding_type,
+        NULLIF(n.award_topic, '') AS funder_scheme,
+        'brain_prize' AS provenance,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-01-01'), 'yyyy-MM-dd') AS start_date,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-12-31'), 'yyyy-MM-dd') AS end_date,
+        n.award_year_int AS start_year,
+        n.award_year_int AS end_year,
+        struct(
+            NULLIF(n.given_name, '') AS given_name,
+            NULLIF(n.family_name, '') AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                NULLIF(n.affiliation, '') AS name,
+                CAST(NULL AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        ) AS lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) AS co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+        n.landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+    FROM normalized n
+    CROSS JOIN funder_resolved f
+    WHERE n.funder_award_id IS NOT NULL
+      AND n.award_year_int IS NOT NULL
+      AND n.laureate_name IS NOT NULL
+),
+
+awards_transformed AS (
+SELECT
+    id,
+    display_name,
+    description,
+    funder_id,
+    funder_award_id,
+    amount,
+    currency,
+    funder,
+    funding_type,
+    funder_scheme,
+    provenance,
+    start_date,
+    end_date,
+    start_year,
+    end_year,
+    lead_investigator,
+    co_lead_investigator,
+    investigators,
+    landing_page_url,
+    doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G', TRY_CAST(id AS STRING)) AS works_api_url,
+    created_date,
+    updated_date
+FROM awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        84 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBrainResearchUKAwards.ipynb (origin e22fdf7f): its awards-table SELECT over brain_research_uk_input (was the
+-- staging table read from s3://openalex-ingest/awards/brain_research_uk/brain_research_uk_grants.parquet); created_date and updated_date are the run timestamp.
+-- brain_research_uk: priority 281, frozen fetch cadence (descriptive).
+SELECT 'brain_research_uk' AS _source, * FROM (
+WITH brain_research_uk_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/brain_research_uk/brain_research_uk_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'brain_research_uk')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320314536  -- Brain Research UK
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.programme as funder_scheme,
+        'brain_research_uk' as provenance,
+        TRY_TO_DATE(g.start_date,'yyyy-MM-dd') as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CASE WHEN TRY_CAST(g.start_year AS INT) BETWEEN 1990 AND 2030 THEN TRY_CAST(g.start_year AS INT) ELSE NULL END as start_year,
+        CASE WHEN TRY_CAST(g.end_year AS INT) BETWEEN 1990 AND 2035 THEN TRY_CAST(g.end_year AS INT) ELSE NULL END as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name, g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation
+                )
+            ELSE NULL END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM brain_research_uk_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        281 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBrainTumourCharityAwards.ipynb (origin e22fdf7f): its awards-table SELECT over brain_tumour_charity_input (was the
+-- staging table read from s3://openalex-ingest/awards/brain_tumour_charity/brain_tumour_charity_grants.parquet); created_date and updated_date are the run timestamp.
+-- brain_tumour_charity: priority 277, frozen fetch cadence (descriptive).
+SELECT 'brain_tumour_charity' AS _source, * FROM (
+WITH brain_tumour_charity_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/brain_tumour_charity/brain_tumour_charity_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'brain_tumour_charity')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321000  -- The Brain Tumour Charity
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        'GBP' as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.programme as funder_scheme,
+        'brain_tumour_charity' as provenance,
+        TRY_TO_DATE(g.start_date,'yyyy-MM-dd') as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CASE WHEN TRY_CAST(g.start_year AS INT) BETWEEN 1990 AND 2030 THEN TRY_CAST(g.start_year AS INT) ELSE NULL END as start_year,
+        CASE WHEN TRY_CAST(g.end_year AS INT) BETWEEN 1990 AND 2035 THEN TRY_CAST(g.end_year AS INT) ELSE NULL END as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name, g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation
+                )
+            ELSE NULL END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM brain_tumour_charity_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        277 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBreakthroughPrizeAwards.ipynb (origin e22fdf7f): its awards-table SELECT over breakthrough_prize_input (was the
+-- staging table read from s3://openalex-ingest/awards/breakthrough_prize/breakthrough_prize_laureates.parquet); created_date and updated_date are the run timestamp.
+-- breakthrough_prize: priority 63, frozen fetch cadence (descriptive).
+SELECT 'breakthrough_prize' AS _source, * FROM (
+WITH breakthrough_prize_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/breakthrough_prize/breakthrough_prize_laureates.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'breakthrough_prize')
+),
+breakthrough_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320315036
+), normalized AS (
+    SELECT
+        *,
+        TRY_CAST(award_year AS INT) AS award_year_int,
+        TRY_CAST(amount_usd AS DOUBLE) AS amount_double,
+        NULLIF(TRIM(currency), '') AS currency_norm,
+        NULLIF(TRIM(prize_title), '') AS prize_title_norm,
+        NULLIF(TRIM(citation), '') AS citation_norm,
+        NULLIF(TRIM(affiliation), '') AS affiliation_norm,
+        NULLIF(TRIM(laureate_given_name), '') AS given_name_norm,
+        NULLIF(TRIM(laureate_family_name), '') AS family_name_norm,
+        NULLIF(TRIM(laureate_name), '') AS laureate_name_norm,
+        NULLIF(TRIM(detail_path), '') AS detail_url_norm
+    FROM breakthrough_prize_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':breakthrough:', LOWER(n.funder_award_id)))) % 9000000000 AS id,
+    CONCAT(CAST(n.award_year_int AS STRING), ' ', n.prize_title_norm, ' - ', n.laureate_name_norm) AS display_name,
+    CASE
+        WHEN TRY_CAST(n.declined AS BOOLEAN) AND n.citation_norm IS NOT NULL
+            THEN CONCAT('Declined the prize. ', n.citation_norm)
+        WHEN TRY_CAST(n.declined AS BOOLEAN) THEN 'Declined the prize.'
+        ELSE n.citation_norm
+    END AS description,
+    f.funder_id,
+    n.funder_award_id,
+    n.amount_double AS amount,
+    n.currency_norm AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) AS id,
+        f.display_name, f.ror_id, f.doi
+    ) AS funder,
+    'prize' AS funding_type,
+    n.prize_title_norm AS funder_scheme,
+    'breakthrough_prize' AS provenance,
+    TRY_TO_DATE(CONCAT(CAST(n.award_year_int AS STRING), '-01-01'), 'yyyy-MM-dd') AS start_date,
+    TRY_TO_DATE(CONCAT(CAST(n.award_year_int AS STRING), '-12-31'), 'yyyy-MM-dd') AS end_date,
+    n.award_year_int AS start_year,
+    n.award_year_int AS end_year,
+    struct(
+        n.given_name_norm AS given_name,
+        n.family_name_norm AS family_name,
+        CAST(NULL AS STRING) AS orcid,
+        CAST(NULL AS DATE) AS role_start,
+        struct(
+            n.affiliation_norm AS name,
+            CAST(NULL AS STRING) AS country,
+            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+        ) AS affiliation
+    ) AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.detail_url_norm AS landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':breakthrough:', LOWER(n.funder_award_id)))) % 9000000000) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM normalized n
+CROSS JOIN breakthrough_funder f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.award_year_int IS NOT NULL
+  AND n.prize_title_norm IS NOT NULL
+  AND n.laureate_name_norm IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        63 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBreastCancerNowAwards.ipynb (origin e22fdf7f): its awards-table SELECT over breast_cancer_now_input (was the
+-- staging table read from s3://openalex-ingest/awards/breast_cancer_now/breast_cancer_now_grants.parquet); created_date and updated_date are the run timestamp.
+-- breast_cancer_now: priority 297, frozen fetch cadence (descriptive).
+SELECT 'breast_cancer_now' AS _source, * FROM (
+WITH breast_cancer_now_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/breast_cancer_now/breast_cancer_now_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'breast_cancer_now')
+),
+bcn_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320311542  -- Breast Cancer Now (richer of the dup pair)
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        CASE WHEN g.amount IS NOT NULL THEN 'GBP' END as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        CAST(NULL AS STRING) as funder_scheme,
+        'breast_cancer_now' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CAST(NULL AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM breast_cancer_now_input g
+    CROSS JOIN bcn_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        297 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBTFCAwards.ipynb (origin e22fdf7f): its awards-table SELECT over btfc_input (was the
+-- staging table read from s3://openalex-ingest/awards/btfc/btfc_grants.parquet); created_date and updated_date are the run timestamp.
+-- btfc: priority 311, frozen fetch cadence (descriptive).
+SELECT 'btfc' AS _source, * FROM (
+WITH btfc_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/btfc/btfc_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'btfc')
+),
+funder_row AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320319978  -- Brain Tumour Foundation of Canada
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'btfc' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.year_awarded AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'Canada' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM btfc_input g
+    CROSS JOIN funder_row f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        311 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateBusinessFinlandAwards.ipynb (origin e22fdf7f): its awards-table SELECT over business_finland_input (was the
+-- staging table read from s3://openalex-ingest/awards/business_finland/business_finland_projects.parquet); created_date and updated_date are the run timestamp.
+-- business_finland: priority 433, frozen fetch cadence (descriptive).
+SELECT 'business_finland' AS _source, * FROM (
+WITH business_finland_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/business_finland/business_finland_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'business_finland')
+),
+bf_funders AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id IN (4320321855, 4320328501)
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.diary_number))))) % 9000000000 as id,
+        CONCAT(
+            COALESCE(NULLIF(TRIM(g.program), ''), NULLIF(TRIM(g.funding_service), ''), 'Public research project'),
+            ' — ',
+            COALESCE(NULLIF(TRIM(g.organisation), ''), 'unknown organisation'),
+            ' (', TRIM(g.diary_number), ')'
+        ) as display_name,
+        NULLIF(TRIM(g.abstract_fi), '') as description,
+        f.funder_id,
+        TRIM(g.diary_number) as funder_award_id,
+        CASE
+            WHEN g.amount_eur = 'Luottamuksellinen' THEN NULL   -- confidential in source
+            ELSE NULLIF(TRY_CAST(g.amount_eur AS DOUBLE), 0)
+        END as amount,
+        'EUR' as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+        'research' as funding_type,
+        COALESCE(NULLIF(TRIM(g.funding_service), ''), NULLIF(TRIM(g.program), '')) as funder_scheme,
+        'business_finland' as provenance,
+        TRY_TO_DATE(CONCAT(g.decision_year, '-01-01'), 'yyyy-MM-dd') as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.decision_year AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        CAST(NULL AS STRING) as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.diary_number))))) % 9000000000) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM business_finland_input g
+    JOIN bf_funders f
+      ON f.funder_id = TRY_CAST(g.openalex_funder_id AS BIGINT)
+    WHERE g.diary_number IS NOT NULL AND TRIM(g.diary_number) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        433 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCanadaCouncilPrizesAwards.ipynb (origin e22fdf7f): its awards-table SELECT over canada_council_prizes_input (was the
+-- staging table read from s3://openalex-ingest/awards/canada_council_prizes/canada_council_prizes.parquet); created_date and updated_date are the run timestamp.
+-- canada_council_prizes: priority 74, frozen fetch cadence (descriptive).
+SELECT 'canada_council_prizes' AS _source, * FROM (
+WITH canada_council_prizes_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/canada_council_prizes/canada_council_prizes.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'canada_council_prizes')
+),
+canada_council_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320319951
+), normalized AS (
+    SELECT
+        *,
+        TRY_CAST(year AS INT) AS award_year_int,
+        NULLIF(TRIM(funder_award_id), '') AS funder_award_id_norm,
+        NULLIF(TRIM(prize_name), '') AS prize_name_norm,
+        NULLIF(TRIM(category), '') AS category_norm,
+        NULLIF(TRIM(language), '') AS language_norm,
+        NULLIF(TRIM(laureate_name), '') AS laureate_name_norm,
+        NULLIF(TRIM(laureate_given_name), '') AS given_name_norm,
+        NULLIF(TRIM(laureate_family_name), '') AS family_name_norm,
+        LOWER(NULLIF(TRIM(is_organization_like), '')) = 'true' AS is_organization_like_bool,
+        NULLIF(TRIM(work_title), '') AS work_title_norm,
+        NULLIF(TRIM(source_description), '') AS source_description_norm,
+        NULLIF(TRIM(raw_entry_text), '') AS raw_entry_text_norm,
+        NULLIF(TRIM(prize_url), '') AS prize_url_norm,
+        NULLIF(TRIM(currency), '') AS currency_norm
+    FROM canada_council_prizes_input
+), awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(
+            TRY_CAST(f.funder_id AS STRING), ':canada-council:', LOWER(n.funder_award_id_norm)
+        ))) % 9000000000 AS id,
+        CONCAT(
+            CAST(n.award_year_int AS STRING), ' ', n.prize_name_norm, ' - ', n.laureate_name_norm,
+            CASE WHEN n.work_title_norm IS NOT NULL THEN CONCAT(' (', n.work_title_norm, ')') ELSE '' END
+        ) AS display_name,
+        NULLIF(CONCAT_WS(
+            ' ',
+            n.source_description_norm,
+            CASE WHEN n.category_norm IS NOT NULL THEN CONCAT('Category: ', n.category_norm, '.') END,
+            CASE WHEN n.language_norm IS NOT NULL THEN CONCAT('Language: ', n.language_norm, '.') END,
+            CASE WHEN n.work_title_norm IS NOT NULL THEN CONCAT('Winning work: ', n.work_title_norm, '.') END,
+            CASE WHEN n.raw_entry_text_norm IS NOT NULL THEN CONCAT('Source entry: ', n.raw_entry_text_norm) END
+        ), '') AS description,
+        f.funder_id,
+        n.funder_award_id_norm AS funder_award_id,
+        CAST(NULL AS DOUBLE) AS amount,
+        COALESCE(n.currency_norm, 'CAD') AS currency,
+        struct(
+            CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+            f.display_name, f.ror_id, f.doi
+        ) AS funder,
+        'prize' AS funding_type,
+        CONCAT_WS(' - ', n.prize_name_norm, n.category_norm, n.language_norm) AS funder_scheme,
+        'canada_council_prizes' AS provenance,
+        TRY_TO_DATE(CONCAT(CAST(n.award_year_int AS STRING), '-01-01'), 'yyyy-MM-dd') AS start_date,
+        TRY_TO_DATE(CONCAT(CAST(n.award_year_int AS STRING), '-12-31'), 'yyyy-MM-dd') AS end_date,
+        n.award_year_int AS start_year,
+        n.award_year_int AS end_year,
+        struct(
+            CASE
+                WHEN n.is_organization_like_bool THEN n.laureate_name_norm
+                ELSE COALESCE(n.given_name_norm, n.laureate_name_norm)
+            END AS given_name,
+            CASE
+                WHEN n.is_organization_like_bool THEN CAST(NULL AS STRING)
+                ELSE n.family_name_norm
+            END AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                CAST(NULL AS STRING) AS name,
+                CAST(NULL AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        ) AS lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) AS co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+        n.prize_url_norm AS landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+        CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+            TRY_CAST(abs(xxhash64(CONCAT(
+                TRY_CAST(f.funder_id AS STRING), ':canada-council:', LOWER(n.funder_award_id_norm)
+            ))) % 9000000000 AS STRING)
+        ) AS works_api_url,
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+    FROM normalized n
+    CROSS JOIN canada_council_funder f
+    WHERE n.funder_award_id_norm IS NOT NULL
+      AND n.award_year_int IS NOT NULL
+      AND n.prize_name_norm IS NOT NULL
+      AND n.laureate_name_norm IS NOT NULL
+),
+
+awards_transformed AS (
+SELECT *
+FROM awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        74 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCancerResearchSocietyAwards.ipynb (origin e22fdf7f): its awards-table SELECT over crs_operating_grant_results_input (was the
+-- staging table read from s3://openalex-ingest/awards/cancer_research_society/cancer_research_society_projects.parquet); created_date and updated_date are the run timestamp.
+-- crs_operating_grant_results: priority 565, frozen fetch cadence (descriptive).
+SELECT 'crs_operating_grant_results' AS _source, * FROM (
+WITH crs_operating_grant_results_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cancer_research_society/cancer_research_society_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'crs_operating_grant_results')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320311169  -- Cancer Research Society
+),
+
+g AS (
+    SELECT
+        *,
+        TRY_CAST(competition_year AS INT) AS yr,
+        NULLIF(TRIM(partner), '') AS partner_clean
+    FROM crs_operating_grant_results_input
+    WHERE funder_award_id IS NOT NULL AND TRIM(funder_award_id) != ''
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    'CAD' as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    CASE WHEN g.partner_clean IS NOT NULL
+         THEN CONCAT('Operating Grants (co-funded: ', g.partner_clean, ')')
+         ELSE 'Operating Grants' END as funder_scheme,
+    'crs_operating_grant_results' as provenance,
+    CASE WHEN g.yr IS NOT NULL THEN TRY_TO_DATE(CONCAT(g.competition_year, '-01-01'), 'yyyy-MM-dd') END as start_date,
+    CAST(NULL AS DATE) as end_date,
+    g.yr as start_year,
+    CAST(NULL AS INT) as end_year,
+    CASE WHEN NULLIF(TRIM(g.lead_family_name), '') IS NOT NULL THEN named_struct(
+        'given_name', NULLIF(TRIM(g.lead_given_name), ''),
+        'family_name', NULLIF(TRIM(g.lead_family_name), ''),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', NULLIF(TRIM(g.institution), ''),
+            'country', CAST(NULL AS STRING),
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    g.source_pdf as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM g
+CROSS JOIN src_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        565 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCAPESCooperationAwards.ipynb (origin e22fdf7f): its awards-table SELECT over capes_cooperacao_internacional_input (was the
+-- staging table read from s3://openalex-ingest/awards/capes_cooperation/capes_cooperation_projects.parquet); created_date and updated_date are the run timestamp.
+-- capes_cooperacao_internacional: priority 144, frozen fetch cadence (descriptive).
+SELECT 'capes_cooperacao_internacional' AS _source, * FROM (
+WITH capes_cooperacao_internacional_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/capes_cooperation/capes_cooperation_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'capes_cooperacao_internacional')
+),
+capes_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321091
+),
+
+raw_prepared AS (
+    SELECT
+        *,
+        LOWER(TRIM(funder_award_id)) AS native_award_id,
+        TRY_CAST(amount AS DOUBLE) AS parsed_amount,
+        CASE WHEN TRY_CAST(amount AS DOUBLE) IS NOT NULL THEN 'BRL' ELSE NULL END AS parsed_currency,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS parsed_start_date,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS parsed_end_date,
+        TRY_CAST(source_year AS INT) AS parsed_source_year,
+        TRY_CAST(source_end_year AS INT) AS parsed_end_year
+    FROM capes_cooperacao_internacional_input
+    WHERE funder_award_id IS NOT NULL
+      AND TRIM(funder_award_id) != ''
+      AND display_name IS NOT NULL
+      AND TRIM(display_name) != ''
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 AS id,
+
+        TRIM(g.display_name) AS display_name,
+
+        CASE
+            WHEN g.description IS NULL OR TRIM(g.description) = '' THEN NULL
+            ELSE TRIM(g.description)
+        END AS description,
+
+        f.funder_id,
+        g.native_award_id AS funder_award_id,
+
+        g.parsed_amount AS amount,
+        g.parsed_currency AS currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) AS id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) AS funder,
+
+        'research' AS funding_type,
+
+        COALESCE(NULLIF(TRIM(g.funder_scheme), ''), 'International cooperation') AS funder_scheme,
+
+        'capes_cooperacao_internacional' AS provenance,
+
+        g.parsed_start_date AS start_date,
+        g.parsed_end_date AS end_date,
+        COALESCE(YEAR(g.parsed_start_date), g.parsed_source_year) AS start_year,
+        COALESCE(YEAR(g.parsed_end_date), g.parsed_end_year) AS end_year,
+
+        CASE
+            WHEN g.beneficiary_name IS NULL OR TRIM(g.beneficiary_name) = '' THEN NULL
+            ELSE struct(
+                NULLIF(TRIM(g.beneficiary_given_name), '') AS given_name,
+                NULLIF(TRIM(g.beneficiary_family_name), '') AS family_name,
+                CAST(NULL AS STRING) AS orcid,
+                g.parsed_start_date AS role_start,
+                struct(
+                    NULLIF(TRIM(g.institution_name), '') AS name,
+                    'BR' AS country,
+                    CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+                ) AS affiliation
+            )
+        END AS lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) AS co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+
+        NULLIF(TRIM(g.landing_page_url), '') AS landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+
+        CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+               abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000) AS works_api_url,
+
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+
+    FROM raw_prepared g
+    CROSS JOIN capes_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        144 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCariploAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cariplo_input (was the
+-- staging table read from s3://openalex-ingest/awards/cariplo/cariplo_grants.parquet); created_date and updated_date are the run timestamp.
+-- cariplo: priority 361, frozen fetch cadence (descriptive).
+SELECT 'cariplo' AS _source, * FROM (
+WITH cariplo_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cariplo/cariplo_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cariplo')
+),
+cariplo_funder AS (
+    SELECT CAST(funder_id AS BIGINT) as funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders WHERE funder_id = 4320321499
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(NULLIF(NULLIF(TRIM(g.title), ''), '0'), CONCAT('Cariplo grant ', g.funder_award_id)) as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN TRY_CAST(g.amount AS DECIMAL(18,2)) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN g.currency ELSE NULL END as currency,
+        struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'cariplo' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.year_awarded AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE WHEN g.pi_family IS NOT NULL THEN
+            struct(g.pi_given as given_name, g.pi_family as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                struct(g.institution as name, 'Italy' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+        ELSE NULL END as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM cariplo_input g
+    CROSS JOIN cariplo_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        361 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCarlsbergFondetAwards.ipynb (origin e22fdf7f): its awards-table SELECT over carlsberg_fondet_input (was the
+-- staging table read from s3://openalex-ingest/awards/carlsberg_fondet/carlsberg_fondet_grants.parquet); created_date and updated_date are the run timestamp.
+-- carlsberg_fondet: priority 121, frozen fetch cadence (descriptive).
+SELECT 'carlsberg_fondet' AS _source, * FROM (
+WITH carlsberg_fondet_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/carlsberg_fondet/carlsberg_fondet_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'carlsberg_fondet')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321504  -- Carlsbergfondet
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    n.display_name,
+    CAST(NULL AS STRING) AS description,
+    f.funder_id,
+    n.funder_award_id,
+    TRY_CAST(n.amount AS DOUBLE) AS amount,
+    n.currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    'grant' AS funding_type,
+    n.type_of_grant AS funder_scheme,
+    'carlsberg_fondet' AS provenance,
+    TRY_TO_DATE(n.start_date, 'yyyy-MM-dd') AS start_date,
+    TRY_TO_DATE(n.end_date,   'yyyy-MM-dd') AS end_date,
+    TRY_CAST(n.year AS INT) AS start_year,
+    TRY_CAST(n.year AS INT) AS end_year,
+    CASE
+        WHEN n.applicant_name IS NULL OR n.applicant_name = '' THEN NULL
+        ELSE struct(
+            n.given_name AS given_name,
+            n.family_name AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            TRY_TO_DATE(n.start_date, 'yyyy-MM-dd') AS role_start,
+            struct(
+                n.institution AS name,
+                CAST(NULL AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url AS landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    n.declined,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM carlsberg_fondet_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.display_name IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        121 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCarlZeissAwards.ipynb (origin e22fdf7f): its awards-table SELECT over carl_zeiss_stiftung_input (was the
+-- staging table read from s3://openalex-ingest/awards/carl_zeiss/carl_zeiss_projects.parquet); created_date and updated_date are the run timestamp.
+-- carl_zeiss_stiftung: priority 38, frozen fetch cadence (descriptive).
+SELECT 'carl_zeiss_stiftung' AS _source, * FROM (
+WITH carl_zeiss_stiftung_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/carl_zeiss/carl_zeiss_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'carl_zeiss_stiftung')
+),
+czs_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320309895  -- Carl-Zeiss-Stiftung
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.slug)))) % 9000000000 as id,
+    g.title as display_name,
+    g.description,
+    f.funder_id,
+    g.slug as funder_award_id,
+    TRY_CAST(g.amount_eur AS DOUBLE) as amount,
+    g.currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE
+        WHEN LOWER(g.type_of_funding) LIKE '%individual%'
+          OR LOWER(g.type_of_funding) LIKE '%fellowship%' THEN 'fellowship'
+        WHEN LOWER(g.type_of_funding) LIKE '%project%' THEN 'research'
+        ELSE 'grant'
+    END as funding_type,
+    g.programme as funder_scheme,
+    'carl_zeiss_stiftung' as provenance,
+    TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+    TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+    YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) as start_year,
+    YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+    struct(
+        CAST(NULL AS STRING) as given_name,
+        CAST(NULL AS STRING) as family_name,
+        CAST(NULL AS STRING) as orcid,
+        CAST(NULL AS DATE) as role_start,
+        struct(
+            g.funded_institution as name,
+            'DE' as country,
+            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+        ) as affiliation
+    ) as lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) as investigators,
+    g.url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.slug)))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM carl_zeiss_stiftung_input g
+CROSS JOIN czs_funder f
+WHERE g.slug IS NOT NULL AND TRIM(g.slug) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        38 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCarnegieAwards.ipynb (origin e22fdf7f): its awards-table SELECT over carnegie_corporation_input (was the
+-- staging table read from s3://openalex-ingest/awards/carnegie/carnegie_grants.parquet); created_date and updated_date are the run timestamp.
+-- carnegie_corporation: priority 141, frozen fetch cadence (descriptive).
+SELECT 'carnegie_corporation' AS _source, * FROM (
+WITH carnegie_corporation_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/carnegie/carnegie_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'carnegie_corporation')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306125  -- Carnegie Corporation of New York
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    CONCAT('Carnegie ', COALESCE(n.program, 'Grant'), ' - ', n.grantee_org,
+           CASE WHEN n.year IS NOT NULL THEN CONCAT(' (', n.year, ')') ELSE '' END) AS display_name,
+    CAST(NULL AS STRING) AS description,
+    f.funder_id,
+    n.funder_award_id,
+    TRY_CAST(n.amount AS DOUBLE) AS amount,
+    n.currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    'grant' AS funding_type,
+    n.program AS funder_scheme,
+    'carnegie_corporation' AS provenance,
+    CAST(NULL AS DATE) AS start_date,
+    CAST(NULL AS DATE) AS end_date,
+    TRY_CAST(n.year AS INT) AS start_year,
+    CAST(NULL AS INT) AS end_year,
+    CASE
+        WHEN n.grantee_org IS NULL OR n.grantee_org = '' THEN NULL
+        ELSE struct(
+            CAST(NULL AS STRING) AS given_name,
+            CAST(NULL AS STRING) AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                n.grantee_org AS name,
+                CAST(NULL AS STRING) AS country,  -- source doesn't expose grantee country per grant
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM carnegie_corporation_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.grantee_org IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        141 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCCSAwards.ipynb (origin e22fdf7f): its awards-table SELECT over ccs_funding_results_input (was the
+-- staging table read from s3://openalex-ingest/awards/ccs/ccs_projects.parquet); created_date and updated_date are the run timestamp.
+-- ccs_funding_results: priority 564, frozen fetch cadence (descriptive).
+SELECT 'ccs_funding_results' AS _source, * FROM (
+WITH ccs_funding_results_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/ccs/ccs_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'ccs_funding_results')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320334576  -- Canadian Cancer Society Research Institute
+),
+
+g AS (
+    SELECT
+        *,
+        TRY_CAST(TRY_CAST(start_year AS DOUBLE) AS INT) AS sy,
+        TRY_CAST(TRY_CAST(end_year AS DOUBLE) AS INT) AS ey,
+        NULLIF(TRIM(partner), '') AS partner_clean,
+        CASE WHEN layout != 'partner_table'
+             THEN NULLIF(TRIM(REGEXP_REPLACE(note, '^[*(\\s]+|[)\\s]+$', '')), '') END AS cofund_note
+    FROM ccs_funding_results_input
+    WHERE funder_award_id IS NOT NULL AND TRIM(funder_award_id) != ''
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    'CAD' as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE
+        WHEN LOWER(g.programme) RLIKE 'internship|summer research' THEN 'training'
+        WHEN LOWER(g.programme) RLIKE 'training award' THEN 'fellowship'
+        ELSE 'research'
+    END as funding_type,
+    CASE
+        WHEN g.partner_clean IS NOT NULL THEN CONCAT(TRIM(g.programme), ' (partner: ', g.partner_clean, ')')
+        WHEN g.cofund_note IS NOT NULL THEN CONCAT(TRIM(g.programme), ' (', g.cofund_note, ')')
+        ELSE TRIM(g.programme)
+    END as funder_scheme,
+    'ccs_funding_results' as provenance,
+    CASE WHEN g.sy IS NOT NULL THEN TRY_TO_DATE(CONCAT(CAST(g.sy AS STRING), '-01-01'), 'yyyy-MM-dd') END as start_date,
+    CAST(NULL AS DATE) as end_date,
+    g.sy as start_year,
+    g.ey as end_year,
+    CASE WHEN NULLIF(TRIM(g.lead_family_name), '') IS NOT NULL THEN named_struct(
+        'given_name', NULLIF(TRIM(g.lead_given_name), ''),
+        'family_name', NULLIF(TRIM(g.lead_family_name), ''),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', NULLIF(TRIM(g.institution), ''),
+            'country', CAST(NULL AS STRING),
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    g.source_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM g
+CROSS JOIN src_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        564 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCDMRPAwards.ipynb (origin e22fdf7f): its awards-table SELECT over dimensions_cdmrp_input (was the
+-- staging table read from s3://openalex-ingest/awards/cdmrp/cdmrp_grants.parquet); created_date and updated_date are the run timestamp.
+-- dimensions_cdmrp: priority 237, frozen fetch cadence (descriptive).
+SELECT 'dimensions_cdmrp' AS _source, * FROM (
+WITH dimensions_cdmrp_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cdmrp/cdmrp_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'dimensions_cdmrp')
+),
+cdmrp_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320338273  -- Congressionally Directed Medical Research Programs
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        g.short_abstract as description,
+        f.funder_id,
+        g.funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        COALESCE(NULLIF(TRIM(g.currency), ''), 'USD') as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.program as funder_scheme,
+        'dimensions_cdmrp' as provenance,
+        TRY_TO_DATE(SUBSTRING(g.start_date, 1, 10), 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(SUBSTRING(g.end_date, 1, 10), 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(SUBSTRING(g.start_date, 1, 10), 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(SUBSTRING(g.end_date, 1, 10), 'yyyy-MM-dd')) as end_year,
+        CASE
+            WHEN g.pi_last_name IS NOT NULL THEN
+                struct(
+                    INITCAP(g.pi_first_name) as given_name,
+                    INITCAP(g.pi_last_name) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        COALESCE(g.institution, g.pi_affiliation) as name,
+                        g.institution_country as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM dimensions_cdmrp_input g
+    CROSS JOIN cdmrp_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        237 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCDTIAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cdti_open_data_input (was the
+-- staging table read from s3://openalex-ingest/awards/cdti/cdti_projects.parquet); created_date and updated_date are the run timestamp.
+-- cdti_open_data: priority 572, frozen fetch cadence (descriptive).
+SELECT 'cdti_open_data' AS _source, * FROM (
+WITH cdti_open_data_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cdti/cdti_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cdti_open_data')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321043  -- CDTI
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.TituloProyecto), '') as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    NULLIF(TRY_CAST(g.amount_cdti_eur AS DOUBLE), 0) as amount,
+    CASE WHEN NULLIF(TRY_CAST(g.amount_cdti_eur AS DOUBLE), 0) IS NOT NULL THEN 'EUR' END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE WHEN g.TipoAyuda = 'Subvención' THEN 'grant'
+         WHEN g.TipoAyuda = 'Ayudas Parcialmente Reembolsables' THEN 'loan'
+         ELSE 'grant' END as funding_type,
+    CASE WHEN NULLIF(TRIM(g.InstrumentoFinanciero), '') IS NOT NULL
+         THEN CONCAT(TRIM(g.InstrumentoFinanciero), ' - ', TRIM(g.TipoAyuda))
+         ELSE NULLIF(TRIM(g.TipoAyuda), '') END as funder_scheme,
+    'cdti_open_data' as provenance,
+    TRY_TO_DATE(g.approval_date, 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    YEAR(TRY_TO_DATE(g.approval_date, 'yyyy-MM-dd')) as start_year,
+    CAST(NULL AS INT) as end_year,
+    CASE WHEN NULLIF(TRIM(g.RazonSocial), '') IS NOT NULL THEN named_struct(
+        'given_name', CAST(NULL AS STRING),
+        'family_name', CAST(NULL AS STRING),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', TRIM(g.RazonSocial),
+            'country', 'ES',
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    'https://www.cdti.es/datos-abiertos-creditos-subvenciones-y-lineas' as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM cdti_open_data_input g
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+  AND g.TipoAyuda = 'Subvención'
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        572 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCECAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cec_business_meeting_agendas_input (was the
+-- staging table read from s3://openalex-ingest/awards/cec/cec_projects.parquet); created_date and updated_date are the run timestamp.
+-- cec_business_meeting_agendas: priority 573, frozen fetch cadence (descriptive).
+SELECT 'cec_business_meeting_agendas' AS _source, * FROM (
+WITH cec_business_meeting_agendas_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cec/cec_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cec_business_meeting_agendas')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320308020  -- California Energy Commission
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    NULLIF(TRY_CAST(g.amount AS DOUBLE), 0) as amount,
+    CASE WHEN NULLIF(TRY_CAST(g.amount AS DOUBLE), 0) IS NOT NULL THEN 'USD' END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'grant' as funding_type,
+    NULLIF(TRIM(g.programme), '') as funder_scheme,  -- from the agreement-number prefix
+    'cec_business_meeting_agendas' as provenance,
+    TRY_TO_DATE(g.meeting_date, 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    YEAR(TRY_TO_DATE(g.meeting_date, 'yyyy-MM-dd')) as start_year,
+    CAST(NULL AS INT) as end_year,
+    CASE WHEN NULLIF(TRIM(g.recipient), '') IS NOT NULL THEN named_struct(
+        'given_name', CAST(NULL AS STRING),
+        'family_name', CAST(NULL AS STRING),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', TRIM(g.recipient),
+            'country', 'US',
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM cec_business_meeting_agendas_input g
+CROSS JOIN src_funder f
+WHERE g.in_scope = 'True'
+  AND g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        573 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCERCAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cerc_chairholders_input (was the
+-- staging table read from s3://openalex-ingest/awards/cerc/cerc_chairs.parquet); created_date and updated_date are the run timestamp.
+-- cerc_chairholders: priority 504, frozen fetch cadence (descriptive).
+SELECT 'cerc_chairholders' AS _source, * FROM (
+WITH cerc_chairholders_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cerc/cerc_chairs.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cerc_chairholders')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321481  -- Canada Excellence Research Chairs
+),
+
+lead AS (
+    SELECT
+        funder_award_id,
+        named_struct(
+            'given_name', NULLIF(TRIM(lead_given_name), ''),
+            'family_name', NULLIF(TRIM(lead_family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(institution), ''),
+                'country', 'CA',
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) AS lead_investigator
+    FROM cerc_chairholders_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.chair_title), '') as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'fellowship' as funding_type,
+    NULLIF(TRIM(g.funder_scheme), '') as funder_scheme,
+    'cerc_chairholders' as provenance,
+    CAST(NULL AS DATE) as start_date,
+    CAST(NULL AS DATE) as end_date,
+    CAST(NULL AS INT) as start_year,
+    CAST(NULL AS INT) as end_year,
+    l.lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    array(l.lead_investigator) as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM cerc_chairholders_input g
+JOIN lead l ON l.funder_award_id = g.funder_award_id
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        504 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCFREFAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cfref_competition_results_input (was the
+-- staging table read from s3://openalex-ingest/awards/cfref/cfref_projects.parquet); created_date and updated_date are the run timestamp.
+-- cfref_competition_results: priority 482, frozen fetch cadence (descriptive).
+SELECT 'cfref_competition_results' AS _source, * FROM (
+WITH cfref_competition_results_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cfref/cfref_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cfref_competition_results')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320326644  -- Canada First Research Excellence Fund
+),
+
+lead AS (
+    SELECT
+        funder_award_id,
+        named_struct(
+            'given_name', CAST(NULL AS STRING),
+            'family_name', CAST(NULL AS STRING),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(institution), ''),
+                'country', 'CA',
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) AS lead_investigator
+    FROM cfref_competition_results_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    COALESCE(NULLIF(TRIM(g.abstract), ''), NULLIF(TRIM(g.summary), '')) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    g.currency as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    CONCAT('CFREF ', g.competition) as funder_scheme,
+    'cfref_competition_results' as provenance,
+    TRY_TO_DATE(g.announcement_date, 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    YEAR(TRY_TO_DATE(g.announcement_date, 'yyyy-MM-dd')) as start_year,
+    CAST(NULL AS INT) as end_year,
+    l.lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    COALESCE(g.abstract_url, g.results_page_url) as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM cfref_competition_results_input g
+JOIN lead l ON l.funder_award_id = g.funder_award_id
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        482 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCHSSAwards.ipynb (origin e22fdf7f): its awards-table SELECT over chss_input (was the
+-- staging table read from s3://openalex-ingest/awards/chss/chss_grants.parquet); created_date and updated_date are the run timestamp.
+-- chss: priority 295, frozen fetch cadence (descriptive).
+SELECT 'chss' AS _source, * FROM (
+WITH chss_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/chss/chss_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'chss')
+),
+chss_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320324771  -- Chest Heart & Stroke Scotland (richer of dup pair)
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        'GBP' as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.project_types as funder_scheme,
+        'chss' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.year_awarded AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM chss_input g
+    CROSS JOIN chss_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        295 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCIFARAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cifar_wp_rest_input (was the
+-- staging table read from s3://openalex-ingest/awards/cifar/cifar_appointments.parquet); created_date and updated_date are the run timestamp.
+-- cifar_wp_rest: priority 79, frozen fetch cadence (descriptive).
+SELECT 'cifar_wp_rest' AS _source, * FROM (
+WITH cifar_wp_rest_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cifar/cifar_appointments.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cifar_wp_rest')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320309949  -- Canadian Institute for Advanced Research
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    CONCAT('CIFAR ', n.program_name, ' \u2014 ', n.researcher_full_name) AS display_name,
+    CASE
+        WHEN TRY_CAST(n.declined AS BOOLEAN) = TRUE AND n.role_name IS NOT NULL
+            THEN CONCAT('Declined the appointment. Role: ', n.role_name)
+        WHEN TRY_CAST(n.declined AS BOOLEAN) = TRUE
+            THEN 'Declined the appointment.'
+        WHEN n.role_name IS NOT NULL
+            THEN CONCAT(n.role_name, ' in CIFAR ', n.program_name, '.')
+        ELSE CONCAT('Appointment in CIFAR ', n.program_name, '.')
+    END AS description,
+    f.funder_id,
+    n.funder_award_id,
+    CAST(NULL AS DOUBLE) AS amount,
+    CAST(NULL AS STRING) AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    CASE
+        WHEN LOWER(n.role_name) RLIKE 'advisor|advisory|committee' THEN 'other'
+        WHEN LOWER(n.role_name) RLIKE 'fellow|chair|scholar|investigator|co-?director|director'
+            THEN 'research'
+        ELSE 'other'
+    END AS funding_type,
+    n.program_name AS funder_scheme,
+    'cifar_wp_rest' AS provenance,
+    TRY_TO_DATE(SUBSTRING(n.first_seen_date, 1, 10), 'yyyy-MM-dd') AS start_date,
+    CAST(NULL AS DATE) AS end_date,
+    CAST(SUBSTRING(n.first_seen_date, 1, 4) AS INT) AS start_year,
+    CAST(NULL AS INT) AS end_year,
+    struct(
+        n.researcher_given AS given_name,
+        n.researcher_family AS family_name,
+        CAST(NULL AS STRING) AS orcid,
+        CAST(NULL AS DATE) AS role_start,
+        struct(
+            n.institution_name AS name,
+            n.country_name AS country,
+            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+        ) AS affiliation
+    ) AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM cifar_wp_rest_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.program_name IS NOT NULL
+  AND n.researcher_full_name IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        79 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCIHRAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cihr_opendata_input (was the
+-- staging table read from s3://openalex-ingest/awards/cihr/cihr_projects.parquet); created_date and updated_date are the run timestamp.
+-- cihr_opendata: priority 7, frozen fetch cadence (descriptive).
+SELECT 'cihr_opendata' AS _source, * FROM (
+WITH cihr_opendata_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cihr/cihr_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cihr_opendata')
+),
+cihr_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320334506  -- Canadian Institutes of Health Research
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funding_reference_number))))) % 9000000000 as id,
+
+        g.application_title as display_name,
+
+        g.application_abstract as description,
+
+        f.funder_id,
+        TRIM(g.funding_reference_number) as funder_award_id,
+
+        TRY_CAST(g.total_amount_awarded AS DOUBLE) as amount,
+        'CAD' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        CASE
+            WHEN LOWER(g.program_type) LIKE '%award%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%doctoral%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%postdoctoral%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%fellowship%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%scholarship%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%master%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%vanier%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%banting%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%canada research chair%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%salary%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%new investigator%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%career%' THEN 'fellowship'
+            WHEN LOWER(g.program_name) LIKE '%travel%' THEN 'travel'
+            WHEN LOWER(g.program_name) LIKE '%meeting%' THEN 'travel'
+            WHEN LOWER(g.program_name) LIKE '%planning%' THEN 'planning'
+            WHEN LOWER(g.program_name) LIKE '%operating grant%' THEN 'research'
+            WHEN LOWER(g.program_name) LIKE '%project grant%' THEN 'research'
+            WHEN LOWER(g.program_name) LIKE '%team grant%' THEN 'research'
+            WHEN LOWER(g.program_name) LIKE '%foundation grant%' THEN 'research'
+            WHEN LOWER(g.program_name) LIKE '%bridge%' THEN 'research'
+            WHEN LOWER(g.program_name) LIKE '%catalyst%' THEN 'research'
+            WHEN LOWER(g.program_name) LIKE '%randomized controlled%' THEN 'research'
+            WHEN LOWER(g.program_type) LIKE '%grant%' THEN 'grant'
+            ELSE 'grant'
+        END as funding_type,
+
+        g.program_name as funder_scheme,
+
+        'cihr_opendata' as provenance,
+
+        TRY_TO_DATE(g.funding_start_date) as start_date,
+        TRY_TO_DATE(g.funding_end_date) as end_date,
+        YEAR(TRY_TO_DATE(g.funding_start_date)) as start_year,
+        YEAR(TRY_TO_DATE(g.funding_end_date)) as end_year,
+
+        CASE
+            WHEN g.family_name IS NOT NULL AND TRIM(g.family_name) != '' THEN
+                struct(
+                    TRIM(g.first_name) as given_name,
+                    TRIM(g.family_name) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    TRY_TO_DATE(g.funding_start_date) as role_start,
+                    struct(
+                        TRIM(g.research_institution_name) as name,
+                        'Canada' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        'https://open.canada.ca/data/en/dataset/49edb1d7-5cb4-4fa7-897c-515d1aad5da3' as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funding_reference_number))))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM cihr_opendata_input g
+    CROSS JOIN cihr_funder f
+    WHERE g.funding_reference_number IS NOT NULL
+      AND TRIM(g.funding_reference_number) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        7 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCIRMAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cirm_input (was the
+-- staging table read from s3://openalex-ingest/awards/cirm/cirm_grants.parquet); created_date and updated_date are the run timestamp.
+-- cirm: priority 253, frozen fetch cadence (descriptive).
+SELECT 'cirm' AS _source, * FROM (
+WITH cirm_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cirm/cirm_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cirm')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306171  -- CIRM
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        'USD' as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.programme as funder_scheme,
+        'cirm' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CAST(NULL AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United States' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        CAST(NULL AS STRING) as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM cirm_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        253 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCompagniaSanPaoloAwards.ipynb (origin e22fdf7f): its awards-table SELECT over compagnia_san_paolo_beneficiari_input (was the
+-- staging table read from s3://openalex-ingest/awards/compagnia_san_paolo/compagnia_san_paolo_projects.parquet); created_date and updated_date are the run timestamp.
+-- compagnia_san_paolo_beneficiari: priority 512, frozen fetch cadence (descriptive).
+SELECT 'compagnia_san_paolo_beneficiari' AS _source, * FROM (
+WITH compagnia_san_paolo_beneficiari_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/compagnia_san_paolo/compagnia_san_paolo_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'compagnia_san_paolo_beneficiari')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320309746  -- Compagnia di San Paolo
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    CASE WHEN TRY_CAST(g.amount AS DOUBLE) IS NOT NULL THEN 'EUR' END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    CONCAT('Obiettivo Pianeta - Missione ', g.mission) as funder_scheme,
+    'compagnia_san_paolo_beneficiari' as provenance,
+    TRY_TO_DATE(CONCAT(TRY_CAST(g.year AS INT), '-01-01'), 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    TRY_CAST(g.year AS INT) as start_year,
+    CAST(NULL AS INT) as end_year,
+    CASE WHEN NULLIF(TRIM(g.beneficiary), '') IS NOT NULL THEN named_struct(
+        'given_name', CAST(NULL AS STRING),
+        'family_name', CAST(NULL AS STRING),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', TRIM(g.beneficiary),
+            'country', CAST(NULL AS STRING),
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+         affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>)
+        as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+         affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>)
+        as investigators,
+    g.source_pdf as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM compagnia_san_paolo_beneficiari_input g
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        512 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCONAHCYTAwards.ipynb (origin e22fdf7f): its awards-table SELECT over conahcyt_snii_ckan_input (was the
+-- staging table read from s3://openalex-ingest/awards/conahcyt/conahcyt_snii.parquet); created_date and updated_date are the run timestamp.
+-- conahcyt_snii_ckan: priority 83, frozen fetch cadence (descriptive).
+SELECT 'conahcyt_snii_ckan' AS _source, * FROM (
+WITH conahcyt_snii_ckan_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/conahcyt/conahcyt_snii.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'conahcyt_snii_ckan')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321739  -- CONAHCYT / SECIHTI (CONACYT-era display name in OpenAlex)
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    CONCAT(n.snii_level_label, ' \u2014 ', n.researcher_full_name) AS display_name,
+    CASE
+        WHEN n.area_conocimiento IS NOT NULL AND n.institution IS NOT NULL
+            THEN CONCAT('SNII appointment in ', n.area_conocimiento, ' at ', n.institution, '.')
+        WHEN n.area_conocimiento IS NOT NULL
+            THEN CONCAT('SNII appointment in ', n.area_conocimiento, '.')
+        WHEN n.institution IS NOT NULL
+            THEN CONCAT('SNII appointment at ', n.institution, '.')
+        ELSE 'SNII appointment.'
+    END AS description,
+    f.funder_id,
+    n.funder_award_id,
+    TRY_CAST(n.amount_mxn AS DOUBLE) AS amount,
+    n.currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    CASE
+        WHEN UPPER(n.snii_level) = 'C' THEN 'fellowship'
+        ELSE 'research'
+    END AS funding_type,
+    n.snii_level_label AS funder_scheme,
+    'conahcyt_snii_ckan' AS provenance,
+    TRY_TO_DATE(n.start_date, 'yyyy-MM-dd') AS start_date,
+    TRY_TO_DATE(n.end_date, 'yyyy-MM-dd') AS end_date,
+    TRY_CAST(SUBSTRING(n.start_date, 1, 4) AS INT) AS start_year,
+    TRY_CAST(SUBSTRING(n.end_date, 1, 4) AS INT) AS end_year,
+    struct(
+        n.given_name AS given_name,
+        n.family_name AS family_name,
+        CAST(NULL AS STRING) AS orcid,
+        TRY_TO_DATE(n.start_date, 'yyyy-MM-dd') AS role_start,
+        struct(
+            n.institution AS name,
+            CAST('MX' AS STRING) AS country,  -- SNII members are by definition Mexico-affiliated
+            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+        ) AS affiliation
+    ) AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url,  -- NULL: CONAHCYT does not expose per-SNII-researcher public landing pages
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM conahcyt_snii_ckan_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.cvu IS NOT NULL
+  AND n.snii_level IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        83 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCOSTECHAwards.ipynb (origin e22fdf7f): its awards-table SELECT over costech_nfast_projects_input (was the
+-- staging table read from s3://openalex-ingest/awards/costech/costech_nfast_projects.parquet); created_date and updated_date are the run timestamp.
+-- costech_nfast_projects: priority 152, frozen fetch cadence (descriptive).
+SELECT 'costech_nfast_projects' AS _source, * FROM (
+WITH costech_nfast_projects_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/costech/costech_nfast_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'costech_nfast_projects')
+),
+costech_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320323478
+),
+
+raw_prepared AS (
+    SELECT
+        *,
+        LOWER(TRIM(funder_award_id)) AS native_award_id,
+        TRY_CAST(amount AS DOUBLE) AS parsed_amount,
+        CASE WHEN TRY_CAST(amount AS DOUBLE) IS NOT NULL THEN 'TZS' ELSE NULL END AS parsed_currency,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS parsed_start_date,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS parsed_end_date,
+        TRY_CAST(source_year AS INT) AS parsed_year
+    FROM costech_nfast_projects_input
+    WHERE funder_award_id IS NOT NULL
+      AND TRIM(funder_award_id) != ''
+      AND display_name IS NOT NULL
+      AND TRIM(display_name) != ''
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 as id,
+
+        TRIM(g.display_name) as display_name,
+
+        CASE
+            WHEN g.description IS NULL OR TRIM(g.description) = '' THEN NULL
+            ELSE TRIM(g.description)
+        END as description,
+
+        f.funder_id,
+        g.native_award_id as funder_award_id,
+
+        g.parsed_amount as amount,
+        g.parsed_currency as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        COALESCE(NULLIF(TRIM(g.funding_type), ''), 'research') as funding_type,
+
+        COALESCE(NULLIF(TRIM(g.funder_scheme), ''), NULLIF(TRIM(g.subprogram_name), ''), NULLIF(TRIM(g.program_name), ''), 'NFAST projects') as funder_scheme,
+
+        'costech_nfast_projects' as provenance,
+
+        g.parsed_start_date as start_date,
+        g.parsed_end_date as end_date,
+        COALESCE(YEAR(g.parsed_start_date), g.parsed_year) as start_year,
+        COALESCE(YEAR(g.parsed_end_date), g.parsed_year) as end_year,
+
+        struct(
+            NULLIF(TRIM(g.lead_investigator_given_name), '') as given_name,
+            NULLIF(TRIM(g.lead_investigator_family_name), '') as family_name,
+            CAST(NULL AS STRING) as orcid,
+            g.parsed_start_date as role_start,
+            struct(
+                CAST(NULL AS STRING) as name,
+                'TZ' as country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+            ) as affiliation
+        ) as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        NULLIF(TRIM(g.landing_page_url), '') as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM raw_prepared g
+    CROSS JOIN costech_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        152 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCottrellScholarsAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cottrell_scholars_input (was the
+-- staging table read from s3://openalex-ingest/awards/cottrell_scholars/cottrell_scholars.parquet); created_date and updated_date are the run timestamp.
+-- cottrell_scholars: priority 135, frozen fetch cadence (descriptive).
+SELECT 'cottrell_scholars' AS _source, * FROM (
+WITH cottrell_scholars_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cottrell_scholars/cottrell_scholars.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cottrell_scholars')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306487  -- Research Corporation for Science Advancement
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    CONCAT('Cottrell Scholar - ', n.name, ' (', n.discipline, ', ', n.year, ')') AS display_name,
+    CONCAT('Cottrell Scholar Award in ', COALESCE(n.discipline, 'science'),
+           CASE WHEN n.institution_type IS NOT NULL
+                THEN CONCAT(' at ', n.institution, ' (', n.institution_type, ')')
+                ELSE CONCAT(' at ', COALESCE(n.institution, '(institution unknown)'))
+           END) AS description,
+    f.funder_id,
+    n.funder_award_id,
+    TRY_CAST(n.amount AS DOUBLE) AS amount,
+    n.currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    'research' AS funding_type,
+    'Cottrell Scholar Award' AS funder_scheme,
+    'cottrell_scholars' AS provenance,
+    CAST(NULL AS DATE) AS start_date,
+    CAST(NULL AS DATE) AS end_date,
+    TRY_CAST(n.year AS INT) AS start_year,
+    TRY_CAST(n.year AS INT) + 2 AS end_year,  -- 3-year term per program page
+    CASE
+        WHEN n.name IS NULL OR n.name = '' THEN NULL
+        ELSE struct(
+            n.given_name AS given_name,
+            n.family_name AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                n.institution AS name,
+                n.country AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM cottrell_scholars_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.name IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        135 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCPRITAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cprit_input (was the
+-- staging table read from s3://openalex-ingest/awards/cprit/cprit_grants.parquet); created_date and updated_date are the run timestamp.
+-- cprit: priority 377, frozen fetch cadence (descriptive).
+SELECT 'cprit' AS _source, * FROM (
+WITH cprit_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cprit/cprit_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cprit')
+),
+cprit_funder AS (
+    SELECT CAST(funder_id AS BIGINT) as funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders WHERE funder_id = 4320308129
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title), ''), CONCAT('CPRIT grant ', g.funder_award_id)) as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN TRY_CAST(g.amount AS DECIMAL(18,2)) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN g.currency ELSE NULL END as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'cprit' as provenance,
+        TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date_raw, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date_raw, 'yyyy-MM-dd')) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name, g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'United States' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation
+                )
+            WHEN g.institution IS NOT NULL THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name, CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'United States' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM cprit_input g
+    CROSS JOIN cprit_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        377 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCrafoordPrizeAwards.ipynb (origin e22fdf7f): its awards-table SELECT over crafoord_prize_input (was the
+-- staging table read from s3://openalex-ingest/awards/crafoord_prize/crafoord_prize_laureates.parquet); created_date and updated_date are the run timestamp.
+-- crafoord_prize: priority 69, frozen fetch cadence (descriptive).
+SELECT 'crafoord_prize' AS _source, * FROM (
+WITH crafoord_prize_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/crafoord_prize/crafoord_prize_laureates.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'crafoord_prize')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320936
+),
+normalized AS (
+    SELECT
+        n.*,
+        TRY_CAST(n.award_year AS INT) AS award_year_int,
+        TRY_CAST(n.source_award_amount AS DOUBLE) AS amount_double
+    FROM crafoord_prize_input n
+),
+awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(
+            TRY_CAST(f.funder_id AS STRING), ':crafoord-prize:', LOWER(n.funder_award_id)
+        ))) % 9000000000 AS id,
+        CONCAT('Crafoord Prize ', TRY_CAST(n.award_year_int AS STRING), ' - ', n.prize_category, ' - ', n.laureate_name) AS display_name,
+        NULLIF(n.citation, '') AS description,
+        f.funder_id,
+        n.funder_award_id,
+        n.amount_double AS amount,
+        NULLIF(n.currency, '') AS currency,
+        struct(
+            CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) AS funder,
+        'prize' AS funding_type,
+        NULLIF(n.prize_category, '') AS funder_scheme,
+        'crafoord_prize' AS provenance,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-01-01'), 'yyyy-MM-dd') AS start_date,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-12-31'), 'yyyy-MM-dd') AS end_date,
+        n.award_year_int AS start_year,
+        n.award_year_int AS end_year,
+        struct(
+            NULLIF(n.given_name, '') AS given_name,
+            NULLIF(n.family_name, '') AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                NULLIF(n.affiliation, '') AS name,
+                CAST(NULL AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        ) AS lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) AS co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+        NULLIF(n.landing_page_url, '') AS landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+    FROM normalized n
+    CROSS JOIN funder_resolved f
+    WHERE n.funder_award_id IS NOT NULL
+      AND n.award_year_int IS NOT NULL
+      AND n.laureate_name IS NOT NULL
+),
+
+awards_transformed AS (
+SELECT
+    id,
+    display_name,
+    description,
+    funder_id,
+    funder_award_id,
+    amount,
+    currency,
+    funder,
+    funding_type,
+    funder_scheme,
+    provenance,
+    start_date,
+    end_date,
+    start_year,
+    end_year,
+    lead_investigator,
+    co_lead_investigator,
+    investigators,
+    landing_page_url,
+    doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G', TRY_CAST(id AS STRING)) AS works_api_url,
+    created_date,
+    updated_date
+FROM awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        69 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCRCAwards.ipynb (origin e22fdf7f): its awards-table SELECT over crc_chairholders_input (was the
+-- staging table read from s3://openalex-ingest/awards/crc/crc_chairs.parquet); created_date and updated_date are the run timestamp.
+-- crc_chairholders: priority 480, frozen fetch cadence (descriptive).
+SELECT 'crc_chairholders' AS _source, * FROM (
+WITH crc_chairholders_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/crc/crc_chairs.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'crc_chairholders')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320994  -- Canada Research Chairs
+),
+
+lead AS (
+    SELECT
+        funder_award_id,
+        named_struct(
+            'given_name', NULLIF(TRIM(lead_given_name), ''),
+            'family_name', NULLIF(TRIM(lead_family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', TRY_TO_DATE(announcement_date, 'yyyy-MM-dd'),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(institution), ''),
+                'country', 'CA',
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) AS lead_investigator
+    FROM crc_chairholders_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.chair_title), '') as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    g.currency as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'fellowship' as funding_type,
+    CASE
+        WHEN g.funder_scheme = 'Canada 150 Research Chairs' THEN g.funder_scheme
+        WHEN NULLIF(TRIM(g.tier), '') IS NOT NULL
+            THEN CONCAT('Canada Research Chairs, Tier ', TRIM(g.tier),
+                        CASE WHEN NULLIF(TRIM(g.chair_type), '') IS NOT NULL THEN CONCAT(' (', TRIM(g.chair_type), ')') ELSE '' END)
+        ELSE 'Canada Research Chairs'
+    END as funder_scheme,
+    'crc_chairholders' as provenance,
+    TRY_TO_DATE(g.announcement_date, 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    YEAR(TRY_TO_DATE(g.announcement_date, 'yyyy-MM-dd')) as start_year,
+    CAST(NULL AS INT) as end_year,
+    l.lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    array(l.lead_investigator) as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM crc_chairholders_input g
+JOIN lead l ON l.funder_award_id = g.funder_award_id
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        480 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCrohnsColitisUKAwards.ipynb (origin e22fdf7f): its awards-table SELECT over crohns_colitis_uk_input (was the
+-- staging table read from s3://openalex-ingest/awards/crohns_colitis_uk/crohns_colitis_uk_grants.parquet); created_date and updated_date are the run timestamp.
+-- crohns_colitis_uk: priority 285, frozen fetch cadence (descriptive).
+SELECT 'crohns_colitis_uk' AS _source, * FROM (
+WITH crohns_colitis_uk_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/crohns_colitis_uk/crohns_colitis_uk_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'crohns_colitis_uk')
+),
+the_funder AS (SELECT funder_id, display_name, ror_id, doi FROM openalex.funders.funders WHERE funder_id = 4320321982),
+awards_transformed AS (
+  SELECT abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+    g.title as display_name, CAST(NULL AS STRING) as description, f.funder_id, g.funder_award_id,
+    TRY_CAST(g.amount AS DECIMAL(18,2)) as amount, 'GBP' as currency,
+    struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+    'grant' as funding_type, CAST(NULL AS STRING) as funder_scheme, 'crohns_colitis_uk' as provenance,
+    CAST(NULL AS DATE) as start_date, CAST(NULL AS DATE) as end_date, CAST(NULL AS INT) as start_year, CAST(NULL AS INT) as end_year,
+    CASE WHEN g.pi_family IS NOT NULL THEN struct(g.pi_given as given_name, g.pi_family as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+      struct(g.institution as name, 'United Kingdom' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation) ELSE NULL END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    g.landing_page_url, CAST(NULL AS STRING) as doi, CAST(NULL AS STRING) as works_api_url, session.awards_timestamp as created_date, session.awards_timestamp as updated_date
+  FROM crohns_colitis_uk_input g CROSS JOIN the_funder f),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        285 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCroucherFoundationAwards.ipynb (origin e22fdf7f): its awards-table SELECT over croucher_fellows_and_scholars_input (was the
+-- staging table read from s3://openalex-ingest/awards/croucher_foundation/croucher_foundation_projects.parquet); created_date and updated_date are the run timestamp.
+-- croucher_fellows_and_scholars: priority 542, frozen fetch cadence (descriptive).
+SELECT 'croucher_fellows_and_scholars' AS _source, * FROM (
+WITH croucher_fellows_and_scholars_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/croucher_foundation/croucher_foundation_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'croucher_fellows_and_scholars')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320904  -- Croucher Foundation
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    CONCAT(g.funder_scheme, ' ', g.award_year, ': ', TRIM(g.name)) as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,      -- not published per award
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    g.funding_type as funding_type,
+    g.funder_scheme as funder_scheme,
+    'croucher_fellows_and_scholars' as provenance,
+    CAST(NULL AS DATE) as start_date,
+    CAST(NULL AS DATE) as end_date,
+    TRY_CAST(g.award_year AS INT) as start_year,
+    CAST(NULL AS INT) as end_year,
+    CASE WHEN NULLIF(TRIM(g.family_name), '') IS NOT NULL THEN
+        named_struct(
+            'given_name', NULLIF(TRIM(g.given_name), ''),
+            'family_name', NULLIF(TRIM(g.family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(g.institution), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        )
+    END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+         affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CASE WHEN NULLIF(TRIM(g.family_name), '') IS NOT NULL THEN array(
+        named_struct(
+            'given_name', NULLIF(TRIM(g.given_name), ''),
+            'family_name', NULLIF(TRIM(g.family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(g.institution), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        )
+    ) END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM croucher_fellows_and_scholars_input g
+CROSS JOIN src_funder f
+WHERE NULLIF(TRIM(g.funder_award_id), '') IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        542 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCRUKAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cruk_input (was the
+-- staging table read from s3://openalex-ingest/awards/cruk/cruk_awards.parquet); created_date and updated_date are the run timestamp.
+-- cruk: priority 342, frozen fetch cadence (descriptive).
+SELECT 'cruk' AS _source, * FROM (
+WITH cruk_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cruk/cruk_awards.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cruk')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320319985  -- Cancer Research UK
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'research' as funding_type,
+        g.funder_scheme as funder_scheme,
+        'cruk' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CAST(NULL AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'United Kingdom' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM cruk_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        342 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCSACanadaAwards.ipynb (origin e22fdf7f): its awards-table SELECT over csa_canada_proactive_input (was the
+-- staging table read from s3://openalex-ingest/awards/csa_canada/csa_canada_projects.parquet); created_date and updated_date are the run timestamp.
+-- csa_canada_proactive: priority 201, frozen fetch cadence (descriptive).
+SELECT 'csa_canada_proactive' AS _source, * FROM (
+WITH csa_canada_proactive_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/csa_canada/csa_canada_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'csa_canada_proactive')
+),
+csa_canada_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320334436  -- Canadian Space Agency
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(g.title_en, g.description_en) as display_name,
+        g.description_en as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DOUBLE) > 0 THEN TRY_CAST(g.amount AS DOUBLE) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DOUBLE) > 0 THEN 'CAD' ELSE NULL END as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        CASE
+            WHEN LOWER(g.prog_name_en) RLIKE '(fellowship)' THEN 'fellowship'
+            ELSE 'research'
+        END as funding_type,
+        g.prog_name_en as funder_scheme,
+        'csa_canada_proactive' as provenance,
+        CASE WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL
+             THEN CAST(CONCAT(g.start_year, '-01-01') AS DATE) ELSE NULL END as start_date,
+        CASE WHEN TRY_CAST(g.end_year AS INT) IS NOT NULL
+             THEN CAST(CONCAT(g.end_year, '-12-31') AS DATE) ELSE NULL END as end_date,
+        TRY_CAST(g.start_year AS INT) as start_year,
+        TRY_CAST(g.end_year AS INT) as end_year,
+        CASE
+            WHEN g.institution_name IS NOT NULL
+             AND g.institution_name != ''
+             AND TRIM(g.institution_name) != '' THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution_name as name,
+                        g.recipient_country as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING,
+            role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING,
+            role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        'https://analisi.transparenciacatalunya.cat/Economia/Concessions-del-RAISC-Registre-de-subvencions-i-aju/s9xt-n979' as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM csa_canada_proactive_input g
+    CROSS JOIN csa_canada_funder f
+    WHERE g.funder_award_id IS NOT NULL
+      AND TRIM(CAST(g.funder_award_id AS STRING)) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        201 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCUREEpilepsyAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cure_epilepsy_input (was the
+-- staging table read from s3://openalex-ingest/awards/cure_epilepsy/cure_epilepsy_grants.parquet); created_date and updated_date are the run timestamp.
+-- cure_epilepsy: priority 273, frozen fetch cadence (descriptive).
+SELECT 'cure_epilepsy' AS _source, * FROM (
+WITH cure_epilepsy_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cure_epilepsy/cure_epilepsy_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cure_epilepsy')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320307214  -- CURE Epilepsy
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.programme as funder_scheme,
+        'cure_epilepsy' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CAST(NULL AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name, g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, CAST(NULL AS STRING) as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation
+                )
+            ELSE NULL END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM cure_epilepsy_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        273 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCureParkinsonsAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cure_parkinsons_input (was the
+-- staging table read from s3://openalex-ingest/awards/cure_parkinsons/cure_parkinsons_grants.parquet); created_date and updated_date are the run timestamp.
+-- cure_parkinsons: priority 303, frozen fetch cadence (descriptive).
+SELECT 'cure_parkinsons' AS _source, * FROM (
+WITH cure_parkinsons_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cure_parkinsons/cure_parkinsons_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cure_parkinsons')
+),
+cpt_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320315983  -- Cure Parkinson's Trust
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        CAST(NULL AS STRING) as funder_scheme,
+        'cure_parkinsons' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.year AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        CAST(NULL AS STRING) as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM cure_parkinsons_input g
+    CROSS JOIN cpt_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        303 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCyprusRIFAwards.ipynb (origin e22fdf7f): its awards-table SELECT over cyprus_rif_funded_projects_input (was the
+-- staging table read from s3://openalex-ingest/awards/cyprus_rif/cyprus_rif_funded_projects.parquet); created_date and updated_date are the run timestamp.
+-- cyprus_rif_funded_projects: priority 212, frozen fetch cadence (descriptive).
+SELECT 'cyprus_rif_funded_projects' AS _source, * FROM (
+WITH cyprus_rif_funded_projects_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/cyprus_rif/cyprus_rif_funded_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cyprus_rif_funded_projects')
+),
+rif_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320330084
+),
+raw_prepped AS (
+    SELECT
+        *,
+        NULLIF(TRIM(funder_award_id), '') AS award_id_clean,
+        TRY_CAST(amount AS DOUBLE) AS amount_double,
+        TRY_CAST(start_date AS DATE) AS start_date_cast,
+        TRY_CAST(signature_date AS DATE) AS signature_date_cast,
+        TRY_CAST(TRY_CAST(start_year AS DOUBLE) AS INT) AS start_year_int,
+        TRY_CAST(TRY_CAST(end_year AS DOUBLE) AS INT) AS end_year_int,
+        NULLIF(TRIM(lead_given_name), '') AS lead_given_clean,
+        NULLIF(TRIM(lead_family_name), '') AS lead_family_clean,
+        NULLIF(TRIM(executing_institution), '') AS lead_affiliation_name,
+        NULLIF(TRIM(programme), '') AS programme_clean
+    FROM cyprus_rif_funded_projects_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT('4320330084:', LOWER(TRIM(r.award_id_clean))))) % 9000000000 AS id,
+    NULLIF(TRIM(r.display_name), '') AS display_name,
+    NULLIF(TRIM(r.description), '') AS description,
+    4320330084 AS funder_id,
+    r.award_id_clean AS funder_award_id,
+    CASE WHEN r.amount_double > 0 THEN r.amount_double ELSE NULL END AS amount,
+    CASE WHEN r.amount_double > 0 THEN 'EUR' ELSE NULL END AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    CASE
+        WHEN r.programme_clean ILIKE '%DIDAKTOR%' THEN 'fellowship'
+        WHEN r.programme_clean ILIKE '%Post-Doctoral%' THEN 'fellowship'
+        WHEN r.programme_clean ILIKE '%PhD%' THEN 'fellowship'
+        ELSE 'research'
+    END AS funding_type,
+    r.programme_clean AS funder_scheme,
+    'cyprus_rif_funded_projects' AS provenance,
+    r.start_date_cast AS start_date,
+    CAST(NULL AS DATE) AS end_date,
+    CASE WHEN r.start_year_int BETWEEN 1900 AND YEAR(current_date()) + 1 THEN r.start_year_int END AS start_year,
+    CASE WHEN r.end_year_int BETWEEN 1900 AND YEAR(current_date()) + 10 THEN r.end_year_int END AS end_year,
+    CASE
+        WHEN r.lead_family_clean IS NOT NULL OR r.lead_affiliation_name IS NOT NULL THEN
+            struct(
+                r.lead_given_clean AS given_name,
+                r.lead_family_clean AS family_name,
+                CAST(NULL AS STRING) AS orcid,
+                r.start_date_cast AS role_start,
+                struct(
+                    r.lead_affiliation_name AS name,
+                    CAST(NULL AS STRING) AS country,
+                    CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+                ) AS affiliation
+            )
+        ELSE NULL
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    r.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT('4320330084:', LOWER(TRIM(r.award_id_clean))))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date,
+    212 AS priority
+FROM raw_prepped r
+CROSS JOIN rif_funder f
+WHERE r.award_id_clean IS NOT NULL
+  AND NULLIF(TRIM(r.display_name), '') IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        212 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateCZIAwards.ipynb (origin e22fdf7f): its awards-table SELECT over czi_grants_input (was the
+-- staging table read from s3://openalex-ingest/awards/czi/czi_grants.parquet); created_date and updated_date are the run timestamp.
+-- czi_grants: priority 120, frozen fetch cadence (descriptive).
+SELECT 'czi_grants' AS _source, * FROM (
+WITH czi_grants_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/czi/czi_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'czi_grants')
+),
+czi_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320315474
+),
+raw_prepared AS (
+    SELECT
+        *,
+        TRY_CAST(start_year AS INT) AS parsed_year,
+        TRY_TO_DATE(CONCAT(start_year, '-01-01'), 'yyyy-MM-dd') AS parsed_start_date
+    FROM czi_grants_input
+    WHERE title IS NOT NULL
+      AND TRIM(title) != ''
+      AND funder_award_id IS NOT NULL
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+
+        g.title as display_name,
+        g.description as description,
+
+        f.funder_id,
+        g.funder_award_id,
+
+        CAST(NULL AS DOUBLE) as amount,
+        CAST(NULL AS STRING) as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        'research' as funding_type,
+        COALESCE(NULLIF(TRIM(g.program_label), ''), 'CZI Grant') as funder_scheme,
+
+        'czi_grants' as provenance,
+
+        g.parsed_start_date as start_date,
+        CAST(NULL AS DATE) as end_date,
+        g.parsed_year as start_year,
+        CAST(NULL AS INT) as end_year,
+
+        struct(
+            NULLIF(TRIM(g.pi_given_name), '') as given_name,
+            NULLIF(TRIM(g.pi_family_name), '') as family_name,
+            CAST(NULL AS STRING) as orcid,
+            g.parsed_start_date as role_start,
+            struct(
+                NULLIF(TRIM(g.pi_affiliation), '') as name,
+                'US' as country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+            ) as affiliation
+        ) as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G',
+               abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM raw_prepared g
+    CROSS JOIN czi_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        120 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDamonRunyonAwards.ipynb (origin e22fdf7f): its awards-table SELECT over damon_runyon_drupal_input (was the
+-- staging table read from s3://openalex-ingest/awards/damon_runyon/damon_runyon_fellows.parquet); created_date and updated_date are the run timestamp.
+-- damon_runyon_drupal: priority 73, frozen fetch cadence (descriptive).
+SELECT 'damon_runyon_drupal' AS _source, * FROM (
+WITH damon_runyon_drupal_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/damon_runyon/damon_runyon_fellows.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'damon_runyon_drupal')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306271  -- Damon Runyon Cancer Research Foundation
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    CONCAT('Damon Runyon ', COALESCE(n.award_program, 'Award'), ' \u2014 ', n.scientist_full_name) AS display_name,
+    CASE
+        WHEN n.cancer_type IS NOT NULL AND n.research_area IS NOT NULL
+            THEN CONCAT(n.award_type, ' working on ', n.cancer_type, ' (', n.research_area, ').',
+                        CASE WHEN n.sponsor_mentor IS NOT NULL THEN CONCAT(' Mentor: ', n.sponsor_mentor, '.') ELSE '' END)
+        WHEN n.cancer_type IS NOT NULL
+            THEN CONCAT(n.award_type, ' working on ', n.cancer_type, '.',
+                        CASE WHEN n.sponsor_mentor IS NOT NULL THEN CONCAT(' Mentor: ', n.sponsor_mentor, '.') ELSE '' END)
+        WHEN n.award_type IS NOT NULL
+            THEN n.award_type
+        ELSE NULL
+    END AS description,
+    f.funder_id,
+    n.funder_award_id,
+    CAST(NULL AS DOUBLE) AS amount,
+    CAST(NULL AS STRING) AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    CASE
+        WHEN LOWER(n.award_type) RLIKE 'fellow' THEN 'fellowship'
+        WHEN LOWER(n.award_type) RLIKE 'investigator|research|innovation|scholar' THEN 'research'
+        WHEN LOWER(n.award_type) RLIKE 'clinical' THEN 'research'
+        ELSE 'other'
+    END AS funding_type,
+    n.award_program AS funder_scheme,
+    'damon_runyon_drupal' AS provenance,
+    CAST(NULL AS DATE) AS start_date,
+    CAST(NULL AS DATE) AS end_date,
+    CAST(NULL AS INT) AS start_year,
+    CAST(NULL AS INT) AS end_year,
+    CASE
+        WHEN n.scientist_full_name IS NULL OR n.scientist_full_name = '' THEN NULL
+        ELSE struct(
+            n.given_name AS given_name,
+            n.family_name AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                n.institution AS name,
+                CAST('US' AS STRING) AS country,  -- Damon Runyon funds US-based researchers
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM damon_runyon_drupal_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.scientist_full_name IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        73 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDanDavidPrizeAwards.ipynb (origin e22fdf7f): its awards-table SELECT over dan_david_prize_input (was the
+-- staging table read from s3://openalex-ingest/awards/dan_david_prize/dan_david_prize_winners.parquet); created_date and updated_date are the run timestamp.
+-- dan_david_prize: priority 68, frozen fetch cadence (descriptive).
+SELECT 'dan_david_prize' AS _source, * FROM (
+WITH dan_david_prize_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/dan_david_prize/dan_david_prize_winners.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'dan_david_prize')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320949
+),
+normalized AS (
+    SELECT
+        n.*,
+        TRY_CAST(n.award_year AS INT) AS award_year_int,
+        TRY_CAST(n.source_award_amount AS DOUBLE) AS amount_double
+    FROM dan_david_prize_input n
+),
+awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(
+            TRY_CAST(f.funder_id AS STRING), ':dan-david-prize:', LOWER(n.funder_award_id)
+        ))) % 9000000000 AS id,
+        CONCAT('Dan David Prize ', TRY_CAST(n.award_year_int AS STRING), ' - ', n.laureate_name) AS display_name,
+        COALESCE(NULLIF(n.profile_description, ''), NULLIF(n.research_topic, '')) AS description,
+        f.funder_id,
+        n.funder_award_id,
+        n.amount_double AS amount,
+        NULLIF(n.currency, '') AS currency,
+        struct(
+            CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) AS funder,
+        'prize' AS funding_type,
+        NULLIF(n.research_topic, '') AS funder_scheme,
+        'dan_david_prize' AS provenance,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-01-01'), 'yyyy-MM-dd') AS start_date,
+        TRY_TO_DATE(CONCAT(TRY_CAST(n.award_year_int AS STRING), '-12-31'), 'yyyy-MM-dd') AS end_date,
+        n.award_year_int AS start_year,
+        n.award_year_int AS end_year,
+        struct(
+            NULLIF(n.given_name, '') AS given_name,
+            NULLIF(n.family_name, '') AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                NULLIF(n.affiliation, '') AS name,
+                CAST(NULL AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        ) AS lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) AS co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+        NULLIF(n.landing_page_url, '') AS landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+    FROM normalized n
+    CROSS JOIN funder_resolved f
+    WHERE n.funder_award_id IS NOT NULL
+      AND n.award_year_int IS NOT NULL
+      AND n.laureate_name IS NOT NULL
+),
+
+awards_transformed AS (
+SELECT
+    id,
+    display_name,
+    description,
+    funder_id,
+    funder_award_id,
+    amount,
+    currency,
+    funder,
+    funding_type,
+    funder_scheme,
+    provenance,
+    start_date,
+    end_date,
+    start_year,
+    end_year,
+    lead_investigator,
+    co_lead_investigator,
+    investigators,
+    landing_page_url,
+    doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G', TRY_CAST(id AS STRING)) AS works_api_url,
+    created_date,
+    updated_date
+FROM awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        68 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDBUAwards.ipynb (origin e22fdf7f): its awards-table SELECT over dbu_projektdatenbank_input (was the
+-- staging table read from s3://openalex-ingest/awards/dbu/dbu_projects.parquet); created_date and updated_date are the run timestamp.
+-- dbu_projektdatenbank: priority 528, frozen fetch cadence (descriptive).
+SELECT 'dbu_projektdatenbank' AS _source, * FROM (
+WITH dbu_projektdatenbank_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/dbu/dbu_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'dbu_projektdatenbank')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320309954  -- Deutsche Bundesstiftung Umwelt
+),
+
+src AS (
+    SELECT *,
+        named_struct(
+            'given_name', CASE WHEN record_type <> 'project' THEN NULLIF(TRIM(given_name), '') END,
+            'family_name', CASE WHEN record_type <> 'project' THEN NULLIF(TRIM(family_name), '') END,
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(regexp_replace(org_full, '\\s*\\n\\s*', ' ')), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) AS lead
+    FROM dbu_projektdatenbank_input
+    WHERE scope = 'in'  -- environmental-education-only projects excluded (see header)
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    CASE WHEN g.title RLIKE '[A-Za-z]' THEN TRIM(g.title) END as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    NULLIF(TRY_CAST(g.amount AS DOUBLE), 0) as amount,
+    CASE WHEN NULLIF(TRY_CAST(g.amount AS DOUBLE), 0) IS NOT NULL THEN 'EUR' END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE g.programme
+        WHEN 'Promotionsstipendium' THEN 'studentship'
+        WHEN 'MOE-Fellowship' THEN 'fellowship'
+        WHEN 'Green Start-up' THEN 'innovation'
+        ELSE 'research'
+    END as funding_type,
+    g.programme as funder_scheme,
+    'dbu_projektdatenbank' as provenance,
+    TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+    TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+    YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) as start_year,
+    YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+    CASE WHEN g.lead.family_name IS NOT NULL OR g.lead.affiliation.name IS NOT NULL THEN g.lead END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+         affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CASE WHEN g.lead.family_name IS NOT NULL OR g.lead.affiliation.name IS NOT NULL THEN array(g.lead) END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM src g
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        528 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDefraAwards.ipynb (origin e22fdf7f): its awards-table SELECT over defra_science_search_input (was the
+-- staging table read from s3://openalex-ingest/awards/defra/defra_projects.parquet); created_date and updated_date are the run timestamp.
+-- defra_science_search: priority 500, frozen fetch cadence (descriptive).
+SELECT 'defra_science_search' AS _source, * FROM (
+WITH defra_science_search_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/defra/defra_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'defra_science_search')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320319995  -- Department for Environment, Food and Rural Affairs
+),
+
+g AS (
+    SELECT
+        r.*,
+        TRY_TO_DATE(r.start_date, 'yyyy-MM-dd') AS sd,
+        TRY_TO_DATE(r.end_date, 'yyyy-MM-dd') AS ed,
+        NULLIF(TRIM(r.lead_contractor), '') AS contractor
+    FROM defra_science_search_input r
+    WHERE r.project_code IS NOT NULL AND TRIM(r.project_code) != ''
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.project_code))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.project_code) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    CASE WHEN TRY_CAST(g.amount AS DOUBLE) IS NOT NULL THEN 'GBP' END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    CAST(NULL AS STRING) as funder_scheme,
+    'defra_science_search' as provenance,
+    g.sd as start_date,
+    g.ed as end_date,
+    YEAR(g.sd) as start_year,
+    YEAR(g.ed) as end_year,
+    CASE WHEN g.contractor IS NOT NULL THEN named_struct(
+        'given_name', CAST(NULL AS STRING),
+        'family_name', CAST(NULL AS STRING),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', g.contractor,
+            'country', CAST(NULL AS STRING),
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+         affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+         affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.project_code))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM g
+CROSS JOIN src_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        500 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
 ),
 baseline AS (
     SELECT b.* FROM awards_baseline b LEFT SEMI JOIN awards_sources s ON s.source = b.provenance AND s.chunk = 1
@@ -1052,6 +11409,2987 @@ FROM m));
 
 -- COMMAND ----------
 
+-- Chunk 2 of 2: sources 101 to 127 in sources.csv order. Each source's candidate rows: its mapping over
+-- its pinned object, cast to the raw contract, compared with its slice.
+CREATE OR REPLACE TEMP VIEW awards_candidate_2 AS
+WITH awards_incoming AS (
+-- Mapping from CreateDeutscheKrebshilfeAwards.ipynb (origin e22fdf7f): its awards-table SELECT over deutsche_krebshilfe_input (was the
+-- staging table read from s3://openalex-ingest/awards/deutsche_krebshilfe/deutsche_krebshilfe_grants.parquet); created_date and updated_date are the run timestamp.
+-- deutsche_krebshilfe: priority 222, frozen fetch cadence (descriptive).
+SELECT 'deutsche_krebshilfe' AS _source, * FROM (
+WITH deutsche_krebshilfe_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/deutsche_krebshilfe/deutsche_krebshilfe_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'deutsche_krebshilfe')
+),
+fndr AS (
+    SELECT CAST(funder_id AS BIGINT) as funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders WHERE funder_id = 4320323556
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title), ''), CONCAT('Deutsche Krebshilfe grant ', g.funder_award_id)) as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN TRY_CAST(g.amount AS DECIMAL(18,2)) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN g.currency ELSE NULL END as currency,
+        struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'deutsche_krebshilfe' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        YEAR(TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date_raw, 'yyyy-MM-dd')) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(g.pi_given as given_name, g.pi_family as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'Germany' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+            WHEN g.institution IS NOT NULL THEN
+                struct(CAST(NULL AS STRING) as given_name, CAST(NULL AS STRING) as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'Germany' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM deutsche_krebshilfe_input g
+    CROSS JOIN fndr f
+    WHERE g.funder_award_id IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        222 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDFGAwards.ipynb (origin e22fdf7f): its awards-table SELECT over gepris_input (was the
+-- staging table read from s3://openalex-ingest/awards/dfg/dfg_projects.parquet); created_date and updated_date are the run timestamp.
+-- gepris: priority 18, frozen fetch cadence (descriptive).
+SELECT 'gepris' AS _source, * FROM (
+WITH gepris_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/dfg/dfg_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'gepris')
+),
+dfg_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320879  -- Deutsche Forschungsgemeinschaft
+),
+
+dfg_projects AS (
+    SELECT
+        *,
+        (end_year = start_year AND NOT (program_type <=> 'Forschungsgroßgeräte')) as end_unknown
+    FROM gepris_input
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.project_id)))) % 9000000000 as id,
+
+        g.title as display_name,
+
+        g.description as description,
+
+        f.funder_id,
+        g.project_id as funder_award_id,
+
+        TRY_CAST(g.amount AS DOUBLE) as amount,
+        'EUR' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        CASE
+            WHEN LOWER(g.program_type) LIKE '%emmy noether%' THEN 'fellowship'
+            WHEN LOWER(g.program_type) LIKE '%heisenberg%' THEN 'fellowship'
+            WHEN LOWER(g.program_type) LIKE '%walter benjamin%' THEN 'fellowship'
+            WHEN LOWER(g.program_type) LIKE '%research fellowship%' THEN 'fellowship'
+            WHEN LOWER(g.program_type) LIKE '%stipend%' THEN 'fellowship'
+            WHEN LOWER(g.program_type) LIKE '%graduiertenkolleg%' THEN 'training'
+            WHEN LOWER(g.program_type) LIKE '%research training%' THEN 'training'
+            WHEN LOWER(g.program_type) LIKE '%collaborative research%' THEN 'research'
+            WHEN LOWER(g.program_type) LIKE '%sonderforschungsbereich%' THEN 'research'
+            WHEN LOWER(g.program_type) LIKE '%priority programme%' THEN 'research'
+            WHEN LOWER(g.program_type) LIKE '%schwerpunktprogramm%' THEN 'research'
+            WHEN LOWER(g.program_type) LIKE '%forschergruppe%' THEN 'research'
+            WHEN LOWER(g.program_type) LIKE '%research unit%' THEN 'research'
+            WHEN LOWER(g.program_type) LIKE '%cluster%' THEN 'research'
+            WHEN LOWER(g.program_type) LIKE '%excellence%' THEN 'research'
+            WHEN LOWER(g.program_type) LIKE '%infrastructure%' THEN 'infrastructure'
+            WHEN LOWER(g.program_type) LIKE '%equipment%' THEN 'infrastructure'
+            ELSE 'grant'
+        END as funding_type,
+
+        g.program_type as funder_scheme,
+
+        'gepris' as provenance,
+
+        COALESCE(
+            TRY_TO_DATE(g.start_date, 'yyyy-MM-dd'),
+            TRY_TO_DATE(CONCAT(g.start_year, '-01-01'), 'yyyy-MM-dd')
+        ) as start_date,
+        CASE WHEN g.end_unknown THEN NULL ELSE COALESCE(
+            TRY_TO_DATE(g.end_date, 'yyyy-MM-dd'),
+            TRY_TO_DATE(CONCAT(g.end_year, '-12-31'), 'yyyy-MM-dd')
+        ) END as end_date,
+        COALESCE(
+            YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')),
+            TRY_CAST(g.start_year AS INT)
+        ) as start_year,
+        CASE WHEN g.end_unknown THEN NULL ELSE COALESCE(
+            YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')),
+            TRY_CAST(g.end_year AS INT)
+        ) END as end_year,
+
+        CASE
+            WHEN g.lead_inst IS NOT NULL AND TRIM(g.lead_inst) != '' THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.lead_inst as name,
+                        'Germany' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        CONCAT('https://gepris.dfg.de/gepris/projekt/', g.project_id) as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.project_id)))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM dfg_projects g
+    CROSS JOIN dfg_funder f
+    WHERE g.project_id IS NOT NULL
+      AND TRIM(CAST(g.project_id AS STRING)) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        18 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDHSCAwards.ipynb (origin e22fdf7f): its awards-table SELECT over nihr_ods_dhsc_input (was the
+-- staging table read from s3://openalex-ingest/awards/nihr_ods_dhsc/nihr_ods_dhsc_projects.parquet); created_date and updated_date are the run timestamp.
+-- nihr_ods_dhsc: priority 425, frozen fetch cadence (descriptive).
+SELECT 'nihr_ods_dhsc' AS _source, * FROM (
+WITH nihr_ods_dhsc_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/nihr_ods_dhsc/nihr_ods_dhsc_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'nihr_ods_dhsc')
+),
+dhsc_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320319994  -- Department of Health and Social Care
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.project_id)))) % 9000000000 as id,
+
+        g.project_title as display_name,
+
+        COALESCE(g.plain_english_abstract, g.scientific_abstract) as description,
+
+        f.funder_id,
+        g.project_id as funder_award_id,
+
+        TRY_CAST(g.award_amount_from_dh AS DOUBLE) as amount,
+        'GBP' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        CASE
+            WHEN LOWER(COALESCE(g.project_title, '')) LIKE '%training award%' THEN 'training'
+            WHEN LOWER(COALESCE(g.programme, '')) LIKE '%fellowship%' THEN 'fellowship'
+            ELSE 'research'
+        END as funding_type,
+
+        COALESCE(g.programme, g.funding_stream) as funder_scheme,
+
+        'nihr_ods_dhsc' as provenance,
+
+        TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+
+        CASE
+            WHEN g.lead_family_name IS NOT NULL THEN
+                struct(
+                    g.lead_given_name as given_name,
+                    g.lead_family_name as family_name,
+                    CASE
+                        WHEN g.orcid IS NOT NULL AND g.orcid RLIKE '^[0-9]{4}-'
+                            THEN CONCAT('https://orcid.org/', g.orcid)
+                        ELSE g.orcid
+                    END as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.contracted_organisation as name,
+                        'GB' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            WHEN g.contracted_organisation IS NOT NULL THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.contracted_organisation as name,
+                        'GB' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        g.funding_and_awards_link as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.project_id)))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM nihr_ods_dhsc_input g
+    CROSS JOIN dhsc_funder f
+    WHERE g.project_id IS NOT NULL
+      AND TRIM(g.project_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        425 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDiabetesUKAwards.ipynb (origin e22fdf7f): its awards-table SELECT over diabetes_uk_europepmc_grist_input (was the
+-- staging table read from s3://openalex-ingest/awards/diabetes_uk/diabetes_uk_projects.parquet); created_date and updated_date are the run timestamp.
+-- diabetes_uk_europepmc_grist: priority 518, frozen fetch cadence (descriptive).
+SELECT 'diabetes_uk_europepmc_grist' AS _source, * FROM (
+WITH diabetes_uk_europepmc_grist_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/diabetes_uk/diabetes_uk_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'diabetes_uk_europepmc_grist')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320065  -- Diabetes UK
+),
+
+people AS (
+    SELECT
+        funder_award_id,
+        TRANSFORM(
+            FILTER(
+                from_json(people_json, 'ARRAY<STRUCT<given_name:STRING, family_name:STRING, title:STRING, orcid:STRING, institution:STRING, institution_ror:STRING>>'),
+                p -> p.family_name IS NOT NULL
+            ),
+            p -> named_struct(
+                'given_name', NULLIF(TRIM(p.given_name), ''),
+                'family_name', NULLIF(TRIM(p.family_name), ''),
+                'orcid', CASE WHEN p.orcid RLIKE '^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$' THEN CONCAT('https://orcid.org/', p.orcid) END,
+                'role_start', CAST(NULL AS DATE),
+                'affiliation', named_struct(
+                    'name', NULLIF(TRIM(p.institution), ''),
+                    'country', CAST(NULL AS STRING),
+                    'ids', CASE WHEN p.institution_ror IS NOT NULL
+                                THEN array(named_struct('id', p.institution_ror, 'type', 'ror', 'asserted_by', 'funder'))
+                                ELSE CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) END
+                )
+            )
+        ) AS investigators
+    FROM diabetes_uk_europepmc_grist_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    NULLIF(TRIM(g.abstract), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    CASE WHEN TRY_CAST(g.amount AS DOUBLE) IS NOT NULL THEN NULLIF(TRIM(g.currency), '') END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    g.funding_type as funding_type,
+    NULLIF(TRIM(g.award_type), '') as funder_scheme,
+    'diabetes_uk_europepmc_grist' as provenance,
+    TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+    TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+    YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) as start_year,
+    YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+    try_element_at(p.investigators, 1) as lead_investigator,
+    try_element_at(p.investigators, 2) as co_lead_investigator,
+    CASE WHEN size(p.investigators) > 0 THEN p.investigators END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM diabetes_uk_europepmc_grist_input g
+JOIN people p ON p.funder_award_id = g.funder_award_id
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        518 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDNRFAwards.ipynb (origin e22fdf7f): its awards-table SELECT over dnrf_dg_dk_input (was the
+-- staging table read from s3://openalex-ingest/awards/dnrf/dnrf_projects.parquet); created_date and updated_date are the run timestamp.
+-- dnrf_dg_dk: priority 484, frozen fetch cadence (descriptive).
+SELECT 'dnrf_dg_dk' AS _source, * FROM (
+WITH dnrf_dg_dk_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/dnrf/dnrf_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'dnrf_dg_dk')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320943  -- Danmarks Grundforskningsfond
+),
+
+g AS (
+    SELECT
+        r.*,
+        TRY_TO_DATE(r.start_date, 'yyyy-MM-dd') AS sd,
+        TRY_TO_DATE(r.end_date, 'yyyy-MM-dd') AS ed,
+        CASE WHEN NULLIF(TRIM(r.lead_family_name), '') IS NOT NULL THEN named_struct(
+            'given_name', NULLIF(TRIM(r.lead_given_name), ''),
+            'family_name', NULLIF(TRIM(r.lead_family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(r.host_institution), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) END AS lead,
+        CASE WHEN NULLIF(TRIM(r.co_lead_family_name), '') IS NOT NULL THEN named_struct(
+            'given_name', NULLIF(TRIM(r.co_lead_given_name), ''),
+            'family_name', NULLIF(TRIM(r.co_lead_family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(r.host_institution), ''),
+                'country', CAST(NULL AS STRING),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) END AS co_lead
+    FROM dnrf_dg_dk_input r
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    NULLIF(TRIM(g.description), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    CASE WHEN TRY_CAST(g.amount AS DOUBLE) IS NOT NULL THEN 'DKK' END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    CASE WHEN g.programme IN ('Center of Excellence', 'Pioneer Centre') THEN 'research'
+         ELSE 'fellowship' END as funding_type,
+    g.programme as funder_scheme,
+    'dnrf_dg_dk' as provenance,
+    g.sd as start_date,
+    g.ed as end_date,
+    COALESCE(YEAR(g.sd), TRY_CAST(g.start_year AS INT), TRY_CAST(g.established_year AS INT)) as start_year,
+    COALESCE(YEAR(g.ed), TRY_CAST(g.end_year AS INT)) as end_year,
+    g.lead as lead_investigator,
+    g.co_lead as co_lead_investigator,
+    CASE WHEN g.lead IS NOT NULL AND g.co_lead IS NOT NULL THEN array(g.lead, g.co_lead)
+         WHEN g.lead IS NOT NULL THEN array(g.lead) END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM g
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        484 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDOEOffSciAwards.ipynb (origin e22fdf7f): its awards-table SELECT over doe_sc_input (was the
+-- staging table read from s3://openalex-ingest/awards/doe_sc/doe_sc_grants.parquet); created_date and updated_date are the run timestamp.
+-- doe_sc: priority 381, frozen fetch cadence (descriptive).
+SELECT 'doe_sc' AS _source, * FROM (
+WITH doe_sc_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/doe_sc/doe_sc_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'doe_sc')
+),
+fndr AS (
+    SELECT CAST(funder_id AS BIGINT) as funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders WHERE funder_id = 4320332359
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title), ''), CONCAT('DOE Office of Science grant ', g.funder_award_id)) as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN TRY_CAST(g.amount AS DECIMAL(18,2)) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN g.currency ELSE NULL END as currency,
+        struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'doe_sc' as provenance,
+        TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date_raw, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date_raw, 'yyyy-MM-dd')) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(g.pi_given as given_name, g.pi_family as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'United States' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+            WHEN g.institution IS NOT NULL THEN
+                struct(CAST(NULL AS STRING) as given_name, CAST(NULL AS STRING) as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'United States' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM doe_sc_input g
+    CROSS JOIN fndr f
+    WHERE g.funder_award_id IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        381 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDorisDukeAwards.ipynb (origin e22fdf7f): its awards-table SELECT over doris_duke_input (was the
+-- staging table read from s3://openalex-ingest/awards/doris_duke/doris_duke.parquet); created_date and updated_date are the run timestamp.
+-- doris_duke: priority 143, frozen fetch cadence (descriptive).
+SELECT 'doris_duke' AS _source, * FROM (
+WITH doris_duke_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/doris_duke/doris_duke.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'doris_duke')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306134  -- Doris Duke Charitable Foundation
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    CASE
+        WHEN n.source_kind = 'organizational_grant'
+            THEN CONCAT('Doris Duke Grant - ', n.grantee_org,
+                        CASE WHEN n.year IS NOT NULL THEN CONCAT(' (', n.year, ')') ELSE '' END)
+        ELSE CONCAT('Doris Duke ', n.scheme, ' - ', n.recipient_name,
+                    CASE WHEN n.year IS NOT NULL THEN CONCAT(' (', n.year, ')') ELSE '' END)
+    END AS display_name,
+    n.description,
+    f.funder_id,
+    n.funder_award_id,
+    TRY_CAST(n.amount AS DOUBLE) AS amount,
+    n.currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    n.funding_type,
+    n.scheme AS funder_scheme,
+    'doris_duke' AS provenance,
+    TRY_TO_DATE(n.approved_on, 'yyyy-MM-dd') AS start_date,
+    CAST(NULL AS DATE) AS end_date,
+    TRY_CAST(n.year AS INT) AS start_year,
+    CAST(NULL AS INT) AS end_year,
+    CASE
+        WHEN n.source_kind = 'organizational_grant' AND n.grantee_org IS NOT NULL THEN struct(
+            CAST(NULL AS STRING) AS given_name,
+            CAST(NULL AS STRING) AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            TRY_TO_DATE(n.approved_on, 'yyyy-MM-dd') AS role_start,
+            struct(
+                n.grantee_org AS name,
+                CAST('US' AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+        WHEN n.recipient_name IS NOT NULL THEN struct(
+            n.given_name AS given_name,
+            n.family_name AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                CAST(NULL AS STRING) AS name,  -- source doesn't expose institutional affiliation for artists/grantees
+                CAST('US' AS STRING) AS country,
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+        ELSE NULL
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM doris_duke_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND (n.grantee_org IS NOT NULL OR n.recipient_name IS NOT NULL)
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        143 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateDreyfusAwards.ipynb (origin e22fdf7f): its awards-table SELECT over dreyfus_foundation_input (was the
+-- staging table read from s3://openalex-ingest/awards/dreyfus/dreyfus_awardees.parquet); created_date and updated_date are the run timestamp.
+-- dreyfus_foundation: priority 131, frozen fetch cadence (descriptive).
+SELECT 'dreyfus_foundation' AS _source, * FROM (
+WITH dreyfus_foundation_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/dreyfus/dreyfus_awardees.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'dreyfus_foundation')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306315  -- Camille and Henry Dreyfus Foundation
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+    ))) % 9000000000 AS id,
+    CONCAT(n.scheme_label, ' - ', n.name) AS display_name,
+    n.research_title AS description,
+    f.funder_id,
+    n.funder_award_id,
+    TRY_CAST(n.amount AS DOUBLE) AS amount,
+    n.currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    n.funding_type,
+    n.scheme_label AS funder_scheme,
+    'dreyfus_foundation' AS provenance,
+    CAST(NULL AS DATE) AS start_date,
+    CAST(NULL AS DATE) AS end_date,
+    TRY_CAST(n.year AS INT) AS start_year,
+    CAST(NULL AS INT) AS end_year,
+    CASE
+        WHEN n.name IS NULL OR n.name = '' THEN NULL
+        ELSE struct(
+            n.given_name AS given_name,
+            n.family_name AS family_name,
+            CAST(NULL AS STRING) AS orcid,
+            CAST(NULL AS DATE) AS role_start,
+            struct(
+                n.institution AS name,
+                CAST(NULL AS STRING) AS country,  -- Dreyfus eligibility is US+CA, not inferred from institution name
+                CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+            ) AS affiliation
+        )
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT(
+               TRY_CAST(f.funder_id AS STRING), ':', LOWER(n.funder_award_id)
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM dreyfus_foundation_input n
+CROSS JOIN funder_resolved f
+WHERE n.funder_award_id IS NOT NULL
+  AND n.name IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        131 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateEDCTPAwards.ipynb (origin e22fdf7f): its awards-table SELECT over edctp_grants_portal_input (was the
+-- staging table read from s3://openalex-ingest/awards/edctp/edctp_projects.parquet); created_date and updated_date are the run timestamp.
+-- edctp_grants_portal: priority 205, frozen fetch cadence (descriptive).
+SELECT 'edctp_grants_portal' AS _source, * FROM (
+WITH edctp_grants_portal_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/edctp/edctp_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'edctp_grants_portal')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320338462
+),
+raw_prepped AS (
+    SELECT
+        *,
+        TRY_CAST(amount AS DOUBLE) AS amount_double,
+        CASE WHEN TRY_CAST(start_year AS INT) BETWEEN 1800 AND 2100 THEN TRY_CAST(start_year AS INT) END AS start_year_int,
+        CASE WHEN TRY_CAST(end_year AS INT) BETWEEN 1800 AND 2100 THEN TRY_CAST(end_year AS INT) END AS end_year_int,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS start_date_d,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS end_date_d,
+        NULLIF(TRIM(host_institution), '') AS leader_affiliation_name,
+        NULLIF(TRIM(host_country), '') AS leader_affiliation_country,
+        NULLIF(TRIM(lead_given_name), '') AS leader_given_name,
+        NULLIF(TRIM(lead_family_name), '') AS leader_family_name
+    FROM edctp_grants_portal_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT('4320338462:', LOWER(TRIM(rp.funder_award_id))))) % 9000000000 AS id,
+    rp.display_name,
+    NULLIF(TRIM(rp.description), '') AS description,
+    4320338462 AS funder_id,
+    rp.funder_award_id,
+    rp.amount_double AS amount,
+    CASE WHEN rp.amount_double IS NOT NULL THEN 'EUR' ELSE NULL END AS currency,
+    struct(
+        CONCAT('https://openalex.org/F', TRY_CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    COALESCE(NULLIF(TRIM(rp.funding_type), ''), 'research') AS funding_type,
+    NULLIF(TRIM(rp.funder_scheme), '') AS funder_scheme,
+    'edctp_grants_portal' AS provenance,
+    rp.start_date_d AS start_date,
+    rp.end_date_d AS end_date,
+    rp.start_year_int AS start_year,
+    rp.end_year_int AS end_year,
+    CASE
+        WHEN rp.leader_family_name IS NOT NULL OR rp.leader_affiliation_name IS NOT NULL THEN
+            struct(
+                rp.leader_given_name AS given_name,
+                rp.leader_family_name AS family_name,
+                CAST(NULL AS STRING) AS orcid,
+                CAST(NULL AS DATE) AS role_start,
+                struct(
+                    rp.leader_affiliation_name AS name,
+                    rp.leader_affiliation_country AS country,
+                    CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+                ) AS affiliation
+            )
+        ELSE NULL
+    END AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    rp.landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           TRY_CAST(abs(xxhash64(CONCAT('4320338462:', LOWER(TRIM(rp.funder_award_id))))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM raw_prepped rp
+CROSS JOIN funder_resolved f
+WHERE rp.funder_award_id IS NOT NULL
+  AND rp.display_name IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        205 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateEFSDAwards.ipynb (origin e22fdf7f): its awards-table SELECT over efsd_recipients_input (was the
+-- staging table read from s3://openalex-ingest/awards/efsd/efsd_projects.parquet); created_date and updated_date are the run timestamp.
+-- efsd_recipients: priority 545, frozen fetch cadence (descriptive).
+SELECT 'efsd_recipients' AS _source, * FROM (
+WITH efsd_recipients_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/efsd/efsd_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'efsd_recipients')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320870  -- European Foundation for the Study of Diabetes
+),
+
+parsed AS (
+    SELECT
+        g.*,
+        CASE WHEN NULLIF(TRIM(g.family_name), '') IS NOT NULL THEN named_struct(
+            'given_name', NULLIF(TRIM(g.given_name), ''),
+            'family_name', NULLIF(TRIM(g.family_name), ''),
+            'orcid', CAST(NULL AS STRING),
+            'role_start', CAST(NULL AS DATE),
+            'affiliation', named_struct(
+                'name', NULLIF(TRIM(g.institution), ''),
+                'country', NULLIF(TRIM(g.country), ''),
+                'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+            )
+        ) END AS pi
+    FROM efsd_recipients_input g
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(p.funder_award_id))))) % 9000000000 as id,
+    COALESCE(NULLIF(TRIM(p.title), ''),
+             CASE WHEN p.mentor IS NOT NULL THEN CONCAT(p.programme, ' — mentor: ', TRIM(p.mentor)) END,
+             p.programme) as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    TRIM(p.funder_award_id) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    p.funding_type as funding_type,
+    p.programme as funder_scheme,
+    'efsd_recipients' as provenance,
+    TRY_TO_DATE(CONCAT(p.award_year, '-01-01'), 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    TRY_CAST(p.award_year AS INT) as start_year,
+    CAST(NULL AS INT) as end_year,
+    p.pi as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+         affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+    CASE WHEN p.pi IS NOT NULL THEN array(p.pi) END as investigators,
+    p.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(p.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM parsed p
+CROSS JOIN src_funder f
+WHERE p.funder_award_id IS NOT NULL AND TRIM(p.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        545 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateEKFSAwards.ipynb (origin e22fdf7f): its awards-table SELECT over ekfs_input (was the
+-- staging table read from s3://openalex-ingest/awards/ekfs/ekfs_grants.parquet); created_date and updated_date are the run timestamp.
+-- ekfs: priority 224, frozen fetch cadence (descriptive).
+SELECT 'ekfs' AS _source, * FROM (
+WITH ekfs_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/ekfs/ekfs_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'ekfs')
+),
+fndr AS (
+    SELECT CAST(funder_id AS BIGINT) as funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders WHERE funder_id = 4320321672
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title), ''), CONCAT('EKFS grant ', g.funder_award_id)) as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN TRY_CAST(g.amount AS DECIMAL(18,2)) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN g.currency ELSE NULL END as currency,
+        struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'ekfs' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        YEAR(TRY_TO_DATE(g.start_date_raw, 'dd.MM.yyyy')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date_raw, 'dd.MM.yyyy')) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(g.pi_given as given_name, g.pi_family as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'Germany' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+            WHEN g.institution IS NOT NULL THEN
+                struct(CAST(NULL AS STRING) as given_name, CAST(NULL AS STRING) as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                    struct(g.institution as name, 'Germany' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM ekfs_input g
+    CROSS JOIN fndr f
+    WHERE g.funder_award_id IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        224 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateEMBOAwards.ipynb (origin e22fdf7f): its awards-table SELECT over embo_input (was the
+-- staging table read from s3://openalex-ingest/awards/embo/embo_awards.parquet); created_date and updated_date are the run timestamp.
+-- embo: priority 241, frozen fetch cadence (descriptive).
+SELECT 'embo' AS _source, * FROM (
+WITH embo_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/embo/embo_awards.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'embo')
+),
+embo_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320307844  -- European Molecular Biology Organization
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'fellowship' as funding_type,
+        g.programme_name as funder_scheme,
+        'embo' as provenance,
+        CASE WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL
+             THEN TRY_TO_DATE(CONCAT(g.start_year, '-01-01'), 'yyyy-MM-dd') ELSE NULL END as start_date,
+        CASE WHEN TRY_CAST(g.end_year AS INT) IS NOT NULL
+             THEN TRY_TO_DATE(CONCAT(g.end_year, '-12-31'), 'yyyy-MM-dd') ELSE NULL END as end_date,
+        TRY_CAST(g.start_year AS INT) as start_year,
+        TRY_CAST(g.end_year AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        g.country as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM embo_input g
+    CROSS JOIN embo_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        241 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateEnergimyndighetenAwards.ipynb (origin e22fdf7f): its awards-table SELECT over energimyndigheten_input (was the
+-- staging table read from s3://openalex-ingest/awards/energimyndigheten/energimyndigheten_projects.parquet); created_date and updated_date are the run timestamp.
+-- energimyndigheten: priority 435, frozen fetch cadence (descriptive).
+SELECT 'energimyndigheten' AS _source, * FROM (
+WITH energimyndigheten_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/energimyndigheten/energimyndigheten_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'energimyndigheten')
+),
+em_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320322711
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(REGEXP_REPLACE(TRIM(g.project_id), '_[A-Za-z]+$', ''))))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title_english), ''), NULLIF(TRIM(g.title), '')) as display_name,
+        COALESCE(NULLIF(TRIM(g.abstract_english), ''), NULLIF(TRIM(g.abstract), '')) as description,
+        f.funder_id,
+        REGEXP_REPLACE(TRIM(g.project_id), '_[A-Za-z]+$', '') as funder_award_id,
+        NULLIF(TRY_CAST(g.amount AS DOUBLE), 0) as amount,
+        'SEK' as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+        CASE
+            WHEN LOWER(COALESCE(g.type_of_award, '')) LIKE '%fellow%' THEN 'fellowship'
+            WHEN LOWER(COALESCE(g.type_of_award, '')) LIKE '%stipend%' THEN 'fellowship'
+            WHEN LOWER(COALESCE(g.type_of_award, '')) LIKE '%infrastructure%' THEN 'infrastructure'
+            WHEN LOWER(COALESCE(g.type_of_award, '')) LIKE '%project%' THEN 'research'
+            ELSE 'grant'
+        END as funding_type,
+        NULLIF(TRIM(g.type_of_award), '') as funder_scheme,
+        'energimyndigheten' as provenance,
+        TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        CONCAT('https://www.vr.se/swecris#/project/', TRIM(g.project_id)) as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(REGEXP_REPLACE(TRIM(g.project_id), '_[A-Za-z]+$', ''))))) % 9000000000) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM energimyndigheten_input g
+    CROSS JOIN em_funder f
+    WHERE g.project_id IS NOT NULL AND TRIM(g.project_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        435 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateEPAAwards.ipynb (origin e22fdf7f): its awards-table SELECT over usaspending_epa_input (was the
+-- staging table read from s3://openalex-ingest/awards/epa/epa_awards.parquet); created_date and updated_date are the run timestamp.
+-- usaspending_epa: priority 53, frozen fetch cadence (descriptive).
+SELECT 'usaspending_epa' AS _source, * FROM (
+WITH usaspending_epa_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/epa/epa_awards.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'usaspending_epa')
+),
+epa_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320306107  -- U.S. Environmental Protection Agency
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.award_id_fain)))) % 9000000000 as id,
+
+        COALESCE(g.prime_award_base_transaction_description, g.transaction_description) as display_name,
+
+        COALESCE(g.prime_award_base_transaction_description, g.transaction_description) as description,
+
+        f.funder_id,
+        g.award_id_fain as funder_award_id,
+
+        TRY_CAST(g.total_obligated_amount AS DOUBLE) as amount,
+        'USD' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        CASE
+            WHEN g.assistance_type_code = '02' THEN 'grant'  -- Block Grant
+            WHEN g.assistance_type_code = '03' THEN 'grant'  -- Formula Grant
+            WHEN g.assistance_type_code = '04' THEN 'grant'  -- Project Grant
+            WHEN g.assistance_type_code = '05' THEN 'grant'  -- Cooperative Agreement
+            ELSE 'grant'
+        END as funding_type,
+
+        g.cfda_title as funder_scheme,
+
+        'usaspending_epa' as provenance,
+
+        TRY_TO_DATE(g.period_of_performance_start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.period_of_performance_current_end_date, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.period_of_performance_start_date, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.period_of_performance_current_end_date, 'yyyy-MM-dd')) as end_year,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        g.usaspending_permalink as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.award_id_fain)))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date,
+
+        g.recipient_name,
+        g.recipient_state_name,
+        g.recipient_country_name
+
+    FROM usaspending_epa_input g
+    CROSS JOIN epa_funder f
+    WHERE g.award_id_fain IS NOT NULL
+      AND TRIM(g.award_id_fain) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        53 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateErasmusPlusAwards.ipynb (origin e22fdf7f): its awards-table SELECT over erasmus_plus_input (was the
+-- staging table read from s3://openalex-ingest/awards/erasmus_plus/erasmus_plus_projects.parquet); created_date and updated_date are the run timestamp.
+-- erasmus_plus: priority 427, frozen fetch cadence (descriptive).
+SELECT 'erasmus_plus' AS _source, * FROM (
+WITH erasmus_plus_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/erasmus_plus/erasmus_plus_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'erasmus_plus')
+),
+eplus_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320335551  -- Erasmus+
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.project_reference)))) % 9000000000 as id,
+
+        g.project_title as display_name,
+
+        COALESCE(g.project_description, g.description_objectives, g.description_background) as description,
+
+        f.funder_id,
+        g.project_reference as funder_award_id,
+
+        TRY_CAST(g.granted_eu_amount AS DOUBLE) as amount,
+        'EUR' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        'grant' as funding_type,
+
+        COALESCE(g.level3_label, g.level2_label) as funder_scheme,
+
+        'erasmus_plus' as provenance,
+
+        TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+
+        CASE
+            WHEN g.coordinator_name IS NOT NULL THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.coordinator_name as name,
+                        g.coordinator_country as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        g.landing_page_url as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.project_reference)))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM erasmus_plus_input g
+    CROSS JOIN eplus_funder f
+    WHERE g.project_reference IS NOT NULL
+      AND TRIM(g.project_reference) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        427 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateERCAwards.ipynb (origin e22fdf7f): its awards-table SELECT over erc_input (was the
+-- staging table read from s3://openalex-ingest/awards/erc/erc_projects.parquet); created_date and updated_date are the run timestamp.
+-- erc: priority 21, frozen fetch cadence (descriptive).
+SELECT 'erc' AS _source, * FROM (
+WITH erc_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/erc/erc_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'erc')
+),
+erc_funders AS (
+    SELECT * FROM (
+        VALUES
+        ('H2020', 4320338335, 'H2020 European Research Council', '10.13039/100010663'),
+        ('FP7', 4320338352, 'FP7 Ideas: European Research Council', '10.13039/100011199'),
+        ('HORIZON', 4320338453, 'HORIZON EUROPE European Research Council', '10.13039/100019180')
+    ) AS t(framework_programme, funder_id, display_name, doi)
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(COALESCE(f.funder_id, 4320334678), ':', LOWER(g.project_id)))) % 9000000000 as id,
+
+        g.title as display_name,
+
+        g.abstract as description,
+
+        COALESCE(f.funder_id, 4320334678) as funder_id,
+        g.project_id as funder_award_id,
+
+        TRY_CAST(REPLACE(g.ec_contribution, ',', '.') AS DOUBLE) as amount,
+        'EUR' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', COALESCE(f.funder_id, 4320334678)) as id,
+            COALESCE(f.display_name, 'European Research Council') as display_name,
+            'https://ror.org/0472cxd90' as ror_id,
+            COALESCE(f.doi, '10.13039/501100000781') as doi
+        ) as funder,
+
+        CASE
+            WHEN UPPER(g.funding_scheme) LIKE '%STG%' THEN 'fellowship'
+            WHEN UPPER(g.funding_scheme) LIKE '%COG%' THEN 'fellowship'
+            WHEN UPPER(g.funding_scheme) LIKE '%ADG%' THEN 'fellowship'
+            WHEN UPPER(g.funding_scheme) LIKE '%SYG%' THEN 'research'
+            WHEN UPPER(g.funding_scheme) LIKE '%POC%' THEN 'commercialization'
+            WHEN UPPER(g.funding_scheme) LIKE '%LVG%' THEN 'travel'
+            ELSE 'research'
+        END as funding_type,
+
+        g.funding_scheme as funder_scheme,
+
+        'erc' as provenance,
+
+        TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+
+        CASE
+            WHEN g.host_institution IS NOT NULL THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.host_institution as name,
+                        g.host_country as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        CONCAT('https://cordis.europa.eu/project/id/', g.project_id) as landing_page_url,
+
+        CASE
+            WHEN g.grant_doi IS NOT NULL AND TRIM(g.grant_doi) != '' 
+            THEN g.grant_doi
+            ELSE NULL
+        END as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(COALESCE(f.funder_id, 4320334678), ':', LOWER(g.project_id)))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM erc_input g
+    LEFT JOIN erc_funders f ON g.framework_programme = f.framework_programme
+    WHERE g.project_id IS NOT NULL
+      AND TRIM(g.project_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        21 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateERUKAwards.ipynb (origin e22fdf7f): its awards-table SELECT over eruk_input (was the
+-- staging table read from s3://openalex-ingest/awards/eruk/eruk_projects.parquet); created_date and updated_date are the run timestamp.
+-- eruk: priority 335, frozen fetch cadence (descriptive).
+SELECT 'eruk' AS _source, * FROM (
+WITH eruk_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/eruk/eruk_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'eruk')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320012  -- Epilepsy Research UK
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CAST(NULL AS DECIMAL(18,2)) as amount,
+        CAST(NULL AS STRING) as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'research' as funding_type,
+        CAST(NULL AS STRING) as funder_scheme,
+        'eruk' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CAST(NULL AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN CAST(NULL AS STRING) IS NOT NULL THEN
+                struct(
+                    CAST(NULL AS STRING) as given_name,
+                    CAST(NULL AS STRING) as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        CAST(NULL AS STRING) as name,
+                        CAST(NULL AS STRING) as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM eruk_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        335 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateETISETAgAwards.ipynb (origin e22fdf7f): its awards-table SELECT over etis_etag_input (was the
+-- staging table read from s3://openalex-ingest/awards/etis_etag/etis_etag_grants.parquet); created_date and updated_date are the run timestamp.
+-- etis_etag: priority 363, frozen fetch cadence (descriptive).
+SELECT 'etis_etag' AS _source, * FROM (
+WITH etis_etag_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/etis_etag/etis_etag_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'etis_etag')
+),
+fnd AS (
+    SELECT CAST(funder_id AS BIGINT) as funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders WHERE funder_id = 4320321090
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title), ''), CONCAT('Estonian Research Council (ETAg) grant ', g.funder_award_id)) as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN TRY_CAST(g.amount AS DECIMAL(18,2)) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN g.currency ELSE NULL END as currency,
+        struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'etis_etag' as provenance,
+        TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date_raw, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date_raw, 'yyyy-MM-dd')) as end_year,
+        CASE WHEN g.pi_family IS NOT NULL THEN
+            struct(g.pi_given as given_name, g.pi_family as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                struct(g.institution as name, 'Estonia' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+        ELSE NULL END as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM etis_etag_input g
+    CROSS JOIN fnd f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        363 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateETISETFAwards.ipynb (origin e22fdf7f): its awards-table SELECT over etis_etf_input (was the
+-- staging table read from s3://openalex-ingest/awards/etis_etf/etis_etf_grants.parquet); created_date and updated_date are the run timestamp.
+-- etis_etf: priority 365, frozen fetch cadence (descriptive).
+SELECT 'etis_etf' AS _source, * FROM (
+WITH etis_etf_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/etis_etf/etis_etf_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'etis_etf')
+),
+fnd AS (
+    SELECT CAST(funder_id AS BIGINT) as funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders WHERE funder_id = 4320321018
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        COALESCE(NULLIF(TRIM(g.title), ''), CONCAT('Estonian Science Foundation (ETF) grant ', g.funder_award_id)) as display_name,
+        g.description as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN TRY_CAST(g.amount AS DECIMAL(18,2)) ELSE NULL END as amount,
+        CASE WHEN TRY_CAST(g.amount AS DECIMAL(18,2)) > 0 THEN g.currency ELSE NULL END as currency,
+        struct(CONCAT('https://openalex.org/F', f.funder_id) as id, f.display_name, f.ror_id, f.doi) as funder,
+        'grant' as funding_type,
+        g.scheme as funder_scheme,
+        'etis_etf' as provenance,
+        TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date_raw, 'yyyy-MM-dd') as end_date,
+        YEAR(TRY_TO_DATE(g.start_date_raw, 'yyyy-MM-dd')) as start_year,
+        YEAR(TRY_TO_DATE(g.end_date_raw, 'yyyy-MM-dd')) as end_year,
+        CASE WHEN g.pi_family IS NOT NULL THEN
+            struct(g.pi_given as given_name, g.pi_family as family_name, CAST(NULL AS STRING) as orcid, CAST(NULL AS DATE) as role_start,
+                struct(g.institution as name, 'Estonia' as country, CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids) as affiliation)
+        ELSE NULL END as lead_investigator,
+        CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE, affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM etis_etf_input g
+    CROSS JOIN fnd f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        365 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateFAPEMIGAwards.ipynb (origin e22fdf7f): its awards-table SELECT over fapemig_projetos_contratados_input (was the
+-- staging table read from s3://openalex-ingest/awards/fapemig/fapemig_projetos_contratados.parquet); created_date and updated_date are the run timestamp.
+-- fapemig_projetos_contratados: priority 142, frozen fetch cadence (descriptive).
+SELECT 'fapemig_projetos_contratados' AS _source, * FROM (
+WITH fapemig_projetos_contratados_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/fapemig/fapemig_projetos_contratados.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'fapemig_projetos_contratados')
+),
+fapemig_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320322980
+),
+raw_prepared AS (
+    SELECT
+        *,
+        UPPER(REGEXP_REPLACE(TRIM(funder_award_id), '^(?i)fapemig-', '')) AS native_award_id,
+        TRY_CAST(amount AS DOUBLE) AS parsed_amount,
+        NULLIF(TRIM(currency), '') AS parsed_currency,
+        TRY_TO_DATE(start_date, 'yyyy-MM-dd') AS parsed_start_date,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS parsed_end_date,
+        TRY_CAST(source_year AS INT) AS parsed_year
+    FROM fapemig_projetos_contratados_input
+    WHERE funder_award_id IS NOT NULL
+      AND TRIM(funder_award_id) != ''
+      AND display_name IS NOT NULL
+      AND TRIM(display_name) != ''
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.native_award_id)))) % 9000000000 AS id,
+        TRIM(g.display_name) AS display_name,
+        CASE WHEN g.description IS NULL OR TRIM(g.description) = '' THEN NULL ELSE TRIM(g.description) END AS description,
+        f.funder_id,
+        g.native_award_id AS funder_award_id,
+        g.parsed_amount AS amount,
+        g.parsed_currency AS currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) AS id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) AS funder,
+        COALESCE(NULLIF(TRIM(g.funding_type), ''), 'grant') AS funding_type,
+        COALESCE(NULLIF(TRIM(g.funder_scheme), ''), NULLIF(TRIM(g.modalidade), ''), 'Projetos contratados') AS funder_scheme,
+        'fapemig_projetos_contratados' AS provenance,
+        g.parsed_start_date AS start_date,
+        g.parsed_end_date AS end_date,
+        COALESCE(YEAR(g.parsed_start_date), g.parsed_year) AS start_year,
+        COALESCE(YEAR(g.parsed_end_date), g.parsed_year) AS end_year,
+        CASE
+            WHEN g.coordinator IS NULL OR TRIM(g.coordinator) = '' THEN CAST(NULL AS STRUCT<
+                given_name:STRING,
+                family_name:STRING,
+                orcid:STRING,
+                role_start:DATE,
+                affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+            >)
+            ELSE struct(
+                NULLIF(TRIM(g.coordinator_given_name), '') AS given_name,
+                NULLIF(TRIM(g.coordinator_family_name), '') AS family_name,
+                CAST(NULL AS STRING) AS orcid,
+                g.parsed_start_date AS role_start,
+                struct(
+                    NULLIF(TRIM(g.instituicaoexecutora_nome), '') AS name,
+                    'BR' AS country,
+                    CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+                ) AS affiliation
+            )
+        END AS lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) AS co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) AS investigators,
+        NULLIF(TRIM(g.landing_page_url), '') AS landing_page_url,
+        CAST(NULL AS STRING) AS doi,
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.native_award_id)))) % 9000000000) AS works_api_url,
+        session.awards_timestamp AS created_date,
+        session.awards_timestamp AS updated_date
+    FROM raw_prepared g
+    CROSS JOIN fapemig_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        142 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateFAPESPAwards.ipynb (origin e22fdf7f): its awards-table SELECT over fapesp_bv_input (was the
+-- staging table read from s3://openalex-ingest/awards/fapesp/fapesp_projects.parquet); created_date and updated_date are the run timestamp.
+-- fapesp_bv: priority 19, frozen fetch cadence (descriptive).
+SELECT 'fapesp_bv' AS _source, * FROM (
+WITH fapesp_bv_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/fapesp/fapesp_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'fapesp_bv')
+),
+fapesp_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320997  -- FAPESP
+),
+
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.process_number)))) % 9000000000 as id,
+
+        COALESCE(NULLIF(TRIM(g.title_en), ''), g.title_pt) as display_name,
+
+        COALESCE(NULLIF(TRIM(g.abstract_en), ''), g.abstract_pt) as description,
+
+        f.funder_id,
+        g.process_number as funder_award_id,
+
+        CAST(NULL AS DOUBLE) as amount,
+        'BRL' as currency,
+
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+
+        CASE
+            WHEN LOWER(g.support_modality) LIKE '%bolsa%' THEN 'fellowship'
+            WHEN LOWER(g.support_modality) LIKE '%jovens pesquisadores%' THEN 'fellowship'
+            WHEN LOWER(g.support_modality) LIKE '%young investigators%' THEN 'fellowship'
+            WHEN LOWER(g.support_modality) LIKE '%pesquisador visitante%' THEN 'fellowship'
+            WHEN LOWER(g.support_modality) LIKE '%visiting researcher%' THEN 'fellowship'
+            WHEN LOWER(g.support_modality) LIKE '%infraestrutura%' THEN 'infrastructure'
+            WHEN LOWER(g.support_modality) LIKE '%equipamentos%' THEN 'infrastructure'
+            WHEN LOWER(g.support_modality) LIKE '%reunião%' THEN 'conference'
+            WHEN LOWER(g.support_modality) LIKE '%organização%' THEN 'conference'
+            WHEN LOWER(g.support_modality) LIKE '%publicações%' THEN 'publication'
+            WHEN LOWER(g.support_modality) LIKE '%pipe%' THEN 'innovation'
+            WHEN LOWER(g.support_modality) LIKE '%pite%' THEN 'innovation'
+            WHEN LOWER(g.support_modality) LIKE '%inovativa%' THEN 'innovation'
+            WHEN LOWER(g.support_modality) LIKE '%temático%' THEN 'research'
+            WHEN LOWER(g.support_modality) LIKE '%thematic%' THEN 'research'
+            ELSE 'grant'
+        END as funding_type,
+
+        g.support_modality as funder_scheme,
+
+        'fapesp_bv' as provenance,
+
+        TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+        TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+        TRY_CAST(YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) AS INT) as start_year,
+        TRY_CAST(YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) AS INT) as end_year,
+
+        CASE
+            WHEN g.pi_family_name IS NOT NULL THEN
+                struct(
+                    g.pi_given_name as given_name,
+                    g.pi_family_name as family_name,
+                    CAST(NULL AS STRING) as orcid,  -- FAPESP data doesn't include ORCID
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'Brazil' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+
+        CASE WHEN TRIM(g.process_number) RLIKE '^[0-9]{2}/[0-9]{5}-[0-9]$' THEN CONCAT('https://bv.fapesp.br/en/processo/', TRIM(g.process_number)) END as landing_page_url,
+
+        CAST(NULL AS STRING) as doi,
+
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.process_number)))) % 9000000000) as works_api_url,
+
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+
+    FROM fapesp_bv_input g
+    CROSS JOIN fapesp_funder f
+    WHERE g.process_number IS NOT NULL
+      AND TRIM(g.process_number) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        19 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateFFGAwards.ipynb (origin e22fdf7f): its awards-table SELECT over ffg_projektdatenbank_input (was the
+-- staging table read from s3://openalex-ingest/awards/ffg/ffg_projects.parquet); created_date and updated_date are the run timestamp.
+-- ffg_projektdatenbank: priority 489, frozen fetch cadence (descriptive).
+SELECT 'ffg_projektdatenbank' AS _source, * FROM (
+WITH ffg_projektdatenbank_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/ffg/ffg_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'ffg_projektdatenbank')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320323031  -- FFG
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.project_id))))) % 9000000000 as id,
+    COALESCE(NULLIF(TRIM(g.title), ''), NULLIF(TRIM(g.acronym), '')) as display_name,
+    NULLIF(TRIM(g.abstract), '') as description,
+    f.funder_id,
+    LOWER(TRIM(g.project_id)) as funder_award_id,
+    CAST(NULL AS DOUBLE) as amount,
+    CAST(NULL AS STRING) as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    'research' as funding_type,
+    NULLIF(TRIM(g.programme), '') as funder_scheme,
+    'ffg_projektdatenbank' as provenance,
+    TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+    TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+    YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')) as start_year,
+    YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
+    CASE WHEN NULLIF(TRIM(g.lead_org), '') IS NOT NULL THEN named_struct(
+        'given_name', CAST(NULL AS STRING),
+        'family_name', CAST(NULL AS STRING),
+        'orcid', CAST(NULL AS STRING),
+        'role_start', CAST(NULL AS DATE),
+        'affiliation', named_struct(
+            'name', TRIM(g.lead_org),
+            'country', CASE UPPER(TRIM(g.lead_org_country))
+                WHEN 'AUT' THEN 'AT' WHEN 'DEU' THEN 'DE' WHEN 'CHE' THEN 'CH' WHEN 'NLD' THEN 'NL'
+                WHEN 'GBR' THEN 'GB' WHEN 'ITA' THEN 'IT' WHEN 'FRA' THEN 'FR' WHEN 'BEL' THEN 'BE'
+                WHEN 'SWE' THEN 'SE' WHEN 'ESP' THEN 'ES' WHEN 'CZE' THEN 'CZ' WHEN 'SVN' THEN 'SI'
+                WHEN 'HUN' THEN 'HU' WHEN 'SVK' THEN 'SK' WHEN 'POL' THEN 'PL' WHEN 'DNK' THEN 'DK'
+                WHEN 'FIN' THEN 'FI' WHEN 'NOR' THEN 'NO' WHEN 'USA' THEN 'US' WHEN 'LUX' THEN 'LU'
+            END,
+            'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+        )
+    ) END as lead_investigator,
+    CAST(NULL AS STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+         affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>)
+        as co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+         affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>>>)
+        as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.project_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM ffg_projektdatenbank_input g
+CROSS JOIN src_funder f
+WHERE g.project_id IS NOT NULL AND TRIM(g.project_id) != ''
+  AND NOT (COALESCE(g.programme, '') RLIKE '(?i)ENIN|LADIN|EBIN|Emissionsfreie Busse und Infrastruktur')
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        489 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateFieldsMedalAwards.ipynb (origin e22fdf7f): its awards-table SELECT over imu_fields_medal_input (was the
+-- staging table read from s3://openalex-ingest/awards/fields_medal/fields_medal_laureates.parquet); created_date and updated_date are the run timestamp.
+-- imu_fields_medal: priority 50, frozen fetch cadence (descriptive).
+SELECT 'imu_fields_medal' AS _source, * FROM (
+WITH imu_fields_medal_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/fields_medal/fields_medal_laureates.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'imu_fields_medal')
+),
+funder_resolved AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320320877  -- International Mathematical Union
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(
+        CAST(f.funder_id AS STRING), ':fields:', n.slug
+    ))) % 9000000000 AS id,
+    CONCAT('Fields Medal ', TRY_CAST(n.year AS STRING), ' — ', n.medalist_name) AS display_name,
+    CASE
+        WHEN n.declined AND n.citation IS NOT NULL THEN CONCAT('Declined the medal. ', n.citation)
+        WHEN n.declined THEN 'Declined the medal.'
+        ELSE n.citation
+    END AS description,
+    f.funder_id,
+    CONCAT('fields-', n.slug) AS funder_award_id,
+    CAST(NULL AS DOUBLE) AS amount,           -- non-monetary prize, waived per §6.7
+    CAST(NULL AS STRING) AS currency,         -- no currency for non-monetary prize
+    struct(
+        CONCAT('https://openalex.org/F', CAST(f.funder_id AS STRING)) AS id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) AS funder,
+    'prize' AS funding_type,
+    'Fields Medal' AS funder_scheme,
+    'imu_fields_medal' AS provenance,
+    TRY_TO_DATE(CONCAT(TRY_CAST(n.year AS STRING), '-08-01'), 'yyyy-MM-dd') AS start_date,
+    TRY_TO_DATE(CONCAT(TRY_CAST(n.year AS STRING), '-08-01'), 'yyyy-MM-dd') AS end_date,
+    TRY_CAST(n.year AS INT) AS start_year,
+    TRY_CAST(n.year AS INT) AS end_year,
+    struct(
+        n.given_name AS given_name,
+        n.family_name AS family_name,
+        CAST(NULL AS STRING) AS orcid,
+        CAST(NULL AS DATE) AS role_start,
+        struct(
+            n.affiliation_when_awarded AS name,
+            CAST(NULL AS STRING) AS country,
+            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
+        ) AS affiliation
+    ) AS lead_investigator,
+    CAST(NULL AS STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >) AS co_lead_investigator,
+    CAST(NULL AS ARRAY<STRUCT<
+        given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+        affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+    >>) AS investigators,
+    n.source_url AS landing_page_url,
+    CAST(NULL AS STRING) AS doi,
+    CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+           CAST(abs(xxhash64(CONCAT(
+               CAST(f.funder_id AS STRING), ':fields:', n.slug
+           ))) % 9000000000 AS STRING)) AS works_api_url,
+    session.awards_timestamp AS created_date,
+    session.awards_timestamp AS updated_date
+FROM imu_fields_medal_input n
+CROSS JOIN funder_resolved f
+WHERE n.slug IS NOT NULL AND n.year IS NOT NULL
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        50 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateFINEPFUNTTELAwards.ipynb (origin e22fdf7f): its awards-table SELECT over finep_funttel_input (was the
+-- staging table read from s3://openalex-ingest/awards/finep_funttel/finep_funttel_projects.parquet); created_date and updated_date are the run timestamp.
+-- finep_funttel: priority 154, frozen fetch cadence (descriptive).
+SELECT 'finep_funttel' AS _source, * FROM (
+WITH finep_funttel_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/finep_funttel/finep_funttel_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'finep_funttel')
+),
+finep_funder AS (
+    SELECT
+        funder_id,
+        display_name,
+        ror_id,
+        doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320322904
+),
+
+raw_prepared AS (
+    SELECT
+        *,
+        LOWER(TRIM(funder_award_id)) AS native_award_id,
+        TRY_CAST(amount AS DOUBLE) AS parsed_amount,
+        CASE WHEN TRY_CAST(amount AS DOUBLE) IS NOT NULL THEN 'BRL' ELSE NULL END AS parsed_currency,
+        TRY_TO_DATE(signed_date, 'yyyy-MM-dd') AS parsed_start_date,
+        TRY_TO_DATE(end_date, 'yyyy-MM-dd') AS parsed_end_date,
+        TRY_CAST(source_year AS INT) AS parsed_start_year
+    FROM finep_funttel_input
+    WHERE funder_award_id IS NOT NULL
+      AND TRIM(funder_award_id) != ''
+      AND display_name IS NOT NULL
+      AND TRIM(display_name) != ''
+),
+
+mapped_awards AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 as id,
+        TRIM(g.display_name) as display_name,
+        NULLIF(TRIM(g.description), '') as description,
+        f.funder_id,
+        g.native_award_id as funder_award_id,
+        g.parsed_amount as amount,
+        g.parsed_currency as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name,
+            f.ror_id,
+            f.doi
+        ) as funder,
+        COALESCE(NULLIF(TRIM(g.funding_type), ''), 'research') as funding_type,
+        COALESCE(NULLIF(TRIM(g.demand), ''), NULLIF(TRIM(g.product), ''), 'FUNTTEL') as funder_scheme,
+        'finep_funttel' as provenance,
+        g.parsed_start_date as start_date,
+        g.parsed_end_date as end_date,
+        COALESCE(YEAR(g.parsed_start_date), g.parsed_start_year) as start_year,
+        COALESCE(YEAR(g.parsed_end_date), g.parsed_start_year) as end_year,
+        struct(
+            CAST(NULL AS STRING) as given_name,
+            CAST(NULL AS STRING) as family_name,
+            CAST(NULL AS STRING) as orcid,
+            g.parsed_start_date as role_start,
+            struct(
+                NULLIF(TRIM(g.recipient_name), '') as name,
+                'BR' as country,
+                CASE
+                    WHEN g.recipient_cnpj IS NOT NULL AND TRIM(g.recipient_cnpj) != '' THEN
+                        ARRAY(struct(TRIM(g.recipient_cnpj) as id, 'cnpj' as type, 'source' as asserted_by))
+                    ELSE CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+                END as ids
+            ) as affiliation
+        ) as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING,
+            family_name:STRING,
+            orcid:STRING,
+            role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        NULLIF(TRIM(g.landing_page_url), '') as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CONCAT('https://api.openalex.org/works?filter=awards.id:G',
+               CAST(abs(xxhash64(CONCAT(f.funder_id, ':', g.native_award_id))) % 9000000000 AS STRING)) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM raw_prepared g
+    CROSS JOIN finep_funder f
+),
+
+awards_transformed AS (
+SELECT *
+FROM mapped_awards
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        154 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateFMFCAwards.ipynb (origin e22fdf7f): its awards-table SELECT over fmfc_input (was the
+-- staging table read from s3://openalex-ingest/awards/fmfc/fmfc_projects.parquet); created_date and updated_date are the run timestamp.
+-- fmfc: priority 329, frozen fetch cadence (descriptive).
+SELECT 'fmfc' AS _source, * FROM (
+WITH fmfc_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/fmfc/fmfc_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'fmfc')
+),
+the_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320323274  -- Financial Markets Foundation for Children
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        'AUD' as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        CAST(NULL AS STRING) as funder_scheme,
+        'fmfc' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        CAST(NULL AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'Australia' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url as landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM fmfc_input g
+    CROSS JOIN the_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        329 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateFNPAwards.ipynb (origin e22fdf7f): its awards-table SELECT over fnp_laureates_input (was the
+-- staging table read from s3://openalex-ingest/awards/fnp/fnp_projects.parquet); created_date and updated_date are the run timestamp.
+-- fnp_laureates: priority 511, frozen fetch cadence (descriptive).
+SELECT 'fnp_laureates' AS _source, * FROM (
+WITH fnp_laureates_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/fnp/fnp_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'fnp_laureates')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321042  -- Fundacja na rzecz Nauki Polskiej (FNP)
+),
+
+people AS (
+    SELECT
+        funder_award_id,
+        TRANSFORM(
+            COALESCE(from_json(people_json, 'ARRAY<STRUCT<name:STRING, given_name:STRING, family_name:STRING, institution:STRING>>'), ARRAY()),
+            p -> named_struct(
+                'given_name', NULLIF(TRIM(p.given_name), ''),
+                'family_name', NULLIF(TRIM(p.family_name), ''),
+                'orcid', CAST(NULL AS STRING),
+                'role_start', CAST(NULL AS DATE),
+                'affiliation', named_struct(
+                    'name', NULLIF(TRIM(p.institution), ''),
+                    'country', CAST(NULL AS STRING),
+                    'ids', CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>)
+                )
+            )
+        ) AS investigators
+    FROM fnp_laureates_input
+),
+
+named AS (
+    SELECT funder_award_id,
+           array_join(TRANSFORM(investigators, x -> CONCAT_WS(' ', x.given_name, x.family_name)), ' and ') AS laureates
+    FROM people
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    COALESCE(
+        NULLIF(TRIM(g.title), ''),
+        CONCAT(g.programme, ' ', g.year, ': ', NULLIF(n.laureates, ''))
+    ) as display_name,
+    CAST(NULL AS STRING) as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    CASE WHEN TRY_CAST(g.amount AS DOUBLE) IS NOT NULL THEN 'PLN' END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    g.funding_type as funding_type,
+    CASE WHEN g.call IS NOT NULL THEN CONCAT(g.programme, ' (call ', g.call, ')') ELSE g.programme END as funder_scheme,
+    'fnp_laureates' as provenance,
+    TRY_TO_DATE(CONCAT(TRY_CAST(g.year AS INT), '-01-01'), 'yyyy-MM-dd') as start_date,
+    CAST(NULL AS DATE) as end_date,
+    TRY_CAST(g.year AS INT) as start_year,
+    CAST(NULL AS INT) as end_year,
+    try_element_at(p.investigators, 1) as lead_investigator,
+    try_element_at(p.investigators, 2) as co_lead_investigator,
+    CASE WHEN size(p.investigators) > 0 THEN p.investigators END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM fnp_laureates_input g
+JOIN people p ON p.funder_award_id = g.funder_award_id
+JOIN named n ON n.funder_award_id = g.funder_award_id
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        511 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+UNION ALL
+-- Mapping from CreateFNRLuxembourgAwards.ipynb (origin e22fdf7f): its awards-table SELECT over fnr_luxembourg_input (was the
+-- staging table read from s3://openalex-ingest/awards/fnr_luxembourg/fnr_luxembourg_grants.parquet); created_date and updated_date are the run timestamp.
+-- fnr_luxembourg: priority 305, frozen fetch cadence (descriptive).
+SELECT 'fnr_luxembourg' AS _source, * FROM (
+WITH fnr_luxembourg_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/fnr_luxembourg/fnr_luxembourg_grants.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'fnr_luxembourg')
+),
+fnr_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320321038  -- Fonds National de la Recherche Luxembourg
+),
+awards_transformed AS (
+    SELECT
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.funder_award_id)))) % 9000000000 as id,
+        g.title as display_name,
+        CAST(NULL AS STRING) as description,
+        f.funder_id,
+        g.funder_award_id as funder_award_id,
+        TRY_CAST(g.amount AS DECIMAL(18,2)) as amount,
+        CASE WHEN g.amount IS NOT NULL THEN 'EUR' END as currency,
+        struct(
+            CONCAT('https://openalex.org/F', f.funder_id) as id,
+            f.display_name, f.ror_id, f.doi
+        ) as funder,
+        'grant' as funding_type,
+        g.call as funder_scheme,
+        'fnr_luxembourg' as provenance,
+        CAST(NULL AS DATE) as start_date,
+        CAST(NULL AS DATE) as end_date,
+        TRY_CAST(g.year AS INT) as start_year,
+        CAST(NULL AS INT) as end_year,
+        CASE
+            WHEN g.pi_family IS NOT NULL THEN
+                struct(
+                    g.pi_given as given_name,
+                    g.pi_family as family_name,
+                    CAST(NULL AS STRING) as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.institution as name,
+                        'Luxembourg' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as lead_investigator,
+        CAST(NULL AS STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >) as co_lead_investigator,
+        CAST(NULL AS ARRAY<STRUCT<
+            given_name:STRING, family_name:STRING, orcid:STRING, role_start:DATE,
+            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+        >>) as investigators,
+        g.landing_page_url,
+        CAST(NULL AS STRING) as doi,
+        CAST(NULL AS STRING) as works_api_url,
+        session.awards_timestamp as created_date,
+        session.awards_timestamp as updated_date
+    FROM fnr_luxembourg_input g
+    CROSS JOIN fnr_funder f
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        305 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
+),
+baseline AS (
+    SELECT b.* FROM awards_baseline b LEFT SEMI JOIN awards_sources s ON s.source = b.provenance AND s.chunk = 2
+),
+-- Compare trailing-space-normalized payload only; never normalize emitted baseline values.
+-- Existing funder structs are frozen independently of other payload changes.
+compared AS (
+    SELECT i.*, struct(b.*) AS baseline_row,
+        b.funder_id IS NOT NULL AS _exists,
+        (i.id <=> b.id)
+        AND (rtrim(i.display_name) <=> rtrim(b.display_name))
+        AND (rtrim(i.description) <=> rtrim(b.description))
+        AND (i.funder_id <=> b.funder_id)
+        AND (rtrim(i.funder_award_id) <=> rtrim(b.funder_award_id))
+        AND (i.amount <=> b.amount)
+        AND (rtrim(i.currency) <=> rtrim(b.currency))
+        AND (rtrim(i.funding_type) <=> rtrim(b.funding_type))
+        AND (rtrim(i.funder_scheme) <=> rtrim(b.funder_scheme))
+        AND (rtrim(i.provenance) <=> rtrim(b.provenance))
+        AND (i.start_date <=> b.start_date)
+        AND (i.end_date <=> b.end_date)
+        AND (i.start_year <=> b.start_year)
+        AND (i.end_year <=> b.end_year)
+        AND (IF(i.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.lead_investigator.given_name), 'family_name', rtrim(i.lead_investigator.family_name), 'orcid', rtrim(i.lead_investigator.orcid), 'role_start', i.lead_investigator.role_start, 'affiliation', IF(i.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.lead_investigator.affiliation.name), 'country', rtrim(i.lead_investigator.affiliation.country), 'ids', transform(i.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.lead_investigator.given_name), 'family_name', rtrim(b.lead_investigator.family_name), 'orcid', rtrim(b.lead_investigator.orcid), 'role_start', b.lead_investigator.role_start, 'affiliation', IF(b.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.lead_investigator.affiliation.name), 'country', rtrim(b.lead_investigator.affiliation.country), 'ids', transform(b.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
+        AND (IF(i.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.co_lead_investigator.given_name), 'family_name', rtrim(i.co_lead_investigator.family_name), 'orcid', rtrim(i.co_lead_investigator.orcid), 'role_start', i.co_lead_investigator.role_start, 'affiliation', IF(i.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.co_lead_investigator.affiliation.name), 'country', rtrim(i.co_lead_investigator.affiliation.country), 'ids', transform(i.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.co_lead_investigator.given_name), 'family_name', rtrim(b.co_lead_investigator.family_name), 'orcid', rtrim(b.co_lead_investigator.orcid), 'role_start', b.co_lead_investigator.role_start, 'affiliation', IF(b.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.co_lead_investigator.affiliation.name), 'country', rtrim(b.co_lead_investigator.affiliation.country), 'ids', transform(b.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
+        AND (transform(i.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))) <=> transform(b.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))))
+        AND (rtrim(i.landing_page_url) <=> rtrim(b.landing_page_url))
+        AND (rtrim(i.doi) <=> rtrim(b.doi))
+        AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
+        AND (i.priority <=> b.priority) AS _unchanged
+    FROM awards_incoming i LEFT JOIN baseline b
+      ON b.provenance = i._source AND b.priority = i.priority
+     AND i.funder_id <=> b.funder_id
+     AND lower(i.funder_award_id) <=> lower(b.funder_award_id)
+)
+SELECT
+    _source,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.id ELSE id END AS id,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.display_name ELSE display_name END AS display_name,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.description ELSE description END AS description,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_id ELSE funder_id END AS funder_id,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_award_id ELSE funder_award_id END AS funder_award_id,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.amount ELSE amount END AS amount,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.currency ELSE currency END AS currency,
+    CASE WHEN _exists THEN baseline_row.funder ELSE funder END AS funder,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.funding_type ELSE funding_type END AS funding_type,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_scheme ELSE funder_scheme END AS funder_scheme,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.provenance ELSE provenance END AS provenance,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.start_date ELSE start_date END AS start_date,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.end_date ELSE end_date END AS end_date,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.start_year ELSE start_year END AS start_year,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.end_year ELSE end_year END AS end_year,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.lead_investigator ELSE lead_investigator END AS lead_investigator,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.co_lead_investigator ELSE co_lead_investigator END AS co_lead_investigator,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.investigators ELSE investigators END AS investigators,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.landing_page_url ELSE landing_page_url END AS landing_page_url,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.doi ELSE doi END AS doi,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.works_api_url ELSE works_api_url END AS works_api_url,
+    CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date ELSE updated_date END AS updated_date,
+    CASE WHEN _exists AND _unchanged THEN baseline_row.priority ELSE priority END AS priority,
+    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change
+FROM compared;
+
+-- COMMAND ----------
+
+-- Chunk 2: guard metrics in one pass over its candidate (grouped once by key), appended to the result rows and
+-- frozen before MERGE (views themselves are lazy).
+SET VAR awards_results = concat(session.awards_results, (
+WITH s AS (SELECT * FROM awards_sources WHERE chunk = 2),
+bl AS (SELECT b.* FROM awards_baseline b LEFT SEMI JOIN s ON s.source = b.provenance),
+k AS (
+ SELECT _source, funder_id, lower(funder_award_id) award_key, count(*) n,
+ count_if(_change = 'new') new, count_if(_change = 'changed') changed, count_if(_change = 'unchanged') unchanged,
+ count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
+ OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows
+ FROM awards_candidate_2 JOIN s ON s.source = _source GROUP BY _source, funder_id, lower(funder_award_id)
+),
+c AS (SELECT _source, sum(n) rows_in, sum(new) new, sum(changed) changed, sum(unchanged) unchanged,
+ sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in FROM k GROUP BY _source),
+prev AS (SELECT provenance, count(*) rows_prev FROM bl GROUP BY provenance),
+retained AS (SELECT b.provenance, count(*) retained FROM bl b LEFT ANTI JOIN k
+ ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key GROUP BY b.provenance),
+dup_prev AS (SELECT provenance, count(*) n FROM (SELECT provenance, funder_id, lower(funder_award_id) FROM bl GROUP BY ALL HAVING count(*) > 1) GROUP BY provenance),
+m AS (
+ SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct,
+ coalesce(c.rows_in, 0) rows_in, coalesce(p.rows_prev, 0) rows_prev, coalesce(c.new, 0) new, coalesce(c.changed, 0) changed,
+ coalesce(c.unchanged, 0) unchanged, coalesce(r.retained, 0) retained, coalesce(c.dup_in, 0) + coalesce(dp.n, 0) duplicate_keys,
+ coalesce(c.invalid_rows, 0) invalid_rows
+ FROM s LEFT JOIN c ON c._source = s.source LEFT JOIN prev p ON p.provenance = s.source
+ LEFT JOIN retained r ON r.provenance = s.source LEFT JOIN dup_prev dp ON dp.provenance = s.source
+)
+SELECT transform(array_sort(collect_list(named_struct('ord', ord, 'r', named_struct('source', source, 'object', object, 'baseline_version', session.awards_version,
+ 'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
+ 'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
+ 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL THEN 'skipped' ELSE 'written' END)))), x -> x.r)
+FROM m));
+
+-- COMMAND ----------
+
 -- The sources that pass and have a new or changed row. A skipped source contributes nothing: no DELETE branch, no absent-row UNION.
 SET VAR awards_to_merge = (SELECT collect_list(r.source) FROM (SELECT explode(session.awards_results) AS r) WHERE r.state = 'written' AND r.new + r.changed > 0);
 
@@ -1070,7 +14408,7 @@ SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_tab
 
 -- Write, one MERGE statement for every source. Unchanged rows are left out of the source: they already match raw.
 MERGE INTO IDENTIFIER(session.awards_target) t
-USING (SELECT * FROM (SELECT * FROM awards_candidate_1) WHERE array_contains(session.awards_to_merge, _source) AND _change <> 'unchanged') c
+USING (SELECT * FROM (SELECT * FROM awards_candidate_1 UNION ALL SELECT * FROM awards_candidate_2) WHERE array_contains(session.awards_to_merge, _source) AND _change <> 'unchanged') c
 ON t.provenance = c._source AND t.priority = c.priority
  AND t.funder_id = c.funder_id AND lower(t.funder_award_id) = lower(c.funder_award_id)
 WHEN MATCHED AND c._change = 'changed' THEN UPDATE SET
@@ -1105,4 +14443,4 @@ VALUES (c.id, c.display_name, c.description, c.funder_id, c.funder_award_id, c.a
 
 SELECT CASE WHEN exists(session.awards_results, r -> r.state = 'skipped')
  THEN raise_error('Skipped sources: ' || concat_ws(', ', transform(filter(session.awards_results, r -> r.state = 'skipped'), r -> r.source)))
- ELSE 'All five sources written' END AS result;
+ ELSE 'All 127 sources written' END AS result;
