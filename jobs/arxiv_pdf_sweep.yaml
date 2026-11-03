@@ -52,7 +52,7 @@ resources:
         - name: retry_days
           default: "7"
         - name: arxiv_limit
-          default: "1500"
+          default: "3000"
         - name: arxiv_pace_seconds
           default: "3"
         - name: dry_run

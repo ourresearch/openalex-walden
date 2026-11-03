@@ -43,7 +43,7 @@ from urllib3.util import Retry
 dbutils.widgets.text("max_records", "50000", "Max records per run")
 dbutils.widgets.text("min_age_hours", "48", "Only records ingested at least this long ago (TaxiCab goes first)")
 dbutils.widgets.text("retry_days", "7", "Retry a record whose last sweep attempt failed after this many days")
-dbutils.widgets.text("arxiv_limit", "1500", "Max fetches from arxiv.org per run (mirror misses)")
+dbutils.widgets.text("arxiv_limit", "3000", "Max fetches from arxiv.org per run (mirror misses)")
 dbutils.widgets.text("arxiv_pace_seconds", "3", "Seconds between arxiv.org fetches")
 dbutils.widgets.text("dry_run", "false", "true = select and report only")
 
