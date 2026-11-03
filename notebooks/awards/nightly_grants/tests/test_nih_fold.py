@@ -295,3 +295,35 @@ def test_matching_reads_prepin_funders():
     assert nih_fold.owner_funder(off, "d") == "d.funder_id" and nih_fold.unpinned_owner_join(off, "t") == ""
     assert nih_fold.owner_funder(on, "d") == "coalesce(nih_u.funder_id,d.funder_id)"
     assert nih_fold.plan_for_matching(off) == "x.ownership_plan" and nih_fold.plan_for_matching(on) == "x.ownership_plan_unpinned"
+
+
+def test_native_evidence_through_redirect_holds_the_observation():
+    """3 Nov 2026 (oxjob #1875): a new Crossref grant shares its raw id and DOE number with a 2003 grant redirected in Sep. Its only
+    hit is that redirected STAGING owner, so it must not bind (op14); it is HELD out of the night's identity build instead of
+    stopping the run, the gate stays as the invariant, and every later step reads the filtered observations and lookup."""
+    class C(RecordingC):
+        def count(self, name, relation):
+            n = 1 if name == "native_redirect_held" else 0
+            self.counts[name] = n; return n
+
+    c = render(ROOT / "lib" / "build_awards.py", extra=("migration_manifest",))   # none held: no hold statements at all
+    assert c.counts["native_redirect_held"] == 0 and "native_redirect_held" not in dict(c.statements)
+
+    mod = load("ba_hold", ROOT / "lib" / "build_awards.py")
+    h = C(extra=("migration_manifest",)); mod.prepare(h); mod.allocate(h)
+    names = [n for n, _ in h.statements]; q = {}
+    for n, s in h.statements:
+        q.setdefault(n, []).append(s)
+    assert h.counts["native_redirect_held"] == 1
+    order = ["native_redirect_held", "NATIVE_EVIDENCE_THROUGH_REDIRECT_FUSE", "observations_with_held", "lookup_with_held",
+             "NATIVE_EVIDENCE_THROUGH_REDIRECT", "UNRESOLVED_PRESENT_KEY", "labels_0", "bindings", "ALL_OBSERVATIONS_BOUND"]
+    assert [names.index(n) for n in order] == sorted(names.index(n) for n in order)
+    held = q["native_redirect_held"][0]
+    assert "native_hit IS NULL" in held and "staging_original_owner<>staging_hit" in held and "namespace IS NOT NULL" in held
+    assert "HAVING n>100" in q["NATIVE_EVIDENCE_THROUGH_REDIRECT_FUSE"][0]
+    # observations and lookup are rebuilt from their copies without the held rows; the build after them reads the same names
+    assert q["observations"][-1] == ("SELECT o.* FROM dev.lab.ngr_s_observations_with_held o LEFT ANTI JOIN "
+                                     "dev.lab.ngr_s_native_redirect_held h USING(observation_key)")
+    assert "LEFT ANTI JOIN dev.lab.ngr_s_native_redirect_held" in q["lookup"][-1]
+    assert names.index("observations_with_held") < len(names) - 1 - names[::-1].index("observations") < names.index("lookup_with_held")
+    assert "FROM dev.lab.ngr_s_observations " in q["labels_0"][0] + " " and "dev.lab.ngr_s_lookup l" in q["COMPONENT_OWNER_CONFLICT"][0]
