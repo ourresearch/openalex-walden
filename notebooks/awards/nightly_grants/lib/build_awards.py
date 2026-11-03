@@ -120,6 +120,20 @@ def prepare(c):
     c.zero('NATIVE_STAGING_DISAGREE',f'SELECT * FROM {r}lookup WHERE native_hit IS NOT NULL AND staging_hit IS NOT NULL AND native_hit<>staging_hit')
     # op14 (Q5 risk 2): a native-keyed observation whose only hit is a STAGING key owned by a REDIRECTED entity would inherit the
     # redirect's equivalence without native proof; block it.
+    # Such an observation is HELD (3 Nov, oxjob #1875), not bound and not a stop: left out of tonight's identity build, counted
+    # (native_redirect_held), tried again next night. First case: a new Crossref grant (10.46936/nsuf/60018739, DOE '5790') shares
+    # raw id 4897506226 with a 2003 grant redirected in Sep; binding it would attach a different grant to that one. Its own
+    # record needs a raw id of its own upstream. More than 100 held = a feed problem: NATIVE_EVIDENCE_THROUGH_REDIRECT_FUSE stops.
+    # With none held (every night before 3 Nov) the build is unchanged.
+    held_where=('namespace IS NOT NULL AND native_hit IS NULL AND staging_original_owner IS NOT NULL'
+                ' AND staging_original_owner<>staging_hit')
+    if c.count('native_redirect_held',f'(SELECT observation_key FROM {r}lookup WHERE {held_where}) x'):
+        c.artifact('native_redirect_held',f'SELECT observation_key,staging_id,source_funder_id,award_key,namespace,source_record_id FROM {r}lookup WHERE {held_where}')
+        c.zero('NATIVE_EVIDENCE_THROUGH_REDIRECT_FUSE',f'SELECT count(*) n FROM {r}native_redirect_held HAVING n>100')
+        c.artifact('observations_with_held',f'SELECT * FROM {r}observations')
+        c.artifact('observations',f'SELECT o.* FROM {r}observations_with_held o LEFT ANTI JOIN {r}native_redirect_held h USING(observation_key)')
+        c.artifact('lookup_with_held',f'SELECT * FROM {r}lookup')
+        c.artifact('lookup',f'SELECT l.* FROM {r}lookup_with_held l LEFT ANTI JOIN {r}native_redirect_held h USING(observation_key)')
     c.zero('NATIVE_EVIDENCE_THROUGH_REDIRECT',f'SELECT * FROM {r}lookup WHERE namespace IS NOT NULL AND native_hit IS NULL AND staging_original_owner IS NOT NULL AND staging_original_owner<>staging_hit')
     c.zero('UNRESOLVED_PRESENT_KEY',f'SELECT * FROM {r}lookup WHERE (native_original_owner IS NOT NULL AND native_hit IS NULL) OR (staging_original_owner IS NOT NULL AND staging_hit IS NULL)')
     # Current multiple triples for one native record require explicit old -> new evidence.
