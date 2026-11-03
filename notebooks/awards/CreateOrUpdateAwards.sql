@@ -13,10 +13,6 @@ DECLARE OR REPLACE VARIABLE awards_target STRING DEFAULT :raw_table;
 
 -- COMMAND ----------
 
-DECLARE OR REPLACE VARIABLE awards_skipped ARRAY<STRING> DEFAULT array();
-
--- COMMAND ----------
-
 DECLARE OR REPLACE VARIABLE awards_version BIGINT;
 
 -- COMMAND ----------
@@ -29,32 +25,58 @@ DECLARE OR REPLACE VARIABLE awards_timestamp TIMESTAMP DEFAULT current_timestamp
 
 -- COMMAND ----------
 
--- nsf_award_search: candidate mapping. weekly fetch cadence (descriptive).
-CREATE OR REPLACE TEMP VIEW nsf_award_search_files AS
-SELECT *, _metadata.file_path AS _file_path, _metadata.file_modification_time AS _file_modified
-FROM read_files('s3://openalex-ingest/awards/nsf/*.parquet', format => 'parquet');
+DECLARE OR REPLACE VARIABLE awards_objects MAP<STRING, STRING>;
 
 -- COMMAND ----------
 
-DECLARE OR REPLACE VARIABLE nsf_award_search_object STRING;
+DECLARE OR REPLACE VARIABLE awards_results ARRAY<STRUCT<source: STRING, object: STRING, baseline_version: BIGINT,
+ rows_in: BIGINT, rows_prev: BIGINT, new: BIGINT, changed: BIGINT, unchanged: BIGINT, retained: BIGINT,
+ duplicate_keys: BIGINT, invalid_rows: BIGINT, state: STRING>> DEFAULT array();
 
 -- COMMAND ----------
 
--- Max modification time, then path: exactly one file even on a timestamp tie.
-SET VAR nsf_award_search_object = (SELECT _file_path FROM nsf_award_search_files
- GROUP BY _file_path, _file_modified ORDER BY _file_modified DESC, _file_path DESC LIMIT 1);
+DECLARE OR REPLACE VARIABLE awards_to_merge ARRAY<STRING>;
 
 -- COMMAND ----------
 
-CREATE OR REPLACE TEMP VIEW nsf_award_search_input AS SELECT * EXCEPT (_file_path, _file_modified) FROM nsf_award_search_files WHERE _file_path = session.nsf_award_search_object;
+-- The sources, from sources.csv (ord is run order; chunk is ord's block of CHUNK sources).
+CREATE OR REPLACE TEMP VIEW awards_sources AS SELECT * FROM VALUES
+ (1, 'nsf_award_search', 3, 98, array(4320306076L), 'weekly', 1),
+ (2, 'wellcome_trust', 22, 98, array(4320311904L), 'monthly', 1),
+ (3, 'cordis', 27, 98, array(4320320300L, 4320338438L, 4320338448L), 'manual', 1),
+ (4, 'gates_foundation', 4, 98, array(4320306137L), 'manual', 1),
+ (5, 'kaken', 10, 98, array(4320334764L), 'monthly', 1)
+AS t(ord, source, source_priority, row_floor_pct, funder_ids, fetch_cadence, chunk);
 
 -- COMMAND ----------
 
+-- Each source's object, fixed for the run. A frozen row names its object. A prefix row pins its newest *.parquet:
+-- max modification time, then path, so exactly one file even on a timestamp tie.
+SET VAR awards_objects = (SELECT map_from_entries(collect_list(struct(source, object))) FROM (
+SELECT 'nsf_award_search' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
+ FROM read_files('s3://openalex-ingest/awards/nsf/*.parquet', format => 'parquet')
+UNION ALL
+SELECT 'wellcome_trust' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
+ FROM read_files('s3://openalex-ingest/awards/wellcome/*.parquet', format => 'parquet')
+UNION ALL
+SELECT 'cordis' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
+ FROM read_files('s3://openalex-ingest/awards/european_commission/*.parquet', format => 'parquet')
+UNION ALL
+SELECT 'gates_foundation' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
+ FROM read_files('s3://openalex-ingest/awards/gates/*.parquet', format => 'parquet')
+UNION ALL
+SELECT 'kaken' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
+ FROM read_files('s3://openalex-ingest/awards/kaken/*.parquet', format => 'parquet')
+));
+
+-- COMMAND ----------
+
+-- One baseline for every source: raw pinned at its current version, only the sources' (provenance, priority) slices.
 SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
 
 -- COMMAND ----------
 
-SET VAR awards_sql = 'CREATE OR REPLACE TEMP VIEW nsf_award_search_baseline AS SELECT * FROM ' || session.awards_target || ' VERSION AS OF ' || CAST(session.awards_version AS STRING) || ' WHERE provenance = ' || chr(39) || 'nsf_award_search' || chr(39) || ' AND priority = 3';
+SET VAR awards_sql = 'CREATE OR REPLACE TEMP VIEW awards_baseline AS SELECT b.* FROM ' || session.awards_target || ' VERSION AS OF ' || CAST(session.awards_version AS STRING) || ' b LEFT SEMI JOIN awards_sources s ON b.provenance = s.source AND b.priority = s.source_priority';
 
 -- COMMAND ----------
 
@@ -62,10 +84,19 @@ EXECUTE IMMEDIATE awards_sql;
 
 -- COMMAND ----------
 
-CREATE OR REPLACE TEMP VIEW nsf_award_search_candidate AS
+-- Chunk 1 of 1: sources 1 to 5 in sources.csv order. Each source's candidate rows: its mapping over
+-- its pinned object, cast to the raw contract, compared with its slice.
+CREATE OR REPLACE TEMP VIEW awards_candidate_1 AS
+WITH awards_incoming AS (
 -- Legacy mapping from CreateNSFAwards.ipynb, origin c3db0a32.
 -- _change is runner metadata, never a raw column. Compare all 22 other columns null-safely.
-WITH nsf_funder AS (
+-- nsf_award_search: priority 3, weekly fetch cadence (descriptive).
+SELECT 'nsf_award_search' AS _source, * FROM (
+WITH nsf_award_search_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/nsf/*.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'nsf_award_search')
+),
+nsf_funder AS (
     -- NSF funder from OpenAlex (update funder_id after running Step 2)
     SELECT
         f.funder_id,
@@ -206,195 +237,17 @@ incoming AS (
         CAST(updated_date AS timestamp) AS updated_date,
         3 AS priority
     FROM awards_transformed
-),
-baseline AS (
-    SELECT * FROM nsf_award_search_baseline
-),
--- Compare trailing-space-normalized payload only; never normalize emitted baseline values.
--- Existing funder structs are frozen independently of other payload changes.
-compared AS (
-    SELECT i.*, struct(b.*) AS baseline_row,
-        b.funder_id IS NOT NULL AS _exists,
-        (i.id <=> b.id)
-        AND (rtrim(i.display_name) <=> rtrim(b.display_name))
-        AND (rtrim(i.description) <=> rtrim(b.description))
-        AND (i.funder_id <=> b.funder_id)
-        AND (rtrim(i.funder_award_id) <=> rtrim(b.funder_award_id))
-        AND (i.amount <=> b.amount)
-        AND (rtrim(i.currency) <=> rtrim(b.currency))
-        AND (rtrim(i.funding_type) <=> rtrim(b.funding_type))
-        AND (rtrim(i.funder_scheme) <=> rtrim(b.funder_scheme))
-        AND (rtrim(i.provenance) <=> rtrim(b.provenance))
-        AND (i.start_date <=> b.start_date)
-        AND (i.end_date <=> b.end_date)
-        AND (i.start_year <=> b.start_year)
-        AND (i.end_year <=> b.end_year)
-        AND (IF(i.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.lead_investigator.given_name), 'family_name', rtrim(i.lead_investigator.family_name), 'orcid', rtrim(i.lead_investigator.orcid), 'role_start', i.lead_investigator.role_start, 'affiliation', IF(i.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.lead_investigator.affiliation.name), 'country', rtrim(i.lead_investigator.affiliation.country), 'ids', transform(i.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.lead_investigator.given_name), 'family_name', rtrim(b.lead_investigator.family_name), 'orcid', rtrim(b.lead_investigator.orcid), 'role_start', b.lead_investigator.role_start, 'affiliation', IF(b.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.lead_investigator.affiliation.name), 'country', rtrim(b.lead_investigator.affiliation.country), 'ids', transform(b.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
-        AND (IF(i.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.co_lead_investigator.given_name), 'family_name', rtrim(i.co_lead_investigator.family_name), 'orcid', rtrim(i.co_lead_investigator.orcid), 'role_start', i.co_lead_investigator.role_start, 'affiliation', IF(i.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.co_lead_investigator.affiliation.name), 'country', rtrim(i.co_lead_investigator.affiliation.country), 'ids', transform(i.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.co_lead_investigator.given_name), 'family_name', rtrim(b.co_lead_investigator.family_name), 'orcid', rtrim(b.co_lead_investigator.orcid), 'role_start', b.co_lead_investigator.role_start, 'affiliation', IF(b.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.co_lead_investigator.affiliation.name), 'country', rtrim(b.co_lead_investigator.affiliation.country), 'ids', transform(b.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
-        AND (transform(i.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))) <=> transform(b.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))))
-        AND (rtrim(i.landing_page_url) <=> rtrim(b.landing_page_url))
-        AND (rtrim(i.doi) <=> rtrim(b.doi))
-        AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
-        AND (i.priority <=> b.priority) AS _unchanged
-    FROM incoming i LEFT JOIN baseline b
-      ON i.funder_id <=> b.funder_id
-     AND lower(i.funder_award_id) <=> lower(b.funder_award_id)
 )
-SELECT
-    CASE WHEN _exists AND _unchanged THEN baseline_row.id ELSE id END AS id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.display_name ELSE display_name END AS display_name,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.description ELSE description END AS description,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_id ELSE funder_id END AS funder_id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_award_id ELSE funder_award_id END AS funder_award_id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.amount ELSE amount END AS amount,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.currency ELSE currency END AS currency,
-    CASE WHEN _exists THEN baseline_row.funder ELSE funder END AS funder,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funding_type ELSE funding_type END AS funding_type,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_scheme ELSE funder_scheme END AS funder_scheme,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.provenance ELSE provenance END AS provenance,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.start_date ELSE start_date END AS start_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.end_date ELSE end_date END AS end_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.start_year ELSE start_year END AS start_year,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.end_year ELSE end_year END AS end_year,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.lead_investigator ELSE lead_investigator END AS lead_investigator,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.co_lead_investigator ELSE co_lead_investigator END AS co_lead_investigator,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.investigators ELSE investigators END AS investigators,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.landing_page_url ELSE landing_page_url END AS landing_page_url,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.doi ELSE doi END AS doi,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.works_api_url ELSE works_api_url END AS works_api_url,
-    CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date ELSE updated_date END AS updated_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.priority ELSE priority END AS priority,
-    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change
-FROM compared;
-
--- COMMAND ----------
-
--- nsf_award_search: freeze guard metrics before MERGE; views themselves are lazy.
-DECLARE OR REPLACE VARIABLE nsf_award_search_result DEFAULT named_struct(
- 'source', 'nsf_award_search', 'object', '', 'baseline_version', CAST(0 AS BIGINT),
- 'rows_in', CAST(0 AS BIGINT), 'rows_prev', CAST(0 AS BIGINT),
- 'new', CAST(0 AS BIGINT), 'changed', CAST(0 AS BIGINT), 'unchanged', CAST(0 AS BIGINT),
- 'retained', CAST(0 AS BIGINT), 'duplicate_keys', CAST(0 AS BIGINT),
- 'invalid_rows', CAST(0 AS BIGINT), 'state', 'pending');
-
--- COMMAND ----------
-
-SET VAR nsf_award_search_result = (
-WITH stats AS (
- SELECT count(*) rows_in,
- (SELECT count(*) FROM nsf_award_search_baseline) rows_prev,
- count_if(_change = 'new') new, count_if(_change = 'changed') changed,
- count_if(_change = 'unchanged') unchanged,
- (SELECT count(*) FROM nsf_award_search_baseline b LEFT ANTI JOIN nsf_award_search_candidate c
- ON b.funder_id=c.funder_id AND lower(b.funder_award_id)=lower(c.funder_award_id)) retained,
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM nsf_award_search_candidate GROUP BY ALL HAVING count(*) > 1)) +
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM nsf_award_search_baseline GROUP BY ALL HAVING count(*) > 1)) duplicate_keys,
- count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
- OR NOT (provenance <=> 'nsf_award_search') OR NOT (priority <=> 3) OR funder_id NOT IN (4320306076)) invalid_rows
- FROM nsf_award_search_candidate
-)
-SELECT named_struct('source', 'nsf_award_search', 'object', session.nsf_award_search_object, 'baseline_version', session.awards_version,
- 'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
- 'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
- 'state', CASE WHEN rows_in * 100 < rows_prev * 98 OR duplicate_keys > 0 OR invalid_rows > 0 OR session.nsf_award_search_object IS NULL THEN 'skipped' ELSE 'written' END)
-FROM stats);
-
--- COMMAND ----------
-
--- nsf_award_search: empty source on guard rejection. No DELETE branch and no absent-row UNION.
-CREATE OR REPLACE TEMP VIEW nsf_award_search_guarded_candidate AS
-SELECT * FROM nsf_award_search_candidate WHERE session.nsf_award_search_result.state = 'written';
-
--- COMMAND ----------
-
--- Fail closed on target drift between guard and write. One writer per slice is still required.
-SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table))) = session.awards_version
- THEN 'baseline current' ELSE raise_error('Awards target advanced during validation; rerun') END;
-
--- COMMAND ----------
-
--- nsf_award_search: write, one MERGE statement.
-MERGE INTO IDENTIFIER(session.awards_target) t
-USING nsf_award_search_guarded_candidate c
-ON t.provenance = 'nsf_award_search' AND t.priority = 3
- AND t.funder_id = c.funder_id AND lower(t.funder_award_id) = lower(c.funder_award_id)
-WHEN MATCHED AND c._change = 'changed' THEN UPDATE SET
- id = c.id,
- display_name = c.display_name,
- description = c.description,
- funder_id = c.funder_id,
- funder_award_id = c.funder_award_id,
- amount = c.amount,
- currency = c.currency,
- funder = t.funder,
- funding_type = c.funding_type,
- funder_scheme = c.funder_scheme,
- provenance = c.provenance,
- start_date = c.start_date,
- end_date = c.end_date,
- start_year = c.start_year,
- end_year = c.end_year,
- lead_investigator = c.lead_investigator,
- co_lead_investigator = c.co_lead_investigator,
- investigators = c.investigators,
- landing_page_url = c.landing_page_url,
- doi = c.doi,
- works_api_url = c.works_api_url,
- created_date = t.created_date,
- updated_date = c.updated_date,
- priority = c.priority
-WHEN NOT MATCHED THEN INSERT (id, display_name, description, funder_id, funder_award_id, amount, currency, funder, funding_type, funder_scheme, provenance, start_date, end_date, start_year, end_year, lead_investigator, co_lead_investigator, investigators, landing_page_url, doi, works_api_url, created_date, updated_date, priority)
-VALUES (c.id, c.display_name, c.description, c.funder_id, c.funder_award_id, c.amount, c.currency, c.funder, c.funding_type, c.funder_scheme, c.provenance, c.start_date, c.end_date, c.start_year, c.end_year, c.lead_investigator, c.co_lead_investigator, c.investigators, c.landing_page_url, c.doi, c.works_api_url, c.created_date, c.updated_date, c.priority);
-
--- COMMAND ----------
-
-SET VAR awards_skipped = CASE WHEN session.nsf_award_search_result.state = 'skipped' THEN array_append(session.awards_skipped, 'nsf_award_search') ELSE session.awards_skipped END;
-
--- COMMAND ----------
-
--- nsf_award_search: result row (pre-write metrics remain frozen).
-SELECT to_json(session.nsf_award_search_result) AS result;
-
--- COMMAND ----------
-
--- wellcome_trust: candidate mapping. monthly fetch cadence (descriptive).
-CREATE OR REPLACE TEMP VIEW wellcome_trust_files AS
-SELECT *, _metadata.file_path AS _file_path, _metadata.file_modification_time AS _file_modified
-FROM read_files('s3://openalex-ingest/awards/wellcome/*.parquet', format => 'parquet');
-
--- COMMAND ----------
-
-DECLARE OR REPLACE VARIABLE wellcome_trust_object STRING;
-
--- COMMAND ----------
-
--- Max modification time, then path: exactly one file even on a timestamp tie.
-SET VAR wellcome_trust_object = (SELECT _file_path FROM wellcome_trust_files
- GROUP BY _file_path, _file_modified ORDER BY _file_modified DESC, _file_path DESC LIMIT 1);
-
--- COMMAND ----------
-
-CREATE OR REPLACE TEMP VIEW wellcome_trust_input AS SELECT * EXCEPT (_file_path, _file_modified) FROM wellcome_trust_files WHERE _file_path = session.wellcome_trust_object;
-
--- COMMAND ----------
-
-SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
-
--- COMMAND ----------
-
-SET VAR awards_sql = 'CREATE OR REPLACE TEMP VIEW wellcome_trust_baseline AS SELECT * FROM ' || session.awards_target || ' VERSION AS OF ' || CAST(session.awards_version AS STRING) || ' WHERE provenance = ' || chr(39) || 'wellcome_trust' || chr(39) || ' AND priority = 22';
-
--- COMMAND ----------
-
-EXECUTE IMMEDIATE awards_sql;
-
--- COMMAND ----------
-
-CREATE OR REPLACE TEMP VIEW wellcome_trust_candidate AS
+SELECT * FROM incoming)
+UNION ALL
 -- Legacy mapping from CreateWellcomeAwards.ipynb, origin c3db0a32.
 -- _change is runner metadata, never a raw column. Compare all 22 other columns null-safely.
-WITH
+-- wellcome_trust: priority 22, monthly fetch cadence (descriptive).
+SELECT 'wellcome_trust' AS _source, * FROM (
+WITH wellcome_trust_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/wellcome/*.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'wellcome_trust')
+),
 -- Get Wellcome Trust funder from OpenAlex by explicit funder_id
 wellcome_funder AS (
     SELECT
@@ -573,195 +426,17 @@ incoming AS (
         CAST(updated_date AS timestamp) AS updated_date,
         22 AS priority
     FROM awards_transformed
-),
-baseline AS (
-    SELECT * FROM wellcome_trust_baseline
-),
--- Compare trailing-space-normalized payload only; never normalize emitted baseline values.
--- Existing funder structs are frozen independently of other payload changes.
-compared AS (
-    SELECT i.*, struct(b.*) AS baseline_row,
-        b.funder_id IS NOT NULL AS _exists,
-        (i.id <=> b.id)
-        AND (rtrim(i.display_name) <=> rtrim(b.display_name))
-        AND (rtrim(i.description) <=> rtrim(b.description))
-        AND (i.funder_id <=> b.funder_id)
-        AND (rtrim(i.funder_award_id) <=> rtrim(b.funder_award_id))
-        AND (i.amount <=> b.amount)
-        AND (rtrim(i.currency) <=> rtrim(b.currency))
-        AND (rtrim(i.funding_type) <=> rtrim(b.funding_type))
-        AND (rtrim(i.funder_scheme) <=> rtrim(b.funder_scheme))
-        AND (rtrim(i.provenance) <=> rtrim(b.provenance))
-        AND (i.start_date <=> b.start_date)
-        AND (i.end_date <=> b.end_date)
-        AND (i.start_year <=> b.start_year)
-        AND (i.end_year <=> b.end_year)
-        AND (IF(i.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.lead_investigator.given_name), 'family_name', rtrim(i.lead_investigator.family_name), 'orcid', rtrim(i.lead_investigator.orcid), 'role_start', i.lead_investigator.role_start, 'affiliation', IF(i.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.lead_investigator.affiliation.name), 'country', rtrim(i.lead_investigator.affiliation.country), 'ids', transform(i.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.lead_investigator.given_name), 'family_name', rtrim(b.lead_investigator.family_name), 'orcid', rtrim(b.lead_investigator.orcid), 'role_start', b.lead_investigator.role_start, 'affiliation', IF(b.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.lead_investigator.affiliation.name), 'country', rtrim(b.lead_investigator.affiliation.country), 'ids', transform(b.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
-        AND (IF(i.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.co_lead_investigator.given_name), 'family_name', rtrim(i.co_lead_investigator.family_name), 'orcid', rtrim(i.co_lead_investigator.orcid), 'role_start', i.co_lead_investigator.role_start, 'affiliation', IF(i.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.co_lead_investigator.affiliation.name), 'country', rtrim(i.co_lead_investigator.affiliation.country), 'ids', transform(i.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.co_lead_investigator.given_name), 'family_name', rtrim(b.co_lead_investigator.family_name), 'orcid', rtrim(b.co_lead_investigator.orcid), 'role_start', b.co_lead_investigator.role_start, 'affiliation', IF(b.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.co_lead_investigator.affiliation.name), 'country', rtrim(b.co_lead_investigator.affiliation.country), 'ids', transform(b.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
-        AND (transform(i.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))) <=> transform(b.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))))
-        AND (rtrim(i.landing_page_url) <=> rtrim(b.landing_page_url))
-        AND (rtrim(i.doi) <=> rtrim(b.doi))
-        AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
-        AND (i.priority <=> b.priority) AS _unchanged
-    FROM incoming i LEFT JOIN baseline b
-      ON i.funder_id <=> b.funder_id
-     AND lower(i.funder_award_id) <=> lower(b.funder_award_id)
 )
-SELECT
-    CASE WHEN _exists AND _unchanged THEN baseline_row.id ELSE id END AS id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.display_name ELSE display_name END AS display_name,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.description ELSE description END AS description,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_id ELSE funder_id END AS funder_id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_award_id ELSE funder_award_id END AS funder_award_id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.amount ELSE amount END AS amount,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.currency ELSE currency END AS currency,
-    CASE WHEN _exists THEN baseline_row.funder ELSE funder END AS funder,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funding_type ELSE funding_type END AS funding_type,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_scheme ELSE funder_scheme END AS funder_scheme,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.provenance ELSE provenance END AS provenance,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.start_date ELSE start_date END AS start_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.end_date ELSE end_date END AS end_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.start_year ELSE start_year END AS start_year,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.end_year ELSE end_year END AS end_year,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.lead_investigator ELSE lead_investigator END AS lead_investigator,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.co_lead_investigator ELSE co_lead_investigator END AS co_lead_investigator,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.investigators ELSE investigators END AS investigators,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.landing_page_url ELSE landing_page_url END AS landing_page_url,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.doi ELSE doi END AS doi,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.works_api_url ELSE works_api_url END AS works_api_url,
-    CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date ELSE updated_date END AS updated_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.priority ELSE priority END AS priority,
-    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change
-FROM compared;
-
--- COMMAND ----------
-
--- wellcome_trust: freeze guard metrics before MERGE; views themselves are lazy.
-DECLARE OR REPLACE VARIABLE wellcome_trust_result DEFAULT named_struct(
- 'source', 'wellcome_trust', 'object', '', 'baseline_version', CAST(0 AS BIGINT),
- 'rows_in', CAST(0 AS BIGINT), 'rows_prev', CAST(0 AS BIGINT),
- 'new', CAST(0 AS BIGINT), 'changed', CAST(0 AS BIGINT), 'unchanged', CAST(0 AS BIGINT),
- 'retained', CAST(0 AS BIGINT), 'duplicate_keys', CAST(0 AS BIGINT),
- 'invalid_rows', CAST(0 AS BIGINT), 'state', 'pending');
-
--- COMMAND ----------
-
-SET VAR wellcome_trust_result = (
-WITH stats AS (
- SELECT count(*) rows_in,
- (SELECT count(*) FROM wellcome_trust_baseline) rows_prev,
- count_if(_change = 'new') new, count_if(_change = 'changed') changed,
- count_if(_change = 'unchanged') unchanged,
- (SELECT count(*) FROM wellcome_trust_baseline b LEFT ANTI JOIN wellcome_trust_candidate c
- ON b.funder_id=c.funder_id AND lower(b.funder_award_id)=lower(c.funder_award_id)) retained,
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM wellcome_trust_candidate GROUP BY ALL HAVING count(*) > 1)) +
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM wellcome_trust_baseline GROUP BY ALL HAVING count(*) > 1)) duplicate_keys,
- count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
- OR NOT (provenance <=> 'wellcome_trust') OR NOT (priority <=> 22) OR funder_id NOT IN (4320311904)) invalid_rows
- FROM wellcome_trust_candidate
-)
-SELECT named_struct('source', 'wellcome_trust', 'object', session.wellcome_trust_object, 'baseline_version', session.awards_version,
- 'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
- 'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
- 'state', CASE WHEN rows_in * 100 < rows_prev * 98 OR duplicate_keys > 0 OR invalid_rows > 0 OR session.wellcome_trust_object IS NULL THEN 'skipped' ELSE 'written' END)
-FROM stats);
-
--- COMMAND ----------
-
--- wellcome_trust: empty source on guard rejection. No DELETE branch and no absent-row UNION.
-CREATE OR REPLACE TEMP VIEW wellcome_trust_guarded_candidate AS
-SELECT * FROM wellcome_trust_candidate WHERE session.wellcome_trust_result.state = 'written';
-
--- COMMAND ----------
-
--- Fail closed on target drift between guard and write. One writer per slice is still required.
-SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table))) = session.awards_version
- THEN 'baseline current' ELSE raise_error('Awards target advanced during validation; rerun') END;
-
--- COMMAND ----------
-
--- wellcome_trust: write, one MERGE statement.
-MERGE INTO IDENTIFIER(session.awards_target) t
-USING wellcome_trust_guarded_candidate c
-ON t.provenance = 'wellcome_trust' AND t.priority = 22
- AND t.funder_id = c.funder_id AND lower(t.funder_award_id) = lower(c.funder_award_id)
-WHEN MATCHED AND c._change = 'changed' THEN UPDATE SET
- id = c.id,
- display_name = c.display_name,
- description = c.description,
- funder_id = c.funder_id,
- funder_award_id = c.funder_award_id,
- amount = c.amount,
- currency = c.currency,
- funder = t.funder,
- funding_type = c.funding_type,
- funder_scheme = c.funder_scheme,
- provenance = c.provenance,
- start_date = c.start_date,
- end_date = c.end_date,
- start_year = c.start_year,
- end_year = c.end_year,
- lead_investigator = c.lead_investigator,
- co_lead_investigator = c.co_lead_investigator,
- investigators = c.investigators,
- landing_page_url = c.landing_page_url,
- doi = c.doi,
- works_api_url = c.works_api_url,
- created_date = t.created_date,
- updated_date = c.updated_date,
- priority = c.priority
-WHEN NOT MATCHED THEN INSERT (id, display_name, description, funder_id, funder_award_id, amount, currency, funder, funding_type, funder_scheme, provenance, start_date, end_date, start_year, end_year, lead_investigator, co_lead_investigator, investigators, landing_page_url, doi, works_api_url, created_date, updated_date, priority)
-VALUES (c.id, c.display_name, c.description, c.funder_id, c.funder_award_id, c.amount, c.currency, c.funder, c.funding_type, c.funder_scheme, c.provenance, c.start_date, c.end_date, c.start_year, c.end_year, c.lead_investigator, c.co_lead_investigator, c.investigators, c.landing_page_url, c.doi, c.works_api_url, c.created_date, c.updated_date, c.priority);
-
--- COMMAND ----------
-
-SET VAR awards_skipped = CASE WHEN session.wellcome_trust_result.state = 'skipped' THEN array_append(session.awards_skipped, 'wellcome_trust') ELSE session.awards_skipped END;
-
--- COMMAND ----------
-
--- wellcome_trust: result row (pre-write metrics remain frozen).
-SELECT to_json(session.wellcome_trust_result) AS result;
-
--- COMMAND ----------
-
--- cordis: candidate mapping. manual fetch cadence (descriptive).
-CREATE OR REPLACE TEMP VIEW cordis_files AS
-SELECT *, _metadata.file_path AS _file_path, _metadata.file_modification_time AS _file_modified
-FROM read_files('s3://openalex-ingest/awards/european_commission/*.parquet', format => 'parquet');
-
--- COMMAND ----------
-
-DECLARE OR REPLACE VARIABLE cordis_object STRING;
-
--- COMMAND ----------
-
--- Max modification time, then path: exactly one file even on a timestamp tie.
-SET VAR cordis_object = (SELECT _file_path FROM cordis_files
- GROUP BY _file_path, _file_modified ORDER BY _file_modified DESC, _file_path DESC LIMIT 1);
-
--- COMMAND ----------
-
-CREATE OR REPLACE TEMP VIEW cordis_input AS SELECT * EXCEPT (_file_path, _file_modified) FROM cordis_files WHERE _file_path = session.cordis_object;
-
--- COMMAND ----------
-
-SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
-
--- COMMAND ----------
-
-SET VAR awards_sql = 'CREATE OR REPLACE TEMP VIEW cordis_baseline AS SELECT * FROM ' || session.awards_target || ' VERSION AS OF ' || CAST(session.awards_version AS STRING) || ' WHERE provenance = ' || chr(39) || 'cordis' || chr(39) || ' AND priority = 27';
-
--- COMMAND ----------
-
-EXECUTE IMMEDIATE awards_sql;
-
--- COMMAND ----------
-
-CREATE OR REPLACE TEMP VIEW cordis_candidate AS
+SELECT * FROM incoming)
+UNION ALL
 -- Legacy mapping from CreateEuropeanCommissionAwards.ipynb, origin c3db0a32.
 -- _change is runner metadata, never a raw column. Compare all 22 other columns null-safely.
-WITH
+-- cordis: priority 27, manual fetch cadence (descriptive).
+SELECT 'cordis' AS _source, * FROM (
+WITH cordis_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/european_commission/*.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'cordis')
+),
 -- Resolve the three emitting funders by ID from the canonical table.
 funders AS (
     SELECT funder_id, display_name, ror_id, doi
@@ -946,195 +621,17 @@ incoming AS (
         CAST(updated_date AS timestamp) AS updated_date,
         27 AS priority
     FROM awards_transformed
-),
-baseline AS (
-    SELECT * FROM cordis_baseline
-),
--- Compare trailing-space-normalized payload only; never normalize emitted baseline values.
--- Existing funder structs are frozen independently of other payload changes.
-compared AS (
-    SELECT i.*, struct(b.*) AS baseline_row,
-        b.funder_id IS NOT NULL AS _exists,
-        (i.id <=> b.id)
-        AND (rtrim(i.display_name) <=> rtrim(b.display_name))
-        AND (rtrim(i.description) <=> rtrim(b.description))
-        AND (i.funder_id <=> b.funder_id)
-        AND (rtrim(i.funder_award_id) <=> rtrim(b.funder_award_id))
-        AND (i.amount <=> b.amount)
-        AND (rtrim(i.currency) <=> rtrim(b.currency))
-        AND (rtrim(i.funding_type) <=> rtrim(b.funding_type))
-        AND (rtrim(i.funder_scheme) <=> rtrim(b.funder_scheme))
-        AND (rtrim(i.provenance) <=> rtrim(b.provenance))
-        AND (i.start_date <=> b.start_date)
-        AND (i.end_date <=> b.end_date)
-        AND (i.start_year <=> b.start_year)
-        AND (i.end_year <=> b.end_year)
-        AND (IF(i.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.lead_investigator.given_name), 'family_name', rtrim(i.lead_investigator.family_name), 'orcid', rtrim(i.lead_investigator.orcid), 'role_start', i.lead_investigator.role_start, 'affiliation', IF(i.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.lead_investigator.affiliation.name), 'country', rtrim(i.lead_investigator.affiliation.country), 'ids', transform(i.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.lead_investigator.given_name), 'family_name', rtrim(b.lead_investigator.family_name), 'orcid', rtrim(b.lead_investigator.orcid), 'role_start', b.lead_investigator.role_start, 'affiliation', IF(b.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.lead_investigator.affiliation.name), 'country', rtrim(b.lead_investigator.affiliation.country), 'ids', transform(b.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
-        AND (IF(i.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.co_lead_investigator.given_name), 'family_name', rtrim(i.co_lead_investigator.family_name), 'orcid', rtrim(i.co_lead_investigator.orcid), 'role_start', i.co_lead_investigator.role_start, 'affiliation', IF(i.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.co_lead_investigator.affiliation.name), 'country', rtrim(i.co_lead_investigator.affiliation.country), 'ids', transform(i.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.co_lead_investigator.given_name), 'family_name', rtrim(b.co_lead_investigator.family_name), 'orcid', rtrim(b.co_lead_investigator.orcid), 'role_start', b.co_lead_investigator.role_start, 'affiliation', IF(b.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.co_lead_investigator.affiliation.name), 'country', rtrim(b.co_lead_investigator.affiliation.country), 'ids', transform(b.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
-        AND (transform(i.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))) <=> transform(b.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))))
-        AND (rtrim(i.landing_page_url) <=> rtrim(b.landing_page_url))
-        AND (rtrim(i.doi) <=> rtrim(b.doi))
-        AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
-        AND (i.priority <=> b.priority) AS _unchanged
-    FROM incoming i LEFT JOIN baseline b
-      ON i.funder_id <=> b.funder_id
-     AND lower(i.funder_award_id) <=> lower(b.funder_award_id)
 )
-SELECT
-    CASE WHEN _exists AND _unchanged THEN baseline_row.id ELSE id END AS id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.display_name ELSE display_name END AS display_name,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.description ELSE description END AS description,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_id ELSE funder_id END AS funder_id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_award_id ELSE funder_award_id END AS funder_award_id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.amount ELSE amount END AS amount,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.currency ELSE currency END AS currency,
-    CASE WHEN _exists THEN baseline_row.funder ELSE funder END AS funder,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funding_type ELSE funding_type END AS funding_type,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_scheme ELSE funder_scheme END AS funder_scheme,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.provenance ELSE provenance END AS provenance,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.start_date ELSE start_date END AS start_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.end_date ELSE end_date END AS end_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.start_year ELSE start_year END AS start_year,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.end_year ELSE end_year END AS end_year,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.lead_investigator ELSE lead_investigator END AS lead_investigator,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.co_lead_investigator ELSE co_lead_investigator END AS co_lead_investigator,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.investigators ELSE investigators END AS investigators,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.landing_page_url ELSE landing_page_url END AS landing_page_url,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.doi ELSE doi END AS doi,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.works_api_url ELSE works_api_url END AS works_api_url,
-    CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date ELSE updated_date END AS updated_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.priority ELSE priority END AS priority,
-    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change
-FROM compared;
-
--- COMMAND ----------
-
--- cordis: freeze guard metrics before MERGE; views themselves are lazy.
-DECLARE OR REPLACE VARIABLE cordis_result DEFAULT named_struct(
- 'source', 'cordis', 'object', '', 'baseline_version', CAST(0 AS BIGINT),
- 'rows_in', CAST(0 AS BIGINT), 'rows_prev', CAST(0 AS BIGINT),
- 'new', CAST(0 AS BIGINT), 'changed', CAST(0 AS BIGINT), 'unchanged', CAST(0 AS BIGINT),
- 'retained', CAST(0 AS BIGINT), 'duplicate_keys', CAST(0 AS BIGINT),
- 'invalid_rows', CAST(0 AS BIGINT), 'state', 'pending');
-
--- COMMAND ----------
-
-SET VAR cordis_result = (
-WITH stats AS (
- SELECT count(*) rows_in,
- (SELECT count(*) FROM cordis_baseline) rows_prev,
- count_if(_change = 'new') new, count_if(_change = 'changed') changed,
- count_if(_change = 'unchanged') unchanged,
- (SELECT count(*) FROM cordis_baseline b LEFT ANTI JOIN cordis_candidate c
- ON b.funder_id=c.funder_id AND lower(b.funder_award_id)=lower(c.funder_award_id)) retained,
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM cordis_candidate GROUP BY ALL HAVING count(*) > 1)) +
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM cordis_baseline GROUP BY ALL HAVING count(*) > 1)) duplicate_keys,
- count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
- OR NOT (provenance <=> 'cordis') OR NOT (priority <=> 27) OR funder_id NOT IN (4320320300, 4320338438, 4320338448)) invalid_rows
- FROM cordis_candidate
-)
-SELECT named_struct('source', 'cordis', 'object', session.cordis_object, 'baseline_version', session.awards_version,
- 'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
- 'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
- 'state', CASE WHEN rows_in * 100 < rows_prev * 98 OR duplicate_keys > 0 OR invalid_rows > 0 OR session.cordis_object IS NULL THEN 'skipped' ELSE 'written' END)
-FROM stats);
-
--- COMMAND ----------
-
--- cordis: empty source on guard rejection. No DELETE branch and no absent-row UNION.
-CREATE OR REPLACE TEMP VIEW cordis_guarded_candidate AS
-SELECT * FROM cordis_candidate WHERE session.cordis_result.state = 'written';
-
--- COMMAND ----------
-
--- Fail closed on target drift between guard and write. One writer per slice is still required.
-SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table))) = session.awards_version
- THEN 'baseline current' ELSE raise_error('Awards target advanced during validation; rerun') END;
-
--- COMMAND ----------
-
--- cordis: write, one MERGE statement.
-MERGE INTO IDENTIFIER(session.awards_target) t
-USING cordis_guarded_candidate c
-ON t.provenance = 'cordis' AND t.priority = 27
- AND t.funder_id = c.funder_id AND lower(t.funder_award_id) = lower(c.funder_award_id)
-WHEN MATCHED AND c._change = 'changed' THEN UPDATE SET
- id = c.id,
- display_name = c.display_name,
- description = c.description,
- funder_id = c.funder_id,
- funder_award_id = c.funder_award_id,
- amount = c.amount,
- currency = c.currency,
- funder = t.funder,
- funding_type = c.funding_type,
- funder_scheme = c.funder_scheme,
- provenance = c.provenance,
- start_date = c.start_date,
- end_date = c.end_date,
- start_year = c.start_year,
- end_year = c.end_year,
- lead_investigator = c.lead_investigator,
- co_lead_investigator = c.co_lead_investigator,
- investigators = c.investigators,
- landing_page_url = c.landing_page_url,
- doi = c.doi,
- works_api_url = c.works_api_url,
- created_date = t.created_date,
- updated_date = c.updated_date,
- priority = c.priority
-WHEN NOT MATCHED THEN INSERT (id, display_name, description, funder_id, funder_award_id, amount, currency, funder, funding_type, funder_scheme, provenance, start_date, end_date, start_year, end_year, lead_investigator, co_lead_investigator, investigators, landing_page_url, doi, works_api_url, created_date, updated_date, priority)
-VALUES (c.id, c.display_name, c.description, c.funder_id, c.funder_award_id, c.amount, c.currency, c.funder, c.funding_type, c.funder_scheme, c.provenance, c.start_date, c.end_date, c.start_year, c.end_year, c.lead_investigator, c.co_lead_investigator, c.investigators, c.landing_page_url, c.doi, c.works_api_url, c.created_date, c.updated_date, c.priority);
-
--- COMMAND ----------
-
-SET VAR awards_skipped = CASE WHEN session.cordis_result.state = 'skipped' THEN array_append(session.awards_skipped, 'cordis') ELSE session.awards_skipped END;
-
--- COMMAND ----------
-
--- cordis: result row (pre-write metrics remain frozen).
-SELECT to_json(session.cordis_result) AS result;
-
--- COMMAND ----------
-
--- gates_foundation: candidate mapping. manual fetch cadence (descriptive).
-CREATE OR REPLACE TEMP VIEW gates_foundation_files AS
-SELECT *, _metadata.file_path AS _file_path, _metadata.file_modification_time AS _file_modified
-FROM read_files('s3://openalex-ingest/awards/gates/*.parquet', format => 'parquet');
-
--- COMMAND ----------
-
-DECLARE OR REPLACE VARIABLE gates_foundation_object STRING;
-
--- COMMAND ----------
-
--- Max modification time, then path: exactly one file even on a timestamp tie.
-SET VAR gates_foundation_object = (SELECT _file_path FROM gates_foundation_files
- GROUP BY _file_path, _file_modified ORDER BY _file_modified DESC, _file_path DESC LIMIT 1);
-
--- COMMAND ----------
-
-CREATE OR REPLACE TEMP VIEW gates_foundation_input AS SELECT * EXCEPT (_file_path, _file_modified) FROM gates_foundation_files WHERE _file_path = session.gates_foundation_object;
-
--- COMMAND ----------
-
-SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
-
--- COMMAND ----------
-
-SET VAR awards_sql = 'CREATE OR REPLACE TEMP VIEW gates_foundation_baseline AS SELECT * FROM ' || session.awards_target || ' VERSION AS OF ' || CAST(session.awards_version AS STRING) || ' WHERE provenance = ' || chr(39) || 'gates_foundation' || chr(39) || ' AND priority = 4';
-
--- COMMAND ----------
-
-EXECUTE IMMEDIATE awards_sql;
-
--- COMMAND ----------
-
-CREATE OR REPLACE TEMP VIEW gates_foundation_candidate AS
+SELECT * FROM incoming)
+UNION ALL
 -- Legacy mapping from CreateGatesAwards.ipynb, origin c3db0a32.
 -- _change is runner metadata, never a raw column. Compare all 22 other columns null-safely.
-WITH
+-- gates_foundation: priority 4, manual fetch cadence (descriptive).
+SELECT 'gates_foundation' AS _source, * FROM (
+WITH gates_foundation_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/gates/*.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'gates_foundation')
+),
 -- Get Gates Foundation funder from OpenAlex by explicit funder_id
 gates_funder AS (
     SELECT
@@ -1287,195 +784,17 @@ incoming AS (
         CAST(updated_date AS timestamp) AS updated_date,
         4 AS priority
     FROM awards_transformed
-),
-baseline AS (
-    SELECT * FROM gates_foundation_baseline
-),
--- Compare trailing-space-normalized payload only; never normalize emitted baseline values.
--- Existing funder structs are frozen independently of other payload changes.
-compared AS (
-    SELECT i.*, struct(b.*) AS baseline_row,
-        b.funder_id IS NOT NULL AS _exists,
-        (i.id <=> b.id)
-        AND (rtrim(i.display_name) <=> rtrim(b.display_name))
-        AND (rtrim(i.description) <=> rtrim(b.description))
-        AND (i.funder_id <=> b.funder_id)
-        AND (rtrim(i.funder_award_id) <=> rtrim(b.funder_award_id))
-        AND (i.amount <=> b.amount)
-        AND (rtrim(i.currency) <=> rtrim(b.currency))
-        AND (rtrim(i.funding_type) <=> rtrim(b.funding_type))
-        AND (rtrim(i.funder_scheme) <=> rtrim(b.funder_scheme))
-        AND (rtrim(i.provenance) <=> rtrim(b.provenance))
-        AND (i.start_date <=> b.start_date)
-        AND (i.end_date <=> b.end_date)
-        AND (i.start_year <=> b.start_year)
-        AND (i.end_year <=> b.end_year)
-        AND (IF(i.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.lead_investigator.given_name), 'family_name', rtrim(i.lead_investigator.family_name), 'orcid', rtrim(i.lead_investigator.orcid), 'role_start', i.lead_investigator.role_start, 'affiliation', IF(i.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.lead_investigator.affiliation.name), 'country', rtrim(i.lead_investigator.affiliation.country), 'ids', transform(i.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.lead_investigator.given_name), 'family_name', rtrim(b.lead_investigator.family_name), 'orcid', rtrim(b.lead_investigator.orcid), 'role_start', b.lead_investigator.role_start, 'affiliation', IF(b.lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.lead_investigator.affiliation.name), 'country', rtrim(b.lead_investigator.affiliation.country), 'ids', transform(b.lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
-        AND (IF(i.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(i.co_lead_investigator.given_name), 'family_name', rtrim(i.co_lead_investigator.family_name), 'orcid', rtrim(i.co_lead_investigator.orcid), 'role_start', i.co_lead_investigator.role_start, 'affiliation', IF(i.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(i.co_lead_investigator.affiliation.name), 'country', rtrim(i.co_lead_investigator.affiliation.country), 'ids', transform(i.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))) <=> IF(b.co_lead_investigator IS NULL, NULL, named_struct('given_name', rtrim(b.co_lead_investigator.given_name), 'family_name', rtrim(b.co_lead_investigator.family_name), 'orcid', rtrim(b.co_lead_investigator.orcid), 'role_start', b.co_lead_investigator.role_start, 'affiliation', IF(b.co_lead_investigator.affiliation IS NULL, NULL, named_struct('name', rtrim(b.co_lead_investigator.affiliation.name), 'country', rtrim(b.co_lead_investigator.affiliation.country), 'ids', transform(b.co_lead_investigator.affiliation.ids, x2 -> IF(x2 IS NULL, NULL, named_struct('id', rtrim(x2.id), 'type', rtrim(x2.type), 'asserted_by', rtrim(x2.asserted_by)))))))))
-        AND (transform(i.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))) <=> transform(b.investigators, x0 -> IF(x0 IS NULL, NULL, named_struct('given_name', rtrim(x0.given_name), 'family_name', rtrim(x0.family_name), 'orcid', rtrim(x0.orcid), 'role_start', x0.role_start, 'affiliation', IF(x0.affiliation IS NULL, NULL, named_struct('name', rtrim(x0.affiliation.name), 'country', rtrim(x0.affiliation.country), 'ids', transform(x0.affiliation.ids, x3 -> IF(x3 IS NULL, NULL, named_struct('id', rtrim(x3.id), 'type', rtrim(x3.type), 'asserted_by', rtrim(x3.asserted_by))))))))))
-        AND (rtrim(i.landing_page_url) <=> rtrim(b.landing_page_url))
-        AND (rtrim(i.doi) <=> rtrim(b.doi))
-        AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
-        AND (i.priority <=> b.priority) AS _unchanged
-    FROM incoming i LEFT JOIN baseline b
-      ON i.funder_id <=> b.funder_id
-     AND lower(i.funder_award_id) <=> lower(b.funder_award_id)
 )
-SELECT
-    CASE WHEN _exists AND _unchanged THEN baseline_row.id ELSE id END AS id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.display_name ELSE display_name END AS display_name,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.description ELSE description END AS description,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_id ELSE funder_id END AS funder_id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_award_id ELSE funder_award_id END AS funder_award_id,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.amount ELSE amount END AS amount,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.currency ELSE currency END AS currency,
-    CASE WHEN _exists THEN baseline_row.funder ELSE funder END AS funder,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funding_type ELSE funding_type END AS funding_type,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.funder_scheme ELSE funder_scheme END AS funder_scheme,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.provenance ELSE provenance END AS provenance,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.start_date ELSE start_date END AS start_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.end_date ELSE end_date END AS end_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.start_year ELSE start_year END AS start_year,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.end_year ELSE end_year END AS end_year,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.lead_investigator ELSE lead_investigator END AS lead_investigator,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.co_lead_investigator ELSE co_lead_investigator END AS co_lead_investigator,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.investigators ELSE investigators END AS investigators,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.landing_page_url ELSE landing_page_url END AS landing_page_url,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.doi ELSE doi END AS doi,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.works_api_url ELSE works_api_url END AS works_api_url,
-    CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date ELSE updated_date END AS updated_date,
-    CASE WHEN _exists AND _unchanged THEN baseline_row.priority ELSE priority END AS priority,
-    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change
-FROM compared;
-
--- COMMAND ----------
-
--- gates_foundation: freeze guard metrics before MERGE; views themselves are lazy.
-DECLARE OR REPLACE VARIABLE gates_foundation_result DEFAULT named_struct(
- 'source', 'gates_foundation', 'object', '', 'baseline_version', CAST(0 AS BIGINT),
- 'rows_in', CAST(0 AS BIGINT), 'rows_prev', CAST(0 AS BIGINT),
- 'new', CAST(0 AS BIGINT), 'changed', CAST(0 AS BIGINT), 'unchanged', CAST(0 AS BIGINT),
- 'retained', CAST(0 AS BIGINT), 'duplicate_keys', CAST(0 AS BIGINT),
- 'invalid_rows', CAST(0 AS BIGINT), 'state', 'pending');
-
--- COMMAND ----------
-
-SET VAR gates_foundation_result = (
-WITH stats AS (
- SELECT count(*) rows_in,
- (SELECT count(*) FROM gates_foundation_baseline) rows_prev,
- count_if(_change = 'new') new, count_if(_change = 'changed') changed,
- count_if(_change = 'unchanged') unchanged,
- (SELECT count(*) FROM gates_foundation_baseline b LEFT ANTI JOIN gates_foundation_candidate c
- ON b.funder_id=c.funder_id AND lower(b.funder_award_id)=lower(c.funder_award_id)) retained,
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM gates_foundation_candidate GROUP BY ALL HAVING count(*) > 1)) +
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM gates_foundation_baseline GROUP BY ALL HAVING count(*) > 1)) duplicate_keys,
- count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
- OR NOT (provenance <=> 'gates_foundation') OR NOT (priority <=> 4) OR funder_id NOT IN (4320306137)) invalid_rows
- FROM gates_foundation_candidate
-)
-SELECT named_struct('source', 'gates_foundation', 'object', session.gates_foundation_object, 'baseline_version', session.awards_version,
- 'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
- 'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
- 'state', CASE WHEN rows_in * 100 < rows_prev * 98 OR duplicate_keys > 0 OR invalid_rows > 0 OR session.gates_foundation_object IS NULL THEN 'skipped' ELSE 'written' END)
-FROM stats);
-
--- COMMAND ----------
-
--- gates_foundation: empty source on guard rejection. No DELETE branch and no absent-row UNION.
-CREATE OR REPLACE TEMP VIEW gates_foundation_guarded_candidate AS
-SELECT * FROM gates_foundation_candidate WHERE session.gates_foundation_result.state = 'written';
-
--- COMMAND ----------
-
--- Fail closed on target drift between guard and write. One writer per slice is still required.
-SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table))) = session.awards_version
- THEN 'baseline current' ELSE raise_error('Awards target advanced during validation; rerun') END;
-
--- COMMAND ----------
-
--- gates_foundation: write, one MERGE statement.
-MERGE INTO IDENTIFIER(session.awards_target) t
-USING gates_foundation_guarded_candidate c
-ON t.provenance = 'gates_foundation' AND t.priority = 4
- AND t.funder_id = c.funder_id AND lower(t.funder_award_id) = lower(c.funder_award_id)
-WHEN MATCHED AND c._change = 'changed' THEN UPDATE SET
- id = c.id,
- display_name = c.display_name,
- description = c.description,
- funder_id = c.funder_id,
- funder_award_id = c.funder_award_id,
- amount = c.amount,
- currency = c.currency,
- funder = t.funder,
- funding_type = c.funding_type,
- funder_scheme = c.funder_scheme,
- provenance = c.provenance,
- start_date = c.start_date,
- end_date = c.end_date,
- start_year = c.start_year,
- end_year = c.end_year,
- lead_investigator = c.lead_investigator,
- co_lead_investigator = c.co_lead_investigator,
- investigators = c.investigators,
- landing_page_url = c.landing_page_url,
- doi = c.doi,
- works_api_url = c.works_api_url,
- created_date = t.created_date,
- updated_date = c.updated_date,
- priority = c.priority
-WHEN NOT MATCHED THEN INSERT (id, display_name, description, funder_id, funder_award_id, amount, currency, funder, funding_type, funder_scheme, provenance, start_date, end_date, start_year, end_year, lead_investigator, co_lead_investigator, investigators, landing_page_url, doi, works_api_url, created_date, updated_date, priority)
-VALUES (c.id, c.display_name, c.description, c.funder_id, c.funder_award_id, c.amount, c.currency, c.funder, c.funding_type, c.funder_scheme, c.provenance, c.start_date, c.end_date, c.start_year, c.end_year, c.lead_investigator, c.co_lead_investigator, c.investigators, c.landing_page_url, c.doi, c.works_api_url, c.created_date, c.updated_date, c.priority);
-
--- COMMAND ----------
-
-SET VAR awards_skipped = CASE WHEN session.gates_foundation_result.state = 'skipped' THEN array_append(session.awards_skipped, 'gates_foundation') ELSE session.awards_skipped END;
-
--- COMMAND ----------
-
--- gates_foundation: result row (pre-write metrics remain frozen).
-SELECT to_json(session.gates_foundation_result) AS result;
-
--- COMMAND ----------
-
--- kaken: candidate mapping. monthly fetch cadence (descriptive).
-CREATE OR REPLACE TEMP VIEW kaken_files AS
-SELECT *, _metadata.file_path AS _file_path, _metadata.file_modification_time AS _file_modified
-FROM read_files('s3://openalex-ingest/awards/kaken/*.parquet', format => 'parquet');
-
--- COMMAND ----------
-
-DECLARE OR REPLACE VARIABLE kaken_object STRING;
-
--- COMMAND ----------
-
--- Max modification time, then path: exactly one file even on a timestamp tie.
-SET VAR kaken_object = (SELECT _file_path FROM kaken_files
- GROUP BY _file_path, _file_modified ORDER BY _file_modified DESC, _file_path DESC LIMIT 1);
-
--- COMMAND ----------
-
-CREATE OR REPLACE TEMP VIEW kaken_input AS SELECT * EXCEPT (_file_path, _file_modified) FROM kaken_files WHERE _file_path = session.kaken_object;
-
--- COMMAND ----------
-
-SET VAR awards_version = (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_table)));
-
--- COMMAND ----------
-
-SET VAR awards_sql = 'CREATE OR REPLACE TEMP VIEW kaken_baseline AS SELECT * FROM ' || session.awards_target || ' VERSION AS OF ' || CAST(session.awards_version AS STRING) || ' WHERE provenance = ' || chr(39) || 'kaken' || chr(39) || ' AND priority = 10';
-
--- COMMAND ----------
-
-EXECUTE IMMEDIATE awards_sql;
-
--- COMMAND ----------
-
-CREATE OR REPLACE TEMP VIEW kaken_candidate AS
+SELECT * FROM incoming)
+UNION ALL
 -- Legacy mapping from CreateKAKENAwards.ipynb, origin c3db0a32.
 -- _change is runner metadata, never a raw column. Compare all 22 other columns null-safely.
-WITH
+-- kaken: priority 10, monthly fetch cadence (descriptive).
+SELECT 'kaken' AS _source, * FROM (
+WITH kaken_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/kaken/*.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'kaken')
+),
 -- Get JSPS funder from OpenAlex
 jsps_funder AS (
     SELECT
@@ -1631,9 +950,11 @@ incoming AS (
         CAST(updated_date AS timestamp) AS updated_date,
         10 AS priority
     FROM awards_transformed
+)
+SELECT * FROM incoming)
 ),
 baseline AS (
-    SELECT * FROM kaken_baseline
+    SELECT b.* FROM awards_baseline b LEFT SEMI JOIN awards_sources s ON s.source = b.provenance AND s.chunk = 1
 ),
 -- Compare trailing-space-normalized payload only; never normalize emitted baseline values.
 -- Existing funder structs are frozen independently of other payload changes.
@@ -1661,11 +982,13 @@ compared AS (
         AND (rtrim(i.doi) <=> rtrim(b.doi))
         AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
         AND (i.priority <=> b.priority) AS _unchanged
-    FROM incoming i LEFT JOIN baseline b
-      ON i.funder_id <=> b.funder_id
+    FROM awards_incoming i LEFT JOIN baseline b
+      ON b.provenance = i._source AND b.priority = i.priority
+     AND i.funder_id <=> b.funder_id
      AND lower(i.funder_award_id) <=> lower(b.funder_award_id)
 )
 SELECT
+    _source,
     CASE WHEN _exists AND _unchanged THEN baseline_row.id ELSE id END AS id,
     CASE WHEN _exists AND _unchanged THEN baseline_row.display_name ELSE display_name END AS display_name,
     CASE WHEN _exists AND _unchanged THEN baseline_row.description ELSE description END AS description,
@@ -1695,41 +1018,47 @@ FROM compared;
 
 -- COMMAND ----------
 
--- kaken: freeze guard metrics before MERGE; views themselves are lazy.
-DECLARE OR REPLACE VARIABLE kaken_result DEFAULT named_struct(
- 'source', 'kaken', 'object', '', 'baseline_version', CAST(0 AS BIGINT),
- 'rows_in', CAST(0 AS BIGINT), 'rows_prev', CAST(0 AS BIGINT),
- 'new', CAST(0 AS BIGINT), 'changed', CAST(0 AS BIGINT), 'unchanged', CAST(0 AS BIGINT),
- 'retained', CAST(0 AS BIGINT), 'duplicate_keys', CAST(0 AS BIGINT),
- 'invalid_rows', CAST(0 AS BIGINT), 'state', 'pending');
-
--- COMMAND ----------
-
-SET VAR kaken_result = (
-WITH stats AS (
- SELECT count(*) rows_in,
- (SELECT count(*) FROM kaken_baseline) rows_prev,
- count_if(_change = 'new') new, count_if(_change = 'changed') changed,
- count_if(_change = 'unchanged') unchanged,
- (SELECT count(*) FROM kaken_baseline b LEFT ANTI JOIN kaken_candidate c
- ON b.funder_id=c.funder_id AND lower(b.funder_award_id)=lower(c.funder_award_id)) retained,
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM kaken_candidate GROUP BY ALL HAVING count(*) > 1)) +
- (SELECT count(*) FROM (SELECT funder_id, lower(funder_award_id) FROM kaken_baseline GROUP BY ALL HAVING count(*) > 1)) duplicate_keys,
+-- Chunk 1: guard metrics in one pass over its candidate (grouped once by key), appended to the result rows and
+-- frozen before MERGE (views themselves are lazy).
+SET VAR awards_results = concat(session.awards_results, (
+WITH s AS (SELECT * FROM awards_sources WHERE chunk = 1),
+bl AS (SELECT b.* FROM awards_baseline b LEFT SEMI JOIN s ON s.source = b.provenance),
+k AS (
+ SELECT _source, funder_id, lower(funder_award_id) award_key, count(*) n,
+ count_if(_change = 'new') new, count_if(_change = 'changed') changed, count_if(_change = 'unchanged') unchanged,
  count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
- OR NOT (provenance <=> 'kaken') OR NOT (priority <=> 10) OR funder_id NOT IN (4320334764)) invalid_rows
- FROM kaken_candidate
+ OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows
+ FROM awards_candidate_1 JOIN s ON s.source = _source GROUP BY _source, funder_id, lower(funder_award_id)
+),
+c AS (SELECT _source, sum(n) rows_in, sum(new) new, sum(changed) changed, sum(unchanged) unchanged,
+ sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in FROM k GROUP BY _source),
+prev AS (SELECT provenance, count(*) rows_prev FROM bl GROUP BY provenance),
+retained AS (SELECT b.provenance, count(*) retained FROM bl b LEFT ANTI JOIN k
+ ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key GROUP BY b.provenance),
+dup_prev AS (SELECT provenance, count(*) n FROM (SELECT provenance, funder_id, lower(funder_award_id) FROM bl GROUP BY ALL HAVING count(*) > 1) GROUP BY provenance),
+m AS (
+ SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct,
+ coalesce(c.rows_in, 0) rows_in, coalesce(p.rows_prev, 0) rows_prev, coalesce(c.new, 0) new, coalesce(c.changed, 0) changed,
+ coalesce(c.unchanged, 0) unchanged, coalesce(r.retained, 0) retained, coalesce(c.dup_in, 0) + coalesce(dp.n, 0) duplicate_keys,
+ coalesce(c.invalid_rows, 0) invalid_rows
+ FROM s LEFT JOIN c ON c._source = s.source LEFT JOIN prev p ON p.provenance = s.source
+ LEFT JOIN retained r ON r.provenance = s.source LEFT JOIN dup_prev dp ON dp.provenance = s.source
 )
-SELECT named_struct('source', 'kaken', 'object', session.kaken_object, 'baseline_version', session.awards_version,
+SELECT transform(array_sort(collect_list(named_struct('ord', ord, 'r', named_struct('source', source, 'object', object, 'baseline_version', session.awards_version,
  'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
  'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
- 'state', CASE WHEN rows_in * 100 < rows_prev * 98 OR duplicate_keys > 0 OR invalid_rows > 0 OR session.kaken_object IS NULL THEN 'skipped' ELSE 'written' END)
-FROM stats);
+ 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL THEN 'skipped' ELSE 'written' END)))), x -> x.r)
+FROM m));
 
 -- COMMAND ----------
 
--- kaken: empty source on guard rejection. No DELETE branch and no absent-row UNION.
-CREATE OR REPLACE TEMP VIEW kaken_guarded_candidate AS
-SELECT * FROM kaken_candidate WHERE session.kaken_result.state = 'written';
+-- The sources that pass and have a new or changed row. A skipped source contributes nothing: no DELETE branch, no absent-row UNION.
+SET VAR awards_to_merge = (SELECT collect_list(r.source) FROM (SELECT explode(session.awards_results) AS r) WHERE r.state = 'written' AND r.new + r.changed > 0);
+
+-- COMMAND ----------
+
+-- Result rows, one per source (pre-write metrics remain frozen).
+SELECT to_json(r) AS result FROM (SELECT posexplode(session.awards_results) AS (pos, r)) ORDER BY pos;
 
 -- COMMAND ----------
 
@@ -1739,10 +1068,10 @@ SELECT CASE WHEN (SELECT max(version) FROM (DESCRIBE HISTORY IDENTIFIER(:raw_tab
 
 -- COMMAND ----------
 
--- kaken: write, one MERGE statement.
+-- Write, one MERGE statement for every source. Unchanged rows are left out of the source: they already match raw.
 MERGE INTO IDENTIFIER(session.awards_target) t
-USING kaken_guarded_candidate c
-ON t.provenance = 'kaken' AND t.priority = 10
+USING (SELECT * FROM (SELECT * FROM awards_candidate_1) WHERE array_contains(session.awards_to_merge, _source) AND _change <> 'unchanged') c
+ON t.provenance = c._source AND t.priority = c.priority
  AND t.funder_id = c.funder_id AND lower(t.funder_award_id) = lower(c.funder_award_id)
 WHEN MATCHED AND c._change = 'changed' THEN UPDATE SET
  id = c.id,
@@ -1774,13 +1103,6 @@ VALUES (c.id, c.display_name, c.description, c.funder_id, c.funder_award_id, c.a
 
 -- COMMAND ----------
 
-SET VAR awards_skipped = CASE WHEN session.kaken_result.state = 'skipped' THEN array_append(session.awards_skipped, 'kaken') ELSE session.awards_skipped END;
-
--- COMMAND ----------
-
--- kaken: result row (pre-write metrics remain frozen).
-SELECT to_json(session.kaken_result) AS result;
-
--- COMMAND ----------
-
-SELECT CASE WHEN size(session.awards_skipped) > 0 THEN raise_error('Skipped sources: ' || concat_ws(', ', session.awards_skipped)) ELSE 'All five sources written' END AS result;
+SELECT CASE WHEN exists(session.awards_results, r -> r.state = 'skipped')
+ THEN raise_error('Skipped sources: ' || concat_ws(', ', transform(filter(session.awards_results, r -> r.state = 'skipped'), r -> r.source)))
+ ELSE 'All five sources written' END AS result;

@@ -12,7 +12,6 @@ SQL = (AWARDS / 'CreateOrUpdateAwards.sql').read_text()
 CELLS = SQL.split('-- COMMAND ----------')
 ROWS = list(csv.DictReader((AWARDS / 'sources.csv').open(newline='')))
 SOURCES = [(r['source'], int(r['priority'])) for r in ROWS]
-FROZEN = [r['source'] for r in ROWS if r['fetch_cadence'] == 'frozen']
 COLUMNS = ('id display_name description funder_id funder_award_id amount currency funder '
            'funding_type funder_scheme provenance start_date end_date start_year end_year '
            'lead_investigator co_lead_investigator investigators landing_page_url doi '
@@ -23,9 +22,44 @@ gen = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gen)
 
 
-def group_of(source, sql=SQL):
-    group = sql[sql.index(f'-- {source}: candidate mapping.'):]
-    return group[:group.index(f'SELECT to_json(session.{source}_result) AS result;')]
+def cell(start):
+    """The one cell whose code starts with `start` (comment lines skipped)."""
+    found = [c for c in CELLS if '\n'.join(l for l in c.strip().splitlines() if not l.startswith('--')).startswith(start)]
+    assert len(found) == 1, (start, len(found))
+    return found[0]
+
+
+def cells(start):
+    return [c for c in CELLS if '\n'.join(l for l in c.strip().splitlines() if not l.startswith('--')).startswith(start)]
+
+
+NCHUNK = (len(ROWS) + gen.CHUNK - 1) // gen.CHUNK
+VIEWS = cells('CREATE OR REPLACE TEMP VIEW awards_candidate_')
+GUARDS = cells('SET VAR awards_results =')
+CANDIDATE = ''.join(VIEWS)
+GUARD = GUARDS[0]
+MERGE = cell('MERGE INTO ')
+
+
+def branch_of(source):
+    start = CANDIDATE.index(f"SELECT '{source}' AS _source, * FROM (")
+    return CANDIDATE[start:CANDIDATE.index('SELECT * FROM incoming)', start)]
+
+
+def test_chunks():
+    """Sources go in csv order into chunks of gen.CHUNK: one candidate view and one guard each, then one MERGE over all."""
+    assert len(VIEWS) == len(GUARDS) == NCHUNK
+    for c, view in enumerate(VIEWS, start=1):
+        assert view.count('CREATE OR REPLACE TEMP VIEW awards_candidate_') == 1 and f'awards_candidate_{c} AS' in view
+        assert f's.chunk = {c}' in view and f'WHERE chunk = {c})' in GUARDS[c - 1]
+        assert f'FROM awards_candidate_{c} JOIN s' in GUARDS[c - 1]
+        assert GUARDS[c - 1].count('FROM awards_candidate_') == 1   # one scan of its candidate, grouped once by key
+        mine = [r['source'] for r in ROWS[(c - 1) * gen.CHUNK:c * gen.CHUNK]]
+        assert [m for m in re.findall(r"SELECT '([a-z0-9_]+)' AS _source, \* FROM \(", view)] == mine
+        assert SQL.index(view) < SQL.index(GUARDS[c - 1])
+    assert 'concat(session.awards_results, (' in GUARD and 'DEFAULT array();' in SQL
+    union = ' UNION ALL '.join(f'SELECT * FROM awards_candidate_{c}' for c in range(1, NCHUNK + 1))
+    assert f'USING (SELECT * FROM ({union}) WHERE array_contains(session.awards_to_merge, _source)' in MERGE
 
 
 def test_generated_file_is_current():
@@ -38,9 +72,26 @@ def test_plain_sql_only():
     assert not (AWARDS / 'CreateOrUpdateAwards.py').exists()
     assert not re.search(r'(?m)^\s*(import |from |def |for |%python|# MAGIC)', SQL)
     assert '{{' not in SQL and '${' not in SQL
-    assert SQL.count('MERGE INTO ') == len(SOURCES)
-    assert 'UNION ALL' not in SQL and 'WHEN NOT MATCHED BY SOURCE' not in SQL
+    assert SQL.count('MERGE INTO ') == 1 and 'WHEN NOT MATCHED BY SOURCE' not in SQL
     assert not re.search(r'(?im)^\s*(DELETE|UPDATE|INSERT|RESTORE)\s', SQL)
+
+
+def test_one_pass_shape():
+    """The statement count does not grow with the sources: one baseline, one candidate view, one guard, one MERGE."""
+    assert len(CELLS) == 18 + 2 * NCHUNK
+    assert SQL.count('DESCRIBE HISTORY IDENTIFIER(:raw_table)') == 2
+    assert SQL.count('CREATE OR REPLACE TEMP VIEW ') == 2 + NCHUNK   # awards_sources, awards_baseline (EXECUTE IMMEDIATE), a candidate per chunk
+    assert SQL.count('DECLARE OR REPLACE VARIABLE ') == 7
+    assert SQL.count('VERSION AS OF ') == 1
+    order = ['SET VAR awards_objects =', 'SET VAR awards_version =', 'EXECUTE IMMEDIATE awards_sql',
+             'CREATE OR REPLACE TEMP VIEW awards_candidate_1', 'SET VAR awards_results =', 'SET VAR awards_to_merge =',
+             'SELECT to_json(r) AS result', 'Awards target advanced during validation', 'MERGE INTO ',
+             "raise_error('Skipped sources: '"]
+    assert [SQL.index(s) for s in order] == sorted(SQL.index(s) for s in order)
+    assert "raise_error('Skipped sources: '" in CELLS[-1] and "r -> r.state = 'skipped'" in CELLS[-1]
+    assert "ELSE 'written' END" in GUARD and 'rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL' in GUARD
+    assert 'count_if(n > 1) dup_in' in GUARD and GUARD.count('GROUP BY ALL HAVING count(*) > 1') == 1
+    assert "WHERE r.state = 'written' AND r.new + r.changed > 0" in SQL
 
 
 def test_closed_parameter_guard():
@@ -48,73 +99,70 @@ def test_closed_parameter_guard():
     assert "(:stage = 'prod' AND :raw_table = 'openalex.awards.openalex_awards_raw')" in first
     assert "OR (:stage = 'dev' AND :raw_table = 'openalex_dev.rohan_lab.gr1009_review_shadow_raw')" in first
     assert 'raise_error(' in first and 'must match an allowed production or review shadow pair' in first
-    assert SQL.count('DESCRIBE HISTORY IDENTIFIER(:raw_table)') == 2 * len(SOURCES)
     assert 'DESCRIBE HISTORY openalex_dev.' not in SQL
     assert 'IDENTIFIER(session.awards_target)' in SQL
 
 
+def test_sources_view_is_the_csv():
+    values = re.findall(r"^ \((\d+), '([a-z0-9_]+)', (\d+), (\d+), array\(([0-9L, ]+)\), '([a-z]+)', (\d+)\)", SQL, re.M)
+    assert [(int(o), s, int(p), f, ids, c, int(k)) for o, s, p, f, ids, c, k in values] == [
+        (n, r['source'], int(r['priority']), r['row_floor_pct'],
+         ', '.join(i[1:] + 'L' for i in r['funder_ids'].split('|')), r['fetch_cadence'], (n - 1) // gen.CHUNK + 1)
+        for n, r in enumerate(ROWS, start=1)]
+    assert "b LEFT SEMI JOIN awards_sources s ON b.provenance = s.source AND b.priority = s.source_priority" in SQL
+    objects = cell('SET VAR awards_objects =')
+    prefix = [r for r in ROWS if r['fetch_cadence'] != 'frozen']
+    assert objects.count('max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path))') == len(prefix)
+    for r in ROWS:   # a frozen row pins the object it names, without reading it; a prefix row reads its folder once
+        if r['fetch_cadence'] == 'frozen':
+            assert f" ('{r['source']}', '{r['s3_path']}')" in objects and r['s3_path'].endswith('.parquet')
+        else:
+            assert f"SELECT '{r['source']}' AS source, max_by(" in objects and f"FROM read_files('{r['s3_path']}*.parquet', format => 'parquet')" in objects
+
+
 @pytest.mark.parametrize('row', ROWS, ids=[r['source'] for r in ROWS])
-def test_source_contract(row):
-    source, priority, floor = row['source'], int(row['priority']), row['row_floor_pct']
-    group = group_of(source)
-    assert "format => 'parquet'" in group
-    assert '_metadata.file_path' in group and '_metadata.file_modification_time' in group
-    assert 'ORDER BY _file_modified DESC, _file_path DESC LIMIT 1' in group
-    assert f'WHERE _file_path = session.{source}_object' in group
-    assert 'VERSION AS OF ' in group
-    assert f'rows_in * 100 < rows_prev * {floor} OR duplicate_keys > 0 OR invalid_rows > 0' in group
-    assert group.count('GROUP BY ALL HAVING count(*) > 1') == 2
-    assert f"WHERE session.{source}_result.state = 'written'" in group
-    assert f'USING {source}_guarded_candidate c' in group
-    assert f"ON t.provenance = '{source}' AND t.priority = {priority}" in group
-    assert 'lower(t.funder_award_id) = lower(c.funder_award_id)' in group
-    assert "WHEN MATCHED AND c._change = 'changed'" in group
-    assert 'created_date = t.created_date' in group and 'funder = t.funder' in group
-    updates = re.search(r'THEN UPDATE SET\s+(.*?)\s+WHEN NOT MATCHED', group, re.S).group(1)
-    assert [assignment.split('=')[0].strip() for assignment in updates.split(',')] == COLUMNS
-    insert = re.search(r'WHEN NOT MATCHED THEN INSERT \(([^)]+)\)', group).group(1)
-    assert [c.strip() for c in insert.split(',')] == COLUMNS
+def test_source_branch(row):
+    source, priority = row['source'], int(row['priority'])
+    group = branch_of(source)
+    assert f"WITH {source}_input AS (" in group
+    assert "format => 'parquet'" in group and '_metadata.file_path AS _file_path' in group
+    assert f"WHERE _file_path = try_element_at(session.awards_objects, '{source}')" in group
+    mapping = (AWARDS / f'sources/{source}.sql').read_text().rstrip('\n')
+    code = mapping[mapping.index('WITH'):] if mapping.startswith('--') else mapping
+    assert re.sub(r'^WITH\s+', '', code, count=1) + ',\nincoming AS (' in group
+    assert f'        {priority} AS priority\n    FROM awards_transformed\n)' in group
+    assert CANDIDATE.count(f"SELECT '{source}' AS _source, * FROM (") == 1
+
+
+def test_compare_and_merge_contract():
+    assert 'ON b.provenance = i._source AND b.priority = i.priority' in CANDIDATE
     for name in ['display_name', 'description', 'funder_award_id', 'currency']:
-        assert f'rtrim(i.{name}) <=> rtrim(b.{name})' in group
-    assert 'rtrim(x3.asserted_by)' in group
-    assert 'i.funder <=> b.funder' not in group
-    assert 'CASE WHEN _exists THEN baseline_row.funder ELSE funder END AS funder' in group
-    assert 'CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date' in group
-    assert 'CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date' in group
-    assert f"array_append(session.awards_skipped, '{source}')" in group
-    funders = ', '.join(i[1:] for i in row['funder_ids'].split('|'))
-    assert f"OR NOT (priority <=> {priority}) OR funder_id NOT IN ({funders})) invalid_rows" in group
-    assert (AWARDS / f'sources/{source}.sql').read_text().rstrip('\n') + ',\nincoming AS (' in group
-    assert ('_unchanged_object' in group) == (source in FROZEN)
+        assert f'rtrim(i.{name}) <=> rtrim(b.{name})' in CANDIDATE
+    assert 'rtrim(x3.asserted_by)' in CANDIDATE
+    assert 'i.funder <=> b.funder' not in CANDIDATE
+    assert 'CASE WHEN _exists THEN baseline_row.funder ELSE funder END AS funder' in CANDIDATE
+    assert 'CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date' in CANDIDATE
+    assert 'CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date' in CANDIDATE
+    assert "WHERE array_contains(session.awards_to_merge, _source) AND _change <> 'unchanged') c" in MERGE
+    assert 'ON t.provenance = c._source AND t.priority = c.priority' in MERGE
+    assert 'lower(t.funder_award_id) = lower(c.funder_award_id)' in MERGE
+    assert "WHEN MATCHED AND c._change = 'changed'" in MERGE
+    assert 'created_date = t.created_date' in MERGE and 'funder = t.funder' in MERGE
+    updates = re.search(r'THEN UPDATE SET\s+(.*?)\s+WHEN NOT MATCHED', MERGE, re.S).group(1)
+    assert [assignment.split('=')[0].strip() for assignment in updates.split(',')] == COLUMNS
+    insert = re.search(r'WHEN NOT MATCHED THEN INSERT \(([^)]+)\)', MERGE).group(1)
+    assert [c.strip() for c in insert.split(',')] == COLUMNS
+    assert ("OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) "
+            "OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows") in GUARD
 
 
-def test_deferred_failure_and_frozen_result():
-    assert SQL.count('DECLARE OR REPLACE VARIABLE ') == 5 + 2 * len(SOURCES) + (1 + len(FROZEN) if FROZEN else 0)
-    assert 'raise_error(' in CELLS[-1] and 'size(session.awards_skipped) > 0' in CELLS[-1]
-    for source, _ in SOURCES:
-        assert SQL.index(f'SET VAR {source}_result =') < SQL.index(f'USING {source}_guarded_candidate c')
-
-
-def test_frozen_skip():
-    """A frozen source decides once, before its input view, and then reads, compares and merges nothing."""
-    rows = [dict(r) for r in gen.load()[:1]] + [dict(gen.load()[0], source='frozen_demo', priority='77',
-                                                   s3_path='s3://openalex-ingest/awards/demo/demo.parquet',
-                                                   fetch_cadence='frozen')]
-    rows[1]['mapping'] = rows[0]['mapping'].replace(f"{rows[0]['source']}_input", 'frozen_demo_input')
-    sql = gen.render(rows)
-    assert sql.count('SET VAR awards_slice_written =') == 1
-    assert sql.index('SET VAR awards_slice_written =') < sql.index('-- nsf_award_search: candidate mapping.')
-    live, frozen = group_of('nsf_award_search', sql), group_of('frozen_demo', sql)
-    assert '_unchanged_object' not in live and live in SQL   # a live source renders exactly as in the committed file
-    assert "read_files('s3://openalex-ingest/awards/demo/demo.parquet', format => 'parquet')" in frozen
-    assert "try_element_at(session.awards_slice_written, 'frozen_demo:77')" in frozen
-    decide = frozen.index('SET VAR frozen_demo_unchanged_object =')
-    assert frozen.index('SET VAR frozen_demo_object =') < decide < frozen.index('CREATE OR REPLACE TEMP VIEW frozen_demo_input')
-    assert 'WHERE _file_path = session.frozen_demo_object AND NOT session.frozen_demo_unchanged_object;' in frozen
-    assert "' AND priority = 77' || CASE WHEN session.frozen_demo_unchanged_object THEN ' AND false' ELSE '' END;" in frozen
-    assert ("'state', CASE WHEN session.frozen_demo_unchanged_object THEN 'unchanged object' "
-            "WHEN rows_in * 100 < rows_prev * 98") in frozen
-    assert sql.endswith("ELSE 'All two sources written' END AS result;\n")
+def test_mapping_must_start_with_with(tmp_path):
+    (tmp_path / 'sources').mkdir()
+    r = gen.load()[0]
+    (tmp_path / 'sources.csv').write_text(','.join(gen.COLUMNS) + '\n' + ','.join(r[c] for c in gen.COLUMNS) + '\n')
+    (tmp_path / 'sources' / f"{r['source']}.sql").write_text('-- c\nSELECT 1 FROM ' + r['source'] + '_input,\nawards_transformed AS (x)\n')
+    with pytest.raises(SystemExit, match='must start with WITH'):
+        gen.load(tmp_path)
 
 
 def test_prod_job():
@@ -132,7 +180,7 @@ def test_prod_job():
 
 
 def test_production_source_prefixes():
-    prefixes = re.findall(r"read_files\('([^']+)'", SQL)
+    prefixes = re.findall(r"FROM read_files\('([^']+)'", CANDIDATE)
     assert prefixes == [r['s3_path'] + '*.parquet' if r['s3_path'].endswith('/') else r['s3_path'] for r in ROWS]
     assert prefixes[:5] == [
         's3://openalex-ingest/awards/nsf/*.parquet',
