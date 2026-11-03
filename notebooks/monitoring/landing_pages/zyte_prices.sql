@@ -22,5 +22,5 @@ VALUES
   ('wiley.com',         DATE'2026-07-02', 1126.0, 2.10, 'Zyte dashboard 2-22 Oct 2026; two-step recipe (#1290)'),
   ('iop.org',           DATE'2026-07-02', 2582.0, 1.22, 'Zyte dashboard Jul-Sep 2026 (#1290)'),
   ('iop.org',           DATE'2026-10-02', 8079.0, 1.22, 'Zyte dashboard 2-22 Oct 2026: price tripled (#1290)'),
-  ('iop.org',           DATE'2026-10-24', 15000.0, 1.1, 'Zyte dashboard 25-26 Oct 2026, key campaign-bronze: 6,486 requests $97.08 (#1790 EXPLORE § 8)'),
-  ('ieee.org',          DATE'2026-11-02',  605.0, 1.00, 'Zyte Cost Estimator 2 Nov 2026, ieee.org rendered HTML: $24.19 per 40,000 requests; taxicab 03fc188 renders IEEE Xplore in a browser from 2 Nov (#1790 EXPLORE § 23)');
+  ('iop.org',           DATE'2026-10-24', 15000.0, 1.1, 'Zyte dashboard 25-26 Oct 2026, key campaign-bronze: 6,486 requests USD 97.08 (#1790 EXPLORE § 8)'),
+  ('ieee.org',          DATE'2026-11-02',  605.0, 1.00, 'Zyte Cost Estimator 2 Nov 2026, ieee.org rendered HTML: USD 24.19 per 40,000 requests; taxicab 03fc188 renders IEEE Xplore in a browser from 2 Nov (#1790 EXPLORE § 23)');
