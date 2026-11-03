@@ -18,8 +18,11 @@ Production (Jason's yes + a charter write-log row before and after, every time):
     scripts/affiliation_matcher_swap.py create-answers-table     # empty table; changes nothing
     scripts/affiliation_matcher_swap.py define-mv                # CREATE OR REPLACE the MV from the .sql file
     scripts/affiliation_matcher_swap.py load --from openalex.institutions.oxjob1385_answers_v1
-                                                                 # keeps nightly + new-card sweep rows (#1393); if it
-                                                                 # stops midway it prints the put-back MERGE
+                                                                 # keeps nightly + new-card sweep rows (#1393), then
+                                                                 # re-applies #1395's hand patches in layer order
+                                                                 # (#1997); if it stops midway it prints the recovery
+    scripts/affiliation_matcher_swap.py reapply-patches          # the patch step alone (idempotent)
+    scripts/affiliation_matcher_swap.py check-patches            # read-only: patched strings no longer in their patched state
     scripts/affiliation_matcher_swap.py revert                   # empty the answers table
     scripts/affiliation_matcher_swap.py verify                   # after the swap night: ACCEPTANCE 1-2
     scripts/affiliation_matcher_swap.py changed-works --since-utc '2026-09-28 05:00:00'   # ids for the ES/Lakebase backfill
@@ -44,6 +47,11 @@ LOOKUP = "openalex.institutions.affiliation_strings_lookup"
 WORKS_COUNTS = "openalex.institutions.affiliation_string_works_counts"
 SEATS = "openalex.works.work_author_affiliations_mv"
 INSTITUTIONS = "openalex.institutions.institutions"
+# Hand patches to the answers (oxjob #1395): one row per string per layer, applied in layer order where the answer still
+# equals before_ids. They sit on corpus-tier rows, which load overwrites, so load re-applies them (#1997, 3 Nov 2026:
+# 1,193,535 patched corpus-tier strings, incl. the related-org fixes institutions were emailed about, would otherwise
+# revert silently; until then the rule lived only in #1386's PLAN).
+PATCHES = "openalex.institutions.oxjob1395_patches"
 
 SCRATCH = "openalex.institutions.oxjob1386_"
 STANDIN = SCRATCH + "standin_answers"
@@ -492,6 +500,34 @@ def adapted_select(source, wh, matcher_version="v1", version=None):
 FROM {versioned(source, version)}"""
 
 
+def reapply_patches(wh):
+    """Every #1395 patch layer, in order, onto the answers table as it stands: a patch applies only where the answer
+    still equals its before_ids (exactly as #1395's apply did). Idempotent: an applied patch no longer matches."""
+    _, rows = sql(f"SELECT DISTINCT layer FROM {PATCHES} ORDER BY layer", wh)
+    for (layer,) in rows:
+        run(f"re-apply #1395 patch layer {layer}", f"""MERGE INTO {ANSWERS} t
+USING (SELECT * FROM {PATCHES} WHERE layer = {int(layer)}) r ON t.raw_affiliation_string = r.raw_affiliation_string
+WHEN MATCHED AND t.institution_ids <=> r.before_ids THEN UPDATE SET t.institution_ids = r.after_ids, t.countries = r.after_countries""", wh)
+
+
+PATCH_STATE_SQL = f"""WITH last AS (SELECT raw_affiliation_string, max_by(after_ids, layer) AS after_ids FROM {PATCHES}
+                  GROUP BY raw_affiliation_string)
+SELECT a.tier, COUNT(*) AS patched_strings, COUNT_IF(a.institution_ids <=> l.after_ids) AS in_patched_state,
+       COUNT_IF(NOT a.institution_ids <=> l.after_ids) AS not_in_patched_state
+FROM last l JOIN {ANSWERS} a USING (raw_affiliation_string) GROUP BY a.tier ORDER BY patched_strings DESC"""
+
+
+def cmd_check_patches(a):
+    """Read-only. Corpus tiers should read 0 'not in patched state'; nightly / sweep rows may differ (re-answered later,
+    and the sweep keeps a patch's net adds and removals itself)."""
+    show(*sql(PATCH_STATE_SQL, a.warehouse))
+
+
+def cmd_reapply_patches(a):
+    reapply_patches(a.warehouse)
+    show(*sql(PATCH_STATE_SQL, a.warehouse))
+
+
 def cmd_load(a):
     wh = a.warehouse
     check_source(a.source, wh, a.version)
@@ -512,12 +548,15 @@ WHEN NOT MATCHED THEN INSERT *"""
         run(f"INSERT OVERWRITE {ANSWERS} FROM {src}",
             f"INSERT OVERWRITE {ANSWERS}\n{adapted_select(a.source, wh, a.matcher_version, a.version)}", wh)
         run(f"put back nightly + sweep rows from {keep}", put_back, wh)
+        reapply_patches(wh)
     except BaseException:
-        print(f"LOAD STOPPED before the nightly + sweep rows were put back. They are in {keep}; once the answers "
-              f"table holds the source again, recover with:\n{put_back}", file=sys.stderr, flush=True)
+        print(f"LOAD STOPPED before it finished. The nightly + sweep rows are in {keep}; once the answers table holds "
+              f"the source again, recover with:\n{put_back}\nthen re-apply #1395's patches: "
+              f"scripts/affiliation_matcher_swap.py reapply-patches", file=sys.stderr, flush=True)
         raise
     show(*sql(f"SELECT COUNT(*) AS rows, COUNT_IF(SIZE(institution_ids) = 0) AS names_none, "
               f"COUNT_IF(tier = 'nightly') AS nightly, COUNT_IF(tier = 'sweep') AS sweep FROM {ANSWERS}", wh))
+    show(*sql(PATCH_STATE_SQL, wh))
 
 
 def cmd_revert(a):
@@ -558,6 +597,8 @@ def main():
     p.add_argument("--matcher-version", default="v1")
     p.set_defaults(f=cmd_load)
     sub.add_parser("revert").set_defaults(f=cmd_revert)
+    sub.add_parser("reapply-patches").set_defaults(f=cmd_reapply_patches)
+    sub.add_parser("check-patches").set_defaults(f=cmd_check_patches)
     p = sub.add_parser("changed-works")
     p.add_argument("--since-utc", required=True, help="e.g. '2026-09-28 05:00:00' (the swap night's End 2 End start)")
     p.set_defaults(f=cmd_changed_works)
