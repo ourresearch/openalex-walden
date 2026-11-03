@@ -1,0 +1,59 @@
+resources:
+  jobs:
+    ArXiv_PDF_Sweep:
+      name: arXiv PDF Sweep
+      # oxjob #1987: every arXiv record gets its PDF, whatever TaxiCab's windows missed. Daily at 22:00 UTC, so its PDFs
+      # are inside the 00:30 UTC Parse PDFs run's 3-day window and reach the 05:00 UTC End 2 End the same night.
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: "0 0 22 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: arxiv_pdf_sweep
+          notebook_task:
+            notebook_path: notebooks/scraping/arxiv_pdf_sweep
+            source: GIT
+          job_cluster_key: arxiv_pdf_sweep_cluster
+          timeout_seconds: 10800
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      job_clusters:
+        - job_cluster_key: arxiv_pdf_sweep_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.master: local[*, 4]
+              spark.databricks.cluster.profile: singleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+            node_type_id: m5d.xlarge
+            driver_node_type_id: m5d.xlarge
+            custom_tags:
+              ResourceClass: SingleNode
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
+      parameters:
+        - name: max_records
+          default: "50000"
+        - name: min_age_hours
+          default: "48"
+        - name: retry_days
+          default: "7"
+        - name: arxiv_limit
+          default: "1500"
+        - name: arxiv_pace_seconds
+          default: "3"
+        - name: dry_run
+          default: "false"
