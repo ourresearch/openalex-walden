@@ -3,8 +3,14 @@
 -- (#1290 EXPLORE 1-2). IOP was $2,582 per 1M Jul-Sep. Refresh monthly: add rows with a new valid_from;
 -- never edit old rows (the backfill reads the price that was valid on each fetch day).
 -- 24 Oct (IOP) and 2 Nov (IEEE) rows were first inserted by hand by #1790 (charter write log 26 Oct 10:05, 2 Nov 15:22).
+-- 3 Nov rows (#1789 EXPLORE § 1): prices and billed requests per taxicab_results row from the harvester's key
+-- (impactstory), UTC days 3 Oct-1 Nov 2026, since traffic from 3 Nov is mostly the harvester. Own row for a key with
+-- USD 10+ a month on the harvester, or USD 5+ on any key at the USD 131 tier or above. ieee.org keeps #1790's 2 Nov row.
+-- 'campaign:<host>' rows: what a campaign-key fetch costs where that is 25%+ off the harvester's price (campaigns
+-- always go through Zyte and pay other tiers on some hosts). TaxiCab Campaign's guard prefers them over the host's plain
+-- row; the funnel never matches them. Refresh both kinds together.
 INSERT INTO openalex.monitoring.landing_page_zyte_prices
-  REPLACE WHERE valid_from IN (DATE'2026-07-02', DATE'2026-10-02', DATE'2026-10-24', DATE'2026-11-02')
+  REPLACE WHERE valid_from IN (DATE'2026-07-02', DATE'2026-10-02', DATE'2026-10-24', DATE'2026-11-02', DATE'2026-11-03')
 VALUES
   ('*',                 DATE'2026-07-02',   40.0, 1.05, 'Zyte dashboard 2-22 Oct 2026: repositories and small journals (#1290)'),
   ('nature.com',        DATE'2026-07-02',   40.0, 1.00, 'Zyte dashboard 2-22 Oct 2026 (#1290)'),
@@ -23,4 +29,47 @@ VALUES
   ('iop.org',           DATE'2026-07-02', 2582.0, 1.22, 'Zyte dashboard Jul-Sep 2026 (#1290)'),
   ('iop.org',           DATE'2026-10-02', 8079.0, 1.22, 'Zyte dashboard 2-22 Oct 2026: price tripled (#1290)'),
   ('iop.org',           DATE'2026-10-24', 15000.0, 1.1, 'Zyte dashboard 25-26 Oct 2026, key campaign-bronze: 6,486 requests USD 97.08 (#1790 EXPLORE § 8)'),
-  ('ieee.org',          DATE'2026-11-02',  605.0, 1.00, 'Zyte Cost Estimator 2 Nov 2026, ieee.org rendered HTML: USD 24.19 per 40,000 requests; taxicab 03fc188 renders IEEE Xplore in a browser from 2 Nov (#1790 EXPLORE § 23)');
+  ('ieee.org',          DATE'2026-11-02',  605.0, 1.00, 'Zyte Cost Estimator 2 Nov 2026, ieee.org rendered HTML: USD 24.19 per 40,000 requests; taxicab 03fc188 renders IEEE Xplore in a browser from 2 Nov (#1790 EXPLORE § 23)'),
+  ('sciencedirect.com',  DATE'2026-11-03',   942.0, 2.18, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: includes elsevier.com (linkinghub) and sciencedirectassets.com calls, though ~30% of linkinghub calls end on Elsevier society sites (#1789 EXPLORE § 1)'),
+  ('handle.net',         DATE'2026-11-03',   383.0, 0.21, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: most handle.net rows never reach Zyte (host breaker, failures) (#1789 EXPLORE § 1)'),
+  ('wiley.com',          DATE'2026-11-03',  1138.0, 2.04, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: two-step recipe (#1789 EXPLORE § 1)'),
+  ('doi.org',            DATE'2026-11-03',   268.0, 1.03, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: DOI lookups Zyte follows. Campaign doi.org calls (USD 503 in Oct) land on publisher rows and go uncounted (#1789 EXPLORE § 1)'),
+  ('iop.org',            DATE'2026-11-03',  5424.0, 1.26, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: the campaign key paid USD 15,016 per 1M (24 Oct row) (#1789 EXPLORE § 1)'),
+  ('nih.gov',            DATE'2026-11-03',   240.0, 1.25, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: PMC, fetched directly again from 1 Nov (walden d55ca379), so few rows (#1789 EXPLORE § 1)'),
+  ('ssrn.com',           DATE'2026-11-03',   833.0, 1.53, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: was on the USD 40 default (#1789 EXPLORE § 1)'),
+  ('tci-thaijo.org',     DATE'2026-11-03',    71.0, 0.99, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('rug.nl',             DATE'2026-11-03',   131.0, 1.68, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('unito.it',           DATE'2026-11-03',    71.0, 4.46, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('mdpi.com',           DATE'2026-11-03',   328.0, 1.04, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: the campaign key paid USD 603 per 1M (#1789 EXPLORE § 1)'),
+  ('hal.science',        DATE'2026-11-03',    40.0, 0.51, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('worktribe.com',      DATE'2026-11-03',    71.0, 0.79, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('luke.fi',            DATE'2026-11-03',    71.0, 0.99, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('arxiv.org',          DATE'2026-11-03',    71.0, 1.00, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('acs.org',            DATE'2026-11-03',   212.0, 0.67, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: campaign rows billed 2.2 calls per row (#1789 EXPLORE § 1)'),
+  ('cyberleninka.ru',    DATE'2026-11-03',    71.0, 1.00, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('illinois.edu',       DATE'2026-11-03',    40.0, 3.27, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('usal.es',            DATE'2026-11-03',   383.0, 1.09, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('tandfonline.com',    DATE'2026-11-03',   383.0, 0.54, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('cairn.info',         DATE'2026-11-03',   131.0, 1.03, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('springer.com',       DATE'2026-11-03',    40.0, 1.14, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('kuleuven.be',        DATE'2026-11-03',   383.0, 0.94, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('uba.ar',             DATE'2026-11-03',   131.0, 0.94, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('sagepub.com',        DATE'2026-11-03',   383.0, 0.34, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('lib4ri.ch',          DATE'2026-11-03',   212.0, 0.97, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('scholaris.ca',       DATE'2026-11-03',   131.0, 1.82, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('emerald.com',        DATE'2026-11-03',   131.0, 0.90, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('oup.com',            DATE'2026-11-03',   212.0, 0.53, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('dergipark.org.tr',   DATE'2026-11-03',   131.0, 0.97, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('karger.com',         DATE'2026-11-03',   212.0, 0.84, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('ijsrem.com',         DATE'2026-11-03',   383.0, 1.00, 'Zyte stats 3 Oct-1 Nov 2026, all keys (#1789 EXPLORE § 1)'),
+  ('cambridge.org',      DATE'2026-11-03',    40.0, 0.57, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('nature.com',         DATE'2026-11-03',    40.0, 0.98, 'Zyte stats 3 Oct-1 Nov 2026, harvester key (#1789 EXPLORE § 1)'),
+  ('*',                  DATE'2026-11-03',    50.0, 1.03, 'Zyte stats 3 Oct-1 Nov 2026, harvester key: every domain without its own row (#1789 EXPLORE § 1)'),
+  ('campaign:sciencedirect.com', DATE'2026-11-03',   793.0, 3.24, 'Zyte stats 3 Oct-1 Nov 2026, campaign keys: USD 2.57 per 1K campaign rows vs 2.05 on the harvester (#1789 EXPLORE § 1)'),
+  ('campaign:iop.org',           DATE'2026-11-03', 15016.0, 1.05, 'Zyte stats 3 Oct-1 Nov 2026, campaign keys: USD 15.77 per 1K campaign rows vs 6.83 on the harvester (#1789 EXPLORE § 1)'),
+  ('campaign:mdpi.com',          DATE'2026-11-03',   603.0, 1.01, 'Zyte stats 3 Oct-1 Nov 2026, campaign keys: USD 0.61 per 1K campaign rows vs 0.34 on the harvester (#1789 EXPLORE § 1)'),
+  ('campaign:acs.org',           DATE'2026-11-03',   212.0, 2.19, 'Zyte stats 3 Oct-1 Nov 2026, campaign keys: USD 0.46 per 1K campaign rows vs 0.14 on the harvester (#1789 EXPLORE § 1)'),
+  ('campaign:tandfonline.com',   DATE'2026-11-03',   383.0, 0.70, 'Zyte stats 3 Oct-1 Nov 2026, campaign keys: USD 0.27 per 1K campaign rows vs 0.21 on the harvester (#1789 EXPLORE § 1)'),
+  ('campaign:sagepub.com',       DATE'2026-11-03',   383.0, 1.05, 'Zyte stats 3 Oct-1 Nov 2026, campaign keys: USD 0.40 per 1K campaign rows vs 0.13 on the harvester (#1789 EXPLORE § 1)'),
+  ('campaign:oup.com',           DATE'2026-11-03',   212.0, 0.76, 'Zyte stats 3 Oct-1 Nov 2026, campaign keys: USD 0.16 per 1K campaign rows vs 0.11 on the harvester (#1789 EXPLORE § 1)'),
+  ('campaign:cambridge.org',     DATE'2026-11-03',    40.0, 1.29, 'Zyte stats 3 Oct-1 Nov 2026, campaign keys: USD 0.05 per 1K campaign rows vs 0.02 on the harvester (#1789 EXPLORE § 1)');

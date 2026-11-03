@@ -21,12 +21,12 @@ Need a fold changed? Change `host_key.sql` here, never a private mapping in a la
 | `landing_page_alerts` | alert_date x host x id_namespace x rule | `alerts.sql`, nightly |
 | `landing_page_host_state` | snapshot_date x host: Crossref works' landing-page age, fresh-and-useful, fields the page adds over Crossref | `host_state.sql`, nightly (as of yesterday) |
 | `landing_page_doi_prefixes` | DOI prefix -> dominant host | `doi_prefixes.sql`, by hand |
-| `landing_page_zyte_prices` | Zyte domain x valid_from | `zyte_prices.sql`, by hand, monthly |
+| `landing_page_zyte_prices` | Zyte domain x valid_from (`campaign:<domain>` rows: campaign-key prices, read by TaxiCab Campaign's guard only) | `zyte_prices.sql`, by hand, monthly |
 | `landing_page_alert_acks` | host x id_namespace x failure class, with owner job and end date | `alert_acks.sql`, by hand (`ddl`) |
 
 Useful = stored PDF, or stored HTML where Parseland found authors or an abstract. Judge lanes on `attempt = 'first'`:
 retry-lane and re-fetch rows fail by design. Zyte cost is an estimate: fetches x billed requests per fetch x the
-domain's price (refresh from the Zyte dashboard stats API; recipe in #1290 EXPLORE 1-2).
+domain's price (refresh monthly from the Zyte dashboard's stats; recipe and the 3 Nov 2026 reading in #1789 EXPLORE § 1).
 
 ## Alarms
 

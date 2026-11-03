@@ -105,7 +105,7 @@ DEFAULTS = {
     "allow_hosts": [],
     "campaign_fail_share": 0.9,
     # $ per 1,000 fetches for a host missing from the price table; None = the table's '*' row
-    # ($40 per 1M requests, repositories and small journals, #1290). Hosts priced above that are listed.
+    # ($50 per 1M requests x 1.03 since 3 Nov 2026, every domain without its own row, #1789). Pricier hosts are listed.
     "default_usd_per_1k": None,
     "cost_margin": 1.25,             # re-asks, recipes with extra calls, price drift (keys with no Zyte reading)
     "calibrated_margin": 1.1,        # on top of a key's measured Zyte ratio: mix drift between readings
@@ -213,11 +213,15 @@ def set_status(c, status, reason):
     print(f"[{c['campaign']}] status -> {status}: {reason}")
 
 
-# Newest price per billed host from the scoreboard's table, read once per run ('*' = unlisted hosts)
+# Newest price per billed host from the scoreboard's table, read once per run ('*' = unlisted hosts).
+# A 'campaign:<host>' row (what a campaign-key fetch costs there, #1789 EXPLORE § 1) wins over the host's plain row.
 q(f"""CREATE OR REPLACE TEMP VIEW host_prices AS
-      SELECT price_key, usd_per_million_requests * requests_per_fetch / 1000 AS usd_per_1k
-      FROM (SELECT *, row_number() OVER (PARTITION BY price_key ORDER BY valid_from DESC) AS rn
-            FROM {PRICES} WHERE valid_from <= current_date()) WHERE rn = 1""")
+      SELECT price_key, usd_per_1k FROM (
+        SELECT regexp_replace(price_key, '^campaign:', '') AS price_key,
+               usd_per_million_requests * requests_per_fetch / 1000 AS usd_per_1k,
+               row_number() OVER (PARTITION BY regexp_replace(price_key, '^campaign:', '')
+                                  ORDER BY price_key LIKE 'campaign:%' DESC, valid_from DESC) AS rn
+        FROM {PRICES} WHERE valid_from <= current_date()) WHERE rn = 1""")
 STAR_USD_PER_1K = float(one("SELECT usd_per_1k FROM host_prices WHERE price_key = '*'"))
 
 
