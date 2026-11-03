@@ -1,7 +1,8 @@
 # oxjob #1832: related-org guard. Daily, after the Affiliation Matcher Backlog job: on strings the matcher answered in the
 # last 3 days that link a university and an organization ROR lists as related to it, drop the university when the string
 # names it only inside the related record's own name or inside a hospital phrase (patch layer 7's rule, names_u v7: judged
-# 655/665 on a fresh blind draw and 223/231 on new strings, 26-27 Oct). About 230 strings a day. MERGEs only rows still equal
+# 655/665 on a fresh blind draw and 223/231 on new strings, 26-27 Oct; from 3 Nov names_u v8 and also "Affiliated Hospital of
+# X University" strings whose related organization is a hospital, patch layer 11's class, 155/160). About 300 strings a day. MERGEs only rows still equal
 # to their before ids, logs every row to oxjob1395_patches (layer 7, basis related_org_daily:*), fails above 20,000 strings.
 # Until the matcher's Jev teacher is retrained on the fixed question (#1832 PLAN step 4); then delete this job.
 # Revert: pause the job; undo a day by MERGEing before_ids back from its patches rows where institution_ids = after_ids.
