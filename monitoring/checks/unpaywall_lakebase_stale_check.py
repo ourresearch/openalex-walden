@@ -16,9 +16,8 @@ PAIRS = [  # (synced table, source Delta table, check source age?)
     ("openalex.unpaywall.unpaywall_from_walden", "openalex.unpaywall.unpaywall", True),
     ("openalex.unpaywall.export_metadata_serving", "openalex.unpaywall.export_metadata", False),
 ]
-MAINTENANCE = {"OPTIMIZE", "VACUUM START", "VACUUM END", "SET TBLPROPERTIES", "UNSET TBLPROPERTIES", "ANALYZE",
-               "COMPUTE STATISTICS", "ADD CONSTRAINT", "DROP CONSTRAINT", "CHANGE COLUMN", "ADD COLUMNS",
-               "CLUSTER BY", "REORG", "UPGRADE PROTOCOL", "SET TABLE PROPERTIES", "FSCK"}
+# Which Delta operations change no rows is written once, in openalex.works.is_maintenance_op (oxjob #1997; this list
+# named COMPUTE STATISTICS, which Databricks never writes, and missed COMPUTE STATS, which it does).
 
 from databricks.sdk import WorkspaceClient
 profile = os.getenv("DATABRICKS_CONFIG_PROFILE")
@@ -39,9 +38,10 @@ for synced, source, check_age in PAIRS:
     served = int(info.get("delta_commit_version", -1))
     if "ONLINE" not in state:
         problems.append(f"{synced}: state {state}")
-    hist = spark.sql(f"SELECT version, operation, (unix_timestamp(current_timestamp()) - unix_timestamp(timestamp)) / 3600.0 AS age_h "
+    hist = spark.sql(f"SELECT version, operation, (unix_timestamp(current_timestamp()) - unix_timestamp(timestamp)) / 3600.0 AS age_h, "
+                     f"openalex.works.is_maintenance_op(operation) AS maintenance "
                      f"FROM (DESCRIBE HISTORY {source}) ORDER BY version DESC LIMIT 200").collect()  # ages computed in SQL: no time-zone mix-ups
-    data = [h for h in hist if h["operation"] not in MAINTENANCE]
+    data = [h for h in hist if not h["maintenance"]]
     newest = data[0] if data else None
     unserved = [h for h in data if h["version"] > served]
     oldest_unserved_h = max((float(h["age_h"]) for h in unserved), default=0.0)

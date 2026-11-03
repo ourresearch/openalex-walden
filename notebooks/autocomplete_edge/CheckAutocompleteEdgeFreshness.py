@@ -27,15 +27,13 @@ now = spark.sql("SELECT current_timestamp()").collect()[0][0]
 
 # table maintenance adds commits but no data (10-04: a VACUUM moved institutions_api v1816 -> v1818 and tripped this
 # check while the edge was current), so staleness is measured from the newest commit that can change rows
-# 10-22: COMPUTE STATS (awards_api v1304) tripped it too: the edge had the latest data, Jason got a failure mail
-MAINTENANCE = ("VACUUM START", "VACUUM END", "OPTIMIZE", "SET TBLPROPERTIES", "UNSET TBLPROPERTIES", "ANALYZE",
-               "COMPUTE STATS", "SET COLUMN COMMENT", "CHANGE COLUMN", "ADD CONSTRAINT", "DROP CONSTRAINT", "REORG")
+# 10-22: COMPUTE STATS (awards_api v1304) tripped it too: the edge had the latest data, Jason got a failure mail.
+# Which operations change no rows is written once, in openalex.works.is_maintenance_op (oxjob #1997).
 
 
 def last_data_commit(src):
-    ops = ", ".join(f"'{o}'" for o in MAINTENANCE)
     return spark.sql(f"""SELECT version, timestamp FROM (DESCRIBE HISTORY {src} LIMIT 50)
-                          WHERE operation NOT IN ({ops}) ORDER BY version DESC LIMIT 1""").collect()[0]
+                          WHERE NOT openalex.works.is_maintenance_op(operation) ORDER BY version DESC LIMIT 1""").collect()[0]
 
 stale, lines = [], []
 for typ, (t, src) in ace.TYPES.items():

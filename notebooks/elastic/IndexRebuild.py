@@ -155,8 +155,8 @@ def src(version=None):
     return f"{SOURCE_TABLE} VERSION AS OF {int(version)}" if version not in (None, "") else SOURCE_TABLE
 
 
-# Delta commits that change no rows; T for such a V is later than the data itself (safe for the catch-up).
-NON_DATA_OPS = ("OPTIMIZE", "VACUUM START", "VACUUM END", "SET TBLPROPERTIES", "ANALYZE", "COMPUTE STATISTICS")
+# Delta commits that change no rows (T for such a V is later than the data itself, safe for the catch-up) are listed
+# once, in openalex.works.is_maintenance_op (oxjob #1997).
 
 
 def pinned():
@@ -172,10 +172,9 @@ def pinned():
 
 
 def last_data_commit(v):
-    ops = ", ".join(f"'{o}'" for o in NON_DATA_OPS)
     rows = sql(f"""SELECT version, date_format(to_utc_timestamp(timestamp, current_timezone()), 'yyyy-MM-dd HH:mm:ss'),
                           operation
-                   FROM (DESCRIBE HISTORY {SOURCE_TABLE}) WHERE version <= {v} AND operation NOT IN ({ops})
+                   FROM (DESCRIBE HISTORY {SOURCE_TABLE}) WHERE version <= {v} AND NOT openalex.works.is_maintenance_op(operation)
                    ORDER BY version DESC LIMIT 1""")
     return rows[0] if rows else None
 

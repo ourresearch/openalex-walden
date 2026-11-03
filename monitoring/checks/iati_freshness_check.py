@@ -14,8 +14,7 @@ MAX_AGE_DAYS = float(os.getenv("MAX_AGE_DAYS", "8"))
 MAX_SERVED_GAP = float(os.getenv("MAX_SERVED_GAP", "0.02"))
 PRIORITY = int(os.getenv("IATI_PRIORITY", "600"))
 PROVENANCES = [p.strip() for p in os.getenv("IATI_PROVENANCES", "iati_fcdo,iati_sida,iati_norad").split(",") if p.strip()]
-MAINTENANCE = {"OPTIMIZE", "VACUUM START", "VACUUM END", "SET TBLPROPERTIES", "UNSET TBLPROPERTIES", "ANALYZE",
-               "COMPUTE STATS", "COMPUTE STATISTICS", "REORG", "FSCK"}
+# Which Delta operations change no rows is written once, in openalex.works.is_maintenance_op (oxjob #1997).
 
 if os.getenv("DATABRICKS_RUNTIME_VERSION"):            # job task on Databricks
     from pyspark.sql import SparkSession
@@ -25,9 +24,10 @@ else:                                                   # laptop, Databricks Con
     spark = DatabricksSession.builder.profile(os.getenv("DATABRICKS_CONFIG_PROFILE", "dbc-ce570f73-0362")).serverless(True).getOrCreate()
 
 problems, report = [], {}
-hist = spark.sql("SELECT version, operation, (unix_timestamp(current_timestamp()) - unix_timestamp(timestamp)) / 86400.0 AS age_d "
+hist = spark.sql("SELECT version, operation, (unix_timestamp(current_timestamp()) - unix_timestamp(timestamp)) / 86400.0 AS age_d, "
+                 "openalex.works.is_maintenance_op(operation) AS maintenance "
                  "FROM (DESCRIBE HISTORY openalex.awards.iati_raw) ORDER BY version DESC LIMIT 100").collect()
-data = [h for h in hist if h["operation"] not in MAINTENANCE]
+data = [h for h in hist if not h["maintenance"]]
 age = float(data[0]["age_d"]) if data else None
 report["iati_raw_newest_data_version"] = data[0]["version"] if data else None
 report["iati_raw_age_days"] = round(age, 2) if age is not None else None
