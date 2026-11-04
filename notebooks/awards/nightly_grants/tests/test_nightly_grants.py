@@ -226,7 +226,8 @@ class HistorySpark(FakeSpark):
     def sql(self, statement, args=None):
         self.statements.append((statement, dict(args or {})))
         if "DESCRIBE HISTORY" in statement:
-            return Result([types.SimpleNamespace(version=x[0], timestamp="t", operation=x[1], recent=x[2] if len(x) > 2 else True) for x in self.ops])
+            return Result([types.SimpleNamespace(version=x[0], timestamp="t", operation=x[1], maintenance=x[1] in MAINTENANCE_OPS,
+                                                 recent=x[2] if len(x) > 2 else True) for x in self.ops])
         return Result()
 
     def views(self):
@@ -239,11 +240,24 @@ def bound_version(ops):
     return spark.views()[-1].rsplit(" ", 1)[-1]
 
 
+# What openalex.works.is_maintenance_op (walden notebooks/maintenance/is_maintenance_op.sql) answers TRUE for, as far as these tests use it
+MAINTENANCE_OPS = {"OPTIMIZE", "VACUUM START", "VACUUM END", "COMPUTE STATS", "SET TBLPROPERTIES"}
+
+
 def test_bind_skips_a_trailing_producer_delete():
     assert bound_version([(12, "DELETE"), (11, "WRITE"), (10, "DELETE")]) == "11"
     assert bound_version([(13, "OPTIMIZE"), (12, "DELETE"), (11, "WRITE")]) == "11"
     assert bound_version([(13, "OPTIMIZE"), (12, "WRITE"), (11, "DELETE")]) == "13"
     assert bound_version([(5, "MERGE")]) == "5"
+
+
+def test_bind_asks_the_shared_maintenance_rule():
+    # 2 Nov: awards_api got COMPUTE STATS and SET TBLPROPERTIES commits; the old list missed both, so a stats commit after a
+    # recent DELETE counted as data and the run bound the post-DELETE half-rewrite (oxjob #1997 / #1875)
+    assert bound_version([(14, "COMPUTE STATS"), (13, "SET TBLPROPERTIES"), (12, "DELETE"), (11, "WRITE")]) == "11"
+    spark = HistorySpark([(5, "MERGE")])
+    Nightly(spark, config()).bind("raw", "a.b.raw")
+    assert any("openalex.works.is_maintenance_op(operation) maintenance" in s for s, _ in spark.statements)
 
 
 def test_bind_reads_an_old_lone_delete():
@@ -359,7 +373,7 @@ class FunderSpark(FakeSpark):
     def sql(self, statement, args=None):
         self.statements.append((statement, dict(args or {})))
         if "DESCRIBE HISTORY" in statement:
-            return Result([types.SimpleNamespace(version=7, timestamp="t", operation="WRITE")])
+            return Result([types.SimpleNamespace(version=7, timestamp="t", operation="WRITE", maintenance=False)])
         if statement.startswith("SELECT count(*) n"):
             return Result([types.SimpleNamespace(n=0)])
         view = self

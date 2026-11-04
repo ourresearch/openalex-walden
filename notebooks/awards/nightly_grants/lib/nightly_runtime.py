@@ -15,7 +15,9 @@ from pathlib import Path
 from stable_award_ids import compact, ident, literal, sha, short
 from capture_support import verify_body
 
-MAINTENANCE = ("OPTIMIZE", "VACUUM START", "VACUUM END", "COMPUTE STATISTICS")
+# Which history operations change no rows is written once, in openalex.works.is_maintenance_op (oxjob #1997; this list named
+# "COMPUTE STATISTICS", which Databricks never writes, and missed "COMPUTE STATS" and "SET TBLPROPERTIES": oxjob #1875).
+MAINTENANCE_SQL = "openalex.works.is_maintenance_op(operation)"
 # A DELETE newer than this is treated as the first half of a producer rewrite (the version before it is read); an older one is the
 # table's final state. The version before an old DELETE can fall out of time travel (7 days): live funders, 10-09.
 DELETE_REWRITE_HOURS = 6
@@ -174,7 +176,8 @@ class Nightly:
         """Current version, read once: every later statement reads exactly this version (no drift inside a run)."""
         relation = ident(relation)
         try:
-            history = self.sql(f"""SELECT version,timestamp,operation,timestamp >= current_timestamp() - INTERVAL {DELETE_REWRITE_HOURS} HOURS recent
+            history = self.sql(f"""SELECT version,timestamp,operation,{MAINTENANCE_SQL} maintenance,
+                timestamp >= current_timestamp() - INTERVAL {DELETE_REWRITE_HOURS} HOURS recent
               FROM (DESCRIBE HISTORY {relation}) ORDER BY version DESC LIMIT 50""").collect()
         except Exception as exc:
             if "EXPECT_TABLE_NOT_VIEW" not in str(exc) and "not a Delta table" not in str(exc):
@@ -184,7 +187,7 @@ class Nightly:
         if history:
             row = history[0]
             for h in history:                                 # newest data commit decides; maintenance after it preserves content
-                if h.operation in MAINTENANCE:
+                if h.maintenance:
                     continue
                 if h.operation == "DELETE" and not h.recent:  # an old lone DELETE is the table's final state, not a half rewrite: read it
                     self.versions.setdefault("_trailing_delete_bound", []).append(dict(relation=relation, delete_version=int(h.version)))
