@@ -11,12 +11,14 @@ on:
       - 'notebooks/**'
       - 'scripts/check_notebook_sql_dollar.py'
       - 'scripts/gen_awards_sql.py'
+      - 'scripts/check_works_enriched_publish.py'
       - '.github/workflows/check-notebook-sql.yml'
   pull_request:
     paths:
       - 'notebooks/**'
       - 'scripts/check_notebook_sql_dollar.py'
       - 'scripts/gen_awards_sql.py'
+      - 'scripts/check_works_enriched_publish.py'
 
 permissions:
   contents: read
@@ -32,3 +34,7 @@ jobs:
         run: python3 scripts/check_notebook_sql_dollar.py notebooks
       - name: Awards notebook is what sources.csv and sources/*.sql render
         run: python3 scripts/gen_awards_sql.py --check
+      - name: CreateWorksEnriched writes openalex_works only in its publish cell (oxjob #2004)
+        run: |
+          python3 scripts/check_works_enriched_publish.py --self-test
+          python3 scripts/check_works_enriched_publish.py
