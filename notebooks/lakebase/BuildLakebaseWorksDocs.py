@@ -24,9 +24,10 @@
 # MAGIC
 # MAGIC Modes:
 # MAGIC - `is_full_build=true` — one-time/recovery: rebuild all shards + id map from scratch.
-# MAGIC - default (incremental) — same freshness contract as the ES sync
-# MAGIC   (`updated_date >= current_date() - 2 days`), hash-gated MERGE per shard, then every doc / id-map row whose
-# MAGIC   work is no longer in `openalex_works` (deleted or merged away) is deleted, every run.
+# MAGIC - default (incremental) — same freshness contract as the ES sync: the works stamped since the last clean run
+# MAGIC   (watermark row `lakebase_works_docs` in `openalex.works.elastic_sync_state`, oxjob #867; 2-day fallback with no
+# MAGIC   row), hash-gated MERGE per shard, then every doc / id-map row whose work is no longer in `openalex_works`
+# MAGIC   (deleted or merged away) is deleted, every run.
 
 # COMMAND ----------
 
@@ -35,6 +36,8 @@
 
 # COMMAND ----------
 
+import time
+from datetime import datetime, timedelta, timezone
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 
@@ -46,12 +49,15 @@ IDS_TABLE = f"{SCHEMA}.lakebase_works_ids"
 BUILD_STAGING = f"{SCHEMA}._lakebase_docs_build"
 INCR_STAGING = f"{SCHEMA}._lakebase_docs_incr"
 GONE_STAGING = f"{SCHEMA}._lakebase_gone_incr"
+SYNC_STATE_TABLE = f"{SCHEMA}.elastic_sync_state"  # the ES syncs' watermark table; this notebook owns one row
+SYNC_STATE_KEY = "lakebase_works_docs"
+WATERMARK_BUFFER_SECONDS = 60  # clock skew only, as in sync_works: a longer buffer re-selects the previous night's stamps
 
 dbutils.widgets.text("is_full_build", "false")
 dbutils.widgets.text("guardrails_override", "false")
 dbutils.widgets.text("trigger_syncs", "false")  # end2end passes true once synced tables exist
 dbutils.widgets.text("run_deletes", "false")    # force the full delete sweep (auto-runs when docs still outnumber works after the targeted deletes)
-# "k/N": incremental MERGE over every work with pmod(id, N) = k instead of the 2-day churn window, for a
+# "k/N": incremental MERGE over every work with pmod(id, N) = k instead of the works changed since the last run, for a
 # hash-rebaselined change that moved no updated_date (oxjob #1322 keywords). doc_hash still gates the writes.
 dbutils.widgets.text("id_mod", "")
 # Only the works listed in this table (column `id` BIGINT), e.g. the works whose content changed on a hash-rebaselined
@@ -107,6 +113,9 @@ print(f"IS_FULL_BUILD: {IS_FULL_BUILD}")
 # Loose sanity floor only — catches an empty/partially-written table on standalone runs.
 # The precise count check (-2M vs the last accepted run, guardrails_history) is Guardrails.ipynb check 8, which
 # gates this task in end2end; don't tighten this one, it goes stale on planned deletions.
+# Captured before any read; becomes the next watermark only if this run finishes clean (the sync_works pattern).
+run_started_at = datetime.now(timezone.utc).replace(tzinfo=None)
+ON_WATERMARK = False
 total_works = spark.sql(f"SELECT COUNT(*) AS cnt FROM {WORKS_TABLE}").collect()[0].cnt
 print(f"{WORKS_TABLE}: {total_works:,} rows")
 if total_works < 400_000_000 and not GUARDRAILS_OVERRIDE:
@@ -128,16 +137,28 @@ elif ID_MOD:
     SQL_QUERY = f"SELECT * FROM {WORKS_TABLE} WHERE pmod(id, {ID_MOD_N}) = {ID_MOD_K}"
     print(f"ID_MOD backfill: pmod(id, {ID_MOD_N}) = {ID_MOD_K} (doc_hash-gated MERGE; no churn-window guard)")
 else:
+    # The works stamped since the last clean run, as the ES sync does (oxjob #867). The fixed 2-day window this replaces
+    # held every wave for three nights, and FWCI (in the doc, not in the works content hash) moves nightly, so doc_hash
+    # rewrote the whole wave each of those nights: #1902's 81.7M works re-stamped on 4 Nov meant ~86M docs and a ~7 h
+    # synced-table refresh. The 2-day window stays as the fallback when there is no watermark row.
+    ON_WATERMARK = True
+    _wm = spark.sql(f"SELECT last_sync_started_at FROM {SYNC_STATE_TABLE} WHERE index_name = '{SYNC_STATE_KEY}'").collect()
+    if _wm:
+        SINCE_SQL = f"TIMESTAMP'{(_wm[0][0] - timedelta(seconds=WATERMARK_BUFFER_SECONDS)):%Y-%m-%d %H:%M:%S}'"
+        print(f"Watermark {_wm[0][0]} minus {WATERMARK_BUFFER_SECONDS}s buffer")
+    else:
+        SINCE_SQL = "current_date() - INTERVAL 2 days"
+        print(f"No {SYNC_STATE_KEY} watermark row; falling back to the 2-day window")
     SQL_QUERY = f"""SELECT * FROM {WORKS_TABLE}
-WHERE updated_date >= current_date() - INTERVAL 2 days
+WHERE updated_date >= {SINCE_SQL}
 """
     churn_count = spark.sql(
-        f"SELECT COUNT(*) AS cnt FROM {WORKS_TABLE} WHERE updated_date >= current_date() - INTERVAL 2 days"
+        f"SELECT COUNT(*) AS cnt FROM {WORKS_TABLE} WHERE updated_date >= {SINCE_SQL}"
     ).collect()[0].cnt
-    print(f"Incremental churn window: {churn_count:,} rows")
+    print(f"Incremental churn: {churn_count:,} works with updated_date >= {SINCE_SQL}")
     if churn_count == 0 and not GUARDRAILS_OVERRIDE:
         raise Exception(
-            "GUARDRAIL: 0 rows in the 2-day churn window — upstream updated_date looks broken. "
+            f"GUARDRAIL: 0 works with updated_date >= {SINCE_SQL} — upstream updated_date looks broken. "
             "Pass guardrails_override=true to proceed anyway."
         )
 
@@ -655,6 +676,28 @@ if not IS_FULL_BUILD:
         print(f"{IDS_TABLE} (sweep): updated={result.num_updated_rows:,} inserted={result.num_inserted_rows:,} deleted={result.num_deleted_rows:,}")
 
     spark.sql(f"DROP TABLE IF EXISTS {INCR_STAGING}")
+
+    # Every shard MERGE, the deletes and the id map are in: advance the watermark. Never on id_mod / ids_table /
+    # rows_table runs. The ES works and locations syncs MERGE their own rows of this table the same night, hence the retry.
+    if ON_WATERMARK:
+        _stamp = f"{run_started_at:%Y-%m-%d %H:%M:%S}"
+        for _attempt in range(3):
+            try:
+                spark.sql(f"""MERGE INTO {SYNC_STATE_TABLE} AS t
+USING (SELECT '{SYNC_STATE_KEY}' AS index_name, TIMESTAMP'{_stamp}' AS last_sync_started_at,
+              current_timestamp() AS updated_at) AS s
+ON t.index_name = s.index_name
+WHEN MATCHED THEN UPDATE SET t.last_sync_started_at = s.last_sync_started_at, t.updated_at = s.updated_at
+WHEN NOT MATCHED THEN INSERT (index_name, last_sync_started_at, updated_at)
+VALUES (s.index_name, s.last_sync_started_at, s.updated_at)
+""")
+                break
+            except Exception as e:
+                if _attempt == 2:
+                    raise
+                print(f"Watermark MERGE attempt {_attempt + 1} failed ({e}); retrying in 30 s")
+                time.sleep(30)
+        print(f"Watermark {SYNC_STATE_KEY} -> {_stamp}")
 
 # COMMAND ----------
 
