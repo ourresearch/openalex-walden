@@ -12,15 +12,6 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: ANR_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateANRAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: Argentina_MINCYT_Awards
           email_notifications: {}
           environment_key: Default
@@ -121,110 +112,11 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: Vivensa_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateVivensaAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: ResearchManitoba_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateResearchManitobaAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: KRUK_Awards
           email_notifications: {}
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateKRUKAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Tenovus_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTenovusAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SSF_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSSFAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: ProstateCancerUK_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateProstateCancerUKAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Shriners_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateShrinersAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Sparks_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSparksAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: VaincreAlzheimer_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateVaincreAlzheimerAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: VersusArthritis_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateVersusArthritisAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: RNID_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRNIDAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: TSCAlliance_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTSCAllianceAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -243,15 +135,6 @@ resources:
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateGatewayToResearchAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: IDRC_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateIDRCAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -322,29 +205,11 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: Research_Council_Norway_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateResearchCouncilNorwayAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: OSF_Awards
           email_notifications: {}
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateOSFAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Rockefeller_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRockefellerAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -358,182 +223,11 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: SNSF_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSNSFAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SSHRC_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSSHRCAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Swedish_Research_Council_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSwedishResearchCouncilAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: Templeton_Awards
           email_notifications: {}
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateTempletonAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Vinnova_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateVinnovaAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Wolf_Prize_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWolfPrizeAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Pew_Biomedical_Scholars_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreatePewBiomedicalScholarsAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Princess_Asturias_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreatePrincessAsturiasAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: RJ_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRJAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Royal_Society_Medals_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRoyalSocietyMedalsAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Schmidt_Sciences_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSchmidtSciencesAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Stockholm_Water_Prize_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateStockholmWaterPrizeAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: TWAS_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTWASAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Templeton_Prize_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTempletonPrizeAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Wallenberg_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWallenbergAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Wenner_Gren_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWennerGrenAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: World_Food_Prize_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWorldFoodPrizeAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: ZonMw_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateZonMwAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: TrygFonden_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTrygFondenAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Velux_Stiftung_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateVeluxStiftungAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -547,263 +241,11 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: PotterFoundation_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreatePotterFoundationAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: RGCHK_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRGCHKAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: RZSNSWResearchGrants_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRZSNSWResearchGrantsAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Radcliffe_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRadcliffeAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SCASFellows_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSCASFellowsAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SEPM_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSEPMAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SFI_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSFIAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SirJulesThorn_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSirJulesThornAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SwedenAmericaFdn_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSwedenAmericaFdnAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: TUBITAK_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTUBITAKAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: TreillesYoungResearcher_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTreillesYoungResearcherAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: WTGrant_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWTGrantAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Wolfson_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWolfsonAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: CDC_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateCDCAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Smithsonian_SARF_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSmithsonianSARFAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Sloan_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSloanAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: UGC_Bangladesh_ICSETEP_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateUGCBangladeshICSETEPAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Warren_Alpert_Prize_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWarrenAlpertPrizeAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Searle_Scholars_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSearleScholarsAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: USDA_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateUSDAAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: NSFC_Awards
           email_notifications: {}
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateNSFCAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: POGO_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreatePOGOAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: PewBiomed_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreatePewBiomedAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: RagnarSoderberg_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRagnarSoderbergAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: ResearchNB_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateResearchNBAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: RoyalSocietyGrants_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRoyalSocietyGrantsAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Tourettes_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTourettesAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: RPB_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRPBAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: VEGA_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateVEGAAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -817,38 +259,11 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: Villum_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateVillumAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SMRI_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSMRITreatmentTrialsAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: MEYS_Awards
           email_notifications: {}
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateMEYSAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Telethon_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTelethonAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -894,15 +309,6 @@ resources:
           environment_key: Default
           notebook_task:
             notebook_path: notebooks/awards/CreateFujianNSFAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: GrantConnect_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateGrantConnectAwards
             source: GIT
           run_if: ALL_SUCCESS
           timeout_seconds: 0
@@ -979,24 +385,6 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: SweCRIS_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSweCRISAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: ZhejiangNSF_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateZhejiangNSFAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: JiangxiNSF_Awards
           email_notifications: {}
           environment_key: Default
@@ -1060,105 +448,6 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: TWCF_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTWCFAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: VolkswagenFoundation_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateVolkswagenFoundationAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: TakedaScienceFoundation_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTakedaScienceFoundationAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: PRIN_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreatePRINAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: UeharaFoundation_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateUeharaFoundationAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: WWTF_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWWTFAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SumitomoFoundation_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSumitomoFoundationAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: SmokingResearchFoundation_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSmokingResearchFoundationAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Sigrid_Juselius_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSigridJuseliusAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: Wihuri_Foundation_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateWihuriFoundationAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
-        - task_key: TACR_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateTACRAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: BMWE_Awards
           email_notifications: {}
           environment_key: Default
@@ -1177,15 +466,6 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: Sydantutkimussaatio_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateSydantutkimussaatioAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: BrightFocus_Awards
           email_notifications: {}
           environment_key: Default
@@ -1195,33 +475,11 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: Rufford_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateRuffordAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: Create_Awards
           depends_on:
-            - task_key: Rufford_Awards
             - task_key: BrightFocus_Awards
-            - task_key: Sydantutkimussaatio_Awards
             - task_key: BMV_Awards
             - task_key: BMWE_Awards
-            - task_key: TACR_Awards
-            - task_key: Wihuri_Foundation_Awards
-            - task_key: Sigrid_Juselius_Awards
-            - task_key: SmokingResearchFoundation_Awards
-            - task_key: SumitomoFoundation_Awards
-            - task_key: WWTF_Awards
-            - task_key: UeharaFoundation_Awards
-            - task_key: PRIN_Awards
-            - task_key: TakedaScienceFoundation_Awards
-            - task_key: VolkswagenFoundation_Awards
-            - task_key: TWCF_Awards
             - task_key: RSCF_Awards
             - task_key: RFBR_Awards
             - task_key: OTKA_NKFIH_Awards
@@ -1230,7 +488,6 @@ resources:
             - task_key: NSSFC_Awards
             - task_key: ChongqingNSF_Awards
             - task_key: FujianNSF_Awards
-            - task_key: GrantConnect_Awards
             - task_key: GuangdongNSF_Awards
             - task_key: HHSTaggs_Awards
             - task_key: HainanNSF_Awards
@@ -1239,57 +496,18 @@ resources:
             - task_key: ShandongNSF_Awards
             - task_key: ShanghaiNSF_Awards
             - task_key: ShanghaiSTCSM_Awards
-            - task_key: SweCRIS_Awards
-            - task_key: ZhejiangNSF_Awards
             - task_key: VlaamseRegering_Awards
             - task_key: VLAIO_Awards
             - task_key: TaiwanMOSTGRB_Awards
-            - task_key: Telethon_Awards
             - task_key: MEYS_Awards
-            - task_key: SMRI_Awards
-            - task_key: Villum_Awards
             - task_key: FCT_Awards
-            - task_key: VEGA_Awards
             - task_key: OSTIFacility_Awards
-            - task_key: RPB_Awards
-            - task_key: POGO_Awards
-            - task_key: PewBiomed_Awards
-            - task_key: RagnarSoderberg_Awards
-            - task_key: ResearchNB_Awards
-            - task_key: RoyalSocietyGrants_Awards
-            - task_key: Tourettes_Awards
             - task_key: NSTCGRB_Awards
-            - task_key: PotterFoundation_Awards
-            - task_key: RGCHK_Awards
-            - task_key: RZSNSWResearchGrants_Awards
-            - task_key: Radcliffe_Awards
-            - task_key: SCASFellows_Awards
-            - task_key: SEPM_Awards
-            - task_key: SFI_Awards
-            - task_key: SirJulesThorn_Awards
-            - task_key: SwedenAmericaFdn_Awards
-            - task_key: TUBITAK_Awards
-            - task_key: TreillesYoungResearcher_Awards
-            - task_key: WTGrant_Awards
-            - task_key: Wolfson_Awards
             - task_key: NASA_Awards
-            - task_key: SNSF_Awards
             - task_key: NSERC_Awards
             - task_key: StrokeAssociation_Awards
-            - task_key: Vivensa_Awards
-            - task_key: ResearchManitoba_Awards
             - task_key: KRUK_Awards
-            - task_key: Tenovus_Awards
-            - task_key: SSF_Awards
-            - task_key: ProstateCancerUK_Awards
-            - task_key: Shriners_Awards
-            - task_key: Sparks_Awards
-            - task_key: VaincreAlzheimer_Awards
-            - task_key: VersusArthritis_Awards
-            - task_key: RNID_Awards
-            - task_key: TSCAlliance_Awards
             - task_key: Independent_Research_Fund_Denmark_Awards
-            - task_key: Swedish_Research_Council_Awards
             - task_key: NIH_Awards
             - task_key: ANID_Awards
             - task_key: NHMRC_Awards
@@ -1301,41 +519,13 @@ resources:
             - task_key: Gateway_to_Research_Awards
             - task_key: CFI_Awards
             - task_key: NCN_Awards
-            - task_key: Vinnova_Awards
-            - task_key: SSHRC_Awards
-            - task_key: ANR_Awards
             - task_key: DOE_Awards
-            - task_key: Research_Council_Norway_Awards
             - task_key: Backfill_Awards
             - task_key: Argentina_MINCYT_Awards
-            - task_key: IDRC_Awards
             - task_key: IATI_Awards
             - task_key: Templeton_Awards
-            - task_key: Wolf_Prize_Awards
-            - task_key: Rockefeller_Awards
             - task_key: OSF_Awards
             - task_key: RWJF_Awards
-            - task_key: Pew_Biomedical_Scholars_Awards
-            - task_key: Princess_Asturias_Awards
-            - task_key: RJ_Awards
-            - task_key: Royal_Society_Medals_Awards
-            - task_key: Schmidt_Sciences_Awards
-            - task_key: Stockholm_Water_Prize_Awards
-            - task_key: TWAS_Awards
-            - task_key: Templeton_Prize_Awards
-            - task_key: Wallenberg_Awards
-            - task_key: Wenner_Gren_Awards
-            - task_key: World_Food_Prize_Awards
-            - task_key: ZonMw_Awards
-            - task_key: TrygFonden_Awards
-            - task_key: Velux_Stiftung_Awards
-            - task_key: CDC_Awards
-            - task_key: Smithsonian_SARF_Awards
-            - task_key: Sloan_Awards
-            - task_key: UGC_Bangladesh_ICSETEP_Awards
-            - task_key: Warren_Alpert_Prize_Awards
-            - task_key: Searle_Scholars_Awards
-            - task_key: USDA_Awards
             - task_key: NSFC_Awards
           email_notifications: {}
           notebook_task:
