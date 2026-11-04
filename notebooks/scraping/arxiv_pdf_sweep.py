@@ -43,6 +43,7 @@ from urllib3.util import Retry
 dbutils.widgets.text("max_records", "50000", "Max records per run")
 dbutils.widgets.text("min_age_hours", "48", "Only records ingested at least this long ago (TaxiCab goes first)")
 dbutils.widgets.text("retry_days", "7", "Retry a record whose last sweep attempt failed after this many days")
+dbutils.widgets.text("no_pdf_retry_days", "90", "Retry after an arxiv.org 404 (arXiv has no PDF: e.g. pre-2007 TeX-only papers) after this many days")
 dbutils.widgets.text("arxiv_limit", "3000", "Max fetches from arxiv.org per run (mirror misses)")
 dbutils.widgets.text("arxiv_pace_seconds", "3", "Seconds between arxiv.org fetches")
 dbutils.widgets.text("dry_run", "false", "true = select and report only")
@@ -50,6 +51,7 @@ dbutils.widgets.text("dry_run", "false", "true = select and report only")
 MAX_RECORDS = int(dbutils.widgets.get("max_records"))
 MIN_AGE_HOURS = int(dbutils.widgets.get("min_age_hours"))
 RETRY_DAYS = int(dbutils.widgets.get("retry_days"))
+NO_PDF_RETRY_DAYS = int(dbutils.widgets.get("no_pdf_retry_days"))
 ARXIV_LIMIT = int(dbutils.widgets.get("arxiv_limit"))
 ARXIV_PACE = float(dbutils.widgets.get("arxiv_pace_seconds"))
 DRY_RUN = dbutils.widgets.get("dry_run").strip().lower() == "true"
@@ -74,7 +76,11 @@ stored = (
 recent_misses = (
     spark.table("openalex.taxicab.taxicab_results")
     .filter(F.col("native_id").startswith("oai:arXiv.org:") & F.col("error").startswith("arxiv_sweep")
-            & (F.col("processed_date") >= F.expr(f"current_timestamp() - INTERVAL {RETRY_DAYS} DAYS")))
+            & ((F.col("processed_date") >= F.expr(f"current_timestamp() - INTERVAL {RETRY_DAYS} DAYS"))
+               # arxiv.org 404 = arXiv has no PDF for the paper ("No PDF available" on its abs page): 2,117 pre-2007
+               # papers on 3 Nov 2026. Retrying them weekly would spend most of the arxiv.org cap on them.
+               | (F.col("error").startswith("arxiv_sweep: arxiv.org 404")
+                  & (F.col("processed_date") >= F.expr(f"current_timestamp() - INTERVAL {NO_PDF_RETRY_DAYS} DAYS")))))
     .select("native_id").distinct()
 )
 candidates = (
@@ -85,13 +91,17 @@ candidates = (
     .join(stored, "native_id", "left_anti")
     .join(recent_misses, "native_id", "left_anti")
     .withColumn("arxiv_id", F.expr("substring(native_id, 15)"))
-    .orderBy(F.desc("arxiv_id"))  # newest first: they matter most and the old backlog was backfilled (#1987)
+    # newest first: they matter most and the old backlog was backfilled (#1987). Old-style ids ("hep-th/9901001")
+    # sort after new-style ones ("2511.01234"); as plain text they sorted first and took the arxiv.org cap on 3 Nov.
+    .orderBy(F.col("arxiv_id").contains("/").asc(), F.desc("arxiv_id"))
     .limit(MAX_RECORDS)
 )
 todo = [(r.native_id, r.arxiv_id) for r in candidates.collect()]
-print(f"{len(todo):,} arXiv records with no stored PDF (cap {MAX_RECORDS:,})")
+print(f"{len(todo):,} arXiv records with no stored PDF (cap {MAX_RECORDS:,}); "
+      f"first {[a for _, a in todo[:5]]}, last {[a for _, a in todo[-5:]]}")
 if DRY_RUN or not todo:
-    dbutils.notebook.exit(f"dry_run={DRY_RUN}, candidates={len(todo)}")
+    dbutils.notebook.exit(f"dry_run={DRY_RUN}, candidates={len(todo)}, "
+                          f"first={[a for _, a in todo[:5]]}, last={[a for _, a in todo[-5:]]}")
 
 # COMMAND ----------
 
