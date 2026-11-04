@@ -75,12 +75,12 @@ dbutils.widgets.text("deleted_works_guard_override", "false")
 DELETED_OVERRIDE = spark.sql(
     f"SELECT openalex.works.e2e_override_active('deleted_works_guard_override', '{dbutils.widgets.get('deleted_works_guard_override').replace(chr(39), chr(39) * 2)}')"
 ).collect()[0][0]
-_deleted_caps = [r[0] for r in spark.sql("""
-    SELECT max_changed FROM openalex.works.e2e_overrides
-    WHERE flag = 'deleted_works_guard_override'
-      AND current_timestamp() >= valid_from AND current_timestamp() < valid_until
-""").collect()] if DELETED_OVERRIDE else []
-DELETED_CAP = None if (not _deleted_caps or any(c is None for c in _deleted_caps)) else min(_deleted_caps)
+# Read through the one reader, openalex.works.e2e_cap (notebooks/end2end/e2e_gate.sql, oxjob #2005): NULL = no row,
+# BIGINT max = an uncapped row, else the smallest open cap.
+_deleted_cap = spark.sql(
+    "SELECT openalex.works.e2e_cap('deleted_works_guard_override', 'works_deleted').cap AS c"
+).collect()[0]["c"] if DELETED_OVERRIDE else None
+DELETED_CAP = None if _deleted_cap is None or _deleted_cap == 2**63 - 1 else _deleted_cap
 ID_MOD = dbutils.widgets.get("id_mod").strip()
 if ID_MOD:
     import re
