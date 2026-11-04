@@ -11,7 +11,9 @@ curation decline gates off. So name every planned change on the same command lin
 
     --max-changed N   works this run may stamp (Guardrails Check 1; its line is 7.5M)
     --max-loss works=N,abstracts=N,...   losses (each check's line is 2M works; citations 5%; curations 10 rows)
-    --max-deleted N   works that may disappear (TrackDeletedWorks / delete_works); also names works=N
+    --max-deleted N   works that may disappear (TrackDeletedWorks / delete_works); also names works=N on the
+                      night's guardrails_override row (filed or raised in place for you)
+    --current-run     a repair of the run in progress: the row stays open until the next run starts
 
 Loss names (short or full): works (works_total), abstracts (both abstract checks), abstracts_any, abstracts_ii,
 affiliations, institutions, fulltext, citations (total_citations), missing_author_ids, work_author_curations,
@@ -218,44 +220,65 @@ def main():
         sys.exit("--max-deleted caps deleted_works_guard_override; add it to --flags")
 
     loss = dict(a.max_loss)
-    if a.max_deleted is not None and "works_total" not in loss:
-        if "guardrails_override" in flags:
-            loss["works_total"] = a.max_deleted       # works deleted are works_total lost: the same number, named once
-        elif a.max_deleted > WORKS_LOSS_LINE:
-            print(f"WARNING: {a.max_deleted:,} deletions drop works_total past Guardrails' {WORKS_LOSS_LINE:,} line. "
-                  "Name it on the night's guardrails_override row too: --flags guardrails_override --raise --max-loss works=N")
-    if a.max_deleted is not None and a.max_deleted > WORKS_LOSS_LINE:
-        unnamed = [m for m in ("works_with_abstract_any", "works_with_abstract_inverted_index", "works_with_affiliation_strings",
-                               "works_with_institution_ids", "works_with_fulltext") if m not in loss]
-        if unnamed:
-            print(f"NOTE: a merge of {a.max_deleted:,} works can drop each of {', '.join(unnamed)} by up to that many. "
-                  "Count the losers that carry each and name the ones over 2M (--max-loss), or Guardrails fails them.")
+    implicit = set()          # flags this command files or raises on its own (raise-or-file, never refused)
+    works_from_deletions = False
+    if a.max_deleted is not None:
+        # Works deleted are works_total lost: the same number, named once, on the night's guardrails_override row too
+        # (a deletion-only row would pass the deletion guard and then fail Guardrails' works-count check).
+        if "guardrails_override" not in flags:
+            flags.insert(0, "guardrails_override")
+            implicit.add("guardrails_override")
+        if "works_total" not in loss:
+            loss["works_total"] = a.max_deleted
+            works_from_deletions = True
+        if a.max_deleted > WORKS_LOSS_LINE:
+            unnamed = [m for m in ("works_with_abstract_any", "works_with_abstract_inverted_index",
+                                   "works_with_affiliation_strings", "works_with_institution_ids", "works_with_fulltext")
+                       if m not in loss]
+            if unnamed:
+                print(f"NOTE: a merge of {a.max_deleted:,} works can drop each of {', '.join(unnamed)} by up to that many. "
+                      "Count the losers that carry each and name the ones over 2M (--max-loss), or Guardrails fails them.")
 
     start = run_start(a.night, a.current_run)
-    until = start + timedelta(hours=WINDOW_AFTER_START_H)
+    # A planned night's row closes 18 h after its start (the run and a morning repair). A --current-run row (a repair of
+    # the run in progress, possibly late in the day) stays open until the next run starts, never into it.
+    until = start + timedelta(hours=24 if a.current_run else WINDOW_AFTER_START_H)
     now = datetime.now(timezone.utc)
     if until <= now:
         sys.exit(f"that run's window ({until:%Y-%m-%d %H:%M} UTC) has already ended")
     caps = {"guardrails_override": a.max_changed, "deleted_works_guard_override": a.max_deleted}
     stamp = datetime.now(CT).strftime("%Y-%m-%d %H:%M CT")
 
+    # Check every flag before writing any, so a refusal never leaves the night half written.
+    plan = []
     for f in flags:
         _, existing = sql(f"SELECT cast(created_at AS STRING), max_changed, {loss_json}, reason FROM {TABLE} "
                           f"WHERE flag = {q(f)} AND valid_until > TIMESTAMP '{start:%Y-%m-%d %H:%M:%S}' "
                           f"AND valid_from < TIMESTAMP '{until:%Y-%m-%d %H:%M:%S}' "
                           f"AND valid_until > current_timestamp()", wh)
-        row_loss = loss if f == "guardrails_override" else {}
-        if existing and not a.raise_:
+        raise_f = a.raise_ or f in implicit
+        if existing and not raise_f:
             print(f"refused for {f}: this run already has a row (one row per flag per night):")
             for r in existing:
                 print(f"   created {r[0]} UTC, max_changed {r[1]}, max_loss {r[2]}: {r[3][:160]}")
             sys.exit("raise it in place with the night's new totals: add --raise (same command)")
-        if a.raise_ and len(existing) > 1:
+        if len(existing) > 1:
             sys.exit(f"--raise for {f}: this run has {len(existing)} rows; close the extras first (one row per flag per night)")
-        if a.raise_ and existing:
-            created, old_changed, old_loss_json, _ = existing[0]
-            new_loss = dict(json.loads(old_loss_json) if old_loss_json else {})
+        if existing and f == "guardrails_override" and existing[0][1] is None and caps[f] is None:
+            sys.exit("this run's guardrails_override row has no stamp cap (an uncapped legacy row): "
+                     "give --max-changed with the night's total stamps")
+        plan.append((f, existing[0] if existing else None))
+
+    for f, row in plan:
+        row_loss = loss if f == "guardrails_override" else {}
+        if row:
+            created, old_changed, old_loss_json, _ = row
+            old_loss = json.loads(old_loss_json) if old_loss_json else {}
+            new_loss = dict(old_loss)
             new_loss.update(row_loss)
+            if works_from_deletions and f == "guardrails_override":
+                # derived from --max-deleted (the night's deletions): never lower a works_total someone named for more
+                new_loss["works_total"] = max(int(old_loss.get("works_total", 0)), a.max_deleted)
             sets = [f"max_loss = {map_sql(new_loss)}",
                     f"reason = concat(reason, {q(f' | RAISED {stamp} by {a.by}: {a.reason}')})"]
             if caps.get(f) is not None:
@@ -275,7 +298,8 @@ def main():
         print(f"pre-cleared {f} ({named})")
 
     print(f"for the End 2 End run starting {start:%Y-%m-%d %H:%M} UTC ({start.astimezone(CT):%Y-%m-%d %H:%M} CT); "
-          f"window {start:%H:%M} UTC to {until:%Y-%m-%d %H:%M} UTC")
+          f"window {start:%H:%M} UTC to {until:%Y-%m-%d %H:%M} UTC"
+          + (" (guardrails_override filed or raised for works_total, from --max-deleted)" if implicit else ""))
     print("Checks a row doesn't name keep their own line. Morning check: openalex.works.guardrails_history "
           "(threshold, preclear columns; note = 'preclear').")
 
