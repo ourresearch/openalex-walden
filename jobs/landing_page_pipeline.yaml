@@ -30,7 +30,6 @@ resources:
             - on-update-failure
           email_recipients:
             - casey@ourresearch.org
-            - artem@ourresearch.org
       libraries:
         - notebook:
             path: ../notebooks/ingest/LandingPage.py
