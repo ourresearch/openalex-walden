@@ -672,7 +672,7 @@ resources:
       #                                     decline gate in SyncWorkAuthorCurations, the
       #                                     row-count / zero-churn gate in BuildLakebaseWorksDocs
       #   deleted_works_guard_override      works gone > guard_fraction of live:
-      #                                     TrackDeletedWorks, delete_works
+      #                                     TrackDeletedWorks, delete_works, BuildLakebaseWorksDocs' gone-works delete
       #   deleted_locations_guard_override  same rule for locations:
       #                                     TrackDeletedLocations, delete_locations
       #   wunpaywall_guard_override         export-volume caps: WunpaywallDataFeed

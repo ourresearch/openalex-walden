@@ -67,6 +67,20 @@ GUARDRAILS_OVERRIDE = spark.sql(
 ).collect()[0][0]
 TRIGGER_SYNCS = dbutils.widgets.get("trigger_syncs").lower() == "true"
 RUN_DELETES = dbutils.widgets.get("run_deletes").lower() == "true"
+# The gone-works guard below honours the night's deleted-works pre-clear exactly as TrackDeletedWorks and delete_works do
+# (job parameter or a pre-cleared row; the row's max_changed caps it). 4 Nov 2026 (#1642): #1902 merged 17.3M works under a
+# 17.9M deleted_works_guard_override row; TrackDeletedWorks and ES took them, this guard alone stopped and Lakebase kept
+# serving the merged-away works.
+dbutils.widgets.text("deleted_works_guard_override", "false")
+DELETED_OVERRIDE = spark.sql(
+    f"SELECT openalex.works.e2e_override_active('deleted_works_guard_override', '{dbutils.widgets.get('deleted_works_guard_override').replace(chr(39), chr(39) * 2)}')"
+).collect()[0][0]
+_deleted_caps = [r[0] for r in spark.sql("""
+    SELECT max_changed FROM openalex.works.e2e_overrides
+    WHERE flag = 'deleted_works_guard_override'
+      AND current_timestamp() >= valid_from AND current_timestamp() < valid_until
+""").collect()] if DELETED_OVERRIDE else []
+DELETED_CAP = None if (not _deleted_caps or any(c is None for c in _deleted_caps)) else min(_deleted_caps)
 ID_MOD = dbutils.widgets.get("id_mod").strip()
 if ID_MOD:
     import re
@@ -562,11 +576,17 @@ if not IS_FULL_BUILD:
     print(f"gone works (in the shards or id map, not in {WORKS_TABLE}): {n_gone:,}")
     # a partial openalex_works would read as millions of gone works: stop before deleting (largest planned wave so far,
     # #1581 on 2026-10-08, was 5.76M = 1.2 %); rerun with run_deletes=true once the deletions are confirmed as intended
-    if n_gone > 0.02 * total_works and not RUN_DELETES:
+    # a deleted_works_guard_override pre-clear sanctions the night's planned deletions up to its cap
+    deletions_precleared = DELETED_OVERRIDE and (DELETED_CAP is None or n_gone <= DELETED_CAP)
+    if n_gone > 0.02 * total_works and not RUN_DELETES and not deletions_precleared:
         raise Exception(
             f"GUARDRAIL: {n_gone:,} docs / id-map works are not in {WORKS_TABLE} (> 2 % of {total_works:,}); nothing deleted. "
-            "If the deletions are intended, rerun with run_deletes=true."
+            + (f"The deleted_works_guard_override pre-clear caps deletions at {DELETED_CAP:,}. " if DELETED_OVERRIDE and DELETED_CAP is not None else "")
+            + "If the deletions are intended, rerun with run_deletes=true or file a deleted_works_guard_override row that covers them."
         )
+    if n_gone > 0.02 * total_works and deletions_precleared:
+        print(f"{n_gone:,} gone works > 2 % of {total_works:,}: sanctioned by the deleted_works_guard_override pre-clear"
+              + (f" (cap {DELETED_CAP:,})" if DELETED_CAP is not None else ""))
     for s in range(N_SHARDS):
         t = DOCS_TABLE(s)
         result = spark.sql(f"""
