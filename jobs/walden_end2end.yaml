@@ -230,6 +230,24 @@ resources:
             notebook_path: notebooks/end2end/CreateWorksBase
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        # oxjob #2006: one "merged away -> live winner" map for every reader inside the night. Built from tonight's live
+        # set (openalex_works_base) once all of the day's merges and MergeDeclaredLinks' are in merged_work_ids; the
+        # snapshot's refresh_merged_works_map rebuilds it after Track_Deleted_Works (adds tonight's auto_emptied rows) and
+        # mirrors it into ES. Readers: Apply_Work_Author_Curations (claims, #2008), Works_Enriched (citations, cells 5-6).
+        # Off the critical path (the author steps take hours); ~20-25 min.
+        - task_key: Merged_Work_Ids_Map
+          timeout_seconds: 5400
+          depends_on:
+            - task_key: Works_Base
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_merged_ids
+            source: GIT
+            base_parameters:
+              entity: works
+              live_table: openalex.works.openalex_works_base
+              es_mirror: "false"
+          max_retries: 1
+          min_retry_interval_millis: 300000
         - task_key: Works_Fulltext
           timeout_seconds: 1200
           depends_on:
@@ -378,6 +396,7 @@ resources:
           depends_on:
             - task_key: Author_Matching
             - task_key: Sync_Work_Author_Curations
+            - task_key: Merged_Work_Ids_Map
           notebook_task:
             notebook_path: notebooks/end2end/ApplyWorkAuthorCurations
             source: GIT
@@ -398,6 +417,8 @@ resources:
             - task_key: Works_Fulltext
             # referenced_works merge (cell 5) reads its output; Works_Base does not
             - task_key: parse_referenced_works
+            # cells 5-6 redirect citations through merged_work_ids_map (oxjob #2006)
+            - task_key: Merged_Work_Ids_Map
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT

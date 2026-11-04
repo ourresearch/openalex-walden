@@ -42,8 +42,13 @@ dbutils.widgets.dropdown("entity", "authors", ["authors", "sources", "works"])
 dbutils.widgets.text("max_shrink_fraction", "0.02")
 dbutils.widgets.text("shrink_guard_override", "false")
 dbutils.widgets.text("full_resync", "false")
+# oxjob #2006: the End 2 End builds the works map early (after Works_Base) for its own readers, with tonight's live set
+# (openalex_works_base) and no ES write; the snapshot's refresh_merged_works_map rebuilds it after TrackDeletedWorks with ES.
+dbutils.widgets.text("live_table", "")      # empty = the entity's live table below
+dbutils.widgets.text("es_mirror", "true")   # false = write the map table only
 
 ENTITY = dbutils.widgets.get("entity")
+ES_MIRROR = dbutils.widgets.get("es_mirror").lower() != "false"
 MAX_SHRINK = float(dbutils.widgets.get("max_shrink_fraction"))
 SHRINK_OVERRIDE = dbutils.widgets.get("shrink_guard_override").lower() == "true"
 FULL_RESYNC = dbutils.widgets.get("full_resync").lower() == "true"
@@ -92,6 +97,8 @@ CFG = {
         "partitions": 512,
     },
 }[ENTITY]
+if dbutils.widgets.get("live_table").strip():
+    CFG["live"] = dbutils.widgets.get("live_table").strip()
 P = CFG["prefix"]
 print(f"entity={ENTITY} live={CFG['live']} map={CFG['map']} es={CFG['es_index']}")
 
@@ -295,6 +302,11 @@ new_df.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(CFG
 spark.sql(f"COMMENT ON TABLE {CFG['map']} IS 'Merged-away {ENTITY} id -> live winner (chains followed). "
           f"Built nightly by notebooks/elastic/sync_merged_ids from the merge ledgers; served as 301s via ES {CFG['es_index']} "
           f"and published as {ENTITY}/merged_ids.csv.gz in the snapshot (oxjob #1124).'")
+
+# COMMAND ----------
+
+if not ES_MIRROR:
+    dbutils.notebook.exit(f"{CFG['map']} written from {CFG['live']}; es_mirror=false, Elasticsearch untouched")
 
 # COMMAND ----------
 
