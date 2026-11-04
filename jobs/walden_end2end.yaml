@@ -233,7 +233,8 @@ resources:
         # oxjob #2006: one "merged away -> live winner" map for every reader inside the night. Built from tonight's live
         # set (openalex_works_base) once all of the day's merges and MergeDeclaredLinks' are in merged_work_ids; the
         # snapshot's refresh_merged_works_map rebuilds it after Track_Deleted_Works (adds tonight's auto_emptied rows) and
-        # mirrors it into ES. Readers: Apply_Work_Author_Curations (claims, #2008), Works_Enriched (citations, cells 5-6).
+        # mirrors it into ES. Readers: Apply_Work_Author_Curations (claims, #2008), Works_Enriched (citations cells 5-6,
+        # funders cell 20).
         # Off the critical path (the author steps take hours); ~20-25 min.
         - task_key: Merged_Work_Ids_Map
           timeout_seconds: 5400

@@ -48,7 +48,8 @@ dbutils.widgets.text("live_table", "")      # empty = the entity's live table be
 dbutils.widgets.text("es_mirror", "true")   # false = write the map table only
 
 ENTITY = dbutils.widgets.get("entity")
-ES_MIRROR = dbutils.widgets.get("es_mirror").lower() != "false"
+ES_MIRROR = dbutils.widgets.get("es_mirror").lower() == "true"
+LIVE_TABLE = dbutils.widgets.get("live_table").strip()
 MAX_SHRINK = float(dbutils.widgets.get("max_shrink_fraction"))
 SHRINK_OVERRIDE = dbutils.widgets.get("shrink_guard_override").lower() == "true"
 FULL_RESYNC = dbutils.widgets.get("full_resync").lower() == "true"
@@ -97,8 +98,8 @@ CFG = {
         "partitions": 512,
     },
 }[ENTITY]
-if dbutils.widgets.get("live_table").strip():
-    CFG["live"] = dbutils.widgets.get("live_table").strip()
+if LIVE_TABLE:
+    CFG["live"] = LIVE_TABLE
 P = CFG["prefix"]
 print(f"entity={ENTITY} live={CFG['live']} map={CFG['map']} es={CFG['es_index']}")
 
@@ -227,7 +228,9 @@ else:
     """
 
 # materialized: the chain walk below reads it once per hop
-EDGES = CFG["map"] + "_edges"
+# the End 2 End's map-only build keeps its own scratch tables, so it never shares them with an overlapping ES run (#2006)
+SCRATCH = "" if ES_MIRROR else "_nightly"
+EDGES = CFG["map"] + "_edges" + SCRATCH
 spark.sql(f"""
   CREATE OR REPLACE TABLE {EDGES}
   COMMENT 'One merge edge per loser (latest) from the {ENTITY} merge ledgers; input to {CFG["map"]} (oxjob #1124)'
@@ -243,7 +246,7 @@ if live_n == 0:
     raise Exception(f"ABORT: {CFG['live']} is empty; refusing to build the map.")
 print(f"live {ENTITY}: {live_n:,}")
 # the chain walk only needs liveness for IDs that appear in an edge (463M live works vs ~40M edges)
-LIVE = CFG["map"] + "_live"
+LIVE = CFG["map"] + "_live" + SCRATCH
 spark.sql(f"""
   CREATE OR REPLACE TABLE {LIVE} AS
   SELECT DISTINCT l.id FROM {CFG['live']} l
