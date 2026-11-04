@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 1560" width="1060" height="1560" font-family="Arial, sans-serif">
+
+  <defs>
+    <marker id="ah" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+      <path d="M0,0 L0,7 L8,3.5 z" fill="#4B5563"/>
+    </marker>
+    <marker id="ah-blue" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+      <path d="M0,0 L0,7 L8,3.5 z" fill="#3B82F6"/>
+    </marker>
+    <marker id="ah-green" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+      <path d="M0,0 L0,7 L8,3.5 z" fill="#10B981"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1060" height="1560" fill="#0F1117"/>
+
+  <!-- TITLE -->
+  <text x="530" y="32" text-anchor="middle" font-size="19" font-weight="bold" fill="#E2E8F0">Walden End-to-End Pipeline</text>
+  <text x="530" y="51" text-anchor="middle" font-size="11" fill="#64748B">Runs nightly at 05:00 UTC · Databricks · openalex-walden</text>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 1 — INGEST
+  ════════════════════════════════════════════════ -->
+  <rect x="10" y="62" width="1040" height="130" rx="10" fill="#162333" opacity="0.8"/>
+  <text x="26" y="80" font-size="11" font-weight="bold" fill="#5DADE2">1 · INGEST  (all 6 run in parallel)</text>
+
+  <!-- Crossref -->
+  <rect x="18"  y="87" width="152" height="54" rx="7" fill="#1D6FA4"/>
+  <text x="94"  y="109" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Crossref</text>
+  <text x="94"  y="124" text-anchor="middle" font-size="9"  fill="#AED6F1">journals, articles, books</text>
+
+  <!-- DataCite -->
+  <rect x="180" y="87" width="152" height="54" rx="7" fill="#1D6FA4"/>
+  <text x="256" y="109" text-anchor="middle" font-size="11" font-weight="bold" fill="white">DataCite</text>
+  <text x="256" y="124" text-anchor="middle" font-size="9"  fill="#AED6F1">datasets, preprints</text>
+
+  <!-- PubMed -->
+  <rect x="342" y="87" width="152" height="54" rx="7" fill="#1D6FA4"/>
+  <text x="418" y="109" text-anchor="middle" font-size="11" font-weight="bold" fill="white">PubMed</text>
+  <text x="418" y="124" text-anchor="middle" font-size="9"  fill="#AED6F1">biomedical literature</text>
+
+  <!-- Repos -->
+  <rect x="504" y="87" width="152" height="54" rx="7" fill="#1D6FA4"/>
+  <text x="580" y="109" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Repositories</text>
+  <text x="580" y="124" text-anchor="middle" font-size="9"  fill="#AED6F1">arXiv, inst. repos</text>
+
+  <!-- Landing Pages -->
+  <rect x="666" y="87" width="160" height="54" rx="7" fill="#1D6FA4"/>
+  <text x="746" y="104" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Landing Pages</text>
+  <text x="746" y="119" text-anchor="middle" font-size="9"  fill="#AED6F1">publisher web pages</text>
+  <text x="746" y="132" text-anchor="middle" font-size="9"  fill="#7FB3D3">(via Parseland scraper)</text>
+
+  <!-- PDFs -->
+  <rect x="836" y="87" width="208" height="54" rx="7" fill="#1D6FA4"/>
+  <text x="940" y="109" text-anchor="middle" font-size="11" font-weight="bold" fill="white">PDFs</text>
+  <text x="940" y="124" text-anchor="middle" font-size="9"  fill="#AED6F1">full text, abstracts, references</text>
+
+  <!-- fan-in lines to Union -->
+  <line x1="94"  y1="141" x2="94"  y2="182" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="94"  y1="182" x2="528" y2="229" stroke="#3B82F6" stroke-width="1.2" marker-end="url(#ah-blue)"/>
+  <line x1="256" y1="141" x2="256" y2="178" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="256" y1="178" x2="529" y2="229" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="418" y1="141" x2="418" y2="190" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="418" y1="190" x2="530" y2="229" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="580" y1="141" x2="580" y2="190" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="580" y1="190" x2="531" y2="229" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="746" y1="141" x2="746" y2="178" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="746" y1="178" x2="532" y2="229" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="940" y1="141" x2="940" y2="182" stroke="#3B82F6" stroke-width="1.2"/>
+  <line x1="940" y1="182" x2="533" y2="229" stroke="#3B82F6" stroke-width="1.2"/>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 2 — UNION
+  ════════════════════════════════════════════════ -->
+  <rect x="180" y="230" width="700" height="52" rx="8" fill="#1E3A5F"/>
+  <text x="530" y="252" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Union</text>
+  <text x="530" y="269" text-anchor="middle" font-size="10" fill="#93C6E7">merge all 6 sources into one raw works table (Delta)</text>
+
+  <line x1="530" y1="282" x2="530" y2="305" stroke="#4B5563" stroke-width="1.6" marker-end="url(#ah)"/>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 3 — ENRICH LOCATIONS
+  ════════════════════════════════════════════════ -->
+  <rect x="10" y="298" width="1040" height="195" rx="10" fill="#122318" opacity="0.9"/>
+  <text x="26" y="316" font-size="11" font-weight="bold" fill="#58D68D">2 · ENRICH LOCATIONS</text>
+
+  <!-- a) Super Authorships -->
+  <rect x="180" y="320" width="700" height="48" rx="8" fill="#1A6B3A"/>
+  <text x="530" y="341" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Super Authorships</text>
+  <text x="530" y="357" text-anchor="middle" font-size="9"  fill="#A9DFBF">merge landing page &amp; PDF data into author records: names, affiliations, corresponding-author flag</text>
+
+  <line x1="530" y1="368" x2="530" y2="382" stroke="#10B981" stroke-width="1.4" marker-end="url(#ah-green)"/>
+
+  <!-- b) Superlocations -->
+  <rect x="180" y="384" width="700" height="48" rx="8" fill="#1A6B3A"/>
+  <text x="530" y="405" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Superlocations</text>
+  <text x="530" y="421" text-anchor="middle" font-size="9"  fill="#A9DFBF">build unified location records: URLs, license, OA status, abstract — one row per paper per source</text>
+
+  <line x1="530" y1="432" x2="530" y2="446" stroke="#10B981" stroke-width="1.4" marker-end="url(#ah-green)"/>
+
+  <!-- c) Locations with Sources & Types -->
+  <rect x="180" y="448" width="560" height="35" rx="8" fill="#1A6B3A"/>
+  <text x="460" y="462" text-anchor="middle" font-size="10" font-weight="bold" fill="white">Locations with Sources &amp; Types</text>
+  <text x="460" y="476" text-anchor="middle" font-size="9"  fill="#A9DFBF">attach journal record; classify as journal / repository / preprint server</text>
+
+  <!-- Sources Snapshot side-input -->
+  <rect x="770" y="448" width="268" height="35" rx="6" fill="none" stroke="#58D68D" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="904" y="462" text-anchor="middle" font-size="10" fill="#58D68D" font-weight="bold">Sources Snapshot</text>
+  <text x="904" y="476" text-anchor="middle" font-size="9"  fill="#58D68D">journal registry (runs independently)</text>
+  <line x1="770" y1="465" x2="740" y2="465" stroke="#58D68D" stroke-width="1.4" stroke-dasharray="4,2" marker-end="url(#ah-green)"/>
+
+  <line x1="460" y1="483" x2="460" y2="510" stroke="#4B5563" stroke-width="1.6"/>
+  <line x1="460" y1="510" x2="528" y2="530" stroke="#4B5563" stroke-width="1.6" marker-end="url(#ah)"/>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 4 — DEDUP
+  ════════════════════════════════════════════════ -->
+  <rect x="10" y="523" width="1040" height="100" rx="10" fill="#2A1E0F" opacity="0.9"/>
+  <text x="26" y="541" font-size="11" font-weight="bold" fill="#F0B27A">3 · DEDUPLICATE &amp; MAP WORKS</text>
+
+  <!-- Left box -->
+  <rect x="20"  y="547" width="455" height="60" rx="8" fill="#784212"/>
+  <text x="247" y="569" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Merge Declared Links</text>
+  <text x="247" y="584" text-anchor="middle" font-size="9"  fill="#FAD7A0">link preprints to their published versions</text>
+  <text x="247" y="597" text-anchor="middle" font-size="9"  fill="#FAD7A0">using Crossref is-preprint-of and arXiv metadata</text>
+
+  <!-- Right box -->
+  <rect x="585" y="547" width="455" height="60" rx="8" fill="#784212"/>
+  <text x="812" y="569" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Map Work IDs + Apply Curations</text>
+  <text x="812" y="584" text-anchor="middle" font-size="9"  fill="#FAD7A0">assign canonical OpenAlex IDs to every paper;</text>
+  <text x="812" y="597" text-anchor="middle" font-size="9"  fill="#FAD7A0">apply user-submitted location corrections</text>
+
+  <!-- arrows to Works Base -->
+  <line x1="247" y1="607" x2="247" y2="632" stroke="#4B5563" stroke-width="1.4"/>
+  <line x1="247" y1="632" x2="528" y2="649" stroke="#4B5563" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="812" y1="607" x2="812" y2="632" stroke="#4B5563" stroke-width="1.4"/>
+  <line x1="812" y1="632" x2="532" y2="649" stroke="#4B5563" stroke-width="1.4" marker-end="url(#ah)"/>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 5 — WORKS BASE
+  ════════════════════════════════════════════════ -->
+  <rect x="10" y="643" width="1040" height="80" rx="10" fill="#271510" opacity="0.9"/>
+  <text x="26" y="661" font-size="11" font-weight="bold" fill="#EC7063">4 · WORKS BASE</text>
+
+  <rect x="80" y="665" width="900" height="50" rx="8" fill="#7B241C"/>
+  <text x="530" y="687" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Works Base</text>
+  <text x="530" y="703" text-anchor="middle" font-size="10" fill="#FADBD8">central Delta table — all papers with enriched locations, canonical IDs, and volume info</text>
+
+  <!-- fan-out to 4 parallel tracks -->
+  <line x1="530" y1="715" x2="530" y2="730" stroke="#4B5563" stroke-width="1.2"/>
+  <line x1="530" y1="730" x2="140" y2="757" stroke="#4B5563" stroke-width="1.2" marker-end="url(#ah)"/>
+  <line x1="530" y1="730" x2="363" y2="757" stroke="#4B5563" stroke-width="1.2" marker-end="url(#ah)"/>
+  <line x1="530" y1="730" x2="696" y2="757" stroke="#4B5563" stroke-width="1.2" marker-end="url(#ah)"/>
+  <line x1="530" y1="730" x2="930" y2="757" stroke="#4B5563" stroke-width="1.2" marker-end="url(#ah)"/>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 6 — PARALLEL ENRICHMENT (4 tracks)
+  ════════════════════════════════════════════════ -->
+  <rect x="10" y="750" width="1040" height="215" rx="10" fill="#1E1226" opacity="0.9"/>
+  <text x="26" y="769" font-size="11" font-weight="bold" fill="#C39BD3">5 · PARALLEL ENRICHMENT  (all 4 tracks run simultaneously)</text>
+
+  <!-- Track A: Topics + Concepts -->
+  <rect x="18"  y="774" width="244" height="175" rx="8" fill="#5B2C6F"/>
+  <text x="140" y="796" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Topics &amp; Concepts</text>
+  <line x1="50" y1="806" x2="230" y2="806" stroke="#7D3C98" stroke-width="0.7" opacity="0.5"/>
+  <text x="140" y="822" text-anchor="middle" font-size="9" fill="#D7BDE2">ML model scores each paper</text>
+  <text x="140" y="836" text-anchor="middle" font-size="9" fill="#D7BDE2">on ~4,500 topics and fields</text>
+  <text x="140" y="856" text-anchor="middle" font-size="9" fill="#C39BD3">Also runs SDG classifier</text>
+  <text x="140" y="870" text-anchor="middle" font-size="9" fill="#C39BD3">(UN Sustainable Dev. Goals)</text>
+  <text x="140" y="893" text-anchor="middle" font-size="8" fill="#9B59B6">feeds → Works Enriched</text>
+
+  <!-- Track B: Affiliation Matching -->
+  <rect x="272" y="774" width="244" height="175" rx="8" fill="#5B2C6F"/>
+  <text x="394" y="796" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Affiliation Matching</text>
+  <line x1="290" y1="806" x2="498" y2="806" stroke="#7D3C98" stroke-width="0.7" opacity="0.5"/>
+  <text x="394" y="822" text-anchor="middle" font-size="9" fill="#D7BDE2">clean raw affiliation strings</text>
+  <text x="394" y="836" text-anchor="middle" font-size="9" fill="#D7BDE2">("MIT Dept of Physics")</text>
+  <text x="394" y="850" text-anchor="middle" font-size="9" fill="#D7BDE2">match to institution records</text>
+  <text x="394" y="870" text-anchor="middle" font-size="9" fill="#C39BD3">also applies curations from</text>
+  <text x="394" y="884" text-anchor="middle" font-size="9" fill="#C39BD3">users-api (human corrections)</text>
+  <text x="394" y="903" text-anchor="middle" font-size="8" fill="#9B59B6">feeds → Author Disambiguation</text>
+
+  <!-- Track C: Author Disambiguation -->
+  <rect x="526" y="774" width="244" height="175" rx="8" fill="#5B2C6F"/>
+  <text x="648" y="796" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Author Disambiguation</text>
+  <line x1="544" y1="806" x2="752" y2="806" stroke="#7D3C98" stroke-width="0.7" opacity="0.5"/>
+  <text x="648" y="822" text-anchor="middle" font-size="9" fill="#D7BDE2">vector embeddings + Claude</text>
+  <text x="648" y="836" text-anchor="middle" font-size="9" fill="#D7BDE2">judge resolve ambiguous names</text>
+  <text x="648" y="850" text-anchor="middle" font-size="9" fill="#D7BDE2">→ canonical author profiles</text>
+  <text x="648" y="870" text-anchor="middle" font-size="9" fill="#C39BD3">applies curations; outputs</text>
+  <text x="648" y="884" text-anchor="middle" font-size="9" fill="#C39BD3">authorships with author IDs</text>
+  <text x="648" y="903" text-anchor="middle" font-size="8" fill="#9B59B6">feeds → Works Enriched</text>
+
+  <!-- Track D: References + Fulltext -->
+  <rect x="780" y="774" width="270" height="175" rx="8" fill="#5B2C6F"/>
+  <text x="915" y="796" text-anchor="middle" font-size="11" font-weight="bold" fill="white">References &amp; Fulltext</text>
+  <line x1="798" y1="806" x2="1032" y2="806" stroke="#7D3C98" stroke-width="0.7" opacity="0.5"/>
+  <text x="915" y="822" text-anchor="middle" font-size="9" fill="#D7BDE2">extract cited works from</text>
+  <text x="915" y="836" text-anchor="middle" font-size="9" fill="#D7BDE2">reference lists</text>
+  <text x="915" y="856" text-anchor="middle" font-size="9" fill="#C39BD3">build fulltext search index</text>
+  <text x="915" y="870" text-anchor="middle" font-size="9" fill="#C39BD3">content for each paper</text>
+  <text x="915" y="903" text-anchor="middle" font-size="8" fill="#9B59B6">feeds → Works Enriched</text>
+
+  <!-- arrows from tracks to Works Enriched -->
+  <line x1="140"  y1="949" x2="140"  y2="970" stroke="#4B5563" stroke-width="1.3"/>
+  <line x1="140"  y1="970" x2="528"  y2="999" stroke="#4B5563" stroke-width="1.3" marker-end="url(#ah)"/>
+  <line x1="394"  y1="949" x2="394"  y2="970" stroke="#4B5563" stroke-width="1.3"/>
+  <line x1="394"  y1="970" x2="529"  y2="999" stroke="#4B5563" stroke-width="1.3" marker-end="url(#ah)"/>
+  <line x1="648"  y1="949" x2="648"  y2="970" stroke="#4B5563" stroke-width="1.3"/>
+  <line x1="648"  y1="970" x2="531"  y2="999" stroke="#4B5563" stroke-width="1.3" marker-end="url(#ah)"/>
+  <line x1="915"  y1="949" x2="915"  y2="970" stroke="#4B5563" stroke-width="1.3"/>
+  <line x1="915"  y1="970" x2="532"  y2="999" stroke="#4B5563" stroke-width="1.3" marker-end="url(#ah)"/>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 7 — WORKS ENRICHED
+  ════════════════════════════════════════════════ -->
+  <rect x="10" y="993" width="1040" height="80" rx="10" fill="#1A1E24" opacity="0.9"/>
+  <text x="26" y="1011" font-size="11" font-weight="bold" fill="#94A3B8">6 · ASSEMBLY</text>
+
+  <rect x="80" y="1015" width="900" height="50" rx="8" fill="#2E4057"/>
+  <text x="530" y="1037" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Works Enriched</text>
+  <text x="530" y="1053" text-anchor="middle" font-size="10" fill="#94A3B8">join: authorships + topics + concepts + references + fulltext → optimize Delta table</text>
+
+  <line x1="530" y1="1065" x2="530" y2="1085" stroke="#4B5563" stroke-width="1.6" marker-end="url(#ah)"/>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 8 — GUARDRAILS
+  ════════════════════════════════════════════════ -->
+  <rect x="230" y="1088" width="600" height="62" rx="8" fill="#922B21"/>
+  <text x="260" y="1116" font-size="18" fill="#FADBD8">⚠</text>
+  <text x="530" y="1112" text-anchor="middle" font-size="12" font-weight="bold" fill="white">Guardrails  —  Quality Gate</text>
+  <text x="530" y="1130" text-anchor="middle" font-size="10" fill="#FADBD8">fails the run if &gt;7.5M works changed tonight; skips all publishing until manually cleared</text>
+  <text x="530" y="1144" text-anchor="middle" font-size="9" fill="#E59866">separate override flags per consequence class (guardrails / deleted-works / locations / unpaywall)</text>
+
+  <!-- fan-out to 4 publish targets -->
+  <line x1="350" y1="1150" x2="145"  y2="1206" stroke="#4B5563" stroke-width="1.3" marker-end="url(#ah)"/>
+  <line x1="440" y1="1150" x2="370"  y2="1206" stroke="#4B5563" stroke-width="1.3" marker-end="url(#ah)"/>
+  <line x1="620" y1="1150" x2="650"  y2="1206" stroke="#4B5563" stroke-width="1.3" marker-end="url(#ah)"/>
+  <line x1="710" y1="1150" x2="900"  y2="1206" stroke="#4B5563" stroke-width="1.3" marker-end="url(#ah)"/>
+
+  <!-- ═══════════════════════════════════════════════
+       SECTION 9 — PUBLISH
+  ════════════════════════════════════════════════ -->
+  <rect x="10" y="1198" width="1040" height="195" rx="10" fill="#1A1E24" opacity="0.9"/>
+  <text x="26" y="1216" font-size="11" font-weight="bold" fill="#94A3B8">7 · PUBLISH  (all run in parallel after Guardrails passes)</text>
+
+  <!-- Elasticsearch -->
+  <rect x="18"  y="1221" width="240" height="160" rx="8" fill="#1E2D40"/>
+  <text x="138" y="1244" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Elasticsearch</text>
+  <line x1="38" y1="1254" x2="238" y2="1254" stroke="#2D3748" stroke-width="0.8"/>
+  <text x="138" y="1270" text-anchor="middle" font-size="9" fill="#94A3B8">incremental sync: works,</text>
+  <text x="138" y="1284" text-anchor="middle" font-size="9" fill="#94A3B8">locations, raw affiliation</text>
+  <text x="138" y="1298" text-anchor="middle" font-size="9" fill="#94A3B8">strings index</text>
+  <text x="138" y="1318" text-anchor="middle" font-size="9" fill="#64748B">deletes stale docs;</text>
+  <text x="138" y="1332" text-anchor="middle" font-size="9" fill="#64748B">powers all API search</text>
+  <text x="138" y="1346" text-anchor="middle" font-size="9" fill="#64748B">endpoints</text>
+  <text x="138" y="1368" text-anchor="middle" font-size="8" fill="#4B5563">→ api.openalex.org</text>
+
+  <!-- Full Snapshot -->
+  <rect x="270" y="1221" width="240" height="160" rx="8" fill="#1E2D40"/>
+  <text x="390" y="1244" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Full Snapshot</text>
+  <line x1="290" y1="1254" x2="490" y2="1254" stroke="#2D3748" stroke-width="0.8"/>
+  <text x="390" y="1270" text-anchor="middle" font-size="9" fill="#94A3B8">nightly S3 data dump</text>
+  <text x="390" y="1284" text-anchor="middle" font-size="9" fill="#94A3B8">for bulk download</text>
+  <text x="390" y="1304" text-anchor="middle" font-size="9" fill="#64748B">calendar rule decides</text>
+  <text x="390" y="1318" text-anchor="middle" font-size="9" fill="#64748B">public vs. internal release</text>
+  <text x="390" y="1338" text-anchor="middle" font-size="9" fill="#64748B">includes deleted-works</text>
+  <text x="390" y="1352" text-anchor="middle" font-size="9" fill="#64748B">ledger</text>
+  <text x="390" y="1372" text-anchor="middle" font-size="8" fill="#4B5563">→ S3 public bucket</text>
+
+  <!-- Lakebase -->
+  <rect x="522" y="1221" width="240" height="160" rx="8" fill="#1E2D40"/>
+  <text x="642" y="1244" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Lakebase</text>
+  <line x1="542" y1="1254" x2="742" y2="1254" stroke="#2D3748" stroke-width="0.8"/>
+  <text x="642" y="1270" text-anchor="middle" font-size="9" fill="#94A3B8">Databricks SQL endpoint</text>
+  <text x="642" y="1284" text-anchor="middle" font-size="9" fill="#94A3B8">for heavy analytical queries</text>
+  <text x="642" y="1304" text-anchor="middle" font-size="9" fill="#64748B">used by openalex.org</text>
+  <text x="642" y="1318" text-anchor="middle" font-size="9" fill="#64748B">chat and dashboard</text>
+  <text x="642" y="1338" text-anchor="middle" font-size="9" fill="#64748B">features</text>
+  <text x="642" y="1372" text-anchor="middle" font-size="8" fill="#4B5563">→ Databricks SQL</text>
+
+  <!-- Unpaywall -->
+  <rect x="774" y="1221" width="276" height="160" rx="8" fill="#1E2D40"/>
+  <text x="912" y="1244" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Unpaywall</text>
+  <line x1="794" y1="1254" x2="1030" y2="1254" stroke="#2D3748" stroke-width="0.8"/>
+  <text x="912" y="1270" text-anchor="middle" font-size="9" fill="#94A3B8">OA status data feed for</text>
+  <text x="912" y="1284" text-anchor="middle" font-size="9" fill="#94A3B8">unpaywall.org users</text>
+  <text x="912" y="1304" text-anchor="middle" font-size="9" fill="#64748B">nightly full snapshot +</text>
+  <text x="912" y="1318" text-anchor="middle" font-size="9" fill="#64748B">incremental data feed +</text>
+  <text x="912" y="1332" text-anchor="middle" font-size="9" fill="#64748B">Lakebase metadata sync</text>
+  <text x="912" y="1372" text-anchor="middle" font-size="8" fill="#4B5563">→ unpaywall.org / S3</text>
+
+  <!-- Footer -->
+  <text x="530" y="1540" text-anchor="middle" font-size="10" fill="#374151">Generated from jobs/walden_end2end.yaml · openalex-walden</text>
+  <text x="530" y="1555" text-anchor="middle" font-size="10" fill="#374151">Gates: Merge_Declared_Links and Affiliation_Matcher pass either way so downstream always runs</text>
+
+</svg>
