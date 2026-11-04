@@ -540,6 +540,22 @@ resources:
               is_full_sync: "false"
             source: GIT
           job_cluster_key: es_sync_cluster
+        # oxjob #2007: the apply receipt. What walden did with each users-api curation tonight (applied, outranked,
+        # ignored by policy, target gone), for the users-api status worker. Last on purpose: a receipt exists only for a
+        # night that passed Guardrails and reached Elasticsearch. Nothing depends on it, it re-stamps no works, and a
+        # failure here leaves the night's publish untouched (repair-run this task alone).
+        - task_key: Curation_Receipts
+          timeout_seconds: 3600
+          depends_on:
+            - task_key: Delete_Works_from_Elasticsearch
+            - task_key: Sync_RAS_to_Elasticsearch
+          notebook_task:
+            notebook_path: notebooks/end2end/CurationReceipts
+            base_parameters:
+              run_date: "{{job.start_time.iso_date}}"
+              job_run_id: "{{job.run_id}}"
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
         - task_key: Wunpaywall
           timeout_seconds: 1200
           depends_on:
