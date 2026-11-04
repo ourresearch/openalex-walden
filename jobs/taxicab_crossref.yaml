@@ -18,7 +18,11 @@ resources:
             notebook_path: notebooks/scraping/taxicab
             source: GIT
             base_parameters:
-              lookback_days: "3"
+              # oxjob #1997 (as #1538 did for Repos): the hold-backs (host breaker probes, 3,000 a
+              # run per DOI prefix, 200-min deadline) assume leftovers wait in the window for the
+              # next run. A 3-day window let them age out unfetched: 3 Nov, 19,244 new DOIs never
+              # fetched (13,728 one 17 Oct deposit of 10.70413, 2,247 De Gruyter 10.1515).
+              lookback_days: "30"
               url_limit: "500000"
               source_filter: "crossref_only"
           job_cluster_key: Taxicab_job_cluster
@@ -49,7 +53,7 @@ resources:
         git_branch: main
       parameters:
         - name: lookback_days
-          default: "3"
+          default: "30"
         - name: url_limit
           default: "500000"
         - name: source_filter
