@@ -23,11 +23,22 @@ parameter is the fallback (section 3b).
 - If the blast radius is genuinely unknown, do not override. Let the scheduled run trip, read
   `records_changed_by_run` and the diff in the morning, then decide.
 - **Cap every pre-clear to the planned size** (Casey, 2026-10-06): `--max-changed N` for
-  `guardrails_override` (Check 1's threshold becomes N; above N the override is withdrawn and the
-  run fails), `--max-deleted N` for `deleted_works_guard_override` (TrackDeletedWorks and the ES
-  delete abort above N even with the override). N = the planned change plus a normal night's
-  stamps plus headroom; recent unforced nights stamp 3–7M. An uncapped row is the pre-10-06
-  behaviour and should be the exception.
+  `guardrails_override` (Check 1's threshold becomes N), `--max-deleted N` for
+  `deleted_works_guard_override` (TrackDeletedWorks and the ES delete abort above N even with the
+  override). N = the planned change plus a normal night's stamps plus headroom; recent unforced
+  nights stamp 3–7M.
+- **Name every planned loss: a row raises only the checks it names** (oxjob #2005, from the
+  Thu 5 Nov 2026 run). `--max-loss works=N,abstracts=N,...` sets each loss check's threshold to N
+  (Guardrails Checks 2–9 and the curation decline gates); a check the row doesn't name keeps its
+  own line (2M works; citations 5%; curations 10 rows). Until 4 Nov a capped row raised Check 1 and
+  switched every other check off, so 6 nights since 21 Sep accepted a failed loss check whose plan
+  lived only in the row's prose. `--max-deleted N` also names `works=N`. A merge of N works can
+  drop each "works with X" count by up to N: count the losers that carry X and name the ones over
+  2M (on 7, 8, 12 and 24 Oct the merges' abstract losses were never named). Names: `works`,
+  `abstracts` (both abstract checks), `affiliations`, `institutions`, `fulltext`, `citations`,
+  `missing_author_ids`, `work_author_curations`, `location_curations`.
+- **One row per flag per night.** The first change files it; every later change raises it in place
+  with `--raise` and the night's new totals (preclear_e2e.py refuses a second row).
 
 ## 1. Size it (before merging)
 
@@ -50,16 +61,21 @@ runbook, or the ramp in section 6. Over ~10M also drops ES replicas for the work
 The nightly runs at its usual time and clears its own gate. No manual run, no pause, nothing to
 cancel, no collision with the schedule, and a bundle deploy cannot undo it.
 
-How it works: every override gate in `walden_end2end` (Guardrails, the curation-decline gate in
-SyncWorkAuthorCurations, the row-count gate in
-BuildLakebaseWorksDocs, TrackDeleted* / delete_*, the Wunpaywall feed caps) resolves its flag
-through `openalex.works.e2e_override_active(flag, param)`: true when the job parameter is
-`"true"` OR `openalex.works.e2e_overrides` holds a row for that flag whose
-`[valid_from, valid_until)` window covers the moment the gate runs. `scripts/preclear_e2e.py`
-writes that row with a window from now to 18 h after the next 05:00 UTC start, so it covers the
-nightly and a same-morning repair run, and ends before the following nightly. The Guardrails
-task prints the row's reason and requester, and stamps `note = 'override:table'` in
-`guardrails_history`.
+How it works (oxjob #2005): every capped gate in `walden_end2end` (each Guardrails check, the
+curation decline gates in SyncWorkAuthorCurations and SyncLocationCurations, TrackDeletedWorks /
+delete_works) asks one function, `openalex.works.e2e_cap(flag, metric)` /
+`e2e_gate(flag, metric, amount, line, param)` (`notebooks/end2end/e2e_gate.sql`), how far tonight
+may go on its metric: its own line, or the cap an open row in `openalex.works.e2e_overrides`
+names for that metric (`max_changed` for stamps and deletions, `max_loss[metric]` for the rest;
+several rows: the smallest cap). The job parameter `"true"` (a manual run) still opens everything.
+On/off switches with no size (`keep_replicas`, `hash_rebaseline`, the locations and Wunpaywall
+flags) keep `e2e_override_active(flag, param)`. BuildLakebaseWorksDocs' two "upstream looks
+broken" floors open only on the parameter. `scripts/preclear_e2e.py` binds each row to one run:
+the window opens at that run's 05:00 UTC start and closes 18 h later (the run and a same-morning
+repair), so a row filed in the afternoon can't touch a repair of the night before. Guardrails
+prints each open row and what it names, and records per metric the `threshold` it judged against
+and the `preclear` rows that set it; `note = 'preclear'` when a named cap passed a check over its
+line.
 
 Evening sequence (all times UTC; nightly = 05:00 UTC = 00:00 CDT):
 
@@ -75,9 +91,13 @@ Evening sequence (all times UTC; nightly = 05:00 UTC = 00:00 CDT):
 4. **The change's owner pre-clears** (from desk; `databricks` CLI authenticated), capped to the planned size:
    ```
    scripts/preclear_e2e.py --max-changed 12000000 --reason "oxjob #1309 fallback cleanup, 10.9M works" --by jason
-   scripts/preclear_e2e.py --flags guardrails_override,deleted_works_guard_override --reason ... --by ...
-   scripts/preclear_e2e.py --list      # open windows
+   scripts/preclear_e2e.py --max-changed 22M --max-loss abstracts=6M --reason "#1800 stand-ins, ~6M lose an abstract" --by jason
+   scripts/preclear_e2e.py --flags guardrails_override,deleted_works_guard_override --max-changed 21.5M \
+       --max-deleted 7.5M --max-loss abstracts=7M,affiliations=3M,institutions=3M --reason ... --by ...
+   scripts/preclear_e2e.py --raise --max-changed 34M --max-loss abstracts=7.2M --reason "+ #1528 ..." --by jason
+   scripts/preclear_e2e.py --list      # open windows (max_loss shows what each row names)
    scripts/preclear_e2e.py --cancel    # close every open window (changed your mind)
+   # any of them with --dry-run prints the SQL instead
    ```
    Default target is the next 05:00 UTC; `--night 2026-09-24` (the CT evening date) targets a
    later one. Only the flag class that will fire; `guardrails_override` never authorises a mass
@@ -89,12 +109,13 @@ Evening sequence (all times UTC; nightly = 05:00 UTC = 00:00 CDT):
 ## 3. Morning checks
 
 ```sql
-SELECT run_ts, value, baseline, accepted, override_enabled, note
+SELECT run_ts, metric, value, baseline, value - baseline AS change, threshold, preclear, accepted, note
 FROM openalex.works.guardrails_history
-WHERE metric = 'records_changed_by_run' ORDER BY run_ts DESC LIMIT 5;
+WHERE run_ts = (SELECT MAX(run_ts) FROM openalex.works.guardrails_history) ORDER BY metric;
 ```
-Expect `accepted = true`, `note = 'override:table'` (`'override:param'` for a manual run), value
-≈ your estimate plus a normal night (1M to 3M). Then confirm the defaults are still false:
+Expect `accepted = true`, `note = 'preclear'` when a named cap passed a check over its line
+(`'override:param'` for a manual run; before 4 Nov `'override:table'`), the stamps ≈ your estimate
+plus a normal night (1M to 3M), and each named loss within its `threshold`. Then confirm the defaults are still false:
 ```
 databricks jobs get 616701029470182 --output json | python3 -c "import json,sys; print([(p['name'],p['default']) for p in json.load(sys.stdin)['settings']['parameters']])"
 ```
@@ -136,14 +157,16 @@ with `"value": "true"`. Then deal with the schedule:
 
 ## 4. If it goes wrong
 
-- Run red at Guardrails despite the override: a *different* check fired. Read the Guardrails task
-  output; `guardrails_override` covers all quality checks, the other three flags are separate
-  classes.
+- Run red at Guardrails despite the row: a check the row didn't name fired, or a named one went
+  past its cap. Read the Guardrails task output. If the loss is the planned change, name it and
+  repair from Guardrails: `scripts/preclear_e2e.py --current-run --raise --max-loss <name>=<N>
+  --reason "..." --by <who>` (Check 1: `--max-changed N`). If it is not planned, that is the bug the
+  check exists for: find it before accepting anything.
 - Run red elsewhere (ES sync, snapshot): the works Delta table is already written; rerun with
   "Repair run" from the failed task. A pre-cleared window still covers a same-morning repair; a
   manual run keeps its parameter.
 - Forgot to pre-clear and the scheduled run tripped Check 1: the change's owner pre-clears now (on the same yes)
-  (`scripts/preclear_e2e.py`, the window covers today) and repair-run from Guardrails; or
+  (`scripts/preclear_e2e.py --current-run ...`, the window covers this morning's run) and repair-run from Guardrails; or
   repair-run with the parameter, the 2026-09-21 pattern (run 930976173247507, repaired 14:05 UTC).
 
 ## 5. Why this exists

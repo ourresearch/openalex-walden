@@ -61,10 +61,10 @@ dbutils.widgets.text("ids_table", "")
 dbutils.widgets.text("rows_table", "")
 
 IS_FULL_BUILD = dbutils.widgets.get("is_full_build").lower() == "true"
-# job parameter OR a pre-cleared row in openalex.works.e2e_overrides (scripts/preclear_e2e.py)
-GUARDRAILS_OVERRIDE = spark.sql(
-    f"SELECT openalex.works.e2e_override_active('guardrails_override', '{dbutils.widgets.get('guardrails_override').replace(chr(39), chr(39) * 2)}')"
-).collect()[0][0]
+# The job parameter only (a manual run-now). This notebook's two checks below are "upstream looks broken" floors that no
+# planned change needs opened, so a pre-clear row (openalex.works.e2e_overrides) no longer opens them (oxjob #2005: before,
+# any guardrails_override row did, on 36 of 47 nights).
+GUARDRAILS_OVERRIDE = dbutils.widgets.get("guardrails_override").strip().lower() == "true"
 TRIGGER_SYNCS = dbutils.widgets.get("trigger_syncs").lower() == "true"
 RUN_DELETES = dbutils.widgets.get("run_deletes").lower() == "true"
 # The gone-works guard below honours the night's deleted-works pre-clear exactly as TrackDeletedWorks and delete_works do

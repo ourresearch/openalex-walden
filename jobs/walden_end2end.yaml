@@ -684,15 +684,18 @@ resources:
       # Every parameter here but the last (reason) is a circuit-breaker bypass. Job parameters propagate to
       # every notebook task automatically, so no task re-declares them; each notebook
       # reads the widget under exactly this name. One switch per consequence class —
-      # Each notebook resolves its flag through openalex.works.e2e_override_active(flag, param):
-      # the parameter, OR a pre-cleared row in openalex.works.e2e_overrides whose window covers
-      # the run (scripts/preclear_e2e.py). That row is how a planned wave clears the SCHEDULED
-      # nightly without a second manual run; see docs/runbooks/end2end-guardrails-override.md.
+      # The parameter "true" (a manual run-now) opens its class's gates. The SCHEDULED nightly
+      # instead reads pre-clear rows in openalex.works.e2e_overrides bound to its run
+      # (scripts/preclear_e2e.py): a row raises only the checks it names, to the numbers it
+      # names, read through openalex.works.e2e_cap / e2e_gate (notebooks/end2end/e2e_gate.sql,
+      # oxjob #2005); see docs/runbooks/end2end-guardrails-override.md.
       # bypassing a quality gate must never authorize a mass delete or an oversized feed.
       #
-      #   guardrails_override               Guardrails (all checks), the curation-count
-      #                                     decline gate in SyncWorkAuthorCurations, the
-      #                                     row-count / zero-churn gate in BuildLakebaseWorksDocs
+      #   guardrails_override               Guardrails (each check; a row names max_changed /
+      #                                     max_loss per metric), the curation decline gates in
+      #                                     SyncWorkAuthorCurations / SyncLocationCurations
+      #                                     (max_loss work_author_curations / location_curations);
+      #                                     the parameter alone opens BuildLakebaseWorksDocs' floors
       #   deleted_works_guard_override      works gone > guard_fraction of live:
       #                                     TrackDeletedWorks, delete_works, BuildLakebaseWorksDocs' gone-works delete
       #   deleted_locations_guard_override  same rule for locations:

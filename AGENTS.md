@@ -24,9 +24,14 @@ ancestors, author ids, affiliations, topics, locations, types): estimate how man
 content hash; a small entity-side change can re-stamp tens of millions of works. If it is anywhere
 near 7.5M, the change's owner pre-clears the scheduled run with
 `scripts/preclear_e2e.py --max-changed <planned stamps + a normal night> --reason "..." --by <who said yes>`
-(and `--max-deleted` with `deleted_works_guard_override` for a wave that deletes works), which writes a dated row to
-`openalex.works.e2e_overrides` that every gate reads through `openalex.works.e2e_override_active()`,
-and say so in #dev. Do not start a second manual End 2 End in the evening:
+(and `--max-deleted` with `deleted_works_guard_override` for a wave that deletes works), which writes a row bound to
+that night's run in `openalex.works.e2e_overrides`, and say so in #dev. **A row raises only the checks it names
+(oxjob #2005, from the Thu 5 Nov 2026 run):** name every planned loss over its line on the same command line,
+`--max-loss works=N,abstracts=N,affiliations=N,institutions=N,fulltext=N,citations=N,work_author_curations=N`; a loss it
+doesn't name fails Guardrails as before. A merge of N works can drop each "works with X" count by up to N: count the
+losers that carry X. The night has ONE row per flag: later changes raise it with `--raise` and the night's totals.
+Every capped gate reads the row through `openalex.works.e2e_cap()` / `e2e_gate()` (`notebooks/end2end/e2e_gate.sql`).
+Do not start a second manual End 2 End in the evening:
 it collides with the 05:00 UTC schedule, and pausing the schedule does not survive a bundle deploy.
 **Every manual End 2 End run, full or selected tasks, sets the `reason` job parameter** to
 `'<oxjob>: <why>, <who>'` (UI: "Run now with different parameters"; CLI: `databricks jobs run-now --json
