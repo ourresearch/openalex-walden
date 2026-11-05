@@ -51,6 +51,23 @@ def multi(expr):
             f"'([A-Z][0-9A-Z]{{2}}[A-Z]{{2}}[0-9]{{4,6}})',1))>1)")
 
 
+IC_SERIAL_ONLY = "'^[A-Z]{2}[0-9]{5,6}$'"
+EMBEDDED_NUMBER = "'([A-Z][0-9A-Z]{2}[A-Z]{2}[0-9]{4,6})'"
+
+
+def ic_serial_names_core(expr, core_expr):
+    """True when a number core() cannot read to core_expr still names that project: institute + serial alone ('CA148791',
+    'HL-80682') or exactly one embedded project number ('NIH R35 GM143042', 'RO1 HL- 081823'), whose institute + zero-padded
+    serial (and activity code, letter O read as zero, when the text carries one) equal the core's. Rohan 11-02 (#1501, oxjob
+    #1875 phase 2b, option (a)): core() stays a pure parse; that the institute + serial names only one ExPORTER project is
+    checked separately (filter(): nih_exporter_ic_serial)."""
+    an = f"upper(regexp_replace({expr},'[^A-Za-z0-9]',''))"
+    emb = f"regexp_extract({an},{EMBEDDED_NUMBER},1)"
+    return (f"(CASE WHEN {an} RLIKE {IC_SERIAL_ONLY} THEN concat(substr({an},1,2),lpad(substr({an},3),6,'0'))=substr({core_expr},4,8)"
+            f" WHEN size(regexp_extract_all({an},{EMBEDDED_NUMBER},1))=1 THEN regexp_replace(substr({emb},1,3),'^([A-Z])O','$10')=substr({core_expr},1,3)"
+            f" AND concat(substr({emb},4,2),lpad(substr({emb},6),6,'0'))=substr({core_expr},4,8) ELSE false END)")
+
+
 def bare(expr):
     """True when the number is the project number itself: no fiscal-year suffix and no leading type digit."""
     n = norm(expr)
@@ -146,7 +163,9 @@ def norm_funder(c, owner_alias):
 
 # ---------- plan(): proof on pending pairs (held-pair filter, same pattern as 6f's public_shell_filter) ----------
 def filter(c, mm):
-    """Each pending NIH pair is re-proved tonight: loser and target parse to the listed project number; the target is one of the
+    """Each pending NIH pair is re-proved tonight: loser and target parse to the listed project number (or the loser names it by
+    institute + serial / one embedded number, ic_serial_names_core, and that institute + serial is still one ExPORTER project's: oxjob
+    #1875 phase 2b, Rohan 11-02); the target is one of the
     project's non-supplement fiscal-year records (the newest one, chosen by the list) or, when the project has none, its bare number; both ends in the NIH family; the target is not being retired by a rule. Inputs move between nights, so a pair
     that fails is HELD (not retired tonight, counted by reason, re-proved next night). NIH_HELD_FUSE stops the run if more than
     max(100, 1%) of pending NIH pairs fail. A list that disagrees with itself (two choices for one project) stops the run.
@@ -167,8 +186,13 @@ def filter(c, mm):
     # ids of tonight's listed pairs that are bound: an equality join (NOT IN over 18M bindings with OR hung, dev 10-01)
     c.artifact("nih_bound", f"""SELECT DISTINCT b.stable_id FROM {r}bindings b JOIN (SELECT loser_id id FROM {r}nih_pairs
       UNION SELECT target_id FROM {r}nih_pairs) i ON i.id=b.stable_id""")
+    # institute + serial -> how many ExPORTER projects carry it: an institute + serial spelling names the core only when it is the one
+    c.artifact("nih_exporter_ic_serial", f"""SELECT substr(core,4,8) ic_serial,count(DISTINCT core) projects FROM (
+        SELECT {core('funder_award_id')} core FROM awards_v WHERE provenance='nih_exporter' AND funder_id IN {FAMILY_SQL}) WHERE core<>'' GROUP BY 1""")
     c.artifact("nih_held", f"""SELECT DISTINCT loser_id,reason FROM (
-        SELECT loser_id,'NUMBER' reason FROM {r}nih_pair_numbers WHERE NOT COALESCE({core('loser_number')}=core AND {core('target_number')}=core,false)
+        SELECT n.loser_id,'NUMBER' reason FROM {r}nih_pair_numbers n LEFT JOIN {r}nih_exporter_ic_serial x ON x.ic_serial=substr(n.core,4,8)
+          WHERE NOT COALESCE(({core('n.loser_number')}=n.core OR ({ic_serial_names_core('n.loser_number','n.core')} AND x.projects=1))
+            AND {core('n.target_number')}=n.core,false)
         UNION ALL SELECT loser_id,'SUBPROJECT' FROM {r}nih_pair_numbers WHERE COALESCE(loser_number RLIKE ':[0-9]+$' OR target_number RLIKE ':[0-9]+$',false)
         UNION ALL SELECT loser_id,'MULTI_NUMBER' FROM {r}nih_pair_numbers WHERE COALESCE({multi('loser_number')} OR {multi('target_number')},true)
         UNION ALL SELECT loser_id,'TARGET_NOT_PROJECT_RECORD' FROM {r}nih_pair_numbers
