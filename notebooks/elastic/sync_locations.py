@@ -215,7 +215,7 @@ if IS_FULL_SYNC:
                 body={
                     "settings": {
                         "index": {
-                            "number_of_shards": 12,
+                            "number_of_shards": 48,  # oxjob #2040: 12 made 275 GB shards that crowded works copies
                             "number_of_replicas": 0,
                             "refresh_interval": "-1",
                         }
