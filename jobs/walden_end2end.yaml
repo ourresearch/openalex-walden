@@ -32,6 +32,11 @@ resources:
           notebook_task:
             notebook_path: notebooks/scraping/parseland
             source: GIT
+            # No retries of failed parses on the night's critical path (oxjob #1642, 5 Nov 2026): #1997's 50K retries (the
+            # corpus's heaviest pages) held all 100 Parseland tasks at 99% CPU and ran this step 59 min (median 13). The
+            # LandingPageWork job (03:00 / 11:00 CT, same notebook, default 50000) still retries them, off the critical path.
+            base_parameters:
+              retry_parse_limit: "0"
           job_cluster_key: parseland_cluster
         - task_key: Landing_Page_Ingest_DLT
           depends_on:
