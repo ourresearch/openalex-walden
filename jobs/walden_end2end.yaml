@@ -491,7 +491,7 @@ resources:
             source: GIT
           job_cluster_key: es_sync_cluster
         # oxjob #915: nightly incremental locations sync; #850 made it
-        # watermark-driven (elastic_sync_state, keyed locations-v3).
+        # watermark-driven (elastic_sync_state, keyed locations).
         # Serialized after the works sync on the shared cluster.
         - task_key: Sync_Locations_to_Elasticsearch
           # oxjob #1642 (31 Oct 2026): 90 min timed out on night 2026-10-31 (43,980,449 re-stamped works on ONE daytime
@@ -507,7 +507,7 @@ resources:
             source: GIT
           job_cluster_key: es_sync_cluster
         # oxjob #850: the ES delete path sync_locations lacks — consumes the
-        # deleted_locations ledger and removes the stale docs from locations-v3.
+        # deleted_locations ledger and removes the stale docs from locations.
         - task_key: Delete_Locations_from_Elasticsearch
           timeout_seconds: 1200
           depends_on:

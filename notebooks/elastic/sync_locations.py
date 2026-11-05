@@ -15,7 +15,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 CONFIG = {
     "table_name": "openalex.works.locations_mapped_curated",
-    "index_name": "locations-v3"
+    "index_name": "locations"  # an alias (oxjob #2040)
 }
 
 dbutils.widgets.text("is_full_sync", "false")
