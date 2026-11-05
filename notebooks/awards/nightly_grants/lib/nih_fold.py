@@ -53,18 +53,21 @@ def multi(expr):
 
 IC_SERIAL_ONLY = "'^[A-Z]{2}[0-9]{5,6}$'"
 EMBEDDED_NUMBER = "'([A-Z][0-9A-Z]{2}[A-Z]{2}[0-9]{4,6})'"
+OTHER_IC_SERIAL = "'[A-Z]{2}[0-9]{4,6}'"
 
 
 def ic_serial_names_core(expr, core_expr):
     """True when a number core() cannot read to core_expr still names that project: institute + serial alone ('CA148791',
-    'HL-80682') or exactly one embedded project number ('NIH R35 GM143042', 'RO1 HL- 081823'), whose institute + zero-padded
-    serial (and activity code, letter O read as zero, when the text carries one) equal the core's. Rohan 11-02 (#1501, oxjob
+    'HL-80682') or exactly one embedded project number ('NIH R35 GM143042', 'RO1 HL- 081823') and no other institute + serial
+    beside it ('AI38022 R01-HL075822' names two grants; multi() misses it), whose institute + zero-padded serial (and activity
+    code, letter O read as zero, when the text carries one) equal the core's. Rohan 11-02 (#1501, oxjob
     #1875 phase 2b, option (a)): core() stays a pure parse; that the institute + serial names only one ExPORTER project is
     checked separately (filter(): nih_exporter_ic_serial)."""
     an = f"upper(regexp_replace({expr},'[^A-Za-z0-9]',''))"
     emb = f"regexp_extract({an},{EMBEDDED_NUMBER},1)"
     return (f"(CASE WHEN {an} RLIKE {IC_SERIAL_ONLY} THEN concat(substr({an},1,2),lpad(substr({an},3),6,'0'))=substr({core_expr},4,8)"
-            f" WHEN size(regexp_extract_all({an},{EMBEDDED_NUMBER},1))=1 THEN regexp_replace(substr({emb},1,3),'^([A-Z])O','$10')=substr({core_expr},1,3)"
+            f" WHEN size(regexp_extract_all({an},{EMBEDDED_NUMBER},1))=1 AND NOT regexp_replace({an},{EMBEDDED_NUMBER},'') RLIKE {OTHER_IC_SERIAL}"
+            f" THEN regexp_replace(substr({emb},1,3),'^([A-Z])O','$10')=substr({core_expr},1,3)"
             f" AND concat(substr({emb},4,2),lpad(substr({emb},6),6,'0'))=substr({core_expr},4,8) ELSE false END)")
 
 

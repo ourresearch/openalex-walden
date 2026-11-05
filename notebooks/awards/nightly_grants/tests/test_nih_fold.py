@@ -233,7 +233,7 @@ def py_ic_serial_names_core(s, core):
     if re.match(r"^[A-Z]{2}[0-9]{5,6}$", an):
         return an[:2] + an[2:].zfill(6) == core[3:11]
     found = re.findall(r"([A-Z][0-9A-Z]{2}[A-Z]{2}[0-9]{4,6})", an)
-    if len(found) == 1:
+    if len(found) == 1 and not re.search(r"[A-Z]{2}[0-9]{4,6}", re.sub(r"([A-Z][0-9A-Z]{2}[A-Z]{2}[0-9]{4,6})", "", an)):
         e = found[0]
         return re.sub("^([A-Z])O", r"\g<1>0", e[:3]) == core[:3] and e[3:5] + e[5:].zfill(6) == core[3:11]
     return False
@@ -245,13 +245,16 @@ def py_ic_serial_names_core(s, core):
     ("R37 CA148791", "R01CA148791", False),            # the activity code it carries must be the core's
     ("CA148792", "R01CA148791", False), ("HL148791", "R01CA148791", False),
     ("GM081513, GM074241", "R01GM081513", False),      # two numbers: never one project
-    ("R01 CA148791; R01 CA148792", "R01CA148791", False), ("NIH", "R01CA148791", False)])
+    ("R01 CA148791; R01 CA148792", "R01CA148791", False), ("NIH", "R01CA148791", False),
+    # 5 Nov check run (MIGRATION_CONFLICT_WITH_RULE): one embedded number beside institute + serial numbers is several grants
+    ("AI38022 R01-HL075822", "R01HL075822", False), ("MH-57039; MH-65559; MH-12329; 1RL1AA017541", "RL1AA017541", False)])
 def test_ic_serial_spelling_names_the_core(number, core, names):
     """#1875 phase 2b (Rohan 11-02, option (a)): institute + serial, or one embedded number, names the core; core() is untouched."""
     assert py_ic_serial_names_core(number, core) == names
     assert py_core(number) != core               # all of these are spellings the strict/loose parse does not read to the core
     sql = nih_fold.ic_serial_names_core("x", "c")
-    for step in ("^[A-Z]{2}[0-9]{5,6}$", "([A-Z][0-9A-Z]{2}[A-Z]{2}[0-9]{4,6})", "'^([A-Z])O','$10'", "lpad(", "substr(c,4,8)", "substr(c,1,3)"):
+    for step in ("^[A-Z]{2}[0-9]{5,6}$", "([A-Z][0-9A-Z]{2}[A-Z]{2}[0-9]{4,6})", "'^([A-Z])O','$10'", "lpad(", "substr(c,4,8)", "substr(c,1,3)",
+                 "RLIKE '[A-Z]{2}[0-9]{4,6}'"):
         assert step in sql, step
 
 
