@@ -5,14 +5,20 @@
 # MAGIC Syncs work_id → pdf_uuid/grobid_uuid mappings from `locations_mapped` to the
 # MAGIC `openalex-content-index` D1 database that powers `api.openalex.org/content/*`.
 # MAGIC
-# MAGIC **Runs**: Daily after end2end completes.
+# MAGIC **Runs** (oxjob #2041): job *Sync Content Index to D1* fires when the End 2 End rewrites
+# MAGIC `locations_mapped` (Databricks table-update trigger, ~06:00-08:30 UTC), so a night's new PDFs are
+# MAGIC downloadable before the night publishes; job *Sync Content Index to D1 (backstop)* runs at 17:00 UTC and
+# MAGIC normally finds nothing. Until 5 Nov 2026 it ran at 03:00 UTC, before the End 2 End, so every night's new
+# MAGIC content 404'd at content.openalex.org for 10-38 h after the publish.
 # MAGIC **Source**: `openalex.works.locations_mapped` (via `spark.sql()`)
 # MAGIC **Target**: Cloudflare D1 `openalex-content-index` database
 # MAGIC
-# MAGIC The sync is incremental: filters `locations_mapped` on `openalex_updated_dt`
-# MAGIC so that in-place edits (e.g. a PDF arriving on an older work) are picked up,
-# MAGIC not just newly-created rows. A separate antijoin reconciliation pass exists
-# MAGIC as a backstop.
+# MAGIC The sync is incremental on `openalex_updated_dt`, so in-place edits (e.g. a PDF arriving on an older work)
+# MAGIC are picked up, not just new rows. Its window starts just after the newest stamp it has already synced
+# MAGIC (`content_stats.last_synced_updated_dt`; each End 2 End stamps one timestamp a night), so an extra run
+# MAGIC writes nothing. Writes are paced: D1 serves content.openalex.org's lookups from the same database, and
+# MAGIC 8 parallel writers made ~8% of downloads fail with "D1 DB is overloaded" during each run (#2041).
+# MAGIC A separate antijoin reconciliation pass exists as a backstop.
 
 # COMMAND ----------
 
@@ -36,13 +42,28 @@ BATCH_SIZE = 500
 D1_MAX_RETRIES = 8
 D1_RETRY_STATUSES = {429, 500, 502, 503, 504}
 SYNC_LOOKBACK_DAYS = 2  # Fallback lookback when D1 has no last_sync_timestamp
+HWM_KEY = "last_synced_updated_dt"  # newest openalex_updated_dt already synced (UTC, microseconds); #2041
+LM_TABLE = "openalex.works.locations_mapped"
 
 # Widgets — leave blank for the standard nightly behavior.
 dbutils.widgets.text("sync_from_override", "", "sync_from override (UTC ISO, blank=read from D1)")
 dbutils.widgets.text("sync_to_override", "", "sync_to override (UTC ISO, blank=now)")
+# Pacing (#2041): one writer that rests as long as each D1 write took leaves D1 headroom for downloads.
+# A manual catch-up at a quiet hour can raise workers / lower the pause.
+dbutils.widgets.text("write_workers", "1", "parallel D1 writers")
+dbutils.widgets.text("write_pause_ratio", "1.0", "pause after each write, as a multiple of its duration")
+# The three COUNT(*) scans of the whole table failed 40-100% of downloads for ~2 min (#2041); nothing user-facing
+# reads content_stats counts, so the nightly run skips them.
+dbutils.widgets.text("refresh_stats", "false", "refresh content_stats counts (full-table scans)")
 
 SYNC_FROM_OVERRIDE = dbutils.widgets.get("sync_from_override").strip()
 SYNC_TO_OVERRIDE = dbutils.widgets.get("sync_to_override").strip()
+WRITE_WORKERS = max(1, int(dbutils.widgets.get("write_workers").strip() or "1"))
+WRITE_PAUSE_RATIO = max(0.0, float(dbutils.widgets.get("write_pause_ratio").strip() or "1.0"))
+REFRESH_STATS = dbutils.widgets.get("refresh_stats").strip().lower() in ("true", "1", "yes")
+
+# Timestamp literals and date_format below are UTC.
+spark.conf.set("spark.sql.session.timeZone", "UTC")
 
 
 def _parse_iso(s: str) -> datetime:
@@ -94,6 +115,20 @@ def d1_batch_insert(rows: list) -> int:
     return len(rows)
 
 
+def d1_stat(key: str):
+    """One content_stats value, or None."""
+    result = d1_execute("SELECT stat_value FROM content_stats WHERE stat_key = ?", [key])
+    rows = (result.get("result") or [{}])[0].get("results") or []
+    return rows[0]["stat_value"] if rows else None
+
+
+def d1_set_stat(key: str, value: str) -> None:
+    d1_execute(
+        "INSERT OR REPLACE INTO content_stats (stat_key, stat_value, updated_at) VALUES (?, ?, datetime('now'))",
+        [key, value],
+    )
+
+
 def update_content_stats():
     """Update the content_stats counts in D1."""
     d1_execute(
@@ -118,27 +153,34 @@ def update_content_stats():
 
 # COMMAND ----------
 
-if SYNC_FROM_OVERRIDE:
-    last_sync = _parse_iso(SYNC_FROM_OVERRIDE)
-    print(f"sync_from override: {last_sync}")
-else:
-    try:
-        result = d1_execute("SELECT stat_value FROM content_stats WHERE stat_key = 'last_sync_timestamp'")
-        if result.get("result") and result["result"][0].get("results"):
-            last_sync_str = result["result"][0]["results"][0]["stat_value"]
-            last_sync = _parse_iso(last_sync_str)
-            print(f"Last sync: {last_sync}")
-        else:
-            last_sync = datetime.utcnow() - timedelta(days=SYNC_LOOKBACK_DAYS)
-            print(f"No previous sync found, using lookback: {last_sync}")
-    except Exception as e:
-        print(f"Error getting last sync time: {e}")
-        last_sync = datetime.utcnow() - timedelta(days=SYNC_LOOKBACK_DAYS)
-        print(f"Using lookback: {last_sync}")
+TS_FMT = "%Y-%m-%d %H:%M:%S.%f"  # matches date_format(..., 'yyyy-MM-dd HH:mm:ss.SSSSSS') below
+run_started = datetime.utcnow()
 
-sync_from = last_sync - timedelta(hours=2)
-sync_to = _parse_iso(SYNC_TO_OVERRIDE) if SYNC_TO_OVERRIDE else datetime.utcnow()
-print(f"Syncing changes: {sync_from} → {sync_to}")
+# Pin one version of the table, so the rows read and the high-water mark stored agree.
+from delta.tables import DeltaTable
+
+_h = (DeltaTable.forName(spark, LM_TABLE).history(1)
+      .selectExpr("version", "date_format(timestamp, 'yyyy-MM-dd HH:mm:ss.SSSSSS') AS ts").first())
+lm_version, lm_commit = _h["version"], _h["ts"]
+print(f"{LM_TABLE} version {lm_version}, committed {lm_commit} UTC")
+
+hwm = d1_stat(HWM_KEY)
+if SYNC_FROM_OVERRIDE:
+    lower, lower_op = _parse_iso(SYNC_FROM_OVERRIDE).strftime(TS_FMT), ">="
+    print(f"sync_from override: {lower}")
+else:
+    if hwm:
+        # Each End 2 End stamps one timestamp, taken before its commit; a later commit stamps a later time.
+        lower, lower_op = hwm, ">"
+        print(f"Newest stamp already synced: {hwm}")
+    else:
+        # First run with a high-water mark: the old wall-clock window, 2 h overlap.
+        last = d1_stat("last_sync_timestamp")
+        start = _parse_iso(last) if last else datetime.utcnow() - timedelta(days=SYNC_LOOKBACK_DAYS)
+        lower, lower_op = (start - timedelta(hours=2)).strftime(TS_FMT), ">="
+        print(f"No {HWM_KEY}; last_sync_timestamp {last} -> window from {lower}")
+upper = _parse_iso(SYNC_TO_OVERRIDE).strftime(TS_FMT) if SYNC_TO_OVERRIDE else None
+print(f"Syncing rows with openalex_updated_dt {lower_op} {lower}" + (f" and < {upper}" if upper else ""))
 
 
 # COMMAND ----------
@@ -153,16 +195,18 @@ print(f"Syncing changes: {sync_from} → {sync_to}")
 # distinct work_ids, but rebuild stamp waves can push the window to 40M+ rows
 # (2026-08-12 cutover), so the driver must never hold the full result set:
 # stream with toLocalIterator() and flush concurrently.
+upper_sql = f"AND openalex_updated_dt < TIMESTAMP'{upper}'" if upper else ""
 df = spark.sql(f"""
     SELECT
       work_id,
       MIN(REPLACE(pdf_s3_id, '.pdf', ''))      AS pdf_uuid,
-      MIN(REPLACE(grobid_s3_id, '.xml.gz', '')) AS grobid_uuid
-    FROM openalex.works.locations_mapped
+      MIN(REPLACE(grobid_s3_id, '.xml.gz', '')) AS grobid_uuid,
+      date_format(MAX(openalex_updated_dt), 'yyyy-MM-dd HH:mm:ss.SSSSSS') AS max_dt
+    FROM {LM_TABLE} VERSION AS OF {lm_version}
     WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
       AND work_id IS NOT NULL
-      AND openalex_updated_dt >= '{sync_from.strftime("%Y-%m-%d")}'
-      AND openalex_updated_dt <  '{sync_to.strftime("%Y-%m-%d")}'
+      AND openalex_updated_dt {lower_op} TIMESTAMP'{lower}'
+      {upper_sql}
     GROUP BY work_id
 """)
 
@@ -171,14 +215,19 @@ total_count = 0
 total_synced = 0
 failed_batches: list = []
 
-FLUSH_WORKERS = 8
+FLUSH_WORKERS = WRITE_WORKERS
+max_dt_seen = ""
 
 
 def _flush(batch: list) -> int:
     if not batch:
         return 0
     try:
+        t_write = time.time()
         d1_batch_insert(batch)
+        if WRITE_PAUSE_RATIO:
+            # Rest in proportion to how long D1 took (retries and backoff included): slower D1, slower writes.
+            time.sleep((time.time() - t_write) * WRITE_PAUSE_RATIO)
         return len(batch)
     except Exception as e:
         failed_batches.append({
@@ -214,6 +263,8 @@ def _submit(batch: list) -> None:
 
 batch: list = []
 for row in df.toLocalIterator():
+    if row.max_dt > max_dt_seen:
+        max_dt_seen = row.max_dt
     batch.append({"work_id": row.work_id, "pdf_uuid": row.pdf_uuid, "grobid_uuid": row.grobid_uuid})
     if len(batch) >= BATCH_SIZE:
         _submit(batch)
@@ -242,14 +293,25 @@ if failed_batches:
 
 # COMMAND ----------
 
-sync_timestamp = sync_to.isoformat() + "Z"
-d1_execute(
-    "INSERT OR REPLACE INTO content_stats (stat_key, stat_value, updated_at) VALUES (?, ?, datetime('now'))",
-    ["last_sync_timestamp", sync_timestamp],
-)
+# High-water mark: the newest stamp written, never past the version's commit time (a future-dated stamp would
+# otherwise hide later nights), and never moved back. A run that found nothing keeps the mark; a first run that
+# found nothing stores its window start, so the next run starts there. A run with sync_to_override leaves it.
+if not SYNC_TO_OVERRIDE:
+    seen = min(max_dt_seen, lm_commit) if max_dt_seen else None
+    new_hwm = max(v for v in (hwm, seen) if v) if (hwm or seen) else lower
+    if new_hwm != hwm:
+        d1_set_stat(HWM_KEY, new_hwm)
+    print(f"{HWM_KEY}: {hwm} -> {new_hwm}")
+d1_set_stat("last_synced_lm_version", str(lm_version))
+
+sync_timestamp = run_started.isoformat() + "Z"
+d1_set_stat("last_sync_timestamp", sync_timestamp)  # wall clock of this run; scripts/run_d1_backfill.py reads it
 print(f"Updated last_sync_timestamp to {sync_timestamp}")
 
-update_content_stats()
+if REFRESH_STATS:
+    update_content_stats()
+else:
+    print("Skipped content_stats counts (refresh_stats=false)")
 
 
 # COMMAND ----------

@@ -8,9 +8,59 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
+      # oxjob #2041: run when the End 2 End rewrites locations_mapped (~06:00-08:30 UTC), so a night's new PDFs
+      # download as soon as the night publishes. The 03:00 UTC cron ran before the End 2 End: 10-38 h of 404s.
+      # A job can have a schedule or a trigger, not both; the cron backstop is the job below.
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.works.locations_mapped
+          condition: ANY_UPDATED
+          wait_after_last_change_seconds: 120
+          min_time_between_triggers_seconds: 1800
+      tasks:
+        - task_key: sync_content_index
+          max_retries: 2
+          min_retry_interval_millis: 900000
+          retry_on_timeout: true
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_content_index_to_d1
+            source: GIT
+          job_cluster_key: d1-sync-cluster
+      job_clusters:
+        - job_cluster_key: d1-sync-cluster
+          new_cluster:
+            spark_version: 16.4.x-scala2.12
+            node_type_id: m5d.2xlarge
+            num_workers: 4
+            runtime_engine: PHOTON
+            aws_attributes:
+              availability: ON_DEMAND
+              zone_id: auto
+              ebs_volume_type: GENERAL_PURPOSE_SSD
+              ebs_volume_count: 1
+              ebs_volume_size: 32
+            data_security_mode: SINGLE_USER
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
+
+    Sync_Content_Index_to_D1_Backstop:
+      name: Sync Content Index to D1 (backstop)
+      description: |
+        oxjob #2041: same notebook as Sync Content Index to D1, once a day at 17:00 UTC (after almost every night has
+        published), in case the table-update trigger did not fire or its run failed. It starts after the newest stamp
+        already synced, so on a normal day it writes nothing.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
       schedule:
-        # Run daily at 03:00 UTC (after end2end typically completes ~02:30 UTC)
-        quartz_cron_expression: 0 0 3 * * ?
+        quartz_cron_expression: 0 0 17 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
