@@ -227,6 +227,46 @@ def test_multi_number_is_a_held_reason():
     assert "'SUBPROJECT'" in dict(c.statements)["nih_held"]           # center sub-projects (number:subproject_id) never fold as years
 
 
+def py_ic_serial_names_core(s, core):
+    """Python mirror of nih_fold.ic_serial_names_core() (same steps as the SQL)."""
+    an = re.sub("[^A-Za-z0-9]", "", s).upper()
+    if re.match(r"^[A-Z]{2}[0-9]{5,6}$", an):
+        return an[:2] + an[2:].zfill(6) == core[3:11]
+    found = re.findall(r"([A-Z][0-9A-Z]{2}[A-Z]{2}[0-9]{4,6})", an)
+    if len(found) == 1:
+        e = found[0]
+        return re.sub("^([A-Z])O", r"\g<1>0", e[:3]) == core[:3] and e[3:5] + e[5:].zfill(6) == core[3:11]
+    return False
+
+
+@pytest.mark.parametrize("number,core,names", [
+    ("CA148791", "R01CA148791", True), ("CA 148791", "R01CA148791", True), ("HL-80682", "R01HL080682", True),
+    ("DK 067287", "R01DK067287", True), ("NIH R35 GM143042", "R35GM143042", True), ("RO1 HL- 081823", "R01HL081823", True),
+    ("R37 CA148791", "R01CA148791", False),            # the activity code it carries must be the core's
+    ("CA148792", "R01CA148791", False), ("HL148791", "R01CA148791", False),
+    ("GM081513, GM074241", "R01GM081513", False),      # two numbers: never one project
+    ("R01 CA148791; R01 CA148792", "R01CA148791", False), ("NIH", "R01CA148791", False)])
+def test_ic_serial_spelling_names_the_core(number, core, names):
+    """#1875 phase 2b (Rohan 11-02, option (a)): institute + serial, or one embedded number, names the core; core() is untouched."""
+    assert py_ic_serial_names_core(number, core) == names
+    assert py_core(number) != core               # all of these are spellings the strict/loose parse does not read to the core
+    sql = nih_fold.ic_serial_names_core("x", "c")
+    for step in ("^[A-Z]{2}[0-9]{5,6}$", "([A-Z][0-9A-Z]{2}[A-Z]{2}[0-9]{4,6})", "'^([A-Z])O','$10'", "lpad(", "substr(c,4,8)", "substr(c,1,3)"):
+        assert step in sql, step
+
+
+def test_number_check_accepts_ic_serial_only_for_a_unique_project():
+    """The NUMBER leg accepts an institute + serial spelling only when one ExPORTER project carries that institute + serial
+    (R01/R37/R56 sharing a serial stay held); the target must still parse to the core."""
+    c = render(ROOT / "lib" / "build_awards.py", extra=("migration_manifest",), nih=True)
+    st = dict(c.statements)
+    assert "provenance='nih_exporter'" in st["nih_exporter_ic_serial"] and "count(DISTINCT core) projects" in st["nih_exporter_ic_serial"]
+    held = st["nih_held"]
+    assert "nih_exporter_ic_serial x ON x.ic_serial=substr(n.core,4,8)" in held and "x.projects=1" in held
+    assert nih_fold.ic_serial_names_core("n.loser_number", "n.core") in held
+    assert f"{nih_fold.core('n.target_number')}=n.core" in held     # the target side is unchanged: it parses to the core
+
+
 def test_link_conservation_only_with_nih_and_strict():
     import nih_fold as nf
     off = RecordingC(); nf.link_conservation(off)
