@@ -523,17 +523,11 @@ def parse_repo_records(df, id_hosts, abstract=None, issue=None, volume=None, fir
             )
         ),
     )
-    .withColumn("references", F.array(
-        F.struct(
-            F.lit(None).cast("string").alias("doi"),
-            F.lit(None).cast("string").alias("pmid"),
-            F.lit(None).cast("string").alias("arxiv"),
-            F.lit(None).cast("string").alias("title"),
-            F.lit(None).cast("string").alias("authors"),
-            F.lit(None).cast("string").alias("year"),
-            F.lit(None).cast("string").alias("raw"),
-        )
-    ))
+    # oxjob #1700: OAI-PMH Dublin Core carries no references, so the list is NULL, typed as IRDB.py does. It was a one-entry
+    # all-NULL list, which outranked the record's PDF list in CreateSuperLocations and made parse_work_references treat the
+    # work as read (203M repository locations on 3 Nov 2026).
+    .withColumn("references", F.lit(None).cast(ArrayType(StructType([
+        StructField(n, StringType(), True) for n in ("doi", "pmid", "arxiv", "title", "authors", "year", "raw")]))))
     .withColumn(
         "has_pmcid",
         F.expr("exists(ids, id -> id.namespace = 'pmcid')")

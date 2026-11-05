@@ -570,17 +570,8 @@ parsed_df = clean_df \
             array(lit(None).cast("string")).alias("awards")
         )
     )) \
-    .withColumn("references", array(
-        struct(
-            lit(None).cast("string").alias("doi"),
-            lit(None).cast("string").alias("pmid"),
-            lit(None).cast("string").alias("arxiv"),
-            lit(None).cast("string").alias("title"),
-            lit(None).cast("string").alias("authors"),
-            lit(None).cast("string").alias("year"),
-            lit(None).cast("string").alias("raw")
-        )
-    )) \
+    .withColumn("references", lit(None).cast(ArrayType(StructType([  # oxjob #1700: NULL, as Repo.py and IRDB.py
+        StructField(n, StringType(), True) for n in ("doi", "pmid", "arxiv", "title", "authors", "year", "raw")])))) \
     .withColumn("mesh", lit(None).cast("string")) \
     .withColumn(
     "is_oa",
