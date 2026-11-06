@@ -36,6 +36,12 @@
 # MAGIC   applies to every provenance. A length cut alone failed its bar (real photo and figure captions).
 # MAGIC   Since 2 Nov 2026 the table also holds repeated texts of 30-299 chars ("Digital Specimen for the physical
 # MAGIC   specimen hosted at ...") and one-off texts of 1-29 chars read by Jev, so keys are derived up to 1,000 chars.
+# MAGIC - **Deposit notices** (oxjob #1800, 6 Nov 2026): DSpace repositories (Brazilian theses, Illinois IDEALS, EKT)
+# MAGIC   expose dc.description.provenance as their first dc:description, so ~248K works showed "Submitted by NAME
+# MAGIC   (email) on 2016-... No. of bitstreams: 1 file.pdf: N bytes, checksum: ... (MD5)" as their abstract. Each text
+# MAGIC   is unique (checksums, timestamps), so they are found by rule `DEPOSIT_NOTICE` (reason `deposit_notice`, every
+# MAGIC   provenance), not by a list. A '%%%%' join or text left after the file entries means a real abstract follows
+# MAGIC   the notice: kept. Bar: 0 real of 250 random flagged works (Opus 5.5).
 # MAGIC - **Revert:** remove the join in CreateSuperLocations, or `TRUNCATE` these tables. Never DROP them while
 # MAGIC   CreateSuperLocations reads them: a missing table fails the nightly.
 # MAGIC
@@ -64,6 +70,13 @@ TARGET_TABLE = "openalex.abstracts.not_abstract_texts"
 OWNER_TABLE = "openalex.abstracts.not_abstract_owner_rows"
 # oxjob #1800 (29 Oct 2026): judged short stand-in texts (trimmed), the source of truth for reason short_stand_in.
 SHORT_TABLE = "openalex.abstracts.not_abstract_short_texts"
+# oxjob #1800 (6 Nov 2026): rule dspace-v1, a SQL predicate on a text column (see the header). Keep byte-identical
+# with FlagBackfillNotAbstracts. 'Submitted by' alone matches real texts (congressional reports), hence the bitstreams.
+DEPOSIT_NOTICE_COMMIT = "dspace-v1: DSpace deposit notice (#1800, 6 Nov 2026)"
+DEPOSIT_NOTICE = r"""(
+  trim(COL) RLIKE '^(Submitted by|Made available in DSpace on|Approved for entry into archive by|Rejected by|Item withdrawn by) '
+  AND instr(COL, 'No. of bitstreams') > 0 AND instr(COL, '%%%%') = 0
+  AND length(regexp_replace(trim(COL), '(?i)[^\\n]{0,200}?: \\d+ bytes, checksum: [0-9a-f]{32} \\((MD5|SHA-1|SHA1)\\)', ' ')) <= 150)"""
 # Longest list text is 1,835 characters of key; templates need <= 1,500 plain and wordings <= 200 of key.
 # Raw text longer than this cannot match (markup inflates, so the cap is generous); it skips the Python UDF.
 MAX_LEN = 6000
@@ -180,6 +193,17 @@ FROM (
   WHERE lp.abstract IS NOT NULL AND length(lp.abstract) <= 1000  -- judged texts reach 299 chars trimmed (2 Nov 2026)
   GROUP BY 1, 2
 ) s LEFT ANTI JOIN flagged_texts f ON f.abstract_hash = s.abstract_hash AND f.text_len = s.text_len
+UNION ALL
+-- Deposit notices (see the header): every record whose text matches the rule, keyed like the rest, once per key.
+SELECT d.abstract_hash, d.text_len, FALSE AS is_list, 'deposit_notice' AS reason, d.n_rows, d.provenances,
+       left(d.abstract, 500) AS sample_text, '{DEPOSIT_NOTICE_COMMIT}' AS filter_commit, current_timestamp() AS built_at
+FROM (
+  SELECT xxhash64(lp.abstract) AS abstract_hash, length(lp.abstract) AS text_len, first(lp.abstract) AS abstract,
+         count(*) AS n_rows, collect_set(lp.provenance) AS provenances
+  FROM {SOURCE_TABLE} lp LEFT ANTI JOIN {SHORT_TABLE} st ON st.text = trim(lp.abstract)
+  WHERE lp.abstract IS NOT NULL AND {DEPOSIT_NOTICE.replace('COL', 'lp.abstract')}
+  GROUP BY 1, 2
+) d LEFT ANTI JOIN flagged_texts f ON f.abstract_hash = d.abstract_hash AND f.text_len = d.text_len
 """)
 # INSERT OVERWRITE replaces the rows atomically: CreateSuperLocations never sees the table missing or half-built.
 

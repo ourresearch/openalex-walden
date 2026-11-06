@@ -40,6 +40,9 @@
 # MAGIC   are #1790's list `DIFFERENT_ITEM_TABLE` (built once by #1790 `work/diff_item_backfill_build.sql` +
 # MAGIC   `work/diff_item_publish.sql`; 10,251 on 1 Nov); this notebook copies them so a rebuild keeps them. Revert that
 # MAGIC   part: drop the branch below.
+# MAGIC - **Deposit notices** (oxjob #1800, 6 Nov 2026): a work whose backfill text is a DSpace deposit notice ("Submitted
+# MAGIC   by NAME (email) on ... No. of bitstreams: 1 ... checksum: ... (MD5)") is flagged with reason `deposit_notice`,
+# MAGIC   by the same rule `DEPOSIT_NOTICE` as FlagLocationNotAbstracts (its header says how it was checked).
 # MAGIC - **Revert:** remove the anti-join from CreateWorksBase (one line), or `TRUNCATE` this table. Never
 # MAGIC   DROP it while CreateWorksBase reads it: a missing table fails the nightly.
 # MAGIC
@@ -69,6 +72,13 @@ SHORT_TABLE = "openalex.abstracts.not_abstract_short_texts"  # oxjob #1800: judg
 PEER_REVIEW_TABLE = "openalex.abstracts.peer_review_borrowed_backfill"  # oxjob #1790: reviews showing the article's abstract
 PDF_BACKFILL_TABLE = "openalex.abstracts.not_abstract_pdf_backfill"  # oxjob #1800: backfill copies of flagged PDF texts
 DIFFERENT_ITEM_TABLE = "openalex.abstracts.different_item_backfill"  # oxjob #1790: works showing another item's abstract
+# oxjob #1800 (6 Nov 2026): rule dspace-v1, a SQL predicate on a text column. Keep byte-identical with
+# FlagLocationNotAbstracts.
+DEPOSIT_NOTICE_COMMIT = "dspace-v1: DSpace deposit notice (#1800, 6 Nov 2026)"
+DEPOSIT_NOTICE = r"""(
+  trim(COL) RLIKE '^(Submitted by|Made available in DSpace on|Approved for entry into archive by|Rejected by|Item withdrawn by) '
+  AND instr(COL, 'No. of bitstreams') > 0 AND instr(COL, '%%%%') = 0
+  AND length(regexp_replace(trim(COL), '(?i)[^\\n]{0,200}?: \\d+ bytes, checksum: [0-9a-f]{32} \\((MD5|SHA-1|SHA1)\\)', ' ')) <= 150)"""
 # A dry run writes elsewhere first (job parameter target_table), to diff a new filter commit against the live table.
 dbutils.widgets.text("target_table", "openalex.abstracts.abstracts_backfill_not_abstract")
 TARGET_TABLE = dbutils.widgets.get("target_table")
@@ -208,9 +218,23 @@ LEFT ANTI JOIN flagged_backfill f ON f.work_id = di.work_id
 LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.text = trim(e.abstract)) s ON s.work_id = di.work_id
 LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = di.work_id
 LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = di.work_id
+UNION ALL
+-- Deposit notices (see the header), on the uncapped backfill text. One row per work: skip works another branch flags.
+SELECT e.work_id, 'deposit_notice' AS reason, length(e.abstract) AS text_len, 'DEPOSIT_NOTICE_COMMIT' AS filter_commit,
+       current_timestamp() AS built_at
+FROM (SELECT bf.work_id, CASE WHEN r.work_id IS NOT NULL THEN r.abstract ELSE bf.abstract END AS abstract
+      FROM SOURCE_TABLE bf LEFT JOIN REPAIR_TABLE r ON bf.work_id = r.work_id) e
+LEFT ANTI JOIN flagged_backfill f ON f.work_id = e.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.text = trim(e.abstract)) s ON s.work_id = e.work_id
+LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = e.work_id
+LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = e.work_id
+LEFT ANTI JOIN DIFFERENT_ITEM_TABLE di ON di.work_id = e.work_id
+WHERE e.abstract IS NOT NULL AND DEPOSIT_NOTICE_SQL
 """.replace("TARGET_TABLE", TARGET_TABLE).replace("FILTER_COMMIT", FILTER_COMMIT).replace("SHORT_TABLE", SHORT_TABLE)
    .replace("PEER_REVIEW_TABLE", PEER_REVIEW_TABLE).replace("PDF_BACKFILL_TABLE", PDF_BACKFILL_TABLE)
-   .replace("DIFFERENT_ITEM_TABLE", DIFFERENT_ITEM_TABLE))
+   .replace("DIFFERENT_ITEM_TABLE", DIFFERENT_ITEM_TABLE).replace("SOURCE_TABLE", SOURCE_TABLE)
+   .replace("REPAIR_TABLE", REPAIR_TABLE).replace("DEPOSIT_NOTICE_COMMIT", DEPOSIT_NOTICE_COMMIT)
+   .replace("DEPOSIT_NOTICE_SQL", DEPOSIT_NOTICE.replace("COL", "e.abstract")))
 # INSERT OVERWRITE replaces the rows atomically: CreateWorksBase never sees the table missing or half-built.
 
 # COMMAND ----------
