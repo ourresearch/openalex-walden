@@ -191,6 +191,7 @@ REFS = "openalex.works.work_references"
 LEDGER = "openalex.works.deleted_works"
 END2END_JOB_ID = 616701029470182
 PUBLISHED_TYPES = "('article', 'conference-paper', 'book-chapter')"   # the published side of a preprint pair (Casey 2026-09-28)
+STUDY_REGISTRATION = "study-registration"   # oxjob #2063: held against every other work unless it is the same registration
 MERGED = "openalex.works.merged_work_ids"   # durable loser -> winner record; MapWorkIds redirects legacy adoption through it
 CROSSREF_RAW = "openalex.crossref.crossref_deduplicated"   # feed_twin: resource.primary.URL never reaches locations_mapped
 
@@ -326,6 +327,36 @@ def class_sql():
                 WHEN EXISTS (SELECT 1 FROM winners x WHERE x.work_id = h.loser_work_id) THEN 'chained'
                 END AS hold_reason
     FROM held h
+    """
+
+
+def study_registration_guard(sql):
+    """oxjob #2063 (6 Nov 2026), every class: a study registration (type `study-registration`: OSF, PROSPERO and PsychArchives
+    DataCite records, INPLASY, AEA RCT Registry, ISRCTN) merges with a work that is not one only when both are the same
+    registration: the same DOI, or the same OSF guid (OSF's own feed copies a registration at osf.io/<guid>, often with no
+    DOI). A registration shares its title with the OSF project it was made from and with the paper that reports the study
+    (6 Nov sizing, same title + year: ~6.6K OSF projects and ~3K articles, preprints from PsyArXiv, SSRN ...), and before the
+    type existed those records were held as `other` / `dataset` / `report`. Such pairs are held as `study_registration`.
+    Two registrations pass through to the class's own holds. Undo: return `sql` unchanged."""
+    guid = "regexp_extract(lower(COALESCE({c}, '')), 'osf\\\\.io/(?:v2/registrations/)?([a-z0-9]{{5}})(?![a-z0-9])', 1)"
+    return f"""
+    WITH gc AS ({sql}),
+    gw AS (
+      SELECT id, type = '{STUDY_REGISTRATION}' AS is_sr, lower(doi) AS doi,
+             {guid.format(c='doi')} AS doi_guid, {guid.format(c='primary_location.landing_page_url')} AS lp_guid
+      FROM {WORKS}),
+    gs AS (
+      SELECT gc.*, l.is_sr AS l_sr, w.is_sr AS w_sr,
+             (l.doi IS NOT NULL AND l.doi = w.doi)
+             OR (COALESCE(NULLIF(l.doi_guid, ''), NULLIF(l.lp_guid, '')) = COALESCE(NULLIF(w.doi_guid, ''), NULLIF(w.lp_guid, ''))
+                 AND NOT (l.doi_guid <> '' AND l.lp_guid <> '' AND l.doi_guid <> l.lp_guid)
+                 AND NOT (w.doi_guid <> '' AND w.lp_guid <> '' AND w.doi_guid <> w.lp_guid)) AS same_registration
+      FROM gc LEFT JOIN gw l ON l.id = gc.loser_work_id LEFT JOIN gw w ON w.id = gc.winner_work_id)
+    SELECT gs.* EXCEPT (hold_reason, l_sr, w_sr, same_registration),
+           CASE WHEN gs.hold_reason IS NOT NULL THEN gs.hold_reason
+                WHEN COALESCE(gs.l_sr, false) <> COALESCE(gs.w_sr, false) AND NOT COALESCE(gs.same_registration, false)
+                THEN 'study_registration' END AS hold_reason
+    FROM gs
     """
 
 
@@ -673,7 +704,8 @@ TWO_DOI_NONPAPER = ("('dataset', 'software', 'collection', 'audiovisual', 'image
                     "'sound', 'interactiveresource', 'service', 'event', 'datapaper', 'computationalnotebook', 'outputmanagementplan', "
                     "'studyregistration', 'instrument')")
 TWO_DOI_NONPAPER_TYPES = ("('dataset', 'other', 'peer-review', 'supplementary-materials', 'reference-entry', 'standard', 'paratext', 'software', "
-                          "'erratum', 'retraction', 'grant', 'libguides', 'editorial', 'letter', 'review', 'book-review')")
+                          "'erratum', 'retraction', 'grant', 'libguides', 'editorial', 'letter', 'review', 'book-review', "
+                          "'study-registration')")  # oxjob #2063: registrations were 'other' / 'dataset' here before the new type
 
 
 def build_two_doi_features():
@@ -1231,7 +1263,7 @@ if MODE == "stage":
     if CLASS_MODE == "version_group":
         build_version_group_tables()
     spark.sql(f"""CREATE OR REPLACE TABLE {TARGET} AS
-                  WITH c0 AS ({class_sql()}),
+                  WITH c0 AS ({study_registration_guard(class_sql())}),
                   c AS (SELECT c0.* EXCEPT (hold_reason), {cited_hold} AS hold_reason FROM c0),
                   keys AS (
                     SELECT ta, MAX(CASE WHEN hold_reason IS NOT NULL THEN 1 ELSE 0 END) AS held,
