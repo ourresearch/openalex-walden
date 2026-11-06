@@ -4591,6 +4591,36 @@ pi_parsed AS (
     FROM arc_input
 ),
 
+-- Co-investigators (grant-coverage 11-03). ARC's investigators column names everyone on the grant, the lead included, as one
+-- semicolon-separated string ('Prof A', 'Dr B'), not in role order: 12,260 of 34,471 grants list the lead after someone else
+-- (arc_projects.parquet, measured 11-03). team = the lead, then ARC's list in ARC's order, each name as words with the
+-- names-cleanup Card 5 titles stripped (Em/Prof, A/Pr, stacked titles). '\\x3B' is the semicolon: the generator allows none in code.
+-- co_investigators = everyone after the lead, in ARC's order: 83,299 people on 23,031 grants. A person listed twice, or the lead
+-- listed again, appears once, at their first place (7 grants). First word given, last word family, as for the lead. This file
+-- gives no ORCID, role or institution per person, so those stay NULL.
+arc_team AS (
+    SELECT
+        *,
+        transform(
+            filter(team, (p, i) -> i > 0 AND size(p.words) > 0
+                AND NOT exists(slice(team, 1, i), q -> coalesce(lower(array_join(q.words, ' ')) = lower(array_join(p.words, ' ')), false))),
+            p -> struct(
+                try_element_at(p.words, 1) as given_name,
+                try_element_at(p.words, -1) as family_name,
+                CAST(NULL AS STRING) as orcid,
+                CAST(NULL AS DATE) as role_start,
+                CAST(NULL AS STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>) as affiliation
+            )
+        ) as co_investigators
+    FROM (
+        SELECT
+            *,
+            transform(concat(array(lead_investigator), split(investigators, '\\x3B')), x -> named_struct('name', trim(x),
+                'words', filter(split(regexp_replace(trim(x), '^((Dr|Prof|Professor|Associate Professor|A/Prof|A/Pr|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Em/Prof|E/Prof|E/Pr|Adj/Prof|Adjunct Professor|Hon)\\.?\\s+)+', ''), ' '), t -> t <> ''))) as team
+        FROM pi_parsed
+    )
+),
+
 awards_transformed AS (
     SELECT
         abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.code)))) % 9000000000 as id,
@@ -4666,13 +4696,8 @@ awards_transformed AS (
             affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
         >) as co_lead_investigator,
 
-        CAST(NULL AS ARRAY<STRUCT<
-            given_name:STRING,
-            family_name:STRING,
-            orcid:STRING,
-            role_start:DATE,
-            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
-        >>) as investigators,
+        -- NULL, not [], when the lead is the only person (11,440 grants), so those rows don't change.
+        CASE WHEN size(g.co_investigators) > 0 THEN g.co_investigators END as investigators,
 
         CONCAT('https://dataportal.arc.gov.au/RGS/Web/Grants/', g.code) as landing_page_url,
 
@@ -4683,7 +4708,7 @@ awards_transformed AS (
         session.awards_timestamp as created_date,
         session.awards_timestamp as updated_date
 
-    FROM pi_parsed g
+    FROM arc_team g
     CROSS JOIN arc_funder f
     WHERE g.code IS NOT NULL
       AND TRIM(g.code) != ''
