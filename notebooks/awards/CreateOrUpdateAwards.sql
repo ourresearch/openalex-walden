@@ -9658,7 +9658,9 @@ awards_transformed AS (
                     CAST(NULL AS STRING) as orcid,
                     TRY_TO_DATE(g.funding_start_date) as role_start,
                     struct(
-                        TRIM(g.research_institution_name) as name,
+                        -- Else institution_paid_name, the institution CIHR paid ('Direct payment to individual ...' means it paid the person).
+                        COALESCE(NULLIF(TRIM(g.research_institution_name), ''),
+                                 CASE WHEN g.institution_paid_name NOT LIKE 'Direct payment%' THEN NULLIF(TRIM(g.institution_paid_name), '') END) as name,
                         'Canada' as country,
                         CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
                     ) as affiliation
@@ -35121,7 +35123,11 @@ awards_transformed AS (
                     CAST(NULL AS STRING) as orcid,
                     CAST(NULL AS DATE) as role_start,
                     struct(
-                        COALESCE(g.research_institution, g.institute) as name,
+                        -- For grants abroad or outside SNSF's lists, research_institution is a category ('Institution abroad - ...',
+                        -- 'Unassignable - NA', 'Non-profit organisations ... - NPO') and the host is in institute.
+                        COALESCE(CASE WHEN g.research_institution LIKE 'Institution abroad%' OR g.research_institution LIKE 'Unassignable%'
+                                           OR g.research_institution LIKE 'Non-profit organisations%' THEN NULLIF(TRIM(g.institute), '') END,
+                                 g.research_institution, g.institute) as name,
                         COALESCE(g.institute_country, 'Switzerland') as country,
                         CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
                     ) as affiliation
@@ -37127,7 +37133,17 @@ raw_prepared AS (
             WHEN TRY_CAST(publication_year AS INT) > YEAR(current_date()) + 1 THEN NULL
             ELSE TRY_CAST(publication_year AS INT)
         END AS parsed_publication_year,
-        FROM_JSON(other_investigators_json, 'ARRAY<STRUCT<name:STRING,given_name:STRING,family_name:STRING,orcid:STRING,duty:STRING,order:STRING,role_start:STRING,institution_name:STRING,institution_title:STRING,institution_root_title:STRING,institution_country:STRING>>') AS other_contributors
+        FROM_JSON(other_investigators_json, 'ARRAY<STRUCT<name:STRING,given_name:STRING,family_name:STRING,orcid:STRING,duty:STRING,order:STRING,role_start:STRING,institution_name:STRING,institution_title:STRING,institution_root_title:STRING,institution_country:STRING>>') AS other_contributors,
+        -- The lead's institution: the first MANAGER's, else the first contributor's. Each value is the root title (the university),
+        -- else the full name, as a text list ("['X']", or double-quoted when a name has an apostrophe): the first item is taken.
+        -- 'Girilmemiş' (not entered) and 'Tanımlanmamış Kurum' (undefined) are placeholders.
+        FROM_JSON(contributors_json, 'ARRAY<STRUCT<duty:STRING,institution_name:STRING,institution_root_title:STRING>>') AS lead_contributors,
+        TRY_ELEMENT_AT(FILTER(FLATTEN(TRANSFORM(
+            SLICE(CONCAT(FILTER(lead_contributors, x -> x.duty = 'MANAGER'), lead_contributors), 1, 1),
+            l -> TRANSFORM(ARRAY(l.institution_root_title, l.institution_name),
+                           s -> NULLIF(TRIM(CASE WHEN s RLIKE '^\\[' THEN CONCAT(REGEXP_EXTRACT(s, "^\\[\\s*'([^']*)'", 1),
+                                                                            REGEXP_EXTRACT(s, '^\\[\\s*"([^"]*)"', 1)) ELSE s END), '')))),
+            s -> s IS NOT NULL AND s <> '[]' AND NOT s RLIKE '(?iu)girilmemi|tan[ıi]mlanmam[ıi]ş'), 1) AS lead_institution
     FROM trdizin_tubitak_projects_input
     WHERE funder_award_id IS NOT NULL
       AND TRIM(funder_award_id) != ''
@@ -37170,7 +37186,7 @@ awards_transformed AS (
                 NULLIF(TRIM(g.lead_orcid), '') AS orcid,
                 g.parsed_start_date AS role_start,
                 struct(
-                    CAST(NULL AS STRING) AS name,
+                    g.lead_institution AS name,
                     CAST(NULL AS STRING) AS country,
                     CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
                 ) AS affiliation

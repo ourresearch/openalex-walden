@@ -17,7 +17,17 @@ raw_prepared AS (
             WHEN TRY_CAST(publication_year AS INT) > YEAR(current_date()) + 1 THEN NULL
             ELSE TRY_CAST(publication_year AS INT)
         END AS parsed_publication_year,
-        FROM_JSON(other_investigators_json, 'ARRAY<STRUCT<name:STRING,given_name:STRING,family_name:STRING,orcid:STRING,duty:STRING,order:STRING,role_start:STRING,institution_name:STRING,institution_title:STRING,institution_root_title:STRING,institution_country:STRING>>') AS other_contributors
+        FROM_JSON(other_investigators_json, 'ARRAY<STRUCT<name:STRING,given_name:STRING,family_name:STRING,orcid:STRING,duty:STRING,order:STRING,role_start:STRING,institution_name:STRING,institution_title:STRING,institution_root_title:STRING,institution_country:STRING>>') AS other_contributors,
+        -- The lead's institution: the first MANAGER's, else the first contributor's. Each value is the root title (the university),
+        -- else the full name, as a text list ("['X']", or double-quoted when a name has an apostrophe): the first item is taken.
+        -- 'Girilmemiş' (not entered) and 'Tanımlanmamış Kurum' (undefined) are placeholders.
+        FROM_JSON(contributors_json, 'ARRAY<STRUCT<duty:STRING,institution_name:STRING,institution_root_title:STRING>>') AS lead_contributors,
+        TRY_ELEMENT_AT(FILTER(FLATTEN(TRANSFORM(
+            SLICE(CONCAT(FILTER(lead_contributors, x -> x.duty = 'MANAGER'), lead_contributors), 1, 1),
+            l -> TRANSFORM(ARRAY(l.institution_root_title, l.institution_name),
+                           s -> NULLIF(TRIM(CASE WHEN s RLIKE '^\\[' THEN CONCAT(REGEXP_EXTRACT(s, "^\\[\\s*'([^']*)'", 1),
+                                                                            REGEXP_EXTRACT(s, '^\\[\\s*"([^"]*)"', 1)) ELSE s END), '')))),
+            s -> s IS NOT NULL AND s <> '[]' AND NOT s RLIKE '(?iu)girilmemi|tan[ıi]mlanmam[ıi]ş'), 1) AS lead_institution
     FROM trdizin_tubitak_projects_input
     WHERE funder_award_id IS NOT NULL
       AND TRIM(funder_award_id) != ''
@@ -60,7 +70,7 @@ awards_transformed AS (
                 NULLIF(TRIM(g.lead_orcid), '') AS orcid,
                 g.parsed_start_date AS role_start,
                 struct(
-                    CAST(NULL AS STRING) AS name,
+                    g.lead_institution AS name,
                     CAST(NULL AS STRING) AS country,
                     CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) AS ids
                 ) AS affiliation

@@ -75,7 +75,11 @@ awards_transformed AS (
                     CAST(NULL AS STRING) as orcid,
                     CAST(NULL AS DATE) as role_start,
                     struct(
-                        COALESCE(g.research_institution, g.institute) as name,
+                        -- For grants abroad or outside SNSF's lists, research_institution is a category ('Institution abroad - ...',
+                        -- 'Unassignable - NA', 'Non-profit organisations ... - NPO') and the host is in institute.
+                        COALESCE(CASE WHEN g.research_institution LIKE 'Institution abroad%' OR g.research_institution LIKE 'Unassignable%'
+                                           OR g.research_institution LIKE 'Non-profit organisations%' THEN NULLIF(TRIM(g.institute), '') END,
+                                 g.research_institution, g.institute) as name,
                         COALESCE(g.institute_country, 'Switzerland') as country,
                         CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
                     ) as affiliation

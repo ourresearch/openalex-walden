@@ -76,7 +76,9 @@ awards_transformed AS (
                     CAST(NULL AS STRING) as orcid,
                     TRY_TO_DATE(g.funding_start_date) as role_start,
                     struct(
-                        TRIM(g.research_institution_name) as name,
+                        -- Else institution_paid_name, the institution CIHR paid ('Direct payment to individual ...' means it paid the person).
+                        COALESCE(NULLIF(TRIM(g.research_institution_name), ''),
+                                 CASE WHEN g.institution_paid_name NOT LIKE 'Direct payment%' THEN NULLIF(TRIM(g.institution_paid_name), '') END) as name,
                         'Canada' as country,
                         CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
                     ) as affiliation
