@@ -64,6 +64,7 @@ include:
   - jobs/repo_backfill.yaml
   - jobs/repo_reparse.yaml
   - jobs/work_references_cleanup.yaml
+  - jobs/work_references_refresh.yaml
   - jobs/taxicab_crossref.yaml
   - jobs/taxicab_repos.yaml
   - jobs/taxicab_landing_page_pdfs.yaml

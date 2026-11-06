@@ -211,7 +211,9 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: parse_referenced_works
-          timeout_seconds: 1500
+          # 4-6 min until oxjob #2054; per-list filing adds the list check (~15 min in the 10% rehearsal, scaled). Off the
+          # critical path: Works_Enriched also waits for the author steps, which take hours.
+          timeout_seconds: 3600
           depends_on:
             - task_key: Works_Base
           notebook_task:
