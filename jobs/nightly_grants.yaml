@@ -5,7 +5,7 @@ resources:
       # Replaces the RefreshAwards stable-id release chain (09-30). One task: build ids + awards + paper links + API,
       # check everything, swap, publish changed award docs to search. Code: notebooks/awards/nightly_grants/.
       # Runs before Walden_End_2_End (05:00 UTC), which reads openalex.awards.work_awards.
-      # PAUSED here until the first attended run is verified; unpause by changing this line (a bundle deploy applies it).
+      # UNPAUSED since 2026-09-30 (Rohan, abf29918). pause_status below is what every bundle deploy applies; a UI pause is reset by it.
       email_notifications:
         on_failure:
           - rohan@openalex.org

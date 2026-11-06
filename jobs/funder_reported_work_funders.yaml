@@ -14,8 +14,7 @@ resources:
       schedule:
         # 02:30 UTC — after DataCite_Work_Funders (02:00 UTC, the only input to this union
         # with a live nightly feed; it commits in ~45 s, measured 2026-08-24), before
-        # RefreshWorkAwards (03:00 UTC) and Walden_End_2_End (05:00 UTC, which runs
-        # CreateWorksEnriched and needs this table fresh). Hakai/EuropePMC/KAKEN/ANR stay
+        # Walden_End_2_End (05:00 UTC, which runs CreateWorksEnriched and needs this table fresh). Hakai/EuropePMC/KAKEN/ANR stay
         # on-demand OUTPUT-LIST sources; this job re-unions them every run regardless, so
         # a manual refresh of any one is picked up the same night for free.
         quartz_cron_expression: 0 30 2 * * ?
