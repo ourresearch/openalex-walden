@@ -233,3 +233,41 @@ def test_rule_against_the_30_night_cairn_sample():
     # the rule's footprint on the sample: 4.9% of records. A rewrite that claims a materially
     # different share of the same sample must update the fixture on purpose.
     assert 0.04 < fx["sample"]["paratext_records"] / fx["sample"]["records"] < 0.06
+
+
+# oxjob #1647: cultural-heritage feeds (heritage_feeds.py is generated from the checked unit list).
+def test_heritage_lists_shape():
+    from openalex.dlt import heritage_feeds as hf
+    ids = set(hf.HERITAGE_ENDPOINTS_TO_DELETE) | set(hf.HERITAGE_ENDPOINT_SETSPEC_DELETE)
+    assert all(isinstance(e, str) and 19 <= len(e) <= 20 and e.isalnum() for e in ids)
+    assert all(sets and all(isinstance(s, str) and s for s in sets) for sets in hf.HERITAGE_ENDPOINT_SETSPEC_DELETE.values())
+    assert all(c == c.lower() and c.strip() == c and c for c in hf.HERITAGE_DATACITE_CLIENTS)
+    # a set carve on an endpoint that is dropped whole would be dead code: the generator never writes one
+    assert not set(hf.HERITAGE_ENDPOINT_SETSPEC_DELETE) & hf.HERITAGE_ENDPOINTS_TO_DELETE
+
+
+def test_heritage_never_touches_digitized_print():
+    # Jason + Kyle, 6 Nov 2026: Gallica, the University of Michigan Library Repository and the Biodiversity
+    # Heritage Library stay whole. None of their sets may be listed either.
+    from openalex.dlt import heritage_feeds as hf
+    protected = {"b6f3a90f96528af2baa", "b54a0400f7544929302", "q6caunfjwsunh6wiqwpg"}
+    assert not protected & hf.HERITAGE_ENDPOINTS_TO_DELETE
+    assert not protected & set(hf.HERITAGE_ENDPOINT_SETSPEC_DELETE)
+
+
+def test_heritage_whole_endpoints_join_the_denylist_without_changing_it():
+    from openalex.dlt import heritage_feeds as hf
+    assert len(rf.ENDPOINTS_TO_DELETE) == 77  # the #881/#880 list is untouched; #1647 is a separate structure
+    assert rf.HERITAGE_ENDPOINTS_TO_DELETE is hf.HERITAGE_ENDPOINTS_TO_DELETE
+
+
+def test_sql_string_literal_escapes():
+    assert rf.sql_string_literal("col_1") == "'col_1'"
+    assert rf.sql_string_literal("a'b") == "'a\\'b'"
+    assert rf.sql_string_literal("a\\b") == "'a\\\\b'"
+
+
+def test_heritage_set_keys_are_endpoint_scoped():
+    keys = rf.heritage_set_keys()
+    assert keys == sorted(keys)
+    assert all("|" in k and len(k.split("|", 1)[0]) in (19, 20) for k in keys)

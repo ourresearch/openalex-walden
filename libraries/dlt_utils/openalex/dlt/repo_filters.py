@@ -13,6 +13,7 @@ import re
 
 import pyspark.sql.functions as F
 
+from .heritage_feeds import HERITAGE_ENDPOINTS_TO_DELETE, HERITAGE_ENDPOINT_SETSPEC_DELETE
 from .repo_types import TYPES_TO_DELETE
 
 # Repo.py used the literal 5 inline; RepoBackfill.py had no title rule at all. Named so the two
@@ -281,6 +282,30 @@ COMPONENT_DOI_SUFFIX = "[.](s|t|g)[0-9]{3}$"
 COMPONENT_CARVE_NATIVE_ID_PREFIXES = ("oai:figshare.com",)
 
 
+def sql_string_literal(value):
+    """A Spark SQL string literal for value. Backslash and single quote are escaped: with
+    spark.sql.parser.escapedStringLiterals off (the default), backslash is the escape character."""
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def heritage_set_keys():
+    """'endpoint_id|setSpec' keys of HERITAGE_ENDPOINT_SETSPEC_DELETE, sorted (oxjob #1647)."""
+    return sorted(f"{ep}|{s}" for ep, sets in HERITAGE_ENDPOINT_SETSPEC_DELETE.items() for s in sets)
+
+
+def heritage_set_carve(endpoint_col="endpoint_id", set_spec_col="set_spec"):
+    """Column: the record carries a listed heritage setSpec of its own endpoint (oxjob #1647).
+
+    One IN over 'endpoint|setSpec' keys (the optimizer turns a long literal IN into a hash-set lookup), gated on the
+    endpoint so records of other endpoints never evaluate the lambda. SQL-side lambda, as for the prefix carves."""
+    keys = heritage_set_keys()
+    if not keys:
+        return F.lit(False)
+    in_list = ", ".join(sql_string_literal(k) for k in keys)
+    return F.col(endpoint_col).isin(*sorted(HERITAGE_ENDPOINT_SETSPEC_DELETE)) & F.expr(
+        f"exists(coalesce({set_spec_col}, array()), s -> concat({endpoint_col}, '|', s) IN ({in_list}))")
+
+
 def apply_repo_policy_filters(df, title_col="title", type_col="raw_native_type",
                               native_id_col="native_id", keep_when=None):
     """Drop records that must never become works, for EVERY repo stream.
@@ -342,10 +367,14 @@ def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spe
     a book's cover pages, bibliography, index, acknowledgements, preface. NULL title is kept here
     (apply_repo_policy_filters already drops it).
 
+    oxjob #1647: HERITAGE_ENDPOINTS_TO_DELETE joins the denylist, and a record in a HERITAGE_ENDPOINT_SETSPEC_DELETE set
+    of its endpoint is removed, EXACT setSpec match (heritage_feeds.py, generated). NULL/empty set_spec is kept.
+
     keep_when: same contract as apply_repo_policy_filters -- delete events carry the pre-image
     of the row being removed and must bypass every filter or the deletion never propagates.
     """
-    denylisted = F.col(endpoint_col).isin(*sorted(ENDPOINTS_TO_DELETE))
+    # oxjob #1647: the cultural-heritage endpoints (heritage_feeds.py, generated) join the denylist.
+    denylisted = F.col(endpoint_col).isin(*sorted(ENDPOINTS_TO_DELETE | HERITAGE_ENDPOINTS_TO_DELETE))
 
     # SQL-side lambda (the Repo.py filter idiom) -- a pyspark-side lambda with extra bound
     # params fails DLT analysis (2026-08-27, update e0fd1ae6).
@@ -362,6 +391,11 @@ def apply_endpoint_filters(df, endpoint_col="endpoint_id", set_spec_col="set_spe
         in_kept_class = F.expr(
             f"exists(coalesce({set_spec_col}, array()), s -> {likes})")
         carved = carved | ((F.col(endpoint_col) == endpoint_id) & ~in_kept_class)
+
+    # oxjob #1647: cultural-heritage sets on endpoints we keep (heritage_feeds.py, generated from the checked unit
+    # list). EXACT setSpec match, not the prefix LIKE above: the list holds thousands of DSpace / Digital Commons codes,
+    # and a prefix would take siblings (col_10504_1 is a prefix of col_10504_10..19, and '_' is a LIKE wildcard).
+    carved = carved | heritage_set_carve(endpoint_col, set_spec_col)
 
     # oxjob #1000: figshare-hosted publisher components, keyed on the OAI identifier prefix and the
     # DOI suffix. Same SQL-side lambda idiom as the setSpec carves.

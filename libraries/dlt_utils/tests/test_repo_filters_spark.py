@@ -114,3 +114,43 @@ def test_cairn_paratext_title_carve(spark):
     expected = {f"oai:cairn.info:X_{i:04d}" for i, t in enumerate(titles) if not is_paratext_title(t)}
     expected |= {"oai:other.org:1", "oai:cairn.info:D_0001", "oai:cairn.info:N_0001"}
     assert kept == expected
+
+
+def test_heritage_sets_match_exactly_and_whole_endpoints_go(spark):
+    # oxjob #1647: a listed heritage set removes its endpoint's records, EXACT setSpec match; a sibling code that
+    # merely starts with it, the same code on another endpoint, and a record with no setSpec stay; a delete event
+    # bypasses; every record of a whole listed endpoint goes.
+    from openalex.dlt import heritage_feeds as hf
+    if not hf.HERITAGE_ENDPOINT_SETSPEC_DELETE or not hf.HERITAGE_ENDPOINTS_TO_DELETE:
+        pytest.skip("no heritage units listed")
+    ep = sorted(hf.HERITAGE_ENDPOINT_SETSPEC_DELETE)[0]
+    listed = sorted(hf.HERITAGE_ENDPOINT_SETSPEC_DELETE[ep])[0]
+    sibling = listed + "9"
+    assert sibling not in hf.HERITAGE_ENDPOINT_SETSPEC_DELETE[ep]
+    whole = sorted(hf.HERITAGE_ENDPOINTS_TO_DELETE)[0]
+    other = "zzzzzzzzzzzzzzzzzzz"
+    rows = [
+        ("h:listed", ep, [listed], None, "upsert"),                     # dropped
+        ("h:listed_among_others", ep, ["kept_set", listed], None, "upsert"),  # dropped (any listed set)
+        ("h:sibling", ep, [sibling], None, "upsert"),                   # kept: exact match only
+        ("h:no_set", ep, None, None, "upsert"),                         # kept
+        ("h:empty_set", ep, [], None, "upsert"),                        # kept
+        ("h:other_endpoint", other, [listed], None, "upsert"),          # kept: set codes are per endpoint
+        ("h:delete_event", ep, [listed], None, "delete"),               # kept: deletes bypass
+        ("h:whole", whole, ["anything"], None, "upsert"),               # dropped
+        ("h:whole_delete", whole, None, None, "delete"),                # kept: deletes bypass
+    ]
+    out = apply_endpoint_filters(spark.createDataFrame(rows, SCHEMA).withColumn("title", F.lit("A real title")),
+                                 keep_when=F.col("_change_type") == "delete")
+    kept = {r.native_id for r in out.collect()}
+    assert kept == {"h:sibling", "h:no_set", "h:empty_set", "h:other_endpoint", "h:delete_event", "h:whole_delete"}
+
+
+def test_heritage_set_literal_with_quote_compiles(spark, monkeypatch):
+    # a setSpec with a quote or backslash must not break the SQL-side lambda (oxjob #1647)
+    from openalex.dlt import repo_filters as rf
+    monkeypatch.setattr(rf, "HERITAGE_ENDPOINT_SETSPEC_DELETE", {"a" * 19: ("o'brien", "back\\slash")})
+    rows = [("q1", "a" * 19, ["o'brien"], None, "upsert"), ("q2", "a" * 19, ["back\\slash"], None, "upsert"),
+            ("q3", "a" * 19, ["obrien"], None, "upsert")]
+    out = rf.apply_endpoint_filters(spark.createDataFrame(rows, SCHEMA).withColumn("title", F.lit("A real title")))
+    assert {r.native_id for r in out.collect()} == {"q3"}
