@@ -67,6 +67,7 @@ dbutils.widgets.text("refresh_stats", "false", "refresh content_stats counts (fu
 
 SYNC_FROM_OVERRIDE = dbutils.widgets.get("sync_from_override").strip()
 SYNC_TO_OVERRIDE = dbutils.widgets.get("sync_to_override").strip()
+WINDOW_OVERRIDE = bool(SYNC_FROM_OVERRIDE or SYNC_TO_OVERRIDE)  # a manual window: no diff, version not recorded
 DIFF_AGAINST = dbutils.widgets.get("diff_against_version").strip().lower()
 WRITE_WORKERS = max(1, int(dbutils.widgets.get("write_workers").strip() or "1"))
 WRITE_PAUSE_RATIO = max(0.0, float(dbutils.widgets.get("write_pause_ratio").strip() or "1.0"))
@@ -169,7 +170,8 @@ run_started = datetime.utcnow()
 # Pin one version of the table, so the rows read and the high-water mark stored agree.
 from delta.tables import DeltaTable
 
-_h = (DeltaTable.forName(spark, LM_TABLE).history(1)
+lm_delta = DeltaTable.forName(spark, LM_TABLE)
+_h = (lm_delta.history(1)
       .selectExpr("version", "date_format(timestamp, 'yyyy-MM-dd HH:mm:ss.SSSSSS') AS ts").first())
 lm_version, lm_commit = _h["version"], _h["ts"]
 print(f"{LM_TABLE} version {lm_version}, committed {lm_commit} UTC")
@@ -193,18 +195,18 @@ upper = _parse_iso(SYNC_TO_OVERRIDE).strftime(TS_FMT) if SYNC_TO_OVERRIDE else N
 
 # Diff base: the version D1 last fully synced, if it is still readable (see the header).
 base_version = None
-if SYNC_FROM_OVERRIDE or SYNC_TO_OVERRIDE or DIFF_AGAINST == "none":
-    print("Diff off (override given): stamp window")
+if WINDOW_OVERRIDE or DIFF_AGAINST == "none":
+    print("Diff off (sync_from/sync_to override or diff_against_version=none): stamp window")
 else:
     cand = DIFF_AGAINST or d1_stat(VERSION_KEY)
-    base_h = (DeltaTable.forName(spark, LM_TABLE).history().where(f"version = {int(cand)}")
-              .select("timestamp").first()) if cand else None
-    if base_h is None or int(cand) > lm_version:
+    cand = int(cand) if cand else None
+    base_h = lm_delta.history().where(f"version = {cand}").select("timestamp").first() if cand is not None else None
+    if base_h is None or cand > lm_version:
         print(f"Diff base {cand} not in {LM_TABLE} history: stamp window")
     elif base_h["timestamp"] < datetime.utcnow() - timedelta(days=DIFF_MAX_AGE_DAYS):
         print(f"Diff base {cand} committed {base_h['timestamp']}, older than {DIFF_MAX_AGE_DAYS} days: stamp window")
     else:
-        base_version = int(cand)
+        base_version = cand
 
 
 # COMMAND ----------
@@ -232,21 +234,21 @@ def content_pairs(version: int, where: str = "") -> str:
     GROUP BY work_id"""
 
 
-df = None
 if base_version is not None:
     print(f"Syncing works whose content pair differs between version {base_version} and {lm_version}")
-    pairs = "SELECT work_id, pdf_uuid, grobid_uuid FROM ({})"
     try:
-        # EXCEPT compares NULLs as equal. Cached and counted here, so an unreadable base version falls back now.
-        df = spark.sql(f"{pairs.format(content_pairs(lm_version))} EXCEPT {pairs.format(content_pairs(base_version))}")
+        # subtract = EXCEPT DISTINCT; NULLs compare equal. Cached and counted here, so an unreadable base version
+        # falls back now.
+        pairs = lambda v: spark.sql(content_pairs(v)).drop("max_dt")
+        df = pairs(lm_version).subtract(pairs(base_version))
         if base_version == lm_version:
             df = df.limit(0)
         df = df.selectExpr("*", "CAST(NULL AS STRING) AS max_dt").cache()
         print(f"{df.count():,} works changed")
     except Exception as e:  # e.g. the base version's files were vacuumed
         print(f"Diff failed ({str(e)[:300]}): stamp window")
-        df, base_version = None, None
-if df is None:
+        base_version = None
+if base_version is None:
     # In-place edits (a PDF arriving on an older work) carry a new stamp, so the window picks them up.
     print(f"Syncing rows with openalex_updated_dt {lower_op} {lower}" + (f" and < {upper}" if upper else ""))
     upper_sql = f"AND openalex_updated_dt < TIMESTAMP'{upper}'" if upper else ""
@@ -315,6 +317,7 @@ if batch:
     _submit(batch)
 _drain()
 executor.shutdown()
+df.unpersist()  # no-op unless the diff was cached
 
 elapsed = time.time() - t0
 rate = total_synced / elapsed if elapsed else 0
@@ -341,7 +344,6 @@ if failed_batches:
 # A diff run brought D1 up to the whole version, so every stamp up to its commit is covered.
 if base_version is not None:
     max_dt_seen = lm_commit
-    df.unpersist()
 if not SYNC_TO_OVERRIDE:
     seen = min(max_dt_seen, lm_commit) if max_dt_seen else None
     new_hwm = max(v for v in (hwm, seen) if v) if (hwm or seen) else lower
@@ -349,7 +351,7 @@ if not SYNC_TO_OVERRIDE:
         d1_set_stat(HWM_KEY, new_hwm)
     print(f"{HWM_KEY}: {hwm} -> {new_hwm}")
 # The next run diffs against this version, so record it only when D1 now reflects all of it.
-if not (SYNC_FROM_OVERRIDE or SYNC_TO_OVERRIDE):
+if not WINDOW_OVERRIDE:
     d1_set_stat(VERSION_KEY, str(lm_version))
     print(f"{VERSION_KEY}: {lm_version}")
 
