@@ -1291,7 +1291,7 @@ zwe,*,ZW,high,organisation,ISO 3166-1 alpha-3
 *,nihr_ods_dhsc,,low,assumed,one constant on every award; organisations abroad are named next to it (Malawi-Liverpool-Wellcome Programme)
 *,nij_awards_list,,medium,assumed_domestic,one constant (US) on 3627 awards; no organisation abroad seen next to it
 *,nserc_open_data,,high,organisation,41 countries recorded on 200862 awards
-*,nsf_award_search,,low,project_country,"NSF: the award's place of performance (scripts/local/nsf_awards_to_s3.py fills inst_* from perf_inst; the awardee block is not kept). US universities carry the country of their field site: University of Washington with Antarctica, Emory with Tanzania; 45 of 50 sampled removals of a US institution under a foreign place were correct matches"
+*,nsf_award_search,,low,project_country,"NSF: the award's place of performance (perf_inst); where NSF gives none ('DATA NOT AVAILABLE', mostly before FY1995) the awardee's (inst), from the openalex-ingest fetcher (oxjob #2032). US universities carry the country of their field site: University of Washington with Antarctica, Emory with Tanzania; 45 of 50 sampled removals of a US institution under a foreign place were correct matches"
 united states,nsf_award_search,US,medium,project_country,"NSF: a place of performance in the US. Assumption: an organisation performing in the US is a US organisation. 50 of 50 sampled matches to an institution abroad under a US place were wrong matches (Princeton to The Princes Trust, Lincoln University to New Zealand's)"
 *,nsf_sri_lanka_gmis,,medium,assumed_domestic,one constant (LK) on 2103 awards; no organisation abroad seen next to it
 *,nsfc_kd,,medium,assumed_domestic,one constant (CN) on 230869 awards; no organisation abroad seen next to it

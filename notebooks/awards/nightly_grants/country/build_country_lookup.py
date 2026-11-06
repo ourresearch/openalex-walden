@@ -127,7 +127,7 @@ US_STATE_SOURCES = {"rwjf_grants_explorer": "RWJF: US state or territory code in
 ABROAD = "one constant on every award; organisations abroad are named next to it"
 UNUSABLE_SOURCES = {
     "idrc_iati": ("project_country", "IDRC: `a.recipient_country as country` (CreateIDRCAwards cell 9); University of Alberta carries ZA, TH, CU, MW"),
-    "nsf_award_search": ("project_country", "NSF: the award's place of performance (scripts/local/nsf_awards_to_s3.py fills inst_* from perf_inst; the awardee block is not kept). US universities carry the country of their field site: University of Washington with Antarctica, Emory with Tanzania; 45 of 50 sampled removals of a US institution under a foreign place were correct matches"),
+    "nsf_award_search": ("project_country", "NSF: the award's place of performance (perf_inst); where NSF gives none ('DATA NOT AVAILABLE', mostly before FY1995) the awardee's (inst), from the openalex-ingest fetcher (oxjob #2032). US universities carry the country of their field site: University of Washington with Antarctica, Emory with Tanzania; 45 of 50 sampled removals of a US institution under a foreign place were correct matches"),
     "nihr": ("project_country", "NIHR: the ODA partner country; the only value today is the sentinel 'Award does not have an ODA Downstream Partner' (CreateNIHRAwards cell 7)"),
     "kavli_nextdata": ("person_country", "Kavli Prize: the laureate's country (`element_at(s.countries, 1)`, CreateKavliPrizeAwards cell 7): Caltech with NL, Stanford with RU, MIT with CA"),
     "cifar_wp_rest": ("person_country", "CIFAR: the fellow's country term, next to an institution elsewhere: DeepMind, Stanford, Yale with CA; Johns Hopkins with JP"),

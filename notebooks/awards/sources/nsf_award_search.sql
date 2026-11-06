@@ -78,8 +78,12 @@ awards_transformed AS (
                     CAST(NULL AS STRING) as orcid,
                     CAST(NULL AS DATE) as role_start,
                     struct(
-                        g.inst_name as name,
-                        g.inst_country_name as country,
+                        -- NSF's place of performance. NSF leaves it 'DATA NOT AVAILABLE' (city and country empty) on ~145k awards
+                        -- before FY1995 and names the awardee instead (15,972 of 15,976 checked in FY1978 and FY1985): then the
+                        -- awardee's name and country, which the openalex-ingest fetcher keeps since oxjob #2032.
+                        CASE WHEN g.inst_name = 'DATA NOT AVAILABLE' AND TRIM(g.awardee_name) != '' THEN g.awardee_name ELSE g.inst_name END as name,
+                        CASE WHEN g.inst_name = 'DATA NOT AVAILABLE' AND TRIM(g.awardee_name) != '' THEN g.awardee_country_name
+                             ELSE g.inst_country_name END as country,
                         CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
                     ) as affiliation
                 )
