@@ -10,7 +10,7 @@
 from pyspark.sql import functions as F
 from elasticsearch import Elasticsearch, helpers
 
-dbutils.widgets.text("index_name", "authors-v21")      # the job yaml passes it (oxjob #1531 authors-v20, #1617 authors-v21 rebuilds)
+dbutils.widgets.text("index_name", "authors-v22")      # the job yaml passes it (oxjob #1531 authors-v20, #1617 authors-v21, #1565 authors-v22 rebuilds)
 ELASTIC_INDEX = dbutils.widgets.get("index_name")
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 ID_PREFIX = "https://openalex.org/A"

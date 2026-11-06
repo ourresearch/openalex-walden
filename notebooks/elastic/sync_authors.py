@@ -47,8 +47,8 @@ print(f"works-sync wait: {(time.time() - t0) / 60:.0f} min")
 
 # COMMAND ----------
 
-# index_name is a widget so a rebuild can load a fresh index beside the live one (oxjob #1531: authors-v20; #1617: authors-v21); the job yaml passes it.
-dbutils.widgets.text("index_name", "authors-v21")
+# index_name is a widget so a rebuild can load a fresh index beside the live one (oxjob #1531: authors-v20; #1617: authors-v21; #1565: authors-v22); the job yaml passes it.
+dbutils.widgets.text("index_name", "authors-v22")
 CONFIG = {
     "table_name": "openalex.authors.openalex_authors",
     "index_name": dbutils.widgets.get("index_name")
