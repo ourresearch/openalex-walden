@@ -1,0 +1,74 @@
+resources:
+  jobs:
+    Work_References_Cleanup:
+      name: Work References Cleanup
+      description: |
+        oxjob #1700: one-time removal of work_references rows that lock works out of parse_work_references' insert
+        (unmapped rows; repository placeholder rows, backed up first). Why and what is kept: the header of
+        notebooks/maintenance/work_references_cleanup.sql.
+
+        MANUAL TRIGGER ONLY, between End 2 End runs (it refuses while one is active), after the parse_work_references fix
+        is live. Steps: mode=dry_run (counts) -> mode=write (backup, delete, check 0 left) -> task `reread` runs
+        parse_work_references once so the unblocked works are read outside End 2 End's 25-minute task timeout. A second
+        write is a no-op. Recover: mode=undo (placeholders back, rows read since for those works removed), then revert the
+        parse_work_references commit (it rebuilds the unmapped rows nightly). Each run writes one row to
+        openalex.works.work_references_cleanup_runs. Size the night it unlocks and pre-clear it before mode=write.
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode            # dry_run | write | undo
+          default: "dry_run"
+        - name: wr_table        # a rehearsal points this at a copy
+          default: "openalex.works.work_references"
+        - name: removed_table
+          default: "openalex.works.work_references_placeholder_backup"
+        - name: runs_table
+          default: "openalex.works.work_references_cleanup_runs"
+        - name: max_placeholder_rows   # 294,535,260 on 5 Nov 2026, x1.46
+          default: "430000000"
+        - name: max_unmapped_rows      # 4,381,190,257 on 5 Nov 2026, x1.5
+          default: "6600000000"
+      tasks:
+        - task_key: cleanup
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/maintenance/WorkReferencesCleanup
+            source: GIT
+            base_parameters:
+              mode: "{{job.parameters.mode}}"
+              wr_table: "{{job.parameters.wr_table}}"
+              removed_table: "{{job.parameters.removed_table}}"
+              runs_table: "{{job.parameters.runs_table}}"
+              max_placeholder_rows: "{{job.parameters.max_placeholder_rows}}"
+              max_unmapped_rows: "{{job.parameters.max_unmapped_rows}}"
+          timeout_seconds: 10800
+        - task_key: is_write_on_prod
+          depends_on:
+            - task_key: cleanup
+          condition_task:
+            op: EQUAL_TO
+            left: "{{job.parameters.mode}}|{{job.parameters.wr_table}}"
+            right: "write|openalex.works.work_references"
+        - task_key: reread
+          depends_on:
+            - task_key: is_write_on_prod
+              outcome: "true"
+          # The nightly notebook itself, so the text that runs is the text that ships. Rehearsal measures its minutes.
+          notebook_task:
+            notebook_path: notebooks/parsing/parse_work_references
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3   # the warehouse End 2 End's parse_referenced_works uses
+          timeout_seconds: 14400
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
