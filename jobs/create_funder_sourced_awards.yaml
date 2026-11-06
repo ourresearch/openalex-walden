@@ -250,15 +250,6 @@ resources:
           run_if: ALL_SUCCESS
           timeout_seconds: 0
           webhook_notifications: {}
-        - task_key: FCT_Awards
-          email_notifications: {}
-          environment_key: Default
-          notebook_task:
-            notebook_path: notebooks/awards/CreateFCTAwards
-            source: GIT
-          run_if: ALL_SUCCESS
-          timeout_seconds: 0
-          webhook_notifications: {}
         - task_key: MEYS_Awards
           email_notifications: {}
           environment_key: Default
@@ -500,7 +491,6 @@ resources:
             - task_key: VLAIO_Awards
             - task_key: TaiwanMOSTGRB_Awards
             - task_key: MEYS_Awards
-            - task_key: FCT_Awards
             - task_key: OSTIFacility_Awards
             - task_key: NSTCGRB_Awards
             - task_key: NASA_Awards

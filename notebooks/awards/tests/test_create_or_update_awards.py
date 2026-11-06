@@ -190,3 +190,18 @@ def test_production_source_prefixes():
         's3://openalex-ingest/awards/kaken/*.parquet',
     ]
     assert 'dev-gr1009' not in SQL and 'dev-gr1009' not in (AWARDS / 'sources.csv').read_text()
+
+
+def test_fct_leaves_the_hand_run_job():
+    """fct: read by the Awards job from openalex-ingest's prefix; its notebook, hand-run task and laptop loader are gone."""
+    group = branch_of('fct')
+    assert "read_files('s3://openalex-ingest/awards/fct_sciproj/*.parquet'" in group
+    assert 'openalex_awards_raw' not in group and 'existing_ec' not in group   # a fixed EC rule, no live-raw read
+    assert "NOT IN ('FP1', 'FP2', 'FP3', 'FP4', 'FP5', 'FP6')" in group
+    assert 'SELECT true AS serve_project_team' in group and 'false AS serve_unit_members' in group   # the one-line switches
+    assert "try_element_at(session.awards_objects, 'fct')" in group and "'yyyy-MM-dd')) <= 10, true) AS fresh" in group   # freshness
+    assert "'(?i)^((prof|professor|professora|doutor|doutora|dr|dra|eng|engª|mestre|lic)" in group   # names card 5
+    assert not (AWARDS / 'CreateFCTAwards.ipynb').exists() and not (ROOT / 'scripts/local/fct_to_s3.py').exists()
+    job = yaml.safe_load((ROOT / 'jobs/create_funder_sourced_awards.yaml').read_text())
+    tasks = job['resources']['jobs']['Create_Funder_Sourced_Awards']['tasks']
+    assert not [t for t in tasks if t['task_key'] == 'FCT_Awards' or {'task_key': 'FCT_Awards'} in t.get('depends_on', [])]
