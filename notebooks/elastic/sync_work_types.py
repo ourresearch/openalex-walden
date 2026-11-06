@@ -11,14 +11,20 @@
 
 # Snapshot existing hashes for change detection
 if spark.catalog.tableExists("openalex.common.work_types_api"):
-    spark.sql("""
+    # oxjob #2064: is_traditional joins the hash; the previous table has no such column on the first run after it
+    # landed, so that run hashes it as '' and every type's updated_date moves (its content did change).
+    prev_cols = spark.table("openalex.common.work_types_api").columns
+    prev_traditional = ("COALESCE(CAST(is_traditional AS STRING), '')"
+                        if "is_traditional" in prev_cols else "''")
+    spark.sql(f"""
         CREATE OR REPLACE TABLE openalex.common.work_types_api_hash AS
         SELECT id, updated_date,
             xxhash64(CONCAT_WS('|',
                 COALESCE(display_name, ''),
                 COALESCE(description, ''),
                 COALESCE(CAST(works_count AS STRING), ''),
-                COALESCE(CAST(cited_by_count AS STRING), '')
+                COALESCE(CAST(cited_by_count AS STRING), ''),
+                {prev_traditional}
             )) AS content_hash
         FROM openalex.common.work_types_api
     """)
@@ -50,6 +56,8 @@ print("Hash snapshot complete")
 # MAGIC     CONCAT('https://api.openalex.org/works?filter=type:', wt.id) as works_api_url,
 # MAGIC     wt.display_name,
 # MAGIC     wt.description,
+# MAGIC     -- oxjob #2064: traditional scholarly work or not (set per type in openalex.common.work_types)
+# MAGIC     wt.is_traditional,
 # MAGIC     wtc.works_count,
 # MAGIC     wtc.cited_by_count,
 # MAGIC     DATE_TRUNC('SECOND', wt.created_date) AS created_date,
@@ -67,7 +75,8 @@ print("Hash snapshot complete")
 # MAGIC             COALESCE(display_name, ''),
 # MAGIC             COALESCE(description, ''),
 # MAGIC             COALESCE(CAST(works_count AS STRING), ''),
-# MAGIC             COALESCE(CAST(cited_by_count AS STRING), '')
+# MAGIC             COALESCE(CAST(cited_by_count AS STRING), ''),
+# MAGIC             COALESCE(CAST(is_traditional AS STRING), '')
 # MAGIC         )) AS content_hash
 # MAGIC     FROM openalex.common.work_types_api
 # MAGIC )
