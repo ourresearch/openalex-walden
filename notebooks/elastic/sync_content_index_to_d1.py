@@ -13,12 +13,18 @@
 # MAGIC **Source**: `openalex.works.locations_mapped` (via `spark.sql()`)
 # MAGIC **Target**: Cloudflare D1 `openalex-content-index` database
 # MAGIC
-# MAGIC The sync is incremental on `openalex_updated_dt`, so in-place edits (e.g. a PDF arriving on an older work)
-# MAGIC are picked up, not just new rows. Its window starts just after the newest stamp it has already synced
-# MAGIC (`content_stats.last_synced_updated_dt`; each End 2 End stamps one timestamp a night), so an extra run
-# MAGIC writes nothing. Writes are paced: D1 serves content.openalex.org's lookups from the same database, and
+# MAGIC **What it writes** (#2041, 6 Nov 2026): only works whose (pdf, grobid) pair differs between the table
+# MAGIC version D1 last synced (`content_stats.last_synced_lm_version`) and the current one. The End 2 End re-stamps
+# MAGIC far more rows than it changes: night 2026-11-06 stamped 29.4M works with content and changed 104K, and
+# MAGIC writing every stamped work took 5.8 h, done 11 min before the publish. An extra run on the same version
+# MAGIC writes nothing.
+# MAGIC Fallback (manual sync_from/sync_to overrides, no synced version in D1, or that version older than the
+# MAGIC table's 7-day VACUUM retention): every row stamped after the newest stamp already synced
+# MAGIC (`content_stats.last_synced_updated_dt`; each End 2 End stamps one timestamp a night).
+# MAGIC Writes are paced: D1 serves content.openalex.org's lookups from the same database, and
 # MAGIC 8 parallel writers made ~8% of downloads fail with "D1 DB is overloaded" during each run (#2041).
-# MAGIC A separate antijoin reconciliation pass exists as a backstop.
+# MAGIC Works that lose all content stay in D1 (nothing is deleted). A separate antijoin reconciliation pass
+# MAGIC exists as a backstop.
 
 # COMMAND ----------
 
@@ -43,11 +49,14 @@ D1_MAX_RETRIES = 8
 D1_RETRY_STATUSES = {429, 500, 502, 503, 504}
 SYNC_LOOKBACK_DAYS = 2  # Fallback lookback when D1 has no last_sync_timestamp
 HWM_KEY = "last_synced_updated_dt"  # newest openalex_updated_dt already synced (UTC, microseconds); #2041
+VERSION_KEY = "last_synced_lm_version"  # locations_mapped version D1 fully reflects; diff base (#2041)
+DIFF_MAX_AGE_DAYS = 6  # locations_mapped VACUUM keeps 7 days of files; an older version may be unreadable
 LM_TABLE = "openalex.works.locations_mapped"
 
 # Widgets — leave blank for the standard nightly behavior.
 dbutils.widgets.text("sync_from_override", "", "sync_from override (UTC ISO, blank=read from D1)")
 dbutils.widgets.text("sync_to_override", "", "sync_to override (UTC ISO, blank=now)")
+dbutils.widgets.text("diff_against_version", "", "diff base version (blank=D1's last synced, none=stamp window)")
 # Pacing (#2041): one writer that rests as long as each D1 write took leaves D1 headroom for downloads.
 # A manual catch-up at a quiet hour can raise workers / lower the pause.
 dbutils.widgets.text("write_workers", "1", "parallel D1 writers")
@@ -58,6 +67,7 @@ dbutils.widgets.text("refresh_stats", "false", "refresh content_stats counts (fu
 
 SYNC_FROM_OVERRIDE = dbutils.widgets.get("sync_from_override").strip()
 SYNC_TO_OVERRIDE = dbutils.widgets.get("sync_to_override").strip()
+DIFF_AGAINST = dbutils.widgets.get("diff_against_version").strip().lower()
 WRITE_WORKERS = max(1, int(dbutils.widgets.get("write_workers").strip() or "1"))
 WRITE_PAUSE_RATIO = max(0.0, float(dbutils.widgets.get("write_pause_ratio").strip() or "1.0"))
 REFRESH_STATS = dbutils.widgets.get("refresh_stats").strip().lower() in ("true", "1", "yes")
@@ -180,7 +190,21 @@ else:
         lower, lower_op = (start - timedelta(hours=2)).strftime(TS_FMT), ">="
         print(f"No {HWM_KEY}; last_sync_timestamp {last} -> window from {lower}")
 upper = _parse_iso(SYNC_TO_OVERRIDE).strftime(TS_FMT) if SYNC_TO_OVERRIDE else None
-print(f"Syncing rows with openalex_updated_dt {lower_op} {lower}" + (f" and < {upper}" if upper else ""))
+
+# Diff base: the version D1 last fully synced, if it is still readable (see the header).
+base_version = None
+if SYNC_FROM_OVERRIDE or SYNC_TO_OVERRIDE or DIFF_AGAINST == "none":
+    print("Diff off (override given): stamp window")
+else:
+    cand = DIFF_AGAINST or d1_stat(VERSION_KEY)
+    base_h = (DeltaTable.forName(spark, LM_TABLE).history().where(f"version = {int(cand)}")
+              .select("timestamp").first()) if cand else None
+    if base_h is None or int(cand) > lm_version:
+        print(f"Diff base {cand} not in {LM_TABLE} history: stamp window")
+    elif base_h["timestamp"] < datetime.utcnow() - timedelta(days=DIFF_MAX_AGE_DAYS):
+        print(f"Diff base {cand} committed {base_h['timestamp']}, older than {DIFF_MAX_AGE_DAYS} days: stamp window")
+    else:
+        base_version = int(cand)
 
 
 # COMMAND ----------
@@ -190,25 +214,43 @@ print(f"Syncing rows with openalex_updated_dt {lower_op} {lower}" + (f" and < {u
 
 # COMMAND ----------
 
-# Filter uses `openalex_updated_dt` so late-arriving PDFs land in D1 even when
-# the underlying work row was created long ago. A normal day matches ~100-300K
-# distinct work_ids, but rebuild stamp waves can push the window to 40M+ rows
-# (2026-08-12 cutover), so the driver must never hold the full result set:
-# stream with toLocalIterator() and flush concurrently.
-upper_sql = f"AND openalex_updated_dt < TIMESTAMP'{upper}'" if upper else ""
-df = spark.sql(f"""
+# Stamp waves can push either set to 40M+ rows (2026-08-12 cutover), so the driver must never hold the full
+# result set: stream with toLocalIterator() and flush as it goes.
+
+
+def content_pairs(version: int, where: str = "") -> str:
+    """One row per work with content at `version`: its (pdf, grobid) pair and newest stamp."""
+    return f"""
     SELECT
       work_id,
       MIN(REPLACE(pdf_s3_id, '.pdf', ''))      AS pdf_uuid,
       MIN(REPLACE(grobid_s3_id, '.xml.gz', '')) AS grobid_uuid,
       date_format(MAX(openalex_updated_dt), 'yyyy-MM-dd HH:mm:ss.SSSSSS') AS max_dt
-    FROM {LM_TABLE} VERSION AS OF {lm_version}
+    FROM {LM_TABLE} VERSION AS OF {version}
     WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
-      AND work_id IS NOT NULL
-      AND openalex_updated_dt {lower_op} TIMESTAMP'{lower}'
-      {upper_sql}
-    GROUP BY work_id
-""")
+      AND work_id IS NOT NULL {where}
+    GROUP BY work_id"""
+
+
+df = None
+if base_version is not None:
+    print(f"Syncing works whose content pair differs between version {base_version} and {lm_version}")
+    pairs = "SELECT work_id, pdf_uuid, grobid_uuid FROM ({})"
+    try:
+        # EXCEPT compares NULLs as equal. Cached and counted here, so an unreadable base version falls back now.
+        df = spark.sql(f"{pairs.format(content_pairs(lm_version))} EXCEPT {pairs.format(content_pairs(base_version))}")
+        if base_version == lm_version:
+            df = df.limit(0)
+        df = df.selectExpr("*", "CAST(NULL AS STRING) AS max_dt").cache()
+        print(f"{df.count():,} works changed")
+    except Exception as e:  # e.g. the base version's files were vacuumed
+        print(f"Diff failed ({str(e)[:300]}): stamp window")
+        df, base_version = None, None
+if df is None:
+    # In-place edits (a PDF arriving on an older work) carry a new stamp, so the window picks them up.
+    print(f"Syncing rows with openalex_updated_dt {lower_op} {lower}" + (f" and < {upper}" if upper else ""))
+    upper_sql = f"AND openalex_updated_dt < TIMESTAMP'{upper}'" if upper else ""
+    df = spark.sql(content_pairs(lm_version, f"AND openalex_updated_dt {lower_op} TIMESTAMP'{lower}' {upper_sql}"))
 
 t0 = time.time()
 total_count = 0
@@ -263,7 +305,7 @@ def _submit(batch: list) -> None:
 
 batch: list = []
 for row in df.toLocalIterator():
-    if row.max_dt > max_dt_seen:
+    if row.max_dt and row.max_dt > max_dt_seen:
         max_dt_seen = row.max_dt
     batch.append({"work_id": row.work_id, "pdf_uuid": row.pdf_uuid, "grobid_uuid": row.grobid_uuid})
     if len(batch) >= BATCH_SIZE:
@@ -296,13 +338,20 @@ if failed_batches:
 # High-water mark: the newest stamp written, never past the version's commit time (a future-dated stamp would
 # otherwise hide later nights), and never moved back. A run that found nothing keeps the mark; a first run that
 # found nothing stores its window start, so the next run starts there. A run with sync_to_override leaves it.
+# A diff run brought D1 up to the whole version, so every stamp up to its commit is covered.
+if base_version is not None:
+    max_dt_seen = lm_commit
+    df.unpersist()
 if not SYNC_TO_OVERRIDE:
     seen = min(max_dt_seen, lm_commit) if max_dt_seen else None
     new_hwm = max(v for v in (hwm, seen) if v) if (hwm or seen) else lower
     if new_hwm != hwm:
         d1_set_stat(HWM_KEY, new_hwm)
     print(f"{HWM_KEY}: {hwm} -> {new_hwm}")
-d1_set_stat("last_synced_lm_version", str(lm_version))
+# The next run diffs against this version, so record it only when D1 now reflects all of it.
+if not (SYNC_FROM_OVERRIDE or SYNC_TO_OVERRIDE):
+    d1_set_stat(VERSION_KEY, str(lm_version))
+    print(f"{VERSION_KEY}: {lm_version}")
 
 sync_timestamp = run_started.isoformat() + "Z"
 d1_set_stat("last_sync_timestamp", sync_timestamp)  # wall clock of this run; scripts/run_d1_backfill.py reads it
