@@ -44,16 +44,25 @@ resources:
               max_placeholder_rows: "{{job.parameters.max_placeholder_rows}}"
               max_unmapped_rows: "{{job.parameters.max_unmapped_rows}}"
           timeout_seconds: 10800
-        - task_key: is_write_on_prod
+        # A condition operand holds one reference, so the two checks are chained.
+        - task_key: is_write
           depends_on:
             - task_key: cleanup
           condition_task:
             op: EQUAL_TO
-            left: "{{job.parameters.mode}}|{{job.parameters.wr_table}}"
-            right: "write|openalex.works.work_references"
+            left: "{{job.parameters.mode}}"
+            right: "write"
+        - task_key: is_prod_table
+          depends_on:
+            - task_key: is_write
+              outcome: "true"
+          condition_task:
+            op: EQUAL_TO
+            left: "{{job.parameters.wr_table}}"
+            right: "openalex.works.work_references"
         - task_key: reread
           depends_on:
-            - task_key: is_write_on_prod
+            - task_key: is_prod_table
               outcome: "true"
           # The nightly notebook itself, so the text that runs is the text that ships. Rehearsal measures its minutes.
           notebook_task:
