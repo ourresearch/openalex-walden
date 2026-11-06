@@ -92,6 +92,8 @@ WAREHOUSE_SIZES = {
     "small": "DATABRICKS_WAREHOUSE_SMALL",
     "medium": "DATABRICKS_WAREHOUSE_MEDIUM",
     "xlarge": "DATABRICKS_WAREHOUSE_XLARGE",
+    "2xlarge": "DATABRICKS_WAREHOUSE_2XLARGE",
+    "3xlarge": "DATABRICKS_WAREHOUSE_3XLARGE",
     "4xlarge": "DATABRICKS_WAREHOUSE_4XLARGE",
 }
 
@@ -103,7 +105,7 @@ def get_connection(size: str = None):
     Create a connection to Databricks SQL warehouse using OAuth service principal.
 
     Args:
-        size: Warehouse size - "small", "medium", "xlarge", or "4xlarge".
+        size: Warehouse size - "small", "medium", "xlarge", "2xlarge", "3xlarge", or "4xlarge".
               Defaults to DEFAULT_WAREHOUSE. Falls back to DATABRICKS_HTTP_PATH
               if the sized env var is not set.
     """
@@ -132,7 +134,7 @@ def run_query(query: str, params: dict = None, allow_writes: bool = False, size:
         query: SQL query string
         params: Optional dict of parameters for parameterized queries
         allow_writes: If False (default), validates query is read-only before executing
-        size: Warehouse size - "small", "medium", "xlarge", or "4xlarge"
+        size: Warehouse size - "small", "medium", "xlarge", "2xlarge", "3xlarge", or "4xlarge"
 
     Returns:
         List of dicts, one per row, with column names as keys
@@ -159,7 +161,7 @@ def run_query_df(query: str, params: dict = None, size: str = None):
     Args:
         query: SQL query string
         params: Optional dict of parameters for parameterized queries
-        size: Warehouse size - "small", "medium", "xlarge", or "4xlarge"
+        size: Warehouse size - "small", "medium", "xlarge", "2xlarge", "3xlarge", or "4xlarge"
 
     Returns:
         pandas DataFrame with query results
