@@ -817,6 +817,12 @@ nsf_funder AS (
     WHERE ror_id = 'https://ror.org/021nxhr62'  -- National Science Foundation
 ),
 
+nsf_award_people AS (
+    -- pi_all: NSF's whole people list as JSON, written by the fetcher only when an award names two or more people
+    SELECT g.*, from_json(g.pi_all, 'ARRAY<STRUCT<pi_first_name:STRING, pi_last_name:STRING, nsf_id:STRING>>') as pi_list
+    FROM nsf_award_search_input g
+),
+
 awards_transformed AS (
     SELECT
         -- Generate unique ID using xxhash64 of funder + award_id
@@ -883,7 +889,7 @@ awards_transformed AS (
             ELSE NULL
         END as lead_investigator,
 
-        -- Co-lead and other investigators (NULL for now)
+        -- NSF has no co-lead role; co-PIs are listed in investigators
         CAST(NULL AS STRUCT<
             given_name:STRING,
             family_name:STRING,
@@ -892,13 +898,19 @@ awards_transformed AS (
             affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
         >) as co_lead_investigator,
 
-        CAST(NULL AS ARRAY<STRUCT<
-            given_name:STRING,
-            family_name:STRING,
-            orcid:STRING,
-            role_start:DATE,
-            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
-        >>) as investigators,
+        -- Everyone after the first person in NSF's list, in NSF's order: co-PIs, and former PIs and co-PIs.
+        -- A person NSF lists twice (a role change) appears once, at their first place. NSF names no institution per co-PI.
+        transform(
+            filter(g.pi_list, (p, i) -> i > 0 AND p.pi_last_name IS NOT NULL
+                AND NOT exists(slice(g.pi_list, 1, i), q -> coalesce(q.nsf_id = p.nsf_id, false))),
+            p -> struct(
+                p.pi_first_name as given_name,
+                p.pi_last_name as family_name,
+                CAST(NULL AS STRING) as orcid,
+                CAST(NULL AS DATE) as role_start,
+                CAST(NULL AS STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>) as affiliation
+            )
+        ) as investigators,
 
         -- Landing page URL (NSF Award Search page)
         CONCAT('https://www.nsf.gov/awardsearch/showAward?AWD_ID=', g.awd_id) as landing_page_url,
@@ -913,7 +925,7 @@ awards_transformed AS (
         session.awards_timestamp as created_date,
         session.awards_timestamp as updated_date
 
-    FROM nsf_award_search_input g
+    FROM nsf_award_people g
     CROSS JOIN nsf_funder f
     WHERE g.awd_id IS NOT NULL
       AND TRIM(g.awd_id) != ''
