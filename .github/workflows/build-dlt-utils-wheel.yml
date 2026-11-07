@@ -47,26 +47,7 @@ jobs:
           databricks fs cp "$WHEEL" "dbfs:/Volumes/openalex/default/libraries/$(basename "$WHEEL")" --overwrite
           echo "Uploaded $(basename "$WHEEL")"
 
-      - name: Notify Slack (success)
-        if: success()
-        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "DLT utils package uploaded",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ":package: *DLT utils package uploaded*\n- Commit: `${{ github.sha }}`\n- By: ${{ github.actor }}"
-                  }
-                }
-              ]
-            }
-
+      # oxjob #2088: no Slack post on success; failures still post.
       - name: Notify Slack (failure)
         if: failure()
         uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2
