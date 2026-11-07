@@ -553,7 +553,7 @@ resources:
             base_parameters:
               mode: "nightly"
               max_push: "10000000"
-              writers: "3"
+              writers: "24"
             source: GIT
           job_cluster_key: es_sync_cluster
         - task_key: Sync_Works_to_Lakebase

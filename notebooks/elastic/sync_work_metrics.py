@@ -20,9 +20,11 @@
 # MAGIC 3. Partial updates to the `works` alias in chunks of `chunk_rows`; after each chunk the state takes the new values
 # MAGIC    for every work the index accepted, so a stop or cancel loses at most one chunk (re-sent next run).
 # MAGIC
-# MAGIC **Load on search (the E2E shepherd's rules, #1642):** US daytime (07:00-19:00 CT) at most 2 writers; every writer but
-# MAGIC the first pauses while data-node p95 CPU is over 85% in 3 of the last 4 minutes; `stop_at` (CT, HH:MM) ends the run
-# MAGIC cleanly at the next chunk boundary.
+# MAGIC **Load on search (the E2E shepherd's rules, #1642):** a "writer" here is one bulk stream (one Spark partition); the
+# MAGIC shepherd's "2 writers" for daytime syncs are 2 Spark workers, ~6K docs/s, which `day_writers=12` aims at
+# MAGIC (07:00-19:00 CT). Every stream but the first pauses while data-node p95 CPU is over 85% in 3 of the last 4 minutes;
+# MAGIC `stop_at` (CT, HH:MM) ends the run cleanly at the next chunk boundary. A partial update costs a get plus a full
+# MAGIC re-index of the ~16 KB doc: 2 streams ran ~1K docs/s on 7 Nov at 26 nodes.
 # MAGIC
 # MAGIC **After an index rebuild** from `openalex_works` version V, run once with `reseed_version=V` (the state becomes V,
 # MAGIC then step 1 catches the works re-stamped since).
@@ -47,7 +49,8 @@ from elasticsearch import Elasticsearch, helpers
 dbutils.widgets.dropdown("mode", "nightly", ["nightly", "dry_run"])
 dbutils.widgets.text("max_push", "10000000")       # cap per run; the rest wait (non-xpac first, largest first)
 dbutils.widgets.text("limit", "")                  # trial: push at most this many (overrides max_push when smaller)
-dbutils.widgets.text("writers", "3")               # concurrent bulk writers at night; daytime is capped at 2
+dbutils.widgets.text("writers", "24")              # concurrent bulk streams (Spark partitions) at night
+dbutils.widgets.text("day_writers", "12")          # cap 07:00-19:00 CT: about the load of 2 sync workers (~6K docs/s)
 dbutils.widgets.text("chunk_rows", "5000000")      # works per checkpointed chunk
 dbutils.widgets.text("bulk_size", "1000")          # update actions per bulk request
 dbutils.widgets.text("stop_at", "")                # CT HH:MM: start no chunk at or after this time
@@ -58,7 +61,8 @@ DRY_RUN = MODE == "dry_run"
 MAX_PUSH = int(dbutils.widgets.get("max_push") or 0) or None
 LIMIT = int(dbutils.widgets.get("limit") or 0) or None
 CAP = min(x for x in (MAX_PUSH, LIMIT) if x) if (MAX_PUSH or LIMIT) else None
-WRITERS = max(1, int(dbutils.widgets.get("writers") or 3))
+WRITERS = max(1, int(dbutils.widgets.get("writers") or 24))
+DAY_WRITERS = max(1, int(dbutils.widgets.get("day_writers") or 12))
 CHUNK_ROWS = int(dbutils.widgets.get("chunk_rows") or 5_000_000)
 BULK = int(dbutils.widgets.get("bulk_size") or 1000)
 STOP_AT = dbutils.widgets.get("stop_at").strip()
@@ -74,7 +78,7 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
 FWCI_REL, CNP_ABS = 0.01, 0.01
 PCT_POINTS = 1.5  # min or max moved 2+ points (integers: a 1-point move scores 0.67, 2 points 1.33)
-HOT_P95, DAY_WRITERS = 85, 2
+HOT_P95 = 85
 CT = ZoneInfo("America/Chicago")
 started_at = datetime.utcnow()
 t_start = time.time()
