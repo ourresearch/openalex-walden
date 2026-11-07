@@ -568,6 +568,22 @@ resources:
             source: GIT
           job_cluster_key: lakebase_sync_cluster
           timeout_seconds: 21600
+        # oxjob #2082: single-work lookups (Lakebase) take fwci and both percentiles from a narrow synced table, since the
+        # stored docs keep the values of each work's last re-stamp. Rows rewritten only past the lines (fwci 1%, CNP 0.01,
+        # percentile-year 2 points), at most 20M a night. Revert: delete this task and set METRICS_OVERLAY = False in
+        # openalex-elastic-api works/lakebase.py (or config var LAKEBASE_METRICS_OVERLAY=0).
+        - task_key: Sync_Work_Metrics_to_Lakebase
+          timeout_seconds: 7200
+          depends_on:
+            - task_key: Sync_Works_to_Lakebase
+          notebook_task:
+            notebook_path: notebooks/lakebase/BuildLakebaseWorkMetrics
+            base_parameters:
+              mode: "nightly"
+              trigger_sync: "true"
+              max_rows: "20000000"
+            source: GIT
+          job_cluster_key: lakebase_sync_cluster
         - task_key: Refresh_RAS_Counts
           timeout_seconds: 1200
           depends_on:
