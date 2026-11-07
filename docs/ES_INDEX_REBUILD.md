@@ -197,6 +197,9 @@ empty-array representation (`study_designs`, `author.observed_orcids`, `source.i
 the same. On 2026-10-01, 882 of 1,000 docs differed, and every checked field in the new index equalled Delta at V.
 The oxjob's `scratch/tooling/diff_old_new.py` prints the sub-field paths so the differences can be classified in
 minutes. TODO: build the 500-query replay set.
+Since 7 Nov 2026 (oxjob #2082) the nightly `Sync_Work_Metrics_to_Elasticsearch` keeps `fwci`,
+`citation_normalized_percentile` and `cited_by_percentile_year` within its lines (fwci 1%, value 0.01, 2 points),
+so those differ only by that much; the others above are still stale until a re-send.
 
 **Known data bug surfaced by the Delta check (2026-10-02, not a rebuild issue):** `sanitize_name` in `sync_works`
 and `BuildLakebaseWorksDocs.py` strips every character outside `\p{L}\p{N}\p{P}\p{S}\p{Z}`, which removes Unicode
@@ -224,6 +227,11 @@ POST _aliases
 Atomic: no request sees neither index. It refuses unless the new index is green with the old index's replica count.
 Watch the API for 30 minutes: the proxy's p95, 5xx, search queues. Measure latency server-side (`db_response_time_ms`
 in the API's `meta`, or `took` on a direct query): end-to-end timings from a laptop can be the laptop's network.
+
+**Then reseed the metrics state (works only, oxjob #2082):** run `notebooks/elastic/sync_work_metrics` once with
+`reseed_version=V` (the version the new index loaded). It records that the index now holds V's `fwci`,
+`citation_normalized_percentile` and `cited_by_percentile_year`; without it the nightly `Sync_Work_Metrics_to_Elasticsearch`
+compares Delta with the old index's values and sends extra updates (up to its 10M cap) for a few nights.
 
 ### Step 11: after the swap
 1. The nightly now writes the new index through the alias. The sync watermark (`openalex.works.elastic_sync_state`) is
@@ -288,7 +296,8 @@ in the API's `meta`, or `took` on a direct query): end-to-end timings from a lap
 - **The swap only helps once readers use the alias** (step 0). Without it the API keeps reading the old name and
   `block_old` would break the nightly. The watermark row keyed by the alias is part of step 0.
 - **A repair drops the run's `run-now` parameters** (2026-10-28). `jobs repair-run` re-runs tasks with the job's *default* parameters, not the overrides the run started with: the repaired chunks targeted the default `works-v38` (refused by `sync_works`' target guard, nothing written) and the watchdog crashed on it. Before `run-now`, set the job's parameter defaults to this run's values (`jobs update`), and still pass `job_parameters` (plus `latest_repair_id`) on every repair.
-- **Check for other ES writers before and during a load** (2026-10-28). A manual `Sync Authors to Elasticsearch` started 10 minutes into the load (11–19K docs/s): works search went 2–4x slower and the API logged ES timeouts. `databricks jobs list-runs --active-only` and `_stats/indexing` (rate per index) show who is writing; pause the load until the other writer finishes, and tell its session.
+- **Check for other ES writers before and during a load** (2026-10-28; since 7 Nov also the End 2 End's last ES task,
+  `Sync_Work_Metrics_to_Elasticsearch`). A manual `Sync Authors to Elasticsearch` started 10 minutes into the load (11–19K docs/s): works search went 2–4x slower and the API logged ES timeouts. `databricks jobs list-runs --active-only` and `_stats/indexing` (rate per index) show who is writing; pause the load until the other writer finishes, and tell its session.
 - **Midday search bursts trip the watchdog at 128 writers** (2026-10-28, 10:51 CT): one node's search queue above 50 for 3 minutes. The API saw no timeouts; a repair resumed in 2 minutes. The watchdog's cancel shows in `system.access.audit` as `databricks-sdk-py` from a Databricks IP.
 - **Partial chunks restart from their first id**, and overwriting existing docs runs ~30% slower than fresh inserts for the first half hour after a repair. Lanes are fixed (`chunk_k` after `chunk_k-4`), so the lane that lost the most to restarts sets the finish; a lone last chunk runs faster (35K docs/s) because it gets all the cores.
 - **The plan's chunk ranges are only in its notebook output.** The Jobs API does not expose task values; `databricks jobs export-run <plan task run id> --views-to-export ALL` holds the printed `range_k` lines (neighbors' bounds give any one range exactly).

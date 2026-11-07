@@ -10,24 +10,27 @@
 # MAGIC
 # MAGIC This notebook sends only those three fields, as partial `_update`s, for works whose served value is off by more than:
 # MAGIC fwci 1% (relative), `citation_normalized_percentile.value` 0.01, `cited_by_percentile_year` min or max 2 points, or
-# MAGIC whose null-ness or top-1/10% flag differs. `updated_date` is never touched: 0 re-stamps.
+# MAGIC whose null-ness or top-1/10% flag differs. `updated_date` is never touched: 0 re-stamps. The same lines are in
+# MAGIC `notebooks/lakebase/BuildLakebaseWorkMetrics` (single-work lookups); change both together.
 # MAGIC
 # MAGIC **What the index holds** is kept in `openalex.works.es_work_metrics_served` (one row per work: the values and the
-# MAGIC `updated_date` the index has). Each run:
+# MAGIC `updated_date` the index has). Each run compares it with Delta in one pass:
 # MAGIC 1. Works whose `updated_date` moved (sync_works re-sent them whole), new works, gone works: the state follows Delta.
-# MAGIC 2. The rest are compared with Delta; those past the lines form the push (non-xpac first, largest move first, at
-# MAGIC    most `max_push`; the rest wait for the next run).
+# MAGIC 2. The rest past the lines form the push (non-xpac first, largest move first, at most `max_push`; the rest wait
+# MAGIC    for the next run).
 # MAGIC 3. Partial updates to the `works` alias in chunks of `chunk_rows`; after each chunk the state takes the new values
 # MAGIC    for every work the index accepted, so a stop or cancel loses at most one chunk (re-sent next run).
 # MAGIC
-# MAGIC **Load on search (the E2E shepherd's rules, #1642):** a "writer" here is one bulk stream (one Spark partition); the
-# MAGIC shepherd's "2 writers" for daytime syncs are 2 Spark workers, ~6K docs/s, which `day_writers=12` aims at
-# MAGIC (07:00-19:00 CT). Every stream but the first pauses while data-node p95 CPU is over 85% in 3 of the last 4 minutes;
-# MAGIC `stop_at` (CT, HH:MM) ends the run cleanly at the next chunk boundary. A partial update costs a get plus a full
-# MAGIC re-index of the ~16 KB doc: 2 streams ran ~1K docs/s on 7 Nov at 26 nodes.
+# MAGIC **Load on search (the E2E shepherd's rules, #1642):** a "writer" here is one bulk stream (one Spark partition).
+# MAGIC 07:00-19:00 CT the run uses at most `day_writers` streams (7 Nov at 26 nodes: 8 streams ~2-4K docs/s; 12 took the
+# MAGIC API probe p50 to 0.9 s). Every stream but the first pauses while data-node p95 CPU is over 85% in 3 of the last 4
+# MAGIC minutes; `stop_at` (CT, HH:MM) ends the run cleanly at the next chunk boundary. A partial update costs a get plus a
+# MAGIC full re-index of the ~16 KB doc.
 # MAGIC
 # MAGIC **After an index rebuild** from `openalex_works` version V, run once with `reseed_version=V` (the state becomes V,
-# MAGIC then step 1 catches the works re-stamped since).
+# MAGIC then step 1 catches the works re-stamped since). `docs/ES_INDEX_REBUILD.md` step 10 says so too.
+# MAGIC
+# MAGIC `mode=dry_run` counts what a run would do, writing only `*_dry` scratch tables (safe beside a live run).
 # MAGIC
 # MAGIC **Revert:** remove the task from the End 2 End (or don't run this notebook). Nothing else depends on it; the next
 # MAGIC rebuild serves Delta's values anyway. The pushed values are Delta's own, so there is nothing to roll back.
@@ -39,7 +42,6 @@
 
 # COMMAND ----------
 
-import math
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -48,9 +50,8 @@ from elasticsearch import Elasticsearch, helpers
 
 dbutils.widgets.dropdown("mode", "nightly", ["nightly", "dry_run"])
 dbutils.widgets.text("max_push", "10000000")       # cap per run; the rest wait (non-xpac first, largest first)
-dbutils.widgets.text("limit", "")                  # trial: push at most this many (overrides max_push when smaller)
 dbutils.widgets.text("writers", "24")              # concurrent bulk streams (Spark partitions) at night
-dbutils.widgets.text("day_writers", "12")          # cap 07:00-19:00 CT: about the load of 2 sync workers (~6K docs/s)
+dbutils.widgets.text("day_writers", "6")           # cap 07:00-19:00 CT
 dbutils.widgets.text("chunk_rows", "5000000")      # works per checkpointed chunk
 dbutils.widgets.text("bulk_size", "1000")          # update actions per bulk request
 dbutils.widgets.text("stop_at", "")                # CT HH:MM: start no chunk at or after this time
@@ -58,11 +59,9 @@ dbutils.widgets.text("reseed_version", "")         # after a rebuild: openalex_w
 
 MODE = dbutils.widgets.get("mode")
 DRY_RUN = MODE == "dry_run"
-MAX_PUSH = int(dbutils.widgets.get("max_push") or 0) or None
-LIMIT = int(dbutils.widgets.get("limit") or 0) or None
-CAP = min(x for x in (MAX_PUSH, LIMIT) if x) if (MAX_PUSH or LIMIT) else None
+CAP = int(dbutils.widgets.get("max_push") or 0) or None
 WRITERS = max(1, int(dbutils.widgets.get("writers") or 24))
-DAY_WRITERS = max(1, int(dbutils.widgets.get("day_writers") or 12))
+DAY_WRITERS = max(1, int(dbutils.widgets.get("day_writers") or 6))
 CHUNK_ROWS = int(dbutils.widgets.get("chunk_rows") or 5_000_000)
 BULK = int(dbutils.widgets.get("bulk_size") or 1000)
 STOP_AT = dbutils.widgets.get("stop_at").strip()
@@ -70,9 +69,12 @@ RESEED_VERSION = dbutils.widgets.get("reseed_version").strip()
 
 WORKS_TABLE = "openalex.works.openalex_works"
 SERVED_TABLE = "openalex.works.es_work_metrics_served"
-PUSH_TABLE = "openalex.works.es_work_metrics_push"       # this run's push (overwritten each run)
-FAILED_TABLE = "openalex.works.es_work_metrics_failed"   # rejected ids, appended per chunk, cleared each run
-RUNS_TABLE = "openalex.works.es_work_metrics_runs"       # one row per chunk and one per run
+_scratch = "_dry" if DRY_RUN else ""
+DIFF_TABLE = f"openalex.works.es_work_metrics_diff{_scratch}"      # this run's comparison (overwritten each run)
+PUSH_TABLE = f"openalex.works.es_work_metrics_push{_scratch}"      # this run's push (overwritten each run)
+FAILED_TABLE = f"openalex.works.es_work_metrics_failed{_scratch}"  # rejected ids, appended per chunk, cleared each run
+FAILED_SCHEMA = "id BIGINT, error STRING, run_started_at TIMESTAMP"
+RUNS_TABLE = "openalex.works.es_work_metrics_runs"                # one row per chunk and one per run
 ELASTIC_INDEX = "works"
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
@@ -82,8 +84,8 @@ HOT_P95 = 85
 CT = ZoneInfo("America/Chicago")
 started_at = datetime.utcnow()
 t_start = time.time()
-print(f"mode={MODE} cap={CAP} writers={WRITERS} chunk_rows={CHUNK_ROWS:,} stop_at={STOP_AT or '-'} "
-      f"reseed_version={RESEED_VERSION or '-'}")
+print(f"mode={MODE} cap={CAP} writers={WRITERS} day_writers={DAY_WRITERS} chunk_rows={CHUNK_ROWS:,} "
+      f"stop_at={STOP_AT or '-'} reseed_version={RESEED_VERSION or '-'}")
 
 # COMMAND ----------
 
@@ -103,45 +105,18 @@ if RESEED_VERSION:
 
 # COMMAND ----------
 
-# Step 1. The index follows Delta for works sync_works re-sent (updated_date moved), new works and gone works.
-# In the End 2 End this runs after Sync_to_Elasticsearch, so those works already carry tonight's values. Run before
-# the sync, it only marks them early; the sync sends the same values minutes later.
-if DRY_RUN:
-    step1 = spark.sql(f"""
-        SELECT count_if(s.id IS NULL) AS num_inserted_rows,
-               count_if(s.id IS NOT NULL AND NOT (s.updated_date <=> c.updated_date)) AS num_updated_rows,
-               CAST(NULL AS BIGINT) AS num_deleted_rows
-        FROM {WORKS_TABLE} c LEFT JOIN {SERVED_TABLE} s ON s.id = c.id
-    """).collect()[0].asDict()
-    print(f"dry_run step 1 (not written): {step1}")
-else:
-    step1 = spark.sql(f"""
-        MERGE INTO {SERVED_TABLE} AS s
-        USING (SELECT id, updated_date, fwci, citation_normalized_percentile, cited_by_percentile_year
-               FROM {WORKS_TABLE}) AS c
-        ON s.id = c.id
-        WHEN MATCHED AND NOT (s.updated_date <=> c.updated_date) THEN UPDATE SET
-          s.updated_date = c.updated_date, s.fwci = c.fwci,
-          s.citation_normalized_percentile = c.citation_normalized_percentile,
-          s.cited_by_percentile_year = c.cited_by_percentile_year, s.served_at = current_timestamp(),
-          s.served_by = 'sync_works'
-        WHEN NOT MATCHED THEN INSERT
-          (id, updated_date, fwci, citation_normalized_percentile, cited_by_percentile_year, served_at, served_by)
-          VALUES (c.id, c.updated_date, c.fwci, c.citation_normalized_percentile, c.cited_by_percentile_year,
-                  current_timestamp(), 'sync_works')
-        WHEN NOT MATCHED BY SOURCE THEN DELETE
-    """).collect()[0].asDict()
-    print(f"Step 1: {step1}")
-
-# COMMAND ----------
-
-# Step 2. The push: works past the lines (score > 1 = past at least one line), banded by priority:
-# band 0 null-ness / flag differences, 1 at 10x a line or more, 2 at 3x, 3 the rest; xpac works after all of those.
+# One comparison of Delta with the state (one snapshot of each, one full outer join):
+#   gone / new / resent: the state follows Delta (sync_works re-sent resent works whole; in the End 2 End this runs after
+#     Sync_to_Elasticsearch, and run before it only marks them early: the sync sends the same values minutes later);
+#   push: same updated_date, past a line (score > 1 = past at least one line); band 0 null-ness / flag differences,
+#     1 at 10x a line or more, 2 at 3x, 3 the rest; xpac works after all of those.
 spark.sql(f"""
-CREATE OR REPLACE TABLE {PUSH_TABLE} AS
-WITH d AS (
-  SELECT c.id, coalesce(c.is_xpac, false) AS is_xpac, c.fwci, c.citation_normalized_percentile,
+CREATE OR REPLACE TABLE {DIFF_TABLE} AS
+WITH j AS (
+  SELECT coalesce(c.id, s.id) AS id, c.id IS NOT NULL AS in_works, s.id IS NOT NULL AS in_state,
+    c.updated_date, coalesce(c.is_xpac, false) AS is_xpac, c.fwci, c.citation_normalized_percentile,
     c.cited_by_percentile_year,
+    NOT (s.updated_date <=> c.updated_date) AS ud_moved,
     IF((c.fwci IS NULL) <> (s.fwci IS NULL)
        OR (c.citation_normalized_percentile.value IS NULL) <> (s.citation_normalized_percentile.value IS NULL)
        OR (c.cited_by_percentile_year IS NULL) <> (s.cited_by_percentile_year IS NULL)
@@ -154,41 +129,61 @@ WITH d AS (
          coalesce(greatest(abs(c.cited_by_percentile_year.min - s.cited_by_percentile_year.min),
                            abs(c.cited_by_percentile_year.max - s.cited_by_percentile_year.max)) / {PCT_POINTS}, 0))
     ) AS score
-  FROM {WORKS_TABLE} c JOIN {SERVED_TABLE} s ON s.id = c.id AND s.updated_date <=> c.updated_date
+  FROM (SELECT id, updated_date, is_xpac, fwci, citation_normalized_percentile, cited_by_percentile_year
+        FROM {WORKS_TABLE}) c
+  FULL OUTER JOIN {SERVED_TABLE} s ON s.id = c.id
 )
-SELECT *, IF(is_xpac, 10, 0) + CASE WHEN score >= 1000 THEN 0 WHEN score >= 10 THEN 1 WHEN score >= 3 THEN 2 ELSE 3 END
+SELECT *, CASE WHEN NOT in_works THEN 'gone' WHEN NOT in_state THEN 'new' WHEN ud_moved THEN 'resent' ELSE 'push' END
+          AS action,
+       IF(is_xpac, 10, 0) + CASE WHEN score >= 1000 THEN 0 WHEN score >= 10 THEN 1 WHEN score >= 3 THEN 2 ELSE 3 END
           AS band
-FROM d WHERE score > 1
+FROM j
+WHERE NOT in_works OR NOT in_state OR ud_moved OR score > 1
 """)
-bands = spark.sql(f"SELECT band, count(*) AS n FROM {PUSH_TABLE} GROUP BY band ORDER BY band").collect()
-past = sum(b.n for b in bands)
-print(f"Past the lines: {past:,} works; by band: {[(b.band, b.n) for b in bands]}")
+counts = {r.action: r.n for r in spark.sql(f"SELECT action, count(*) AS n FROM {DIFF_TABLE} GROUP BY action").collect()}
+print(f"Compared: {counts}")
 
-# Cap: whole bands first, then the largest moves of the band that crosses the cap.
-if CAP and past > CAP:
-    left, keep = CAP, []
-    for b in bands:
-        if left <= 0:
-            break
-        keep.append((b.band, min(b.n, left)))
-        left -= b.n
-    last_band, last_n = keep[-1]
+if not DRY_RUN:
     spark.sql(f"""
-        CREATE OR REPLACE TABLE {PUSH_TABLE} AS
-        SELECT * FROM {PUSH_TABLE} WHERE band < {last_band}
-        UNION ALL
-        SELECT * FROM (SELECT * FROM {PUSH_TABLE} WHERE band = {last_band} ORDER BY score DESC, id LIMIT {last_n})
+        MERGE INTO {SERVED_TABLE} AS s
+        USING (SELECT * FROM {DIFF_TABLE} WHERE action IN ('gone', 'new', 'resent')) AS d
+        ON s.id = d.id
+        WHEN MATCHED AND d.action = 'gone' THEN DELETE
+        WHEN MATCHED THEN UPDATE SET
+          s.updated_date = d.updated_date, s.fwci = d.fwci,
+          s.citation_normalized_percentile = d.citation_normalized_percentile,
+          s.cited_by_percentile_year = d.cited_by_percentile_year, s.served_at = current_timestamp(),
+          s.served_by = 'sync_works'
+        WHEN NOT MATCHED AND d.action = 'new' THEN INSERT
+          (id, updated_date, fwci, citation_normalized_percentile, cited_by_percentile_year, served_at, served_by)
+          VALUES (d.id, d.updated_date, d.fwci, d.citation_normalized_percentile, d.cited_by_percentile_year,
+                  current_timestamp(), 'sync_works')
     """)
-    bands = spark.sql(f"SELECT band, count(*) AS n FROM {PUSH_TABLE} GROUP BY band ORDER BY band").collect()
-    print(f"Capped at {CAP:,}; {past - CAP:,} wait for the next run")
-n_push = sum(b.n for b in bands)
-chunks = [(b.band, h, math.ceil(b.n / CHUNK_ROWS)) for b in bands for h in range(math.ceil(b.n / CHUNK_ROWS))]
-print(f"Push: {n_push:,} works in {len(chunks)} chunks")
 
 # COMMAND ----------
 
-# Step 3. Partial updates, chunk by chunk. Only these three fields; never an upsert (a missing doc stays missing:
-# sync_works owns docs). Writer 0 always runs; the others pause while ES data nodes are hot.
+# The push, capped: lower bands whole, then the largest moves of the band that crosses the cap.
+past = counts.get("push", 0)
+spark.sql(f"""
+    CREATE OR REPLACE TABLE {PUSH_TABLE} AS
+    SELECT id, is_xpac, fwci, citation_normalized_percentile, cited_by_percentile_year, score, band
+    FROM {DIFF_TABLE} WHERE action = 'push'
+    {f'ORDER BY band, score DESC, id LIMIT {CAP}' if CAP and past > CAP else ''}
+""")
+if CAP and past > CAP:
+    print(f"Capped at {CAP:,}; {past - CAP:,} wait for the next run")
+bands = spark.sql(f"SELECT band, count(*) AS n FROM {PUSH_TABLE} GROUP BY band ORDER BY band").collect()
+n_push = sum(b.n for b in bands)
+chunks = []
+for b in bands:
+    k = -(-b.n // CHUNK_ROWS)
+    chunks += [(b.band, h, k) for h in range(k)]
+print(f"Past the lines: {past:,}; push {n_push:,} in {len(chunks)} chunks; by band {[(b.band, b.n) for b in bands]}")
+
+# COMMAND ----------
+
+# Partial updates, chunk by chunk. Only these three fields; never an upsert (a missing doc stays missing:
+# sync_works owns docs). Stream 0 always runs; the others pause while ES data nodes are hot.
 def es_client():
     return Elasticsearch(hosts=[ELASTIC_URL], request_timeout=180, max_retries=5, retry_on_timeout=True,
                          http_compress=True)
@@ -200,6 +195,9 @@ def data_p95(client):
     return cpu[max(0, int(len(cpu) * .95) - 1)] if cpu else 0
 
 
+MAX_FAILED_ROWS = 100_000  # rejected ids returned per stream; a chunk past the rejection line is never checkpointed
+
+
 def send(idx, rows):
     client = es_client()
     ok = missing = paused_s = 0
@@ -209,7 +207,6 @@ def send(idx, rows):
         nonlocal paused_s, last_check, recent
         for r in rows:
             if idx > 0 and time.time() - last_check >= 60:
-                last_check = time.time()
                 try:
                     recent = (recent + [data_p95(client)])[-4:]
                 except Exception:
@@ -248,47 +245,58 @@ def send(idx, rows):
                 failed.append((wid, str(item.get("error"))[:500]))
     finally:
         client.close()
-    yield ("counts", ok, missing, f"{len(failed)}|{paused_s}")
-    for wid, err in failed[:100000]:
-        yield ("failed", wid, 0, err)
+    yield ("counts", ok, missing, len(failed), paused_s)
+    for wid, err in failed[:MAX_FAILED_ROWS]:
+        yield ("failed", wid, err)
 
 
 def now_ct():
     return datetime.now(CT)
 
 
-spark.sql(f"CREATE OR REPLACE TABLE {FAILED_TABLE} (id BIGINT, error STRING, run_started_at TIMESTAMP)")
+spark.sql(f"CREATE OR REPLACE TABLE {FAILED_TABLE} ({FAILED_SCHEMA})")
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {RUNS_TABLE} (
   run_started_at TIMESTAMP, row_kind STRING, mode STRING, chunk STRING, writers INT, resent_or_new BIGINT, gone BIGINT,
   past_lines BIGINT, pushed BIGINT, ok BIGINT, missing BIGINT, failed BIGINT, paused_seconds BIGINT, seconds DOUBLE,
   at TIMESTAMP)""")
 runs_schema = spark.table(RUNS_TABLE).schema
+
+
+def log_row(**cols):
+    cols = {"run_started_at": started_at, "mode": MODE, "at": datetime.utcnow(), **cols}
+    spark.createDataFrame([tuple(cols.get(f.name) for f in runs_schema)], runs_schema) \
+        .write.mode("append").saveAsTable(RUNS_TABLE)
+
+
 tot = {"ok": 0, "missing": 0, "failed": 0}
-stopped, t_send = None, time.time()
+stopped, too_many_rejected, t_send = None, False, time.time()
+if DRY_RUN and chunks:
+    stopped = "dry_run: nothing sent"
+    chunks = []
 for i, (band, h, k) in enumerate(chunks):
-    if DRY_RUN:
-        stopped = "dry_run: nothing sent"
-        break
     if STOP_AT and now_ct().strftime("%H:%M") >= STOP_AT:
         stopped = f"stop_at {STOP_AT} CT reached before chunk {i + 1}/{len(chunks)}"
         break
     writers = min(WRITERS, DAY_WRITERS) if 7 <= now_ct().hour < 19 else WRITERS
     t0 = time.time()
-    part = spark.sql(f"SELECT * FROM {PUSH_TABLE} WHERE band = {band} AND pmod(xxhash64(id), {k}) = {h}")
-    out = part.repartition(writers).rdd.mapPartitionsWithIndex(send).collect()  # small: counts + rejected ids only
+    chunk_sql = f"SELECT * FROM {PUSH_TABLE} WHERE band = {band} AND pmod(xxhash64(id), {k}) = {h}"
+    out = spark.sql(chunk_sql).repartition(writers).rdd.mapPartitionsWithIndex(send).collect()  # counts + rejected ids
     c = [o for o in out if o[0] == "counts"]
-    ok, missing = sum(o[1] for o in c), sum(o[2] for o in c)
-    nfail = sum(int(o[3].split("|")[0]) for o in c)
-    paused = sum(int(o[3].split("|")[1]) for o in c)
-    fails = [(o[1], o[3], started_at) for o in out if o[0] == "failed"]
+    ok, missing, nfail, paused = (sum(o[j] for o in c) for j in (1, 2, 3, 4))
+    sent = ok + missing + nfail
+    if nfail > max(1000, 0.001 * sent):
+        # Not checkpointed: the whole chunk stays unsent in the state and is re-sent by the next run.
+        too_many_rejected = True
+        stopped = f"chunk {i + 1}: {nfail:,} of {sent:,} updates rejected (chunk not checkpointed); see {FAILED_TABLE}"
+    fails = [(o[1], o[2], started_at) for o in out if o[0] == "failed"]
     if fails:
-        spark.createDataFrame(fails, "id BIGINT, error STRING, run_started_at TIMESTAMP") \
-            .write.mode("append").saveAsTable(FAILED_TABLE)
+        spark.createDataFrame(fails, FAILED_SCHEMA).write.mode("append").saveAsTable(FAILED_TABLE)
+    if too_many_rejected:
+        break
     # The state takes the pushed values for every work of this chunk the index accepted (or doesn't hold).
     spark.sql(f"""
         MERGE INTO {SERVED_TABLE} AS s
-        USING (SELECT p.* FROM {PUSH_TABLE} p LEFT ANTI JOIN {FAILED_TABLE} f ON f.id = p.id
-               WHERE p.band = {band} AND pmod(xxhash64(p.id), {k}) = {h}) AS p
+        USING (SELECT p.* FROM ({chunk_sql}) p LEFT ANTI JOIN {FAILED_TABLE} f ON f.id = p.id) AS p
         ON s.id = p.id
         WHEN MATCHED THEN UPDATE SET
           s.fwci = p.fwci, s.citation_normalized_percentile = p.citation_normalized_percentile,
@@ -296,30 +304,24 @@ for i, (band, h, k) in enumerate(chunks):
           s.served_by = 'sync_work_metrics'
     """)
     secs = time.time() - t0
-    for key, v in (("ok", ok), ("missing", missing), ("failed", nfail)):
-        tot[key] += v
-    done = tot["ok"] + tot["missing"] + tot["failed"]
+    tot["ok"] += ok; tot["missing"] += missing; tot["failed"] += nfail
+    done = sum(tot.values())
     rate = done / max(time.time() - t_send, 1)
-    print(f"{now_ct():%H:%M} CT chunk {i + 1}/{len(chunks)} band {band}: {ok + missing + nfail:,} docs in {secs / 60:.1f} min "
-          f"on {writers} writers (ok {ok:,}, missing {missing:,}, rejected {nfail:,}, paused {paused}s); "
-          f"total {done:,}/{n_push:,}, {rate:,.0f} docs/s, ETA {(n_push - done) / max(rate, 1) / 60:.0f} min", flush=True)
-    spark.createDataFrame([(started_at, "chunk", MODE, f"{band}/{h}/{k}", writers, None, None, None,
-                            ok + missing + nfail, ok, missing, nfail, paused, float(secs), datetime.utcnow())],
-                          runs_schema).write.mode("append").saveAsTable(RUNS_TABLE)
-    if nfail > max(1000, 0.001 * (ok + missing + nfail)):
-        stopped = f"chunk {i + 1}: {nfail:,} updates rejected; see {FAILED_TABLE}"
-        break
+    print(f"{now_ct():%H:%M} CT chunk {i + 1}/{len(chunks)} band {band}: {sent:,} docs in {secs / 60:.1f} min on {writers} "
+          f"writers (ok {ok:,}, missing {missing:,}, rejected {nfail:,}, paused {paused}s); total {done:,}/{n_push:,}, "
+          f"{rate:,.0f} docs/s, ETA {(n_push - done) / max(rate, 1) / 60:.0f} min", flush=True)
+    log_row(row_kind="chunk", chunk=f"{band}/{h}/{k}", writers=writers, pushed=sent, ok=ok, missing=missing,
+            failed=nfail, paused_seconds=paused, seconds=float(secs))
 if stopped:
     print(stopped)
 
 # COMMAND ----------
 
-spark.createDataFrame([(started_at, "run", MODE, stopped, WRITERS,
-                        int((step1.get("num_updated_rows") or 0) + (step1.get("num_inserted_rows") or 0)),
-                        int(step1.get("num_deleted_rows") or 0), int(past), int(n_push),
-                        tot["ok"], tot["missing"], tot["failed"], None, float(time.time() - t_start), datetime.utcnow())],
-                      runs_schema).write.mode("append").saveAsTable(RUNS_TABLE)
+log_row(row_kind="run", chunk=stopped, writers=WRITERS,
+        resent_or_new=int(counts.get("resent", 0) + counts.get("new", 0)), gone=int(counts.get("gone", 0)),
+        past_lines=int(past), pushed=int(n_push), ok=tot["ok"], missing=tot["missing"], failed=tot["failed"],
+        seconds=float(time.time() - t_start))
 print(f"Run: past the lines {past:,}, pushed {n_push:,}, sent {tot}, {(time.time() - t_start) / 60:.1f} min")
-if stopped and "rejected" in stopped:
-    raise Exception(stopped)   # the state skipped them, so the next run retries them
+if too_many_rejected:
+    raise Exception(stopped)   # the chunk was not checkpointed, so the next run re-sends it
 dbutils.notebook.exit(f"past {past}, pushed {n_push}, sent {tot}, stopped {stopped}")
