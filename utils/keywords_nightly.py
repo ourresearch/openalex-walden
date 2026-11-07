@@ -92,13 +92,14 @@ AS SELECT
   CURRENT_TIMESTAMP() AS updated_at
 FROM <<STAGE>>work_keywords k
 JOIN <<VOCAB>> v ON v.keyword_id = k.keyword_id
-WHERE CAST(SUBSTRING(k.work_id, 2) AS BIGINT) NOT IN (SELECT work_id FROM <<TARGET>>)   -- append-only: new work_ids
+WHERE CAST(SUBSTRING(k.work_id, 2) AS BIGINT) NOT IN (SELECT work_id FROM <<TARGET>>)   -- new work_ids,
+   OR CAST(SUBSTRING(k.work_id, 2) AS BIGINT) IN (SELECT id FROM <<RETAG>>)              -- and works re-tagged because their text changed (#2085)
 GROUP BY 1"""),
 ]
 
 
 TOKENS = ("RAW", "STAGE", "ROWS", "KID0", "FOLD", "SYNMAP", "PURGE", "COUNTRY_KIDS", "BOILER", "TEMPLATED", "VOCAB", "TARGET",
-          "TAGGER_VERSION", "COMMENT")
+          "RETAG", "TAGGER_VERSION", "COMMENT")
 
 
 def render(template, values):
@@ -116,7 +117,8 @@ def render(template, values):
 
 def normalise_statements(values):
     """[(step, sql)] in run order. values: RAW (table with id 'W<n>', keywords ARRAY<STRING>, lp ARRAY<DOUBLE>), STAGE (prefix of the per-run
-    tables), ROWS (output table, work_keywords_v2 shape), TARGET (served table: rows already there are left out), rule tables, VOCAB."""
+    tables), ROWS (output table, work_keywords_v2 shape), TARGET (served table: rows already there are left out, except the works
+    in RETAG, a table with column id of re-tagged works, oxjob #2085), rule tables, VOCAB."""
     return [(name, render(sql, values)) for name, sql in NORMALISE_STEPS]
 
 
@@ -179,15 +181,20 @@ SELECT work_id,
 FROM d WHERE k = 1 GROUP BY work_id"""
 
 
-def check_statements(rows, target, queue, vocab_table="openalex.common.keywords_v2"):
-    """Pre-append checks on the output rows; each returns one row, 'ok' says pass."""
+NO_RETAG = "(SELECT CAST(NULL AS BIGINT) AS id WHERE false)"
+
+
+def check_statements(rows, target, queue, vocab_table="openalex.common.keywords_v2", retag=NO_RETAG):
+    """Pre-append checks on the output rows; each returns one row, 'ok' says pass. retag: a table or subquery with column id of the
+    works re-tagged because their text changed (oxjob #2085): their rows may already be served (they are replaced)."""
     return {
         "shape": f"""SELECT COUNT(*) AS works, COUNT(DISTINCT work_id) AS distinct_works, COALESCE(MIN(SIZE(keywords)), 1) AS min_kw,
             COUNT_IF(work_id IS NULL OR keywords IS NULL OR EXISTS(keywords, x -> x.id IS NULL OR x.display_name IS NULL OR x.score IS NULL)) AS nulls,
             COUNT_IF(tagger_version <> '{TAGGER_VERSION}' OR tagger_version IS NULL) AS bad_version,
             COUNT_IF(size(keywords) <> size(array_distinct(transform(keywords, x -> x.id)))) AS dup_ids
           FROM {rows}""",
-        "already_in_target": f"SELECT COUNT(*) AS n FROM {rows} r JOIN {target} t ON t.work_id = r.work_id",
+        "already_in_target": f"""SELECT COUNT(*) AS n FROM {rows} r JOIN {target} t ON t.work_id = r.work_id
+          LEFT ANTI JOIN {retag} q ON q.id = r.work_id""",
         "not_in_queue": f"SELECT COUNT(*) AS n FROM {rows} r LEFT ANTI JOIN {queue} q ON q.id = r.work_id",
         "ids_not_in_vocab": f"""SELECT COUNT(*) AS n FROM (SELECT explode(keywords) AS k FROM {rows}) e
           LEFT ANTI JOIN {vocab_table} kv ON kv.id = e.k.id AND kv.display_name = e.k.display_name""",
