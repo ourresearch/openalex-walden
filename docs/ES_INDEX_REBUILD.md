@@ -202,7 +202,10 @@ minutes. TODO: build the 500-query replay set.
 and `BuildLakebaseWorksDocs.py` strips every character outside `\p{L}\p{N}\p{P}\p{S}\p{Z}`, which removes Unicode
 combining marks (`\p{M}`): Thai vowels and tone marks, Devanagari matras, Arabic harakat, Hebrew points, and the
 accents of any Latin title stored in decomposed form ("Economía" → "Economia"). 1,477,228 source titles contain a
-combining mark. Both the ES `display_name` and the Lakebase doc are affected. Needs its own job.
+combining mark. Both the ES `display_name` and the Lakebase doc are affected. **Fixed 2026-11-07 (oxjob #2081):**
+`sanitize_name` in `sync_works`, `BuildLakebaseWorksDocs.py` and `export_works` now also keeps `\p{M}` and U+200C /
+U+200D (Persian and Indic spelling); the 1.65M works whose served title changes were re-stamped once with a hash flip.
+A rebuild's Delta check should now find no title differences from this cause.
 
 ### Step 9: warm (15–30 minutes)
 Run a sample of representative queries against the new index **by name** so its caches are hot: the default list sort,

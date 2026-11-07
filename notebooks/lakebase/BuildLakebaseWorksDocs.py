@@ -267,7 +267,10 @@ def sanitize_name(col_name: str):
   Cleans a string column by removing unwanted characters and normalizing whitespace.
   Handles multilingual text by preserving letters, numbers, punctuation, and symbols from all Unicode scripts.
   """
-  unwanted_chars_pattern = r"[^\p{L}\p{N}\p{P}\p{S}\p{Z}]"
+  # oxjob #2081: keep combining marks (\p{M}: Thai vowels and tone marks, Indic vowel signs, Arabic harakat,
+  # Hebrew points, accents stored decomposed) and the zero-width non-joiner / joiner U+200C / U+200D (Persian
+  # and Indic spelling). Control characters and other format characters are still removed.
+  unwanted_chars_pattern = r"[^\p{L}\p{M}\p{N}\p{P}\p{S}\p{Z}\x{200C}\x{200D}]"
   multiple_spaces_pattern = r"\s+"
 
   return F.trim(
