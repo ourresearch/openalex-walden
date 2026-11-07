@@ -456,7 +456,8 @@ spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
 # key. The raw id stays in oai_identifier for the host-parsing expressions; it is not selected below.
 # oxjob #1800: the abstract. abstract_raw (the first attribute-free <dc:description>, kept at 100+ chars) stays the
 # abstract whenever it yields one, byte for byte. Only when it yields nothing, on the description-chooser endpoints
-# (desc_chooser_sql above), a later description is taken; descriptions with attributes
+# (desc_chooser_sql above), a later description is taken (`_abstract_desc`, filled in after the dedupe below);
+# descriptions with attributes
 # (<dc:description xml:lang="pt">, matched after a space) count as candidates there. Gain-only: no record that had an
 # abstract on this path gets a different one. (Reading attributed descriptions on every endpoint failed its bar,
 # 66 of 100: library catalogue notes; #1800 EXPLORE § 38.)
@@ -546,8 +547,10 @@ parsed_df = clean_df \
     .withColumn("abstract",
         when(length(col("abstract_raw")) >= MIN_ABSTRACT_LENGTH, 
             substring(col("abstract_raw"), 0, MAX_ABSTRACT_LENGTH))
-        .when(col("_desc_chosen") != col("_desc_first"), substring(col("_desc_chosen"), 0, MAX_ABSTRACT_LENGTH))
         .otherwise(lit(None))) \
+    .withColumn("_abstract_desc",
+        when(col("abstract").isNull() & (col("_desc_chosen") != col("_desc_first")),
+            substring(col("_desc_chosen"), 0, MAX_ABSTRACT_LENGTH))) \
     .drop("_descs", "_desc_first", "_desc_chosen") \
     .withColumn("source_name", 
         regexp_extract(col("cleaned_xml"), r"<dc:source.*?>(.*?)</dc:source>", 1)) \
@@ -666,7 +669,8 @@ parsed_df = parsed_df.select(
     "is_oa",
     "endpoint_id",
     "set_spec",
-    "dc_format"
+    "dc_format",
+    "_abstract_desc"
 )
 
 # oxjob #911: the whole backfill corpus arrived in S3 as one parquet_output export
@@ -685,11 +689,17 @@ parsed_df = parsed_df.withColumn(
 # which row survives is decided for 82M keys. 3,932,463 rows are additionally tied on a NULL
 # updated_date (though 99.99% of those carry no usable URL and never reach repo_works anyway).
 # dedupe_by_sequence appends a content hash, giving a total order.
+# oxjob #1800: the content-hash tiebreak reads the abstract the old rule gave (`abstract`), never the chooser's
+# (`_abstract_desc`), so every native_id keeps the copy it kept before. On 7 Nov the first run hashed the new abstract and
+# 174,783 tied duplicates switched to another endpoint's copy (endpoint, URLs, licence, OA). The chooser's text fills
+# in after the dedupe, only where the kept copy had no abstract.
 parsed_df = dedupe_by_sequence(
     parsed_df,
     keys=["native_id"],
     order_by=[col("updated_date").desc_nulls_last()],
+    hash_columns=[c for c in parsed_df.columns if c != "_abstract_desc"],
 )
+parsed_df = parsed_df.withColumn("abstract", coalesce(col("abstract"), col("_abstract_desc"))).drop("_abstract_desc")
 
 # oxjob #881: MERGE that also DELETES (Casey, 2026-08-26).
 #
