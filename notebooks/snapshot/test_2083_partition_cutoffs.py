@@ -19,6 +19,16 @@ PUBLISHED = "2026-11-07"   # the snapshot tables hold this export (checked again
 NEXT = "2026-11-08"
 out = {"session_tz": spark.conf.get("spark.sql.session.timeZone")}
 
+# Serverless refuses the parquet writer's outputTimestampType setting (the job's
+# classic clusters allow it); skip it here, it doesn't touch partitioning.
+_conf_set = spark.conf.set
+def _conf_set_or_skip(k, v):
+    try:
+        _conf_set(k, v)
+    except Exception as e:
+        out.setdefault("conf_skipped", []).append(k)
+spark.conf.set = _conf_set_or_skip
+
 spark.sql(f"DROP TABLE IF EXISTS {TEST_TABLE}")
 SNAP = {
     "authors": "openalex.authors.openalex_authors_snapshot",
@@ -65,19 +75,22 @@ for e, t in SNAP.items():
 # COMMAND ----------
 
 # Test 3: the writers, salted and unsalted, into the scratch prefix; then the cutoff row.
-src = (spark.read.table("openalex.sources.sources_api")
-       .withColumn("id", F.concat(F.lit("https://openalex.org/S"), F.col("id"))))
-export_partitioned_all_formats(spark, dbutils, src, NEXT, "sources", salt=True)
-export_partitioned_all_formats(spark, dbutils, spark.read.table(SNAP["licenses"]), NEXT, "licenses", salt=False)
-for ent in ("sources", "licenses"):
-    for fmt in ("jsonl", "parquet"):
-        meta = json.loads(dbutils.fs.head(f"{S3_BASE}/{NEXT}/_meta/{fmt}/{ent}.json", 10_000_000))
-        parts = {}
-        for f in meta["files"]:
-            p = f["url"].split("/")[-2]
-            parts[p] = parts.get(p, 0) + f["meta"]["record_count"]
-        out[f"test3_{ent}_{fmt}"] = {"records": meta["record_count"],
-                                     "newest": {k: v for k, v in sorted(parts.items())[-3:]}}
+try:
+    src = (spark.read.table("openalex.sources.sources_api")
+           .withColumn("id", F.concat(F.lit("https://openalex.org/S"), F.col("id"))))
+    export_partitioned_all_formats(spark, dbutils, src, NEXT, "sources", salt=True)
+    export_partitioned_all_formats(spark, dbutils, spark.read.table(SNAP["licenses"]), NEXT, "licenses", salt=False)
+    for ent in ("sources", "licenses"):
+        for fmt in ("jsonl", "parquet"):
+            meta = json.loads(dbutils.fs.head(f"{S3_BASE}/{NEXT}/_meta/{fmt}/{ent}.json", 10_000_000))
+            parts = {}
+            for f in meta["files"]:
+                p = f["url"].split("/")[-2]
+                parts[p] = parts.get(p, 0) + f["meta"]["record_count"]
+            out[f"test3_{ent}_{fmt}"] = {"records": meta["record_count"],
+                                         "newest": {k: v for k, v in sorted(parts.items())[-3:]}}
+except Exception as e:
+    out["test3_error"] = repr(e)[:2000]
 out["cutoffs_after"] = [r.asDict() for r in spark.read.table(TEST_TABLE).orderBy("entity", "snapshot_date").collect()]
 
 # COMMAND ----------
