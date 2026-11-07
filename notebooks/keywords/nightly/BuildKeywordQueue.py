@@ -44,9 +44,10 @@ MAX_RETAG = int(dbutils.widgets.get("max_retag"))
 WAIT_H = float(dbutils.widgets.get("wait_e2e_hours"))
 E2E_JOB = int(dbutils.widgets.get("e2e_job_id"))
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
-QUEUE, TAGGED = f"{P}queue", f"{P}tagged"
-# The tagger's input text, as the key a work is tagged on (oxjob #2085). Keep in step with the queue's title / abstract below.
-TEXT_KEY = "xxhash64(coalesce({w}.title, ''), coalesce(substr({w}.abstract, 1, 6000), ''))"
+QUEUE, TAGGED, CAND = f"{P}queue", f"{P}tagged", f"{P}queue_cand"
+ABSTRACT_CUT = 6000   # the tagger's input; text_key (oxjob #2085) hashes exactly the queued title + cut abstract
+if FORCE_RETAG and not FORCE:
+    raise RuntimeError("force_retag re-tags every served work it is given: pass force_ids_table too")
 
 
 def log(msg):
@@ -94,26 +95,32 @@ if "text_key" not in {c.name for c in spark.table(TAGGED).schema}:   # oxjob #20
 
 # COMMAND ----------
 
-# new = never tagged; retag = tagged before (oxjob #2085) and its text changed since (the tagged record's key).
-# FORCE (test / backfill): only these works (column id): those not served (as before #2085) plus served ones whose text changed;
-# with force_retag, every one of them.
-changed = "tagged_key IS NOT NULL AND tagged_key <> text_key"
-pick = ("true" if FORCE_RETAG else f"NOT served OR ({changed})") if FORCE else f"NOT retag OR ({changed})"
+# new = never tagged; retag = tagged before (oxjob #2085) and its text changed since (the tagged record's key), or forced.
+# FORCE (test / backfill) narrows to these works (column id), keeping the pre-#2085 rule that any work not served may be queued.
+changed = "true" if FORCE_RETAG else "tagged_key IS NOT NULL AND tagged_key <> text_key"
 cand = f"""SELECT * FROM (
-  SELECT w.*, {TEXT_KEY.format(w='w')} AS text_key, (t.work_id IS NOT NULL OR k.work_id IS NOT NULL) AS retag, t.text_key AS tagged_key,
-         k.work_id IS NOT NULL AS served
-  FROM openalex.works.openalex_works w
-  LEFT JOIN (SELECT work_id, text_key FROM {TAGGED}) t ON t.work_id = w.id
-  LEFT JOIN (SELECT work_id FROM {TARGET}) k ON k.work_id = w.id""" + (f"""
-  WHERE w.id IN (SELECT id FROM {FORCE})""" if FORCE else "") + f"""
-) WHERE {pick}"""
-cnt = spark.sql(f"SELECT count_if(NOT retag) AS new, count_if(retag) AS changed FROM ({cand})").collect()[0]
+  SELECT *, xxhash64(coalesce(title, ''), coalesce(abstract, '')) AS text_key FROM (
+    SELECT w.id, w.title, substr(w.abstract, 1, {ABSTRACT_CUT}) AS abstract, w.primary_location.source.display_name AS journal,
+           COALESCE(w.is_xpac, false) AS is_xpac, w.created_date, (t.work_id IS NOT NULL OR k.work_id IS NOT NULL) AS retag,
+           t.text_key AS tagged_key, k.work_id IS NOT NULL AS served
+    FROM openalex.works.openalex_works w
+    LEFT JOIN (SELECT work_id, text_key FROM {TAGGED}) t ON t.work_id = w.id
+    LEFT JOIN (SELECT work_id FROM {TARGET}) k ON k.work_id = w.id""" + (f"""
+    WHERE w.id IN (SELECT id FROM {FORCE})""" if FORCE else "") + f"""
+  )
+) WHERE NOT {'served' if FORCE else 'retag'} OR ({changed})"""
+# One pass over openalex_works: the newest max_works of each kind, with each kind's full count for the log.
+order = "ORDER BY created_date DESC, id DESC"
+spark.sql(f"""CREATE OR REPLACE TABLE {CAND} COMMENT 'Keywords nightly (oxjob #2085): queue candidates of the last run' AS
+SELECT *, count(*) OVER (PARTITION BY retag) AS n_kind FROM ({cand})
+QUALIFY row_number() OVER (PARTITION BY retag {order}) <= {MAX_WORKS}""")
+cnt = spark.sql(f"SELECT COALESCE(max(n_kind) FILTER (WHERE NOT retag), 0) AS new, COALESCE(max(n_kind) FILTER (WHERE retag), 0) AS changed FROM {CAND}").collect()[0]
 take_new = min(cnt.new, MAX_WORKS)
 take_re = min(cnt.changed, MAX_RETAG, MAX_WORKS - take_new)
 take = take_new + take_re
 n_shards = max(1, math.ceil(take / SHARD_WORKS))
 build_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-log(f"untagged works: {cnt.new:,}; tagged works to tag again (text changed{', forced' if FORCE else ''}): {cnt.changed:,}"
+log(f"untagged works: {cnt.new:,}; tagged works to tag again (text changed{', forced' if FORCE_RETAG else ''}): {cnt.changed:,}"
     + (f" (from {FORCE})" if FORCE else "") + f"; queueing {take_new:,} new + {take_re:,} re-tags in {n_shards} shards; build {build_id}")
 if cnt.new > MAX_WORKS:
     log(f"over max_works: the newest {MAX_WORKS:,} go now, {cnt.new - MAX_WORKS:,} wait for the next run")
@@ -123,11 +130,10 @@ if cnt.changed > take_re:
 spark.sql(f"""
 CREATE OR REPLACE TABLE {QUEUE} CLUSTER BY (shard)
 COMMENT 'Keywords nightly queue (oxjob #1322): works never tagged, then (#2085) tagged works whose text changed (retag); rebuilt every run by BuildKeywordQueue; read by the Modal workers'
-AS SELECT pmod(hash(c.id), {n_shards}) AS shard, c.id, c.title, substr(c.abstract, 1, 6000) AS abstract,
-          c.primary_location.source.display_name AS journal, COALESCE(c.is_xpac, false) AS is_xpac, c.created_date, '{build_id}' AS build_id,
+AS SELECT pmod(hash(c.id), {n_shards}) AS shard, c.id, c.title, c.abstract, c.journal, c.is_xpac, c.created_date, '{build_id}' AS build_id,
           c.text_key, c.retag
-FROM ({cand}) c
-QUALIFY row_number() OVER (PARTITION BY c.retag ORDER BY c.created_date DESC, c.id DESC) <= CASE WHEN c.retag THEN {take_re} ELSE {take_new} END
+FROM {CAND} c
+QUALIFY row_number() OVER (PARTITION BY c.retag {order}) <= CASE WHEN c.retag THEN {take_re} ELSE {take_new} END
 """)
 q = spark.sql(f"""SELECT count(*) AS n, count(DISTINCT id) AS ids, count_if(retag) AS re, count(DISTINCT shard) AS shards, count_if(is_xpac) AS xpac,
   min(created_date) AS oldest FROM {QUEUE}""").collect()[0]

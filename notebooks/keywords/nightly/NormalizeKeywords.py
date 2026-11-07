@@ -54,11 +54,8 @@ m = spark.table(f"{P}nrm_raw").count()
 if m != n:
     raise RuntimeError(f"{RAW} holds {m:,} rows for build {build_id}, queue {n:,}: run the tag task first")
 
-# works re-tagged because their text changed (oxjob #2085): their new rows replace served ones; a queue from before #2085 has none
-retag_src = (f"SELECT id FROM {QUEUE} WHERE retag" if "retag" in {c.name for c in spark.table(QUEUE).schema}
-             else "SELECT CAST(NULL AS BIGINT) AS id WHERE false")
-spark.sql(f"CREATE OR REPLACE TABLE {P}nrm_retag AS {retag_src}")
-values = dict(RAW=f"{P}nrm_raw", STAGE=f"{P}nrm_", ROWS=ROWS, TARGET=TARGET, RETAG=f"{P}nrm_retag", KID0=dbutils.widgets.get("kid0_udf").strip(),
+values = dict(RAW=f"{P}nrm_raw", STAGE=f"{P}nrm_", ROWS=ROWS, TARGET=TARGET, KID0=dbutils.widgets.get("kid0_udf").strip(),
+              RETAG=kn.retag_ids(QUEUE, {c.name for c in spark.table(QUEUE).schema}),   # oxjob #2085
               FOLD=f"{RULES}fold", SYNMAP=dbutils.widgets.get("synmap").strip(), PURGE=f"{RULES}purge", COUNTRY_KIDS=f"{RULES}country_kids",
               BOILER=f"{RULES}boiler", TEMPLATED=f"{RULES}templated", VOCAB=kn.VOCAB_FROM_KEYWORDS_V2, TAGGER_VERSION=kn.TAGGER_VERSION,
               COMMENT=f"Keywords nightly (oxjob #1322): rows to append for build {build_id}")

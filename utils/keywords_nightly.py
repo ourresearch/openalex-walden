@@ -92,8 +92,9 @@ AS SELECT
   CURRENT_TIMESTAMP() AS updated_at
 FROM <<STAGE>>work_keywords k
 JOIN <<VOCAB>> v ON v.keyword_id = k.keyword_id
-WHERE CAST(SUBSTRING(k.work_id, 2) AS BIGINT) NOT IN (SELECT work_id FROM <<TARGET>>)   -- new work_ids,
-   OR CAST(SUBSTRING(k.work_id, 2) AS BIGINT) IN (SELECT id FROM <<RETAG>>)              -- and works re-tagged because their text changed (#2085)
+-- served works are left out, except those re-tagged because their text changed (#2085); equi anti joins, never NOT IN ... OR
+LEFT ANTI JOIN (SELECT t.work_id FROM <<TARGET>> t LEFT ANTI JOIN <<RETAG>> r ON r.id = t.work_id) s
+  ON s.work_id = CAST(SUBSTRING(k.work_id, 2) AS BIGINT)
 GROUP BY 1"""),
 ]
 
@@ -118,7 +119,7 @@ def render(template, values):
 def normalise_statements(values):
     """[(step, sql)] in run order. values: RAW (table with id 'W<n>', keywords ARRAY<STRING>, lp ARRAY<DOUBLE>), STAGE (prefix of the per-run
     tables), ROWS (output table, work_keywords_v2 shape), TARGET (served table: rows already there are left out, except the works
-    in RETAG, a table with column id of re-tagged works, oxjob #2085), rule tables, VOCAB."""
+    in RETAG, retag_ids(), oxjob #2085), rule tables, VOCAB."""
     return [(name, render(sql, values)) for name, sql in NORMALISE_STEPS]
 
 
@@ -184,9 +185,15 @@ FROM d WHERE k = 1 GROUP BY work_id"""
 NO_RETAG = "(SELECT CAST(NULL AS BIGINT) AS id WHERE false)"
 
 
+def retag_ids(queue, queue_columns):
+    """Subquery (column id) of the queue's works re-tagged because their text changed (oxjob #2085). A queue built before #2085 has no
+    `retag` column and no re-tags (remove the fallback once no such queue can be read, after 2026-11-10)."""
+    return f"(SELECT id FROM {queue} WHERE retag)" if "retag" in queue_columns else NO_RETAG
+
+
 def check_statements(rows, target, queue, vocab_table="openalex.common.keywords_v2", retag=NO_RETAG):
-    """Pre-append checks on the output rows; each returns one row, 'ok' says pass. retag: a table or subquery with column id of the
-    works re-tagged because their text changed (oxjob #2085): their rows may already be served (they are replaced)."""
+    """Pre-append checks on the output rows; each returns one row, 'ok' says pass. retag: retag_ids(): those works' served rows are
+    replaced. A new work already served with these same keywords is a repair of an earlier attempt, not a conflict."""
     return {
         "shape": f"""SELECT COUNT(*) AS works, COUNT(DISTINCT work_id) AS distinct_works, COALESCE(MIN(SIZE(keywords)), 1) AS min_kw,
             COUNT_IF(work_id IS NULL OR keywords IS NULL OR EXISTS(keywords, x -> x.id IS NULL OR x.display_name IS NULL OR x.score IS NULL)) AS nulls,
@@ -194,7 +201,7 @@ def check_statements(rows, target, queue, vocab_table="openalex.common.keywords_
             COUNT_IF(size(keywords) <> size(array_distinct(transform(keywords, x -> x.id)))) AS dup_ids
           FROM {rows}""",
         "already_in_target": f"""SELECT COUNT(*) AS n FROM {rows} r JOIN {target} t ON t.work_id = r.work_id
-          LEFT ANTI JOIN {retag} q ON q.id = r.work_id""",
+          AND to_json(t.keywords) <> to_json(r.keywords) LEFT ANTI JOIN {retag} q ON q.id = r.work_id""",
         "not_in_queue": f"SELECT COUNT(*) AS n FROM {rows} r LEFT ANTI JOIN {queue} q ON q.id = r.work_id",
         "ids_not_in_vocab": f"""SELECT COUNT(*) AS n FROM (SELECT explode(keywords) AS k FROM {rows}) e
           LEFT ANTI JOIN {vocab_table} kv ON kv.id = e.k.id AND kv.display_name = e.k.display_name""",
@@ -213,7 +220,7 @@ def checks_pass(res):
     if int(s["bad_version"]): bad.append("wrong tagger_version")
     if int(s["dup_ids"]): bad.append("a keyword twice in one work")
     if int(s["min_kw"]) < 1: bad.append("empty keyword list")
-    if int(res["already_in_target"]["n"]): bad.append(f"{res['already_in_target']['n']} work_ids already in the target")
+    if int(res["already_in_target"]["n"]): bad.append(f"{res['already_in_target']['n']} new work_ids already in the target with other keywords")
     if int(res["not_in_queue"]["n"]): bad.append(f"{res['not_in_queue']['n']} work_ids not in the queue")
     if int(res["ids_not_in_vocab"]["n"]): bad.append(f"{res['ids_not_in_vocab']['n']} keyword ids / names not in the vocabulary")
     if int(s["works"]):   # no rows (every work ended empty) = nothing to type-check; an empty target has no row to compare with

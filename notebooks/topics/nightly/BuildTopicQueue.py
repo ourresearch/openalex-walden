@@ -38,9 +38,10 @@ FORCE_RESCORE = dbutils.widgets.get("force_rescore").strip().lower() == "true"
 MAX_RESCORE = int(dbutils.widgets.get("max_rescore"))
 REUSE_H = float(dbutils.widgets.get("reuse_hours"))
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
-QUEUE, RUNS = f"{P}queue", f"{P}runs"
-# The scorer's input text, as the key a row is scored on (oxjob #2085). Keep in step with the queue's title / abstract below.
-TEXT_KEY = "xxhash64(coalesce({w}.title, ''), coalesce(substr({w}.abstract, 1, 4000), ''))"
+QUEUE, RUNS, CAND = f"{P}queue", f"{P}runs", f"{P}queue_cand"
+ABSTRACT_CUT = 4000   # the scorer's input; text_key (oxjob #2085) hashes exactly the queued title + cut abstract
+if FORCE_RESCORE and not FORCE:
+    raise RuntimeError("force_rescore re-scores every served work it is given: pass force_ids_table too")
 for t in (P + "x", TARGET, WORKS) + ((FORCE,) if FORCE else ()):
     assert t.startswith("openalex.") and t.replace(".", "").replace("_", "").isalnum(), f"bad table name {t!r}"
 
@@ -62,7 +63,8 @@ if spark.catalog.tableExists(QUEUE) and not DRY:
     prev = spark.sql(f"SELECT max(build_id) AS b, count(*) AS n, max(queued_at) AS at FROM {QUEUE}").collect()[0]
     finished = spark.catalog.tableExists(RUNS) and spark.sql(f"SELECT count(*) AS n FROM {RUNS} WHERE build_id = '{prev.b}'").collect()[0].n > 0
     age_h = (dt.datetime.utcnow() - prev.at).total_seconds() / 3600 if prev.at else 1e9
-    # new works of an unfinished build are not yet served (re-scored ones are, by definition)
+    # new works of an unfinished build are not yet served (re-scored ones are; a queue from before #2085 has none: drop that
+    # fallback after 2026-11-10)
     only_new = "WHERE NOT q.rescore" if "rescore" in {c.name for c in spark.table(QUEUE).schema} else ""
     if prev.n and not finished and age_h < REUSE_H and spark.sql(f"SELECT count(*) AS n FROM {QUEUE} q JOIN {TARGET} t ON t.work_id = q.work_id {only_new}").collect()[0].n == 0:
         log(f"reusing unfinished build {prev.b} ({prev.n:,} works, queued {age_h:.1f} h ago)")
@@ -73,15 +75,24 @@ if spark.catalog.tableExists(QUEUE) and not DRY:
 # COMMAND ----------
 
 scorable = "(length(trim(w.title)) > 0 OR length(w.abstract) > 0)"   # = the corpus export filter
-# new = no row yet; changed = a row scored on other text (oxjob #2085); forced re-scores take every served work in FORCE
+# new = no row yet; rescore = a row scored on other text (oxjob #2085), or forced (every served work in FORCE)
 changed = "true" if FORCE_RESCORE else "served_key IS NOT NULL AND served_key <> text_key"
 cand = f"""SELECT * FROM (
-  SELECT w.id AS work_id, w.title, w.abstract, w.primary_location.source.display_name AS venue,
-         {TEXT_KEY.format(w='w')} AS text_key, v.work_id IS NOT NULL AS rescore, v.text_key AS served_key
-  FROM {WORKS} w LEFT JOIN (SELECT work_id, text_key FROM {TARGET}) v ON v.work_id = w.id
-  WHERE {scorable}""" + (f" AND w.id IN (SELECT id FROM {FORCE})" if FORCE else "") + f"""
+  SELECT *, xxhash64(coalesce(title, ''), coalesce(abstract, '')) AS text_key FROM (
+    SELECT w.id AS work_id, w.title, substr(w.abstract, 1, {ABSTRACT_CUT}) AS abstract, w.primary_location.source.display_name AS venue,
+           v.work_id IS NOT NULL AS rescore, v.text_key AS served_key
+    FROM {WORKS} w LEFT JOIN (SELECT work_id, text_key FROM {TARGET}) v ON v.work_id = w.id
+    WHERE {scorable}""" + (f" AND w.id IN (SELECT id FROM {FORCE})" if FORCE else "") + f"""
+  )
 ) WHERE NOT rescore OR ({changed})"""
-cnt = spark.sql(f"SELECT count_if(NOT rescore) AS new, count_if(rescore) AS changed FROM ({cand})").collect()[0]
+if DRY:
+    cnt = spark.sql(f"SELECT count_if(NOT rescore) AS new, count_if(rescore) AS changed FROM ({cand})").collect()[0]
+    dbutils.notebook.exit(f"dry run: {cnt.new:,} unscored, {cnt.changed:,} to re-score")
+# One pass over the base (critical path): the newest max_works of each kind, with each kind's full count for the log.
+spark.sql(f"""CREATE OR REPLACE TABLE {CAND} COMMENT 'Topics nightly (oxjob #2085): queue candidates of the last run' AS
+SELECT *, count(*) OVER (PARTITION BY rescore) AS n_kind FROM ({cand})
+QUALIFY row_number() OVER (PARTITION BY rescore ORDER BY work_id DESC) <= {MAX_WORKS}""")
+cnt = spark.sql(f"SELECT COALESCE(max(n_kind) FILTER (WHERE NOT rescore), 0) AS new, COALESCE(max(n_kind) FILTER (WHERE rescore), 0) AS changed FROM {CAND}").collect()[0]
 take_new = min(cnt.new, MAX_WORKS)
 take_re = min(cnt.changed, MAX_RESCORE, MAX_WORKS - take_new)
 take = take_new + take_re
@@ -93,15 +104,13 @@ if cnt.new > MAX_WORKS:
     log(f"over max_works: the newest {MAX_WORKS:,} go now, {cnt.new - MAX_WORKS:,} wait for the next run")
 if cnt.changed > take_re:
     log(f"re-scores capped (max_rescore {MAX_RESCORE:,}, max_works {MAX_WORKS:,}): {cnt.changed - take_re:,} wait for the next run")
-if DRY:
-    dbutils.notebook.exit(f"dry run: would queue {take_new:,} new + {take_re:,} re-scores")
 
 spark.sql(f"""
 CREATE OR REPLACE TABLE {QUEUE} CLUSTER BY (shard)
 COMMENT 'Topics nightly queue (oxjob #1531): scorable works with no row in {TARGET}, then (#2085) works whose text changed since scoring (rescore); rebuilt every run by BuildTopicQueue; exported once by the Modal app openalex-topics-nightly'
-AS SELECT CAST(pmod(hash(c.work_id), {n_shards}) AS INT) AS shard, c.work_id, c.title, substr(c.abstract, 1, 4000) AS abstract, c.venue,
+AS SELECT CAST(pmod(hash(c.work_id), {n_shards}) AS INT) AS shard, c.work_id, c.title, c.abstract, c.venue,
           '{build_id}' AS build_id, current_timestamp() AS queued_at, c.text_key, c.rescore
-FROM ({cand}) c
+FROM {CAND} c
 QUALIFY row_number() OVER (PARTITION BY c.rescore ORDER BY c.work_id DESC) <= CASE WHEN c.rescore THEN {take_re} ELSE {take_new} END
 """)
 q = spark.sql(f"""SELECT count(*) AS n, count(DISTINCT work_id) AS ids, count_if(rescore) AS re, count(DISTINCT shard) AS shards,
@@ -111,4 +120,3 @@ if q.n != take or q.ids != take or q.re != take_re:
 log(f"queue {QUEUE}: {q.n:,} works ({q.re:,} re-scores), {q.shards} shards, ids W{q.lo} .. W{q.hi}")
 dbutils.jobs.taskValues.set(key="build_id", value=build_id)
 dbutils.jobs.taskValues.set(key="queued", value=int(q.n))
-dbutils.jobs.taskValues.set(key="rescored", value=int(q.re))

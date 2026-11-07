@@ -21,8 +21,8 @@
 # MAGIC `topics = []` and `catalogue_record = true`; `not_classifiable` stays the model's own flag and the ledger keeps the raw scores, so the
 # MAGIC rule can be reversed. An empty `catalogue_sources_table` disables the rule (every row `catalogue_record = false`): the default,
 # MAGIC by Jason's decision 2026-10-04 ("tag it all").
-# MAGIC One line per finished build goes into `<state_prefix>runs`. A repair after a successful MERGE finds every row already served
-# MAGIC with the same topics; the MERGE is idempotent. `CreateWorksEnriched` merges work_topics_v2 into `openalex_works` the same night.
+# MAGIC One line per finished build goes into `<state_prefix>runs`. A repair after a successful MERGE finds the new works already
+# MAGIC served with the same topics, which passes the checks; the MERGE is idempotent. `CreateWorksEnriched` merges work_topics_v2 into `openalex_works` the same night.
 
 # COMMAND ----------
 
@@ -71,8 +71,6 @@ spark.sql(f"""CREATE TABLE IF NOT EXISTS {RUNS} (build_id STRING, queued BIGINT,
   COMMENT 'Topics nightly (oxjob #1531): one row per finished build'""")
 if "rescored" not in {c.name for c in spark.table(RUNS).schema}:
     spark.sql(f"ALTER TABLE {RUNS} ADD COLUMNS (rescored BIGINT COMMENT 'rows updated because the work text changed (oxjob #2085)')")
-if "text_key" not in {c.name for c in spark.table(TARGET).schema}:
-    spark.sql(f"ALTER TABLE {TARGET} ADD COLUMNS (text_key BIGINT COMMENT 'xxhash64(title, abstract[:4000]) the row was scored on (oxjob #2085)')")
 RUN_COLS = "build_id, queued, scored, appended, not_classifiable, catalogue_records, usd_est, modal_wall_s, target, finished_at, rescored"
 q = one(f"SELECT count(*) AS n, max(build_id) AS b FROM {QUEUE}")
 n, build_id = int(q.n), q.b
@@ -126,7 +124,8 @@ else:
     log("catalogue rule OFF (catalogue_sources_table is empty)")
 
 # The PLAN § 2b builder over this build's ledger rows (keep identical to it), plus the catalogue-record rule.
-# A queue built before oxjob #2085 has no text_key / rescore: its works are all new and get a NULL key (never re-queued).
+# A queue built before oxjob #2085 has no text_key / rescore: its works are all new and get a NULL key (never re-queued). Drop this
+# fallback after 2026-11-10.
 qcols = {c.name for c in spark.table(QUEUE).schema}
 queue_cols = (f"SELECT work_id, text_key, rescore FROM {QUEUE}" if {"text_key", "rescore"} <= qcols
               else f"SELECT work_id, CAST(NULL AS BIGINT) AS text_key, false AS rescore FROM {QUEUE}")
@@ -163,8 +162,8 @@ SELECT sc.work_id,
   END AS topics,
   sc.not_classifiable, cat.work_id IS NOT NULL AS catalogue_record,
   '{SOURCE}' AS source, current_timestamp() AS created_datetime, current_timestamp() AS updated_datetime,
-  q.text_key, COALESCE(q.rescore, false) AS rescore
-FROM sc CROSS JOIN tm LEFT JOIN cat ON cat.work_id = sc.work_id LEFT JOIN q ON q.work_id = sc.work_id
+  q.text_key, q.rescore
+FROM sc CROSS JOIN tm LEFT JOIN cat ON cat.work_id = sc.work_id JOIN q ON q.work_id = sc.work_id   -- gate 1: every ledger row is queued
 """)
 
 # Gate 2: the staged rows.
@@ -174,9 +173,10 @@ c = one(f"""SELECT count(*) AS n, count(DISTINCT work_id) AS ids,
     count_if(NOT not_classifiable AND NOT catalogue_record AND size(topics) <> 3) AS bad_size,
     count_if((not_classifiable OR catalogue_record) AND size(topics) <> 0) AS bad_nc,
     count_if(exists(topics, t -> t.display_name IS NULL OR t.subfield.id IS NULL OR t.field.id IS NULL OR t.domain.id IS NULL OR t.score IS NULL)) AS unresolved,
-    (SELECT count(*) FROM {ROWS} r JOIN {TARGET} v ON v.work_id = r.work_id WHERE NOT r.rescore) AS already_in_target,
+    -- a new work already served with these topics is a repair of an earlier attempt; with other topics, another writer
+    (SELECT count(*) FROM {ROWS} r JOIN {TARGET} v ON v.work_id = r.work_id AND to_json(v.topics) <> to_json(r.topics) WHERE NOT r.rescore) AS already_in_target,
     count_if(rescore) AS rescore,
-    (SELECT count(*) FROM {ROWS} r LEFT ANTI JOIN {TARGET} v ON v.work_id = r.work_id WHERE r.rescore) AS rescore_not_served,
+    (SELECT count(*) FROM {ROWS} r JOIN {TARGET} v ON v.work_id = r.work_id WHERE r.rescore) AS rescore_served,
     max(typeof(topics)) AS typ FROM {ROWS}""")
 log(f"gate 2: {c.asDict()}")
 if DRY:
@@ -185,23 +185,15 @@ bad = []
 if not (c.n == c.ids == n and c.nulls == 0): bad.append(f"staged rows {c.n:,} / ids {c.ids:,} / nulls {c.nulls:,} != queue {n:,}")
 if c.bad_size or c.bad_nc or c.unresolved: bad.append(f"bad_size {c.bad_size:,} bad_nc {c.bad_nc:,} unresolved {c.unresolved:,}")
 if c.typ != SERVED_TYPE: bad.append(f"topics type {c.typ} != served {SERVED_TYPE}")
-n_new = c.n - c.rescore
-if c.already_in_target and c.already_in_target != n_new: bad.append(f"{c.already_in_target:,} of {n_new:,} new works already in {TARGET} (another writer?)")
-if c.rescore_not_served: bad.append(f"{c.rescore_not_served:,} re-scored works have no row in {TARGET} (deleted meanwhile?)")
+if c.already_in_target: bad.append(f"{c.already_in_target:,} new works already in {TARGET} with other topics (another writer?)")
+if c.rescore_served != c.rescore: bad.append(f"{c.rescore - c.rescore_served:,} re-scored works have no row in {TARGET} (deleted meanwhile?)")
 if bad:
     raise RuntimeError("refusing to append, NOTHING appended: " + "; ".join(bad))
 
 # COMMAND ----------
 
-repair = bool(n_new) and c.already_in_target == n_new
-if repair:
-    # a repair of this task after its MERGE went through: accept only if the new works' served rows are these rows
-    same = one(f"SELECT count(*) AS n FROM {ROWS} r JOIN {TARGET} v ON v.work_id = r.work_id AND to_json(v.topics) = to_json(r.topics) WHERE NOT r.rescore").n
-    if same != n_new:
-        raise RuntimeError(f"all {n_new:,} new work_ids are already in {TARGET} but only {same:,} with these topics; NOTHING written")
-    log(f"all {n_new:,} new rows of build {build_id} are already in {TARGET} (an earlier attempt wrote them); the MERGE below is a no-op for them")
-
-# Keep every row a re-score replaces (once per build: a repair finds them saved), then one MERGE: update re-scores, insert new works.
+# Keep every row a re-score replaces (once per build: a repair finds them saved), then one idempotent MERGE: update re-scores,
+# insert new works.
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {REPLACED} (build_id STRING, replaced_at TIMESTAMP, work_id BIGINT, topics {TOPICS_TYPE},
   not_classifiable BOOLEAN, catalogue_record BOOLEAN, source STRING, created_datetime TIMESTAMP, updated_datetime TIMESTAMP, text_key BIGINT)
   COMMENT 'Topics nightly (oxjob #2085): served rows replaced by a re-score, one per (build, work); restore a build by MERGE from here'""")
@@ -213,20 +205,18 @@ LEFT ANTI JOIN (SELECT work_id FROM {REPLACED} WHERE build_id = '{build_id}') d 
 saved = one(f"SELECT count(*) AS n FROM {REPLACED} WHERE build_id = '{build_id}'").n
 if saved != c.rescore:
     raise RuntimeError(f"{REPLACED} holds {saved:,} rows for build {build_id}, expected {c.rescore:,}; NOTHING written")
-before = spark.table(TARGET).count()
-spark.sql(f"""MERGE INTO {TARGET} v USING {ROWS} r ON v.work_id = r.work_id
+m = spark.sql(f"""MERGE INTO {TARGET} v USING {ROWS} r ON v.work_id = r.work_id
 WHEN MATCHED THEN UPDATE SET v.topics = r.topics, v.not_classifiable = r.not_classifiable, v.catalogue_record = r.catalogue_record,
   v.source = r.source, v.text_key = r.text_key, v.updated_datetime = r.updated_datetime
 WHEN NOT MATCHED THEN INSERT (work_id, topics, not_classifiable, catalogue_record, source, created_datetime, updated_datetime, text_key)
-  VALUES (r.work_id, r.topics, r.not_classifiable, r.catalogue_record, r.source, r.created_datetime, r.updated_datetime, r.text_key)""")
-after = spark.table(TARGET).count()
-appended = after - before
+  VALUES (r.work_id, r.topics, r.not_classifiable, r.catalogue_record, r.source, r.created_datetime, r.updated_datetime, r.text_key)""").collect()[0]
+appended = int(m.num_inserted_rows)
 served = one(f"""SELECT count(*) AS n FROM {ROWS} r JOIN {TARGET} v ON v.work_id = r.work_id
   AND to_json(v.topics) = to_json(r.topics) AND v.text_key <=> r.text_key""").n
-log(f"merged build {build_id} into {TARGET}: {appended:,} new rows ({before:,} -> {after:,}), {c.rescore:,} re-scored rows updated; "
+log(f"merged build {build_id} into {TARGET}: {appended:,} new rows, {m.num_updated_rows:,} rows updated ({c.rescore:,} re-scores); "
     f"{served:,} of {c.n:,} rows now served as staged")
-if appended != (0 if repair else n_new) or served != c.n:
-    raise RuntimeError(f"expected {n_new:,} new rows and {c.n:,} served as staged; got {appended:,} / {served:,} (another writer?)")
+if served != c.n or appended > c.n - c.rescore:
+    raise RuntimeError(f"{served:,} of {c.n:,} rows served as staged, {appended:,} inserted for {c.n - c.rescore:,} new works (another writer?)")
 
 spark.sql(f"""INSERT INTO {RUNS} ({RUN_COLS}) VALUES ('{build_id}', {n}, {g.rows}, {appended}, {c.nc}, {c.catalogue},
   {float(task_value('topics_score_modal', 'usd_est', 0.0))}, {float(task_value('topics_score_modal', 'modal_wall_s', 0.0))}, '{TARGET}',

@@ -9,7 +9,8 @@
 # MAGIC copied into `<state_prefix>replaced` with the build id (restore a build by MERGE from there). No other row is touched. Any
 # MAGIC failed check fails the task and writes nothing. Then every work of the build (with or without keywords) is recorded in the
 # MAGIC tagged-ids record `<state_prefix>tagged` with the `text_key` it was tagged on (so it is queued again only if its text
-# MAGIC changes), and one line goes into `<state_prefix>runs`. A repair re-runs the same idempotent MERGEs.
+# MAGIC changes), and one line goes into `<state_prefix>runs`. A repair re-runs the same idempotent MERGEs (a new work already served
+# MAGIC with these keywords passes the checks; with other keywords it fails them).
 # MAGIC The next End 2 End merges work_keywords_v2 into `openalex_works` (one re-stamp per new or re-tagged work).
 
 # COMMAND ----------
@@ -54,8 +55,6 @@ spark.sql(f"""CREATE TABLE IF NOT EXISTS {RUNS} (build_id STRING, queued BIGINT,
   COMMENT 'Keywords nightly (oxjob #1322): one row per finished run'""")
 if "retagged" not in {c.name for c in spark.table(RUNS).schema}:
     spark.sql(f"ALTER TABLE {RUNS} ADD COLUMNS (retagged BIGINT COMMENT 'works tagged again because their text changed (oxjob #2085)')")
-if "text_key" not in {c.name for c in spark.table(TAGGED).schema}:
-    spark.sql(f"ALTER TABLE {TAGGED} ADD COLUMNS (text_key BIGINT COMMENT 'xxhash64(title, abstract[:6000]) the work was tagged on (oxjob #2085)')")
 RUN_COLS = "build_id, queued, tagged, appended, no_keywords, assignments, usd_est, modal_wall_s, target, finished_at, retagged"
 q = spark.sql(f"SELECT count(*) AS n, max(build_id) AS b FROM {QUEUE}").collect()[0]
 n, build_id = int(q.n), q.b
@@ -67,58 +66,46 @@ if n == 0:
 tagged_n = spark.sql(f"SELECT count(*) AS n FROM {RAW} WHERE build_id = '{build_id}'").collect()[0].n
 if tagged_n != n:
     raise RuntimeError(f"{RAW} holds {tagged_n:,} rows for build {build_id}, queue {n:,}")
-# re-tagged works (oxjob #2085); a queue built before #2085 has none and no text_key
 qcols = {c.name for c in spark.table(QUEUE).schema}
-RETAG = f"(SELECT id FROM {QUEUE} WHERE retag)" if "retag" in qcols else kn.NO_RETAG
-QKEY = "q.text_key" if "text_key" in qcols else "CAST(NULL AS BIGINT)"
+RETAG = kn.retag_ids(QUEUE, qcols)   # re-tagged works (oxjob #2085)
+QKEY = "q.text_key" if "text_key" in qcols else "CAST(NULL AS BIGINT)"   # remove with retag_ids' fallback, after 2026-11-10
 n_retag = spark.sql(f"SELECT count(*) AS n FROM {RETAG}").collect()[0].n
 
 # COMMAND ----------
 
 res = {k: spark.sql(sql).collect()[0].asDict() for k, sql in kn.check_statements(ROWS, TARGET, QUEUE, retag=RETAG).items()}
 print(json.dumps(res, indent=1, default=str))
-rows_n, already = int(res["shape"]["works"]), int(res["already_in_target"]["n"])
-rows_new = spark.sql(f"SELECT count(*) AS n FROM {ROWS} r LEFT ANTI JOIN {RETAG} q ON q.id = r.work_id").collect()[0].n
-repair = bool(rows_new) and already == rows_new
-if repair:
-    # a repair of this task after its MERGE went through: accept only if the new works' served rows are these rows
-    same = spark.sql(f"""SELECT count(*) AS n FROM {ROWS} r JOIN {TARGET} t ON t.work_id = r.work_id AND to_json(t.keywords) = to_json(r.keywords)
-      LEFT ANTI JOIN {RETAG} q ON q.id = r.work_id""").collect()[0].n
-    if same != rows_new:
-        raise RuntimeError(f"all {rows_new:,} new work_ids are already in {TARGET} but only {same:,} with these keywords; NOTHING written")
-    log(f"all {rows_new:,} new rows of build {build_id} are already in {TARGET} (an earlier attempt wrote them); the MERGE below repeats them")
-    res["already_in_target"]["n"] = 0
+rows_n = int(res["shape"]["works"])
 ok, bad = kn.checks_pass(res)
 if not ok:
     raise RuntimeError("pre-append checks failed, NOTHING written: " + "; ".join(bad))
 log(f"checks pass: {rows_n:,} rows for build {build_id} ({n_retag:,} works re-tagged)")
 
-# Keep every served row a re-tag replaces or deletes (once per build: a repair finds them saved), then one MERGE.
+# Keep every served row a re-tag changes or deletes (not yet saved for this build, not already equal to its staged row: so a
+# repair saves nothing twice), then one idempotent MERGE.
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {REPLACED} (build_id STRING, replaced_at TIMESTAMP, work_id BIGINT,
   keywords ARRAY<STRUCT<id: STRING, display_name: STRING, score: FLOAT>>, tagger_version STRING, updated_at TIMESTAMP)
   COMMENT 'Keywords nightly (oxjob #2085): served rows replaced or deleted by a re-tag, one per (build, work); restore a build by MERGE from here'""")
-spark.sql(f"""INSERT INTO {REPLACED}
-SELECT '{build_id}', current_timestamp(), t.work_id, t.keywords, t.tagger_version, t.updated_at
-FROM {TARGET} t JOIN {RETAG} q ON q.id = t.work_id
-LEFT ANTI JOIN (SELECT work_id FROM {REPLACED} WHERE build_id = '{build_id}') d ON d.work_id = t.work_id""")
-unsaved = spark.sql(f"""SELECT count(*) AS n FROM {TARGET} t JOIN {RETAG} q ON q.id = t.work_id
-  LEFT ANTI JOIN (SELECT work_id FROM {REPLACED} WHERE build_id = '{build_id}') d ON d.work_id = t.work_id""").collect()[0].n
+to_save = f"""FROM {TARGET} t JOIN {RETAG} q ON q.id = t.work_id
+  LEFT ANTI JOIN {ROWS} r ON r.work_id = t.work_id AND to_json(r.keywords) = to_json(t.keywords)
+  LEFT ANTI JOIN (SELECT work_id FROM {REPLACED} WHERE build_id = '{build_id}') d ON d.work_id = t.work_id"""
+spark.sql(f"INSERT INTO {REPLACED} SELECT '{build_id}', current_timestamp(), t.work_id, t.keywords, t.tagger_version, t.updated_at {to_save}")
+unsaved = spark.sql(f"SELECT count(*) AS n {to_save}").collect()[0].n
 if unsaved:
     raise RuntimeError(f"{unsaved:,} served rows of re-tagged works are not saved in {REPLACED}; NOTHING written")
-before = spark.table(TARGET).count()
-spark.sql(f"""MERGE INTO {TARGET} t
+m = spark.sql(f"""MERGE INTO {TARGET} t
 USING (SELECT COALESCE(r.work_id, q.id) AS work_id, r.keywords, r.tagger_version FROM {ROWS} r FULL OUTER JOIN {RETAG} q ON q.id = r.work_id) s
 ON t.work_id = s.work_id
 WHEN MATCHED AND s.keywords IS NULL THEN DELETE
 WHEN MATCHED THEN UPDATE SET t.keywords = s.keywords, t.tagger_version = s.tagger_version, t.updated_at = current_timestamp()
 WHEN NOT MATCHED AND s.keywords IS NOT NULL THEN INSERT (work_id, keywords, tagger_version, updated_at)
-  VALUES (s.work_id, s.keywords, s.tagger_version, current_timestamp())""")
-after = spark.table(TARGET).count()
+  VALUES (s.work_id, s.keywords, s.tagger_version, current_timestamp())""").collect()[0]
+appended = int(m.num_inserted_rows)
 chk = spark.sql(f"""SELECT
   (SELECT count(*) FROM {ROWS} r JOIN {TARGET} t ON t.work_id = r.work_id AND to_json(t.keywords) = to_json(r.keywords)) AS served,
   (SELECT count(*) FROM {RETAG} q JOIN {TARGET} t ON t.work_id = q.id LEFT ANTI JOIN {ROWS} r ON r.work_id = q.id) AS emptied_still_served""").collect()[0]
-appended = rows_new if not repair else 0
-log(f"merged build {build_id} into {TARGET}: {before:,} -> {after:,} rows; {chk.served:,} of {rows_n:,} rows served as staged")
+log(f"merged build {build_id} into {TARGET}: {appended:,} inserted, {m.num_updated_rows:,} updated, {m.num_deleted_rows:,} deleted; "
+    f"{chk.served:,} of {rows_n:,} rows served as staged")
 if chk.served != rows_n or chk.emptied_still_served:
     raise RuntimeError(f"after the MERGE {chk.served:,} of {rows_n:,} rows are served as staged and {chk.emptied_still_served:,} re-tagged works "
                        "without keywords still have a row (another writer?)")
