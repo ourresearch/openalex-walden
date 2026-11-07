@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.38-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.40-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -12,6 +12,7 @@ import pandas as pd
 
 from openalex.dlt.normalize import normalize_title_udf, normalize_license, normalize_license_udf, walden_works_schema
 from openalex.dlt.transform import apply_initial_processing, apply_final_merge_key_and_filter, enrich_with_features_and_author_keys
+from openalex.dlt.heritage_feeds import HERITAGE_DATACITE_CLIENTS
 
 # COMMAND ----------
 
@@ -130,6 +131,13 @@ CASE
 END
 """
 
+def _not_heritage_client(client_col):
+    """True unless the record's DataCite client is on the #1647 heritage list. A NULL client is kept."""
+    if not HERITAGE_DATACITE_CLIENTS:
+        return F.lit(True)
+    return ~F.coalesce(F.lower(client_col).isin(*sorted(HERITAGE_DATACITE_CLIENTS)), F.lit(False))
+
+
 @dlt.table(
     name="datacite_parsed",
     comment="Datacite works table in the Walden schema",
@@ -138,6 +146,13 @@ END
 def datacite_parsed():
     return (
         dlt.read_stream("datacite_items")
+        # oxjob #1647 (Jason + Kyle, 6 Nov 2026): DataCite clients (repositories) that hold cultural-heritage collections
+        # are not ingested; the list is heritage_feeds.HERITAGE_DATACITE_CLIENTS, generated from the checked unit list.
+        # This pipeline has no delete events (datacite_works takes upserts only), so nothing has to bypass the filter; if
+        # a delete path is ever added, deletes must bypass it (repo's keep_when), or they never reach datacite_works.
+        # Records already in datacite_works leave through CreateSuperLocations' anti-join on
+        # openalex.works.oxjob1647_heritage_removed. Revert: empty the list (or revert the commit).
+        .filter(_not_heritage_client(F.col("relationships.client.data.id")))
         .repartition(2000)
         .withColumn("native_id", F.col("id"))
         .withColumn("native_id_namespace",
