@@ -4,9 +4,9 @@ Jason + Kyle, 6 Nov 2026: stop harvesting the heritage collections their holders
 OAI-PMH endpoints, OAI-PMH sets inside endpoints we keep, and DataCite clients (repositories). Each unit was
 sample-checked before it was listed. 'Harvest less', not a per-record rule.
 
-GENERATED -- do not edit by hand. Source: openalex.works.oxjob1647_heritage_drop_units (snapshot openalex.works.oxjob1647_heritage_units_shipped, 2026-11-06T17:10:16.956Z),
-written by oxjobs #1647 work/heritage/build/gen_lists.py at 2026-11-06 11:14 CT.
-87 endpoints, 2246 sets on 268 endpoints, 8 DataCite clients.
+GENERATED -- do not edit by hand. Source: openalex.works.oxjob1647_heritage_drop_units (snapshot openalex.works.oxjob1647_heritage_units_shipped, 2026-11-07T13:56:45.264Z),
+written by oxjobs #1647 work/heritage/build/gen_lists.py at 2026-11-07 07:59 CT.
+88 endpoints, 2249 sets on 270 endpoints, 8 DataCite clients.
 
 Readers: repo_filters.apply_endpoint_filters (endpoints + sets; sets match the setSpec EXACTLY, unlike the
 prefix carves in ENDPOINT_SETSPEC_DELETE) and notebooks/ingest/DataCite.py (clients). Records harvested before
@@ -46,6 +46,7 @@ HERITAGE_ENDPOINTS_TO_DELETE = frozenset({
     '46411b64c9ca213e010',  # Digital Howard (Howard University)
     '49ea1177be6bc9c2a0a',  # CONTENTdm digital collection (cdm16681.contentdm.oclc.org)
     '4d7d0f61cd3de0c6ec7',  # 
+    '505c040133700abd71d',  # Paris city libraries catalogue (bibliotheques-specialisees.paris.fr: BHdV, BHVP, Forney, M
     '51adfe741794848bb25',  # SA Health Libr serv
     '54d8fb3c570b0bf96ba',  # Knowledge@UChicago (University of Chicago)
     '55bde43a9b044bcf9a6',  # CONTENTdm digital collection (cdm16630.contentdm.oclc.org)
@@ -575,6 +576,9 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
         'publication:press_releases_collection', 'publication:theatre', 'publication:theatre_productions',
         'publication:theatre_productions_images', 'publication:umac', 'publication:years_of_service',
     ),
+    '5922d4d4b6054f98ee1': (  # State Library of Massachusetts
+        'com_123456789_2', 'com_2452_219464',
+    ),
     '5aa6e8e31ca9b94882b': (  # Accreditation & Assessment
         'publication:accreditation_assessment', 'publication:archives', 'publication:archives_guardian',
         'publication:archives_senate', 'publication:archives_ua_photos',
@@ -613,6 +617,9 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
     '5e3c32daa26631180b5': (  # Maine Women Writers Collection
         'publication:mwwc', 'publication:neohc', 'publication:special', 'publication:wchc',
         'publication:wchc_photos', 'publication:wchc_photos_students', 'publication:wchc_photos_students1960s',
+    ),
+    '5eca2fb148cfa8bc447': (  # Federal Senate digital library (Biblioteca Digital do Senado Federal)
+        'com_id_5',
     ),
     '5f5c7ea53ed1c2c4c54': (  # Iconography
         'bcpw:18', 'bcpw:18:arch_sakr', 'bcpw:18:lotnicze', 'bcpw:18:sarp', 'bcpw:18:sarp_son2023',
