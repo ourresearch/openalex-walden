@@ -79,10 +79,84 @@ def _collect_date_counts(df: DataFrame):
 
     Computed once per entity in export_partitioned_all_formats and shared by both
     format writers, so the 500M-row aggregation runs once instead of twice.
+    Uses the `_partition_date` column when the caller already added it.
     """
-    rows = (df.groupBy(_partition_date_col().alias("_partition_date"))
+    part = F.col("_partition_date") if "_partition_date" in df.columns else _partition_date_col()
+    rows = (df.groupBy(part.alias("_partition_date"))
               .count().collect())
     return [(r["_partition_date"], r["count"]) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# A published partition never grows (oxjob #2083)
+# ---------------------------------------------------------------------------
+# Entity builds stamp records after that day's export has run (Authors 12:00 UTC,
+# sources 13-23 UTC, institutions ~18 UTC). Partitioning by the plain
+# to_date(updated_date) then put those records into partition D of the NEXT day's
+# snapshot, a partition subscribers syncing "partitions newer than my last
+# snapshot" had already passed: they missed 72% of author, 64% of source and 65%
+# of institution updates over the 31 dailies to 7 Nov 2026.
+#
+# Fix: each export records, per entity, the newest updated_date it included
+# (`included_max_ts`) in PARTITION_CUTOFFS_TABLE. A later export moves a record
+# dated D whose updated_date is newer than export D's cutoff (stamped after daily D
+# was written) into partition D+1, the first daily that carried it. Each build
+# stamps one timestamp per run, so "newer than the newest stamp export D saw" means
+# "not in export D". Dates with no cutoff row (exports before this change, or a day
+# with no export) keep the plain partition, which is where they were published.
+# Works are stamped inside the End 2 End before export_works: no works partition
+# grew in those 31 nights, so works keep the plain rule and the night's longest
+# export is untouched. Add "works" here if old_partition_growth.py ever shows one.
+# Any error here falls back to the plain partition (the old behavior).
+# Revert: git revert; the cutoffs table is then unused (DROP it if you like).
+PARTITION_CUTOFFS_TABLE = "openalex.common.snapshot_partition_cutoffs"
+PLAIN_PARTITION_ENTITIES = {"works"}
+
+
+def _with_partition_date(spark, df: DataFrame, entity: str, date_str: str) -> DataFrame:
+    """Return `df` with a `_partition_date` column (see the block comment above)."""
+    plain = _partition_date_col()
+    if entity in PLAIN_PARTITION_ENTITIES:
+        return df.withColumn("_partition_date", plain)
+    try:
+        cutoffs = (spark.read.table(PARTITION_CUTOFFS_TABLE)
+                   .where((F.col("entity") == entity)
+                          & (F.col("snapshot_date") < F.lit(date_str).cast("date")))
+                   .groupBy(F.col("snapshot_date").alias("_cut_date"))
+                   .agg(F.max("included_max_ts").alias("_cut_ts")))
+        n_cut = cutoffs.count()
+        shifted = (df.withColumn("_plain_date", plain)
+                     .join(F.broadcast(cutoffs), F.col("_plain_date") == F.col("_cut_date"), "left")
+                     .withColumn("_partition_date", F.when(
+                         F.col("_cut_date").isNotNull() & F.col("updated_date").isNotNull()
+                         & (F.col("_cut_ts").isNull() | (F.col("updated_date") > F.col("_cut_ts"))),
+                         F.date_add(F.col("_plain_date"), 1)).otherwise(F.col("_plain_date")))
+                     .drop("_plain_date", "_cut_date", "_cut_ts"))
+        print(f"  partition cutoffs: {n_cut} earlier export date(s) for {entity}")
+        return shifted
+    except Exception as e:
+        print(f"  WARNING partition cutoffs unavailable for {entity} ({e!r}); "
+              f"plain updated_date partitions this run")
+        return df.withColumn("_partition_date", plain)
+
+
+def _record_partition_cutoff(spark, df: DataFrame, entity: str, date_str: str):
+    """Append this export's cutoff: the newest updated_date dated `date_str` it holds
+    (NULL when none, meaning any later record dated `date_str` was not in it)."""
+    if entity in PLAIN_PARTITION_ENTITIES:
+        return
+    try:
+        cut = (df.where(F.to_date("updated_date") == F.lit(date_str).cast("date"))
+                 .agg(F.max("updated_date").alias("included_max_ts"))
+                 .select(F.lit(entity).alias("entity"),
+                         F.lit(date_str).cast("date").alias("snapshot_date"),
+                         "included_max_ts",
+                         F.current_timestamp().alias("written_at")))
+        cut.write.mode("append").saveAsTable(PARTITION_CUTOFFS_TABLE)
+        print(f"  partition cutoff for {entity} {date_str}: {cut.first()['included_max_ts']}")
+    except Exception as e:
+        print(f"  WARNING could not record the partition cutoff for {entity} ({e!r}); "
+              f"tomorrow's export keeps this day's late records in the plain partition")
 
 
 def _date_counts_df(spark, date_counts):
@@ -329,11 +403,11 @@ def export_partitioned_jsonl(spark, dbutils, df: DataFrame, date_str: str, entit
     except Exception:
         pass
 
-    df_p = df.withColumn("_partition_date", _partition_date_col())
+    df_p = df if "_partition_date" in df.columns else df.withColumn("_partition_date", _partition_date_col())
 
     if salt:
         if date_counts is None:
-            date_counts = _collect_date_counts(df)
+            date_counts = _collect_date_counts(df_p)
         df_with_count = df_p.join(F.broadcast(_date_counts_df(spark, date_counts)),
                                   on="_partition_date")
         df_salted = _apply_salting(df_with_count)
@@ -408,11 +482,11 @@ def export_partitioned_parquet(spark, dbutils, df: DataFrame, date_str: str, ent
     except Exception:
         pass
 
-    df_p = df.withColumn("_partition_date", _partition_date_col())
+    df_p = df if "_partition_date" in df.columns else df.withColumn("_partition_date", _partition_date_col())
 
     if salt:
         if date_counts is None:
-            date_counts = _collect_date_counts(df)
+            date_counts = _collect_date_counts(df_p)
         df_with_count = df_p.join(F.broadcast(_date_counts_df(spark, date_counts)),
                                   on="_partition_date")
         df_salted = _apply_salting(df_with_count)
@@ -489,6 +563,9 @@ def export_partitioned_all_formats(spark, dbutils, df: DataFrame, date_str: str,
             _write_entity_meta(dbutils, date_str, fmt, entity, 0, 0, [])
         return
 
+    # Partition per record, final once published (oxjob #2083); both writers share it.
+    df = _with_partition_date(spark, df, entity, date_str)
+
     # One per-date aggregation shared by both format writers (salting input).
     date_counts = None
     if salt:
@@ -518,5 +595,7 @@ def export_partitioned_all_formats(spark, dbutils, df: DataFrame, date_str: str,
         ]
         for fut in as_completed(futs):
             fut.result()
+
+    _record_partition_cutoff(spark, df, entity, date_str)
 
     print(f"  {entity}: export complete")
