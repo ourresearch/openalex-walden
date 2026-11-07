@@ -541,7 +541,8 @@ resources:
         # oxjob #2082: fwci and both percentiles move every night without re-stamping a work, so sync_works never re-sends
         # them. Partial updates of only those three fields for works past the lines (fwci 1%, CNP 0.01, percentile-year
         # 2 points), state in openalex.works.es_work_metrics_served. Last ES writer of the run (the shepherd's order,
-        # 7 Nov): after both syncs and both deletes. Cap 10M a run (the rest waits a night); US daytime 2 writers.
+        # 7 Nov): after both syncs and both deletes. Cap 10M a run (the rest waits a night); 24 bulk streams at night,
+        # 6 after 07:00 CT (12 took the API probe p50 to 0.9 s at 10:15 CT Sat 7 Nov at 26 nodes).
         # Revert: delete this task.
         - task_key: Sync_Work_Metrics_to_Elasticsearch
           timeout_seconds: 14400
@@ -554,6 +555,7 @@ resources:
               mode: "nightly"
               max_push: "10000000"
               writers: "24"
+              day_writers: "6"
             source: GIT
           job_cluster_key: es_sync_cluster
         - task_key: Sync_Works_to_Lakebase
