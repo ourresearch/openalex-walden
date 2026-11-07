@@ -399,6 +399,43 @@ MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
 MAX_AFFILIATION_STRING_LENGTH = 1000
 
+# oxjob #1800: which dc:description is the abstract. Many repositories put a short note first ("Orientador: ...",
+# "107 p.", "Thesis (M. Eng.)--MIT, 1998.", a DSpace deposit notice) and the abstract in a later dc:description, and
+# this parser took only the first (and dropped it under 100 characters). On the endpoints listed in DESC_CHOOSER_TABLE
+# (each judged on a sample: the later description was the work's own abstract), a weak first description (blank, under
+# 100 characters after trim, or a deposit notice) gives way to the first later one of 200+ characters that does not
+# open like a notice and is not a Zenodo/Plazi "Published as part of ..." citation line. Used below only where this
+# parser's own pick yields nothing (gain-only). Rule desc-v2; its bar passed for this path (95 of 100 works that showed
+# no abstract now show their own; oxjobs #1800 EXPLORE § 38). Repo.py's live path does NOT use it: there the same rule
+# failed its bar on works that show no abstract (79 of 88). Revert: empty the table and re-run this job, or git revert.
+DESC_CHOOSER_TABLE = "openalex.repo.desc_chooser_endpoints"
+
+
+def read_desc_chooser_endpoints(spark, table=DESC_CHOOSER_TABLE):
+    """Endpoint ids where the description chooser is on, read once (a few hundred rows), sorted for a stable plan.
+    Fails loudly if the table can't be read, like read_endpoint_hosts."""
+    return sorted(r.endpoint_id for r in spark.read.table(table).select("endpoint_id").distinct().collect())
+
+
+def desc_chooser_sql(descs, endpoint, endpoints):
+    """SQL for the abstract among `descs` (array<string>, document order) of a record from `endpoint` (a column);
+    `endpoints` = the ids where the chooser is on, inlined as a literal list (no join, no stateful-plan change)."""
+    opens_like_notice = ("rlike(trim({x}), '^(Submitted by |Made available in DSpace on |Approved for entry into archive "
+                         "by |Rejected by |Item withdrawn by )')")
+    first = f"get({descs}, 0)"
+    weak = (f"(coalesce(length(trim({first})), 0) < 100"
+            f" or ({opens_like_notice.format(x=first)} and {first} like '%No. of bitstreams%'))")
+    good = (f"x -> length(trim(x)) >= 200 and not {opens_like_notice.format(x='x')}"
+            " and not trim(x) like 'Published as part of %'")
+    later = f"get(filter(slice({descs}, 2, greatest(size({descs}) - 1, 1)), {good}), 0)"
+    if not endpoints:
+        return first
+    on = f"{endpoint} in ({', '.join(repr(e) for e in endpoints)})"
+    return f"case when {on} and {weak} then coalesce({later}, {first}) else {first} end"
+
+
+DESC_CHOOSER_ENDPOINTS = read_desc_chooser_endpoints(spark)
+
 # COMMAND ----------
 
 spark.conf.set("spark.sql.ansi.enabled", "false")
@@ -417,6 +454,12 @@ spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
 # oxjob #1407: native_id is the header id with a placeholder host replaced by the endpoint's own
 # host -- the same shared function as Repo.py, so live and backfill copies of one record keep one
 # key. The raw id stays in oai_identifier for the host-parsing expressions; it is not selected below.
+# oxjob #1800: the abstract. abstract_raw (the first attribute-free <dc:description>, kept at 100+ chars) stays the
+# abstract whenever it yields one, byte for byte. Only when it yields nothing, on the description-chooser endpoints
+# (desc_chooser_sql above), a later description is taken; descriptions with attributes
+# (<dc:description xml:lang="pt">, matched after a space) count as candidates there. Gain-only: no record that had an
+# abstract on this path gets a different one. (Reading attributed descriptions on every endpoint failed its bar,
+# 66 of 100: library catalogue notes; #1800 EXPLORE § 38.)
 parsed_df = clean_df \
     .withColumn("oai_identifier", regexp_extract(col("cleaned_xml"), r"<identifier>(.*?)</identifier>", 1)) \
     .transform(lambda d: with_rekeyed_native_id(d, read_endpoint_hosts(spark), "endpoint_id")) \
@@ -497,10 +540,15 @@ parsed_df = clean_df \
         regexp_extract(col("cleaned_xml"), r"<datestamp>(.*?)</datestamp>", 1))) \
     .withColumn("abstract_raw", 
         element_at(expr("regexp_extract_all(cleaned_xml, '<dc:description>(.*?)</dc:description>')"), 1)) \
+    .withColumn("_descs", expr("regexp_extract_all(cleaned_xml, '<dc:description(?: [^>]*)?>(.*?)</dc:description>', 1)")) \
+    .withColumn("_desc_first", expr("get(_descs, 0)")) \
+    .withColumn("_desc_chosen", expr(desc_chooser_sql("_descs", "endpoint_id", DESC_CHOOSER_ENDPOINTS))) \
     .withColumn("abstract",
         when(length(col("abstract_raw")) >= MIN_ABSTRACT_LENGTH, 
             substring(col("abstract_raw"), 0, MAX_ABSTRACT_LENGTH))
+        .when(col("_desc_chosen") != col("_desc_first"), substring(col("_desc_chosen"), 0, MAX_ABSTRACT_LENGTH))
         .otherwise(lit(None))) \
+    .drop("_descs", "_desc_first", "_desc_chosen") \
     .withColumn("source_name", 
         regexp_extract(col("cleaned_xml"), r"<dc:source.*?>(.*?)</dc:source>", 1)) \
     .withColumn("publisher", 
