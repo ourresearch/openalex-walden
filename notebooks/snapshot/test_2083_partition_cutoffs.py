@@ -55,7 +55,8 @@ LIVE = {
 def counts(df, col):
     return {str(r[0]): r[1] for r in df.groupBy(col).count().collect()}
 
-for e, t in SNAP.items():
+dbutils.widgets.text("only", "")
+for e, t in (SNAP.items() if dbutils.widgets.get("only") != "writers" else []):
     pub = spark.read.table(t)
     published = counts(pub.withColumn("p", _partition_date_col()), "p")
     same = counts(_with_partition_date(spark, pub, e, NEXT), "_partition_date")
