@@ -20,10 +20,6 @@ resources:
         with the big caps in docs/study_design.md. Writes ONLY its own tables
         (works_study_design_queue / _tagger / _errors / _progress /
         works_study_design); nothing feeds CreateWorksEnriched or ES yet.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       schedule:
         # 19:00 UTC: after Walden End 2 End (05:00 UTC start, usually done by ~17:30)
         # so the day's new works are in openalex_works; before Works Daily Metrics

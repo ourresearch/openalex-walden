@@ -7,10 +7,6 @@ resources:
       # host, a stop rule, its own Zyte API key and a billing-cycle dollar cap. How to start, pause and
       # resume a campaign: the notebook's first cell. Keep the schedule UNPAUSED only while a campaign
       # runs (a tick with nothing to do exits at once, but still starts serverless compute).
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       schedule:
         quartz_cron_expression: 0 10/20 * * * ?
         timezone_id: UTC

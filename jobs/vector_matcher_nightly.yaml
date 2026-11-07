@@ -12,7 +12,6 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
-          - jason@openalex.org
         no_alert_for_skipped_runs: true
       timeout_seconds: 9000
       max_concurrent_runs: 1

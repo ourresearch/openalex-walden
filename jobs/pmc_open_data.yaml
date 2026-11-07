@@ -10,10 +10,6 @@ resources:
         row per DOI, Walden author keys) feeds CreateCrossrefSuperAuthorships, fill-only: corresponding
         flags where no other source flags one, affiliations for authors no other source gives one.
         The first backfill (~8M versions) is the same job run by hand with a large max_minutes.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       schedule:
         # after the bucket's 01:00 UTC inventory, before Walden End 2 End (05:00 UTC)
         quartz_cron_expression: 0 0 2 * * ?

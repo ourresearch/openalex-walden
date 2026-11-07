@@ -17,10 +17,6 @@ resources:
         night's new, updated and removed record URLs. Since 2026-10-17: no lastmod, no changed group, no IndexNow
         (change_signals=false); source=state re-publishes the published record set as is. Writes only
         openalex.sitemaps.* and the R2 bucket.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       schedule:
         # 20:00 UTC: after Walden End 2 End's publish path (05:00 UTC start; ES sync done by ~17:30 on most
         # days). The notebook refuses to run if today's works ES sync hasn't started.

@@ -10,10 +10,6 @@ resources:
         reason peer_review_borrowed, which CreateWorksBase anti-joins). Same rules as the 29-31 Oct builds
         (word for word, and near copies: label peer-review-nearcopy-v1:<rule>); only adds, never updates or deletes. Stops before writing above 20,000 new rows (a normal week is
         ~1K). Dry run: job parameter dry_run=true. Revert one run: the notebook's first cell.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       schedule:
         # Sunday 18:00 UTC: after the nightly End 2 End publishes (~15:30 UTC), before the next one (05:00 UTC).
         quartz_cron_expression: 0 0 18 ? * SUN

@@ -17,10 +17,6 @@ resources:
         the gte work_embeddings_v2 the v1 job was sized for), and the staging write shuffles all
         of it. On 2 workers the first attempt (run 572997100030065) filled both workers' elastic
         disks (4.2 TB each, 46 GB free) and stalled at 0.7% CPU for 3 h. Do not shrink this back.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       tasks:
         - task_key: sync_vector_index_qwen3

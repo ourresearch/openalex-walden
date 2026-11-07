@@ -7,10 +7,6 @@ resources:
     Autocomplete_Edge_Keywords:
       name: Autocomplete Edge keywords
       description: Edge autocomplete index for keywords (oxjob #1529), triggered by openalex.common.keywords_api.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -52,10 +48,6 @@ resources:
     Autocomplete_Edge_Sources:
       name: Autocomplete Edge sources
       description: Edge autocomplete index for sources (oxjob #1529), triggered by openalex.sources.sources_api.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -97,10 +89,6 @@ resources:
     Autocomplete_Edge_Institutions:
       name: Autocomplete Edge institutions
       description: Edge autocomplete index for institutions (oxjob #1529), triggered by openalex.institutions.institutions_api.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -142,10 +130,6 @@ resources:
     Autocomplete_Edge_Funders:
       name: Autocomplete Edge funders
       description: Edge autocomplete index for funders (oxjob #1529), triggered by openalex.funders.funders_api.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -187,10 +171,6 @@ resources:
     Autocomplete_Edge_Publishers:
       name: Autocomplete Edge publishers
       description: Edge autocomplete index for publishers (oxjob #1529), triggered by openalex.publishers.publishers_api.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -232,10 +212,6 @@ resources:
     Autocomplete_Edge_Concepts:
       name: Autocomplete Edge concepts
       description: Edge autocomplete index for concepts (oxjob #1529), triggered by openalex.common.concepts_api.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -277,10 +253,6 @@ resources:
     Autocomplete_Edge_Topics:
       name: Autocomplete Edge topics
       description: Edge autocomplete index for topics (oxjob #1529), triggered by openalex.common.topics_api.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -322,10 +294,6 @@ resources:
     Autocomplete_Edge_Awards:
       name: Autocomplete Edge awards
       description: Edge autocomplete index for awards (oxjob #1529), triggered by openalex.awards.awards_api.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -367,10 +335,6 @@ resources:
     Autocomplete_Edge_Authors:
       name: Autocomplete Edge authors
       description: Edge autocomplete index for authors (oxjob #1529), triggered by openalex.authors.openalex_authors.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -412,10 +376,6 @@ resources:
     Autocomplete_Edge_Front:
       name: Autocomplete Edge front
       description: Edge autocomplete index for front (oxjob #1529), triggered by openalex.common.keywords_api, openalex.institutions.institutions_api, openalex.sources.sources_api, openalex.funders.funders_api, openalex.publishers.publishers_api, openalex.common.topics_api.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       timeout_seconds: 7200
       trigger:
@@ -462,10 +422,6 @@ resources:
     Autocomplete_Edge_Freshness:
       name: Autocomplete Edge freshness
       description: Fails (and emails) when a type's source table changed over 60 minutes ago and the edge has not loaded it (oxjob #1529).
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       schedule:
         # 14:00 UTC: after the last source of the night (openalex.authors.openalex_authors, ~12:30 UTC) plus its refresh
         quartz_cron_expression: 0 0 14 * * ?

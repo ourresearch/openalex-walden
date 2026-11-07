@@ -23,10 +23,6 @@ resources:
         last sent
         (hash vs vector_filter_fields_sent) and deletes the docs of works that no longer exist, in paced batches guarded
         by merge count and kNN latency. Resumes unfinished nights; safe to re-run.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       schedule:
         quartz_cron_expression: "0 45 0 * * ?"   # 00:45 Central, quiet hours; after the 10:00 CT nightly's mirror MERGE

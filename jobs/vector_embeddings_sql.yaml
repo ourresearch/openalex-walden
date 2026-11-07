@@ -5,10 +5,6 @@ resources:
       description: |
         Generates embeddings for OpenAlex works using SQL warehouse + ai_query.
         Each run processes 50K works. Schedule to run continuously.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       schedule:
         # Run every 4 minutes (each batch takes ~2-3 min)

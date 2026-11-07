@@ -6,10 +6,6 @@ resources:
         Generates embeddings for all OpenAlex works using OpenAI text-embedding-3-small.
         Processes ~217M works with abstracts. Estimated ~8-10 days at full throughput.
         Uses ai_query via SQL warehouse to respect OpenAI rate limits.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       tasks:
         - task_key: generate_embeddings

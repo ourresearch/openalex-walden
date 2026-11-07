@@ -16,10 +16,6 @@ resources:
         works a night, about $2 of Modal GPU. State tables: openalex.works.work_keywords_v2_{queue, raw,
         tagged, runs, nrm_*, append_rows}. Rule tables: openalex.common.keywords_v2_{fold, synmap,
         purge, country_kids, boiler, templated} + UDF openalex.common.keywords_v2_kid0.
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       schedule:
         # 18:00 UTC: after End 2 End has written openalex_works (Guardrails ends 07:15-19:15 UTC, usually by
         # 10:00); build_queue waits up to wait_e2e_hours for a late run. Before Study Design (19:00 UTC).

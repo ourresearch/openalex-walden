@@ -9,9 +9,6 @@ resources:
   jobs:
     Export_Embeddings_to_Parquet:
       name: Export Embeddings to Parquet
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
       tasks:
         - task_key: export_embeddings
           notebook_task:

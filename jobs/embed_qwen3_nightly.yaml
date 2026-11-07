@@ -26,10 +26,6 @@ resources:
         (~20 min). Scheduled 15:00 UTC: Walden End 2 End starts 05:00 UTC and lands 11:00–13:30 UTC,
         so the night's new works are in openalex_works by then. Must not overlap the bulk
         runner or a full sync (job "Sync Vector Index to Elasticsearch (Qwen3, oxjob #1275)").
-      email_notifications:
-        on_failure:
-          - jason@ourresearch.org
-        no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
       schedule:
         quartz_cron_expression: "0 0 15 * * ?"   # daily 15:00 UTC, after Walden End 2 End lands

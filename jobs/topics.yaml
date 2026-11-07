@@ -15,7 +15,6 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
-          - jason@ourresearch.org
         no_alert_for_skipped_runs: true
       timeout_seconds: 21600
       parameters:
