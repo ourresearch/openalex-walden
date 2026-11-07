@@ -7,7 +7,8 @@
 # MAGIC discipline_lazy, venue_name, purge / dual-use, country evidence) -> templated sources capped at 2 -> only kids already in
 # MAGIC `openalex.common.keywords_v2` (nothing is added), position = first mention, score = round(exp(lp), 3), lp >= -1.2.
 # MAGIC Reads this build's rows of `<state_prefix>raw`; writes the per-run tables `<state_prefix>nrm_*` and the rows to append,
-# MAGIC `<state_prefix>append_rows`, in the exact `work_keywords_v2` shape. Works left with no keyword get no row.
+# MAGIC `<state_prefix>append_rows`, in the exact `work_keywords_v2` shape. Works left with no keyword get no row. Re-tagged works
+# MAGIC (queue `retag`, oxjob #2085) get rows even though they are served; AppendKeywords replaces theirs.
 
 # COMMAND ----------
 
@@ -53,7 +54,11 @@ m = spark.table(f"{P}nrm_raw").count()
 if m != n:
     raise RuntimeError(f"{RAW} holds {m:,} rows for build {build_id}, queue {n:,}: run the tag task first")
 
-values = dict(RAW=f"{P}nrm_raw", STAGE=f"{P}nrm_", ROWS=ROWS, TARGET=TARGET, KID0=dbutils.widgets.get("kid0_udf").strip(),
+# works re-tagged because their text changed (oxjob #2085): their new rows replace served ones; a queue from before #2085 has none
+retag_src = (f"SELECT id FROM {QUEUE} WHERE retag" if "retag" in {c.name for c in spark.table(QUEUE).schema}
+             else "SELECT CAST(NULL AS BIGINT) AS id WHERE false")
+spark.sql(f"CREATE OR REPLACE TABLE {P}nrm_retag AS {retag_src}")
+values = dict(RAW=f"{P}nrm_raw", STAGE=f"{P}nrm_", ROWS=ROWS, TARGET=TARGET, RETAG=f"{P}nrm_retag", KID0=dbutils.widgets.get("kid0_udf").strip(),
               FOLD=f"{RULES}fold", SYNMAP=dbutils.widgets.get("synmap").strip(), PURGE=f"{RULES}purge", COUNTRY_KIDS=f"{RULES}country_kids",
               BOILER=f"{RULES}boiler", TEMPLATED=f"{RULES}templated", VOCAB=kn.VOCAB_FROM_KEYWORDS_V2, TAGGER_VERSION=kn.TAGGER_VERSION,
               COMMENT=f"Keywords nightly (oxjob #1322): rows to append for build {build_id}")
