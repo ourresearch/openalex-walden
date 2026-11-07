@@ -538,6 +538,24 @@ resources:
           job_cluster_key: es_sync_cluster
           max_retries: 2
           min_retry_interval_millis: 300000
+        # oxjob #2082: fwci and both percentiles move every night without re-stamping a work, so sync_works never re-sends
+        # them. Partial updates of only those three fields for works past the lines (fwci 1%, CNP 0.01, percentile-year
+        # 2 points), state in openalex.works.es_work_metrics_served. Last ES writer of the run (the shepherd's order,
+        # 7 Nov): after both syncs and both deletes. Cap 10M a run (the rest waits a night); US daytime 2 writers.
+        # Revert: delete this task.
+        - task_key: Sync_Work_Metrics_to_Elasticsearch
+          timeout_seconds: 14400
+          depends_on:
+            - task_key: Delete_Works_from_Elasticsearch
+            - task_key: Delete_Locations_from_Elasticsearch
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_work_metrics
+            base_parameters:
+              mode: "nightly"
+              max_push: "10000000"
+              writers: "3"
+            source: GIT
+          job_cluster_key: es_sync_cluster
         - task_key: Sync_Works_to_Lakebase
           depends_on:
             - task_key: Guardrails
