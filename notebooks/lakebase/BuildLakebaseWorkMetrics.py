@@ -27,12 +27,15 @@ from pyspark.sql import functions as F
 
 dbutils.widgets.dropdown("mode", "dry_run", ["dry_run", "nightly", "full_build"])
 dbutils.widgets.dropdown("trigger_sync", "false", ["true", "false"])
+dbutils.widgets.text("max_rows", "20000000")   # rows rewritten a night at most (the synced-table refresh time)
 MODE = dbutils.widgets.get("mode")
 TRIGGER = dbutils.widgets.get("trigger_sync") == "true"
+MAX_ROWS = int(dbutils.widgets.get("max_rows") or 0) or None
 
 WORKS_TABLE = "openalex.works.openalex_works"
 METRICS_TABLE = "openalex.works.lakebase_work_metrics"
 SYNCED_TABLE = "openalex.lakebase.lakebase_work_metrics"
+CHANGES_TABLE = "openalex.works.lakebase_work_metrics_changes"  # tonight's rewrites (overwritten each run)
 FWCI_REL, CNP_ABS, PCT_POINTS = 0.01, 0.01, 2
 
 CURRENT = f"""
@@ -79,11 +82,26 @@ elif MODE == "dry_run":
     gone = spark.sql(f"SELECT count(*) AS n FROM {METRICS_TABLE} t LEFT ANTI JOIN {WORKS_TABLE} w ON w.id = t.work_id").collect()[0].n
     print(f"dry_run: new {r.new_works:,}, moved past the lines {r.moved:,}, gone {gone:,}")
 else:
+    # The rows to rewrite: new works, then moved works by size of move (largest first), at most MAX_ROWS a night; the
+    # rest wait a night (their rows stay within the old values until then). Gone works are deleted.
+    spark.sql(f"""
+        CREATE OR REPLACE TABLE {CHANGES_TABLE} AS
+        SELECT c.*, CASE WHEN t.work_id IS NULL THEN 1e9 ELSE greatest(
+            coalesce(abs(t.fwci - c.fwci) / greatest(abs(c.fwci), 0.0001) / {FWCI_REL}, 0),
+            coalesce(abs(t.cnp_value - c.cnp_value) / {CNP_ABS}, 0),
+            coalesce(greatest(abs(t.pct_min - c.pct_min), abs(t.pct_max - c.pct_max)) / {PCT_POINTS}, 0), 1.5) END AS score
+        FROM ({CURRENT}) c LEFT JOIN {METRICS_TABLE} t ON t.work_id = c.work_id
+        WHERE t.work_id IS NULL OR ({MOVED})
+    """)
+    n = spark.table(CHANGES_TABLE).count()
+    if MAX_ROWS and n > MAX_ROWS:
+        spark.sql(f"CREATE OR REPLACE TABLE {CHANGES_TABLE} AS SELECT * FROM {CHANGES_TABLE} ORDER BY score DESC, work_id LIMIT {MAX_ROWS}")
+        print(f"{n:,} rows past the lines; capped at {MAX_ROWS:,}, {n - MAX_ROWS:,} wait a night")
     m = spark.sql(f"""
         MERGE INTO {METRICS_TABLE} AS t
-        USING ({CURRENT}) AS c
+        USING {CHANGES_TABLE} AS c
         ON t.work_id = c.work_id
-        WHEN MATCHED AND ({MOVED}) THEN UPDATE SET
+        WHEN MATCHED THEN UPDATE SET
           t.fwci = c.fwci, t.has_cnp = c.has_cnp, t.cnp_value = c.cnp_value, t.cnp_top_1 = c.cnp_top_1,
           t.cnp_top_10 = c.cnp_top_10, t.has_pct = c.has_pct, t.pct_min = c.pct_min, t.pct_max = c.pct_max,
           t.updated_at = current_timestamp()
@@ -91,9 +109,12 @@ else:
           (work_id, fwci, has_cnp, cnp_value, cnp_top_1, cnp_top_10, has_pct, pct_min, pct_max, updated_at)
           VALUES (c.work_id, c.fwci, c.has_cnp, c.cnp_value, c.cnp_top_1, c.cnp_top_10, c.has_pct, c.pct_min,
                   c.pct_max, current_timestamp())
+    """).collect()[0].asDict()
+    gone = spark.sql(f"""
+        MERGE INTO {METRICS_TABLE} AS t USING (SELECT id FROM {WORKS_TABLE} WHERE id IS NOT NULL) AS w ON t.work_id = w.id
         WHEN NOT MATCHED BY SOURCE THEN DELETE
     """).collect()[0].asDict()
-    print(f"nightly MERGE: {m}")
+    print(f"nightly: {n:,} past the lines; MERGE {m}; gone {gone}")
 
 # COMMAND ----------
 
