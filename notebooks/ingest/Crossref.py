@@ -426,7 +426,10 @@ def crossref_parsed():
         .withColumn("elsevier_open_archive", elsevier_oa_started("vor"))
         .withColumn("elsevier_open_manuscript", elsevier_oa_started("am"))
         .withColumn("version", 
-            F.when(F.col("type") == "posted-content", F.lit("acceptedVersion"))
+            # oxjob #2094: posted content (preprints, working papers, posters, abstracts, blog posts) is posted, not
+            # formally published: submittedVersion, as Unpaywall always served it. CreateLocationsMapped applies the
+            # same rule to rows parsed before this line changed.
+            F.when(F.col("type") == "posted-content", F.lit("submittedVersion"))
             # only the accepted manuscript is free (Open Manuscript)
             .when(
                 F.col("elsevier_open_manuscript")
