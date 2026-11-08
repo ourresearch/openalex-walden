@@ -131,6 +131,25 @@ CASE
 END
 """
 
+# oxjob #2091: a record with no dates[] leaves the chain only its DOI registration timestamp, which for a backfilled DOI
+# is years after the work came out (EMSL/PNNL registered ~1.3M datasets of 2019-2025 in 2026; a 2005 Boreal Environment
+# Research article was registered in 2024). The record's own publicationYear (mandatory in DataCite) is then its only
+# statement of when the work came out: when the registration date falls in a later year, take 1 Jan of publicationYear
+# (year-only dates are 1 Jan, as in the #1865 rule above and Crossref.py). Same year: keep the registration day, a
+# plausible and more precise date. 1900+ only: the floor applied after the chain drops earlier dates anyway. Records
+# with any dates are untouched (#126). Records parsed before this rule are fixed by the one-time table
+# openalex.works.datacite_publication_year_fix, which CreateLocationsMapped applies (notebooks/maintenance/
+# BuildDataCitePublicationYearFix.sql). Revert: drop this expression and its withColumn line.
+DATACITE_NODATES_PY_SQL = f"""
+CASE
+  WHEN (attributes.dates IS NULL OR size(attributes.dates) = 0)
+       AND attributes.publicationYear BETWEEN 1900 AND 9999
+       AND year(published_date) > {_DC_PY}
+    THEN make_date({_DC_PY}, 1, 1)
+  ELSE published_date
+END
+"""
+
 def _not_heritage_client(client_col):
     """True unless the record's DataCite client is on the #1647 heritage list. A NULL client is kept."""
     if not HERITAGE_DATACITE_CLIENTS:
@@ -278,6 +297,7 @@ def datacite_parsed():
                 )
             ),
         )
+        .withColumn("published_date", F.expr(DATACITE_NODATES_PY_SQL))  # oxjob #2091
         .withColumn("published_date", F.expr(DATACITE_FUTURE_DATE_FIX_SQL))  # oxjob #1865
         .withColumn(
             "published_date",
