@@ -327,6 +327,15 @@ print(f"Total records to process: {record_count:,}")
 # isn't paying for replica writes. A full sync already dropped them at index setup.
 LARGE_SYNC_THRESHOLD = 10_000_000
 DROP_REPLICAS = IS_FULL_SYNC or record_count >= LARGE_SYNC_THRESHOLD
+# oxjob #1642: honour the night's keep_replicas pre-clear like sync_works (#1638), so a large incremental doesn't drop
+# locations' replicas and rebuild ~3 TB of copies into the US morning (night 2026-11-09: ~11M location docs from #2093 + #2094).
+# shortcut: kept only up to KEEP_REPLICAS_MAX docs; past that, writing every doc twice costs more than one rebuild
+# (6 Nov's 205M re-send ran with replicas 0).
+KEEP_REPLICAS_MAX = 30_000_000
+if DROP_REPLICAS and not IS_FULL_SYNC and record_count <= KEEP_REPLICAS_MAX and spark.sql(
+        "SELECT openalex.works.e2e_override_active('keep_replicas', 'false') AS active").collect()[0].active:
+    print(f"keep_replicas pre-cleared: replicas stay at 1 for this {record_count:,}-record sync")
+    DROP_REPLICAS = False
 if DROP_REPLICAS and not IS_FULL_SYNC:
     client = Elasticsearch(hosts=[ELASTIC_URL], request_timeout=180, max_retries=5, retry_on_timeout=True)
     client.indices.put_settings(index=CONFIG["index_name"], body={
