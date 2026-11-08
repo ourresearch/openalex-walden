@@ -26,7 +26,7 @@ import time
 for name, default in [("state_prefix", "openalex.works.work_keywords_v2_"), ("target", "openalex.works.work_keywords_v2"),
                       ("rules_prefix", "openalex.common.keywords_v2_"), ("synmap", "openalex.common.keywords_v2_synmap"),
                       ("kid0_udf", "openalex.common.keywords_v2_kid0"), ("max_works", "2000000"), ("shard_works", "25000"),
-                      ("min_tagged_rows", "400000000"), ("force_ids_table", ""), ("force_retag", "false"), ("max_retag", "300000"),
+                      ("min_tagged_rows", "400000000"), ("force_ids_table", ""), ("force_retag", "false"), ("max_retag", "1000000"),
                       ("wait_e2e_hours", "6"), ("e2e_job_id", "616701029470182"),
                       ("dry_run", "false")]:
     dbutils.widgets.text(name, default)
