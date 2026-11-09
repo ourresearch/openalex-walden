@@ -59,3 +59,12 @@ def test_the_comparison_keeps_literals_exact_and_skips_comments():
         except ValueError:
             continue
         raise AssertionError("cte() accepted " + refused)
+
+
+def test_prepare_affiliation_strings_carries_the_same_cte_before_the_works_merge():
+    cells = json.loads((REPO / "notebooks/end2end/PrepareAffiliationStrings.ipynb").read_text())["cells"]
+    code = [c["source"] if isinstance(c["source"], str) else "".join(c["source"]) for c in cells if c["cell_type"] == "code"]
+    grants = [k for k, s in enumerate(code) if "grant_addresses AS (" in s]
+    works = [k for k, s in enumerate(code) if "openalex.works.openalex_works_base" in s]
+    assert len(grants) == 1 and cte(code[grants[0]]) == EXPECTED
+    assert grants[0] < works[0]          # the nightly matcher takes the newest strings first: tonight's paper strings stay ahead
