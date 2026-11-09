@@ -204,13 +204,19 @@ INSTITUTIONS = {            # id: (display_name, country_code)
     70: ("Queens University", "BD"), 71: ("Queen's University", "CA"),
     80: ("Emory University", "US"), 81: ("Lincoln University", "NZ"), 82: ("Lincoln University", "US"),
     83: ("Universidad Técnica Federico Santa María", "CL"), 84: ("Universidad Técnica Federico Santa María", "EC"),
+    90: ("National Sun Yat-sen University", "TW"), 91: ("Sun Yat-sen University", "CN"), 92: ("Tunghai University", "TW"),
+    93: ("Tokai University", "JP"), 94: ("University of Sydney", "AU"), 95: ("Universidade de Lisboa", "PT"),
+    96: ("University of Hong Kong", "HK"), 97: ("National Central University", "TW"), 98: ("Chuo University", "JP"),
 }
+RORS = {94, 95, 90}          # institutions with a ROR in the fixture: https://ror.org/0<id, 6 digits>00
+FUNDERS = {1: "TW", 2: "AU", 3: None, 4: "US", 5: "JP"}   # 1 Taiwan MOST, 2 NHMRC, 3 an international funder, 4 NIH, 5 Japan MHLW
 
 
-def person(name, country):
+def person(name, country, ids=()):
     quote = lambda v: "NULL" if v is None else "'" + v.replace("'", "''") + "'"
+    ids = ("[" + ",".join(f"{{'id': {quote(i)}, 'type': {quote(t)}, 'asserted_by': NULL}}" for i, t in ids) + "]") if ids else "NULL"
     return (f"{{'given_name': NULL, 'family_name': NULL, 'orcid': NULL, 'role_start': NULL, "
-            f"'affiliation': {{'name': {quote(name)}, 'country': {quote(country)}, 'ids': NULL}}}}")
+            f"'affiliation': {{'name': {quote(name)}, 'country': {quote(country)}, 'ids': {ids}}}}}")
 
 
 class Fixture:
@@ -232,14 +238,17 @@ class Fixture:
         con.execute("CREATE TABLE answers (raw_affiliation_string VARCHAR, institution_ids BIGINT[])")
         con.execute("CREATE TABLE institutions_api_v (id BIGINT, display_name VARCHAR, ror VARCHAR, country_code VARCHAR, type VARCHAR, lineage VARCHAR[])")
         for i, (name, country) in INSTITUTIONS.items():
-            con.execute("INSERT INTO institutions_api_v VALUES (?, ?, NULL, ?, 'education', [])", [i, name, country])
+            ror = f"https://ror.org/0{i:06d}00" if i in RORS else None
+            con.execute("INSERT INTO institutions_api_v VALUES (?, ?, ?, ?, 'education', [])", [i, name, ror, country])
+        con.execute("CREATE TABLE funders_v (funder_id BIGINT, country_code VARCHAR)")
+        con.executemany("INSERT INTO funders_v VALUES (?, ?)", list(FUNDERS.items()))
         self.next_id = 0
 
-    def award(self, provenance, lead=None, co_lead=None, investigators=(), funder_award_id="x1"):
+    def award(self, provenance, lead=None, co_lead=None, investigators=(), funder_award_id="x1", funder_id="NULL"):
         self.next_id += 1
         investigators = "[" + ",".join(person(*p) for p in investigators) + "]" if investigators else "NULL"
-        self.con.execute(f"""INSERT INTO awards (id, provenance, funder_award_id, lead_investigator, co_lead_investigator, investigators)
-            VALUES ({self.next_id}, '{provenance}', '{funder_award_id}', {person(*lead) if lead else 'NULL'},
+        self.con.execute(f"""INSERT INTO awards (id, provenance, funder_id, funder_award_id, lead_investigator, co_lead_investigator, investigators)
+            VALUES ({self.next_id}, '{provenance}', {funder_id}, '{funder_award_id}', {person(*lead) if lead else 'NULL'},
                     {person(*co_lead) if co_lead else 'NULL'}, {investigators})""")
         return self.next_id
 
@@ -368,15 +377,116 @@ def test_matcher_answer_wins_over_the_legacy_lookup_and_an_empty_answer_is_final
     assert got[legacy_only] == [40] and got[unknown] == []
 
 
-def test_excluded_sources_and_kaken_route_are_unchanged():
+def test_excluded_sources_and_the_kaken_route():
     f = Fixture()
     f.legacy("Harvard University", scored=[(52, 0.9)])
     f.legacy("Kyoto somewhere", scored=[(52, 0.2), (10, 0.05)])
-    f.con.execute("INSERT INTO kaken_projects_v VALUES ('k1', 'Kyoto somewhere')")
+    f.con.execute("INSERT INTO kaken_projects_v VALUES ('k1', 'Kyoto somewhere'), ('k2', 'Kyoto somewhere'), ('k3', 'Harvard University')")
     rwjf = f.award("rwjf_grants_explorer", lead=("Harvard University", "MA"))
-    kaken = f.award("kaken", lead=("ignored for kaken", "Japan"), funder_award_id="k1")
-    kaken_no_country = f.award("kaken", lead=None, funder_award_id="k1")
+    kaken = f.award("kaken", lead=("Kyoto somewhere", "Japan"), funder_award_id="k1")      # the lead's name is the host institution
+    kaken_no_pi = f.award("kaken", lead=None, funder_award_id="k2")                         # no PI: the scrape's institution
+    kaken_coinv = f.award("kaken", investigators=[("Harvard University", None)], funder_award_id="k9")
+    kaken_nameless_lead = f.award("kaken", lead=(None, "Japan"), funder_award_id="k3")       # the scrape's name, the lead's country
     got = f.run()
     assert got[rwjf] == []                              # still excluded from matching
     assert got[kaken] == []                             # threshold 0.1 lets 52 through; Japan contradicts US
-    assert got[kaken_no_country] == [52]
+    assert got[kaken_no_pi] == [52]
+    assert got[kaken_coinv] == []                       # KAKEN co-investigators' strings are not read
+    assert got[kaken_nameless_lead] == []               # Harvard (US) under a lead recorded in Japan
+
+
+# ---------- the funder's own ids, and Han names with no recorded country (oxjob #2032) ----------
+def test_a_ror_the_funder_gives_on_the_persons_affiliation_links_the_institution():
+    f = Fixture()
+    url = f.award("nhmrc", lead=("Some Faculty Name We Cannot Match", "Australia", [("https://ror.org/000009400", "ROR")]), funder_id=2)
+    bare = f.award("fct", lead=("x", None, [(" 000009500 ", "ror")]))                          # a bare id, lower-case type
+    no_scheme = f.award("fct", lead=("x", None, [("ror.org/000009500", "ROR")]))
+    http = f.award("fct", lead=("x", None, [("http://ror.org/000009500", "ROR")]))
+    on_investigator = f.award("datacite", investigators=[("Lab A", None), ("Lab B", None, [("https://ror.org/000009500", "ROR")])])
+    got = f.run()
+    assert got[url] == [94] and got[bare] == [95] and got[no_scheme] == [95] and got[http] == [95] and got[on_investigator] == [95]
+
+
+def test_a_ror_counts_on_a_person_with_no_usable_name():
+    f = Fixture()
+    f.answer("n/a", [52])
+    no_name = f.award("sfi_open_data", lead=(None, None, [("https://ror.org/000009400", "ROR")]))
+    placeholder = f.award("sfi_open_data", lead=("n/a", None, [("https://ror.org/000009500", "ROR")]))
+    got = f.run()
+    assert got[no_name] == [94] and got[placeholder] == [95]          # the placeholder's own answer (52) is not read
+
+
+def test_only_a_ror_id_counts():
+    f = Fixture()
+    other_host = f.award("nhmrc", lead=("x", None, [("https://example.org/000009400", "ROR")]))   # ends like a ROR, is not one
+    longer = f.award("nhmrc", lead=("x", None, [("https://ror.org/000009400/x", "ROR")]))
+    prefixed = f.award("nhmrc", lead=("x", None, [("x000009400", "ROR")]))
+    other_type = f.award("nhmrc", lead=("x", None, [("grid.1013.3", "GRID")]))
+    unknown_ror = f.award("nhmrc", lead=("x", None, [("https://ror.org/0abcdef12", "ROR")]))          # no institution has it
+    got = f.run()
+    assert got[other_host] == [] and got[longer] == [] and got[prefixed] == [] and got[other_type] == [] and got[unknown_ror] == []
+
+
+def test_a_funders_ror_is_added_to_a_matched_name_and_checked_by_the_country_guard():
+    f = Fixture()
+    f.answer("University of Sydney", [94])
+    both = f.award("nhmrc", lead=("University of Sydney", None, [("https://ror.org/000009500", "ROR")]))
+    wrong_country = f.award("nhmrc", lead=("University of Sydney", "Australia", [("https://ror.org/000009500", "ROR")]))
+    got = f.run()
+    assert got[both] == [94, 95]
+    assert got[wrong_country] == [94]                   # a Portuguese ROR on a record that says Australia: dropped like any match
+
+
+def test_skipped_feeds_stay_skipped_for_rors_too():
+    f = Fixture()
+    skipped = f.award("crossref_work.grants", lead=("x", None, [("https://ror.org/000009400", "ROR")]))
+    assert f.run()[skipped] == []
+
+
+def test_a_han_name_from_a_taiwanese_funder_loses_its_china_and_japan_twins_only():
+    f = Fixture()
+    f.answer("國立中山大學海洋生物科技暨資源學系(所)", [91, 90])     # the 11-03 sheet's twins: Taiwan's NSYSU and China's SYSU
+    f.answer("國立中山大學材料與光電科學學系", [91])
+    f.answer("東海大學行政管理暨政策學系", [93])                       # Tunghai matched to Tokai (JP)
+    f.answer("雪梨大學", [94])                                         # the University of Sydney, written in Taiwan
+    f.answer("香港大學", [96])
+    f.answer("Sun Yat-sen University", [91])
+    sysu = f.award("most_taiwan", lead=("國立中山大學海洋生物科技暨資源學系(所)", None), funder_id=1)
+    sysu_only = f.award("nstc_taiwan", lead=("國立中山大學材料與光電科學學系", None), funder_id=1)
+    tokai = f.award("most_taiwan", lead=("東海大學行政管理暨政策學系", None), funder_id=1)
+    sydney = f.award("most_taiwan", lead=("雪梨大學", None), funder_id=1)
+    hong_kong = f.award("most_taiwan", lead=("香港大學", None), funder_id=1)                  # Hong Kong counts as China
+    latin = f.award("most_taiwan", lead=("Sun Yat-sen University", None), funder_id=1)        # Latin script: the rule does not apply
+    got = f.run()
+    assert got[sysu] == [90] and got[sysu_only] == [] and got[tokai] == [] and got[hong_kong] == []
+    assert got[sydney] == [94] and got[latin] == [91]
+
+
+def test_the_han_check_needs_a_funder_in_china_japan_or_taiwan_and_no_recorded_country():
+    f = Fixture()
+    f.answer("中央大学", [98, 97])                                     # Chuo (JP) and Taiwan's National Central University
+    f.answer("國立中山大學", [91, 90])
+    japan = f.award("mhlw_japan", lead=("中央大学", None), funder_id=5)
+    recorded = f.award("nih_exporter", lead=("國立中山大學", "CHINA"), funder_id=4)              # a recorded country decides
+    us_funder = f.award("nih_exporter", lead=("國立中山大學", None), funder_id=4)
+    no_funder_country = f.award("erc", lead=("國立中山大學", None), funder_id=3)
+    no_funder = f.award("most_taiwan", lead=("國立中山大學", None))
+    got = f.run()
+    assert got[japan] == [98] and got[recorded] == [91]
+    assert got[us_funder] == [90, 91] and got[no_funder_country] == [90, 91] and got[no_funder] == [90, 91]
+
+
+def test_grant_addresses_are_the_names_read():
+    f = Fixture()
+    for name in ("Harvard University", "n/a", "  ", "Institution abroad - Germany", "No institution available"):
+        f.answer(name, [52])
+    read = f.award("gates_foundation", lead=("Harvard University", None))
+    junk = f.award("gates_foundation", lead=("n/a", None), co_lead=("  ", None),
+                   investigators=[("Institution abroad - Germany", None), ("No institution available", None)])
+    gtr = f.award("gateway_to_research", lead=("Harvard University", None))
+    got = f.run()
+    assert got[read] == [52] and got[junk] == [] and got[gtr] == []
+
+
+def test_the_ten_skipped_feeds_are_listed_once():
+    assert PAYLOAD.count("'argentina_mincyt', 'openaire_fwf', 'researchfi', 'nobelprize_api'") == 1

@@ -15,86 +15,90 @@ country_map AS (
       provenance_scope AS k, confidence IN ('high', 'medium') AS v) END))) AS usable_source
   FROM country_lookup
 ),
--- Country code of every affiliation on the award. A row for this provenance and value decides on its own (RWJF's 'MA' is
+-- Grant addresses: each person on the award whose affiliation Nightly Grants reads, and `name`, the affiliation name it matches to
+-- an institution. This is the one definition of which award names are matcher input (oxjob #2032): PrepareAffiliationStrings sends
+-- them to the matcher's lookup and the Affiliation Matcher Backlog takes them as pending, each with a copy of this CTE over
+-- openalex.awards.awards_api (a SQL warehouse notebook cannot read this file; tests/test_grant_addresses.py fails when a copy
+-- differs). Ten feeds are not read (oxjob #123.2). KAKEN is read for its lead only, whose affiliation is the host institution
+-- (sources/kaken.sql); its co-investigators' strings ('institution, department, title') stay out. A blank or placeholder name is
+-- no name (#123.6: 'no institution available' was a junk magnet); the person's RORs are still read (funder_rors).
+grant_addresses AS (
+  SELECT award_id, provenance, funder_id, funder_award_id, is_lead, aff,
+    CASE WHEN TRIM(aff.name) <> ''
+              AND aff.name NOT LIKE 'Institution abroad%'
+              AND LOWER(TRIM(aff.name)) NOT IN ('grantee', 'autre', 'autres', 'n/a', 'na', 'null', 'unknown', 'none', 'tbd', 'tba', 'other',
+                                                'individual', 'data not available', 'no institution available')
+         THEN aff.name END AS name
+  FROM (
+    SELECT id AS award_id, provenance, funder_id, funder_award_id, true AS is_lead, lead_investigator.affiliation AS aff FROM {AWARDS}
+    UNION ALL
+    SELECT id, provenance, funder_id, funder_award_id, false, co_lead_investigator.affiliation FROM {AWARDS}
+    UNION ALL
+    SELECT id, provenance, funder_id, funder_award_id, false, person.affiliation FROM {AWARDS} LATERAL VIEW EXPLODE(investigators) inv AS person
+  )
+  WHERE aff IS NOT NULL
+    AND (provenance NOT IN ('kaken', 'crossref_work.grants', 'crossref_work_funders', 'gateway_to_research', 'usaspending',
+                            'rwjf_grants_explorer', 'argentina_mincyt', 'openaire_fwf', 'researchfi', 'nobelprize_api')
+         OR (provenance = 'kaken' AND is_lead))
+),
+-- The country code recorded next to each grant address. A row for this provenance and value decides on its own (RWJF's 'MA' is
 -- Massachusetts). Otherwise the source must be usable (IDRC stores the project's recipient country, NSF the place of
 -- performance, Humboldt a constant 'Germany': none is) and the code is the '*'-scoped row for the value. A source the
 -- file does not describe gives none.
 -- NIH intramural projects (activity codes Z01, ZIA, ZIC, ...) run inside NIH's own institutes and the source leaves their
 -- country empty: US. On 2026-10-02 all 116,926 such awards had either no country (59,975) or UNITED STATES.
-award_country AS (
+people AS (
   SELECT
-    oa.id AS award_id, oa.provenance, oa.funder_award_id, oa.lead_investigator, oa.co_lead_investigator, oa.investigators,
+    g.award_id, g.provenance, g.funder_id, g.is_lead, g.aff, g.name,
     COALESCE(
       NULLIF(COALESCE(
-        TRY_ELEMENT_AT(cm.code, CONCAT(oa.provenance, '|', LOWER(TRIM(oa.lead_investigator.affiliation.country)))),
-        CASE WHEN TRY_ELEMENT_AT(cm.usable_source, oa.provenance)
-             THEN TRY_ELEMENT_AT(cm.code, CONCAT('*|', LOWER(TRIM(oa.lead_investigator.affiliation.country)))) END), ''),
-      CASE WHEN oa.provenance = 'nih_exporter' AND oa.funder_award_id RLIKE '^[0-9]?[Zz]'
-                AND oa.lead_investigator.affiliation.name IS NOT NULL
-                AND NULLIF(TRIM(oa.lead_investigator.affiliation.country), '') IS NULL THEN 'US' END
-    ) AS lead_country_code,
-    NULLIF(COALESCE(
-        TRY_ELEMENT_AT(cm.code, CONCAT(oa.provenance, '|', LOWER(TRIM(oa.co_lead_investigator.affiliation.country)))),
-        CASE WHEN TRY_ELEMENT_AT(cm.usable_source, oa.provenance)
-             THEN TRY_ELEMENT_AT(cm.code, CONCAT('*|', LOWER(TRIM(oa.co_lead_investigator.affiliation.country)))) END), '') AS co_lead_country_code,
-    TRANSFORM(oa.investigators, x ->
-      NULLIF(COALESCE(
-        TRY_ELEMENT_AT(cm.code, CONCAT(oa.provenance, '|', LOWER(TRIM(x.affiliation.country)))),
-        CASE WHEN TRY_ELEMENT_AT(cm.usable_source, oa.provenance)
-             THEN TRY_ELEMENT_AT(cm.code, CONCAT('*|', LOWER(TRIM(x.affiliation.country)))) END), '')
-    ) AS investigator_country_codes
-  FROM {AWARDS} oa
+        TRY_ELEMENT_AT(cm.code, CONCAT(g.provenance, '|', LOWER(TRIM(g.aff.country)))),
+        CASE WHEN TRY_ELEMENT_AT(cm.usable_source, g.provenance)
+             THEN TRY_ELEMENT_AT(cm.code, CONCAT('*|', LOWER(TRIM(g.aff.country)))) END), ''),
+      CASE WHEN g.is_lead AND g.provenance = 'nih_exporter' AND g.funder_award_id RLIKE '^[0-9]?[Zz]'
+                AND g.aff.name IS NOT NULL AND NULLIF(TRIM(g.aff.country), '') IS NULL THEN 'US' END
+    ) AS record_country
+  FROM grant_addresses g
   CROSS JOIN country_map cm
 ),
--- Each affiliation name on the award with the country code recorded next to it.
+-- Each affiliation name on the award with the country code recorded next to it. A KAKEN award with no lead name takes its host
+-- institution from the 07-08 page scrape (kaken_projects_v) with the lead's recorded country; where there is a lead name, the
+-- scrape's string is that name (equal on all 707,489 on 2026-11-06). The scrape holds no blank or placeholder name (0 of 204,785
+-- on 2026-11-06). walden-kaken-nightly retires the scrape and this branch. A Chinese or Japanese name with no recorded country from a funder in China, Japan or Taiwan carries the
+-- funder's country for one check (guarded).
 all_strings AS (
   SELECT DISTINCT
-    award_id,
-    provenance,
-    raw,
-    record_country,
-    CASE WHEN provenance IN ('nih_exporter', 'nsf_award_search', 'kaken') THEN 0.1 ELSE 0.3 END AS thresh
+    s.award_id,
+    s.provenance,
+    s.raw,
+    s.record_country,
+    CASE WHEN s.record_country IS NULL AND f.country_code IN ('CN', 'JP', 'TW') AND s.raw RLIKE '[\\x{3400}-\\x{9fff}]'
+         THEN f.country_code END AS han_funder_country,
+    CASE WHEN s.provenance IN ('nih_exporter', 'nsf_award_search', 'kaken') THEN 0.1 ELSE 0.3 END AS thresh
   FROM (
-    SELECT award_id, provenance, lead_investigator.affiliation.name AS raw, lead_country_code AS record_country
-    FROM award_country
-    WHERE provenance NOT IN (
-      'kaken', 'crossref_work.grants', 'crossref_work_funders',
-      'gateway_to_research', 'usaspending', 'rwjf_grants_explorer',
-      'argentina_mincyt', 'openaire_fwf', 'researchfi', 'nobelprize_api'
-    )
-      AND lead_investigator.affiliation.name IS NOT NULL
+    SELECT award_id, provenance, funder_id, name AS raw, record_country FROM people WHERE name IS NOT NULL
     UNION ALL
-    SELECT award_id, provenance, co_lead_investigator.affiliation.name, co_lead_country_code
-    FROM award_country
-    WHERE provenance NOT IN (
-      'kaken', 'crossref_work.grants', 'crossref_work_funders',
-      'gateway_to_research', 'usaspending', 'rwjf_grants_explorer',
-      'argentina_mincyt', 'openaire_fwf', 'researchfi', 'nobelprize_api'
-    )
-      AND co_lead_investigator.affiliation.name IS NOT NULL
-    UNION ALL
-    SELECT award_id, provenance, inv_struct.affiliation.name, investigator_country_codes[inv_pos]
-    FROM award_country
-    LATERAL VIEW OUTER POSEXPLODE(investigators) inv AS inv_pos, inv_struct
-    WHERE provenance NOT IN (
-      'kaken', 'crossref_work.grants', 'crossref_work_funders',
-      'gateway_to_research', 'usaspending', 'rwjf_grants_explorer',
-      'argentina_mincyt', 'openaire_fwf', 'researchfi', 'nobelprize_api'
-    )
-      AND inv_struct.affiliation.name IS NOT NULL
-    UNION ALL
-    SELECT oa.award_id, oa.provenance, kpr.institution, oa.lead_country_code
-    FROM award_country oa
+    SELECT oa.id, oa.provenance, oa.funder_id, kpr.institution, lead.record_country
+    FROM {AWARDS} oa
     JOIN kaken_projects_v kpr ON oa.funder_award_id = kpr.project_id
-    WHERE oa.provenance = 'kaken' AND kpr.institution IS NOT NULL
-  )
-  WHERE raw IS NOT NULL
-    AND raw NOT LIKE 'Institution abroad%'
-    AND LOWER(TRIM(raw)) NOT IN (
-      'grantee', 'autre', 'autres', 'n/a', 'na', 'null',
-      'unknown', 'none', 'tbd', 'tba', 'other', 'individual',
-      'data not available', 'no institution available'  -- oxjobs #123.6: NOPL junk magnet
-    )
+    LEFT JOIN people lead ON lead.award_id = oa.id AND lead.is_lead
+    WHERE oa.provenance = 'kaken' AND oa.lead_investigator.affiliation.name IS NULL AND kpr.institution IS NOT NULL
+  ) s
+  LEFT JOIN funders_v f ON f.funder_id = s.funder_id
+),
+-- The funder's own id for the organisation: a ROR in the person's affiliation.ids (NHMRC, FCT, GACR, DataCite ...) names the
+-- institution with no matching (oxjob #2032). It is checked by the country guard like a matched name. Only a ROR id counts:
+-- https://ror.org/0xxxxxxxx, the same with http or no scheme, or the bare id.
+funder_rors AS (
+  SELECT DISTINCT r.award_id, r.provenance, r.record_country, i.id AS institution_id
+  FROM (
+    SELECT p.award_id, p.provenance, p.record_country,
+           REGEXP_EXTRACT(LOWER(TRIM(x.id)), '^(?:(?:https?://)?ror[.]org/)?(0[0-9a-z]{6}[0-9]{2})$', 1) AS ror_key
+    FROM people p
+    LATERAL VIEW EXPLODE(p.aff.ids) ids AS x
+    WHERE UPPER(x.type) = 'ROR'
+  ) r
+  JOIN institutions_api_v i ON i.ror = CONCAT('https://ror.org/', r.ror_key)
 ),
 -- Institution ids for each name. First the affiliation matcher's answer for the string ({ANSWERS}: the table works have
 -- read since 2026-09-28, oxjob #1386; an empty answer means "names no institution" and is final). Strings it has not
@@ -107,6 +111,7 @@ disambiguated AS (
     s.provenance,
     s.raw,
     s.record_country,
+    s.han_funder_country,
     ans.raw_affiliation_string IS NOT NULL AS from_matcher,
     CASE
       WHEN ans.raw_affiliation_string IS NOT NULL THEN COALESCE(ans.institution_ids, ARRAY())
@@ -126,10 +131,13 @@ disambiguated AS (
   WHERE ans.raw_affiliation_string IS NOT NULL OR asl.raw_affiliation_string IS NOT NULL
 ),
 exploded AS (
-  SELECT d.award_id, d.provenance, d.raw, d.record_country, d.from_matcher, ie.institution_id
+  SELECT d.award_id, d.provenance, d.raw, d.record_country, d.han_funder_country, d.from_matcher, ie.institution_id
   FROM disambiguated d
   LATERAL VIEW EXPLODE(d.ids) ie AS institution_id
   WHERE ie.institution_id IS NOT NULL
+  UNION ALL
+  SELECT award_id, provenance, CAST(NULL AS STRING), record_country, CAST(NULL AS STRING), false, institution_id
+  FROM funder_rors
 ),
 -- Dependent territories count as their sovereign state for the guard: NIH records Puerto Rico's universities under
 -- UNITED STATES, Erasmus+ records the Universite de La Reunion under FR. Palau, Micronesia and the Marshall Islands are
@@ -152,6 +160,10 @@ sovereign AS (
 -- country. An institution reached from two names on the same award is kept if either agrees. An ancestor in the right
 -- country does not rescue a match: "FRED HUTCHINSON CANCER CENTER", UNITED STATES was matched to its Cape Town
 -- laboratory that way.
+-- A Chinese or Japanese name with no recorded country from a funder in China, Japan or Taiwan is not matched to an institution
+-- in another of the three (oxjob #2032): the same characters name different universities there. On the 11-03 blind sheet all 4
+-- wrong Han-script links were Taiwan names (國立中山大學, Taiwan's National Sun Yat-sen University -> Sun Yat-sen University CN;
+-- 東海大學, Tunghai -> Tokai JP). An institution elsewhere is kept (a Taiwanese grant to 雪梨大學, the University of Sydney).
 guarded AS (
   SELECT
     e.award_id,
@@ -162,7 +174,10 @@ guarded AS (
     e.record_country,
     i.country_code AS institution_country,
     (e.record_country IS NULL OR i.country_code IS NULL
-      OR COALESCE(si.state, i.country_code) = COALESCE(sr.state, e.record_country)) AS country_ok
+      OR COALESCE(si.state, i.country_code) = COALESCE(sr.state, e.record_country))
+    AND (e.han_funder_country IS NULL OR i.country_code IS NULL
+      OR COALESCE(si.state, i.country_code) NOT IN ('CN', 'JP', 'TW') OR COALESCE(si.state, i.country_code) = e.han_funder_country)
+      AS country_ok
   FROM exploded e
   JOIN institutions_api_v i ON e.institution_id = i.id
   LEFT JOIN sovereign si ON si.territory = i.country_code
