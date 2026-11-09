@@ -1,0 +1,94 @@
+resources:
+  jobs:
+    Award_Investigator_Authors:
+      name: Award Investigator Authors
+      description: |
+        Grants on author profiles (oxjob #1847): links every person named on a grant (awards_api lead_investigator,
+        co_lead_investigator, investigators[]) to their OpenAlex author and serves the links in
+        openalex.awards.award_investigator_authors, which Nightly Grants reads as extra input investigator_authors.
+        Steps (notebooks/awards/investigator_authors/): prepare (people, name keys) -> routes (claims) -> shortlist + features
+        -> score (openalex.awards.investigator_author_matcher@champion, XGBoost on CPU) -> decide (one layer per slot; the served
+        layers are listed in decide.sql), tripwires, then one MERGE. A failed run leaves the served table as it was.
+        Reads one frozen copy no job produces: openalex.awards.investigator_jev_links.
+      email_notifications:
+        on_failure:
+          - rohan@openalex.org
+        no_alert_for_skipped_runs: true
+      schedule:
+        quartz_cron_expression: "0 0 1 * * ?"
+        timezone_id: UTC
+        pause_status: PAUSED   # until links-on points Nightly Grants at the table and unpauses it
+      timeout_seconds: 7200
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      parameters:
+        # every table the job writes is <prefix><name>, and its 3 SQL functions; a rehearsal points it at dev copies
+        - name: prefix
+          default: openalex.awards.award_investigator_
+        - name: run_date
+          default: "{{job.start_time.iso_date}}"
+        # the largest share of served rows one run may add, remove or re-point (each re-dates its award); 1.0 for the go-live run
+        - name: max_change
+          default: "0.05"
+        - name: model
+          default: openalex.awards.investigator_author_matcher
+        - name: alias
+          default: champion
+      tasks:
+        - task_key: prepare
+          notebook_task:
+            notebook_path: notebooks/awards/investigator_authors/Prepare
+            source: GIT
+          environment_key: Default
+        - task_key: routes
+          depends_on:
+            - task_key: prepare
+          notebook_task:
+            notebook_path: notebooks/awards/investigator_authors/RunSql
+            base_parameters:
+              sql: routes.sql
+              views: nsfc_pinyin   # nsfc_name's pinyin, built in this task's session (iaa.nsfc_pinyin_view)
+            source: GIT
+          environment_key: Default
+        - task_key: shortlist
+          depends_on:
+            - task_key: routes
+          notebook_task:
+            notebook_path: notebooks/awards/investigator_authors/RunSql
+            base_parameters:
+              sql: shortlist.sql,features.sql
+            source: GIT
+          environment_key: Default
+        - task_key: score
+          depends_on:
+            - task_key: shortlist
+          notebook_task:
+            notebook_path: notebooks/awards/investigator_authors/ScoreCandidates
+            source: GIT
+          environment_key: Xgb
+        - task_key: decide
+          depends_on:
+            - task_key: score
+          notebook_task:
+            notebook_path: notebooks/awards/investigator_authors/RunSql
+            base_parameters:
+              sql: decide.sql,tripwires.sql,publish.sql
+            source: GIT
+          environment_key: Default
+      environments:
+        - environment_key: Default
+          spec:
+            client: "3"
+            dependencies:
+              - pypinyin==0.55.0   # the routes task's nsfc_pinyin view
+        - environment_key: Xgb
+          spec:
+            client: "3"   # Python 3.12, for xgboost-cpu 3.4.1, the version the model was trained with
+            dependencies:
+              - xgboost-cpu==3.4.1
+              - mlflow
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
