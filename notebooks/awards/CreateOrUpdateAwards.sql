@@ -299,7 +299,7 @@ CREATE OR REPLACE TEMP VIEW awards_sources AS SELECT * FROM VALUES
  (256, 'nsf_sri_lanka_gmis', 138, 98, array(4320335353L), 'frozen', 3),
  (257, 'ntap', 330, 98, array(4320333709L), 'frozen', 3),
  (258, 'nuffield_wp_rest', 80, 98, array(4320319997L), 'frozen', 3),
- (259, 'nwopen', 11, 98, array(4320321800L), 'frozen', 3),
+ (259, 'nwopen', 11, 98, array(4320321800L), 'weekly', 3),
  (260, 'oenb_jubilaeumsfonds_projektabfrage', 529, 98, array(4320322325L), 'frozen', 3),
  (261, 'ons_foundation', 347, 98, array(4320308531L), 'frozen', 3),
  (262, 'ontario_mcu', 369, 98, array(4320331473L), 'frozen', 3),
@@ -661,7 +661,6 @@ SELECT * FROM VALUES
  ('nsf_sri_lanka_gmis', 's3://openalex-ingest/awards/nsf_sri_lanka/nsf_sri_lanka_grants.parquet'),
  ('ntap', 's3://openalex-ingest/awards/ntap/ntap_projects.parquet'),
  ('nuffield_wp_rest', 's3://openalex-ingest/awards/nuffield/nuffield_projects.parquet'),
- ('nwopen', 's3://openalex-ingest/awards/nwo/nwo_projects.parquet'),
  ('oenb_jubilaeumsfonds_projektabfrage', 's3://openalex-ingest/awards/oenb_jubilaeumsfonds/oenb_jubilaeumsfonds_projects.parquet'),
  ('ons_foundation', 's3://openalex-ingest/awards/ons_foundation/ons_foundation_grants.parquet'),
  ('ontario_mcu', 's3://openalex-ingest/awards/ontario_mcu/ontario_mcu_grants.parquet'),
@@ -776,6 +775,9 @@ SELECT 'gates_foundation' AS source, max_by(_metadata.file_path, struct(_metadat
 UNION ALL
 SELECT 'kaken' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
  FROM read_files('s3://openalex-ingest/awards/kaken/*.parquet', format => 'parquet')
+UNION ALL
+SELECT 'nwopen' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
+ FROM read_files('s3://openalex-ingest/awards/nwopen/*.parquet', format => 'parquet')
 UNION ALL
 SELECT 'fct' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
  FROM read_files('s3://openalex-ingest/awards/fct_sciproj/*.parquet', format => 'parquet')
@@ -29164,14 +29166,23 @@ incoming AS (
 )
 SELECT * FROM incoming)
 UNION ALL
--- Mapping from CreateNWOAwards.ipynb (origin e22fdf7f): its awards-table SELECT over nwopen_input (was the
--- staging table read from s3://openalex-ingest/awards/nwo/nwo_projects.parquet); created_date and updated_date are the run timestamp.
--- nwopen: priority 11, frozen fetch cadence (descriptive).
+-- NWO (Dutch Research Council) projects from NWOpen, read from the newest object under s3://openalex-ingest/awards/nwopen/
+-- (openalex-ingest nwo_awards.py, weekly; CC0 1.0). Same mapping as CreateNWOAwards.ipynb (origin e22fdf7f) for the
+-- columns it had, so ids and keys are unchanged; added: NWO's amount (EUR), grant DOI, the lead's ROR, and the team.
+-- People switch: nwo_people.serve_people. true (default) serves the lead and the team; set it to false (one line) to serve
+-- no NWO people at all (lead_investigator and investigators NULL). Which roles are investigators: nwo_people.roles
+-- (NWO's 'Researcher' rows are staff hired on the project, not applicants: they stay in the S3 file, as GtR's do).
+-- created_date and updated_date are the run timestamp.
+-- nwopen: priority 11, weekly fetch cadence (descriptive).
 SELECT 'nwopen' AS _source, * FROM (
 WITH nwopen_input AS (
-    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/nwo/nwo_projects.parquet', format => 'parquet'))
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/nwopen/*.parquet', format => 'parquet'))
     WHERE _file_path = try_element_at(session.awards_objects, 'nwopen')
 ),
+nwo_people AS (
+    SELECT true AS serve_people, array('Main Applicant', 'Project leader', 'Co-applicant') AS roles
+),
+
 nwo_funder AS (
     SELECT
         funder_id,
@@ -29180,6 +29191,19 @@ nwo_funder AS (
         doi
     FROM openalex.funders.funders
     WHERE funder_id = 4320321800  -- NWO (Nederlandse Organisatie voor Wetenschappelijk Onderzoek)
+),
+
+nwo_team AS (
+    -- lead: the laptop parser's lead (NWO's first Main Applicant, else Project leader, else first member), as pi_member_id.
+    -- team: the other applicants and project leaders, not the lead (investigators = the people after the lead, as NSF
+    -- and ARC), in the fetcher's order (role, family name, given name, member id). A Dutch name's prefix (van, de, ...)
+    -- belongs to the family name: 'van Alphen', not 'Alphen'.
+    SELECT
+        g.*,
+        try_element_at(filter(g.members, m -> m.member_id <=> g.pi_member_id), 1) AS lead,
+        filter(g.members, m -> NOT (m.member_id <=> g.pi_member_id) AND exists(m.roles, r -> array_contains(p.roles, r))) AS team
+    FROM nwopen_input g
+    CROSS JOIN nwo_people p
 ),
 
 awards_transformed AS (
@@ -29193,7 +29217,7 @@ awards_transformed AS (
         f.funder_id,
         g.project_id as funder_award_id,
 
-        CAST(NULL AS DOUBLE) as amount,
+        TRY_CAST(g.award_amount AS DOUBLE) as amount,
         'EUR' as currency,
 
         struct(
@@ -29230,16 +29254,19 @@ awards_transformed AS (
         YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
 
         CASE
-            WHEN g.pi_family_name IS NOT NULL THEN
+            WHEN p.serve_people AND coalesce(g.lead.last_name, g.pi_family_name) IS NOT NULL THEN
                 struct(
-                    g.pi_given_name as given_name,
-                    g.pi_family_name as family_name,
-                    g.pi_id as orcid,  -- Already contains ORCID URL or NULL
+                    coalesce(g.lead.first_name, g.lead.initials, g.pi_given_name) as given_name,
+                    coalesce(nullif(trim(concat_ws(' ', g.lead.prefix, g.lead.last_name)), ''), g.pi_family_name) as family_name,
+                    CASE WHEN g.pi_id RLIKE '[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]'
+                         THEN concat('https://orcid.org/', regexp_extract(g.pi_id, '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1)) END as orcid,
                     CAST(NULL AS DATE) as role_start,
                     struct(
                         g.lead_org_name as name,
                         'Netherlands' as country,
-                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                        CASE WHEN g.pi_ror LIKE 'https://ror.org/%'
+                             THEN array(named_struct('id', g.pi_ror, 'type', 'ror', 'asserted_by', 'funder'))
+                             ELSE CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) END as ids
                     ) as affiliation
                 )
             ELSE NULL
@@ -29253,25 +29280,39 @@ awards_transformed AS (
             affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
         >) as co_lead_investigator,
 
-        CAST(NULL AS ARRAY<STRUCT<
-            given_name:STRING,
-            family_name:STRING,
-            orcid:STRING,
-            role_start:DATE,
-            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
-        >>) as investigators,
+        -- The other applicants and project leaders, each with their own organisation (top level) and its ROR; NULL when
+        -- the lead is the only one named
+        CASE
+            WHEN p.serve_people AND size(g.team) > 0 THEN
+                transform(g.team, m -> struct(
+                    coalesce(m.first_name, m.initials) as given_name,
+                    nullif(trim(concat_ws(' ', m.prefix, m.last_name)), '') as family_name,
+                    CASE WHEN m.orcid RLIKE '[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]'
+                         THEN concat('https://orcid.org/', regexp_extract(m.orcid, '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1)) END as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    CASE WHEN m.organisation IS NOT NULL OR m.ror IS NOT NULL THEN struct(
+                        nullif(trim(split(m.organisation, '[|][|]')[0]), '') as name,
+                        CAST(NULL AS STRING) as country,
+                        CASE WHEN m.ror LIKE 'https://ror.org/%'
+                             THEN array(named_struct('id', m.ror, 'type', 'ror', 'asserted_by', 'funder'))
+                             ELSE CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) END as ids
+                    ) END as affiliation
+                ))
+            ELSE NULL
+        END as investigators,
 
         CONCAT('https://www.nwo.nl/projecten/', REPLACE(g.project_id, '.', '-')) as landing_page_url,
 
-        CAST(NULL AS STRING) as doi,
+        CASE WHEN g.grant_doi LIKE '10.%' THEN lower(g.grant_doi) END as doi,
 
         concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.project_id)))) % 9000000000) as works_api_url,
 
         session.awards_timestamp as created_date,
         session.awards_timestamp as updated_date
 
-    FROM nwopen_input g
+    FROM nwo_team g
     CROSS JOIN nwo_funder f
+    CROSS JOIN nwo_people p
     WHERE g.project_id IS NOT NULL
       AND TRIM(g.project_id) != ''
 ),

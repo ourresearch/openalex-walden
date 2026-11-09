@@ -60,38 +60,11 @@ python gtr_to_s3.py
 python gtr_to_s3.py --resume
 ```
 
-### `nwo_to_s3.py`
-Downloads Dutch research grant data from the NWOpen API (NWO - Dutch Research Council), processes it, and uploads to S3.
-
-**What it does:**
-1. Downloads all projects from the NWOpen API (paginated JSON)
-2. Extracts project metadata including title, abstract, amount, dates, PI, organization
-3. Captures Products and summary_updates as JSON strings for later parsing
-4. Deduplicates by `project_id`
-5. Converts to parquet format
-6. Uploads to `s3://openalex-ingest/awards/nwo/`
-
-**Requirements:**
-```bash
-pip install pandas pyarrow requests
-# AWS CLI must be configured with credentials for s3://openalex-ingest/
-```
-
-**Usage:**
-```bash
-cd scripts/local
-python nwo_to_s3.py
-
-# Resume interrupted download:
-python nwo_to_s3.py --resume
-
-# Test with limited pages:
-python nwo_to_s3.py --max-pages 5 --skip-upload
-```
+### NWO
+NWOpen is fetched weekly by openalex-ingest `nwo_awards.py` into `s3://openalex-ingest/awards/nwopen/`; the Awards job reads the newest object. The laptop script `nwo_to_s3.py` is retired.
 
 ## After Running Local Scripts
 
 After data is uploaded to S3, run the corresponding Databricks SQL/notebooks:
 - For NIH: Run `notebooks/awards/CreateNIHAwards.ipynb` in Databricks
 - For GTR: Run `notebooks/awards/CreateGTRProjectAwards.ipynb` in Databricks
-- For NWO: Run `notebooks/awards/CreateNWOAwards.ipynb` in Databricks

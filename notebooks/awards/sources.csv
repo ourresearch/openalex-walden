@@ -257,7 +257,7 @@ npf,293,F4320307379,s3://openalex-ingest/awards/npf/npf_grants.parquet,frozen,98
 nsf_sri_lanka_gmis,138,F4320335353,s3://openalex-ingest/awards/nsf_sri_lanka/nsf_sri_lanka_grants.parquet,frozen,98
 ntap,330,F4320333709,s3://openalex-ingest/awards/ntap/ntap_projects.parquet,frozen,98
 nuffield_wp_rest,80,F4320319997,s3://openalex-ingest/awards/nuffield/nuffield_projects.parquet,frozen,98
-nwopen,11,F4320321800,s3://openalex-ingest/awards/nwo/nwo_projects.parquet,frozen,98
+nwopen,11,F4320321800,s3://openalex-ingest/awards/nwopen/,weekly,98
 oenb_jubilaeumsfonds_projektabfrage,529,F4320322325,s3://openalex-ingest/awards/oenb_jubilaeumsfonds/oenb_jubilaeumsfonds_projects.parquet,frozen,98
 ons_foundation,347,F4320308531,s3://openalex-ingest/awards/ons_foundation/ons_foundation_grants.parquet,frozen,98
 ontario_mcu,369,F4320331473,s3://openalex-ingest/awards/ontario_mcu/ontario_mcu_grants.parquet,frozen,98
