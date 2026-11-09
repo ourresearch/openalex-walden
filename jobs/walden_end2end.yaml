@@ -410,7 +410,13 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         - task_key: Authorships
-          timeout_seconds: 2400
+          # oxjob #1642: on 8 and 9 Nov the main CREATE OR REPLACE TABLE work_authorships read all its input (4.43B rows,
+          # 3.71 GB spill, 21 of its usual 24 task-hours) and then stalled until cancelled; a re-run took ~4 min. 25 min
+          # (healthy task: 9-14 min) and one retry recover it without a person; worst case ~ the old single 40-min attempt.
+          timeout_seconds: 1500
+          max_retries: 1
+          min_retry_interval_millis: 0
+          retry_on_timeout: true
           depends_on:
             - task_key: Apply_Work_Author_Curations
           notebook_task:
