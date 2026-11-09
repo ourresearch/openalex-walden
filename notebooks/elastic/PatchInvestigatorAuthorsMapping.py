@@ -2,7 +2,8 @@
 # MAGIC %md
 # MAGIC ### Mappings for grants on author profiles (oxjob #1847). One-off, run BEFORE the first Nightly Grants night that serves authors.
 # MAGIC
-# MAGIC **awards-v4**: `author {id, display_name}` on `lead_investigator`, `co_lead_investigator` and `investigators[]`, and the
+# MAGIC **awards-v4**: `author {id, display_name, orcid}` (as works' authorships.author) on `lead_investigator`,
+# MAGIC `co_lead_investigator` and `investigators[]`, and the
 # MAGIC new `investigators_full` (every person on the award: lead, co-lead and investigators[]), object-mapped with keyword ids like
 # MAGIC `institution_awarded_full`, so elastic-api can filter `lead_investigator.author.id` and `investigators.author.id` with plain
 # MAGIC term queries. Without this PUT, dynamic mapping would make the ids `text` and a term filter on a full id would never match
@@ -27,9 +28,10 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 AWARDS_INDEX, AUTHORS_INDEX = "awards-v4", "authors-v22"
 client = Elasticsearch(hosts=[ELASTIC_URL], max_retries=3, request_timeout=180)
 
-author_props = {"properties": {
+author_props = {"properties": {   # as authorships.author on works: orcid keyword
     "id":           {"type": "keyword"},
     "display_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    "orcid":        {"type": "keyword"},
 }}
 person_props = {
     "given_name":  {"type": "text"},

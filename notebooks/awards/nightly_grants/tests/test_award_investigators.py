@@ -61,9 +61,10 @@ class People(Fixture):
         rel = award_investigators.EMPTY_LINKS
         if links:
             rows = ",".join(f"({a},{q(s)},{p + (s == 'investigators')},{q(g)},{q(fam)},'https://openalex.org/A{n}','Person {n}',"
+                            f"'https://orcid.org/0000-0000-0000-000{n}',"
                             f"{q(o[0] if o else None)})" for a, s, p, g, fam, n, *o in links)
             rel = (f"SELECT * FROM VALUES {rows} AS t(award_id,slot,position,given_name,family_name,author_id,display_name,"
-                   "grant_orcid)")
+                   "author_orcid,grant_orcid)")
         sql = (PAYLOAD.replace("{AWARDS}", "awards").replace("{ANSWERS}", "answers")
                .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT))
                .replace("{INVESTIGATOR_LINKS}", rel))
@@ -84,7 +85,8 @@ def test_each_person_gets_the_author_linked_to_their_slot_position_and_name():
     got = f.people(links=[(g, "lead_investigator", 0, "Ana", "Silva", 1), (g, "investigators", 1, "ana", " SILVA ", 1),
                           (g, "investigators", 0, "Bruno", "Costa", 2)])[g]
     assert author(got["lead"]) == "https://openalex.org/A1" and got["lead"]["author"]["display_name"] == "Person 1"
-    assert set(got["lead"]["author"]) == {"id", "display_name"}          # no author ORCID (Rohan 11-08: Kyle asked for id + name)
+    # {id, display_name, orcid} as works' authorships[].author (Rohan + Casey 11-09); the person's own printed orcid is untouched
+    assert got["lead"]["author"] == {"id": "https://openalex.org/A1", "display_name": "Person 1", "orcid": "https://orcid.org/0000-0000-0000-0001"}
     assert [author(p) for p in got["investigators"]] == ["https://openalex.org/A2", "https://openalex.org/A1", None]
 
 
@@ -126,3 +128,18 @@ def test_investigators_full_lists_everyone_lead_first():   # links-on: the filte
     g = f.grant(lead=("Ana", "Silva"), investigators=[("Bruno", "Costa"), ("Ana", "Silva"), ("Carla", "Dias")])
     full = dict(f.con.execute(f"SELECT id, investigators_full FROM ({f.payload()})").fetchall())[g]
     assert [p["family_name"] for p in full] == ["Silva", "Costa", "Silva", "Dias"]      # no co-lead (NULL) entry
+
+
+def test_the_author_orcid_is_the_profiles_and_a_profile_missing_attaches_nothing():
+    """links_relation on DuckDB: the author's orcid is the profile's (openalex_authors.orcid, as works read it), NULL when it has none;
+    a served author with no profile row attaches nothing."""
+    f = People()
+    c = FakeC(extra={"investigator_authors", "investigator_profiles"})
+    f.con.execute("""CREATE VIEW investigator_authors_v AS SELECT * FROM (VALUES (1, 'lead_investigator', 0, 'Ana', 'Silva', 11, 'X'),
+        (2, 'lead_investigator', 0, 'Bo', 'Li', 12, NULL), (4, 'lead_investigator', 0, 'Di', 'Ho', 99, NULL))
+        t(award_id, slot, position, given_name, family_name, author_id, orcid)""")
+    f.con.execute("""CREATE VIEW investigator_profiles_v AS SELECT * FROM (VALUES (11, 'Ana Silva', 'https://orcid.org/A'),
+        (12, 'Bo Li', NULL)) t(id, display_name, orcid)""")
+    sql = f.sqlglot.transpile(award_investigators.links_relation(c), read="spark", write="duckdb")[0]
+    got = {r[0]: r[1:] for r in f.con.execute(f"SELECT award_id, author_id, author_orcid, grant_orcid FROM ({sql})").fetchall()}
+    assert got == {1: ("https://openalex.org/A11", "https://orcid.org/A", "X"), 2: ("https://openalex.org/A12", None, None)}

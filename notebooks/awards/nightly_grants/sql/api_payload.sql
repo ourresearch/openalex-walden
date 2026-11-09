@@ -204,6 +204,7 @@ institution_awarded_per_award AS (
   GROUP BY d.award_id
 ),
 -- Investigators with their OpenAlex author (oxjob #1847; lib/award_investigators.py): {INVESTIGATOR_LINKS} holds the served slots.
+-- The author is {id, display_name, orcid}, as works' authorships[].author has them.
 -- The key is slot, position, the names and the ORCID as printed (cleaned as the job's people.sql does), so a reordered list or an
 -- edited name or ORCID gets no author rather than someone else's.
 -- With no links every author is NULL and to_json drops it, so no content hash (api_hash_expression.sql) moves.
@@ -214,7 +215,7 @@ investigator_authors AS (
   SELECT award_id, MAP_FROM_ENTRIES(COLLECT_LIST(STRUCT(
     CONCAT_WS('|', slot, CAST(position AS STRING), LOWER(TRIM(COALESCE(family_name, ''))), LOWER(TRIM(COALESCE(given_name, ''))),
       COALESCE(grant_orcid, '')) AS k,
-    STRUCT(author_id AS id, display_name) AS v))) AS authors
+    STRUCT(author_id AS id, display_name, author_orcid AS orcid) AS v))) AS authors
   FROM investigator_links
   GROUP BY award_id
 ),
