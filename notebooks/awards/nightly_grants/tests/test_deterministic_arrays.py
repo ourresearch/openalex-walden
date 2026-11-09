@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 sys.path.insert(0, str(HERE))
 
 import award_country
+import award_investigators
 import award_recipients
 import test_award_country as tac
 import test_award_flows as taf
@@ -70,7 +71,8 @@ def payload_fixture(order_seed):
 
 def institution_arrays(f, payload):
     sql = (payload.replace("{AWARDS}", "awards").replace("{ANSWERS}", "answers")
-           .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT)))
+           .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT))
+           .replace("{INVESTIGATOR_LINKS}", award_investigators.EMPTY_LINKS))
     sql = f.sqlglot.transpile(sql, read="spark", write="duckdb")[0]
     rows = f.con.execute(f"SELECT id, institution_awarded, institution_awarded_full FROM ({sql}) ORDER BY id").fetchall()
     return [(i, a, b) for i, a, b in rows]                     # whole elements, every field in order

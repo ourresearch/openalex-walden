@@ -66,7 +66,11 @@ _LINK_FIELDS = {"id": {"type": "keyword"}, "relationship": {"type": "keyword"}, 
                 "funder.display_name": {"type": "keyword", "index": False, "doc_values": False}}
 AWARD_FIELD_MAPPINGS = {"sub_awards_count": {"type": "long"},
                         **{f"{arr}.{leaf}": m for arr in ("parent_awards", "parent_awards_full", "sub_awards", "sub_awards_full")
-                           for leaf, m in _LINK_FIELDS.items()}}
+                           for leaf, m in _LINK_FIELDS.items()},
+                        # the author on each investigator (oxjob #1847; notebooks/elastic/PatchInvestigatorAuthorsMapping.py):
+                        # the filters lead_investigator.author.id and investigators.author.id are term queries on these
+                        **{f"{slot}.author.id": {"type": "keyword"}
+                           for slot in ("lead_investigator", "co_lead_investigator", "investigators", "investigators_full")}}
 
 
 def mapping_mismatches(field_mapping_response, index):

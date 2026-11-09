@@ -13,6 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 
 import award_country
+import award_investigators
 import create_api
 
 PAYLOAD = (ROOT / "sql/api_payload.sql").read_text()
@@ -152,7 +153,7 @@ def payload_query(**kw):
 
 def test_payload_has_no_placeholder_left_and_carries_the_lookup():
     c, q = payload_query()
-    for placeholder in ("{AWARDS}", "{ANSWERS}", "{COUNTRY_LOOKUP}"):
+    for placeholder in ("{AWARDS}", "{ANSWERS}", "{COUNTRY_LOOKUP}", "{INVESTIGATOR_LINKS}"):
         assert placeholder in PAYLOAD and placeholder not in q
     assert "FROM dev.lab.ngr_s_awards_candidate oa" in q and "('uk','*','GB','high')" in q
 
@@ -172,7 +173,9 @@ def test_with_the_matcher_input_its_answers_are_read_first_and_checked_unique():
 
 
 def test_matcher_input_is_an_allowed_extra_input():
-    assert '"affiliation_answers"), "UNKNOWN_EXTRA_INPUT' in (ROOT / "lib/nightly_runtime.py").read_text()
+    text = (ROOT / "lib/nightly_runtime.py").read_text()
+    allowed = text[text.index("self.require(view in ("):text.index('"UNKNOWN_EXTRA_INPUT')]
+    assert '"affiliation_answers"' in allowed
 
 
 def test_a_collapse_of_institution_matches_stops_the_night():
@@ -262,7 +265,8 @@ class Fixture:
 
     def run(self):
         sql = (PAYLOAD.replace("{AWARDS}", "awards").replace("{ANSWERS}", "answers")
-               .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT)))
+               .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT))
+               .replace("{INVESTIGATOR_LINKS}", award_investigators.EMPTY_LINKS))
         sql = self.sqlglot.transpile(sql, read="spark", write="duckdb")[0]
         rows = self.con.execute(f"SELECT id, institution_awarded FROM ({sql})").fetchall()
         return {i: sorted(int(x["id"].rsplit("I", 1)[1]) for x in awarded) for i, awarded in rows}

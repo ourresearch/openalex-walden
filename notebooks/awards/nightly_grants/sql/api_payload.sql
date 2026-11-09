@@ -202,12 +202,67 @@ institution_awarded_per_award AS (
   FROM deduped d
   JOIN institutions_api_v i ON d.institution_id = i.id
   GROUP BY d.award_id
+),
+-- Investigators with their OpenAlex author (oxjob #1847; lib/award_investigators.py): {INVESTIGATOR_LINKS} holds the served slots.
+-- The key is slot, position, the names and the ORCID as printed (cleaned as the job's people.sql does), so a reordered list or an
+-- edited name or ORCID gets no author rather than someone else's.
+-- With no links every author is NULL and to_json drops it, so no content hash (api_hash_expression.sql) moves.
+investigator_links AS (
+  {INVESTIGATOR_LINKS}
+),
+investigator_authors AS (
+  SELECT award_id, MAP_FROM_ENTRIES(COLLECT_LIST(STRUCT(
+    CONCAT_WS('|', slot, CAST(position AS STRING), LOWER(TRIM(COALESCE(family_name, ''))), LOWER(TRIM(COALESCE(given_name, ''))),
+      COALESCE(grant_orcid, '')) AS k,
+    STRUCT(author_id AS id, display_name) AS v))) AS authors
+  FROM investigator_links
+  GROUP BY award_id
+),
+investigator_people AS (
+  SELECT
+    x.id AS award_id,
+    CASE WHEN x.lead_investigator IS NOT NULL THEN NAMED_STRUCT(
+      'given_name', x.lead_investigator.given_name,
+      'family_name', x.lead_investigator.family_name,
+      'orcid', x.lead_investigator.orcid,
+      'role_start', x.lead_investigator.role_start,
+      'affiliation', x.lead_investigator.affiliation,
+      'author', TRY_ELEMENT_AT(x.authors, CONCAT_WS('|', 'lead_investigator', '0',
+        LOWER(TRIM(COALESCE(x.lead_investigator.family_name, ''))), LOWER(TRIM(COALESCE(x.lead_investigator.given_name, ''))),
+        COALESCE(REGEXP_EXTRACT(UPPER(x.lead_investigator.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), '')))) END AS lead_investigator,
+    CASE WHEN x.co_lead_investigator IS NOT NULL THEN NAMED_STRUCT(
+      'given_name', x.co_lead_investigator.given_name,
+      'family_name', x.co_lead_investigator.family_name,
+      'orcid', x.co_lead_investigator.orcid,
+      'role_start', x.co_lead_investigator.role_start,
+      'affiliation', x.co_lead_investigator.affiliation,
+      'author', TRY_ELEMENT_AT(x.authors, CONCAT_WS('|', 'co_lead_investigator', '0',
+        LOWER(TRIM(COALESCE(x.co_lead_investigator.family_name, ''))), LOWER(TRIM(COALESCE(x.co_lead_investigator.given_name, ''))),
+        COALESCE(REGEXP_EXTRACT(UPPER(x.co_lead_investigator.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), ''))))
+      END AS co_lead_investigator,
+    -- i is Spark's 0-based index, the same position the job reads with the same transform (people.sql)
+    TRANSFORM(x.investigators, (p, i) -> CASE WHEN p IS NOT NULL THEN NAMED_STRUCT(
+      'given_name', p.given_name,
+      'family_name', p.family_name,
+      'orcid', p.orcid,
+      'role_start', p.role_start,
+      'affiliation', p.affiliation,
+      'author', TRY_ELEMENT_AT(x.authors, CONCAT_WS('|', 'investigators', CAST(i AS STRING),
+        LOWER(TRIM(COALESCE(p.family_name, ''))), LOWER(TRIM(COALESCE(p.given_name, ''))),
+        COALESCE(REGEXP_EXTRACT(UPPER(p.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), '')))) END) AS investigators
+  FROM (
+    SELECT
+      oa.id, oa.lead_investigator, oa.co_lead_investigator, oa.investigators, ia.authors
+    FROM {AWARDS} oa
+    LEFT JOIN investigator_authors ia ON ia.award_id = oa.id
+  ) x
 )
 SELECT
   oa.id, oa.display_name, oa.description, oa.funder_id, oa.funder_award_id,
   oa.amount, oa.currency, oa.funder, oa.funding_type, oa.funder_scheme,
   oa.provenance, oa.start_date, oa.end_date, oa.start_year, oa.end_year,
-  oa.lead_investigator, oa.co_lead_investigator, oa.investigators,
+  -- with author{id, display_name} on each person (investigator_people, above)
+  pe.lead_investigator, pe.co_lead_investigator, pe.investigators,
   oa.landing_page_url, oa.doi, oa.works_api_url,
   DATE_TRUNC('SECOND', CAST(oa.created_date AS TIMESTAMP)) AS created_date,
   CAST(NULL AS TIMESTAMP) AS updated_date,
@@ -243,3 +298,4 @@ SELECT
   -- research_scope is added after this payload by award_research_scope.run (it reads institution_awarded).
 FROM {AWARDS} oa
 LEFT JOIN institution_awarded_per_award iap ON oa.id = iap.award_id
+LEFT JOIN investigator_people pe ON pe.award_id = oa.id

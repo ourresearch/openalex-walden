@@ -415,7 +415,13 @@ def _field_mapping(overrides=None):
 
 def test_award_mapping_matches_the_provisioned_index():
     assert sync_awards.mapping_mismatches(_field_mapping(), "awards-v4") == []
-    assert len(sync_awards.AWARD_FIELD_MAPPINGS) == 25
+    assert len(sync_awards.AWARD_FIELD_MAPPINGS) == 29     # 25 sub-award fields + 4 investigator author ids (oxjob #1847)
+
+
+def test_an_unprovisioned_investigator_author_id_stops_the_sync():
+    resp = _field_mapping({"investigators_full.author.id": {"type": "text"}})
+    del resp["awards-v4"]["mappings"]["lead_investigator.author.id"]
+    assert sync_awards.mapping_mismatches(resp, "awards-v4") == ["investigators_full.author.id", "lead_investigator.author.id"]
 
 
 def test_award_mapping_mismatch_or_missing_field_is_reported():

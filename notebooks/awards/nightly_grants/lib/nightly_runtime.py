@@ -281,10 +281,12 @@ class Nightly:
         self.bind("state_transitions", p + "award_state_transitions")
         # optional approved inputs, e.g. {"migration_manifest": "<relation>"} for an approved duplicate-retirement batch;
         # "affiliation_answers" = the affiliation matcher's answers, read before the legacy lookup (create_api.py);
-        # "award_recipients_raw" (award_recipients.py), "exchange_rates" / "exchange_rates_annual" (award_usd.py): oxjob #1570
+        # "award_recipients_raw" (award_recipients.py), "exchange_rates" / "exchange_rates_annual" (award_usd.py): oxjob #1570;
+        # "investigator_authors" + "investigator_profiles" (award_investigators.py): the author on each investigator, oxjob #1847
         for view, relation in self.config.get("extra_inputs", {}).items():
             self.require(view in ("migration_manifest", "award_relations_raw", "award_recipients_raw", "award_classifications_raw",
-                                  "exchange_rates", "exchange_rates_annual", "funding_flows_baseline", "affiliation_answers"), "UNKNOWN_EXTRA_INPUT: " + view)
+                                  "exchange_rates", "exchange_rates_annual", "funding_flows_baseline", "affiliation_answers",
+                                  "investigator_authors", "investigator_profiles"), "UNKNOWN_EXTRA_INPUT: " + view)
             self.bind(view, relation)
         # yesterday's public state: ids in the live awards table are ACTIVE; everything else as the registry says
         self.sql(f"""SELECT e.stable_id,CASE WHEN a.id IS NOT NULL THEN 'ACTIVE' WHEN e.status='ACTIVE' THEN 'UNPUBLISHED' ELSE e.status END status,e.redirect_to
