@@ -72,6 +72,7 @@ aris_ecris,true,funder_default,1,no,research funder feed: Javna Agencija za Razi
 nihr,true,funder_default,1,no,research funder feed: National Institute for Health and Care Research
 aha_report_builder,true,funder_default,1,no,research funder feed: American Heart Association
 openaire_fwf,true,funder_default,1,no,research funder feed: Austrian Science Fund
+fwf_open_api,true,funder_default,1,no,research funder feed: Austrian Science Fund
 frqnt,true,funder_default,1,no,research funder feed: Fonds de recherche du Québec – Nature et technologies
 carnegie_corporation,mixed,,,yes,"Carnegie Corporation: education, democracy, international peace; research only in part"
 hunan_nsf,true,funder_default,1,no,research funder feed: Natural Science Foundation of Hunan Province

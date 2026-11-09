@@ -357,3 +357,4 @@ wwtf_project_database,530,F4320321003,s3://openalex-ingest/awards/wwtf/wwtf_proj
 zhejiang_nsf,403,F4320338464,s3://openalex-ingest/awards/zhejiang_nsf/zhejiang_nsf_projects.parquet,frozen,98
 zonmw_projects_jsonapi,92,F4320321007,s3://openalex-ingest/awards/zonmw/zonmw_projects.parquet,frozen,98
 fct,385,F4320334779|F4320324421|F4320320300|F4320335322,s3://openalex-ingest/awards/fct_sciproj/,weekly,98
+fwf_open_api,51,F4320321181,s3://openalex-ingest/awards/fwf_open_api/,weekly,98
