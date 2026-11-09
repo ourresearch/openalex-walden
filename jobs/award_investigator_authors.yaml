@@ -17,7 +17,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 0 1 * * ?"
         timezone_id: UTC
-        pause_status: PAUSED   # until links-on points Nightly Grants at the table and unpauses it
+        pause_status: UNPAUSED   # Nightly Grants reads the table (config.prod.json extra_inputs.investigator_authors)
       timeout_seconds: 7200
       max_concurrent_runs: 1
       queue:

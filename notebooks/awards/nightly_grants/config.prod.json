@@ -75,7 +75,9 @@
     "award_recipients_raw": "openalex.awards.award_recipients_raw",
     "exchange_rates": "openalex.common.exchange_rates",
     "exchange_rates_annual": "openalex.common.exchange_rates_annual",
-    "award_classifications_raw": "openalex.awards.award_classifications_raw"
+    "award_classifications_raw": "openalex.awards.award_classifications_raw",
+    "investigator_authors": "openalex.awards.award_investigator_authors",
+    "investigator_profiles": "openalex.authors.authors_api"
   },
   "list_legs": {
     "add": [],

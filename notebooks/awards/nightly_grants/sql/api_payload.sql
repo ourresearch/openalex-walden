@@ -294,7 +294,10 @@ SELECT
   oa.recipient_regions_full,
   -- One organisation object with sorted roles[]; source role rows remain in the side table.
   oa.recipients,
-  oa.recipients_full
+  oa.recipients_full,
+  -- Every person on the award in one array, for the filter investigators.author.id (oxjob #1847; the lead and co-lead are mostly not
+  -- in investigators[]). Object-mapped in awards-v4 like authorships_full; not in the content hash: it repeats the three above.
+  FILTER(CONCAT(ARRAY(pe.lead_investigator, pe.co_lead_investigator), COALESCE(pe.investigators, ARRAY())), x -> x IS NOT NULL) AS investigators_full
   -- research_scope is added after this payload by award_research_scope.run (it reads institution_awarded).
 FROM {AWARDS} oa
 LEFT JOIN institution_awarded_per_award iap ON oa.id = iap.award_id

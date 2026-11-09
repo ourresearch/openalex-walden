@@ -119,3 +119,10 @@ def test_without_links_people_are_served_as_before_with_a_null_author():
     assert got["lead"] == {"given_name": "Ana", "family_name": "Silva", "orcid": None, "role_start": None,
                            "affiliation": {"name": "Universidade de Lisboa", "country": None, "ids": None}, "author": None}
     assert f.people()[g]["investigators"][0]["author"] is None
+
+
+def test_investigators_full_lists_everyone_lead_first():   # links-on: the filter investigators.author.id reads it
+    f = People()
+    g = f.grant(lead=("Ana", "Silva"), investigators=[("Bruno", "Costa"), ("Ana", "Silva"), ("Carla", "Dias")])
+    full = dict(f.con.execute(f"SELECT id, investigators_full FROM ({f.payload()})").fetchall())[g]
+    assert [p["family_name"] for p in full] == ["Silva", "Costa", "Silva", "Dias"]      # no co-lead (NULL) entry
