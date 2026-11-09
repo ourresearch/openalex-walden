@@ -1,0 +1,88 @@
+kind,value,count_1109,note
+placeholder,no summary - aucun sommaire,147338,NSERC description placeholder
+placeholder,no title - aucun titre,42277,NSERC / SSHRC title placeholder
+placeholder,no to support statement — no description,23717,NEH description placeholder
+placeholder,keine zusammenfassung vorhanden,17385,GEPRIS description placeholder
+placeholder,n/a,6111,titles in 8 feeds (and descriptions)
+placeholder,no publicable,5270,MINCYT Argentina description placeholder
+placeholder,no description available,4658,Wellcome and 2 more feeds; 36 of the 10k sample sent it as the abstract
+placeholder,sem título,4333,FCT title placeholder
+placeholder,awaiting public project summary,1533,Innovate UK description placeholder
+placeholder,(none),1466,crossref_work description placeholder
+placeholder,not applicable,1400,12 feeds
+placeholder,no public description,903,Innovate UK
+placeholder,na,,generic
+placeholder,none,,generic
+placeholder,null,,generic
+placeholder,nil,,generic
+placeholder,tbd,,generic
+placeholder,tba,,generic
+placeholder,to be determined,,generic
+placeholder,not available,,generic
+placeholder,no description,,generic
+placeholder,no abstract,,generic
+placeholder,no abstract available,,generic
+placeholder,no summary,,generic
+placeholder,no title,,generic
+placeholder,untitled,,generic
+placeholder,sem resumo,,Portuguese
+placeholder,sin resumen,,Spanish
+placeholder,sin título,,Spanish
+placeholder,kein titel,,German
+placeholder,keine angabe,,German
+person_feed,conahcyt_snii_ckan,81376,"A: 100% of 84,067 usable titles hold the PI's family name; 10,285 distinct labels without it; 2,691 kept by their description"
+person_feed,guggenheim_fellowship,19793,"A: 100% of 19,793 usable titles hold the PI's family name; 21 distinct labels without it; 0 kept by their description"
+person_feed,bbrf_narsad,6821,"A: 100% of 6,821 usable titles hold the PI's family name; 15 distinct labels without it; 0 kept by their description"
+person_feed,fnp_laureates,4017,"A: 96% of 4,017 usable titles hold the PI's family name; 189 distinct labels without it; 0 kept by their description"
+person_feed,humboldt,3867,"B (reviewed): fellowship-label titles, 50 distinct labels in 28,123; 24,256 kept by their description (area of expertise + keywords)"
+person_feed,ash_award_recipients,2574,"A: 97% of 2,656 usable titles hold the PI's family name; 282 distinct labels without it; 82 kept by their description"
+person_feed,croucher_fellows_and_scholars,1479,"A: 100% of 1,479 usable titles hold the PI's family name; 55 distinct labels without it; 0 kept by their description"
+person_feed,radcliffe_fellowship,1407,"A: 100% of 1,407 usable titles hold the PI's family name; 11 distinct labels without it; 0 kept by their description"
+person_feed,hertz_facetwp,1342,"A: 100% of 1,344 usable titles hold the PI's family name; 9 distinct labels without it; 2 kept by their description"
+person_feed,hhmi_scientist_pages,1329,"A: 100% of 1,739 usable titles hold the PI's family name; 49 distinct labels without it; 410 kept by their description"
+person_feed,sigrid_juselius_grant_lists,1071,"A: 100% of 1,714 usable titles hold the PI's family name; 129 distinct labels without it; 643 kept by their description"
+person_feed,damon_runyon_drupal,841,A: 100% of 862 usable titles hold the PI's family name; 108 distinct labels without it; 21 kept by their description
+person_feed,macarthur_fellows,758,"A: 100% of 1,174 usable titles hold the PI's family name; 8 distinct labels without it; 416 kept by their description"
+person_feed,cifar_wp_rest,740,A: 100% of 740 usable titles hold the PI's family name; 29 distinct labels without it; 0 kept by their description
+person_feed,cottrell_scholars,612,A: 100% of 612 usable titles hold the PI's family name; 6 distinct labels without it; 0 kept by their description
+person_feed,klingenstein_simons,457,A: 97% of 457 usable titles hold the PI's family name; 13 distinct labels without it; 0 kept by their description
+person_feed,lasker_wp,427,A: 100% of 427 usable titles hold the PI's family name; 4 distinct labels without it; 0 kept by their description
+person_feed,royal_society_medals,415,A: 100% of 729 usable titles hold the PI's family name; 33 distinct labels without it; 314 kept by their description
+person_feed,sepm_science_awards,369,A: 100% of 369 usable titles hold the PI's family name; 16 distinct labels without it; 0 kept by their description
+person_feed,treilles_prix_jeune_chercheur,355,A: 100% of 612 usable titles hold the PI's family name; 3 distinct labels without it; 257 kept by their description
+person_feed,dreyfus_foundation,272,A: 100% of 272 usable titles hold the PI's family name; 6 distinct labels without it; 0 kept by their description
+person_feed,wolf_prize_wp,221,A: 100% of 391 usable titles hold the PI's family name; 14 distinct labels without it; 170 kept by their description
+person_feed,gairdner_sitefinity,181,A: 100% of 443 usable titles hold the PI's family name; 6 distinct labels without it; 262 kept by their description
+person_feed,blavatnikawards_org,161,A: 100% of 368 usable titles hold the PI's family name; 10 distinct labels without it; 207 kept by their description
+person_feed,breakthrough_prize,154,A: 100% of 335 usable titles hold the PI's family name; 9 distinct labels without it; 181 kept by their description
+person_feed,searle_scholars,104,A: 100% of 105 usable titles hold the PI's family name; 2 distinct labels without it; 1 kept by their description
+person_feed,pew_biomed,64,A: 100% of 819 usable titles hold the PI's family name; 3 distinct labels without it; 755 kept by their description
+person_feed,wenner_gren_grantees,60,"A: 100% of 1,179 usable titles hold the PI's family name; 5 distinct labels without it; 1,119 kept by their description"
+person_feed,twas_awards,59,A: 100% of 292 usable titles hold the PI's family name; 39 distinct labels without it; 233 kept by their description
+person_feed,templeton_prize,56,A: 100% of 56 usable titles hold the PI's family name; 8 distinct labels without it; 0 kept by their description
+person_feed,kavli_nextdata,54,A: 100% of 73 usable titles hold the PI's family name; 3 distinct labels without it; 19 kept by their description
+person_feed,imu_fields_medal,54,A: 100% of 64 usable titles hold the PI's family name; 1 distinct labels without it; 10 kept by their description
+person_feed,novo_nordisk_fonden_prizes,53,A: 100% of 56 usable titles hold the PI's family name; 4 distinct labels without it; 3 kept by their description
+person_feed,crafoord_prize,53,A: 100% of 82 usable titles hold the PI's family name; 5 distinct labels without it; 29 kept by their description
+person_feed,holberg_wp_rest,46,A: 100% of 46 usable titles hold the PI's family name; 2 distinct labels without it; 0 kept by their description
+person_feed,warren_alpert_prize,43,A: 100% of 91 usable titles hold the PI's family name; 2 distinct labels without it; 48 kept by their description
+person_feed,international_biology_prize,41,A: 100% of 41 usable titles hold the PI's family name; 1 distinct labels without it; 0 kept by their description
+person_feed,welch_foundation,37,A: 100% of 88 usable titles hold the PI's family name; 6 distinct labels without it; 51 kept by their description
+person_feed,vilcek_foundation,28,A: 100% of 184 usable titles hold the PI's family name; 6 distinct labels without it; 156 kept by their description
+person_feed,princess_asturias,19,A: 100% of 477 usable titles hold the PI's family name; 19 distinct labels without it; 458 kept by their description
+person_feed,blue_planet_prize,14,A: 92% of 71 usable titles hold the PI's family name; 8 distinct labels without it; 57 kept by their description
+person_feed,pew_biomedical_scholars_directory,12,A: 100% of 819 usable titles hold the PI's family name; 3 distinct labels without it; 807 kept by their description
+person_feed,keio_medical_science_prize,7,A: 98% of 57 usable titles hold the PI's family name; 2 distinct labels without it; 50 kept by their description
+person_feed,gruber_prizes,4,A: 100% of 125 usable titles hold the PI's family name; 4 distinct labels without it; 121 kept by their description
+person_feed,scas_former_fellows,3,A: 100% of 784 usable titles hold the PI's family name; 20 distinct labels without it; 781 kept by their description
+person_feed,packard_fellows_directory,3,A: 100% of 730 usable titles hold the PI's family name; 3 distinct labels without it; 727 kept by their description
+person_feed,king_faisal_prize,2,A: 100% of 308 usable titles hold the PI's family name; 7 distinct labels without it; 306 kept by their description
+person_feed,mercator_fellows,0,A: 100% of 915 usable titles hold the PI's family name; 2 distinct labels without it; 915 kept by their description
+person_feed,bbva_frontiers,0,A: 100% of 235 usable titles hold the PI's family name; 9 distinct labels without it; 235 kept by their description
+person_feed,rita_allen_scholars,0,A: 100% of 155 usable titles hold the PI's family name; 2 distinct labels without it; 155 kept by their description
+person_feed,heineken_prizes_wp,0,A: 100% of 144 usable titles hold the PI's family name; 17 distinct labels without it; 144 kept by their description
+person_feed,kyoto_prize,0,A: 98% of 127 usable titles hold the PI's family name; 15 distinct labels without it; 127 kept by their description
+person_feed,rzsnsw_research_grants,0,A: 100% of 82 usable titles hold the PI's family name; 2 distinct labels without it; 82 kept by their description
+person_feed,sweden_america_foundation,0,A: 100% of 46 usable titles hold the PI's family name; 1 distinct labels without it; 46 kept by their description
+person_feed,dan_david_prize,0,A: 100% of 36 usable titles hold the PI's family name; 1 distinct labels without it; 36 kept by their description
+person_feed,aos_kessel_laccr_research,0,A: 100% of 35 usable titles hold the PI's family name; 2 distinct labels without it; 35 kept by their description

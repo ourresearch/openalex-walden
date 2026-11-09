@@ -2,52 +2,137 @@ resources:
   jobs:
     AwardTopics:
       name: AwardTopics
+      description: |
+        Topics, keywords and SDGs for awards, as works get them. Unscheduled; a small job beside Nightly Grants, not a step inside it.
+        build_queue (notebooks/awards/enrich/BuildAwardQueue): awards in awards_api with usable text (title >= 4 words or
+        description >= 20 words; CJK by characters, >= 8 in the title or >= 40 in the description) missing from a side table or
+        whose text changed since (text_key). Then, side by side:
+        topics (ScoreAwardTopics): Jason's Modal app openalex-topics-nightly, q8b_2m, <= 8 H100s -> award_topics_v2;
+        keywords (ScoreAwardKeywords): Jason's Modal app oxjob1322-keywords-nightly, student_qwen4b_v3fix, <= 10 B200s, the shipped
+        closed-vocabulary normaliser -> award_keywords;
+        sdgs (ScoreAwardSdgs): ai_query databricks-qwen3-embedding-0-6b + the works head sdg_jev_head_v2 (threshold 0.4) -> award_sdgs.
+        Nightly Grants still reads openalex.awards.award_topics (inputs.topics), which this job no longer writes; award_topics_v2 has
+        its columns (award_id, topics, source, created/updated_datetime) plus not_classifiable and text_key, so switching Nightly to
+        it is a config change, made separately. Estimates (Jason's rates): topics ~$5.5/M + $0.45 a container start; keywords
+        $7.6-12.2/M; SDGs ~$3.4/M. 6.85M usable awards (2026-11-08) -> one-time backfill ~$41 + $57-89 + $23.
+        Every task defaults to dry_run = true and to dev tables (openalex_dev.rohan_lab.awt_*); the Modal queue copy defaults to
+        openalex.transient.awt_queue because the apps read openalex.(works|transient) only. warehouse_id has no default: the apps
+        export the queue through it, and it must be named for the run (Jason's DEV-WH needs his OK).
+        Replaced (2026-11-08): the BERT tasks award_topics_create_input / _inference / _merge_output (oxjob #123.1; no run in the 60 days
+        to 2026-11-05; DEV-WH + a g5.12xlarge GPU cluster). Their notebooks stay in notebooks/topics/; rollback = the previous version of this file.
       email_notifications:
         on_failure:
           - richard@openalex.org
         no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 14400
+      parameters:
+        - name: state_prefix
+          default: openalex_dev.rohan_lab.awt_
+        - name: awards_table
+          default: openalex.awards.awards_api
+        - name: modal_queue_table
+          default: openalex.transient.awt_queue
+        - name: topics_target
+          default: openalex_dev.rohan_lab.awt_award_topics_v2
+        - name: keywords_target
+          default: openalex_dev.rohan_lab.awt_award_keywords
+        - name: sdgs_target
+          default: openalex_dev.rohan_lab.awt_award_sdgs
+        - name: force_ids_table
+          # samples / backfills: queue exactly the usable awards in this table (column id)
+          default: ""
+        - name: force_ids_file
+          # or a CSV with a column id (the 10k sample: notebooks/awards/enrich/sample/awt_sample_ids.csv in the run's workspace copy)
+          default: ""
+        - name: max_awards
+          default: "2000000"
+        - name: warehouse_id
+          # the warehouse Jason's apps export the queue through; no default on purpose
+          default: ""
+        - name: approved_warehouse
+          # a warehouse on the grants-hub never-use list (e.g. DEV-WH) that Jason or Rohan OKed for this run, by its exact id
+          default: ""
+        - name: topics_volume_dir
+          default: /Volumes/openalex/works/data/topics_nightly/awards
+        - name: keywords_volume_dir
+          default: /Volumes/openalex/authors/oxjob_tmp/oxjob1322_god/nightly/awards
+        - name: topics_max_usd
+          default: "2"
+        - name: keywords_max_usd
+          default: "2"
+        - name: sdgs_max_usd
+          default: "5"
+        - name: dry_run
+          default: "true"
       tasks:
-        - task_key: award_topics_create_input
+        - task_key: build_queue
           notebook_task:
-            notebook_path: notebooks/topics/award_topics_create_input
+            notebook_path: notebooks/awards/enrich/BuildAwardQueue
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3
-        - task_key: award_topics_inference
+            base_parameters:
+              state_prefix: "{{job.parameters.state_prefix}}"
+              awards_table: "{{job.parameters.awards_table}}"
+              modal_queue_table: "{{job.parameters.modal_queue_table}}"
+              topics_target: "{{job.parameters.topics_target}}"
+              keywords_target: "{{job.parameters.keywords_target}}"
+              sdgs_target: "{{job.parameters.sdgs_target}}"
+              max_awards: "{{job.parameters.max_awards}}"
+              force_ids_table: "{{job.parameters.force_ids_table}}"
+              force_ids_file: "{{job.parameters.force_ids_file}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          environment_key: Default
+        - task_key: topics
           depends_on:
-            - task_key: award_topics_create_input
+            - task_key: build_queue
           notebook_task:
-            notebook_path: notebooks/topics/award_topics_inference
+            notebook_path: notebooks/awards/enrich/ScoreAwardTopics
             source: GIT
-          job_cluster_key: award-topics-gpu-cluster
-          max_retries: 3
+            base_parameters:
+              state_prefix: "{{job.parameters.state_prefix}}"
+              modal_queue_table: "{{job.parameters.modal_queue_table}}"
+              target: "{{job.parameters.topics_target}}"
+              volume_dir: "{{job.parameters.topics_volume_dir}}"
+              warehouse_id: "{{job.parameters.warehouse_id}}"
+              approved_warehouse: "{{job.parameters.approved_warehouse}}"
+              max_usd: "{{job.parameters.topics_max_usd}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          environment_key: Default
+          # a retry polls the same Modal call (<volume_dir>/<build_id>/_call_id.txt), never starts a second GPU run
+          max_retries: 1
           min_retry_interval_millis: 300000
-        - task_key: award_topics_merge_output
+        - task_key: keywords
           depends_on:
-            - task_key: award_topics_inference
+            - task_key: build_queue
           notebook_task:
-            notebook_path: notebooks/topics/award_topics_merge_output
+            notebook_path: notebooks/awards/enrich/ScoreAwardKeywords
             source: GIT
-            warehouse_id: 3996dc0a9b183ce3
-      job_clusters:
-        - job_cluster_key: award-topics-gpu-cluster
-          new_cluster:
-            cluster_name: ""
-            spark_version: 15.4.x-gpu-ml-scala2.12
-            spark_conf:
-              spark.task.resource.gpu.amount: "1.0"
-            aws_attributes:
-              first_on_demand: 0
-              availability: ON_DEMAND
-              zone_id: auto
-              spot_bid_price_percent: 100
-              ebs_volume_count: 0
-            node_type_id: g5.12xlarge
-            enable_elastic_disk: false
-            data_security_mode: SINGLE_USER
-            runtime_engine: STANDARD
-            autoscale:
-              min_workers: 4
-              max_workers: 8
+            base_parameters:
+              state_prefix: "{{job.parameters.state_prefix}}"
+              modal_queue_table: "{{job.parameters.modal_queue_table}}"
+              target: "{{job.parameters.keywords_target}}"
+              awards_table: "{{job.parameters.awards_table}}"
+              volume_dir: "{{job.parameters.keywords_volume_dir}}"
+              warehouse_id: "{{job.parameters.warehouse_id}}"
+              approved_warehouse: "{{job.parameters.approved_warehouse}}"
+              max_usd: "{{job.parameters.keywords_max_usd}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 300000
+        - task_key: sdgs
+          depends_on:
+            - task_key: build_queue
+          notebook_task:
+            notebook_path: notebooks/awards/enrich/ScoreAwardSdgs
+            source: GIT
+            base_parameters:
+              state_prefix: "{{job.parameters.state_prefix}}"
+              target: "{{job.parameters.sdgs_target}}"
+              awards_table: "{{job.parameters.awards_table}}"
+              max_usd: "{{job.parameters.sdgs_max_usd}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          environment_key: Default
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
@@ -55,6 +140,6 @@ resources:
       queue:
         enabled: true
       environments:
-        - environment_key: award_topics_create_input_environment
+        - environment_key: Default
           spec:
             environment_version: "4"
