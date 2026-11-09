@@ -96,7 +96,8 @@ Evening sequence (all times UTC; nightly = 05:00 UTC = 00:00 CDT):
        --max-deleted 7.5M --max-loss abstracts=7M,affiliations=3M,institutions=3M --reason ... --by ...
    scripts/preclear_e2e.py --raise --max-changed 34M --max-loss abstracts=7.2M --reason "+ #1528 ..." --by jason
    scripts/preclear_e2e.py --list      # open windows (max_loss shows what each row names)
-   scripts/preclear_e2e.py --cancel    # close every open window (changed your mind)
+   scripts/preclear_e2e.py --cancel --night <CT evening> [--flags X]   # close one run's rows (changed your mind)
+   scripts/preclear_e2e.py --cancel --all                              # close every open window, every night
    # any of them with --dry-run prints the SQL instead
    ```
    Default target is the next 05:00 UTC; `--night 2026-09-24` (the CT evening date) targets a

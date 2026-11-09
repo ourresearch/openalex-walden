@@ -34,7 +34,8 @@ oversized feed; those have their own flags.
     scripts/preclear_e2e.py --current-run --raise --max-loss works=2.5M --reason ... --by ...  # this morning's repair
     scripts/preclear_e2e.py --night 2026-09-24 --max-changed ... --reason ... --by ...  # CT evening date of a later run
     scripts/preclear_e2e.py --list                                     # rows whose window has not ended
-    scripts/preclear_e2e.py --cancel                                   # end every open window now
+    scripts/preclear_e2e.py --cancel --night 2026-11-09 [--flags keep_replicas]   # close one run's rows (all its flags unless --flags)
+    scripts/preclear_e2e.py --cancel --all                             # end every open window, every night
     add --dry-run to print the SQL instead of running it
 
 Needs the `databricks` CLI authenticated on this machine. Warehouse: $DATABRICKS_SQL_WAREHOUSE_ID
@@ -171,7 +172,9 @@ def main():
                     help="raise the run's existing row in place to these totals, or file it if there is none "
                          "(a night has one row per flag)")
     ap.add_argument("--list", action="store_true")
-    ap.add_argument("--cancel", action="store_true", help="end every open window now")
+    ap.add_argument("--cancel", action="store_true",
+                    help="close the open rows of ONE run (--night or --current-run; only --flags if given); --all for every run")
+    ap.add_argument("--all", dest="all_", action="store_true", help="with --cancel: close every open window, every night, every flag")
     ap.add_argument("--dry-run", action="store_true", help="print the SQL writes instead of running them")
     ap.add_argument("--warehouse", default=None)
     a = ap.parse_args()
@@ -200,7 +203,24 @@ def main():
             print(" | ".join(str(x) for x in r))
         return
     if a.cancel:
-        cols, rows = write(f"UPDATE {TABLE} SET valid_until = current_timestamp() WHERE valid_until > current_timestamp()")
+        # 9 Nov 2026 (#2111 / #1642): --cancel used to close EVERY open window whatever --night / --flags said, so closing one
+        # mistaken row would also have closed the other nights' pre-clears. It now closes one run's rows unless --all.
+        where = "valid_until > current_timestamp()"
+        if not a.all_:
+            if not (a.night or a.current_run):
+                sys.exit("--cancel closes one run's rows: name the run with --night <CT evening date> or --current-run "
+                         "(and --flags to close only some flags), or pass --all to close every open window")
+            start = run_start(a.night, a.current_run)
+            where += f" AND valid_from = TIMESTAMP '{start:%Y-%m-%d %H:%M:%S}'"
+            if any(x == "--flags" or x.startswith("--flags=") for x in sys.argv[1:]):
+                fl = [f.strip() for f in a.flags.split(",") if f.strip()]
+                bad = [f for f in fl if f not in FLAGS]
+                if bad:
+                    sys.exit(f"unknown flag(s) {bad}; known: {', '.join(FLAGS)}")
+                where += " AND flag IN (" + ", ".join(q(f) for f in fl) + ")"
+            print(f"closing the open rows of the End 2 End run starting {start:%Y-%m-%d %H:%M} UTC"
+                  f" ({(start - timedelta(days=1)):%Y-%m-%d} CT evening)")
+        cols, rows = write(f"UPDATE {TABLE} SET valid_until = current_timestamp() WHERE {where}")
         print(f"closed {rows[0][0] if rows else 0} window(s)")
         return
 
