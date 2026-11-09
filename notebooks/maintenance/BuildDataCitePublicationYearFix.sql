@@ -10,6 +10,11 @@
 -- new rule drop out by themselves (their date is no longer the registration date, so the override stops applying).
 -- Revert: drop the fx join and CASE in CreateLocationsMapped first, then this table (the LEFT JOIN fails on a missing
 -- table). Emptying the table alone also reverts: the next nightly serves the registration dates again.
+--
+-- Latest record per DOI = the one DataCite.py's apply_changes keeps (attributes.updated, then ingested_at). Never
+-- max_by(..., ingested_at) alone: ~200M of the 240M datacite_items rows have NULL ingested_at (pre-streaming backfill)
+-- and max_by skips NULL keys, which hid ~95M DOIs from the first build (9 Nov 2026: 2.0M -> 7.7M rows, +5.6M works,
+-- 5.5M of them xpac Geoscience Australia samples).
 
 -- COMMAND ----------
 
@@ -19,7 +24,8 @@ AS
 WITH raw AS (
   SELECT id AS native_id,
          max_by(struct(attributes.publicationYear AS py, attributes.dates AS dates,
-                       attributes.registered AS registered, attributes.created AS created), ingested_at) AS r
+                       attributes.registered AS registered, attributes.created AS created),
+                struct(try_cast(attributes.updated AS TIMESTAMP) AS u, coalesce(ingested_at, TIMESTAMP'1970-01-01') AS i)) AS r
   FROM openalex.datacite.datacite_items
   GROUP BY id
 ),
