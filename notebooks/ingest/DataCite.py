@@ -157,6 +157,28 @@ def _not_heritage_client(client_col):
     return ~F.coalesce(F.lower(client_col).isin(*sorted(HERITAGE_DATACITE_CLIENTS)), F.lit(False))
 
 
+# oxjob #693: `container` is the journal DataCite says the record is published in, filled from relatedItems or an IsPartOf
+# relatedIdentifier. When it names the journal by ISSN, e-ISSN or ISSN-L that no IsPartOf/IsPublishedIn relatedIdentifier
+# already carries, the ISSN joins `ids` (relationship IsPublishedIn), so CreateLocationsWithSources' container-ISSN tier
+# also sees journals named only in relatedItems (OICC Press's Journal of Nanostructure in Chemistry, 21: Inquiries into Art).
+def _container_issn_ids():
+    """The container's ISSN as an `ids` entry, or an empty array."""
+    key = lambda c: F.regexp_replace(F.upper(c), "[^0-9X]", "")  # noqa: E731
+    return F.filter(
+        F.array(F.struct(
+            F.col("attributes.container.identifier").alias("id"),
+            F.lower(F.col("attributes.container.identifierType")).alias("namespace"),
+            F.lit("IsPublishedIn").alias("relationship"),
+        )),
+        lambda x: x["namespace"].isin("issn", "eissn", "lissn")
+        & F.coalesce(x["id"].rlike(r"\d{4}-?\d{3}[\dXx]"), F.lit(False))
+        & ~F.coalesce(F.exists("attributes.relatedIdentifiers", lambda r: (
+            F.lower(r["relatedIdentifierType"]).contains("issn")
+            & F.lower(r["relationType"]).isin("ispartof", "ispublishedin")
+            & (key(r["relatedIdentifier"]) == key(x["id"])))), F.lit(False)),
+    )
+
+
 @dlt.table(
     name="datacite_parsed",
     comment="Datacite works table in the Walden schema",
@@ -240,7 +262,8 @@ def datacite_parsed():
                         F.col("relationships.client.data.id").alias("id"),
                         F.lit("datacite_client").alias("namespace"),
                         F.lit("self").alias("relationship")
-                    ))
+                    )),
+                    _container_issn_ids(),  # oxjob #693
                 )
             )
         )
