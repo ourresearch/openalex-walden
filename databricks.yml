@@ -22,6 +22,7 @@ include:
   - jobs/meta_tags_daily.yaml
   - jobs/landing_page_scoreboard.yaml
   - jobs/pmc_open_data.yaml
+  - jobs/pmc_harvest_gap_check.yaml
   - jobs/paywall_candidate_html.yaml
   - jobs/concepts.yaml
   - jobs/institutions.yaml

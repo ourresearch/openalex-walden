@@ -1,0 +1,31 @@
+# Weekly alarm for the PMC OAI harvest (oxjob #2111): NCBI's list of every released PMC article vs the PMC records in
+# openalex.repo.repo_works. Fails (-> Sentry databricks-jobs) when more than MAX_MISSING released articles, older than the
+# newest RECENT_PMCIDS, were never harvested; the ids go to openalex.repo.pmc_harvest_gap and the failure prints the
+# re-harvest command. Read-only except that table. Mondays 20:00 UTC (after the 18:00 UTC Repo run).
+# PAUSED until #2111's backfill lands and MAX_MISSING is set from the measured floor (see the job's PLAN).
+resources:
+  jobs:
+    PMC_Harvest_Gap_Check:
+      name: PMC harvest gap check
+      schedule:
+        quartz_cron_expression: "0 0 20 ? * MON"
+        timezone_id: UTC
+        pause_status: PAUSED
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+      tasks:
+        - task_key: check
+          spark_python_task:
+            python_file: monitoring/checks/pmc_harvest_gap_check.py
+            source: GIT
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 300000
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
