@@ -70,3 +70,29 @@ def test_none_identifiers_plain_oai_native_gets_pmh():
     r = extract_ids(None, "oai:example.org:123")
     assert _ids(r, "pmh") == ["oai:example.org:123"]
     assert _ids(r, "doi") == []
+
+
+def test_new_ncbi_hosts_pmid_and_pmcid():
+    # oxjob #2112: PMC's OAI endpoint since 8 Dec 2025 lists these three forms (oai:pubmedcentral.nih.gov:3343030)
+    r = extract_ids(["https://pmc.ncbi.nlm.nih.gov/articles/PMC3343030/",
+                     "https://pubmed.ncbi.nlm.nih.gov/20164540/",
+                     "https://doi.org/10.3233/CBM-2009-0117"], "oai:pubmedcentral.nih.gov:3343030")
+    assert _ids(r, "pmcid") == ["PMC3343030"]
+    assert _ids(r, "pmid") == ["20164540"]
+    assert _ids(r, "doi") == ["10.3233/CBM-2009-0117"]
+    assert _ids(r, "pmh") == ["oai:pubmedcentral.nih.gov:3343030"]
+
+
+def test_new_ncbi_hosts_without_trailing_slash_and_pdf_path():
+    r = extract_ids(["https://pmc.ncbi.nlm.nih.gov/articles/PMC12/pdf/main.pdf", "pubmed.ncbi.nlm.nih.gov/34"], "oai:x:1")
+    assert _ids(r, "pmcid") == ["PMC12"]
+    assert _ids(r, "pmid") == ["34"]
+
+
+def test_other_ncbi_and_europepmc_urls_are_not_read_as_pmc():
+    # supplementary files, the NCBI homepage and Europe PMC pages carry no id of this record
+    r = extract_ids(["https://pmc.ncbi.nlm.nih.gov/articles/instance/123/bin/mmc1.pdf",
+                     "https://pubmed.ncbi.nlm.nih.gov/?term=cancer",
+                     "https://europepmc.org/article/PMC/PMC99"], "oai:x:1")
+    assert _ids(r, "pmcid") == []
+    assert _ids(r, "pmid") == []

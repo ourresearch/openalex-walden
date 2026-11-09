@@ -40,8 +40,11 @@ def extract_ids(identifiers, native_id):
            'issn': (r"\b\d{4}-\d{3}[0-9X]\b", 0),
            'hal': (r"\bhal-\d+\b", 0),
            'handle': (r"https?://hdl\.handle\.net/([^/\s]+/[^/\s]+)", 1),
-           'pmid': (r"/pubmed/(\d+)", 1),
-           'pmcid': (r"/pmc/articles/(PMC\d+)", 1)
+           # oxjob #2112: NCBI moved PubMed and PMC to their own hosts (pubmed.ncbi.nlm.nih.gov/<pmid>/,
+           # pmc.ncbi.nlm.nih.gov/articles/PMC<n>/); PMC's OAI endpoint lists only those forms since 8 Dec 2025, so
+           # 1,193,313 PMC records got neither id and Repo.py never built their PMC URL. Both forms are read.
+           'pmid': (r"(?:/pubmed/|pubmed\.ncbi\.nlm\.nih\.gov/)(\d+)", 1),
+           'pmcid': (r"(?:/pmc/articles/|pmc\.ncbi\.nlm\.nih\.gov/articles/)(PMC\d+)", 1)
        }
        
        results = []
