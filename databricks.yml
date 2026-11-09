@@ -28,6 +28,7 @@ include:
   - jobs/institutions.yaml
   - jobs/institutions_frontfill.yaml
   - jobs/hal_api_affiliations.yaml
+  - jobs/retraction_watch.yaml
   - jobs/affiliation_matcher_nightly.yaml
   - jobs/affiliation_matcher_sweep.yaml
   - jobs/affiliation_matcher_backlog.yaml
