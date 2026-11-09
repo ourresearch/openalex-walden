@@ -8,15 +8,23 @@ resources:
         UTC run: records every list as it stands now as filed, touching no references, so each night files only the lists
         that appear, change, move or go after it (why: the header of notebooks/maintenance/work_references_refresh.sql).
 
-        MANUAL TRIGGER ONLY, between End 2 End runs (it refuses while one is active). A second start is a no-op once the
-        table holds lists. Recover: revert the parse_work_references commit, then mode=undo (drops the list table). Each
-        run writes one row to openalex.works.work_references_refresh_runs.
+        mode=refresh (phase 2): takes the fingerprints again from the stored references; task `file_lists` then runs
+        parse_work_references once, outside End 2 End's task timeout, which re-files every stale or never-filed list, moves
+        lists to the work that owns their record, drops gone lists and re-points DOI rows. Size the night it changes and
+        pre-clear it before the night.
+
+        MANUAL TRIGGER ONLY, between End 2 End runs: it refuses while one is active, and must finish before the next 05:00
+        UTC run (start it by 01:00 UTC; ~1 h). Push phase 2 and run mode=refresh the same day, and pre-clear that night: phase
+        2's nightly rules change served citations on the first run after the push. A second start is a no-op once the table
+        holds lists. Recover: mode=undo FIRST (work_references and the list table back to the moment before the latest
+        refresh, within Delta's 7-day retention), then revert the phase 2 commit; with no refresh, mode=undo drops the list
+        table (revert the phase 1 commit first). Each run writes one row to openalex.works.work_references_refresh_runs.
       email_notifications:
         on_failure:
           - casey@ourresearch.org
       max_concurrent_runs: 1
       parameters:
-        - name: mode            # start | undo
+        - name: mode            # start | refresh | undo
           default: "start"
       tasks:
         - task_key: refresh
@@ -26,7 +34,24 @@ resources:
             source: GIT
             base_parameters:
               mode: "{{job.parameters.mode}}"
-          timeout_seconds: 3600
+          timeout_seconds: 7200
+        - task_key: is_refresh
+          depends_on:
+            - task_key: refresh
+          condition_task:
+            op: EQUAL_TO
+            left: "{{job.parameters.mode}}"
+            right: "refresh"
+        - task_key: file_lists
+          depends_on:
+            - task_key: is_refresh
+              outcome: "true"
+          # The nightly notebook itself, so the text that runs is the text that ships.
+          notebook_task:
+            notebook_path: notebooks/parsing/parse_work_references
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3   # the warehouse End 2 End's parse_referenced_works uses
+          timeout_seconds: 14400
       environments:
         - environment_key: Default
           spec:
