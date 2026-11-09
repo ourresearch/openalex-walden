@@ -84,8 +84,8 @@ if missing > MAX_MISSING:
     msg = (f"PMC HARVEST GAP: {missing:,} released PMC articles (older than the newest {RECENT_PMCIDS:,} PMCIDs) are not in "
            f"openalex.repo.repo_works (line {MAX_MISSING:,}); their works read closed though PMC serves them free. Ids: "
            f"{RESULT_TABLE} WHERE run_at = '{now:%Y-%m-%d %H:%M:%S}'. Fix: export them one per line to "
-           f"s3://openalex-ingest/backfill-ids/<name>.txt, then on Heroku app openalex-ingest: python backfill_by_id.py "
-           f"--endpoint-id {PMC_ENDPOINT} --ids s3://openalex-ingest/backfill-ids/<name>.txt --id-prefix "
+           f"s3://openalex-ingest/backfill-ids/pmc-gap-YYYYMMDD.txt, then on Heroku app openalex-ingest: python backfill_by_id.py "
+           f"--endpoint-id {PMC_ENDPOINT} --ids s3://openalex-ingest/backfill-ids/pmc-gap-YYYYMMDD.txt --id-prefix "
            f"oai:pubmedcentral.nih.gov: --per-sec 2. Then look for the harvester bug (oxjob #2111 README, Root cause).")
     print(msg)
     sys.exit(msg)
