@@ -222,12 +222,65 @@ LEFT ANTI JOIN suppressed_funder_windows x
 
 -- COMMAND ----------
 
+-- Step 3b (oxjob #473): distrust a funder matched only by acronyms that an unrelated active ROR organisation abroad
+-- also uses, when no author is from the funder's country and one is from that organisation's. Crossref rule 1's test
+-- (#1890) with the twins read from ROR. Step 4 skips these pairs; step 5 still matches their award numbers.
+CREATE OR REPLACE TEMP VIEW distrusted_acronym_matches AS
+WITH ror_family AS (
+  SELECT ror_id AS ror, related_ror_id AS related FROM openalex.institutions.ror_relationships
+  UNION
+  SELECT related_ror_id, ror_id FROM openalex.institutions.ror_relationships
+),
+ror_acronyms AS (
+  SELECT REPLACE(r.id, 'https://ror.org/', '') AS ror, UPPER(n.value) AS acronym,
+    r.locations[0].geonames_details.country_code AS country
+  FROM openalex.institutions.ror r LATERAL VIEW explode(r.names) x AS n
+  WHERE r.status = 'active' AND array_contains(n.types, 'acronym')
+),
+matched_names AS (
+  SELECT DISTINCT m.work_id, m.funder_id, m.funder_name, fa.country_code AS home,
+    REPLACE(fa.ids.ror, 'https://ror.org/', '') AS funder_ror
+  FROM openalex.pdf.funder_matches_staging m
+  JOIN openalex.funders.funders_api fa ON fa.id = CAST(regexp_extract(m.funder_id, 'F(\\d+)', 1) AS BIGINT)
+),
+name_twins AS (
+  SELECT DISTINCT n.funder_id, n.funder_name, ra.country AS twin
+  FROM (SELECT DISTINCT funder_id, funder_name, home, funder_ror FROM matched_names) n
+  JOIN ror_acronyms ra
+    ON ra.acronym = UPPER(n.funder_name) AND ra.country <> n.home AND ra.ror <> COALESCE(n.funder_ror, '')
+  LEFT ANTI JOIN ror_family f ON f.ror = n.funder_ror AND f.related = ra.ror
+),
+acronym_only AS (
+  SELECT m.work_id, m.funder_id, FIRST(m.home) AS home
+  FROM matched_names m
+  LEFT JOIN (SELECT DISTINCT funder_id, funder_name FROM name_twins) t
+    ON t.funder_id = m.funder_id AND t.funder_name = m.funder_name
+  GROUP BY m.work_id, m.funder_id
+  HAVING bool_and(t.funder_name IS NOT NULL)
+),
+author_countries AS (
+  SELECT DISTINCT w.work_id, c.country
+  FROM openalex.works.work_authorships w
+  LEFT SEMI JOIN acronym_only a ON a.work_id = w.work_id
+  LATERAL VIEW explode(flatten(w.authorships.countries)) c AS country
+)
+SELECT DISTINCT a.work_id, a.funder_id
+FROM acronym_only a
+JOIN matched_names m ON m.work_id = a.work_id AND m.funder_id = a.funder_id
+JOIN name_twins t ON t.funder_id = m.funder_id AND t.funder_name = m.funder_name
+JOIN author_countries c ON c.work_id = a.work_id AND c.country = t.twin
+LEFT ANTI JOIN author_countries h ON h.work_id = a.work_id AND h.country = a.home;
+
+-- COMMAND ----------
+
 -- Step 4: INSERT work-funder pairs
 INSERT INTO openalex.works.fulltext_work_funders
 SELECT s.work_id, s.funder_name, s.funder_display_name, s.funder_id, s.ror_id, s.doi
 FROM openalex.pdf.funder_matches_staging s
 LEFT ANTI JOIN openalex.works.fulltext_work_funders f
-  ON s.work_id = f.work_id AND s.funder_id = f.funder_id;
+  ON s.work_id = f.work_id AND s.funder_id = f.funder_id
+LEFT ANTI JOIN distrusted_acronym_matches d
+  ON s.work_id = d.work_id AND s.funder_id = d.funder_id;
 
 -- COMMAND ----------
 
