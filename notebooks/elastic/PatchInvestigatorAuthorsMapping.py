@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC ### Mappings for grants on author profiles (oxjob #1847). One-off, run BEFORE the first Nightly Grants night that serves authors.
 # MAGIC
-# MAGIC **awards-v4**: `author {id, display_name, orcid}` (as works' authorships.author) on `lead_investigator`,
+# MAGIC **awards-v4**: `author {id, display_name, orcid}` and `institutions[]` (as works' authorships) on `lead_investigator`,
 # MAGIC `co_lead_investigator` and `investigators[]`, and the
 # MAGIC new `investigators_full` (every person on the award: lead, co-lead and investigators[]), object-mapped with keyword ids like
 # MAGIC `institution_awarded_full`, so elastic-api can filter `lead_investigator.author.id` and `investigators.author.id` with plain
@@ -33,11 +33,20 @@ author_props = {"properties": {   # as authorships.author on works: orcid keywor
     "display_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
     "orcid":        {"type": "keyword"},
 }}
+institutions_props = {"properties": {   # each person's institutions (Casey 11-09), mapped as awards-v4 maps institution_awarded
+    "id":           {"type": "keyword"},
+    "display_name": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+    "ror":          {"type": "keyword"},
+    "country_code": {"type": "keyword"},
+    "type":         {"type": "keyword"},
+    "lineage":      {"type": "keyword"},
+}}
 person_props = {
-    "given_name":  {"type": "text"},
-    "family_name": {"type": "text"},
-    "orcid":       {"type": "keyword"},
-    "author":      author_props,
+    "given_name":   {"type": "text"},
+    "family_name":  {"type": "text"},
+    "orcid":        {"type": "keyword"},
+    "author":       author_props,
+    "institutions": institutions_props,
 }
 
 # investigators[] came from awards-v3's dynamic mapping, so it is an object today. A nested investigators would need
@@ -51,9 +60,9 @@ full = current.get("investigators_full", {}).get("properties", {}).get("author",
 assert full in (None, "keyword"), f"investigators_full.author.id is mapped as {full}; stop and compare"
 
 awards_patch = {"properties": {
-    "lead_investigator":    {"properties": {"author": author_props}},
-    "co_lead_investigator": {"properties": {"author": author_props}},
-    "investigators":        {"properties": {"author": author_props}},
+    "lead_investigator":    {"properties": {"author": author_props, "institutions": institutions_props}},
+    "co_lead_investigator": {"properties": {"author": author_props, "institutions": institutions_props}},
+    "investigators":        {"properties": {"author": author_props, "institutions": institutions_props}},
     "investigators_full":   {"properties": person_props},      # NOT nested: denormalized object for term filters
 }}
 print(json.dumps(awards_patch, indent=2))
@@ -71,5 +80,6 @@ client.indices.put_mapping(index=AUTHORS_INDEX, body=authors_patch)
 after = client.indices.get_mapping(index=AWARDS_INDEX)[AWARDS_INDEX]["mappings"]["properties"]
 assert after["investigators_full"]["properties"]["author"]["properties"]["id"]["type"] == "keyword"
 assert after["lead_investigator"]["properties"]["author"]["properties"]["id"]["type"] == "keyword"
+assert after["investigators"]["properties"]["institutions"]["properties"]["id"]["type"] == "keyword"
 assert client.indices.get_mapping(index=AUTHORS_INDEX)[AUTHORS_INDEX]["mappings"]["properties"]["awards_count"]["type"] == "integer"
 print("mappings in place")
