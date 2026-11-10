@@ -1,0 +1,54 @@
+resources:
+  jobs:
+    PMC_PDF_Sweep:
+      name: PMC PDF Sweep
+      # oxjob #2124: every open-licence PMC article whose work shows no PDF gets the PDF PMC publishes in its public
+      # bucket (s3://pmc-oa-opendata), whatever TaxiCab's windows and PMC's bot walls missed. Daily at 22:00 UTC, so its
+      # PDFs are inside the 00:30 UTC Parse PDFs run's 3-day window and reach the 05:00 UTC End 2 End the same night.
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: "0 0 22 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: pmc_pdf_sweep
+          notebook_task:
+            notebook_path: notebooks/scraping/pmc_pdf_sweep
+            source: GIT
+          job_cluster_key: pmc_pdf_sweep_cluster
+          timeout_seconds: 10800
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      job_clusters:
+        - job_cluster_key: pmc_pdf_sweep_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+            # workers for the candidate query (it scans openalex_works for has_content); the copy runs on the driver
+            node_type_id: m5d.2xlarge
+            driver_node_type_id: m5d.xlarge
+            num_workers: 4
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            custom_tags:
+              oxjob: "2124"
+      parameters:
+        - name: max_records
+          default: "50000"
+        - name: min_age_hours
+          default: "48"
+        - name: retry_days
+          default: "7"
+        - name: dry_run
+          default: "false"
