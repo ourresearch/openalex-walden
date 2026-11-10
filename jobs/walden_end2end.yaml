@@ -415,7 +415,10 @@ resources:
           # (healthy task: 9-14 min) and one retry recover it without a person; worst case ~ the old single 40-min attempt.
           timeout_seconds: 1500
           max_retries: 1
-          min_retry_interval_millis: 0
+          # oxjob #1642 (10 Nov): the 04:39 CT retry started 2 s after the timeout on the same warehouse cluster and froze
+          # again; the repairs that ran after PROD-WH had stopped (auto-stop 1 min) all finished in ~4 min. Wait 150 s so
+          # the retry gets a fresh cluster. The notebook also caps the main statement at 12 min (STATEMENT_TIMEOUT 720).
+          min_retry_interval_millis: 150000
           retry_on_timeout: true
           depends_on:
             - task_key: Apply_Work_Author_Curations
