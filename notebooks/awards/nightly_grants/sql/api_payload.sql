@@ -22,7 +22,23 @@ country_map AS (
 -- differs). Ten feeds are not read (oxjob #123.2). KAKEN is read for its lead only, whose affiliation is the host institution
 -- (sources/kaken.sql); its co-investigators' strings ('institution, department, title') stay out. A blank or placeholder name is
 -- no name (#123.6: 'no institution available' was a junk magnet); the person's RORs are still read (funder_rors).
+-- `spelled`: a name of two or more words written in capitals (NIH, CONAHCYT, ANID ...) as papers write it: title case, small
+-- words in lower case, the abbreviations NIH uses spelled out (one word is usually an acronym: PATH, IAS). The matcher answers
+-- capitals worse: WASHINGTON UNIVERSITY [], Washington University -> Washington University in St. Louis; UNIVERSITY OF TEXAS
+-- HLTH SCI CTR HOUSTON [], the spelled name -> UTHealth Houston. Read only when the matcher answered the name itself [].
 grant_addresses AS (
+  SELECT award_id, provenance, funder_id, funder_award_id, is_lead, aff, name,
+    NULLIF(CONCAT(UPPER(SUBSTR(words, 1, 1)), SUBSTR(words, 2)), name) AS spelled
+  FROM (
+    SELECT *,
+      CASE WHEN name = UPPER(name) AND name <> LOWER(name) AND TRIM(name) LIKE '% %'
+           THEN ARRAY_JOIN(TRANSFORM(SPLIT(INITCAP(TRIM(name)), ' '), w -> COALESCE(TRY_ELEMENT_AT(MAP(
+             'Of', 'of', 'The', 'the', 'And', 'and', 'For', 'for', 'In', 'in', 'At', 'at', 'On', 'on', 'De', 'de', 'Del', 'del',
+             'Da', 'da', 'Do', 'do', 'Dos', 'dos', 'Das', 'das', 'Di', 'di', 'Du', 'du', 'Des', 'des', 'La', 'la', 'Le', 'le',
+             'Les', 'les', 'Y', 'y', 'E', 'e', 'Hlth', 'Health', 'Sci', 'Science', 'Scis', 'Sciences', 'Ctr', 'Center',
+             'Ctrs', 'Centers', 'Cntr', 'Center', 'Univ', 'University', 'Inst', 'Institute', 'Hosp', 'Hospital', 'Coll', 'College',
+             'Natl', 'National', 'Dept', 'Department', 'Assn', 'Association', 'Fdn', 'Foundation'), w), w)), ' ') END AS words
+    FROM (
   SELECT award_id, provenance, funder_id, funder_award_id, is_lead, aff,
     CASE WHEN TRIM(aff.name) <> ''
               AND aff.name NOT LIKE 'Institution abroad%'
@@ -40,6 +56,8 @@ grant_addresses AS (
     AND (provenance NOT IN ('kaken', 'crossref_work.grants', 'crossref_work_funders', 'gateway_to_research', 'usaspending',
                             'rwjf_grants_explorer', 'argentina_mincyt', 'openaire_fwf', 'researchfi', 'nobelprize_api')
          OR (provenance = 'kaken' AND is_lead))
+    )
+  )
 ),
 -- The country code recorded next to each grant address. A row for this provenance and value decides on its own (RWJF's 'MA' is
 -- Massachusetts). Otherwise the source must be usable (IDRC stores the project's recipient country, NSF the place of
@@ -49,7 +67,7 @@ grant_addresses AS (
 -- country empty: US. On 2026-10-02 all 116,926 such awards had either no country (59,975) or UNITED STATES.
 people AS (
   SELECT
-    g.award_id, g.provenance, g.funder_id, g.is_lead, g.aff, g.name,
+    g.award_id, g.provenance, g.funder_id, g.is_lead, g.aff, g.name, g.spelled,
     COALESCE(
       NULLIF(COALESCE(
         TRY_ELEMENT_AT(cm.code, CONCAT(g.provenance, '|', LOWER(TRIM(g.aff.country)))),
@@ -71,14 +89,15 @@ all_strings AS (
     s.award_id,
     s.provenance,
     s.raw,
+    s.spelled,
     s.record_country,
     CASE WHEN s.record_country IS NULL AND f.country_code IN ('CN', 'JP', 'TW') AND s.raw RLIKE '[\\x{3400}-\\x{9fff}]'
          THEN f.country_code END AS han_funder_country,
     CASE WHEN s.provenance IN ('nih_exporter', 'nsf_award_search', 'kaken') THEN 0.1 ELSE 0.3 END AS thresh
   FROM (
-    SELECT award_id, provenance, funder_id, name AS raw, record_country FROM people WHERE name IS NOT NULL
+    SELECT award_id, provenance, funder_id, name AS raw, spelled, record_country FROM people WHERE name IS NOT NULL
     UNION ALL
-    SELECT oa.id, oa.provenance, oa.funder_id, kpr.institution, lead.record_country
+    SELECT oa.id, oa.provenance, oa.funder_id, kpr.institution, CAST(NULL AS STRING), lead.record_country
     FROM {AWARDS} oa
     JOIN kaken_projects_v kpr ON oa.funder_award_id = kpr.project_id
     LEFT JOIN people lead ON lead.award_id = oa.id AND lead.is_lead
@@ -101,8 +120,10 @@ funder_rors AS (
   JOIN institutions_api_v i ON i.ror = CONCAT('https://ror.org/', r.ror_key)
 ),
 -- Institution ids for each name. First the affiliation matcher's answer for the string ({ANSWERS}: the table works have
--- read since 2026-09-28, oxjob #1386; an empty answer means "names no institution" and is final). Strings it has not
--- answered keep the legacy route: hand-rules override, else the 2023 model's candidates at or above the threshold.
+-- read since 2026-09-28, oxjob #1386; an empty answer means "names no institution" and is final), or, when that answer is
+-- empty and the funder recorded a country for the guard to check, its answer for the name as papers spell it
+-- (grant_addresses.spelled). Strings it has not answered keep the legacy route: hand-rules override, else the 2023 model's
+-- candidates at or above the threshold.
 -- A NaN score never passes: in Spark NaN compares above every number, which gave 318 names (mostly Japanese and
 -- Chinese) the same five institutions.
 disambiguated AS (
@@ -114,6 +135,9 @@ disambiguated AS (
     s.han_funder_country,
     ans.raw_affiliation_string IS NOT NULL AS from_matcher,
     CASE
+      WHEN ans.raw_affiliation_string IS NOT NULL AND SIZE(ans.institution_ids) = 0 AND sp.raw_affiliation_string IS NOT NULL
+           AND s.record_country IS NOT NULL
+        THEN COALESCE(sp.institution_ids, ARRAY())
       WHEN ans.raw_affiliation_string IS NOT NULL THEN COALESCE(ans.institution_ids, ARRAY())
       WHEN SIZE(asl.institution_ids_override) > 0
            AND NOT ARRAY_CONTAINS(asl.institution_ids_override, -1)
@@ -126,6 +150,8 @@ disambiguated AS (
   FROM all_strings s
   LEFT JOIN {ANSWERS} ans
     ON s.raw = ans.raw_affiliation_string
+  LEFT JOIN {ANSWERS} sp
+    ON s.spelled = sp.raw_affiliation_string
   LEFT JOIN affiliation_lookup_v asl
     ON s.raw = asl.raw_affiliation_string
   WHERE ans.raw_affiliation_string IS NOT NULL OR asl.raw_affiliation_string IS NOT NULL

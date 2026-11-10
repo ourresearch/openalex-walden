@@ -210,7 +210,8 @@ INSTITUTIONS = {            # id: (display_name, country_code)
     90: ("National Sun Yat-sen University", "TW"), 91: ("Sun Yat-sen University", "CN"), 92: ("Tunghai University", "TW"),
     93: ("Tokai University", "JP"), 94: ("University of Sydney", "AU"), 95: ("Universidade de Lisboa", "PT"),
     96: ("University of Hong Kong", "HK"), 97: ("National Central University", "TW"), 98: ("Chuo University", "JP"),
-    85: ("Lincoln University", "US"),
+    85: ("Lincoln University", "US"), 99: ("Washington University in St. Louis", "US"),
+    100: ("The University of Texas Health Science Center at Houston", "US"),
 }
 RORS = {94, 95, 90}          # institutions with a ROR in the fixture: https://ror.org/0<id, 6 digits>00
 FUNDERS = {1: "TW", 2: "AU", 3: None, 4: "US", 5: "JP"}   # 1 Taiwan MOST, 2 NHMRC, 3 an international funder, 4 NIH, 5 Japan MHLW
@@ -402,6 +403,57 @@ def test_a_match_in_the_wrong_country_moves_to_the_one_institution_of_that_name_
     assert got[ecuador] == [84] and got[unknown] == [84]          # right country already, or nothing to check
     assert got[two_in_us] == []        # two Lincoln Universities in the US (81's twins 82 and 85): which one is not known
     assert got[usp] == []              # no 'Universidade Politecnica' in Brazil: dropped as before
+
+
+def spelled(*names):
+    """grant_addresses.spelled for each name, as an NIH lead's affiliation."""
+    f = Fixture()
+    for n in names:
+        f.award("nih_exporter", lead=(n, None))
+    cte = PAYLOAD[PAYLOAD.index("grant_addresses AS ("):PAYLOAD.index("\n-- The country code recorded next to each grant address")]
+    sql = f"WITH {cte.rstrip().rstrip(',')} SELECT name, spelled FROM grant_addresses".replace("{AWARDS}", "awards")
+    return dict(f.con.execute(f.sqlglot.transpile(sql, read="spark", write="duckdb")[0]).fetchall())
+
+
+def test_a_name_in_capitals_is_spelled_as_papers_write_it():
+    got = spelled("WASHINGTON UNIVERSITY", "UNIVERSITY OF TEXAS HLTH SCI CTR HOUSTON", "THE UNIVERSITY OF THE WEST INDIES",
+                  "UNIVERSIDAD DEL BIO BIO", "QUEEN'S MEDICAL CENTER", "Washington University", "UNISYS", "N/A")
+    assert got["WASHINGTON UNIVERSITY"] == "Washington University"
+    assert got["UNIVERSITY OF TEXAS HLTH SCI CTR HOUSTON"] == "University of Texas Health Science Center Houston"
+    assert got["THE UNIVERSITY OF THE WEST INDIES"] == "The University of the West Indies"     # a small word first keeps its capital
+    assert got["UNIVERSIDAD DEL BIO BIO"] == "Universidad del Bio Bio"
+    assert got["QUEEN'S MEDICAL CENTER"] == "Queen's Medical Center"
+    assert got["Washington University"] is None and got["UNISYS"] is None                    # not in capitals; one word
+    assert got[None] is None                                                                  # a placeholder is no name
+
+
+def test_a_name_in_capitals_answered_empty_takes_the_answer_for_its_spelling():
+    f = Fixture()
+    f.answer("WASHINGTON UNIVERSITY", [])
+    f.answer("Washington University", [99])
+    f.answer("UNIVERSITY OF TEXAS HLTH SCI CTR HOUSTON", [])
+    f.answer("University of Texas Health Science Center Houston", [100])
+    f.answer("HARVARD UNIVERSITY", [52])
+    f.answer("Harvard University", [80])
+    f.answer("Washington university", [])
+    f.answer("QUEENS COLLEGE", [])
+    f.answer("Queens College", [70])
+    f.answer("THE UNIVERSITY OF THE WEST", [])
+    f.legacy("THE UNIVERSITY OF THE WEST", scored=[(52, 0.9)])
+    washu = f.award("nih_exporter", lead=("WASHINGTON UNIVERSITY", "UNITED STATES"))
+    uth = f.award("nih_exporter", lead=("UNIVERSITY OF TEXAS HLTH SCI CTR HOUSTON", "UNITED STATES"))
+    harvard = f.award("nih_exporter", lead=("HARVARD UNIVERSITY", "UNITED STATES"))
+    mixed = f.award("nih_exporter", lead=("Washington university", "UNITED STATES"))
+    queens = f.award("nih_exporter", lead=("QUEENS COLLEGE", "UNITED STATES"))
+    west = f.award("nih_exporter", lead=("THE UNIVERSITY OF THE WEST", "UNITED STATES"))
+    no_country = f.award("gates_foundation", lead=("WASHINGTON UNIVERSITY", None))
+    got = f.run()
+    assert got[washu] == [99] and got[uth] == [100]
+    assert got[harvard] == [52]        # the name's own answer wins; its spelling is read only after an empty answer
+    assert got[mixed] == []            # not in capitals: the empty answer is final
+    assert got[queens] == []           # the spelling's answer is in Bangladesh: the country guard still applies
+    assert got[west] == []             # the spelling has no answer yet: still empty, and the legacy lookup is not read
+    assert got[no_country] == []       # no recorded country to check the spelling's answer against: not read
 
 
 def test_excluded_sources_and_the_kaken_route():

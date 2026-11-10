@@ -73,3 +73,9 @@ def test_prepare_affiliation_strings_carries_the_same_cte_before_the_works_merge
 def test_the_backlog_carries_the_same_cte():
     text = (REPO / "notebooks/institutions/AffiliationMatcherBacklog.py").read_text()
     assert text.count("grant_addresses AS (") == 1 and cte(text) == EXPECTED
+
+def test_prepare_affiliation_strings_sends_a_spelling_only_for_a_name_answered_empty():
+    cells = json.loads((REPO / "notebooks/end2end/PrepareAffiliationStrings.ipynb").read_text())["cells"]
+    code = next(c["source"] if isinstance(c["source"], str) else "".join(c["source"]) for c in cells if "grant_addresses AS (" in "".join(c["source"]))
+    assert "SELECT g.spelled FROM grant_addresses g" in code
+    assert "ON a.raw_affiliation_string = g.name AND SIZE(a.institution_ids) = 0" in code

@@ -62,6 +62,18 @@ T0 = time.time()
 # GRANT_ADDRESSES is a copy of grant_addresses in notebooks/awards/nightly_grants/sql/api_payload.sql
 # (tests/test_grant_addresses.py there fails if they differ).
 GRANT_ADDRESSES = """grant_addresses AS (
+  SELECT award_id, provenance, funder_id, funder_award_id, is_lead, aff, name,
+    NULLIF(CONCAT(UPPER(SUBSTR(words, 1, 1)), SUBSTR(words, 2)), name) AS spelled
+  FROM (
+    SELECT *,
+      CASE WHEN name = UPPER(name) AND name <> LOWER(name) AND TRIM(name) LIKE '% %'
+           THEN ARRAY_JOIN(TRANSFORM(SPLIT(INITCAP(TRIM(name)), ' '), w -> COALESCE(TRY_ELEMENT_AT(MAP(
+             'Of', 'of', 'The', 'the', 'And', 'and', 'For', 'for', 'In', 'in', 'At', 'at', 'On', 'on', 'De', 'de', 'Del', 'del',
+             'Da', 'da', 'Do', 'do', 'Dos', 'dos', 'Das', 'das', 'Di', 'di', 'Du', 'du', 'Des', 'des', 'La', 'la', 'Le', 'le',
+             'Les', 'les', 'Y', 'y', 'E', 'e', 'Hlth', 'Health', 'Sci', 'Science', 'Scis', 'Sciences', 'Ctr', 'Center',
+             'Ctrs', 'Centers', 'Cntr', 'Center', 'Univ', 'University', 'Inst', 'Institute', 'Hosp', 'Hospital', 'Coll', 'College',
+             'Natl', 'National', 'Dept', 'Department', 'Assn', 'Association', 'Fdn', 'Foundation'), w), w)), ' ') END AS words
+    FROM (
   SELECT award_id, provenance, funder_id, funder_award_id, is_lead, aff,
     CASE WHEN TRIM(aff.name) <> ''
               AND aff.name NOT LIKE 'Institution abroad%'
@@ -79,6 +91,8 @@ GRANT_ADDRESSES = """grant_addresses AS (
     AND (provenance NOT IN ('kaken', 'crossref_work.grants', 'crossref_work_funders', 'gateway_to_research', 'usaspending',
                             'rwjf_grants_explorer', 'argentina_mincyt', 'openaire_fwf', 'researchfi', 'nobelprize_api')
          OR (provenance = 'kaken' AND is_lead))
+    )
+  )
 )"""
 PENDING_SQL = f"""
 WITH {GRANT_ADDRESSES}
