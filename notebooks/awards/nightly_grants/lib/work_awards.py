@@ -169,6 +169,8 @@ def run(c):
     c.count('work_awards',r+'work_awards_candidate')
     import uk_lineage
     uk_lineage.link_conservation(c)
+    import registry_twin
+    registry_twin.link_conservation(c)
     nih_fold.link_conservation(c)
 
 

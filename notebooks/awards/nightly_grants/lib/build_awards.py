@@ -7,7 +7,8 @@ PUBLIC_DOI_CLASS='PUBLIC_DOI_EQUALS_TARGET_DOI'
 # 10-01: a public paper-only grant (shell) retired into a public shell twin of the same funder whose number differs only in
 # punctuation/case (e.g. 'HL-079457' vs 'HL079457'). Both are public, so the loser is allowed to be public.
 PUBLIC_SHELL_CLASS='PUBLIC_SHELL_SAME_NUMBER'
-PUBLIC_TWIN_CLASSES=(PUBLIC_DOI_CLASS,PUBLIC_SHELL_CLASS,'PUBLIC_GTR_LINEAGE_TWIN')
+import registry_twin   # 11-10: funder-feed records twinned by the funder's Crossref deposits (registry_twin.py)
+PUBLIC_TWIN_CLASSES=(PUBLIC_DOI_CLASS,PUBLIC_SHELL_CLASS,'PUBLIC_GTR_LINEAGE_TWIN',registry_twin.REGISTRY_TWIN_CLASS)
 import uk_lineage
 # a transition logged by a run that then failed before its swap (the only way a public id can already be moved in the registry)
 def latest_unfinished(p):
@@ -292,6 +293,7 @@ def plan(c):
         mm=public_shell_filter(c,mm)   # 10-01: held pairs never reach the retirement gates
         mm=nih_fold.filter(c,mm)   # NIH pairs failing their proof are held (nih_fold.py)
         mm=uk_lineage.filter(c,mm)
+        mm=registry_twin.filter(c,mm)   # registry-twin pairs failing their proof are held (registry_twin.py)
         # loser: allocated by a registry release (origin NEW, id >= 9e9), never published, an ACTIVE entity, bound in this release, no NATIVE key
         c.zero('MIGRATION_LOSER_NEVER_PUBLIC',f"""SELECT m.* FROM {mm} m LEFT JOIN {r}entities_allocated e ON e.stable_id=m.loser_id
           WHERE m.evidence_class NOT IN {tuple_sql(nih_fold.with_class(c,PUBLIC_TWIN_CLASSES))} AND (e.stable_id IS NULL OR m.loser_id<9000000000 OR NOT COALESCE(e.origin='NEW',false) OR e.first_published_release IS NOT NULL OR e.first_published_at IS NOT NULL)""")
@@ -458,7 +460,7 @@ def project(c):
     c.artifact('award_metadata',f"""SELECT o.*,b.payload FROM {r}resolved_observations o JOIN {r}award_metadata_election w USING(observation_key,stable_id)
       JOIN {r}bindings b USING(observation_key)""")
     c.zero('RETIRED_LOSER_ELECTED',f'SELECT a.stable_id FROM {r}award_metadata a JOIN {r}retirements t ON t.old_id=a.stable_id')  # op14 (Q5 risk 3)
-    metadata=merge_doi_metadata(c)
+    metadata=registry_twin.fill(c,merge_doi_metadata(c))   # registry twins: the Crossref DOI and lead ORCID onto the feed row
     c.artifact('embedded_links',"SELECT w.id work_id,try_cast(regexp_replace(a.id,'^https://openalex[.]org/G','') AS BIGINT) old_id FROM works_v w LATERAL VIEW explode(w.awards) x AS a")
     resolve_embedded_links(c)
     c.artifact('award_aggregates',f"""SELECT l.stable_id,
