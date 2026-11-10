@@ -11,13 +11,15 @@
 # MAGIC
 # MAGIC Lines (same as `notebooks/elastic/sync_work_metrics`; change both together): a row is rewritten when fwci moves by
 # MAGIC > 1%, CNP value by > 0.01, a percentile-year bound by 2+ points, or a null-ness / top-1/10% flag changes. Works new
-# MAGIC to the table are inserted; gone works deleted. At most `max_rows` rewrites a night (new and gone works first, then
-# MAGIC the largest moves); the rest wait a night.
+# MAGIC to the table are inserted; gone works deleted. At most about `max_rows` rewrites a night (new, gone and flagged
+# MAGIC works first, then the largest moves); the rest wait a night. The cap never sorts the rows (#1271, 10 Nov 2026: an
+# MAGIC `ORDER BY score LIMIT 20M` over 225M rows put them on one executor and lost it): it counts rows per score bucket
+# MAGIC and keeps whole buckets, largest moves first, plus a hash slice of the bucket that crosses the cap.
 # MAGIC
 # MAGIC - `mode=full_build`: (re)create the table from `openalex_works` (one-time; then create the synced table, TRIGGERED,
 # MAGIC   primary key `work_id`, and `GRANT SELECT ON lakebase.lakebase_work_metrics TO openalex_api_ro`).
 # MAGIC - `mode=nightly`: one MERGE of the rows to change, then trigger the synced table's refresh (`trigger_sync=true`).
-# MAGIC - `mode=dry_run`: count what nightly would change.
+# MAGIC - `mode=dry_run`: what nightly would change, capped, in `lakebase_work_metrics_changes_dry`; no MERGE, no refresh.
 # MAGIC
 # MAGIC **Revert:** set `METRICS_OVERLAY = False` in the API (or config var `LAKEBASE_METRICS_OVERLAY=0`, no deploy);
 # MAGIC docs answer alone, as before. Then drop the synced table and this task.
@@ -73,6 +75,23 @@ FROM j
 WHERE gone OR is_new OR flagged OR fwci_x > 1 OR cnp_x > 1 OR pct_d >= {PCT_POINTS}
 """
 
+# The cap's order without sorting the rows: key 0 = gone / new / flagged; moved rows by score in 1/32-doubling buckets,
+# largest first (keys 1..2000). Same buckets in notebooks/elastic/sync_work_metrics.
+CAP_KEY = ("CASE WHEN gone OR is_new OR flagged THEN 0 "
+           "ELSE greatest(1, 2000 - CAST(floor(log2(greatest(score, 1)) * 32) AS INT)) END")
+
+
+def cap_filter(table, key_sql, cap):
+    """A predicate keeping about `cap` rows of `table`, lowest key first: one GROUP BY on the driver, no sort of the
+    rows. Whole keys below the one that crosses the cap, then a hash slice of that key (+- a few thousand rows)."""
+    taken = 0
+    for r in spark.sql(f"SELECT {key_sql} AS k, count(*) AS n FROM {table} GROUP BY 1 ORDER BY 1").collect():
+        if taken + r.n > cap:
+            ppm = (cap - taken) * 1_000_000 // r.n
+            return f"({key_sql} < {r.k} OR ({key_sql} = {r.k} AND pmod(xxhash64(id), 1000000) < {ppm}))"
+        taken += r.n
+    return "true"
+
 # COMMAND ----------
 
 if MODE == "full_build":
@@ -87,18 +106,22 @@ if MODE == "full_build":
     """)
     spark.sql(f"INSERT INTO {METRICS_TABLE} SELECT *, current_timestamp() FROM ({CURRENT})")
     print(f"{METRICS_TABLE}: {spark.table(METRICS_TABLE).count():,} rows")
-elif MODE == "dry_run":
-    r = spark.sql(f"SELECT count_if(is_new) AS new_works, count_if(gone) AS gone, "
-                  f"count_if(NOT is_new AND NOT gone) AS moved FROM ({COMPARED})").collect()[0]
-    print(f"dry_run: new {r.new_works:,}, moved past the lines {r.moved:,}, gone {r.gone:,}")
 else:
-    # Gone and new works always first (score 1e9); moved rows by score, largest first; at most MAX_ROWS in all.
-    spark.sql(f"CREATE OR REPLACE TABLE {CHANGES_TABLE} AS {COMPARED}")
-    n = spark.table(CHANGES_TABLE).count()
+    # Gone, new and flagged works first; moved rows by score, largest first; at most about MAX_ROWS in all.
+    changes = CHANGES_TABLE + ("_dry" if MODE == "dry_run" else "")
+    spark.sql(f"CREATE OR REPLACE TABLE {changes} AS {COMPARED}")
+    n = spark.table(changes).count()
     if MAX_ROWS and n > MAX_ROWS:
-        spark.sql(f"""CREATE OR REPLACE TABLE {CHANGES_TABLE} AS
-                      SELECT * FROM {CHANGES_TABLE} ORDER BY score DESC, id LIMIT {MAX_ROWS}""")
-        print(f"{n:,} rows past the lines; capped at {MAX_ROWS:,}, {n - MAX_ROWS:,} wait a night")
+        keep = cap_filter(changes, CAP_KEY, MAX_ROWS)
+        spark.sql(f"DELETE FROM {changes} WHERE NOT {keep}")
+        print(f"{n:,} rows past the lines; cap {MAX_ROWS:,} keeps {keep}")
+    r = spark.sql(f"SELECT count(*) AS kept, count_if(is_new) AS new_works, count_if(gone) AS gone, "
+                  f"count_if(flagged AND NOT is_new AND NOT gone) AS flagged, "
+                  f"min(CASE WHEN NOT (gone OR is_new OR flagged) THEN score END) AS min_moved_score "
+                  f"FROM {changes}").collect()[0]
+    print(f"{MODE}: {n:,} past the lines; this run {r.kept:,} (new {r.new_works:,}, gone {r.gone:,}, "
+          f"flagged {r.flagged:,}, moved down to score {r.min_moved_score}); {n - r.kept:,} wait a night")
+if MODE == "nightly":
     m = spark.sql(f"""
         MERGE INTO {METRICS_TABLE} AS t
         USING {CHANGES_TABLE} AS c

@@ -16,8 +16,10 @@
 # MAGIC **What the index holds** is kept in `openalex.works.es_work_metrics_served` (one row per work: the values and the
 # MAGIC `updated_date` the index has). Each run compares it with Delta in one pass:
 # MAGIC 1. Works whose `updated_date` moved (sync_works re-sent them whole), new works, gone works: the state follows Delta.
-# MAGIC 2. The rest past the lines form the push (non-xpac first, largest move first, at most `max_push`; the rest wait
-# MAGIC    for the next run).
+# MAGIC 2. The rest past the lines form the push (non-xpac first, largest move first, at most about `max_push`; the rest
+# MAGIC    wait for the next run). The cap never sorts the rows (#1271, 10 Nov 2026: a sort-and-limit over the ~216M
+# MAGIC    values one fix moved lost the Lakebase twin's executor): it counts rows per band and score bucket and keeps
+# MAGIC    whole buckets in order, plus a hash slice of the bucket that crosses the cap.
 # MAGIC 3. Partial updates to the `works` alias in chunks of `chunk_rows`; after each chunk the state takes the new values
 # MAGIC    for every work the index accepted, so a stop or cancel loses at most one chunk (re-sent next run).
 # MAGIC
@@ -162,16 +164,34 @@ if not DRY_RUN:
 
 # COMMAND ----------
 
-# The push, capped: lower bands whole, then the largest moves of the band that crosses the cap.
+# The push, capped: lower bands whole, then the largest moves of the band that crosses the cap. No sort of the rows
+# (#1271): keys order band, then score in 1/32-doubling buckets, largest first (same buckets as
+# notebooks/lakebase/BuildLakebaseWorkMetrics).
+PUSH_KEY = "band * 10000 + 5000 - CAST(floor(log2(greatest(score, 1)) * 32) AS INT)"
+
+
+def cap_filter(rows_sql, key_sql, cap):
+    """A predicate keeping about `cap` rows of `rows_sql`, lowest key first: one GROUP BY on the driver, no sort of the
+    rows. Whole keys below the one that crosses the cap, then a hash slice of that key (+- a few thousand rows)."""
+    taken = 0
+    for r in spark.sql(f"SELECT {key_sql} AS k, count(*) AS n FROM ({rows_sql}) GROUP BY 1 ORDER BY 1").collect():
+        if taken + r.n > cap:
+            ppm = (cap - taken) * 1_000_000 // r.n
+            return f"({key_sql} < {r.k} OR ({key_sql} = {r.k} AND pmod(xxhash64(id), 1000000) < {ppm}))"
+        taken += r.n
+    return "true"
+
+
 past = counts.get("push", 0)
+push_rows = f"SELECT * FROM {DIFF_TABLE} WHERE action = 'push'"
+keep = cap_filter(push_rows, PUSH_KEY, CAP) if CAP and past > CAP else "true"
 spark.sql(f"""
     CREATE OR REPLACE TABLE {PUSH_TABLE} AS
     SELECT id, is_xpac, fwci, citation_normalized_percentile, cited_by_percentile_year, score, band
-    FROM {DIFF_TABLE} WHERE action = 'push'
-    {f'ORDER BY band, score DESC, id LIMIT {CAP}' if CAP and past > CAP else ''}
+    FROM ({push_rows}) WHERE {keep}
 """)
-if CAP and past > CAP:
-    print(f"Capped at {CAP:,}; {past - CAP:,} wait for the next run")
+if keep != "true":
+    print(f"Capped at about {CAP:,} ({keep}); the rest wait for the next run")
 bands = spark.sql(f"SELECT band, count(*) AS n FROM {PUSH_TABLE} GROUP BY band ORDER BY band").collect()
 n_push = sum(b.n for b in bands)
 chunks = []
