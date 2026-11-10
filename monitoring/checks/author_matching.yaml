@@ -177,6 +177,16 @@ sections:
         watch_above: 100
         critical_above: 500
         failure_modes: two profiles minted for one ORCID in one night
+      - id: unregistered_author_ids
+        title: seats whose author id has no profile after UpdateWorkAuthors' repair (/authors/{id} 404s)
+        expr: unregistered_seat_ids[left]
+        rule: absolute
+        watch_above: 1000
+        critical_above: 20000
+        failure_modes: >
+          a new path writes an author id no registry row holds (oxjob 1126: the legacy-id copy put 584K on works,
+          370K in one night on 4 Sep); `found` far above `registered` + `repaired` means ids the old registry
+          does not know; millions stop the run at the Step 2c guard instead
       - id: name_change_incompatible
         title: incompatible name changes on bound seats
         expr: name_change_quality[works_incompatible] / name_change_quality[works_judged]
