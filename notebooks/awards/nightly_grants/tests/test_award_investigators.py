@@ -119,7 +119,8 @@ def test_without_links_people_are_served_as_before_with_a_null_author():
     g = f.grant(lead=("Ana", "Silva", "Universidade de Lisboa"), investigators=[("Bruno", "Costa")])
     got = f.people()[g]
     assert got["lead"] == {"given_name": "Ana", "family_name": "Silva", "orcid": None, "role_start": None,
-                           "affiliation": {"name": "Universidade de Lisboa", "country": None, "ids": None}, "author": None}
+                           "affiliation": {"name": "Universidade de Lisboa", "country": None, "ids": None}, "author": None,
+                           "institutions": None}   # no match: NULL, which Spark's to_json drops (no hash moves)
     assert f.people()[g]["investigators"][0]["author"] is None
 
 
@@ -143,3 +144,29 @@ def test_the_author_orcid_is_the_profiles_and_a_profile_missing_attaches_nothing
     sql = f.sqlglot.transpile(award_investigators.links_relation(c), read="spark", write="duckdb")[0]
     got = {r[0]: r[1:] for r in f.con.execute(f"SELECT award_id, author_id, author_orcid, grant_orcid FROM ({sql})").fetchall()}
     assert got == {1: ("https://openalex.org/A11", "https://orcid.org/A", "X"), 2: ("https://openalex.org/A12", None, None)}
+
+
+# ---------- each person's institutions (Casey 11-09): works' authorships[].institutions, from the same matching ----------
+def test_each_person_gets_the_institutions_its_own_affiliation_matched_country_guarded_and_institution_awarded_is_unchanged():
+    f = Fixture()
+    f.answer("Harvard University", [52])
+    f.answer("Queens University", [70, 71])                                  # Bangladesh and Canada; the person records Canada
+    f.answer("Emory University", [80])
+    g = f.award("nih_exporter", lead=("Harvard University", "UNITED STATES"),
+                co_lead=("Lisbon lab", "Portugal", [("https://ror.org/000009500", "ROR")]),       # its own ROR: institution 95
+                investigators=[("Queens University", "Canada"), ("Nowhere Institute", "UNITED STATES"), ("Harvard University", "UNITED STATES")])
+    skipped = f.award("gateway_to_research", lead=("Emory University", "UNITED STATES"))   # a feed grant_addresses does not read
+    sql = (PAYLOAD.replace("{AWARDS}", "awards").replace("{ANSWERS}", "answers")
+           .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT))
+           .replace("{INVESTIGATOR_LINKS}", award_investigators.EMPTY_LINKS))
+    sql = f.sqlglot.transpile(sql, read="spark", write="duckdb")[0]
+    rows = {i: (lead, co, inv, aw) for i, lead, co, inv, aw in
+            f.con.execute(f"SELECT id, lead_investigator, co_lead_investigator, investigators, institution_awarded FROM ({sql})").fetchall()}
+    ids = lambda p: p and p["institutions"] and [int(x["id"].rsplit("I", 1)[1]) for x in p["institutions"]]
+    lead, co, inv, awarded = rows[g]
+    assert ids(lead) == [52] and ids(co) == [95] and [ids(p) for p in inv] == [[71], None, [52]]
+    assert lead["institutions"][0] == {"id": "https://openalex.org/I52", "display_name": "Harvard University", "ror": None,
+                                       "country_code": "US", "type": "education", "lineage": []}       # institution_awarded's shape
+    assert lead["affiliation"]["name"] == "Harvard University"                                      # the printed value stays
+    assert sorted(int(x["id"].rsplit("I", 1)[1]) for x in awarded) == [52, 71, 95]                 # unchanged by the per-person view
+    assert ids(rows[skipped][0]) is None

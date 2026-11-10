@@ -70,6 +70,10 @@ AWARD_FIELD_MAPPINGS = {"sub_awards_count": {"type": "long"},
                         # the author on each investigator (oxjob #1847; notebooks/elastic/PatchInvestigatorAuthorsMapping.py):
                         # the filters lead_investigator.author.id and investigators.author.id are term queries on these
                         **{f"{slot}.author.id": {"type": "keyword"}
+                           for slot in ("lead_investigator", "co_lead_investigator", "investigators", "investigators_full")},
+                        # each investigator's institutions (Casey 11-09): mapped before the first night that sends them, or
+                        # dynamic mapping would type the ids as text and only a reindex fixes it
+                        **{f"{slot}.institutions.id": {"type": "keyword"}
                            for slot in ("lead_investigator", "co_lead_investigator", "investigators", "investigators_full")}}
 
 

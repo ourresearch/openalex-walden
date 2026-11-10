@@ -90,9 +90,9 @@ all_strings AS (
 -- institution with no matching (oxjob #2032). It is checked by the country guard like a matched name. Only a ROR id counts:
 -- https://ror.org/0xxxxxxxx, the same with http or no scheme, or the bare id.
 funder_rors AS (
-  SELECT DISTINCT r.award_id, r.provenance, r.record_country, i.id AS institution_id
+  SELECT DISTINCT r.award_id, r.provenance, r.record_country, r.aff_json, i.id AS institution_id
   FROM (
-    SELECT p.award_id, p.provenance, p.record_country,
+    SELECT p.award_id, p.provenance, p.record_country, TO_JSON(p.aff) AS aff_json,
            REGEXP_EXTRACT(LOWER(TRIM(x.id)), '^(?:(?:https?://)?ror[.]org/)?(0[0-9a-z]{6}[0-9]{2})$', 1) AS ror_key
     FROM people p
     LATERAL VIEW EXPLODE(p.aff.ids) ids AS x
@@ -203,6 +203,35 @@ institution_awarded_per_award AS (
   JOIN institutions_api_v i ON d.institution_id = i.id
   GROUP BY d.award_id
 ),
+-- Each person's institutions (oxjob #1847, Casey 11-09): investigators[].institutions, as works' authorships[].institutions, from the
+-- same matched, country-guarded names and RORs institution_awarded reads, kept per affiliation as printed (two people printing the
+-- same affiliation get the same institutions). The affiliation itself stays as printed, like works' raw_affiliation_strings. A
+-- KAKEN lead with no name of its own (the page-scrape branch) and the feeds grant_addresses does not read get none.
+affiliation_institution_ids AS (
+  SELECT pa.award_id, pa.aff_json, g.institution_id
+  FROM (SELECT DISTINCT award_id, TO_JSON(aff) AS aff_json, name, record_country FROM people WHERE name IS NOT NULL) pa
+  JOIN guarded g ON g.award_id = pa.award_id AND g.raw = pa.name AND g.record_country <=> pa.record_country AND g.country_ok
+  UNION
+  SELECT fr.award_id, fr.aff_json, g.institution_id
+  FROM funder_rors fr
+  JOIN guarded g ON g.award_id = fr.award_id AND g.raw IS NULL AND g.institution_id = fr.institution_id
+    AND g.record_country <=> fr.record_country AND g.country_ok
+),
+affiliation_institutions AS (
+  SELECT award_id, MAP_FROM_ENTRIES(COLLECT_LIST(STRUCT(aff_json AS k, institutions AS v))) AS by_affiliation
+  FROM (
+    SELECT a.award_id, a.aff_json,
+      -- sorted as institution_awarded is (id first, unique per person), so the content hash doesn't move on shuffle order
+      ARRAY_SORT(COLLECT_LIST(NAMED_STRUCT(
+        'id', CONCAT('https://openalex.org/I', CAST(i.id AS STRING)), 'display_name', i.display_name, 'ror', i.ror,
+        'country_code', i.country_code, 'type', i.type, 'lineage', i.lineage
+      ))) AS institutions
+    FROM (SELECT DISTINCT award_id, aff_json, institution_id FROM affiliation_institution_ids) a
+    JOIN institutions_api_v i ON a.institution_id = i.id
+    GROUP BY a.award_id, a.aff_json
+  )
+  GROUP BY award_id
+),
 -- Investigators with their OpenAlex author (oxjob #1847; lib/award_investigators.py): {INVESTIGATOR_LINKS} holds the served slots.
 -- The author is {id, display_name, orcid}, as works' authorships[].author has them.
 -- The key is slot, position, the names and the ORCID as printed (cleaned as the job's people.sql does), so a reordered list or an
@@ -230,7 +259,8 @@ investigator_people AS (
       'affiliation', x.lead_investigator.affiliation,
       'author', TRY_ELEMENT_AT(x.authors, CONCAT_WS('|', 'lead_investigator', '0',
         LOWER(TRIM(COALESCE(x.lead_investigator.family_name, ''))), LOWER(TRIM(COALESCE(x.lead_investigator.given_name, ''))),
-        COALESCE(REGEXP_EXTRACT(UPPER(x.lead_investigator.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), '')))) END AS lead_investigator,
+        COALESCE(REGEXP_EXTRACT(UPPER(x.lead_investigator.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), ''))),
+      'institutions', TRY_ELEMENT_AT(x.by_affiliation, TO_JSON(x.lead_investigator.affiliation))) END AS lead_investigator,
     CASE WHEN x.co_lead_investigator IS NOT NULL THEN NAMED_STRUCT(
       'given_name', x.co_lead_investigator.given_name,
       'family_name', x.co_lead_investigator.family_name,
@@ -239,7 +269,8 @@ investigator_people AS (
       'affiliation', x.co_lead_investigator.affiliation,
       'author', TRY_ELEMENT_AT(x.authors, CONCAT_WS('|', 'co_lead_investigator', '0',
         LOWER(TRIM(COALESCE(x.co_lead_investigator.family_name, ''))), LOWER(TRIM(COALESCE(x.co_lead_investigator.given_name, ''))),
-        COALESCE(REGEXP_EXTRACT(UPPER(x.co_lead_investigator.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), ''))))
+        COALESCE(REGEXP_EXTRACT(UPPER(x.co_lead_investigator.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), ''))),
+      'institutions', TRY_ELEMENT_AT(x.by_affiliation, TO_JSON(x.co_lead_investigator.affiliation)))
       END AS co_lead_investigator,
     -- i is Spark's 0-based index, the same position the job reads with the same transform (people.sql)
     TRANSFORM(x.investigators, (p, i) -> CASE WHEN p IS NOT NULL THEN NAMED_STRUCT(
@@ -250,12 +281,14 @@ investigator_people AS (
       'affiliation', p.affiliation,
       'author', TRY_ELEMENT_AT(x.authors, CONCAT_WS('|', 'investigators', CAST(i AS STRING),
         LOWER(TRIM(COALESCE(p.family_name, ''))), LOWER(TRIM(COALESCE(p.given_name, ''))),
-        COALESCE(REGEXP_EXTRACT(UPPER(p.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), '')))) END) AS investigators
+        COALESCE(REGEXP_EXTRACT(UPPER(p.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), ''))),
+      'institutions', TRY_ELEMENT_AT(x.by_affiliation, TO_JSON(p.affiliation))) END) AS investigators
   FROM (
     SELECT
-      oa.id, oa.lead_investigator, oa.co_lead_investigator, oa.investigators, ia.authors
+      oa.id, oa.lead_investigator, oa.co_lead_investigator, oa.investigators, ia.authors, ai.by_affiliation
     FROM {AWARDS} oa
     LEFT JOIN investigator_authors ia ON ia.award_id = oa.id
+    LEFT JOIN affiliation_institutions ai ON ai.award_id = oa.id
   ) x
 )
 SELECT
