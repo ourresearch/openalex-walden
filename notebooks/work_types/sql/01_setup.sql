@@ -1,3 +1,4 @@
+-- sql-template: rendered by lib/sql_templates.py, which fills every parameter before Spark runs it.
 -- The one persistent table of the work-type path (topics-shape re-cut, worktype-student-v2, 2026-11-09): stage 2's scores,
 -- the paid GPU output. One row per scored text: key (work_id, input_hash, model_version), written once by the score task
 -- (ScoreWorkTypeQueue, from the Modal shards in the Volume); scores are never updated. The queue builder only moves the

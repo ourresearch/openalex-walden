@@ -1,3 +1,4 @@
+-- sql-template: rendered by lib/sql_templates.py, which fills every parameter before Spark runs it.
 -- Candidates (worktype-student-v2, 2026-11-09): every live work's input_key, the fingerprint of exactly what its pack is
 -- assembled from (02_pack_rows.sql's row: the work fields, the records, the tags, the MEDLINE / DataCite types; arrays
 -- sorted, so row order never matters) plus the pack and render versions. A work is a candidate when it has no score row

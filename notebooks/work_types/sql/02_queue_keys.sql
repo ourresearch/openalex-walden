@@ -1,3 +1,4 @@
+-- sql-template: rendered by lib/sql_templates.py, which fills every parameter before Spark runs it.
 -- The queue builder's work set (worktype-student-v2, 2026-11-09, topics-shape re-cut). Statement 1: the live works of
 -- this build, non-xpac unless include_xpac, one backfill chunk (pmod(id, chunks) = chunk) or all (chunks = 1). Then the
 -- notebook runs 02_pack_rows.sql over them and 02_queue_cand.sql on its rows.

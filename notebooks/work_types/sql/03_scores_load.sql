@@ -1,3 +1,4 @@
+-- sql-template: rendered by lib/sql_templates.py, which fills every parameter before Spark runs it.
 -- The score load (worktype-student-v2, 2026-11-09, topics-shape re-cut): the Modal shards of one build (temp view
 -- wt_shards, read by ScoreWorkTypeQueue from <volume_dir>/<build_id>/*.parquet) against the queue, then each text's scores
 -- inserted once into the scores table. Statement 1, the checks (the notebook refuses, writing nothing, unless every count

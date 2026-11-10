@@ -1,3 +1,4 @@
+-- sql-template: rendered by lib/sql_templates.py, which fills every parameter before Spark runs it.
 -- Piece 2b: one row per work of wt_work_set with every pack input (worktype-student-v2, 2026-11-04). Read-only temp view.
 -- 11-09 re-cut: the work set is every live work (02_queue_keys.sql: the input_key of each) or tonight's candidates (the packs).
 -- The statements are TEST-2/3/4's (student/out/v3/code/c_packs.py works/records/tags, b_pull.py B3), unchanged except

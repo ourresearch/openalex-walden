@@ -26,6 +26,9 @@ import sys
 from collections import Counter
 
 DOLLAR = re.compile(r"\$[0-9A-Za-z_{]")
+# A plain .sql file whose first line starts with this is a template that Python renders (fills every ${name} and refuses
+# a leftover) before Spark sees it, so no dollar reaches a job run. Skipped. Example: notebooks/work_types/sql/.
+TEMPLATE_MARK = "-- sql-template:"
 
 
 def scan_sql(text):
@@ -105,6 +108,8 @@ def sql_cells(path):
     elif path.endswith(".sql"):
         if txt.startswith("-- Databricks notebook source"):
             yield from source_cells(txt, "--")
+        elif txt.startswith(TEMPLATE_MARK):
+            return    # a Python-rendered template: its ${name} params are filled before any run (oxjob #1976)
         else:
             yield "file", txt
     elif path.endswith(".py") and txt.startswith("# Databricks notebook source"):
