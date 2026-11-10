@@ -210,6 +210,7 @@ INSTITUTIONS = {            # id: (display_name, country_code)
     90: ("National Sun Yat-sen University", "TW"), 91: ("Sun Yat-sen University", "CN"), 92: ("Tunghai University", "TW"),
     93: ("Tokai University", "JP"), 94: ("University of Sydney", "AU"), 95: ("Universidade de Lisboa", "PT"),
     96: ("University of Hong Kong", "HK"), 97: ("National Central University", "TW"), 98: ("Chuo University", "JP"),
+    85: ("Lincoln University", "US"),
 }
 RORS = {94, 95, 90}          # institutions with a ROR in the fixture: https://ror.org/0<id, 6 digits>00
 FUNDERS = {1: "TW", 2: "AU", 3: None, 4: "US", 5: "JP"}   # 1 Taiwan MOST, 2 NHMRC, 3 an international funder, 4 NIH, 5 Japan MHLW
@@ -379,6 +380,28 @@ def test_matcher_answer_wins_over_the_legacy_lookup_and_an_empty_answer_is_final
     got = f.run()
     assert got[hutch] == [10] and got[dept] == [] and got[twin] == [] and got[right] == [71]
     assert got[legacy_only] == [40] and got[unknown] == []
+
+
+def test_a_match_in_the_wrong_country_moves_to_the_one_institution_of_that_name_in_the_recorded_country():
+    f = Fixture()
+    f.answer("UNIVERSIDAD TECNICA FEDERICO SANTA MARIA", [84])     # the matcher picked the Ecuador record of a Chilean university
+    f.answer("Depto. de Física, Universidad Técnica Federico Santa María - Valparaíso", [84])
+    f.answer("UNIVERSIDAD TECNICA DEL NORTE", [84])                # a different university the matcher took for it
+    f.answer("Lincoln University", [81])                         # New Zealand, for awards recorded in the US
+    f.legacy("Universidade de São Paulo (USP). Escola Politécnica (EP)", scored=[(21, 0.8)])
+    chile = f.award("anid_github", lead=("UNIVERSIDAD TECNICA FEDERICO SANTA MARIA", "CHILE"))
+    ecuador = f.award("gates_foundation", lead=("UNIVERSIDAD TECNICA FEDERICO SANTA MARIA", "Ecuador"))
+    unknown = f.award("gates_foundation", lead=("UNIVERSIDAD TECNICA FEDERICO SANTA MARIA", None))
+    unit = f.award("anid_github", lead=("Depto. de Física, Universidad Técnica Federico Santa María - Valparaíso", "CHILE"))
+    other = f.award("anid_github", lead=("UNIVERSIDAD TECNICA DEL NORTE", "CHILE"))
+    two_in_us = f.award("nih_exporter", lead=("Lincoln University", "UNITED STATES"))
+    usp = f.award("fapesp_bv", lead=("Universidade de São Paulo (USP). Escola Politécnica (EP)", "Brazil"))
+    got = f.run()
+    assert got[chile] == [83] and got[unit] == [83]               # moved to the Chilean record
+    assert got[other] == []            # the text does not contain the name: not that university in any country
+    assert got[ecuador] == [84] and got[unknown] == [84]          # right country already, or nothing to check
+    assert got[two_in_us] == []        # two Lincoln Universities in the US (81's twins 82 and 85): which one is not known
+    assert got[usp] == []              # no 'Universidade Politecnica' in Brazil: dropped as before
 
 
 def test_excluded_sources_and_the_kaken_route():

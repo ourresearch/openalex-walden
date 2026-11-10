@@ -164,16 +164,31 @@ sovereign AS (
 -- in another of the three (oxjob #2032): the same characters name different universities there. On the 11-03 blind sheet all 4
 -- wrong Han-script links were Taiwan names (國立中山大學, Taiwan's National Sun Yat-sen University -> Sun Yat-sen University CN;
 -- 東海大學, Tunghai -> Tokai JP). An institution elsewhere is kept (a Taiwanese grant to 雪梨大學, the University of Sydney).
+-- A match in the wrong country moves to the one institution of the same name in the recorded country, if there is exactly one
+-- and the funder's text contains that name, case and accents aside (Universidad Técnica Federico Santa María has a Chilean and
+-- an Ecuadorian record; Asia University a Japanese and a Taiwanese one). A text that only resembles the name stays dropped:
+-- NORTHWESTERN STATE UNIVERSITY OF LA is neither Northwestern University in the Philippines nor the one in Illinois.
+same_name AS (
+  SELECT a.id AS institution_id, COALESCE(sb.state, b.country_code) AS state, MIN(b.id) AS twin_id, COUNT(*) AS twins,
+    MAX(TRIM(REGEXP_REPLACE(TRANSLATE(LOWER(a.display_name), 'áàâäãåéèêëíìîïóòôöõúùûüçñ', 'aaaaaaeeeeiiiiooooouuuucn'), '[^\\p{L}\\p{N}]+', ' ')))
+      AS name_key
+  FROM institutions_api_v a
+  JOIN institutions_api_v b ON LOWER(b.display_name) = LOWER(a.display_name) AND b.id <> a.id
+  LEFT JOIN sovereign sb ON sb.territory = b.country_code
+  WHERE b.country_code IS NOT NULL
+  GROUP BY a.id, COALESCE(sb.state, b.country_code)
+),
 guarded AS (
   SELECT
     e.award_id,
     e.provenance,
     e.raw,
     e.from_matcher,
-    e.institution_id,
+    COALESCE(t.twin_id, e.institution_id) AS institution_id,
     e.record_country,
     i.country_code AS institution_country,
-    (e.record_country IS NULL OR i.country_code IS NULL
+    t.twin_id IS NOT NULL
+    OR (e.record_country IS NULL OR i.country_code IS NULL
       OR COALESCE(si.state, i.country_code) = COALESCE(sr.state, e.record_country))
     AND (e.han_funder_country IS NULL OR i.country_code IS NULL
       OR COALESCE(si.state, i.country_code) NOT IN ('CN', 'JP', 'TW') OR COALESCE(si.state, i.country_code) = e.han_funder_country)
@@ -182,6 +197,10 @@ guarded AS (
   JOIN institutions_api_v i ON e.institution_id = i.id
   LEFT JOIN sovereign si ON si.territory = i.country_code
   LEFT JOIN sovereign sr ON sr.territory = e.record_country
+  LEFT JOIN same_name t ON t.institution_id = e.institution_id AND t.twins = 1
+    AND t.state = COALESCE(sr.state, e.record_country) AND t.state <> COALESCE(si.state, i.country_code)
+    AND CONCAT(' ', REGEXP_REPLACE(TRANSLATE(LOWER(e.raw), 'áàâäãåéèêëíìîïóòôöõúùûüçñ', 'aaaaaaeeeeiiiiooooouuuucn'), '[^\\p{L}\\p{N}]+', ' '), ' ')
+        LIKE CONCAT('% ', t.name_key, ' %')
 ),
 deduped AS (SELECT DISTINCT award_id, institution_id FROM guarded WHERE country_ok),
 institution_awarded_per_award AS (
