@@ -237,3 +237,21 @@ def test_punctuation_twins_agree(title, ok):
 ])
 def test_python_twin_matches_java_classes(title, ok):
     assert T.python_usable(title, None) is ok
+
+
+def test_topics_merge_has_no_map_cross_join_and_skips_a_loaded_build():
+    """A CROSS JOIN of the 4,516-topic map onto 6.68M awards stalled the backfill. The served rows come from posexplode of the same
+    top-3 slice + a broadcast join to the vocabulary, re-gathered in position order; a loaded build is never scored or inserted twice;
+    NULL flags or arrays in the shard files and a vocabulary that repeats a topic id stop the run before anything is written."""
+    src = open(os.path.join(HERE, "..", "ScoreAwardTopics.py")).read()
+    merge = src[src.index('spark.sql(f"""MERGE INTO {TARGET} v USING ('):]
+    assert "CROSS JOIN" not in merge and "map_from_entries" not in merge and "QUALIFY" not in merge
+    assert "posexplode(slice(filter(arrays_zip(sc.topic_ids, sc.probs), x -> x.topic_ids <> -1), 1, 3))" in merge
+    assert "/*+ BROADCAST(m) */" in merge and "array_sort(collect_list(named_struct('rn', k.rn," in merge
+    assert "CAST(ROUND(k.p, 4) AS FLOAT)" in merge and "WHEN sc.not_classifiable THEN CAST(ARRAY() AS {TOPICS_TYPE})" in merge
+    assert "WITH meta AS ({VOCAB})" in merge
+    load = src[src.index("L = one("):src.index('spark.sql(f"DELETE FROM {RAW}')]
+    assert "if loaded:" in load and "skipping Modal and the raw INSERT" in load
+    assert "NOT (size(topic_ids) <=> 10 AND size(probs) <=> 10 AND not_classifiable <=> (topic_ids[0] = -1))" in load
+    gate = src[src.index("g = one("):src.index('spark.sql(f"""MERGE INTO')]
+    assert "count(DISTINCT tid) FROM ({VOCAB})) AS vocab_dupes" in gate and "if g.vocab_dupes:" in gate

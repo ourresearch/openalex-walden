@@ -39,6 +39,12 @@ QUEUE, RAW = f"{P}queue", f"{P}topics_raw"
 SOURCE = M.APPS["topics"]["model_tag"]
 TOPICS_TYPE = ("ARRAY<STRUCT<id: STRING, display_name: STRING, score: FLOAT, subfield: STRUCT<id: STRING, display_name: STRING>, "
                "field: STRUCT<id: STRING, display_name: STRING>, domain: STRUCT<id: STRING, display_name: STRING>>>")
+VOCAB = """SELECT CAST(t.topic_id AS INT) AS tid, t.display_name,
+    named_struct('id', concat('https://openalex.org/subfields/', s.subfield_id), 'display_name', s.display_name) AS subfield,
+    named_struct('id', concat('https://openalex.org/fields/', f.field_id), 'display_name', f.display_name) AS field,
+    named_struct('id', concat('https://openalex.org/domains/', d.domain_id), 'display_name', d.display_name) AS domain
+  FROM openalex.common.topics t JOIN openalex.common.subfields s USING (subfield_id) JOIN openalex.common.fields f USING (field_id)
+  JOIN openalex.common.domains d USING (domain_id)"""
 
 
 def log(msg):
@@ -83,7 +89,13 @@ if est > MAX_USD:
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {RAW} (award_id BIGINT, topic_ids ARRAY<INT>, probs ARRAY<FLOAT>, not_classifiable BOOLEAN,
   shard STRING, source STRING, build_id STRING, scored_at TIMESTAMP) CLUSTER BY (build_id)
   COMMENT 'Awards enrich: raw q8b_2m scores per queued award (top-10 topic ids, -1 = not classifiable), append-only, one build per run'""")
-if one(f"SELECT count(*) AS n FROM {RAW} WHERE build_id = '{build_id}'").n != n:
+L = one(f"""SELECT count(*) AS rows, count(DISTINCT award_id) AS ids,
+  (SELECT count(*) FROM {QUEUE} q LEFT ANTI JOIN (SELECT award_id FROM {RAW} WHERE build_id = '{build_id}') r ON r.award_id = q.award_id) AS missing
+  FROM {RAW} WHERE build_id = '{build_id}'""")
+loaded = L.rows == L.ids == n and L.missing == 0
+if loaded:   # a repair or retry: no second Modal call, no second INSERT of the same build
+    log(f"build {build_id} already loaded in {RAW} ({L.rows:,} rows): skipping Modal and the raw INSERT")
+else:
     token = dbutils.secrets.get(scope=W["secret_scope"], key=W["secret_key"])
     res = M.ModalCall("topics", W["endpoint"], token, dbutils.fs, log).run(body, MAX_MIN)
     log(f"Modal done: {res['shards_done']}/{res['shards']} shards, {res['works']:,} awards ({res['nc']:,} not classifiable), "
@@ -99,7 +111,8 @@ if one(f"SELECT count(*) AS n FROM {RAW} WHERE build_id = '{build_id}'").n != n:
     raw.createOrReplaceTempView("awt_topics_files")
     c = one(f"""SELECT count(*) AS rows, count(DISTINCT award_id) AS ids,
         (SELECT count(*) FROM {QUEUE} q LEFT ANTI JOIN awt_topics_files r ON r.award_id = q.award_id) AS missing,
-        count_if(size(topic_ids) <> 10 OR size(probs) <> 10 OR not_classifiable <> (topic_ids[0] = -1)) AS bad FROM awt_topics_files""")
+        count_if(NOT (size(topic_ids) <=> 10 AND size(probs) <=> 10 AND not_classifiable <=> (topic_ids[0] = -1))) AS bad
+        FROM awt_topics_files""")
     if not (c.rows == c.ids == n and c.missing == 0 and c.bad == 0):
         raise RuntimeError(f"shard files do not match the queue: {c.asDict()}")
     spark.sql(f"DELETE FROM {RAW} WHERE build_id = '{build_id}'")
@@ -110,7 +123,8 @@ if one(f"SELECT count(*) AS n FROM {RAW} WHERE build_id = '{build_id}'").n != n:
 # Gates: NC shares (with a description = the model-health signal; all = catches a model failing on everything), ids resolve.
 g = one(f"""SELECT count(*) AS n, count_if(r.not_classifiable) AS nc,
     count_if(length(q.abstract) > 0) AS n_desc, count_if(length(q.abstract) > 0 AND r.not_classifiable) AS nc_desc,
-    count_if(exists(r.topic_ids, x -> x <> -1 AND NOT array_contains(t.ids, x))) AS unresolved
+    count_if(exists(r.topic_ids, x -> x <> -1 AND NOT array_contains(t.ids, x))) AS unresolved,
+    (SELECT count(*) - count(DISTINCT tid) FROM ({VOCAB})) AS vocab_dupes
   FROM {RAW} r JOIN {QUEUE} q ON q.award_id = r.award_id
   CROSS JOIN (SELECT collect_set(CAST(topic_id AS INT)) AS ids FROM openalex.common.topics) t WHERE r.build_id = '{build_id}'""")
 log(f"gate: {g.asDict()}")
@@ -119,28 +133,34 @@ if g.n != n: bad.append(f"ledger {g.n:,} != queue {n:,}")
 if g.n_desc and g.nc_desc / g.n_desc > MAX_NC: bad.append(f"NC share with a description {g.nc_desc / g.n_desc:.3f} > {MAX_NC}")
 if g.n and g.nc / g.n > MAX_NC_ALL: bad.append(f"NC share over all {g.nc / g.n:.3f} > {MAX_NC_ALL}")
 if g.unresolved: bad.append(f"{g.unresolved:,} awards carry a topic id not in openalex.common.topics")
+if g.vocab_dupes: bad.append(f"the topic vocabulary repeats {g.vocab_dupes:,} topic ids (an award would get more than 3 topics)")
 if bad:
     raise RuntimeError("refusing to merge, NOTHING written to the target: " + "; ".join(bad))
 
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {TARGET} (award_id BIGINT, topics {TOPICS_TYPE}, not_classifiable BOOLEAN, source STRING,
   created_datetime TIMESTAMP, updated_datetime TIMESTAMP, text_key BIGINT)
   COMMENT 'Awards enrich: q8b_2m topics per award (shape of openalex.awards.award_topics + not_classifiable, text_key)'""")
+# MergeTopicsV2's builder: the first 3 topic ids that are not -1, in array order, broadcast-joined to the vocabulary and gathered
+# back in position order. Never a CROSS JOIN of the vocabulary onto the awards: it stalled the 6.68M backfill (oxjob #2125).
 spark.sql(f"""MERGE INTO {TARGET} v USING (
-WITH tm AS (
-  SELECT map_from_entries(collect_list(struct(t.topic_id, named_struct('display_name', t.display_name,
-      'subfield', named_struct('id', concat('https://openalex.org/subfields/', s.subfield_id), 'display_name', s.display_name),
-      'field',    named_struct('id', concat('https://openalex.org/fields/', f.field_id), 'display_name', f.display_name),
-      'domain',   named_struct('id', concat('https://openalex.org/domains/', d.domain_id), 'display_name', d.display_name))))) AS m
-  FROM openalex.common.topics t JOIN openalex.common.subfields s USING (subfield_id) JOIN openalex.common.fields f USING (field_id)
-  JOIN openalex.common.domains d USING (domain_id))
+WITH meta AS ({VOCAB}),
+sc AS (SELECT * FROM {RAW} WHERE build_id = '{build_id}'),
+top3 AS (
+  SELECT sc.award_id, e.rn, e.x.topic_ids AS tid, e.x.probs AS p
+  FROM sc LATERAL VIEW posexplode(slice(filter(arrays_zip(sc.topic_ids, sc.probs), x -> x.topic_ids <> -1), 1, 3)) e AS rn, x
+  WHERE NOT sc.not_classifiable),
+agg AS (
+  SELECT /*+ BROADCAST(m) */ k.award_id, transform(array_sort(collect_list(named_struct('rn', k.rn,
+      'id', concat('https://openalex.org/T', k.tid), 'display_name', m.display_name, 'score', CAST(ROUND(k.p, 4) AS FLOAT),
+      'subfield', m.subfield, 'field', m.field, 'domain', m.domain))),
+    x -> named_struct('id', x.id, 'display_name', x.display_name, 'score', x.score, 'subfield', x.subfield, 'field', x.field,
+                      'domain', x.domain)) AS topics
+  FROM top3 k LEFT JOIN meta m ON m.tid = k.tid GROUP BY k.award_id)
 SELECT sc.award_id,
-  CASE WHEN sc.not_classifiable THEN CAST(ARRAY() AS {TOPICS_TYPE}) ELSE TRANSFORM(
-    slice(filter(arrays_zip(sc.topic_ids, sc.probs), x -> x.topic_ids <> -1), 1, 3),
-    x -> named_struct('id', concat('https://openalex.org/T', x.topic_ids), 'display_name', tm.m[x.topic_ids].display_name,
-                      'score', CAST(ROUND(x.probs, 4) AS FLOAT), 'subfield', tm.m[x.topic_ids].subfield,
-                      'field', tm.m[x.topic_ids].field, 'domain', tm.m[x.topic_ids].domain)) END AS topics,
+  CASE WHEN sc.not_classifiable THEN CAST(ARRAY() AS {TOPICS_TYPE})
+       ELSE coalesce(CAST(a.topics AS {TOPICS_TYPE}), CAST(ARRAY() AS {TOPICS_TYPE})) END AS topics,
   sc.not_classifiable, '{SOURCE}' AS source, current_timestamp() AS ts, q.text_key
-FROM (SELECT * FROM {RAW} WHERE build_id = '{build_id}') sc CROSS JOIN tm JOIN {QUEUE} q ON q.award_id = sc.award_id) r
+FROM sc LEFT JOIN agg a ON a.award_id = sc.award_id JOIN {QUEUE} q ON q.award_id = sc.award_id) r
 ON v.award_id = r.award_id
 WHEN MATCHED THEN UPDATE SET v.topics = r.topics, v.not_classifiable = r.not_classifiable, v.source = r.source,
   v.updated_datetime = r.ts, v.text_key = r.text_key
