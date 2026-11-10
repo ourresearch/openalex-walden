@@ -45,7 +45,7 @@ CF_API_BASE = (
 
 BATCH_SIZE = 500   # matches sync_content_index_to_d1 (well under D1 stmt-length cap)
 CONCURRENCY = 8
-D1_PAGE_SIZE = 1_000_000
+D1_PAGE_SIZE = 100_000  # D1 rejects results over 50 MB (from 2026-11-04)
 
 dbutils.widgets.dropdown("dry_run", "false", ["true", "false"], "Dry run (no D1 writes)")
 dbutils.widgets.text("pilot_limit", "0", "Pilot limit (0 = full corpus)")

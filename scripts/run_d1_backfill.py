@@ -12,9 +12,10 @@ The query:
   - Filters on `openalex_created_dt` (row-level, sparse) rather than
     `openalex_updated_dt` (which ticks on any field change → effectively
     whole-table scan).
-  - GROUP BY work_id with MIN(...) picks pdf_uuid and grobid_uuid
-    independently across the work's location rows — maximizes coverage and
-    fixes a NULL-sort dedup bug from the old ROW_NUMBER ordering.
+  - Works with a row created in the window get the pair the content API
+    serves, picked over all of the work's locations by utils/content_files.py
+    (oxjob #1958; before 10 Nov 2026 MIN(pdf) and MIN(xml) were picked
+    independently, pairing XMLs with the wrong PDF on ~3.0M works).
 
 Idempotent: INSERT OR REPLACE in D1 means crashed runs can be retried.
 
@@ -45,6 +46,7 @@ from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
+from utils.content_files import primary_pair_sql  # noqa: E402
 from utils.databricks_sql import get_connection  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
@@ -174,18 +176,11 @@ def main() -> None:
     print(f"Sync window: created_dt >= '{sync_from_str}' AND < '{sync_to_str}'")
     print(f"Dry run: {args.dry_run}")
 
-    query = f"""
-    SELECT
-      work_id,
-      MIN(REPLACE(pdf_s3_id, '.pdf', ''))      AS pdf_uuid,
-      MIN(REPLACE(grobid_s3_id, '.xml.gz', '')) AS grobid_uuid
-    FROM openalex.works.locations_mapped
-    WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
-      AND work_id IS NOT NULL
-      AND openalex_created_dt >= '{sync_from_str}'
-      AND openalex_created_dt <  '{sync_to_str}'
-    GROUP BY work_id
-    """
+    query = primary_pair_sql(f"""AND work_id IN (
+      SELECT work_id FROM openalex.works.locations_mapped
+      WHERE openalex_created_dt >= '{sync_from_str}'
+        AND openalex_created_dt <  '{sync_to_str}'
+    )""")
 
     t0 = time.time()
     print(f"\nConnecting to xlarge SQL warehouse…")

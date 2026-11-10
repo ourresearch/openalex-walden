@@ -25,15 +25,29 @@
 # MAGIC 8 parallel writers made ~8% of downloads fail with "D1 DB is overloaded" during each run (#2041).
 # MAGIC Works that lose all content stay in D1 (nothing is deleted). A separate antijoin reconciliation pass
 # MAGIC exists as a backstop.
+# MAGIC Each work's pair is picked over all of its locations by `utils/content_files.py` (oxjob #1958): the PDF is the
+# MAGIC partner manifest's `is_primary` row; until 10 Nov 2026 it was MIN(pdf) and MIN(xml) of the rows read.
 
 # COMMAND ----------
 
+import os
 import random
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import requests
+
+REPO_ROOT = os.path.abspath(os.path.join(os.getcwd(), "..", ".."))
+if not os.path.exists(os.path.join(REPO_ROOT, "utils", "content_files.py")):
+    for cand in ("/Workspace/Repos", "/Workspace/Shared"):
+        for dirpath, dirnames, filenames in os.walk(cand):
+            if "content_files.py" in filenames and dirpath.endswith("utils"):
+                REPO_ROOT = os.path.dirname(dirpath)
+                break
+sys.path.insert(0, REPO_ROOT)
+from utils.content_files import primary_pair_sql  # noqa: E402
 
 # Cloudflare API configuration
 CF_ACCOUNT_ID = "a452eddbbe06eb7d02f4879cee70d29c"
@@ -221,17 +235,19 @@ else:
 
 
 def content_pairs(version: int, where: str = "") -> str:
-    """One row per work with content at `version`: its (pdf, grobid) pair and newest stamp."""
+    """One row per work with content at `version` and a row matching `where`: its (pdf, grobid) pair, picked over
+    all of the work's locations, and the newest stamp of its matching rows."""
+    table = f"{LM_TABLE} VERSION AS OF {version}"
     return f"""
-    SELECT
-      work_id,
-      MIN(REPLACE(pdf_s3_id, '.pdf', ''))      AS pdf_uuid,
-      MIN(REPLACE(grobid_s3_id, '.xml.gz', '')) AS grobid_uuid,
-      date_format(MAX(openalex_updated_dt), 'yyyy-MM-dd HH:mm:ss.SSSSSS') AS max_dt
-    FROM {LM_TABLE} VERSION AS OF {version}
-    WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
-      AND work_id IS NOT NULL {where}
-    GROUP BY work_id"""
+    SELECT work_id, p.pdf_uuid, p.grobid_uuid, s.max_dt
+    FROM ({primary_pair_sql(table=table)}) p
+    JOIN (
+      SELECT work_id, date_format(MAX(openalex_updated_dt), 'yyyy-MM-dd HH:mm:ss.SSSSSS') AS max_dt
+      FROM {table}
+      WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
+        AND work_id IS NOT NULL {where}
+      GROUP BY work_id
+    ) s USING (work_id)"""
 
 
 if base_version is not None:

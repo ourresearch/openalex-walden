@@ -42,6 +42,7 @@ from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
+from utils.content_files import primary_pair_sql  # noqa: E402
 from utils.databricks_sql import get_connection  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
@@ -54,7 +55,7 @@ CF_API_BASE = (
 )
 BATCH_SIZE = 800
 CONCURRENCY = 8
-D1_PAGE_SIZE = 1_000_000  # rows per pagination call against D1
+D1_PAGE_SIZE = 100_000  # rows per pagination call; D1 rejects results over 50 MB (from 2026-11-04)
 
 
 def d1_execute(token: str, sql_text: str, params: list | None = None,
@@ -145,16 +146,7 @@ def main() -> None:
     # Step 2: full scan of locations_mapped
     print(f"\nQuerying locations_mapped (all works with content)…")
     t0 = time.time()
-    query = """
-    SELECT
-      work_id,
-      MIN(REPLACE(pdf_s3_id, '.pdf', ''))      AS pdf_uuid,
-      MIN(REPLACE(grobid_s3_id, '.xml.gz', '')) AS grobid_uuid
-    FROM openalex.works.locations_mapped
-    WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
-      AND work_id IS NOT NULL
-    GROUP BY work_id
-    """
+    query = primary_pair_sql()
     with get_connection(size="xlarge") as conn:
         with conn.cursor() as cursor:
             cursor.execute(query)
