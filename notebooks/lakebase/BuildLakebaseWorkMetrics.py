@@ -75,10 +75,13 @@ FROM j
 WHERE gone OR is_new OR flagged OR fwci_x > 1 OR cnp_x > 1 OR pct_d >= {PCT_POINTS}
 """
 
-# The cap's order without sorting the rows: key 0 = gone / new / flagged; moved rows by score in 1/32-doubling buckets,
-# largest first (keys 1..2000). Same buckets in notebooks/elastic/sync_work_metrics.
+# The cap's order without sorting the rows: key 0 = gone / new / flagged; then rows past the fwci or percentile-year
+# line (keys 1..2000), then rows past only the CNP line (2001..4000), each by score in 1/32-doubling buckets, largest
+# first. FWCI goes first so a bulk CNP correction (#1271, 10 Nov 2026: ~216M values) drains behind the daily fwci drift
+# instead of crowding it out of the cap (#2082). Same order in notebooks/elastic/sync_work_metrics.
 CAP_KEY = ("CASE WHEN gone OR is_new OR flagged THEN 0 "
-           "ELSE greatest(1, 2000 - CAST(floor(log2(greatest(score, 1)) * 32) AS INT)) END")
+           "ELSE greatest(1, 2000 - CAST(floor(log2(greatest(score, 1)) * 32) AS INT)) "
+           f"+ IF(fwci_x > 1 OR pct_d >= {PCT_POINTS}, 0, 2000) END")
 
 
 def cap_filter(table, key_sql, cap):
@@ -107,20 +110,23 @@ if MODE == "full_build":
     spark.sql(f"INSERT INTO {METRICS_TABLE} SELECT *, current_timestamp() FROM ({CURRENT})")
     print(f"{METRICS_TABLE}: {spark.table(METRICS_TABLE).count():,} rows")
 else:
-    # Gone, new and flagged works first; moved rows by score, largest first; at most about MAX_ROWS in all.
+    # Gone, new and flagged works first; then fwci / percentile-year moves, then CNP-only moves, each largest first; at
+    # most about MAX_ROWS in all.
     changes = CHANGES_TABLE + ("_dry" if MODE == "dry_run" else "")
     spark.sql(f"CREATE OR REPLACE TABLE {changes} AS {COMPARED}")
-    n = spark.table(changes).count()
+    FP_MOVED = f"NOT (gone OR is_new OR flagged) AND (fwci_x > 1 OR pct_d >= {PCT_POINTS})"
+    n, n_fp = spark.sql(f"SELECT count(*), count_if({FP_MOVED}) FROM {changes}").collect()[0]
     if MAX_ROWS and n > MAX_ROWS:
         keep = cap_filter(changes, CAP_KEY, MAX_ROWS)
         spark.sql(f"DELETE FROM {changes} WHERE NOT {keep}")
         print(f"{n:,} rows past the lines; cap {MAX_ROWS:,} keeps {keep}")
     r = spark.sql(f"SELECT count(*) AS kept, count_if(is_new) AS new_works, count_if(gone) AS gone, "
-                  f"count_if(flagged AND NOT is_new AND NOT gone) AS flagged, "
+                  f"count_if(flagged AND NOT is_new AND NOT gone) AS flagged, count_if({FP_MOVED}) AS fp_moved, "
                   f"min(CASE WHEN NOT (gone OR is_new OR flagged) THEN score END) AS min_moved_score "
                   f"FROM {changes}").collect()[0]
     print(f"{MODE}: {n:,} past the lines; this run {r.kept:,} (new {r.new_works:,}, gone {r.gone:,}, "
-          f"flagged {r.flagged:,}, moved down to score {r.min_moved_score}); {n - r.kept:,} wait a night")
+          f"flagged {r.flagged:,}, fwci/pct-year moves {r.fp_moved:,} of {n_fp:,}, moves down to score {r.min_moved_score}); "
+          f"{n - r.kept:,} wait a night")
 if MODE == "nightly":
     m = spark.sql(f"""
         MERGE INTO {METRICS_TABLE} AS t

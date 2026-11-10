@@ -16,10 +16,12 @@
 # MAGIC **What the index holds** is kept in `openalex.works.es_work_metrics_served` (one row per work: the values and the
 # MAGIC `updated_date` the index has). Each run compares it with Delta in one pass:
 # MAGIC 1. Works whose `updated_date` moved (sync_works re-sent them whole), new works, gone works: the state follows Delta.
-# MAGIC 2. The rest past the lines form the push (non-xpac first, largest move first, at most about `max_push`; the rest
-# MAGIC    wait for the next run). The cap never sorts the rows (#1271, 10 Nov 2026: a sort-and-limit over the ~216M
-# MAGIC    values one fix moved lost the Lakebase twin's executor): it counts rows per band and score bucket and keeps
-# MAGIC    whole buckets in order, plus a hash slice of the bucket that crosses the cap.
+# MAGIC 2. The rest past the lines form the push (non-xpac first; works past the fwci or percentile-year line before works
+# MAGIC    past only the CNP line; largest move first; at most about `max_push`; the rest wait for the next run). FWCI goes
+# MAGIC    first so a bulk CNP correction (#1271, 10 Nov 2026: ~216M values, up to 0.95 each) drains behind the daily
+# MAGIC    fwci drift instead of crowding it out of the cap for weeks. The cap never sorts the rows (#1271: a
+# MAGIC    sort-and-limit over those values lost the Lakebase twin's executor): it counts rows per band and score bucket
+# MAGIC    and keeps whole buckets in order, plus a hash slice of the bucket that crosses the cap.
 # MAGIC 3. Partial updates to the `works` alias in chunks of `chunk_rows`; after each chunk the state takes the new values
 # MAGIC    for every work the index accepted, so a stop or cancel loses at most one chunk (re-sent next run).
 # MAGIC
@@ -111,7 +113,8 @@ if RESEED_VERSION:
 #   gone / new / resent: the state follows Delta (sync_works re-sent resent works whole; in the End 2 End this runs after
 #     Sync_to_Elasticsearch, and run before it only marks them early: the sync sends the same values minutes later);
 #   push: same updated_date, past a line (score > 1 = past at least one line); band 0 null-ness / flag differences,
-#     1 at 10x a line or more, 2 at 3x, 3 the rest; xpac works after all of those.
+#     then by the fwci / percentile-year move (fp): 1 at 10x a line or more, 2 at 3x, 3 past; 4 past only the CNP
+#     line (#2082, 10 Nov 2026: keeps a bulk CNP drain behind the daily fwci drift); xpac works after all of those.
 spark.sql(f"""
 CREATE OR REPLACE TABLE {DIFF_TABLE} AS
 WITH j AS (
@@ -119,27 +122,28 @@ WITH j AS (
     c.updated_date, coalesce(c.is_xpac, false) AS is_xpac, c.fwci, c.citation_normalized_percentile,
     c.cited_by_percentile_year,
     NOT (s.updated_date <=> c.updated_date) AS ud_moved,
-    IF((c.fwci IS NULL) <> (s.fwci IS NULL)
+    (c.fwci IS NULL) <> (s.fwci IS NULL)
        OR (c.citation_normalized_percentile.value IS NULL) <> (s.citation_normalized_percentile.value IS NULL)
        OR (c.cited_by_percentile_year IS NULL) <> (s.cited_by_percentile_year IS NULL)
        OR NOT (c.citation_normalized_percentile.is_in_top_1_percent <=> s.citation_normalized_percentile.is_in_top_1_percent)
-       OR NOT (c.citation_normalized_percentile.is_in_top_10_percent <=> s.citation_normalized_percentile.is_in_top_10_percent),
-       1000.0,
-       greatest(
-         coalesce(abs(c.fwci - s.fwci) / greatest(abs(c.fwci), 0.0001) / {FWCI_REL}, 0),
-         coalesce(abs(c.citation_normalized_percentile.value - s.citation_normalized_percentile.value) / {CNP_ABS}, 0),
-         coalesce(greatest(abs(c.cited_by_percentile_year.min - s.cited_by_percentile_year.min),
-                           abs(c.cited_by_percentile_year.max - s.cited_by_percentile_year.max)) / {PCT_POINTS}, 0))
-    ) AS score
+       OR NOT (c.citation_normalized_percentile.is_in_top_10_percent <=> s.citation_normalized_percentile.is_in_top_10_percent)
+       AS flagged,
+    greatest(
+      coalesce(abs(c.fwci - s.fwci) / greatest(abs(c.fwci), 0.0001) / {FWCI_REL}, 0),
+      coalesce(greatest(abs(c.cited_by_percentile_year.min - s.cited_by_percentile_year.min),
+                        abs(c.cited_by_percentile_year.max - s.cited_by_percentile_year.max)) / {PCT_POINTS}, 0)
+    ) AS fp,
+    coalesce(abs(c.citation_normalized_percentile.value - s.citation_normalized_percentile.value) / {CNP_ABS}, 0) AS cnp
   FROM (SELECT id, updated_date, is_xpac, fwci, citation_normalized_percentile, cited_by_percentile_year
         FROM {WORKS_TABLE}) c
   FULL OUTER JOIN {SERVED_TABLE} s ON s.id = c.id
-)
+), k AS (SELECT *, IF(flagged, 1000.0, greatest(fp, cnp)) AS score FROM j)
 SELECT *, CASE WHEN NOT in_works THEN 'gone' WHEN NOT in_state THEN 'new' WHEN ud_moved THEN 'resent' ELSE 'push' END
           AS action,
-       IF(is_xpac, 10, 0) + CASE WHEN score >= 1000 THEN 0 WHEN score >= 10 THEN 1 WHEN score >= 3 THEN 2 ELSE 3 END
+       IF(is_xpac, 10, 0) + CASE WHEN score >= 1000 THEN 0 WHEN fp >= 10 THEN 1 WHEN fp >= 3 THEN 2 WHEN fp > 1 THEN 3
+                                 ELSE 4 END
           AS band
-FROM j
+FROM k
 WHERE NOT in_works OR NOT in_state OR ud_moved OR score > 1
 """)
 counts = {r.action: r.n for r in spark.sql(f"SELECT action, count(*) AS n FROM {DIFF_TABLE} GROUP BY action").collect()}
@@ -164,7 +168,8 @@ if not DRY_RUN:
 
 # COMMAND ----------
 
-# The push, capped: lower bands whole, then the largest moves of the band that crosses the cap. No sort of the rows
+# The push, capped: lower bands whole (fwci / percentile-year moves before CNP-only ones), then the largest moves of the
+# band that crosses the cap. No sort of the rows
 # (#1271): keys order band, then score in 1/32-doubling buckets, largest first (same buckets as
 # notebooks/lakebase/BuildLakebaseWorkMetrics).
 PUSH_KEY = "band * 10000 + 5000 - CAST(floor(log2(greatest(score, 1)) * 32) AS INT)"
