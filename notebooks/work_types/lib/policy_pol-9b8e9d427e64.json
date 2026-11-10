@@ -1,0 +1,75 @@
+{
+ "model": {
+  "aliases": [
+   "s2-q1.7b-v3-final-T1.0-envc70dc591"
+  ],
+  "content": {
+   "classes": [
+    "article",
+    "book",
+    "book-chapter",
+    "book-review",
+    "conference-abstract",
+    "conference-paper",
+    "data-paper",
+    "dataset",
+    "dissertation",
+    "editorial",
+    "erratum",
+    "letter",
+    "libguides",
+    "other",
+    "paratext",
+    "peer-review",
+    "preprint",
+    "reference-entry",
+    "report",
+    "retraction",
+    "review",
+    "software-paper",
+    "software",
+    "standard",
+    "supplementary-materials",
+    "study-registration"
+   ],
+   "files": {
+    "causal/added_tokens.json": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680",
+    "causal/chat_template.jinja": "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8",
+    "causal/config.json": "56d00e5e73be2735cf6d324466e039cdf19b2fab5efaf909d3af83ef76de12c7",
+    "causal/generation_config.json": "e01064dd848f648bd00b6d73acf204f1eb992ec84e21d0dfc51cb0e0fa6ef10d",
+    "causal/merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+    "causal/model.safetensors": "83e2ebefdf4c422d2df93092d2847906bbd38f31ae6318cb9049d34bfea22bf0",
+    "causal/special_tokens_map.json": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd",
+    "causal/tokenizer.json": "adfb57087bf35878c5a8a3dd9d46a5fb97a47c3e4ff93330504adbea55772eda",
+    "causal/tokenizer_config.json": "443bfa629eb16387a12edbf92a76f6a6f10b2af3b53d87ba1550adfcf45f7fa0",
+    "causal/vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+    "head.pt": "93e73d0afc230c3f8102a4c5465687f561704770ab273c3bb1ca5a3a456ea44b",
+    "meta.json": "451c0cbe7132f0984af33fb3593166d50c5d6b2de9fa3addd9d499d5980df314"
+   },
+   "kind": "s2",
+   "render_version": "s2r3",
+   "temperature": 1.0
+  },
+  "id": "s2-de2ab7cf26b0f7a0"
+ },
+ "policy_content": {
+  "base": "C4",
+  "cuts": null,
+  "cuts_id": null,
+  "fallback": "today",
+  "nosig_rules": [
+   "default: -> article",
+   "ingest-type preserved"
+  ],
+  "s1_model": null,
+  "s2_model": "s2-de2ab7cf26b0f7a0",
+  "smart_exclude": [],
+  "switch_cut": null,
+  "switch_model": null,
+  "tau": 0.7,
+  "tau_smart": null,
+  "tau_source": "/Users/rohanmantena/worktype-hub-20261102/test3/PREREG-TEST3-APPENDIX-A.md (sha256 fa0ba00144a8b299cfda0f2501a8a3cc429b619c7d93bbb1a60ba5bd0d217f52)"
+ },
+ "policy_id": "pol-9b8e9d427e64",
+ "source": "test4/PRED-FREEZE.json candidates.candidate (sha256 recorded in the README of this dir) + student/prod/manifests/q1.7b-v3-final-T1.0.json"
+}

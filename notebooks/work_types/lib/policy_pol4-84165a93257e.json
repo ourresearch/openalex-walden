@@ -1,0 +1,118 @@
+{
+ "base_policy_id": "pol-02a03c8e1b85",
+ "model": {
+  "content": {
+   "classes": [
+    "article",
+    "book",
+    "book-chapter",
+    "book-review",
+    "conference-abstract",
+    "conference-paper",
+    "data-paper",
+    "dataset",
+    "dissertation",
+    "editorial",
+    "erratum",
+    "letter",
+    "other",
+    "paratext",
+    "peer-review",
+    "preprint",
+    "reference-entry",
+    "report",
+    "retraction",
+    "review",
+    "software-paper",
+    "software",
+    "standard",
+    "supplementary-materials",
+    "study-registration"
+   ],
+   "files": {
+    "causal/added_tokens.json": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680",
+    "causal/chat_template.jinja": "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8",
+    "causal/config.json": "56d00e5e73be2735cf6d324466e039cdf19b2fab5efaf909d3af83ef76de12c7",
+    "causal/generation_config.json": "e01064dd848f648bd00b6d73acf204f1eb992ec84e21d0dfc51cb0e0fa6ef10d",
+    "causal/merges.txt": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+    "causal/model.safetensors": "e74aea063e920c3c584617c9b03f3f628e4f42d045250719990a9476ac8bc97b",
+    "causal/special_tokens_map.json": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd",
+    "causal/tokenizer.json": "adfb57087bf35878c5a8a3dd9d46a5fb97a47c3e4ff93330504adbea55772eda",
+    "causal/tokenizer_config.json": "443bfa629eb16387a12edbf92a76f6a6f10b2af3b53d87ba1550adfcf45f7fa0",
+    "causal/vocab.json": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+    "head.pt": "3c835da308f1fbd90de06842ac8fd89071ec4eea860eb4681f7152c6c5377b83",
+    "meta.json": "a368b892aa4da642155b80f89d997abd412189de4ed081eecc91b4772a80beb1"
+   },
+   "kind": "s2",
+   "render_version": "s2r3",
+   "temperature": 1.0
+  },
+  "id": "s2-0bc40dd7f812bdfe",
+  "tag": "q1.7b-v6c-final"
+ },
+ "policy_content": {
+  "base": "C4",
+  "cuts": null,
+  "cuts_id": null,
+  "fallback": "today",
+  "nosig_rules": [
+   "default: -> article",
+   "ingest-type preserved"
+  ],
+  "s1_model": null,
+  "s2_model": "s2-0bc40dd7f812bdfe",
+  "smart_exclude": [],
+  "switch_cut": null,
+  "switch_model": null,
+  "tau": 0.8,
+  "tau_smart": null,
+  "tau_source": "test6/PREREG-TEST6-APPENDIX-A.json (sha256 a194daacb777b10079d936ffdbfbd3bcea26f476bc2c5d234c53bcf15343f50f) policies.candidate"
+ },
+ "policy_id": "pol4-84165a93257e",
+ "source": "make_policy.py --tag q1.7b-v6c-final --tau 0.8 --classes-from test6/PRED-FREEZE.json --lists oxford_reference_works,specimen_sample_registries_v6,wiley_mrw",
+ "stage0_lists": [
+  {
+   "doi_prefixes": [],
+   "doi_regex": "^10\\.1093/(acrefore|gao|oao|acref)/",
+   "exclude_title_flags": [],
+   "id": "s0-oxford_reference_works-6d562bd9",
+   "name": "oxford_reference_works",
+   "names_exact": [],
+   "names_regex": null,
+   "source": "v6 row 6",
+   "type": "reference-entry",
+   "url_substrings": []
+  },
+  {
+   "doi_prefixes": [
+    "10.3535",
+    "10.18730"
+   ],
+   "doi_regex": null,
+   "exclude_title_flags": [],
+   "id": "s0-specimen_sample_registries_v6-536c5a74",
+   "name": "specimen_sample_registries_v6",
+   "names_exact": [
+    "distributed system of scientific collections",
+    "dissco",
+    "international treaty on plant genetic resources for food and agriculture"
+   ],
+   "names_regex": "^sesar(_|$|\\b)|\\bigsn\\b",
+   "source": "v4 stage0 SPECIMENS, unchanged keys; v6 row 5",
+   "type": "other",
+   "url_substrings": []
+  },
+  {
+   "doi_prefixes": [],
+   "doi_regex": "^10\\.1002/(9780470015902\\.a|0471238961\\.|14356007\\.|9780470027318\\.a|9781118445112\\.stat)",
+   "exclude_title_flags": [],
+   "id": "s0-wiley_mrw-a52c6ceb",
+   "name": "wiley_mrw",
+   "names_exact": [],
+   "names_regex": null,
+   "source": "v6 row 6 (Wiley MRW stems)",
+   "type": "reference-entry",
+   "url_substrings": []
+  }
+ ]
+}

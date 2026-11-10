@@ -130,3 +130,4 @@ include:
   - jobs/hal_tei_pipeline.yaml
   - jobs/pdf_pipeline.yaml
   - jobs/sitemaps.yaml
+  - jobs/classify_work_types.yaml

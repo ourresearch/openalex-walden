@@ -1,0 +1,103 @@
+# Work types v2, nightly: the topics nightly's shape (worktype-student-v2 + worktype-stage2, oxjob #1976, re-cut 2026-11-09;
+# staged, not deployed). Runs after End 2 End; End 2 End itself only runs the work-type cell in CreateWorksEnriched, which
+# decides type_v2 from the scores this job writes (and, where the switch in its task parameters serves, the type).
+#   Check_Flips   CheckWorkTypeFlips: last night's decisions on openalex_works; fails loud (this job's email) when the
+#                 End 2 End cell fell back or a decision flipped for no reason. Read-only; the other tasks don't wait on it.
+#   Build_Queue   BuildWorkTypeQueue: works whose pack inputs changed since their score (or with none) -> their s2r3 texts ->
+#                 openalex.transient.work_type_queue (rebuilt each build)
+#   Score_Queue   ScoreWorkTypeQueue: the queue on Modal (app openalex-worktypes-nightly, the v6c scorer, <= 8 H100s) ->
+#                 parquet in the Volume -> checked -> openalex.works.work_type_scores, each text once
+# Two tables: the queue (transient) and the scores. Scratch is parquet in the Volume, removed after each load.
+# Timing: daily 16:00 UTC (End 2 End starts 05:00 UTC and lands 11:00-13:30). ~120K texts a night: ~25-35 min, mostly the
+# input fingerprint of every live work; Modal ~5 min, ~$0.7. The backfill is this job run by hand per chunk (RUN-GOLINE1.md).
+resources:
+  jobs:
+    Classify_Work_Types:
+      name: Work Types
+      description: |
+        Keeps openalex.works.work_type_scores current: every live non-xpac work whose pack inputs changed since its score (or
+        that has none) is packed, scored on Modal (worktype-stage2's app openalex-worktypes-nightly, the v6c model) and loaded
+        once per text. The End 2 End cell in CreateWorksEnriched decides type_decision from these scores the next night. Policy
+        default pol5-4ed2aed64c8e (v6c + 3 source lists + the reference-entry cut); its model picks the scorer. Two tables:
+        openalex.transient.work_type_queue and openalex.works.work_type_scores.
+      email_notifications:
+        on_failure:
+          - jason@ourresearch.org
+        no_alert_for_skipped_runs: true
+      max_concurrent_runs: 1
+      timeout_seconds: 43200
+      schedule:
+        quartz_cron_expression: "0 0 16 * * ?"   # daily 16:00 UTC, after End 2 End lands
+        timezone_id: UTC
+        pause_status: PAUSED                     # unpaused by hand once the backfill is loaded (RUN-GOLINE1.md)
+      parameters:
+        - name: schema
+          default: "openalex.works"
+        - name: queue
+          default: "openalex.transient.work_type_queue"
+        - name: policy_id
+          default: "pol5-4ed2aed64c8e"           # v6c + lists + guard B; its model (v6c) is the one scored
+        - name: volume_dir
+          default: "/Volumes/openalex/works/work_types"
+        - name: max_works
+          default: "3000000"                     # newest first beyond this; the rest waits for the next run
+        - name: shard_works
+          default: "50000"                       # texts per Modal shard (stage2's tested size)
+        - name: chunk
+          default: "0"                           # backfill only: pmod(id, chunks) = chunk
+        - name: chunks
+          default: "1"                           # 1 = every live work (the nightly)
+        - name: include_xpac
+          default: "false"
+        - name: reuse_hours
+          default: "20"                          # a retry reuses an unfinished queue younger than this
+        - name: endpoint
+          default: "https://wordslikethis--openalex-worktypes-nightly-api.modal.run"
+        - name: secret_scope
+          default: "modal"
+        - name: secret_key
+          default: "worktypes_nightly_token"     # the app's bearer token (the same value as its Modal secret)
+        - name: warehouse_id
+          default: "3996dc0a9b183ce3"            # the statement API's warehouse for the queue export: jobs-xl (the jobs tier, #2062)
+        - name: max_usd
+          default: "10"                          # Score_Queue refuses a queue whose GPU estimate is over this
+        - name: max_minutes
+          default: "150"
+        - name: max_unexplained
+          default: "0"
+        - name: dry_run
+          default: "false"
+      tasks:
+        - task_key: Check_Flips
+          notebook_task:
+            notebook_path: notebooks/work_types/CheckWorkTypeFlips
+            source: GIT
+          environment_key: Default
+          timeout_seconds: 1800
+        - task_key: Build_Queue
+          notebook_task:
+            notebook_path: notebooks/work_types/BuildWorkTypeQueue
+            source: GIT
+          environment_key: Default
+          timeout_seconds: 10800
+        - task_key: Score_Queue
+          depends_on:
+            - task_key: Build_Queue
+          notebook_task:
+            notebook_path: notebooks/work_types/ScoreWorkTypeQueue
+            source: GIT
+          environment_key: Default
+          timeout_seconds: 21600
+          # a retry polls the same Modal call (its id is in <volume_dir>/<build_id>/_call_id.txt), never starts a second GPU run
+          max_retries: 2
+          min_retry_interval_millis: 300000
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
