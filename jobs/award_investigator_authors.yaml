@@ -7,9 +7,11 @@ resources:
         co_lead_investigator, investigators[]) to their OpenAlex author and serves the links in
         openalex.awards.award_investigator_authors, which Nightly Grants reads as extra input investigator_authors.
         Steps (notebooks/awards/investigator_authors/): prepare (people, name keys) -> routes (claims) -> shortlist + features
-        -> score (openalex.awards.investigator_author_matcher@champion, XGBoost on CPU) -> decide (one layer per slot; the served
-        layers are listed in decide.sql), tripwires, then one MERGE. A failed run leaves the served table as it was.
-        Reads one frozen copy no job produces: openalex.awards.investigator_jev_links.
+        -> score (openalex.awards.investigator_author_matcher@champion, XGBoost on CPU) -> judge_with_jev (Jev on unserved people
+        with 1-20 same-name profiles, new or changed lists only, capped by jev_max_items and jev_deadline_min; picks kept in
+        <prefix>jev, read by routes on the next run) -> decide (one layer per slot; the served layers are listed in decide.sql),
+        tripwires, then one MERGE. A failed run leaves the served table as it was. <prefix>jev is seeded once from the 11-06
+        answers, openalex.awards.investigator_jev_links and investigator_jev_unlinked, while they exist (dropped after a green night).
       email_notifications:
         on_failure:
           - rohan@openalex.org
@@ -35,6 +37,11 @@ resources:
           default: openalex.awards.investigator_author_matcher
         - name: alias
           default: champion
+        # Jev (judge_with_jev): no batch starts after this many minutes of Jev; at most this many people asked a night (the rest wait)
+        - name: jev_deadline_min
+          default: "30"
+        - name: jev_max_items
+          default: "60000"
       tasks:
         - task_key: prepare
           notebook_task:
@@ -67,9 +74,18 @@ resources:
             notebook_path: notebooks/awards/investigator_authors/ScoreCandidates
             source: GIT
           environment_key: Xgb
-        - task_key: decide
+        - task_key: judge_with_jev
           depends_on:
             - task_key: score
+          notebook_task:
+            notebook_path: notebooks/awards/investigator_authors/JudgeWithJev
+            base_parameters:
+              sql: judge.sql,judge_merge.sql   # the night's items, then the answers kept (the Jev calls run between them)
+            source: GIT
+          environment_key: Default
+        - task_key: decide
+          depends_on:
+            - task_key: judge_with_jev
           notebook_task:
             notebook_path: notebooks/awards/investigator_authors/RunSql
             base_parameters:

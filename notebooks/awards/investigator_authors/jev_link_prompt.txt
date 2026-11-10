@@ -1,0 +1,63 @@
+You are matching one investigator named on one research grant to author profiles in a scholarly
+database. Each candidate profile is summarised from that profile's own papers. Profiles are often
+split: one real person can have several profiles.
+
+Question: which candidate, if any, is the same real person as the investigator?
+
+1. SAME PERSON means the investigator and the candidate's author are one human being. If two
+   candidates look like the same person, either is right: pick the one with more matching evidence
+   and set "split": true.
+
+2. NAME MUST BE COMPATIBLE (needed for any match):
+   a. Family names are equal after ignoring case, accents, spaces, hyphens and apostrophes
+      (Müller = Mueller = Muller; García-López = Garcia Lopez).
+   b. Given names are equal, or one is the initial of the other (J. = John). Two different full
+      given names are not compatible (Ken is not Kenji; John is not James). A different middle
+      initial is a warning, not a veto.
+   c. Order does not matter: "Wang Wei", "Wei Wang" and "WANG, Wei" are one name. If the grant's
+      given and family fields look swapped, try both orders.
+   d. A name in another script is compatible with its standard romanisations (王伟 = Wang Wei;
+      佐藤 健 = Sato Ken; Иванов = Ivanov). Many people share one romanisation, so this only makes
+      the name compatible. It is not evidence.
+   e. A different family name (marriage or change) is compatible only through 3A.
+
+3. MATCH only when the name is compatible AND one of these holds:
+   A. ORCID: the grant gives an ORCID, the candidate's profile has the same ORCID, and nothing
+      in rule 4 contradicts it.
+   B. FUNDED PAPER: the candidate is an author on a paper this grant funded, and no other
+      name-compatible author is on those papers.
+   C. PLACE AND FIELD, both:
+      (i) the candidate's papers show the grant's institution (or a hospital or institute that
+          belongs to it) at some point from 3 years before the grant starts to 5 years after; and
+      (ii) the candidate's papers fit the grant's subject.
+
+4. NOT ENOUGH EVIDENCE: answer "unsure". This is the default.
+   - The name alone matches, however rare it is.
+   - Name and field match but there is no place; or name and place match but the field does not
+     fit or cannot be told.
+   - Two or more candidates meet 3C, or 3A and 3B point to different candidates, and the cards do
+     not show they are one person. Common names (Wang, Kim, Smith, Sato) often land here. That is
+     fine.
+   - The evidence conflicts, for example the ORCID points to a candidate in an unrelated field
+     who was never near the grant's institution.
+
+5. NOT THIS PERSON: answer "none" when no candidate has a compatible name, or when every compatible
+   candidate fails on evidence against, with no 3A or 3B: a different field, publishing only 10+
+   years before or after the grant, or never near the grant's institution or country.
+
+6. MOVES: people change jobs. A candidate who was at the grant's institution inside the window
+   counts even if they are elsewhere now. Being elsewhere at grant time is not evidence against a
+   match when 3A or 3B holds.
+
+7. PRECISION OVER RECALL: a wrong person is worse than a missing one. When in doubt, "unsure".
+
+Answer with JSON only:
+{"item": "{item_id}", "decision": "<candidate key>" | "none" | "unsure",
+ "basis": "A" | "B" | "C" | null, "split": true | false, "reason": "<one sentence>"}
+
+GRANT: {funder; grant number; title; abstract (first 600 characters); start and end years;
+        institution(s); investigator's role}
+INVESTIGATOR: {given name and family name as printed; ORCID if any; affiliation text if any}
+CANDIDATES: {c1..cN, each with: display name and name variants; institutions with years; top
+        topics; first and last publishing year; works count; up to 10 paper titles with years;
+        ORCID if the profile has one; whether they are on a paper this grant funded}

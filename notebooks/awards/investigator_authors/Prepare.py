@@ -3,8 +3,9 @@
 # MAGIC # Investigator authors: prepare (oxjob #1847)
 # MAGIC
 # MAGIC Loads `excluded_funders.csv` (validated) as the temp view `excluded_funders`, then runs `sql/names.sql` (the name functions and every
-# MAGIC live profile's name keys) and `sql/people.sql` (every person on a grant, profile ORCIDs, paper authors). Fails when awards_api gave
-# MAGIC under 4M people or under 90% of live profiles got a name key: the inputs look broken.
+# MAGIC live profile's name keys), `sql/people.sql` (every person on a grant, profile ORCIDs, paper authors) and `sql/jev.sql` (the job's
+# MAGIC table of Jev's answers; seeded once from the frozen 11-06 picks and none / unsure answers while they exist). Fails when awards_api
+# MAGIC gave under 4M people or under 90% of live profiles got a name key: the inputs look broken.
 
 # COMMAND ----------
 
@@ -21,6 +22,8 @@ spark.createDataFrame(iaa.read_excluded(), "funder_id BIGINT, country_code STRIN
     "excluded_funders")
 for f in ("names.sql", "people.sql"):
     iaa.run_sql_file(spark, f, PINS)
+seed = iaa.jev_seed_source(P, spark.catalog.tableExists(iaa.JEV_FROZEN), spark.catalog.tableExists(iaa.JEV_FROZEN_UNLINKED))
+iaa.run_sql_file(spark, "jev.sql", {**PINS, "JEVSEED": seed})
 n = spark.sql(f"""SELECT (SELECT count(*) FROM {P}people) AS people,
   (SELECT count(DISTINCT author_id) FROM {P}profile_names) AS named,
   (SELECT count(*) FROM openalex.authors.authors_api WHERE works_count > 0) AS live""").first()

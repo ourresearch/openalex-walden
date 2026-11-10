@@ -4,6 +4,7 @@ rule (same-person rule 2a-2e) on rows of Casey's author_names, decide.sql's laye
 listwise features against the training code's definition.
     uv run --with pytest --with sqlglot --with duckdb python -m pytest -q notebooks/awards/investigator_authors/tests
 """
+import hashlib
 import json
 import pathlib
 import re
@@ -16,7 +17,9 @@ sys.path.insert(0, str(ROOT))
 import iaa  # noqa: E402
 
 SQL = {p.name: p.read_text() for p in (ROOT / "sql").glob("*.sql")}
-PINS = iaa.pins({"prefix": "ia_", "run_date": "2026-11-03", "max_change": "0.05", "model": "m", "alias": "a"})
+SEED = iaa.jev_seed_source("ia_", True, True)   # prepare's seed source while both frozen 11-06 copies exist
+PINS = iaa.pins({"prefix": "ia_", "run_date": "2026-11-03", "max_change": "0.05", "model": "m", "alias": "a", "jev_deadline_min": "30",
+                 "jev_max_items": "60000"})
 # Spark functions sqlglot leaves as they are, as DuckDB macros (Spark's get() and [] index from 0, DuckDB's lists from 1)
 COMPAT = ["CREATE MACRO get(a, i) AS a[i + 1]", "CREATE MACRO arrays_overlap(a, b) AS list_has_any(a, b)",
           "CREATE MACRO raise_error(m) AS error(m)"]
@@ -29,6 +32,8 @@ INPUTS = {
     "openalex.funders.funders": "funder_id BIGINT, country_code VARCHAR",
     "openalex.awards.award_id_redirects": "old_id BIGINT, canonical_id BIGINT",
     "openalex.awards.investigator_jev_links": "award_id BIGINT, slot VARCHAR, position INT, given_name VARCHAR, family_name VARCHAR, author_id BIGINT, p DOUBLE",
+    "openalex.awards.investigator_jev_unlinked": "award_id BIGINT, slot VARCHAR, position INT, given_name VARCHAR, family_name VARCHAR, "
+                                                 "decision VARCHAR, p DOUBLE, list_hash VARCHAR, n_cands BIGINT, src VARCHAR, judged_on DATE",
     "openalex.authors.orcid_majority_lookup": "author_id BIGINT, majority_orcid VARCHAR, majority_count BIGINT, second_count BIGINT, "
                                               "distinct_orcids BIGINT",
 }
@@ -418,10 +423,12 @@ def test_every_step_fills_its_pins_parses_and_keeps_lines_short():
 def test_the_job_runs_every_file_once_in_order():
     yml = (ROOT.parents[2] / "jobs/award_investigator_authors.yaml").read_text()
     notebooks = re.findall(r"notebook_path: notebooks/awards/investigator_authors/(\w+)", yml)
-    assert notebooks == ["Prepare", "RunSql", "RunSql", "ScoreCandidates", "RunSql"]
+    assert notebooks == ["Prepare", "RunSql", "RunSql", "ScoreCandidates", "JudgeWithJev", "RunSql"]
     assert all((ROOT / f"{n}.py").exists() for n in notebooks)
-    run = ["names.sql", "people.sql"] + [f for line in re.findall(r"sql: (\S+)", yml) for f in line.split(",")]
-    assert run == ["names.sql", "people.sql", "routes.sql", "shortlist.sql", "features.sql", "decide.sql", "tripwires.sql", "publish.sql"]
+    run = ["names.sql", "people.sql", "jev.sql"] + [f for line in re.findall(r"sql: (\S+)", yml) for f in line.split(",")]
+    assert run == ["names.sql", "people.sql", "jev.sql", "routes.sql", "shortlist.sql", "features.sql", "judge.sql", "judge_merge.sql",
+                   "decide.sql", "tripwires.sql", "publish.sql"]
+    assert '"jev.sql"' in (ROOT / "Prepare.py").read_text()
     assert sorted(run) == sorted(SQL)
     assert tuple(re.findall(r"- name: (\w+)", yml)) == iaa.NAMES         # the job's parameters, defined once (in the YAML)
     assert re.findall(r"views: (\S+)", yml) == ["nsfc_pinyin"] and set(iaa.VIEWS) == {"nsfc_pinyin"}   # built in the routes task
@@ -541,6 +548,7 @@ def jev_db():
     for row in [(90, lead, 0, "Ada", "Judge", 91, 0.93), (9200, lead, 0, "Bo", "Fold", 93, 0.71), (94, lead, 0, "Cy", "Judged", 941, 0.88),
                 (95, lead, 0, "Di", "Gone", 96, 0.97), (97, lead, 0, "Ed", "Name", 98, 0.66)]:
         c.execute("INSERT INTO openalex.awards.investigator_jev_links VALUES (?, ?, ?, ?, ?, ?, ?)", list(row))
+    d.run("jev.sql", JEVSEED=SEED)   # the one-time seed (prepare, while the frozen copy exists)
     return d
 
 
@@ -591,6 +599,7 @@ def routes_db():
     c.execute("CREATE TABLE nsfc_pinyin (award_id BIGINT, slot VARCHAR, position INT, f VARCHAR, g VARCHAR)")   # a temp view in the job
     c.execute("ALTER TABLE openalex.funders.funders ADD COLUMN doi VARCHAR")
     c.execute("ALTER TABLE openalex.funders.funders ADD COLUMN merge_into_id BIGINT")
+    d.run("jev.sql")   # the prepare task's: the job's table of Jev's picks, empty (no frozen copy to seed from)
     c.execute(f"""CREATE TABLE openalex.awards.crossref_grants_deduplicated ("DOI" VARCHAR, award VARCHAR, publisher VARCHAR, project STRUCT(
                  funding STRUCT(funder STRUCT(id STRUCT(id VARCHAR, "id-type" VARCHAR)[]))[], "lead-investigator" {PERSON},
                  "co-lead-investigator" {PERSON}, investigator {PERSON})[])""")
@@ -678,6 +687,7 @@ def test_an_anchor_the_orcid_guards_refuse_does_not_spread():
         c.execute("INSERT INTO openalex.awards.kaken_projects_raw VALUES (?, '1000055555555', 'Ana', 'Costa')", [f"K{a}"])
     c.execute("INSERT INTO openalex.awards.investigator_jev_links VALUES (43, 'lead_investigator', 0, 'Leo', 'Dias', 81, 0.9), "
               "(45, 'lead_investigator', 0, 'Rita', 'Melo', 83, 0.9)")
+    d.run("jev.sql", JEVSEED=SEED)
     c.execute("INSERT INTO ia_paper_authors VALUES (32, 3200, 96), (38, 3800, 99)")
     c.execute("INSERT INTO openalex.works.work_authors VALUES (3200, 96), (3800, 99)")
     d.run("routes.sql")
@@ -845,3 +855,376 @@ def test_pinyin_keys_read_heteronyms_and_drop_latin_names():
     assert {("zeng", "xiaoming"), ("ceng", "xiaoming")} <= set(iaa.pinyin_keys("曾", "小明"))
     assert ("lu", "jianguo") in iaa.pinyin_keys("吕", "建国") and ("lyu", "jianguo") in iaa.pinyin_keys("吕", "建国")
     assert iaa.pinyin_keys("Smith", "伟") == [] and iaa.pinyin_keys("张", "") == []
+
+
+# ---------- Judge_With_Jev: jev.sql (the job's table, seeded once), judge.sql (lists, items, the cap), judge_merge.sql, the Jev loop ----------
+def test_the_seed_fills_an_empty_table_once_and_follows_award_redirects():
+    d = Duck()
+    c = d.con
+    c.execute("INSERT INTO openalex.awards.investigator_jev_links VALUES (7, 'lead_investigator', 0, 'Ada', 'Judge', 70, 0.9), "
+              "(800, 'investigators', 1, 'Bo', 'Fold', 80, 0.6)")
+    c.execute("INSERT INTO openalex.awards.award_id_redirects VALUES (800, 8)")
+    d.run("jev.sql", JEVSEED=SEED)
+    first = d.rows("SELECT award_id, slot, position, author_id, decision, list_hash, p FROM ia_jev ORDER BY 1")
+    assert first == [(7, "lead_investigator", 0, 70, "link", None, 0.9), (8, "investigators", 1, 80, "link", None, 0.6)]
+    d.run("jev.sql", JEVSEED=SEED)                               # every night: never again once the table holds rows
+    d.run("jev.sql")                                                        # the frozen copy dropped: nothing to seed from
+    assert d.rows("SELECT award_id, slot, position, author_id, decision, list_hash, p FROM ia_jev ORDER BY 1") == first
+
+
+O9 = "0000-0001-2345-6789"
+
+
+def judge_db(cap=60000, seeds=None):
+    """The judge fixtures. Entries (award|person): 1 Ann Smith, an institution shortlist of 3 (101-103), never asked; 2 Bo Lee, no
+    shortlist, 3 profiles named Lee Bo or Lee B. anywhere; 3 Cy Ng, an ORCID claim tonight; 4 Di Kim, the student's pick at its bar;
+    5 Ed Wu, served now as model_relaxed; 6 Fa Li, a shortlist of 25; 7 Gu Ho, asked on this list; 8 Hu Ma, asked on another list;
+    9 Ia Yu, a seeded pick (no list hash); 11 Jo Pak, lead and investigators[0], never asked; 12 Ko Oh, two people in one field;
+    13 Lu Mo, the student's relaxed pick (a list of 1 at 0.955); 14 Pi Ra, whose profile 1402 is served for the co-lead Sy Tu; 15 Vo Wa,
+    asked on this list under another family name; 16 Xu Ya, lead and investigators[0], only the lead asked; 17 Ze Ab, a seed whose
+    slot now prints another given name; 19 Amy Bee (lead, the student's pick 1901 tonight) and Ann Bee (investigators[0], 1901 and 1902
+    on her shortlist). Pi Ra (14) holds an earlier Jev link to 1402, the co-lead's profile."""
+    d = Duck()
+    c = d.con
+    c.execute("""CREATE TABLE ia_people (award_id BIGINT, slot VARCHAR, position INT, given_name VARCHAR, family_name VARCHAR,
+                 person_key VARCHAR, fam_keys VARCHAR[], given_key VARCHAR, multi_name BOOLEAN, aff_name VARCHAR, lo BIGINT, hi BIGINT)""")
+    people = [(1, "Ann", "Smith"), (2, "Bo", "Lee"), (3, "Cy", "Ng"), (4, "Di", "Kim"), (5, "Ed", "Wu"), (6, "Fa", "Li"), (7, "Gu", "Ho"),
+              (8, "Hu", "Ma"), (9, "Ia", "Yu"), (11, "Jo", "Pak"), (12, "Ko", "Oh"), (13, "Lu", "Mo"), (14, "Pi", "Ra"), (15, "Vo", "Wa"),
+              (16, "Xu", "Ya"), (17, "Ze", "Ab")]
+    for a, g, f in people:
+        c.execute("INSERT INTO ia_people VALUES (?, 'lead_investigator', 0, ?, ?, ?, [?], ?, ?, 'Univ X', 2010, 2020)",
+                  [a, g, f, f"{f.lower()}|{g.lower()}", f.lower(), g.lower(), a == 12])
+    c.execute("INSERT INTO ia_people VALUES (11, 'investigators', 0, 'Jo', 'Pak', 'pak|jo', ['pak'], 'jo', false, NULL, 2010, 2020), "
+              "(16, 'investigators', 0, 'Xu', 'Ya', 'ya|xu', ['ya'], 'xu', false, NULL, 2010, 2020), "
+              "(14, 'co_lead_investigator', 0, 'Sy', 'Tu', 'tu|sy', ['tu'], 'sy', false, NULL, 2010, 2020), "
+              "(19, 'lead_investigator', 0, 'Amy', 'Bee', 'bee|amy', ['bee'], 'amy', false, NULL, 2010, 2020), "
+              "(19, 'investigators', 0, 'Ann', 'Bee', 'bee|ann', ['bee'], 'ann', false, NULL, 2010, 2020), "
+              "(7, 'co_lead_investigator', 0, 'Ha', 'Ho', 'ho|ha', ['ho'], 'ha', false, NULL, 2010, 2020)")
+    c.execute("CREATE TABLE ia_routes (award_id BIGINT, slot VARCHAR, position INT, author_id BIGINT, method VARCHAR, evidence VARCHAR)")
+    c.execute("INSERT INTO ia_routes VALUES (3, 'lead_investigator', 0, 300, 'orcid', '{}'), (7, 'lead_investigator', 0, 701, 'jev_link', '{}')")
+    c.execute("""CREATE TABLE ia_scores (entry_id VARCHAR, author_id BIGINT, s DOUBLE, model_version INT, th99 DOUBLE, th_4_6 DOUBLE,
+                 guard_second DOUBLE)""")
+    c.execute("INSERT INTO ia_scores VALUES ('4|kim|di', 400, 0.99, 1, ?, ?, ?), ('1|smith|ann', 101, 0.9, 1, ?, ?, ?), "
+              "('13|mo|lu', 1300, 0.955, 1, ?, ?, ?), ('19|bee|amy', 1901, 0.99, 1, ?, ?, ?)", [*TH, *TH, *TH, *TH])
+    c.execute("CREATE TABLE ia_shortlist (entry_id VARCHAR, author_id BIGINT, n_short BIGINT, capped BOOLEAN)")
+    lists = {"1|smith|ann": [101, 102, 103], "6|li|fa": list(range(600, 625)), "7|ho|gu": [701, 702], "8|ma|hu": [801, 802],
+             "9|yu|ia": [901], "11|pak|jo": [1101], "12|oh|ko": [1201], "4|kim|di": [400], "5|wu|ed": [500], "3|ng|cy": [300],
+             "13|mo|lu": [1300], "14|ra|pi": [1401, 1402], "15|wa|vo": [1501], "16|ya|xu": [1601], "17|ab|ze": [1701], "14|tu|sy": [1402],
+             "19|bee|amy": [1901], "19|bee|ann": [1901, 1902], "7|ho|ha": [701, 703]}
+    for e, authors in lists.items():
+        for a in authors:
+            c.execute("INSERT INTO ia_shortlist VALUES (?, ?, ?, false)", [e, a, len(authors)])
+    c.execute("CREATE TABLE ia_profile_names (author_id BIGINT, last_key VARCHAR, first_key VARCHAR)")
+    c.execute("INSERT INTO ia_profile_names VALUES (201, 'lee', 'bo'), (202, 'lee', 'b'), (203, 'lee', 'bo'), (204, 'lee', 'bob'), "
+              "(205, 'li', 'bo')")
+    c.execute("CREATE TABLE ia_paper_authors (award_id BIGINT, work_id BIGINT, author_id BIGINT)")
+    c.execute("INSERT INTO ia_paper_authors VALUES (1, 9001, 102)")
+    hash_of = lambda authors: hashlib.sha256(",".join(map(str, sorted(authors))).encode()).hexdigest()   # noqa: E731
+    if seeds:   # the 11-06 answers, through prepare's one-time seed (before the night's own rows below)
+        seeds(c, hash_of)
+        d.run("jev.sql", JEVSEED=SEED)
+    else:
+        d.run("jev.sql")
+    c.execute("""INSERT INTO ia_jev VALUES (7, 'lead_investigator', 0, 'Gu', 'Ho', '7|ho|gu', ?, 'link', 701, 0.9, DATE '2026-11-01', 'jev'),
+                 (8, 'lead_investigator', 0, 'Hu', 'Ma', '8|ma|hu', ?, 'unsure', NULL, 0.3, DATE '2026-11-01', 'jev'),
+                 (9, 'lead_investigator', 0, 'Ia', 'Yu', NULL, NULL, 'link', 901, 0.8, DATE '2026-11-01', 'seed'),
+                 (15, 'lead_investigator', 0, 'Vo', 'Waa', '15|wa|vo', ?, 'none', NULL, 0.7, DATE '2026-11-01', 'jev'),
+                 (16, 'lead_investigator', 0, 'Xu', 'Ya', '16|ya|xu', ?, 'link', 1601, 0.9, DATE '2026-11-01', 'jev'),
+                 (17, 'lead_investigator', 0, 'Zed', 'Ab', NULL, NULL, 'link', 1701, 0.9, DATE '2026-11-01', 'seed'),
+                 (14, 'lead_investigator', 0, 'Pi', 'Ra', '14|ra|pi', ?, 'link', 1402, 0.9, DATE '2026-11-01', 'jev')""",
+              [hash_of([701, 702]), hash_of([801, 899]), hash_of([1501]), hash_of([1601]), hash_of([1401, 1402])])
+    c.execute("""CREATE TABLE ia_authors (award_id BIGINT, slot VARCHAR, position INT, given_name VARCHAR, family_name VARCHAR, orcid VARCHAR,
+                 author_id BIGINT, method VARCHAR, layer VARCHAR, evidence VARCHAR, model_version INT, run_date DATE)""")
+    c.execute("INSERT INTO ia_authors VALUES (5, 'lead_investigator', 0, 'Ed', 'Wu', NULL, 500, 'student_relaxed', 'model_relaxed', '{}', 1, "
+              "DATE '2026-11-02'), (7, 'lead_investigator', 0, 'Gu', 'Ho', NULL, 701, 'jev_link', 'jev_link', '{}', NULL, DATE '2026-11-02'), "
+              "(14, 'co_lead_investigator', 0, 'Sy', 'Tu', NULL, 1402, 'student', 'model_bind', '{}', 1, DATE '2026-11-02')")
+    c.execute("DROP TABLE openalex.authors.authors_api")
+    c.execute("""CREATE TABLE openalex.authors.authors_api (id VARCHAR, display_name VARCHAR, display_name_alternatives VARCHAR[], works_count INT,
+                 affiliations STRUCT(institution STRUCT(id VARCHAR, display_name VARCHAR, country_code VARCHAR), years INT[])[],
+                 topics STRUCT(display_name VARCHAR, count INT)[])""")
+    for a in [101, 102, 103, 201, 202, 203, 701, 702, 703, 801, 802, 901, 1101, 1401, 1402, 1501, 1601, 1701, 1902]:
+        c.execute("INSERT INTO openalex.authors.authors_api VALUES (?, ?, ?, 10, ?, ?)",
+                  [f"https://openalex.org/A{a}", f"Name {a}", [f"N. {a}", f"orcid {O9}", f"Name {a}"],
+                   [{"institution": {"id": "I1", "display_name": "Univ X", "country_code": "US"}, "years": [2012, 2015]},
+                    {"institution": {"id": "I2", "display_name": "Univ Y", "country_code": "GB"}, "years": [2019, 2021]}],
+                   [{"display_name": "Topic A", "count": 3}, {"display_name": "Topic B", "count": 9}]])
+    c.execute("CREATE TABLE openalex.works.work_authors (work_id BIGINT, author_id BIGINT)")
+    c.execute("CREATE TABLE openalex.works.openalex_works (id BIGINT, publication_year INT, title VARCHAR, cited_by_count INT)")
+    c.execute("INSERT INTO openalex.works.work_authors VALUES (1, 101), (2, 101), (3, 101)")
+    c.execute(f"INSERT INTO openalex.works.openalex_works VALUES (1, 2001, 'Old and famous', 900), (2, 2015, 'In the window {O9}', 1), "
+              "(3, 2016, 'Also in it', 5)")
+    c.execute("""ALTER TABLE openalex.awards.awards_api ADD COLUMN display_name VARCHAR""")
+    c.execute("""ALTER TABLE openalex.awards.awards_api ADD COLUMN description VARCHAR""")
+    c.execute("""ALTER TABLE openalex.awards.awards_api ADD COLUMN funder_award_id VARCHAR""")
+    c.execute("""ALTER TABLE openalex.awards.awards_api ADD COLUMN institution_awarded STRUCT(id VARCHAR, display_name VARCHAR)[]""")
+    c.execute("ALTER TABLE openalex.funders.funders ADD COLUMN display_name VARCHAR")
+    c.execute("INSERT INTO openalex.funders.funders VALUES (1, 'US', 'Funder One')")
+    for a in [a for a, *_ in people] + [19]:
+        c.execute("INSERT INTO openalex.awards.awards_api VALUES (?, 1, 2012, 2015, ?, 'About it', ?, [{'id': 'I1', 'display_name': 'Univ X'}])",
+                  [a, f"Grant {a}", f"G-{a}"])
+    d.run("judge.sql", JEVMAX=str(cap))
+    return d, hash_of
+
+
+def test_judge_lists_unserved_people_with_1_to_20_profiles_and_asks_the_new_and_the_changed():
+    d, hash_of = judge_db()
+    lists = {e: (src, n, h) for e, src, n, h in d.rows("SELECT entry_id, src, n_cands, list_hash FROM ia_jev_lists")}
+    assert sorted(lists) == ["11|pak|jo", "14|ra|pi", "15|wa|vo", "16|ya|xu", "17|ab|ze", "19|bee|ann", "1|smith|ann", "2|lee|bo",
+                             "7|ho|gu", "7|ho|ha", "8|ma|hu", "9|yu|ia"]   # held: 3 4 5 13 (relaxed), 14's co-lead, Amy Bee; 6 too many; 12 two
+    assert lists["7|ho|ha"] == ("institution", 1, hash_of([703]))          # 701 is served to Gu Ho by Jev: never offered to Ha Ho
+    assert lists["7|ho|gu"] == ("institution", 2, hash_of([701, 702]))     # ... while Gu Ho's own list keeps it
+    d.con.execute("DELETE FROM ia_routes WHERE method = 'jev_link'")       # served now, with no claim tonight: still reserved
+    d.run("judge.sql")
+    assert d.rows("SELECT list_hash FROM ia_jev_lists WHERE entry_id = '7|ho|ha'") == [(hash_of([703]),)]
+    assert lists["19|bee|ann"] == ("institution", 1, hash_of([1902]))      # 1901 is Amy Bee's student pick tonight
+    assert lists["2|lee|bo"] == ("anywhere", 3, hash_of([201, 202, 203])) and lists["1|smith|ann"][:2] == ("institution", 3)
+    assert lists["14|ra|pi"] == ("institution", 1, hash_of([1401]))        # 1402 is the co-lead's: never offered for Pi Ra
+    items = {e: (asked, n, stratum) for e, asked, n, stratum in d.rows("SELECT entry_id, asked, n_cands, stratum FROM ia_jev_items")}
+    assert items == {"1|smith|ann": (False, 3, "sp_k3"), "2|lee|bo": (False, 3, "sp_k3"), "11|pak|jo": (False, 1, "sp_k1"),
+                     "16|ya|xu": (False, 1, "sp_k1"), "19|bee|ann": (False, 1, "sp_k1"), "7|ho|ha": (False, 1, "sp_k1"),   # 16: one slot new
+                     "8|ma|hu": (True, 2, "sp_k2"), "14|ra|pi": (True, 1, "sp_k1"), "15|wa|vo": (True, 1, "sp_k1"),
+                     "17|ab|ze": (True, 1, "sp_k1")}   # changed list (14: 1402 is no longer on it) or printed name
+    # 7 asked on this list under this name; 9 a seed still printing its name: kept as they are
+    assert d.rows("SELECT len(slots) FROM ia_jev_items WHERE entry_id = '11|pak|jo'") == [(2,)]
+
+
+def test_judge_cards_carry_the_graded_fields_hide_orcids_and_map_back_to_the_list():
+    d, _ = judge_db()
+    state, ckeys = d.rows("SELECT state_json, ckeys FROM ia_jev_items WHERE entry_id = '1|smith|ann'")[0]
+    assert O9 not in state
+    s, ck = json.loads(state), json.loads(ckeys)
+    assert s["item"] == "1|smith|ann" and set(s) == {"item", "GRANT", "INVESTIGATOR", "CANDIDATES"}
+    assert sorted(ck) == ["c1", "c2", "c3"] == sorted(s["CANDIDATES"]) and sorted(ck.values()) == [101, 102, 103]
+    assert s["GRANT"]["funder"] == "Funder One (US)" and s["GRANT"]["investigator_role"] == "lead investigator"
+    assert s["INVESTIGATOR"] == {"given_name": "Ann", "family_name": "Smith", "orcid": "", "affiliation": "Univ X"}
+    cards = {ck[k]: v for k, v in s["CANDIDATES"].items()}
+    assert cards[101]["paper_titles_with_years"][0].startswith("2016: Also in it")      # inside the window first, then the most cited
+    assert cards[101]["paper_titles_with_years"][-1] == "2001: Old and famous"
+    assert cards[101]["institutions_with_years"] == ["Univ Y (GB) 2019-2021", "Univ X (US) 2012-2015"]
+    assert cards[101]["top_topics"] == ["Topic B", "Topic A"] and cards[101]["name_variants"] == ["N. 101"]
+    assert [cards[a]["on_a_paper_this_grant_funded"] for a in (101, 102, 103)] == [False, True, False]
+
+
+def test_the_nights_cap_takes_the_never_asked_first_and_no_more():
+    d, _ = judge_db(cap=2)
+    got = d.rows("SELECT entry_id, asked FROM ia_jev_items")
+    assert len(got) == 2 and not any(asked for _, asked in got)                # 5 never asked, 3 changed: 2 never asked go
+    d, _ = judge_db(cap=8)                                                     # all 8 go; qn orders the never-asked first, which
+    order = [asked for (asked,) in d.rows("SELECT asked FROM ia_jev_items ORDER BY qn")]   # JudgeWithJev reads in, so a deadline
+    assert order == sorted(order) and False in order and True in order         # leaves only re-asks for tomorrow
+    d, _ = judge_db(cap=0)
+    assert d.rows("SELECT count(*) FROM ia_jev_items") == [(0,)]
+
+
+def test_judge_merge_keeps_each_answer_on_every_slot_once_and_fills_a_seeded_hash():
+    d, hash_of = judge_db()
+    c = d.con
+    c.execute("CREATE TABLE jev_out (entry_id VARCHAR, list_hash VARCHAR, decision VARCHAR, author_id BIGINT, p DOUBLE, model VARCHAR)")
+    rows = d.rows("SELECT entry_id, list_hash FROM ia_jev_items")
+    answer = {"11|pak|jo": ("link", 1101, 0.97), "8|ma|hu": ("link", 802, 0.71), "1|smith|ann": ("none", None, 0.6)}
+    for e, h in rows:
+        if e in answer:   # 2|lee|bo failed tonight: no answer, asked again next night
+            c.execute("INSERT INTO jev_out VALUES (?, ?, ?, ?, ?, 'jev-1.13.0')", [e, h, *answer[e]])
+    d.run("judge_merge.sql")
+    got = d.rows("SELECT award_id, slot, decision, author_id, list_hash IS NOT NULL, judged_on FROM ia_jev ORDER BY 1, 2")
+    d.run("judge_merge.sql")
+    assert d.rows("SELECT award_id, slot, decision, author_id, list_hash IS NOT NULL, judged_on FROM ia_jev ORDER BY 1, 2") == got
+    by = {(a, s): (dec, au, h) for a, s, dec, au, h, _ in got}
+    assert by[(11, "lead_investigator")] == by[(11, "investigators")] == ("link", 1101, True)
+    assert by[(8, "lead_investigator")] == ("link", 802, True) and by[(1, "lead_investigator")] == ("none", None, True)
+    assert (2, "lead_investigator") not in by
+    assert by[(9, "lead_investigator")] == ("link", 901, True)              # the seeded pick took tonight's list, kept its decision
+    assert d.rows("SELECT list_hash FROM ia_jev WHERE award_id = 9") == [(hash_of([901]),)]
+    assert by[(17, "lead_investigator")] == ("link", 1701, False)           # a seed whose printed name changed: no list until asked
+    assert by[(14, "lead_investigator")] == ("unsure", None, True)          # its profile is the co-lead's now: retired, not asked tonight
+    assert d.rows("SELECT list_hash FROM ia_jev WHERE award_id = 14") == [("retired",)]
+    c.execute("DELETE FROM ia_authors WHERE award_id = 14")                  # the co-lead's link goes: Pi Ra's list is 1401, 1402 again
+    d.run("judge.sql")
+    assert d.rows("SELECT asked FROM ia_jev_items WHERE entry_id = '14|ra|pi'") == [(True,)]   # and the retired slot is asked again
+
+
+def test_routes_reads_only_the_links_in_the_jobs_table():
+    d = jev_db()
+    d.con.execute("UPDATE ia_jev SET decision = 'unsure' WHERE award_id = 92")   # a decision that is not a link carries no claim
+    d.run("routes.sql")
+    assert [x for x in claims(d) if x[1] == "jev_link"] == [(90, "jev_link", 91)]
+
+
+class FakeJev:
+    """utils.study_design.JevClient's decide(), mocked: answers by the item's state, optionally out of credit after some calls."""
+    def __init__(self, answers, credit=None):
+        self.answers, self.calls, self.credit, self.out_of_credit = answers, [], credit, None
+
+    def decide(self, state, qs):
+        self.calls.append((state["item"], sorted(qs)))
+        if self.credit is not None and len(self.calls) >= self.credit:
+            self.out_of_credit = "HTTP 402"
+        a = self.answers[state["item"]]
+        if a == "boom":
+            raise RuntimeError("thread died")
+        return a
+
+
+def jev_items(n):
+    return [{"entry_id": f"e{i}", "list_hash": f"h{i}", "stratum": "sp_k2", "ckeys": json.dumps({"c1": 10 + i, "c2": 20 + i}),
+             "state_json": json.dumps({"item": f"e{i}"})} for i in range(n)]
+
+
+def link(choice, p, ok=True):
+    return {"ok": ok, "answers": {"link": {"choice": choice, "probabilities": {choice: p}}}, "model": "jev-1.13.0"}
+
+
+def test_a_pick_is_a_listed_candidate_at_p_half_and_anything_else_is_kept_as_none_or_unsure():
+    qs = iaa.jev_questions()
+    items = jev_items(6)
+    items = jev_items(8)
+    client = FakeJev({"e0": link("c2", 0.9), "e1": link("c1", 0.49), "e2": link("none", 0.8), "e3": link("c9", 0.99),
+                      "e4": link("c1", 0.9, ok=False), "e5": "boom", "e6": {"ok": True, "answers": {}},          # e6, e7: malformed
+                      "e7": {"ok": True, "answers": {"link": {"probabilities": {"c1": 0.9}}}}})
+    got, asked = iaa.judge_items(client, items, qs, deadline_s=60)
+    assert asked == 8 and all(q == ["link"] for _, q in client.calls)       # each call carries its stratum's question, as graded
+    assert {a["entry_id"]: (a["decision"], a["author_id"]) for a in got} == {"e0": ("link", 20), "e1": ("unsure", None),
+                                                                             "e2": ("none", None)}   # e3: c9 is not on its list
+    bad = [{"ok": True, "answers": ["x"]}, {"ok": True, "answers": {"link": {"choice": "c1", "probabilities": ["x"]}}},
+           {"ok": True, "answers": {"link": {"choice": "c1"}}}, link("c1", float("inf")), link("c1", float("nan")), link("c1", 1.5),
+           {"ok": True, "answers": {"link": {"choice": "none"}}}, {"ok": True, "answers": {"link": {"choice": "unsure", "probabilities": []}}},
+           {"ok": True, "answers": {"link": {"choice": "none", "probabilities": {"c1": 0.9}}}}]
+    assert [iaa.jev_answer(items[0], r) for r in bad] == [None] * len(bad)
+
+
+def test_the_deadline_and_an_empty_account_stop_every_call_and_each_batch_is_kept_as_it_ends():
+    qs = iaa.jev_questions()
+    now = [0]
+
+    class Slow(FakeJev):   # every call takes 5 simulated seconds
+        def decide(self, state, qs):
+            now[0] += 5
+            return super().decide(state, qs)
+    kept = []
+    client = Slow({f"e{i}": link("c1", 0.9) for i in range(10)})
+    got, asked = iaa.judge_items(client, jev_items(10), qs, deadline_s=12, batch=3, threads=1, clock=lambda: now[0], on_answers=kept.append)
+    assert asked == 3 and len(client.calls) == 3 and [len(k) for k in kept] == [3]   # calls start at 0, 5, 10; at 15 none
+    now[0] = 0
+    client = Slow({f"e{i}": link("c1", 0.9) for i in range(10)})
+    got, asked = iaa.judge_items(client, jev_items(10), qs, deadline_s=7, batch=3, threads=1, clock=lambda: now[0])
+    assert asked == 2 and len(client.calls) == 2                             # the batch's third call would start at 10: not made
+
+    def slow_rows():   # the rows arrive after the deadline: nothing is asked
+        now[0] = 100
+        yield from jev_items(3)
+    now[0] = 0
+    client = FakeJev({f"e{i}": link("c1", 0.9) for i in range(3)})
+    assert iaa.judge_items(client, slow_rows(), qs, deadline_s=1, clock=lambda: now[0]) == ([], 0) and client.calls == []
+    client = FakeJev({f"e{i}": link("c1", 0.9) for i in range(10)}, credit=2)
+    got, asked = iaa.judge_items(client, jev_items(10), qs, deadline_s=600, batch=3, threads=1)
+    assert asked == 2 and len(client.calls) == 2                             # out of credit: not one more call
+
+
+def test_the_prompt_is_the_graded_one_for_lists_of_1_to_20():
+    qs = iaa.jev_questions()
+    assert sorted(qs, key=lambda k: int(k[4:])) == [f"sp_k{k}" for k in range(1, 21)]
+    assert list(qs["sp_k20"]["link"]["criteria"])[-3:] == ["c20", "none", "unsure"]
+    # sha256 of questions_pt1102.json (ai-tools, the file every graded run used), as json.dumps(sort_keys=True)
+    assert hashlib.sha256(json.dumps(qs, sort_keys=True).encode()).hexdigest() == \
+        "0891cbb6190582b542eed1e770c4b3231268880e1d346fc39149c4c92248dbe9"
+
+
+def test_the_served_table_and_the_thresholds_are_the_same_in_judge_and_decide():
+    ddl = [re.search(r"CREATE TABLE IF NOT EXISTS __P__authors \((.*?)\n;", SQL[f], re.S).group(1) for f in ("decide.sql", "judge.sql")]
+    assert ddl[0] == ddl[1]
+    th = [re.search(r"th AS \(SELECT [^)]*\)", SQL[f]).group(0) for f in ("decide.sql", "judge.sql")]
+    assert th[0] == th[1]
+
+
+def test_the_jev_parameters_are_checked():
+    good = {"prefix": "a.b.c_", "run_date": "2026-11-11", "max_change": "0.05", "model": "m", "alias": "a", "jev_deadline_min": "30",
+            "jev_max_items": "60000"}
+
+    class W:
+        def __init__(self, v):
+            self.widgets = self
+            self.v = v
+
+        def get(self, k):
+            return self.v[k]
+    assert iaa.params(W(good))["jev_max_items"] == "60000"
+    for k, bad in [("jev_deadline_min", "0"), ("jev_max_items", "-1"), ("jev_max_items", "2000000")]:
+        with pytest.raises(AssertionError):
+            iaa.params(W({**good, k: bad}))
+
+
+def test_rows_under_a_redirected_award_move_to_the_canonical_id_and_never_duplicate_a_slot():
+    d = Duck()
+    c = d.con
+    d.run("jev.sql")
+    c.execute("""INSERT INTO ia_jev VALUES (700, 'lead_investigator', 0, 'A', 'B', NULL, 'h1', 'link', 1, 0.9, DATE '2026-11-01', 'jev'),
+                 (800, 'lead_investigator', 0, 'C', 'D', NULL, 'h2', 'link', 2, 0.9, DATE '2026-11-01', 'jev'),
+                 (8, 'lead_investigator', 0, 'C', 'D', NULL, 'h3', 'link', 3, 0.9, DATE '2026-11-02', 'jev'),
+                 (902, 'lead_investigator', 0, 'E', 'F', NULL, 'h5', 'link', 5, 0.9, DATE '2026-11-01', 'jev'),
+                 (901, 'lead_investigator', 0, 'E', 'F', NULL, 'h4', 'link', 4, 0.9, DATE '2026-11-01', 'jev')""")
+    c.execute("INSERT INTO openalex.awards.award_id_redirects VALUES (700, 7), (800, 8), (901, 9), (902, 9)")
+    d.run("jev.sql")
+    want = [(7, 1, "h1"), (8, 3, "h3"), (9, 4, "h4")]   # 700 moved to 7; 800 dropped (8 has its own); 901 and 902 -> 9: the lower id
+    assert d.rows("SELECT award_id, author_id, list_hash FROM ia_jev ORDER BY 1") == want
+    d.run("jev.sql")
+    assert d.rows("SELECT award_id, author_id, list_hash FROM ia_jev ORDER BY 1") == want
+
+
+def test_the_seed_keeps_one_pick_per_slot_when_two_old_awards_fold_into_one():
+    d = Duck()
+    c = d.con
+    c.execute("INSERT INTO openalex.awards.investigator_jev_links VALUES (601, 'lead_investigator', 0, 'G', 'H', 61, 0.7), "
+              "(602, 'lead_investigator', 0, 'G', 'H', 62, 0.9)")
+    c.execute("INSERT INTO openalex.awards.award_id_redirects VALUES (601, 6), (602, 6)")
+    d.run("jev.sql", JEVSEED=SEED)
+    assert d.rows("SELECT award_id, author_id FROM ia_jev") == [(6, 62)]
+
+
+def test_a_call_that_outlives_the_deadline_is_abandoned_not_waited_for():
+    import time as t
+
+    class Stuck(FakeJev):
+        def decide(self, state, qs):
+            if state["item"] == "e1":
+                t.sleep(3)
+            return super().decide(state, qs)
+    client = Stuck({f"e{i}": link("c1", 0.9) for i in range(3)})
+    t0 = t.monotonic()
+    stopped_when_saving = []
+    got, asked = iaa.judge_items(client, jev_items(3), iaa.jev_questions(), deadline_s=0.2, grace_s=0.3, threads=3,
+                                 on_answers=lambda a: stopped_when_saving.append(bool(getattr(client, "out_of_credit", None))))
+    assert t.monotonic() - t0 < 2 and sorted(a["entry_id"] for a in got) == ["e0", "e2"] and asked == 2
+    assert stopped_when_saving == [True]          # the abandoned call is stopped before the save, so it can't retry meanwhile
+
+
+def test_the_seed_carries_the_none_and_unsure_answers_with_their_11_06_list_and_a_pick_wins_its_slot():
+    d = Duck()
+    c = d.con
+    c.execute("INSERT INTO openalex.awards.investigator_jev_links VALUES (5, 'lead_investigator', 0, 'Ed', 'Wu', 50, 0.9)")
+    c.execute("""INSERT INTO openalex.awards.investigator_jev_unlinked VALUES
+                 (5, 'lead_investigator', 0, 'Ed', 'Wu', 'none', 0.95, 'h5', 2, 'full', DATE '2026-11-06'),   -- a surer 'none' still loses
+                 (6, 'investigators', 2, 'Fa', 'Li', 'unsure', 0.3, 'h6', 4, 'wide', DATE '2026-11-06')""")
+    d.run("jev.sql", JEVSEED=SEED)
+    assert d.rows("SELECT award_id, slot, position, decision, author_id, list_hash, p, model FROM ia_jev ORDER BY 1") == [
+        (5, "lead_investigator", 0, "link", 50, None, 0.9, "seed: investigator_jev_links"),
+        (6, "investigators", 2, "unsure", None, "h6", 0.3, "seed: investigator_jev_unlinked")]
+    d = Duck()
+    d.con.execute("INSERT INTO openalex.awards.investigator_jev_unlinked VALUES (6, 'lead_investigator', 0, 'Fa', 'Li', 'none', 0.8, 'h6', 2, "
+                  "'wide', DATE '2026-11-06')")
+    d.run("jev.sql", JEVSEED=iaa.jev_seed_source("ia_", False, True))   # the picks' copy dropped first: the other still seeds
+    assert d.rows("SELECT award_id, decision FROM ia_jev") == [(6, "none")]
+
+
+def test_a_seeded_none_or_unsure_is_asked_again_only_when_its_list_or_printed_name_changed():
+    def seeds(c, hash_of):
+        rows = [(1, "lead_investigator", 0, "Ann", "Smith", "none", 0.8, hash_of([101, 102, 103])),    # same list, same name: kept
+                (2, "lead_investigator", 0, "Bo", "Lee", "unsure", 0.4, hash_of([201, 202])),          # 203 is new on the list
+                (11, "lead_investigator", 0, "Jo", "Pak", "none", 0.9, hash_of([1101])),               # both slots, unchanged
+                (11, "investigators", 0, "Jo", "Pak", "none", 0.9, hash_of([1101])),
+                (19, "investigators", 0, "Anne", "Bee", "none", 0.7, hash_of([1902]))]                 # now printed Ann
+        for r in rows:
+            c.execute("INSERT INTO openalex.awards.investigator_jev_unlinked VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'wide', DATE '2026-11-06')", list(r))
+    d, _ = judge_db(seeds=seeds)
+    items = {e: asked for e, asked in d.rows("SELECT entry_id, asked FROM ia_jev_items")}
+    assert "1|smith|ann" not in items and "11|pak|jo" not in items
+    assert items["2|lee|bo"] is True and items["19|bee|ann"] is True

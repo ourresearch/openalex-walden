@@ -9,7 +9,7 @@
 --   kaken_nrid        the KAKEN lead's researcher number -> the one author orcid / linked_paper give it on any KAKEN grant
 --   nsfc_name         NSFC (Chinese names only): on the grant's own papers, one author printed as the PI's full pinyin at the grant
 --                     institution, and at least half of that profile's other works in the grant window there too
---   jev_link          Jev's pick among 1-6 same-name profiles (openalex.awards.investigator_jev_links, a frozen copy)
+--   jev_link          Jev's pick among 1-20 same-name profiles (__P__jev: Judge_With_Jev's picks, kept by the job)
 CREATE OR REPLACE TABLE __P__routes CLUSTER BY (award_id) AS
 WITH pe AS (
   SELECT p.*, CASE p.provenance WHEN 'nih_exporter' THEN 'nih' WHEN 'nsf_award_search' THEN 'nsf' END AS src,
@@ -133,12 +133,13 @@ r_cr AS (
     to_json(min(named_struct('crossref_doi', cdoi, 'matched_by', how, 'orcid', orcid))) AS evidence
   FROM cs WHERE slot IS NOT NULL AND n_fit = 1 GROUP BY award_id, slot, position, author_id
 ),
--- jev_link reads a frozen copy: the slot must still print the judged name (through award_id_redirects) and the profile must
--- still be live and agree
+-- jev_link reads Jev's picks (judged on an earlier run): the slot must still print the judged name (through award_id_redirects) and
+-- the profile must still be live and agree
 jv AS (SELECT coalesce(rd.canonical_id, j.award_id) AS award_id, j.slot, j.position, j.given_name, j.family_name, j.author_id, j.p
-       FROM openalex.awards.investigator_jev_links j
+       FROM __P__jev j
        LEFT JOIN (SELECT old_id, max(canonical_id) AS canonical_id FROM openalex.awards.award_id_redirects GROUP BY 1) rd
-         ON rd.old_id = j.award_id),
+         ON rd.old_id = j.award_id
+       WHERE j.decision = 'link' AND j.author_id IS NOT NULL),
 r_jev AS (
   SELECT p.award_id, p.slot, p.position, min(j.author_id) AS author_id, 'jev_link' AS method, to_json(named_struct('p', max(j.p))) AS evidence
   FROM jv j JOIN pe p ON p.award_id = j.award_id AND p.slot = j.slot AND p.position = j.position
