@@ -12,6 +12,10 @@ repo_works row. The missing PMCIDs are written to openalex.repo.pmc_harvest_gap 
 prints the one command that re-harvests them (openalex-ingest backfill_by_id.py). A gap is recoverable: PMC serves
 every article on GetRecord, so this catches it while it can still be fixed.
 
+The line is the measured floor + 1,000 (10 Nov 2026, after the backfill): 7,586 counted, of which 7,584 are records PMC's
+own feed serves with no title or a title under 5 characters ("News", "War"), which the Repo pipeline drops by design
+(repo_filters MIN_TITLE_LENGTH). If that floor creeps up, re-measure (oxjob #2111 work/15_check_floor.sql) and move it.
+
 Job: jobs/pmc_harvest_gap_check.yaml. Locally (Databricks Connect):
     DATABRICKS_CONFIG_PROFILE=dbc-ce570f73-0362 python monitoring/checks/pmc_harvest_gap_check.py
 """
@@ -25,7 +29,7 @@ import urllib.request
 NCBI_URL = "https://ftp.ncbi.nlm.nih.gov/pub/pmc/PMC-ids.csv.gz"
 VOLUME_FILE = "/Volumes/openalex/transient/pmcid1862_vol/pmc_gap_check/PMC-ids-latest.csv.gz"
 RESULT_TABLE = "openalex.repo.pmc_harvest_gap"
-MAX_MISSING = int(os.getenv("MAX_MISSING", "5000"))
+MAX_MISSING = int(os.getenv("MAX_MISSING", "8600"))
 RECENT_PMCIDS = int(os.getenv("RECENT_PMCIDS", "50000"))
 # Task parameters override, e.g. ["--max-missing", "500000"] for a test run while a backfill is still landing.
 _args = sys.argv[1:]

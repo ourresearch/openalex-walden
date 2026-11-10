@@ -2,7 +2,7 @@
 # openalex.repo.repo_works. Fails (-> Sentry databricks-jobs) when more than MAX_MISSING released articles, older than the
 # newest RECENT_PMCIDS, were never harvested; the ids go to openalex.repo.pmc_harvest_gap and the failure prints the
 # re-harvest command. Read-only except that table. Mondays 20:00 UTC (after the 18:00 UTC Repo run).
-# PAUSED until #2111's backfill lands and MAX_MISSING is set from the measured floor (see the job's PLAN).
+# Live since 10 Nov 2026: MAX_MISSING 8,600 = the measured floor (7,586, nearly all untitled PMC records) + 1,000.
 resources:
   jobs:
     PMC_Harvest_Gap_Check:
@@ -10,7 +10,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 0 20 ? * MON"
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       max_concurrent_runs: 1
       timeout_seconds: 1800
       tasks:
