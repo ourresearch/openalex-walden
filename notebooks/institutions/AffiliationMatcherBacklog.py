@@ -9,9 +9,9 @@
 # MAGIC
 # MAGIC Job `Affiliation Matcher Backlog` (jobs/affiliation_matcher_backlog.yaml), daily:
 # MAGIC `step=check` (serverless, seconds): queue = every pending string: no answers row, and created since the corpus
-# MAGIC snapshot (27 Sep 2026) or on a work now (`PENDING_SQL`; #1997: the corpus run skipped strings with no works on 27 Sep,
-# MAGIC and those that gained works later were in no queue); sets task values `pending` and `shards` (one GPU shard per
-# MAGIC `per_shard` strings, at most `max_shards`).
+# MAGIC snapshot (27 Sep 2026) or on a work or a grant now (`PENDING_SQL`; #1997: the corpus run skipped strings with no works on
+# MAGIC 27 Sep, and those that gained works later were in no queue; #2032: grant addresses); sets task values `pending` and
+# MAGIC `shards` (one GPU shard per `per_shard` strings, at most `max_shards`).
 # MAGIC Then `AffiliationMatcherNightly` with `queue_table`, `shard` k/n and `target_table` answers shard k into
 # MAGIC `<prefix>_backlog_answers_<k>` on its own GPU cluster, with the nightly's production settings. `step=apply`:
 # MAGIC checks the shard tables and inserts their answers into the answers table exactly as the nightly does (insert-only
@@ -57,13 +57,39 @@ T0 = time.time()
 # the strings that had works on 27 Sep and skipped the ~1.8M that had none; the old queue (created >= SINCE only) never
 # reached those that gained works later: 233,157 strings on 317,970 work links on 3 Nov, stuck on the 2023 model's ids.
 # The nightly matcher inside End 2 End is only a fast lane over the newest of these; whatever it doesn't reach lands here.
+# A grant address counts like a string on a work (oxjob #2032): Nightly Grants reads the answers. This reaches the grant names that
+# have sat in the lookup since #123.2's stubs (created 2025-07-14 to 2026-09-09, on no work), which no other rule takes.
+# GRANT_ADDRESSES is a copy of grant_addresses in notebooks/awards/nightly_grants/sql/api_payload.sql
+# (tests/test_grant_addresses.py there fails if they differ).
+GRANT_ADDRESSES = """grant_addresses AS (
+  SELECT award_id, provenance, funder_id, funder_award_id, is_lead, aff,
+    CASE WHEN TRIM(aff.name) <> ''
+              AND aff.name NOT LIKE 'Institution abroad%'
+              AND LOWER(TRIM(aff.name)) NOT IN ('grantee', 'autre', 'autres', 'n/a', 'na', 'null', 'unknown', 'none', 'tbd', 'tba', 'other',
+                                                'individual', 'data not available', 'no institution available')
+         THEN aff.name END AS name
+  FROM (
+    SELECT id AS award_id, provenance, funder_id, funder_award_id, true AS is_lead, lead_investigator.affiliation AS aff FROM openalex.awards.awards_api
+    UNION ALL
+    SELECT id, provenance, funder_id, funder_award_id, false, co_lead_investigator.affiliation FROM openalex.awards.awards_api
+    UNION ALL
+    SELECT id, provenance, funder_id, funder_award_id, false, person.affiliation FROM openalex.awards.awards_api LATERAL VIEW EXPLODE(investigators) inv AS person
+  )
+  WHERE aff IS NOT NULL
+    AND (provenance NOT IN ('kaken', 'crossref_work.grants', 'crossref_work_funders', 'gateway_to_research', 'usaspending',
+                            'rwjf_grants_explorer', 'argentina_mincyt', 'openaire_fwf', 'researchfi', 'nobelprize_api')
+         OR (provenance = 'kaken' AND is_lead))
+)"""
 PENDING_SQL = f"""
+WITH {GRANT_ADDRESSES}
 SELECT DISTINCT l.raw_affiliation_string
 FROM {LOOKUP} l
 LEFT ANTI JOIN {ANSWERS} a ON a.raw_affiliation_string = l.raw_affiliation_string
 LEFT JOIN (SELECT raw_affiliation_string, max(works_count) AS works_count FROM {COUNTS} GROUP BY raw_affiliation_string) w
   ON w.raw_affiliation_string = l.raw_affiliation_string
-WHERE (l.created_datetime >= TIMESTAMP '{SINCE}' OR coalesce(w.works_count, 0) > 0)
+LEFT JOIN (SELECT DISTINCT name AS raw_affiliation_string FROM grant_addresses) g
+  ON g.raw_affiliation_string = l.raw_affiliation_string
+WHERE (l.created_datetime >= TIMESTAMP '{SINCE}' OR coalesce(w.works_count, 0) > 0 OR g.raw_affiliation_string IS NOT NULL)
   AND l.raw_affiliation_string IS NOT NULL AND trim(l.raw_affiliation_string) <> ''
 """
 assert STEP in ("check", "apply"), STEP
@@ -81,13 +107,13 @@ if STEP == "check":
         spark.sql(f"DROP TABLE IF EXISTS {t}")
     spark.sql(f"""
 CREATE OR REPLACE TABLE {QUEUE}
-COMMENT 'oxjob #1386/#1997 backlog: every pending string (no answers row; created since the corpus snapshot, or on a work now). Rebuilt each run' AS
+COMMENT 'oxjob #1386/#1997/#2032 backlog: every pending string (no answers row; created since the corpus snapshot, or on a work or a grant now). Rebuilt each run' AS
 {PENDING_SQL}
 """)
     pending = spark.table(QUEUE).count()
     shards = 0 if pending == 0 else min(MAX_SHARDS, math.ceil(pending / PER_SHARD))
     oldest = spark.sql(f"SELECT min(l.created_datetime) AS t FROM {QUEUE} q JOIN {LOOKUP} l USING (raw_affiliation_string)").collect()[0].t
-    log(f"queue: {pending:,} pending strings (new since {SINCE}, or older and on a work; oldest created {oldest}); shards: {shards}")
+    log(f"queue: {pending:,} pending strings (new since {SINCE}, or older and on a work or a grant; oldest created {oldest}); shards: {shards}")
     dbutils.jobs.taskValues.set("pending", int(pending))
     dbutils.jobs.taskValues.set("shards", int(shards))
     dbutils.notebook.exit(json.dumps({"pending": int(pending), "shards": int(shards), "oldest": str(oldest)}))

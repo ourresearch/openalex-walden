@@ -68,3 +68,8 @@ def test_prepare_affiliation_strings_carries_the_same_cte_before_the_works_merge
     works = [k for k, s in enumerate(code) if "openalex.works.openalex_works_base" in s]
     assert len(grants) == 1 and cte(code[grants[0]]) == EXPECTED
     assert grants[0] < works[0]          # the nightly matcher takes the newest strings first: tonight's paper strings stay ahead
+
+
+def test_the_backlog_carries_the_same_cte():
+    text = (REPO / "notebooks/institutions/AffiliationMatcherBacklog.py").read_text()
+    assert text.count("grant_addresses AS (") == 1 and cte(text) == EXPECTED
