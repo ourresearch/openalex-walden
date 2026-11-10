@@ -43,7 +43,7 @@ import time
 import modal
 
 APP = "openalex-worktypes-nightly"
-VERSION_MARK = "worktypes-nightly v1 2026-11-09"
+VERSION_MARK = "worktypes-nightly v1.1 2026-11-09"
 app = modal.App(APP)
 mvol = modal.Volume.from_name("oxjob1976-worktype-s2")
 dvol = modal.Volume.from_name("openalex-worktypes-nightly", create_if_missing=True, version=2)
@@ -123,7 +123,8 @@ BUILD_RX = re.compile(r"^[0-9A-Za-z_-]{6,40}$")
 gpu_image = (modal.Image.debian_slim(python_version="3.11")
              .pip_install(*[x for x in VLLM_LOCK if x.split("==")[0].lower() not in SKIP])
              .env({"HF_HOME": "/vol/hf", "VLLM_CACHE_ROOT": "/tmp/vllm_cache", "TOKENIZERS_PARALLELISM": "true"}))
-cpu_image = modal.Image.debian_slim(python_version="3.11").pip_install("httpx", "fastapi[standard]")
+cpu_image = modal.Image.debian_slim(python_version="3.11").pip_install("httpx", "fastapi[standard]", "numpy==2.2.6",
+                                                                        "pyarrow==21.0.0")
 TOKEN = modal.Secret.from_name("openalex-worktypes-nightly-token")
 DBX = modal.Secret.from_name("openalex-worktypes-dbx")   # a dedicated service principal's DATABRICKS_HOST / DATABRICKS_TOKEN
 _PKGS = ["torch", "transformers", "accelerate", "vllm", "numpy", "tokenizers", "safetensors", "triton", "xformers",
@@ -245,12 +246,8 @@ class Scorer:
 
     @modal.method()
     def score(self, build_id: str, shard: int, out_dir: str):
-        """Score /data/<build_id>/in/<shard>.jsonl.gz and PUT <out_dir>/<shard>.parquet to the UC Volume (Files API)."""
-        import io
-        import httpx
+        """Score /data/<build_id>/in/<shard>.jsonl.gz into /data/<build_id>/out/<shard>.npz (put_shard uploads the parquet)."""
         import numpy as np
-        import pyarrow as pa
-        import pyarrow.parquet as pq
         t0 = time.time()
         dvol.reload()
         rows = [json.loads(l) for l in gzip.open(f"/data/{build_id}/in/{shard:04d}.jsonl.gz", "rt")]
@@ -262,34 +259,58 @@ class Scorer:
         if not (len(idx) == len(conf) == z.shape[0] == n and z.shape[1] == N_CLASSES and np.isfinite(z).all()
                 and ((conf >= 0) & (conf <= 1)).all()):
             raise RuntimeError(f"shard {shard}: malformed output")
-        sh = f"{shard:04d}"
-        zl = np.round(z.astype(np.float64), 4).astype(np.float32)
-        offs = pa.array(np.arange(0, n * N_CLASSES + 1, N_CLASSES, dtype=np.int32))
-        t = pa.table({"work_id": pa.array(np.array([r["id"] for r in rows], dtype=np.int64), pa.int64()),
-                      "input_hash": pa.array([r["h"] for r in rows], pa.string()),
-                      "model_version": pa.array([self.version] * n, pa.string()),
-                      "render_version": pa.array([RENDER_VERSION] * n, pa.string()),
-                      "class_idx": pa.array(idx.astype(np.int32), pa.int32()),
-                      "confidence": pa.array([round(float(c), 4) for c in conf], pa.float64()),
-                      "logits": pa.ListArray.from_arrays(offs, pa.array(zl.ravel(), pa.float32())),
-                      "shard": pa.array([sh] * n, pa.string())})
-        buf = io.BytesIO()
-        pq.write_table(t, buf, compression="zstd")
-        body = buf.getvalue()
-        H = {"Authorization": f"Bearer {os.environ['DATABRICKS_TOKEN']}", "Content-Type": "application/octet-stream"}
-        for att in range(5):
-            try:
-                r = httpx.put(f"{_dbx_host()}/api/2.0/fs/files{out_dir}/{sh}.parquet", params={"overwrite": "true"}, content=body,
-                              headers=H, timeout=600)
-                r.raise_for_status()
-                break
-            except Exception as e:  # noqa: BLE001
-                print("PUT retry", shard, repr(e)[:200], flush=True)
-                time.sleep(10 * (att + 1))
-        else:
-            raise RuntimeError(f"shard {shard}: PUT failed")
+        # The pinned scoring image has no pyarrow (and adding it would change the image id the alias check hashes), so the
+        # GPU side saves the raw arrays with numpy; put_shard (cpu_image) writes the parquet and PUTs it (oxjob #1976 smoke).
+        os.makedirs(f"/data/{build_id}/out", exist_ok=True)
+        np.savez(f"/data/{build_id}/out/{shard:04d}.npz", work_id=np.array([r["id"] for r in rows], dtype=np.int64),
+                 input_hash=np.array([r["h"] for r in rows], dtype=str), class_idx=idx.astype(np.int32),
+                 confidence=np.array([round(float(c), 4) for c in conf], dtype=np.float64),
+                 logits=np.round(z.astype(np.float64), 4).astype(np.float32))
+        dvol.commit()
         return {"shard": shard, "works": n, "model_version": self.version, "read_s": round(t_read, 1), "gpu_s": round(t_gpu, 1),
-                "total_s": round(time.time() - t0, 1), "wps": round(n / max(t_gpu, 1e-6), 1), "bytes": len(body)}
+                "total_s": round(time.time() - t0, 1), "wps": round(n / max(t_gpu, 1e-6), 1)}
+
+
+@app.function(image=cpu_image, volumes={"/data": dvol}, secrets=[DBX], timeout=1800, cpu=2, memory=4096)
+def put_shard(build_id: str, shard: int, out_dir: str, version: str):
+    """/data/<build_id>/out/<shard>.npz (Scorer.score) -> <out_dir>/<shard>.parquet in the UC Volume (Files API). Same columns
+    and types the score load reads (03_scores_load.sql)."""
+    import io
+    import httpx
+    import numpy as np
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    dvol.reload()
+    a = np.load(f"/data/{build_id}/out/{shard:04d}.npz")
+    n, sh = len(a["work_id"]), f"{shard:04d}"
+    if not (len(a["input_hash"]) == len(a["class_idx"]) == len(a["confidence"]) == a["logits"].shape[0] == n
+            and a["logits"].shape[1] == N_CLASSES):
+        raise RuntimeError(f"shard {shard}: malformed arrays")
+    offs = pa.array(np.arange(0, n * N_CLASSES + 1, N_CLASSES, dtype=np.int32))
+    t = pa.table({"work_id": pa.array(a["work_id"], pa.int64()),
+                  "input_hash": pa.array(a["input_hash"].tolist(), pa.string()),
+                  "model_version": pa.array([version] * n, pa.string()),
+                  "render_version": pa.array([RENDER_VERSION] * n, pa.string()),
+                  "class_idx": pa.array(a["class_idx"], pa.int32()),
+                  "confidence": pa.array(a["confidence"], pa.float64()),
+                  "logits": pa.ListArray.from_arrays(offs, pa.array(a["logits"].ravel(), pa.float32())),
+                  "shard": pa.array([sh] * n, pa.string())})
+    buf = io.BytesIO()
+    pq.write_table(t, buf, compression="zstd")
+    body = buf.getvalue()
+    H = {"Authorization": f"Bearer {os.environ['DATABRICKS_TOKEN']}", "Content-Type": "application/octet-stream"}
+    for att in range(5):
+        try:
+            r = httpx.put(f"{_dbx_host()}/api/2.0/fs/files{out_dir}/{sh}.parquet", params={"overwrite": "true"}, content=body,
+                          headers=H, timeout=600)
+            r.raise_for_status()
+            break
+        except Exception as e:  # noqa: BLE001
+            print("PUT retry", shard, repr(e)[:200], flush=True)
+            time.sleep(10 * (att + 1))
+    else:
+        raise RuntimeError(f"shard {shard}: PUT failed")
+    return {"shard": shard, "bytes": len(body)}
 
 
 def export_queue(table_in, build_id, warehouse):
@@ -364,14 +385,22 @@ def run_all(table_in: str, out_dir: str, build_id: str, warehouse: str):
     exp = json.load(open(done)) if os.path.exists(done) else export_queue(table_in, build_id, warehouse)
     shards = sorted(int(s) for s in exp["shards"])
     t_export = time.time() - t0
-    results, errors = [], []
+    scored, errors = [], []
     for r in Scorer().score.starmap([(build_id, s, out_dir) for s in shards], order_outputs=False, return_exceptions=True):
         if isinstance(r, Exception):
             errors.append(repr(r)[:500])
         else:
-            results.append(r)
+            scored.append(r)
             print(r, flush=True)
-    shard_s = sum(r["total_s"] for r in results)
+    by_shard = {r["shard"]: r for r in scored}
+    results = []
+    for p in put_shard.starmap([(build_id, r["shard"], out_dir, r["model_version"]) for r in scored], order_outputs=False,
+                               return_exceptions=True):
+        if isinstance(p, Exception):
+            errors.append(repr(p)[:500])
+        else:
+            results.append(dict(by_shard[p["shard"]], bytes=p["bytes"]))
+    shard_s = sum(r["total_s"] for r in scored)
     return {"shards": len(shards), "shards_done": len(results), "errors": errors, "works": sum(r["works"] for r in results),
             "exported": exp["rows"], "model_version": MANIFEST["id"], "export_s": round(t_export, 1),
             "shard_seconds": round(shard_s, 1), "usd_est": round(shard_s * PRICE_PER_S, 3), "wall_s": round(time.time() - t0, 1),
