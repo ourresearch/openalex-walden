@@ -23,13 +23,20 @@ WORKS = f"{S}.openalex_works"
 
 # COMMAND ----------
 
+# The last publish = the newest data write. Maintenance (OPTIMIZE, VACUUM, stats, properties) runs hours after it, sometimes
+# past midnight UTC, and must not count: the backfill's chunk runs call this check at any hour (oxjob #1976).
+MAINTENANCE = ("OPTIMIZE", "VACUUM START", "VACUUM END", "COMPUTE STATS", "ANALYZE", "SET TBLPROPERTIES",
+               "UNSET TBLPROPERTIES", "SET TAGS", "UNSET TAGS", "FSCK", "UPGRADE PROTOCOL")
+(spark.sql(f"DESCRIBE HISTORY {WORKS} LIMIT 100")  # noqa: F821
+ .where(f"operation NOT IN ({', '.join(repr(m) for m in MAINTENANCE)})").orderBy("version", ascending=False).limit(1)
+ .select("timestamp").createOrReplaceTempView("wt_pub"))
 if "type_decision" not in {c.name for c in spark.table(WORKS).schema}:  # noqa: F821
-    n_scores = spark.sql(f"SELECT count(*) AS n FROM {S}.work_type_scores").collect()[0].n  # noqa: F821
-    if n_scores == 0:
-        dbutils.notebook.exit("no scores yet and no type_decision: nothing to check")  # noqa: F821
-    raise RuntimeError(f"{WORKS} has no type_decision although work_type_scores holds {n_scores:,} rows: the End 2 End cell "
-                       "and its fallback both failed (CreateWorksEnriched's output)")
-spark.sql(f"DESCRIBE HISTORY {WORKS} LIMIT 1").select("timestamp").createOrReplaceTempView("wt_pub")  # noqa: F821
+    n = spark.sql(f"""SELECT count(*) AS n, count_if(scored_at < (SELECT timestamp FROM wt_pub)) AS before  -- noqa
+                      FROM {S}.work_type_scores""").collect()[0]  # noqa: F821
+    if n.before == 0:   # no End 2 End has published since the first scores were loaded: nothing it could have decided
+        dbutils.notebook.exit(f"no type_decision yet and no End 2 End since the first scores ({n.n:,} rows): nothing to check")  # noqa: F821
+    raise RuntimeError(f"{WORKS} has no type_decision although {n.before:,} scores were loaded before its last publish: the "
+                       "End 2 End cell and its fallback both failed (CreateWorksEnriched's output)")
 p = spark.sql(f"""SELECT to_date((SELECT timestamp FROM wt_pub)) AS published,  -- noqa
     (SELECT count(*) FROM {S}.work_type_scores WHERE scored_at < (SELECT timestamp FROM wt_pub)) AS scored_before""").collect()[0]  # noqa: F821
 published, scored_before = p.published, p.scored_before        # scores the last publish could have decided from
