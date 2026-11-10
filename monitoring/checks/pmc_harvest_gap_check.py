@@ -1,4 +1,4 @@
-"""PMC harvest gap check (oxjob #2111). Read-only except its own result table.
+"""PMC harvest gap check (oxjob #2111). Read-only except its own result table and NCBI's list (below).
 
 Every released PubMed Central article is free to read, and OpenAlex gets PMC copies only from PMC's OAI feed
 (endpoint ac9de7698155b820de7, openalex-ingest repositories.py). In Nov 2026 411,651 released articles had never been
@@ -11,6 +11,10 @@ MAX_MISSING released articles, older than the newest RECENT_PMCIDS (the normal 1
 repo_works row. The missing PMCIDs are written to openalex.repo.pmc_harvest_gap (one row per id per run) and the failure
 prints the one command that re-harvests them (openalex-ingest backfill_by_id.py). A gap is recoverable: PMC serves
 every article on GetRecord, so this catches it while it can still be fixed.
+
+It also keeps NCBI's list as a table, openalex.pubmed.ncbi_pmc_ids (oxjob #1163): CreateWorksBase reads it to give a work
+the PMCID of its own PMC copy only where NCBI ties that PMCID to the work. Replaced only when the new list holds at least
+99% of the old one's rows, so a truncated download cannot strip PMCIDs from works.
 
 The line is the measured floor + 1,000 (10 Nov 2026, after the backfill): 7,586 counted, of which 7,584 are records PMC's
 own feed serves with no title or a title under 5 characters ("News", "War"), which the Repo pipeline drops by design
@@ -52,6 +56,28 @@ req = urllib.request.Request(NCBI_URL, headers={"User-Agent": "OpenAlex PMC harv
 with urllib.request.urlopen(req, timeout=600) as r, open(VOLUME_FILE, "wb") as f:
     ncbi_modified = r.headers.get("Last-Modified")
     shutil.copyfileobj(r, f, 1 << 20)
+
+# oxjob #1163: NCBI's PMC-ids list as a table (one row per PMCID); the shrink guard keeps the old table on a bad download.
+NCBI_TABLE = "openalex.pubmed.ncbi_pmc_ids"
+NCBI_SELECT = f"""
+SELECT regexp_extract(upper(trim(PMCID)), '^PMC([0-9]+)$', 1) AS pmc_digits,
+  NULLIF(trim(PMID), '') AS pmid, NULLIF(lower(trim(DOI)), '') AS doi,
+  try_cast(Year AS INT) AS year, NULLIF(trim(Volume), '') AS volume, NULLIF(trim(Issue), '') AS issue,
+  NULLIF(trim(Page), '') AS page, `Release Date` AS release_date, NULLIF(trim(`Manuscript Id`), '') AS manuscript_id,
+  '{ncbi_modified}' AS ncbi_last_modified
+FROM read_files('{VOLUME_FILE}', format => 'csv', header => true,
+     schema => 'Journal_Title STRING, ISSN STRING, eISSN STRING, Year STRING, Volume STRING, Issue STRING, Page STRING, DOI STRING, PMCID STRING, PMID STRING, `Manuscript Id` STRING, `Release Date` STRING')
+WHERE upper(trim(PMCID)) RLIKE '^PMC[0-9]+$'
+"""
+new_rows = spark.sql(f"SELECT count(*) FROM ({NCBI_SELECT})").collect()[0][0]
+old_rows = (spark.sql(f"SELECT count(*) FROM {NCBI_TABLE}").collect()[0][0]
+            if spark.catalog.tableExists(NCBI_TABLE) else 0)
+if new_rows >= 0.99 * old_rows:
+    spark.sql(f"CREATE OR REPLACE TABLE {NCBI_TABLE} COMMENT 'oxjob #1163: NCBI PMC-ids.csv.gz, one row per PMCID. "
+              f"Refreshed weekly by the PMC harvest gap check; read by CreateWorksBase.' AS {NCBI_SELECT}")
+    print(f"{NCBI_TABLE}: {old_rows:,} -> {new_rows:,} rows")
+else:
+    print(f"{NCBI_TABLE} KEPT: the new list has {new_rows:,} rows, under 99% of the table's {old_rows:,}")
 
 spark.sql(f"""
 CREATE OR REPLACE TEMP VIEW pmc_live AS
