@@ -103,7 +103,7 @@ DEFAULT_WAREHOUSE = "medium"
 STATEMENT_TIMEOUT_SECONDS = {"2xlarge": 4 * 3600, "3xlarge": 2 * 3600}
 
 
-def get_connection(size: str = None):
+def get_connection(size: str = None, timeout_seconds: int = None):
     """
     Create a connection to Databricks SQL warehouse using OAuth service principal.
 
@@ -111,6 +111,8 @@ def get_connection(size: str = None):
         size: Warehouse size - "small", "medium", "xlarge", "2xlarge", "3xlarge", or "4xlarge".
               Defaults to DEFAULT_WAREHOUSE. Falls back to DATABRICKS_HTTP_PATH
               if the sized env var is not set.
+        timeout_seconds: Stop a statement after this long instead of the size's safety stop
+              (STATEMENT_TIMEOUT_SECONDS), for a planned long build.
     """
     size = size or DEFAULT_WAREHOUSE
     env_var = WAREHOUSE_SIZES.get(size)
@@ -122,7 +124,7 @@ def get_connection(size: str = None):
         raise ValueError(f"No warehouse configured. Set {env_var} or DATABRICKS_HTTP_PATH in .env")
 
     host = os.getenv("DATABRICKS_HOST", "").replace("https://", "").replace("http://", "")
-    timeout = STATEMENT_TIMEOUT_SECONDS.get(size)
+    timeout = timeout_seconds or STATEMENT_TIMEOUT_SECONDS.get(size)
     return sql.connect(
         server_hostname=host,
         http_path=http_path,
@@ -131,7 +133,8 @@ def get_connection(size: str = None):
     )
 
 
-def run_query(query: str, params: dict = None, allow_writes: bool = False, size: str = None):
+def run_query(query: str, params: dict = None, allow_writes: bool = False, size: str = None,
+              timeout_seconds: int = None):
     """
     Execute a SQL query and return results as a list of dicts.
 
@@ -140,6 +143,7 @@ def run_query(query: str, params: dict = None, allow_writes: bool = False, size:
         params: Optional dict of parameters for parameterized queries
         allow_writes: If False (default), validates query is read-only before executing
         size: Warehouse size - "small", "medium", "xlarge", "2xlarge", "3xlarge", or "4xlarge"
+        timeout_seconds: Stop the statement after this long instead of the size's safety stop
 
     Returns:
         List of dicts, one per row, with column names as keys
@@ -150,7 +154,7 @@ def run_query(query: str, params: dict = None, allow_writes: bool = False, size:
     if not allow_writes:
         _validate_read_only(query)
 
-    with get_connection(size=size) as conn:
+    with get_connection(size=size, timeout_seconds=timeout_seconds) as conn:
         with conn.cursor() as cursor:
             cursor.execute(query, params)
             if cursor.description is None:
