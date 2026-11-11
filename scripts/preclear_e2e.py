@@ -171,6 +171,9 @@ def main():
     ap.add_argument("--raise", dest="raise_", action="store_true",
                     help="raise the run's existing row in place to these totals, or file it if there is none "
                          "(a night has one row per flag)")
+    ap.add_argument("--lower", action="store_true",
+                    help="with --raise: let the new cap or a named loss be smaller than the row's (a change pulled out); "
+                         "without it a smaller number is refused")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--cancel", action="store_true",
                     help="close the open rows of ONE run (--night or --current-run; only --flags if given); --all for every run")
@@ -287,6 +290,22 @@ def main():
         if existing and f == "guardrails_override" and existing[0][1] is None and caps[f] is None:
             sys.exit("this run's guardrails_override row has no stamp cap (an uncapped legacy row): "
                      "give --max-changed with the night's total stamps")
+        if existing and not a.lower:
+            # 11 Nov 2026 (#1642): ten changes raised night 11-12's one row in a morning; one read a stale --list and its
+            # --raise cut the cap 20.3M -> 18.8M without a word. A raise never lowers a number unless --lower says so.
+            old_cap, old_loss = existing[0][1], (json.loads(existing[0][2]) if existing[0][2] else {})
+            new_cap = caps.get(f)
+            if new_cap is not None and old_cap is not None and int(new_cap) < int(old_cap):
+                sys.exit(f"refused for {f}: {int(new_cap):,} is lower than the row's {int(old_cap):,}. Another change has raised "
+                         "it since you read it: re-read with --list and add yours to the row's number (--lower only if a "
+                         "change was pulled out)")
+            if f == "guardrails_override":
+                low = {k: v for k, v in loss.items() if k in old_loss and int(v) < int(old_loss[k])
+                       and not (k == "works_total" and works_from_deletions)}
+                if low:
+                    sys.exit(f"refused for {f}: {show_map(low)} is lower than the row's "
+                             f"{show_map({k: int(old_loss[k]) for k in low})}; add yours to the row's numbers (--lower only "
+                             "if a change was pulled out)")
         plan.append((f, existing[0] if existing else None))
 
     for f, row in plan:
