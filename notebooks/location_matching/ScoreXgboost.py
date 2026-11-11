@@ -4,7 +4,9 @@
 # MAGIC
 # MAGIC Scores every (seed, candidate) pair with `openalex.works.location_work_matcher@challenger` (raw score, pinned training
 # MAGIC categories). Hard rules first: pairs on a vetoed type boundary (`location_work_match_type_veto`, Casey 2026-10-15: matching
-# MAGIC trusts the record's type) and undeclared Kaggle versions (both DOIs `10.34740/kaggle/dsv/`) are never scored. Writes
+# MAGIC trusts the record's type), undeclared Kaggle versions (both DOIs `10.34740/kaggle/dsv/`) and a study registration with a
+# MAGIC work that is not one unless both are the same registration (MergeIdenticalKeyWorks' #2063 rule: a shared DOI or OSF id;
+# MAGIC Casey 2026-11-11, oxjob #1668: the matcher was joining OSF projects to their registrations) are never scored. Writes
 # MAGIC `location_work_match_xgb`: every scored pair with its raw score and its rank within the record. A record's top score
 # MAGIC < 0.01 mints; >= 0.01 goes to Qwen. Scores in Spark through the model's UDF (a 705K-record night ran the driver out of
 # MAGIC memory when the pairs went through pandas, 2026-10-30).
@@ -21,8 +23,37 @@ NAME = "openalex.works.location_work_matcher"
 T = "openalex.works.location_work_match_"
 CATS = ["prov_a", "type_a", "type_b", "version_a", "prov_b", "version_b"]
 KEEP = ["part", "seed_id", "cid", "decision", "stratum_prov", "weight", "raw_type_a", "dc_client"]
+OSF = r"osf\\.io/(?:v2/registrations/)?([a-z0-9]{5})(?![a-z0-9])"   # MergeIdenticalKeyWorks' OSF guid
 T0 = time.time()
 
+# Registration pairs that are not the same registration: the record's DOIs and OSF ids (its keys and ids) against those of
+# the work's locations, matched by explode + join (array set functions gave run-varying answers in big queries)
+spark.sql(f"""
+  CREATE OR REPLACE TEMP VIEW sr_hold AS
+  WITH p AS (
+    SELECT seed_id, cid FROM {T}features
+    WHERE (coalesce(type_a, '') = 'study-registration') <> (coalesce(type_b, '') = 'study-registration')
+  ),
+  rk AS (
+    SELECT DISTINCT seed_id, k FROM (
+      SELECT seed_id, CASE WHEN k0 LIKE 'd:%' THEN k0 END AS k FROM {T}fr LATERAL VIEW explode(keys) e AS k0
+      UNION ALL SELECT seed_id, concat('o:', regexp_extract(k0, '{OSF}', 1)) FROM {T}fr LATERAL VIEW explode(keys) e AS k0
+      UNION ALL SELECT seed_id, concat('d:', regexp_replace(lower(trim(i.id)), '^https?://(dx\\\\.)?doi\\\\.org/', ''))
+        FROM {T}fr LATERAL VIEW explode(ids) e AS i WHERE lower(i.namespace) = 'doi'
+    ) WHERE k IS NOT NULL AND k NOT IN ('d:', 'o:') AND seed_id IN (SELECT seed_id FROM p)
+  ),
+  wk AS (
+    SELECT DISTINCT cid, k FROM (
+      SELECT cid, concat('d:', regexp_replace(lower(l.doi), '^https?://(dx\\\\.)?doi\\\\.org/', '')) AS k
+        FROM {T}fw LATERAL VIEW explode(locations) e AS l
+      UNION ALL SELECT cid, concat('o:', regexp_extract(lower(coalesce(l.doi, '')), '{OSF}', 1)) FROM {T}fw LATERAL VIEW explode(locations) e AS l
+      UNION ALL SELECT cid, concat('o:', regexp_extract(lower(coalesce(l.landing_page_url, '')), '{OSF}', 1))
+        FROM {T}fw LATERAL VIEW explode(locations) e AS l
+    ) WHERE k IS NOT NULL AND k NOT IN ('d:', 'o:') AND cid IN (SELECT cid FROM p)
+  ),
+  same AS (SELECT DISTINCT p.seed_id, p.cid FROM p JOIN rk ON rk.seed_id = p.seed_id JOIN wk ON wk.cid = p.cid AND wk.k = rk.k)
+  SELECT seed_id, cid FROM p LEFT ANTI JOIN same USING (seed_id, cid)
+""")
 pairs = spark.sql(f"""
   WITH kag AS (
     SELECT DISTINCT r.id AS seed_id, w.id AS cid FROM {T}ftok r JOIN {T}ftok w
@@ -32,8 +63,10 @@ pairs = spark.sql(f"""
   SELECT f.* FROM {T}features f
   LEFT ANTI JOIN {T}type_veto v ON v.type_a = f.type_a AND v.type_b = f.type_b
   LEFT ANTI JOIN kag k ON k.seed_id = f.seed_id AND k.cid = f.cid
+  LEFT ANTI JOIN sr_hold s ON s.seed_id = f.seed_id AND s.cid = f.cid
 """)
 n_all = spark.table(f"{T}features").count()
+n_sr = spark.table("sr_hold").count()
 
 mlflow.set_registry_uri("databricks-uc")
 mv = mlflow.MlflowClient().get_model_version_by_alias(NAME, "challenger")
@@ -47,7 +80,7 @@ out = (pairs.withColumn("p_raw", score(inp))
 out.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{T}xgb")
 s = spark.sql(f"""SELECT count(*) AS scored, count_if(rank = 1) AS records, count_if(rank = 1 AND p_raw >= 0.9156) AS top_ge_tau_bind,
   count_if(rank = 1 AND p_raw < 0.01) AS top_lt_tau_mint FROM {T}xgb""").collect()[0]
-summary = {"pairs": n_all, "scored": s.scored, "vetoed": n_all - s.scored, "records": s.records,
+summary = {"pairs": n_all, "scored": s.scored, "vetoed": n_all - s.scored, "registration_held": n_sr, "records": s.records,
            "top_ge_tau_bind": s.top_ge_tau_bind, "top_lt_tau_mint": s.top_lt_tau_mint, "model": f"{NAME} v{mv.version}"}
 print(summary)
 dbutils.jobs.taskValues.set(key="seconds", value=round(time.time() - T0, 1))
