@@ -15,10 +15,11 @@
 # MAGIC target's. Held: a record that itself carries a target id (`carries_target_id`: mislabelled, not a notice), and a record
 # MAGIC sharing a DOI / PMID with a held one on the same work (`shares_key_with_held`: moving it would split the notice). Also held
 # MAGIC without blocking anything: the article's own MAG record (`articles_own_mag_record`, its MAG id is the work's id), which
-# MAGIC carries a notice's PMID because MAG linked the wrong one (1,031 on the 2026-11-11 stage). And every record of a work
-# MAGIC whose primary location is one of its notices (`notice_is_the_works_primary`, 638 works): the work is the notice's own,
-# MAGIC with the article merged into it, so the article's records are the ones to move (W3026924908: an erratum's work since
-# MAGIC 2020 that #1902 merged its 2018 article into); moving the notice off would hand the notice's id to the article.
+# MAGIC carries a notice's PMID because MAG linked the wrong one (1,031 on the 2026-11-11 stage). And every record of a work the
+# MAGIC notice owns (`notice_owns_the_work`, ~950 works): its notice records were pinned there before any other record, or its
+# MAGIC primary location is a notice and nothing else was pinned there earlier. There the article was merged into the notice's
+# MAGIC work, so the article's records are the ones to move (W3026924908: an erratum's work since 2020 that #1902 merged its
+# MAGIC 2018 article into); moving the notice off would hand the notice's id to the article.
 # MAGIC
 # MAGIC - `stage`    build `target_table` (one row per record) and print the plan; refuses a target with executed rows.
 # MAGIC - `execute`  dry run; `confirm = yes`, outside 04:00-08:00 UTC: freeze `<target>_audit` and `<target>_map_audit`, then
@@ -137,10 +138,25 @@ if MODE == "stage":
         JOIN rec r ON r.old_work_id = w.id AND r.provenance = w.primary_location.provenance
                   AND lower(r.native_id) = lower(w.primary_location.native_id)
       ),
+      ages AS (
+        SELECT p.work_id,
+               MIN(CASE WHEN r.native_id IS NOT NULL THEN p.openalex_created_dt END) AS notice_first,
+               MIN(CASE WHEN r.native_id IS NULL THEN p.openalex_created_dt END) AS other_first
+        FROM {REGISTRY} p
+        LEFT JOIN rec r ON r.provenance = p.provenance AND r.native_id_namespace = p.native_id_namespace
+                       AND r.native_id = p.native_id AND r.old_work_id = p.work_id
+        WHERE p.work_id IN (SELECT old_work_id FROM rec)
+        GROUP BY p.work_id
+      ),
+      notice_owns AS (
+        SELECT a.work_id FROM ages a
+        WHERE a.other_first IS NULL OR a.notice_first < a.other_first
+           OR (a.work_id IN (SELECT id FROM notice_primary) AND NOT a.other_first < a.notice_first)
+      ),
       t AS (
         SELECT r.provenance, r.native_id_namespace, r.native_id, l.doi_clean, l.pmid, l.title, r.old_work_id,
                r.notice_types, r.targets,
-               CASE WHEN r.old_work_id IN (SELECT id FROM notice_primary) THEN 'notice_is_the_works_primary'
+               CASE WHEN r.old_work_id IN (SELECT work_id FROM notice_owns) THEN 'notice_owns_the_work'
                     WHEN r.native_id_namespace = 'mag' AND TRY_CAST(r.native_id AS BIGINT) = r.old_work_id
                     THEN 'articles_own_mag_record'
                     WHEN EXISTS (SELECT 1 FROM held1 h WHERE h.provenance = r.provenance
