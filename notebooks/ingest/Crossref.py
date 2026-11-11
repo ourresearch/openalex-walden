@@ -22,6 +22,14 @@ unallowed_types = ["component", "grant"]
 # "Correction"]). Keeping only title[0] gave the notice its article's exact title, so the type cascade
 # typed it article and title keys joined it to the article. Lowercase, exact match on the trimmed element.
 NOTICE_TITLE_ELEMENTS = ["correction", "retraction", "expression of concern"]
+# oxjob #2160: J-STAGE registrants (JSME, JSRT, Japanese Urological Association, ...) deposit the only title in
+# original-title and leave title empty or [""]: 506,419 records, 503,329 visible works served no title (11 Nov 2026).
+# When no title element has text, the first original-title element with text is the title. A record with any
+# non-blank title element is unchanged, and one with neither keeps title[0] (dry run over 180.1M records: 506,419
+# change, all to their original-title; 0 lose a title).
+TITLE_BLANK_ORIGINAL_TITLE_SET_SQL = (
+    "NOT coalesce(exists(title, x -> trim(x) <> ''), false) AND exists(`original-title`, x -> trim(x) <> '')")
+ORIGINAL_TITLE_SQL = "get(filter(`original-title`, x -> trim(x) <> ''), 0)"
 
 # Affiliation-as-Author Fix - Publishers excluded from filtering
 # These publishers have < 0.1% affected rate and should not have their records modified
@@ -363,6 +371,7 @@ def crossref_parsed():
         .withColumn("title", F.substring(
             F.when((F.size("title") > 1) & F.lower(F.trim(F.get(F.col("title"), F.size("title") - 1))).isin(*NOTICE_TITLE_ELEMENTS),
                    F.concat_ws(": ", F.trim(F.get(F.col("title"), F.size("title") - 1)), F.get(F.col("title"), 0)))
+             .when(F.expr(TITLE_BLANK_ORIGINAL_TITLE_SET_SQL), F.expr(ORIGINAL_TITLE_SQL))  # oxjob #2160
              .otherwise(F.get(F.col("title"), 0)), 0, MAX_TITLE_LENGTH))
         .withColumn("normalized_title", normalize_title_udf(F.col("title")))
         .withColumn(
