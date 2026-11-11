@@ -13,8 +13,8 @@
 # MAGIC 2. from `https://arxiv.org/pdf/<id>`, one request every `arxiv_pace_seconds` (arXiv's guidance for automated
 # MAGIC    access), at most `arxiv_limit` per run.
 # MAGIC
-# MAGIC A PDF is stored exactly as TaxiCab stores one (R2 `openalex-pdfs/<uuid4>.pdf`, same object metadata) and gets a
-# MAGIC `taxicab_results` row (`content_type='pdf'`, `url='https://arxiv.org/pdf/<id>'`, `resolved_url` = where the bytes
+# MAGIC A PDF is stored exactly as TaxiCab stores one (R2 `openalex-pdfs/<uuid4>.pdf`, same object metadata; a file we
+# MAGIC already hold with the same bytes is reused, `utils/pdf_store.py`, #2023) and gets a `taxicab_results` row (`content_type='pdf'`, `url='https://arxiv.org/pdf/<id>'`, `resolved_url` = where the bytes
 # MAGIC came from), so the 00:30 UTC Parse PDFs run parses it and the PDF reaches the work through the usual path.
 # MAGIC A miss is written as a row too (no `s3_path`, `error` set), and a record is retried after `retry_days`.
 # MAGIC
@@ -27,8 +27,8 @@ import datetime
 import hashlib
 import os
 import re
+import sys
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
@@ -121,6 +121,11 @@ s3 = boto3.client(
     region_name="auto",
     config=Config(max_pool_connections=32, retries={"max_attempts": 6}),
 )
+sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "..", "..")))
+from utils.pdf_store import md5_table, store_pdf  # noqa: E402
+
+pdf_md5 = md5_table(dbutils)
+reused = []
 
 
 def mirror_object(arxiv_id):
@@ -145,13 +150,13 @@ def is_pdf(body):
 
 
 def store(native_id, arxiv_id, body, source_url):
-    pdf_uuid = str(uuid.uuid4())
     url = f"https://arxiv.org/pdf/{arxiv_id}"
     now = datetime.datetime.utcnow()
-    s3.put_object(Bucket=PDF_BUCKET, Key=f"{pdf_uuid}.pdf", Body=body, Metadata={
+    pdf_uuid, was_reused = store_pdf(s3, pdf_md5, body, {
         "url": quote(url), "resolved_url": quote(source_url), "created_date": now.isoformat(),
-        "content_type": "pdf", "id": pdf_uuid, "native_id": native_id, "native_id_namespace": "pmh",
-        "source": "arxiv_pdf_sweep"})
+        "content_type": "pdf", "native_id": native_id, "native_id_namespace": "pmh", "source": "arxiv_pdf_sweep"})
+    if was_reused:
+        reused.append(pdf_uuid)
     return (pdf_uuid, url, source_url, 200, "pdf", native_id, "pmh", f"s3://{PDF_BUCKET}/{pdf_uuid}.pdf", False, now, now, None)
 
 
@@ -221,4 +226,5 @@ schema = T.StructType([
 if rows:
     spark.createDataFrame(rows, schema).write.mode("append").format("delta").saveAsTable("openalex.taxicab.taxicab_results")
 n_stored = sum(1 for r in rows if r[7])
-print(f"Wrote {len(rows):,} rows: {n_stored:,} PDFs stored, {len(rows) - n_stored:,} misses ({time.time() - t0:.0f}s)")
+print(f"Wrote {len(rows):,} rows: {n_stored:,} PDFs stored ({len(reused):,} of them a file we already held), "
+      f"{len(rows) - n_stored:,} misses ({time.time() - t0:.0f}s)")

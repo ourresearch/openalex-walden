@@ -14,7 +14,7 @@
 # MAGIC version is in the open-licence subset (not an author manuscript) with a PDF in the bucket, and that have no stored
 # MAGIC PDF in `taxicab_results`. It copies the PDF from the bucket over HTTPS, checks it against the md5 PMC lists and
 # MAGIC for a `%PDF-` header, and stores it exactly as TaxiCab stores one (R2 `openalex-pdfs/<uuid4>.pdf`, same object
-# MAGIC metadata) with a `taxicab_results` row (`content_type='pdf'`, `url` = PMC's article PDF address, `resolved_url` =
+# MAGIC metadata; a file we already hold with the same bytes is reused, `utils/pdf_store.py`, #2023) with a `taxicab_results` row (`content_type='pdf'`, `url` = PMC's article PDF address, `resolved_url` =
 # MAGIC the bucket object), so the 00:30 UTC Parse PDFs run parses it and the PDF reaches the work through the usual path.
 # MAGIC A miss is written as a row too (no `s3_path`, `error` set) and retried after `retry_days`.
 # MAGIC
@@ -24,8 +24,9 @@
 
 import datetime
 import hashlib
+import os
+import sys
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
@@ -125,6 +126,11 @@ s3 = boto3.client(
     region_name="auto",
     config=Config(max_pool_connections=32, retries={"max_attempts": 6}),
 )
+sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "..", "..")))
+from utils.pdf_store import md5_table, store_pdf  # noqa: E402
+
+pdf_md5 = md5_table(dbutils)
+reused = []
 
 
 def pdf_url(digits):
@@ -148,12 +154,12 @@ def fetch(item):
             return miss(native_id, digits, "bucket md5 mismatch")
         if len(body) < 100 or not body[:1024].lstrip().startswith(b"%PDF-"):
             return miss(native_id, digits, "bucket object is not a PDF")
-        pdf_uuid = str(uuid.uuid4())
         now = datetime.datetime.utcnow()
-        s3.put_object(Bucket=PDF_BUCKET, Key=f"{pdf_uuid}.pdf", Body=body, Metadata={
+        pdf_uuid, was_reused = store_pdf(s3, pdf_md5, body, {
             "url": quote(pdf_url(digits)), "resolved_url": quote(BUCKET + key), "created_date": now.isoformat(),
-            "content_type": "pdf", "id": pdf_uuid, "native_id": native_id, "native_id_namespace": "pmh",
-            "source": "pmc_pdf_sweep"})
+            "content_type": "pdf", "native_id": native_id, "native_id_namespace": "pmh", "source": "pmc_pdf_sweep"})
+        if was_reused:
+            reused.append(pdf_uuid)
         return (pdf_uuid, pdf_url(digits), BUCKET + key, 200, "pdf", native_id, "pmh",
                 f"s3://{PDF_BUCKET}/{pdf_uuid}.pdf", False, now, now, None)
     except Exception as e:
@@ -164,7 +170,8 @@ t0 = time.time()
 with ThreadPoolExecutor(max_workers=16) as ex:
     rows = list(ex.map(fetch, todo))
 n_stored = sum(1 for r in rows if r[7])
-print(f"bucket: {n_stored:,} stored, {len(rows) - n_stored:,} misses ({time.time() - t0:.0f}s)")
+print(f"bucket: {n_stored:,} stored ({len(reused):,} of them a file we already held), {len(rows) - n_stored:,} misses "
+      f"({time.time() - t0:.0f}s)")
 
 # COMMAND ----------
 
