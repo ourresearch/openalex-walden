@@ -209,6 +209,31 @@ for chunk in range(N_CHUNKS):
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Step 2b — re-apply the accent restores (oxjob #2161)
+# MAGIC
+# MAGIC `openalex.abstracts.backfill_accent_restores` holds legacy abstracts whose accents were put back from the
+# MAGIC work's own page (or an in-house twin): its text folds to exactly the text this overlay serves, so it replaces
+# MAGIC this overlay's row for those works. A rebuild above TRUNCATEs the overlay, so this step MERGEs them back,
+# MAGIC every run (idempotent; one row per work, never a duplicate). Revert of #2161: TRUNCATE that table first, then
+# MAGIC its job README's revert.
+
+# COMMAND ----------
+
+ACCENTS_TABLE = "openalex.abstracts.backfill_accent_restores"
+if spark.catalog.tableExists(ACCENTS_TABLE):
+    spark.sql(f"""
+        MERGE INTO {TARGET_TABLE} t
+        USING (SELECT work_id, abstract, abstract_inverted_index FROM {ACCENTS_TABLE}) a
+        ON t.work_id = a.work_id
+        WHEN MATCHED THEN UPDATE SET t.abstract = a.abstract, t.abstract_inverted_index = a.abstract_inverted_index
+        WHEN NOT MATCHED THEN INSERT (work_id, abstract, abstract_inverted_index)
+          VALUES (a.work_id, a.abstract, a.abstract_inverted_index)
+    """)
+    print(f"re-applied {spark.table(ACCENTS_TABLE).count():,} accent restores from {ACCENTS_TABLE}")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Step 3 — verify
 
 # COMMAND ----------
