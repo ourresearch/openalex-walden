@@ -63,6 +63,7 @@ raw = (
     spark.read.format("xml")
     .option("rowTag", "ns0:record")
     .option("ignoreMissingFiles", "true")
+    .option("recursiveFileLookup", "true")  # files sit in yyyy/mm/dd folders; a batch read does not descend by itself
     .schema(irdb["jpcoar_schema"])
     .load(PATH)
     .withColumn("ingested_at", F.col("_metadata.file_modification_time"))
