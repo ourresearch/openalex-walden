@@ -337,7 +337,8 @@ def study_registration_guard(sql):
     DOI). A registration shares its title with the OSF project it was made from and with the paper that reports the study
     (6 Nov sizing, same title + year: ~6.6K OSF projects and ~3K articles, preprints from PsyArXiv, SSRN ...), and before the
     type existed those records were held as `other` / `dataset` / `report`. Such pairs are held as `study_registration`.
-    Two registrations pass through to the class's own holds. Undo: return `sql` unchanged."""
+    Two registrations pass through to the class's own holds. The location matcher applies the same rule (ScoreXgboost,
+    `sr_hold`): change both together. Undo: return `sql` unchanged."""
     guid = "regexp_extract(lower(COALESCE({c}, '')), 'osf\\\\.io/(?:v2/registrations/)?([a-z0-9]{{5}})(?![a-z0-9])', 1)"
     return f"""
     WITH gc AS ({sql}),
