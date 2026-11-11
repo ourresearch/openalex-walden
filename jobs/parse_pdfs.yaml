@@ -2,10 +2,11 @@ resources:
   jobs:
     Parse_PDFs:
       name: Parse PDFs
-      # 2 slots: the daily normal-mode run and one #789 batch drain run
-      # alongside. Safe: normal mode never reads grobid_reparse_queue, and the
-      # campaign's pre-0.9.1 pdfs cannot appear in the 3-day normal window.
-      # Batch drains themselves stay serialized by the campaign runner.
+      # 2 slots: the daily normal-mode run and one reparse drain alongside. The
+      # drain leaves pdfs the daily run will take (fetched in the last 2 days, no
+      # finished parse) to it and skips pdfs parsed since they were queued
+      # (oxjob #2023; on 3 Nov both runs parsed the same 1,086,556 fresh arXiv
+      # pdfs, #1987). Never run two drains over one queue at once.
       max_concurrent_runs: 2
       email_notifications:
         on_failure:
