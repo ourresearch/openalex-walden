@@ -415,17 +415,21 @@ resources:
           # (healthy task: 9-14 min) and one retry recover it without a person; worst case ~ the old single 40-min attempt.
           timeout_seconds: 1500
           max_retries: 1
-          # oxjob #1642 (10 Nov): the 04:39 CT retry started 2 s after the timeout on the same warehouse cluster and froze
-          # again; the repairs that ran after PROD-WH had stopped (auto-stop 1 min) all finished in ~4 min. Wait 150 s so
-          # the retry gets a fresh cluster. The notebook also caps the main statement at 12 min (STATEMENT_TIMEOUT 720).
-          min_retry_interval_millis: 150000
+          # oxjob #1642 (10-11 Nov): the main statement freezes on a warm cluster (8 of 8 attempts that started right after
+          # Author_Matching on jobs-4xl, 8-11 Nov) and finishes in ~4 min on a cold one (9 of 9 starts after the warehouse had
+          # auto-stopped). Databricks counts min_retry_interval_millis from the START of the failed attempt, so 150 s never
+          # delayed a retry (11 Nov: 2 s after a 25-min attempt): wait the task limit + 150 s, by when its own warehouse
+          # (auto-stop 1 min) has stopped. The notebook also caps the main statement at 12 min (STATEMENT_TIMEOUT 720).
+          min_retry_interval_millis: 1650000
           retry_on_timeout: true
           depends_on:
             - task_key: Apply_Work_Author_Curations
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorkAuthorships
             source: GIT
-            warehouse_id: 4d37bf76372a2901
+            # jobs-4xl-authorships (4X-Large, auto-stop 1 min), used by this task only, so every attempt starts cold.
+            # Revert: 4d37bf76372a2901 (jobs-4xl).
+            warehouse_id: 206883a966070d92
         - task_key: Works_Enriched
           timeout_seconds: 5700
           depends_on:
