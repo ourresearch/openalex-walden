@@ -93,13 +93,14 @@ WAREHOUSE_SIZES = {
     "medium": "DATABRICKS_WAREHOUSE_MEDIUM",
     "xlarge": "DATABRICKS_WAREHOUSE_XLARGE",
     "2xlarge": "DATABRICKS_WAREHOUSE_2XLARGE",
+    "3xlarge": "DATABRICKS_WAREHOUSE_3XLARGE",
     "4xlarge": "DATABRICKS_WAREHOUSE_4XLARGE",
 }
 
 DEFAULT_WAREHOUSE = "medium"
 
-# A stuck statement on the 2X-Large ($101/h list) stops after 4 hours (oxjob #2062).
-STATEMENT_TIMEOUT_SECONDS = {"2xlarge": 4 * 3600}
+# A stuck statement stops at about $400 list: 4 hours on the 2X-Large ($101/h), 2 on the 3X-Large ($190/h) (oxjob #2062).
+STATEMENT_TIMEOUT_SECONDS = {"2xlarge": 4 * 3600, "3xlarge": 2 * 3600}
 
 
 def get_connection(size: str = None):
@@ -107,7 +108,7 @@ def get_connection(size: str = None):
     Create a connection to Databricks SQL warehouse using OAuth service principal.
 
     Args:
-        size: Warehouse size - "small", "medium", "xlarge", "2xlarge", or "4xlarge".
+        size: Warehouse size - "small", "medium", "xlarge", "2xlarge", "3xlarge", or "4xlarge".
               Defaults to DEFAULT_WAREHOUSE. Falls back to DATABRICKS_HTTP_PATH
               if the sized env var is not set.
     """
@@ -138,7 +139,7 @@ def run_query(query: str, params: dict = None, allow_writes: bool = False, size:
         query: SQL query string
         params: Optional dict of parameters for parameterized queries
         allow_writes: If False (default), validates query is read-only before executing
-        size: Warehouse size - "small", "medium", "xlarge", "2xlarge", or "4xlarge"
+        size: Warehouse size - "small", "medium", "xlarge", "2xlarge", "3xlarge", or "4xlarge"
 
     Returns:
         List of dicts, one per row, with column names as keys
@@ -165,7 +166,7 @@ def run_query_df(query: str, params: dict = None, size: str = None):
     Args:
         query: SQL query string
         params: Optional dict of parameters for parameterized queries
-        size: Warehouse size - "small", "medium", "xlarge", "2xlarge", or "4xlarge"
+        size: Warehouse size - "small", "medium", "xlarge", "2xlarge", "3xlarge", or "4xlarge"
 
     Returns:
         pandas DataFrame with query results
