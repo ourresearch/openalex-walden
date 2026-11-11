@@ -15,7 +15,10 @@
 # MAGIC target's. Held: a record that itself carries a target id (`carries_target_id`: mislabelled, not a notice), and a record
 # MAGIC sharing a DOI / PMID with a held one on the same work (`shares_key_with_held`: moving it would split the notice). Also held
 # MAGIC without blocking anything: the article's own MAG record (`articles_own_mag_record`, its MAG id is the work's id), which
-# MAGIC carries a notice's PMID because MAG linked the wrong one (1,031 on the 2026-11-11 stage).
+# MAGIC carries a notice's PMID because MAG linked the wrong one (1,031 on the 2026-11-11 stage). And every record of a work
+# MAGIC whose primary location is one of its notices (`notice_is_the_works_primary`, 638 works): the work is the notice's own,
+# MAGIC with the article merged into it, so the article's records are the ones to move (W3026924908: an erratum's work since
+# MAGIC 2020 that #1902 merged its 2018 article into); moving the notice off would hand the notice's id to the article.
 # MAGIC
 # MAGIC - `stage`    build `target_table` (one row per record) and print the plan; refuses a target with executed rows.
 # MAGIC - `execute`  dry run; `confirm = yes`, outside 04:00-08:00 UTC: freeze `<target>_audit` and `<target>_map_audit`, then
@@ -48,6 +51,7 @@ MAP = dbutils.widgets.get("map").strip()
 LWT = "openalex.works.locations_w_types"
 PAIRS = "openalex.works.notice_link_pairs"
 REFS = "openalex.works.work_references"
+WORKS = "openalex.works.openalex_works"
 CLEAN = "NULLIF(regexp_replace(lower({}), '[^a-zA-Z0-9\\\\./-]', ''), '')"   # MapWorkIds' doi_clean, lowercased like the pairs
 
 import datetime
@@ -127,10 +131,17 @@ if MODE == "stage":
         JOIN ak ON ak.provenance = r.provenance AND ak.native_id_namespace = r.native_id_namespace AND ak.native_id = r.native_id
         JOIN held_keys hk ON hk.work_id = r.old_work_id AND hk.ns = ak.ns AND hk.id = ak.id
       ),
+      notice_primary AS (
+        SELECT DISTINCT w.id
+        FROM {WORKS} w
+        JOIN rec r ON r.old_work_id = w.id AND r.provenance = w.primary_location.provenance
+                  AND lower(r.native_id) = lower(w.primary_location.native_id)
+      ),
       t AS (
         SELECT r.provenance, r.native_id_namespace, r.native_id, l.doi_clean, l.pmid, l.title, r.old_work_id,
                r.notice_types, r.targets,
-               CASE WHEN r.native_id_namespace = 'mag' AND TRY_CAST(r.native_id AS BIGINT) = r.old_work_id
+               CASE WHEN r.old_work_id IN (SELECT id FROM notice_primary) THEN 'notice_is_the_works_primary'
+                    WHEN r.native_id_namespace = 'mag' AND TRY_CAST(r.native_id AS BIGINT) = r.old_work_id
                     THEN 'articles_own_mag_record'
                     WHEN EXISTS (SELECT 1 FROM held1 h WHERE h.provenance = r.provenance
                                    AND h.native_id_namespace = r.native_id_namespace AND h.native_id = r.native_id)
