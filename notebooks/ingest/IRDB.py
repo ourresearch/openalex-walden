@@ -310,23 +310,14 @@ jpcoar_schema = StructType([
             ]),
             # dcndl:dateGranted (degree date, theses): a plain string element
             *[StructField(f"{p}:dateGranted", ArrayType(StringType()), True) for p in VARIABLE_NS_PREFIXES],
-            # OpenAIRE version (observed as ns3, ns6, ns8, ns9)
-            StructField("ns3:version", StructType([
+            # OpenAIRE version, one field per possible prefix (oxjob #2147: only ns3/ns6/ns8/ns9 were listed; the
+            # census found oaire as ns5 and ns7 too, ~20% of versioned records, which fell back to submittedVersion).
+            # datacite:version (a plain version number) lands in the same `nsN:version` columns with no
+            # _rdf:resource, so _coalesce_version skips it.
+            *[StructField(f"{p}:version", StructType([
                 StructField("_VALUE", StringType(), True),
                 StructField("_rdf:resource", StringType(), True),
-            ]), True),
-            StructField("ns6:version", StructType([
-                StructField("_VALUE", StringType(), True),
-                StructField("_rdf:resource", StringType(), True),
-            ]), True),
-            StructField("ns8:version", StructType([
-                StructField("_VALUE", StringType(), True),
-                StructField("_rdf:resource", StringType(), True),
-            ]), True),
-            StructField("ns9:version", StructType([
-                StructField("_VALUE", StringType(), True),
-                StructField("_rdf:resource", StringType(), True),
-            ]), True),
+            ]), True) for p in VARIABLE_NS_PREFIXES],
         ]), True),
     ]), True),
 ])
@@ -390,13 +381,8 @@ def _coalesce_descriptions(md):
 
 # Helper: coalesce variable-namespace version fields
 def _coalesce_version(md):
-    """Coalesce ns3/ns6/ns8/ns9 version rdf:resource attributes."""
-    return F.coalesce(
-        F.col(f"{md}.`ns3:version`.`_rdf:resource`"),
-        F.col(f"{md}.`ns6:version`.`_rdf:resource`"),
-        F.col(f"{md}.`ns8:version`.`_rdf:resource`"),
-        F.col(f"{md}.`ns9:version`.`_rdf:resource`"),
-    )
+    """OpenAIRE version rdf:resource under any prefix."""
+    return F.coalesce(*[F.col(f"{md}.`{p}:version`.`_rdf:resource`") for p in VARIABLE_NS_PREFIXES])
 
 # COMMAND ----------
 
