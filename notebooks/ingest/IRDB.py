@@ -179,9 +179,24 @@ extract_jpcoar_ids_udf = F.udf(extract_jpcoar_ids, ArrayType(id_struct_type))
 #   ns3: = DC Terms (stable)
 #   rdf: = RDF (stable)
 #
-# DataCite (date, description) and OpenAIRE (version) have VARIABLE prefixes
-# (ns5/ns6/ns8/ns9 depending on file). These are extracted via regex from
-# the metadata string instead.
+# DataCite (date, description), dcterms (ns3 in most files, ns7..ns9 in others), dcndl (dateGranted)
+# and OpenAIRE (version) have VARIABLE prefixes, assigned per file. Spark's XML reader matches the
+# prefix literally, so the schema lists each variable-prefix element once per possible prefix.
+VARIABLE_NS_PREFIXES = [f"ns{i}" for i in range(2, 13)]  # ns0 = OAI-PMH and ns1 = JPCOAR are fixed
+
+
+def variable_ns_fields(local_name, element_fields):
+    """One array-of-struct schema field per possible prefix for a repeatable element."""
+    return [
+        StructField(f"{p}:{local_name}", ArrayType(StructType(element_fields)), True)
+        for p in VARIABLE_NS_PREFIXES
+    ]
+
+
+def concat_variable_ns(md, local_name):
+    """Every prefix's array of one variable-prefix element, concatenated (missing -> empty)."""
+    return F.concat(*[F.coalesce(F.col(f"{md}.`{p}:{local_name}`"), F.array()) for p in VARIABLE_NS_PREFIXES])
+
 
 jpcoar_schema = StructType([
     StructField("ns0:header", StructType([
@@ -277,38 +292,24 @@ jpcoar_schema = StructType([
                 StructField("ns1:mimeType", StringType(), True),
             ])), True),
             # --- Variable-namespace fields ---
-            # DataCite and OpenAIRE use different ns prefixes across files because
-            # Python ElementTree assigns ns3/ns5/ns6/ns8/ns9 based on encounter order.
-            # Include all observed variants; coalesce later.
-            # DataCite date (observed as ns3, ns5, ns6)
-            StructField("ns3:date", ArrayType(StructType([
+            # DataCite, dcterms, dcndl and OpenAIRE use different ns prefixes across files because
+            # Python ElementTree assigns ns3..ns9 based on encounter order.
+            # DataCite date + description and dcndl:dateGranted: one field per possible prefix
+            # (VARIABLE_NS_PREFIXES), so no prefix is missed (oxjob #2147: only ns3/ns5/ns6 were
+            # listed; a 500-file census found DataCite as ns3/ns4/ns5/ns6/ns7 and dcndl as ns4..ns9,
+            # and ~17% of dated records lost their year). A dcterms:date literal lands in the same
+            # `nsN:date` columns with no _dateType, so the dateType filters below skip it.
+            *variable_ns_fields("date", [
                 StructField("_VALUE", StringType(), True),
                 StructField("_dateType", StringType(), True),
-            ])), True),
-            StructField("ns5:date", ArrayType(StructType([
-                StructField("_VALUE", StringType(), True),
-                StructField("_dateType", StringType(), True),
-            ])), True),
-            StructField("ns6:date", ArrayType(StructType([
-                StructField("_VALUE", StringType(), True),
-                StructField("_dateType", StringType(), True),
-            ])), True),
-            # DataCite description (observed as ns3, ns5, ns6)
-            StructField("ns3:description", ArrayType(StructType([
+            ]),
+            *variable_ns_fields("description", [
                 StructField("_VALUE", StringType(), True),
                 StructField("_descriptionType", StringType(), True),
                 StructField("_xml:lang", StringType(), True),
-            ])), True),
-            StructField("ns5:description", ArrayType(StructType([
-                StructField("_VALUE", StringType(), True),
-                StructField("_descriptionType", StringType(), True),
-                StructField("_xml:lang", StringType(), True),
-            ])), True),
-            StructField("ns6:description", ArrayType(StructType([
-                StructField("_VALUE", StringType(), True),
-                StructField("_descriptionType", StringType(), True),
-                StructField("_xml:lang", StringType(), True),
-            ])), True),
+            ]),
+            # dcndl:dateGranted (degree date, theses): a plain string element
+            *[StructField(f"{p}:dateGranted", ArrayType(StringType()), True) for p in VARIABLE_NS_PREFIXES],
             # OpenAIRE version (observed as ns3, ns6, ns8, ns9)
             StructField("ns3:version", StructType([
                 StructField("_VALUE", StringType(), True),
@@ -358,26 +359,19 @@ def irdb_items():
 
 # Helper: coalesce variable-namespace date arrays and filter by dateType
 def _coalesce_dates(md):
-    """Coalesce ns3/ns5/ns6 date arrays, prefer Issued, fallback to Created."""
-    all_dates = F.concat(
-        F.coalesce(F.col(f"{md}.`ns3:date`"), F.array()),
-        F.coalesce(F.col(f"{md}.`ns5:date`"), F.array()),
-        F.coalesce(F.col(f"{md}.`ns6:date`"), F.array()),
-    )
+    """DataCite date under any prefix: Issued, else Created; else dcndl:dateGranted (degree date, theses)."""
+    all_dates = concat_variable_ns(md, "date")
     return F.coalesce(
         F.filter(all_dates, lambda d: d["_dateType"] == "Issued")[0]["_VALUE"],
         F.filter(all_dates, lambda d: d["_dateType"] == "Created")[0]["_VALUE"],
+        F.filter(concat_variable_ns(md, "dateGranted"), lambda d: F.trim(d) != "")[0],
     )
 
 # Helper: coalesce variable-namespace description arrays
 def _coalesce_descriptions(md):
-    """Coalesce ns3/ns5/ns6 description arrays.
+    """DataCite description under any prefix.
     Prefer Abstract type, fallback to long Other descriptions (100+ chars)."""
-    all_descs = F.concat(
-        F.coalesce(F.col(f"{md}.`ns3:description`"), F.array()),
-        F.coalesce(F.col(f"{md}.`ns5:description`"), F.array()),
-        F.coalesce(F.col(f"{md}.`ns6:description`"), F.array()),
-    )
+    all_descs = concat_variable_ns(md, "description")
     abstracts = F.filter(
         all_descs,
         lambda d: F.lower(d["_descriptionType"]) == "abstract",
