@@ -116,6 +116,7 @@ include:
   - jobs/refresh_peer_review_borrowed_abstracts.yaml
   - jobs/seed_work_id_map_digit_aliases.yaml
   - jobs/repoint_work_ids.yaml
+  - jobs/split_notices.yaml
   - jobs/seed_work_id_map_doi_rows.yaml
   - jobs/seed_work_id_map_title_rows.yaml
   - jobs/repoint_dead_id_references.yaml

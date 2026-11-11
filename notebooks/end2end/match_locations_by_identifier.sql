@@ -9,6 +9,43 @@
 -- `title_pick`, an input to the location matcher, which decides the first-sight records (never pinned before) left without a
 -- work. A re-pinned record with no match mints (a split job's records, as before); a nightly retry with no match stays parked.
 -- doi matching is on the CLEANED form ([^a-zA-Z0-9./-] stripped) on both sides; keys are scrubbed of degenerate values here, once.
+-- oxjob #2169: a notice about a work (retraction, correction, erratum, expression of concern, comment) never lands on that work's
+-- id, whichever answer put it there; it mints or joins the notice's own work instead.
+--
+-- oxjob #2169: notice -> the work it is about, as its record declares it. The help page's "Separate works" notices (Casey
+-- 2026-11-11): Crossref `update-to` / `updated-by` of those types, PubMed CommentsCorrections from the notice's side. One
+-- definition for this step, the location matcher (ScoreXgboost) and MergeIdenticalKeyWorks; rebuilt here every night.
+CREATE OR REPLACE TABLE openalex.works.notice_link_pairs
+COMMENT 'oxjob #2169: notice record -> the record it is about (doi: cleaned lowercase DOI, pmid: digits). Rebuilt nightly by Map_Work_Ids.'
+AS
+WITH cr AS (
+  SELECT lower(e.native_id) AS notice, lower(u.DOI) AS target, lower(u.type) AS notice_type
+  FROM openalex.crossref.crossref_exploded e LATERAL VIEW explode(e.`update-to`) x AS u
+  WHERE size(e.`update-to`) > 0
+  UNION ALL
+  SELECT lower(u.DOI), lower(e.native_id), lower(u.type)
+  FROM openalex.crossref.crossref_exploded e LATERAL VIEW explode(e.`updated-by`) x AS u
+  WHERE size(e.`updated-by`) > 0
+),
+pm AS (
+  SELECT CAST(e.pmid AS STRING) AS notice, CAST(cc.PMID._VALUE AS STRING) AS target, lower(cc._RefType) AS notice_type
+  FROM openalex.pubmed.pubmed_exploded e
+  LATERAL VIEW explode(e.MedlineCitation.CommentsCorrectionsList.CommentsCorrections) x AS cc
+),
+pairs AS (
+  SELECT 'doi' AS ns, regexp_replace(notice, '[^a-zA-Z0-9\./-]', '') AS notice_id,
+         regexp_replace(target, '[^a-zA-Z0-9\./-]', '') AS target_id, notice_type, 'crossref' AS src
+  FROM cr
+  WHERE notice_type IN ('retraction', 'partial_retraction', 'correction', 'erratum', 'corrigendum', 'expression_of_concern')
+  UNION ALL
+  SELECT 'pmid', notice, target, notice_type, 'pubmed'
+  FROM pm
+  WHERE notice_type IN ('retractionof', 'partialretractionof', 'erratumfor', 'expressionofconcernfor', 'commenton')
+)
+SELECT DISTINCT ns AS notice_ns, notice_id, ns AS target_ns, target_id, notice_type, src
+FROM pairs
+WHERE notice_id <> '' AND target_id <> '' AND notice_id <> target_id
+;
 CREATE OR REPLACE TABLE __PENDING__
 CLUSTER BY (provenance, native_id_namespace, native_id)
 AS
@@ -166,7 +203,8 @@ scored AS (
               WHEN rs.title_author IS NOT NULL THEN rs.tav IS NULL
               ELSE FALSE END AS routing_key_unseen
   FROM rs
-)
+),
+fin AS (
 SELECT s.provenance, s.native_id_namespace, s.native_id, s.is_retry, s.first_sight,
        s.doi, s.doi_clean, s.pmid, s.arxiv, s.title_author, s.bad_title, s.has_version_doi_clean, s.version_of_doi_clean,
        s.preprint_link_dois, s.preprint_link_is_pre,
@@ -195,6 +233,73 @@ LEFT JOIN legacy_id_redirect rm ON rm.k = s.mag_id AND s.provenance = 'mag'
 LEFT JOIN pmh_mapping pm
   ON s.provenance IN ('repo', 'repo_backfill') AND LOWER(s.native_id) = pm.pmh_id
 LEFT JOIN legacy_id_redirect rp ON rp.k = pm.legacy_work_id AND s.provenance IN ('repo', 'repo_backfill')
+),
+-- oxjob #2169: the records each answer would make a notice of the work it lands on (that work holds, by the map, a record the
+-- notice declares itself about). They get no answer here: a first sight goes to the location matcher (which applies the same
+-- rule), a re-pinned record mints or joins the notice's own work. A record whose own DOI or PMID the map already gives to that
+-- work keeps its answer: a vetoed record mints on its keys, and a second work for keys the map holds would split them (e.g. a
+-- PubMed comment carrying the commented article's DOI). A correction job removes such map rows before unpinning (SplitNotices).
+nt AS (
+  SELECT f.provenance, f.native_id_namespace, f.native_id, f.work_id, f.doi_clean, f.pmid, n.target_ns, n.target_id
+  FROM fin f JOIN openalex.works.notice_link_pairs n ON n.notice_ns = 'doi' AND n.notice_id = f.doi_clean
+  WHERE f.work_id IS NOT NULL
+  UNION
+  SELECT f.provenance, f.native_id_namespace, f.native_id, f.work_id, f.doi_clean, f.pmid, n.target_ns, n.target_id
+  FROM fin f JOIN openalex.works.notice_link_pairs n ON n.notice_ns = 'pmid' AND n.notice_id = f.pmid
+  WHERE f.work_id IS NOT NULL
+),
+-- the works holding the target: by the map, or by a pinned record that carries its DOI / PMID (a repository work holding a
+-- copy of the article is one too: on 2026-11-11 the map alone missed 154 notice copies the PMH crosswalk put back)
+target_works AS (
+  SELECT 'doi' AS ns, regexp_replace(m.doi, '[^a-zA-Z0-9\./-]', '') AS k, m.id
+  FROM __MAP__ m
+  LEFT SEMI JOIN (SELECT DISTINCT target_id FROM nt WHERE target_ns = 'doi') t
+    ON regexp_replace(m.doi, '[^a-zA-Z0-9\./-]', '') = t.target_id
+  UNION
+  SELECT 'pmid', m.pmid, m.id
+  FROM __MAP__ m
+  LEFT SEMI JOIN (SELECT DISTINCT target_id FROM nt WHERE target_ns = 'pmid') t ON m.pmid = t.target_id
+  UNION
+  SELECT l.ns, l.k, r.work_id
+  FROM (
+    SELECT provenance, native_id_namespace, native_id, 'doi' AS ns,
+           regexp_replace(merge_key.doi, '[^a-zA-Z0-9\./-]', '') AS k
+    FROM __LOCATIONS__
+    LEFT SEMI JOIN (SELECT DISTINCT target_id FROM nt WHERE target_ns = 'doi') t
+      ON regexp_replace(merge_key.doi, '[^a-zA-Z0-9\./-]', '') = t.target_id
+    UNION
+    SELECT provenance, native_id_namespace, native_id, 'pmid', merge_key.pmid
+    FROM __LOCATIONS__
+    LEFT SEMI JOIN (SELECT DISTINCT target_id FROM nt WHERE target_ns = 'pmid') t ON merge_key.pmid = t.target_id
+  ) l
+  JOIN __REG__ r
+    ON r.provenance = l.provenance AND r.native_id_namespace = l.native_id_namespace AND r.native_id = l.native_id
+  WHERE r.work_id IS NOT NULL
+),
+hit AS (
+  SELECT DISTINCT nt.provenance, nt.native_id_namespace, nt.native_id, nt.work_id, nt.doi_clean, nt.pmid
+  FROM nt JOIN target_works tw ON tw.ns = nt.target_ns AND tw.k = nt.target_id AND tw.id = nt.work_id
+),
+own_keys AS (
+  SELECT DISTINCT h.provenance, h.native_id_namespace, h.native_id
+  FROM hit h
+  JOIN (SELECT m.id, regexp_replace(m.doi, '[^a-zA-Z0-9\./-]', '') AS doi_clean, m.pmid
+        FROM __MAP__ m LEFT SEMI JOIN (SELECT DISTINCT work_id FROM hit) w ON m.id = w.work_id) m
+    ON m.id = h.work_id AND (m.doi_clean = h.doi_clean OR m.pmid = h.pmid)
+),
+notice_veto AS (
+  SELECT h.provenance, h.native_id_namespace, h.native_id
+  FROM hit h
+  LEFT ANTI JOIN own_keys o
+    ON o.provenance = h.provenance AND o.native_id_namespace = h.native_id_namespace AND o.native_id = h.native_id
+)
+SELECT fin.* EXCEPT (work_id, work_id_source, decided_by_model, converged_alias, run_ts),
+       CASE WHEN v.native_id IS NULL THEN fin.work_id END AS work_id,
+       CASE WHEN v.native_id IS NULL THEN fin.work_id_source END AS work_id_source,
+       fin.decided_by_model, fin.converged_alias, fin.run_ts
+FROM fin
+LEFT JOIN notice_veto v
+  ON v.provenance = fin.provenance AND v.native_id_namespace = fin.native_id_namespace AND v.native_id = fin.native_id
 ;
 SELECT is_retry, first_sight, work_id_source, (title_pick IS NOT NULL) AS has_title_pick, count(*) AS records
 FROM __VERDICTS__ GROUP BY ALL ORDER BY records DESC

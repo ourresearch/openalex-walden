@@ -361,6 +361,42 @@ def study_registration_guard(sql):
     """
 
 
+def notice_guard(sql):
+    """oxjob #2169 (11 Nov 2026), every class: a notice never merges with the work it is about. One side holds a record whose DOI
+    or PMID `openalex.works.notice_link_pairs` declares a retraction, correction, erratum, expression of concern or comment of
+    a DOI or PMID the other side holds. Crossref types most notices journal-article with the article's own title, so they pass
+    the type and title rules (#1902 merged 758 of them on 2026-11-03). Held as `notice_of`. MapWorkIds and the location matcher
+    read the same table. Undo: return `sql` unchanged."""
+    clean = "regexp_replace(lower({c}), '[^a-zA-Z0-9\\\\./-]', '')"
+    return f"""
+    WITH nc AS ({sql}),
+    nids AS (SELECT loser_work_id AS id FROM nc UNION SELECT winner_work_id FROM nc),
+    nw AS (
+      SELECT DISTINCT work_id, ns, id FROM (
+        SELECT work_id, 'doi' AS ns, {clean.format(c='merge_key.doi')} AS id FROM {LM}
+        WHERE work_id IN (SELECT id FROM nids) AND NULLIF(merge_key.doi, '') IS NOT NULL
+        UNION ALL
+        SELECT work_id, 'pmid', merge_key.pmid FROM {LM}
+        WHERE work_id IN (SELECT id FROM nids) AND NULLIF(merge_key.pmid, '') IS NOT NULL)),
+    hit AS (
+      SELECT nc.loser_work_id, nc.winner_work_id
+      FROM nc
+      JOIN nw a ON a.work_id = nc.loser_work_id
+      JOIN openalex.works.notice_link_pairs n ON n.notice_ns = a.ns AND n.notice_id = a.id
+      JOIN nw b ON b.work_id = nc.winner_work_id AND b.ns = n.target_ns AND b.id = n.target_id
+      UNION
+      SELECT nc.loser_work_id, nc.winner_work_id
+      FROM nc
+      JOIN nw a ON a.work_id = nc.winner_work_id
+      JOIN openalex.works.notice_link_pairs n ON n.notice_ns = a.ns AND n.notice_id = a.id
+      JOIN nw b ON b.work_id = nc.loser_work_id AND b.ns = n.target_ns AND b.id = n.target_id)
+    SELECT nc.* EXCEPT (hold_reason),
+           CASE WHEN nc.hold_reason IS NOT NULL THEN nc.hold_reason
+                WHEN h.loser_work_id IS NOT NULL THEN 'notice_of' END AS hold_reason
+    FROM nc LEFT JOIN hit h ON h.loser_work_id = nc.loser_work_id AND h.winner_work_id = nc.winner_work_id
+    """
+
+
 def same_doi_class_sql():
     """Same-DOI class: 2-3 live works whose pinned records carry one cleaned DOI. Winner = the work with a Crossref pin
     for it, else the lowest id (the DOI seed already made MIN(id) over the DOI the anchor). The loser's records re-resolve
@@ -1264,7 +1300,7 @@ if MODE == "stage":
     if CLASS_MODE == "version_group":
         build_version_group_tables()
     spark.sql(f"""CREATE OR REPLACE TABLE {TARGET} AS
-                  WITH c0 AS ({study_registration_guard(class_sql())}),
+                  WITH c0 AS ({notice_guard(study_registration_guard(class_sql()))}),
                   c AS (SELECT c0.* EXCEPT (hold_reason), {cited_hold} AS hold_reason FROM c0),
                   keys AS (
                     SELECT ta, MAX(CASE WHEN hold_reason IS NOT NULL THEN 1 ELSE 0 END) AS held,

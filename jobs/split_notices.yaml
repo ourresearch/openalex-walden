@@ -1,0 +1,48 @@
+resources:
+  jobs:
+    Split_Notices:
+      name: Split Notices
+      description: |
+        oxjob #2169: move notices (retractions, corrections, errata, expressions of concern, comments) off the work of the
+        article they are about. Deletes the notice records' pins and the article work's map entries for the notice's DOI /
+        PMID; the nightly MapWorkIds re-files them on the notice's own work or a new one. Pairs from
+        openalex.works.notice_link_pairs (+ extra_pairs_sql).
+
+        MANUAL TRIGGER ONLY.
+          mode=stage    build target_table (one row per record) and print the plan
+          mode=execute  dry run; confirm=yes, outside 04:00-08:00 UTC: audit tables, then the deletes
+          mode=verify   the morning after: every record re-pinned, none back on the article's work
+          mode=repoint_citations  the morning after: work_references edges follow the moved DOI / PMID (confirm=yes)
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode
+          default: "stage"
+        - name: target_table
+          default: "openalex.works.oxjob2169_notice_split_target"
+        - name: extra_pairs_sql
+          default: ""
+        - name: confirm
+          default: "no"
+        - name: reg
+          default: "openalex.works.location_work_ids"
+        - name: map
+          default: "openalex.works.work_id_map"
+      tasks:
+        - task_key: split_notices
+          notebook_task:
+            notebook_path: notebooks/maintenance/SplitNotices
+            source: GIT
+            base_parameters:
+              mode: "{{job.parameters.mode}}"
+              target_table: "{{job.parameters.target_table}}"
+              extra_pairs_sql: "{{job.parameters.extra_pairs_sql}}"
+              confirm: "{{job.parameters.confirm}}"
+              reg: "{{job.parameters.reg}}"
+              map: "{{job.parameters.map}}"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      performance_target: STANDARD
