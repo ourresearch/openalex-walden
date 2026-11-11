@@ -86,7 +86,9 @@ def as_json(v: Any) -> Any:
 
 def page_count(first: Any, last: Any) -> int | None:
     f, l = txt(first), txt(last)
-    if f and l and f.isdigit() and l.isdigit():
+    # isdecimal, not the source's isdigit: isdigit passes '⑥' or '²', which int() refuses (#1976, 11 Nov: a circled
+    # page number killed backfill chunk 9). Every value int() accepted before gives the same count.
+    if f and l and f.isdecimal() and l.isdecimal():
         n = int(l) - int(f) + 1
         return n if 0 < n <= 5000 else None
     return None

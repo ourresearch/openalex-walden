@@ -33,9 +33,10 @@ def _txt(x) -> str | None:
 
 
 def page_count(first, last) -> int | None:
-    """devproof/build_packs.py page_count(), unchanged."""
+    """devproof/build_packs.py page_count(), but isdecimal: isdigit passes '⑥' or '²', which int() refuses (#1976,
+    11 Nov: a circled page number killed backfill chunk 9). Every value int() accepted before gives the same count."""
     f, l = _txt(first), _txt(last)
-    if f and l and f.isdigit() and l.isdigit():
+    if f and l and f.isdecimal() and l.isdecimal():
         n = int(l) - int(f) + 1
         return n if 0 < n <= 5000 else None
     return None
