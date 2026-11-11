@@ -43,6 +43,12 @@
 # MAGIC - **Deposit notices** (oxjob #1800, 6 Nov 2026): a work whose backfill text is a DSpace deposit notice ("Submitted
 # MAGIC   by NAME (email) on ... No. of bitstreams: 1 ... checksum: ... (MD5)") is flagged with reason `deposit_notice`,
 # MAGIC   by the same rule `DEPOSIT_NOTICE` as FlagLocationNotAbstracts (its header says how it was checked).
+# MAGIC - **Openings the landing page marks** (oxjob #2162, 11 Nov 2026): a work whose backfill text is word for word the
+# MAGIC   opening its own landing page marks as such (Taylor & Francis books' product `textType` "first-paragraph",
+# MAGIC   Cambridge Core's "extract" / "Extract"), which Parseland stopped emitting in parseland-lib #2162, is flagged with
+# MAGIC   reason `page_marked_opening`. The work_ids are #2162's list `PAGE_OPENING_TABLE` (built once by #2162
+# MAGIC   `work/opening_backfill_build.sql` after its re-parse wave); this notebook copies them so a rebuild keeps them.
+# MAGIC   Revert that part: drop the branch below.
 # MAGIC - **Revert:** remove the anti-join from CreateWorksBase (one line), or `TRUNCATE` this table. Never
 # MAGIC   DROP it while CreateWorksBase reads it: a missing table fails the nightly.
 # MAGIC
@@ -72,6 +78,7 @@ SHORT_TABLE = "openalex.abstracts.not_abstract_short_texts"  # oxjob #1800: judg
 PEER_REVIEW_TABLE = "openalex.abstracts.peer_review_borrowed_backfill"  # oxjob #1790: reviews showing the article's abstract
 PDF_BACKFILL_TABLE = "openalex.abstracts.not_abstract_pdf_backfill"  # oxjob #1800: backfill copies of flagged PDF texts
 DIFFERENT_ITEM_TABLE = "openalex.abstracts.different_item_backfill"  # oxjob #1790: works showing another item's abstract
+PAGE_OPENING_TABLE = "openalex.abstracts.page_marked_opening_backfill"  # oxjob #2162: openings the page marks
 # oxjob #1800 (6 Nov 2026): rule dspace-v1, a SQL predicate on a text column. Keep byte-identical with
 # FlagLocationNotAbstracts.
 DEPOSIT_NOTICE_COMMIT = "dspace-v1: DSpace deposit notice (#1800, 6 Nov 2026)"
@@ -219,6 +226,15 @@ LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.t
 LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = di.work_id
 LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = di.work_id
 UNION ALL
+-- Openings the landing page marks (see the header). One row per work: skip works another branch already flags.
+SELECT po.work_id, 'page_marked_opening' AS reason, po.text_len, po.label_version AS filter_commit, current_timestamp() AS built_at
+FROM PAGE_OPENING_TABLE po
+LEFT ANTI JOIN flagged_backfill f ON f.work_id = po.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.text = trim(e.abstract)) s ON s.work_id = po.work_id
+LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = po.work_id
+LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = po.work_id
+LEFT ANTI JOIN DIFFERENT_ITEM_TABLE di ON di.work_id = po.work_id
+UNION ALL
 -- Deposit notices (see the header), on the uncapped backfill text. One row per work: skip works another branch flags.
 SELECT e.work_id, 'deposit_notice' AS reason, length(e.abstract) AS text_len, 'DEPOSIT_NOTICE_COMMIT' AS filter_commit,
        current_timestamp() AS built_at
@@ -229,10 +245,12 @@ LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.t
 LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = e.work_id
 LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = e.work_id
 LEFT ANTI JOIN DIFFERENT_ITEM_TABLE di ON di.work_id = e.work_id
+LEFT ANTI JOIN PAGE_OPENING_TABLE po ON po.work_id = e.work_id
 WHERE e.abstract IS NOT NULL AND DEPOSIT_NOTICE_SQL
 """.replace("TARGET_TABLE", TARGET_TABLE).replace("FILTER_COMMIT", FILTER_COMMIT).replace("SHORT_TABLE", SHORT_TABLE)
    .replace("PEER_REVIEW_TABLE", PEER_REVIEW_TABLE).replace("PDF_BACKFILL_TABLE", PDF_BACKFILL_TABLE)
-   .replace("DIFFERENT_ITEM_TABLE", DIFFERENT_ITEM_TABLE).replace("SOURCE_TABLE", SOURCE_TABLE)
+   .replace("DIFFERENT_ITEM_TABLE", DIFFERENT_ITEM_TABLE).replace("PAGE_OPENING_TABLE", PAGE_OPENING_TABLE)
+   .replace("SOURCE_TABLE", SOURCE_TABLE)
    .replace("REPAIR_TABLE", REPAIR_TABLE).replace("DEPOSIT_NOTICE_COMMIT", DEPOSIT_NOTICE_COMMIT)
    .replace("DEPOSIT_NOTICE_SQL", DEPOSIT_NOTICE.replace("COL", "e.abstract")))
 # INSERT OVERWRITE replaces the rows atomically: CreateWorksBase never sees the table missing or half-built.
