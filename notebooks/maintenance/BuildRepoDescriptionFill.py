@@ -24,10 +24,18 @@
 # MAGIC repository abstract, so the stored abstract and its inverted index are what a repository location would carry,
 # MAGIC from byte-identical text (#191.1). A row carries both or neither.
 # MAGIC
-# MAGIC **MANUAL TRIGGER ONLY; built once.** New records keep the ingest parse. Re-running replaces the rows (INSERT
-# MAGIC OVERWRITE; the table is never dropped, because CreateWorksBase reads it every night).
+# MAGIC **Replace mode (oxjob #1800 lead 2, 11 Nov 2026).** ~0.36M works SHOW a record's short first description (a
+# MAGIC cataloguing note: "Thesis (Ph. D.)--...", "Orientador: ...") while a later one holds the abstract. `mode=replace` writes
+# MAGIC those works' accepted later descriptions with `replace_hash` = xxhash64 of the text the work shows (as CreateWorksBase
+# MAGIC writes it); CreateWorksBase shows the fill instead only while the work still shows exactly that text. Bar
+# MAGIC pre-registered per stratum (own abstract and losses), EXPLORE § 45. Each mode rewrites only its own rows
+# MAGIC (`INSERT INTO ... REPLACE WHERE`, one atomic commit).
+# MAGIC
+# MAGIC **MANUAL TRIGGER ONLY; built once per mode.** New records keep the ingest parse. Re-running a mode replaces that mode's
+# MAGIC rows; the table is never dropped, because CreateWorksBase reads it every night.
 # MAGIC **Revert:** `TRUNCATE TABLE openalex.abstracts.repo_description_fill` (the next nightly takes the abstracts back
-# MAGIC out), then drop the CreateWorksBase join before ever dropping the table.
+# MAGIC out), or only lead 2: `DELETE FROM openalex.abstracts.repo_description_fill WHERE replace_hash IS NOT NULL`; then drop
+# MAGIC the CreateWorksBase join before ever dropping the table.
 
 # COMMAND ----------
 
@@ -41,14 +49,20 @@ from pyspark.sql.window import Window
 
 from openalex.dlt.transform import udf_abstract_features
 
-dbutils.widgets.text("source_table", "", "accepted choices: work_id, native_id, path, endpoint_id, p_abstract, text")
+dbutils.widgets.text("source_table", "", "accepted choices: work_id, native_id, path, endpoint_id, p_abstract, text[, replace_hash]")
+dbutils.widgets.dropdown("mode", "fill", ["fill", "replace"], "fill: works with no abstract; replace: works showing the stub")
 SOURCE = dbutils.widgets.get("source_table").strip()
+MODE = dbutils.widgets.get("mode")
 assert SOURCE, "source_table is required"
-FILTER_COMMIT = "repo-desc-v1 >= 0.95 on rule desc-v2 (oxjobs #1800 EXPLORE § 41)"  # stored on every row
+FILTER_COMMIT = {  # stored on every row
+    "fill": "repo-desc-v1 >= 0.95 on rule desc-v2 (oxjobs #1800 EXPLORE § 41)",
+    "replace": "repo-desc-v1 >= 0.95 on rule desc-v2, replacing the shown short first description (oxjobs #1800 EXPLORE § 45)",
+}[MODE]
+MODE_ROWS = "replace_hash IS NULL" if MODE == "fill" else "replace_hash IS NOT NULL"  # the rows this mode owns
 TARGET = "openalex.abstracts.repo_description_fill"
 LEGACY = "openalex.abstracts.abstracts_backfill"  # CreateWorksBase unions the fill into it: no work may be in both
 REPEAT_MIN = 5
-print(f"source {SOURCE} -> {TARGET} ({FILTER_COMMIT})")
+print(f"mode {MODE}: source {SOURCE} -> {TARGET} ({FILTER_COMMIT})")
 
 spark.sql(f"""
 CREATE TABLE IF NOT EXISTS {TARGET} (
@@ -60,15 +74,27 @@ CREATE TABLE IF NOT EXISTS {TARGET} (
   endpoint_id STRING,
   p_abstract DOUBLE,
   filter_commit STRING,
-  built_at TIMESTAMP
+  built_at TIMESTAMP,
+  replace_hash BIGINT
 )
 COMMENT 'oxjob #1800: the later dc:description of a repository record, accepted by a Jev record reader, as the abstract of a work that has no other. Unioned by CreateWorksBase into its abstracts_backfill fallback (priority 997).'
 """)
+if "replace_hash" not in spark.table(TARGET).columns:  # the table predates replace mode (built 9 Nov)
+    spark.sql(f"ALTER TABLE {TARGET} ADD COLUMNS (replace_hash BIGINT COMMENT "
+              "'oxjob #1800 lead 2: xxhash64 of the short first description the work showed; CreateWorksBase shows the fill "
+              "instead while the work still shows exactly that text. NULL = fill only where the work has no abstract.')")
 
 # COMMAND ----------
 
 src = (spark.table(SOURCE).withColumn("work_id", F.col("work_id").cast("bigint"))  # before the window: one row per key
        .join(spark.table(LEGACY).select("work_id"), "work_id", "left_anti"))  # one row per work in the union
+if MODE == "fill":
+    src = src.withColumn("replace_hash", F.lit(None).cast("bigint"))
+else:
+    assert "replace_hash" in src.columns, "replace mode needs replace_hash in the source"
+    src = (src.withColumn("replace_hash", F.col("replace_hash").cast("bigint")).filter("replace_hash IS NOT NULL")
+           # one row per work: works the other mode already holds are left out
+           .join(spark.table(TARGET).filter("replace_hash IS NULL").select("work_id"), "work_id", "left_anti"))
 n_src = src.count()
 # One row per work: the highest p_abstract, then native_id, path, endpoint (the order the bar drew by).
 one = (
@@ -86,6 +112,7 @@ rows = (
         F.col("p_abstract").cast("double").alias("p_abstract"),
         F.lit(FILTER_COMMIT).alias("filter_commit"),
         F.current_timestamp().alias("built_at"),
+        "replace_hash",
     )
     # Both or neither (#191.1): CreateWorksBase offers the pair only when both are present.
     .filter(F.col("fill_abstract").isNotNull() & F.col("fill_abstract_inverted_index").isNotNull())
@@ -95,7 +122,7 @@ rows = (
     .filter(F.col("_n") < REPEAT_MIN).drop("_n")
 )
 rows.createOrReplaceTempView("_fill_rows")
-spark.sql(f"INSERT OVERWRITE {TARGET} SELECT * FROM _fill_rows")
+spark.sql(f"INSERT INTO {TARGET} REPLACE WHERE {MODE_ROWS} SELECT * FROM _fill_rows")  # this mode's rows only, one commit
 
 # COMMAND ----------
 
@@ -105,4 +132,5 @@ print(f"source rows {n_src:,}; fill rows {n:,}; distinct works {n_works:,}")
 assert n == n_works, "more than one fill row for a work: CreateWorksBase would duplicate works"
 n_legacy = t.join(spark.table(LEGACY).select("work_id"), "work_id", "left_semi").count()
 assert n_legacy == 0, f"{n_legacy} fill works also have an abstracts_backfill row: CreateWorksBase would duplicate them"
-display(t.groupBy("path").agg(F.count("*").alias("works"), F.avg(F.length("fill_abstract")).alias("avg_len")))
+display(t.groupBy("path", F.col("replace_hash").isNotNull().alias("replace")).agg(
+    F.count("*").alias("works"), F.avg(F.length("fill_abstract")).alias("avg_len")))
