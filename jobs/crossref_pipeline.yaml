@@ -14,15 +14,25 @@ resources:
           level: IS_OWNER
       catalog: openalex
       target: crossref
-      serverless: true
-      photon: true
+      # REFRESH PROFILE (oxjob #2187, 2026-11-12) -- TEMPORARY, as #1099's (f94e9ddc + bc74ac97). Revert this commit
+      # (serverless, photon, development true, arrow 100; crossref.yaml and union_all_works.yaml UNPAUSED) once the
+      # selective refresh of crossref_parsed + crossref_works lands.
+      serverless: false
+      photon: false
+      clusters:
+        - label: default
+          node_type_id: r5d.8xlarge
+          driver_node_type_id: r5d.8xlarge
+          num_workers: 40
+          spark_conf:
+            spark.task.cpus: "2"
       continuous: false
-      development: true
+      development: false
       channel: CURRENT
       configuration:
         environment: prod
         pipelines.clusterShutdown.delay: 300s
-        spark.sql.execution.arrow.maxRecordsPerBatch: "100"
+        spark.sql.execution.arrow.maxRecordsPerBatch: "50"
       tags:
         environment: prod
         workflow: crossref
