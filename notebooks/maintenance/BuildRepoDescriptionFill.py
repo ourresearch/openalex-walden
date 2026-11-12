@@ -67,9 +67,11 @@ FILTER_COMMIT = {  # stored on every row
     "replace": "repo-desc-v1 >= 0.95 on rule desc-v2, replacing the shown short first description (oxjobs #1800 EXPLORE § 45)",
     "opening": "opening-desc-v1 >= 0.15 on a page-marked opening parseland-lib 5ad0605 drops (oxjobs #2162 EXPLORE § 5)",
 }[MODE]
-OPENING = "coalesce(path, '') = 'landing_page_opening'"  # oxjob #2162's rows
+# oxjob #2162's rows. Plain comparisons: REPLACE WHERE refuses coalesce() ("Table does not support overwrite by expression").
+OPENING = "path = 'landing_page_opening'"
+NOT_OPENING = "(path IS NULL OR path <> 'landing_page_opening')"
 MODE_ROWS = {  # the rows this mode owns
-    "fill": f"replace_hash IS NULL AND NOT {OPENING}",
+    "fill": f"replace_hash IS NULL AND {NOT_OPENING}",
     "replace": "replace_hash IS NOT NULL",
     "opening": OPENING,
 }[MODE]
@@ -104,7 +106,7 @@ src = (spark.table(SOURCE).withColumn("work_id", F.col("work_id").cast("bigint")
        .join(spark.table(LEGACY).select("work_id"), "work_id", "left_anti"))  # one row per work in the union
 if MODE == "opening":  # one row per work: works another mode already holds are left out
     src = (src.withColumn("replace_hash", F.lit(None).cast("bigint")).withColumn("path", F.lit("landing_page_opening"))
-           .join(spark.table(TARGET).filter(f"NOT {OPENING}").select("work_id"), "work_id", "left_anti"))
+           .join(spark.table(TARGET).filter(NOT_OPENING).select("work_id"), "work_id", "left_anti"))
 elif MODE == "fill":
     src = (src.withColumn("replace_hash", F.lit(None).cast("bigint"))
            # one row per work: works #2162's opening rows hold are left out
