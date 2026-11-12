@@ -189,7 +189,7 @@ if gone:
 
 # COMMAND ----------
 
-# 5. Report. A failed chunk fails the run (email), but everything else is merged; re-running picks the rest up.
+# 5. Report. A failed chunk fails the task, but everything else is merged; re-running picks the rest up.
 import json
 rows = spark.sql(f"SELECT count(*) FROM {DST}").first()[0]
 titled_gap = spark.sql(f"""
