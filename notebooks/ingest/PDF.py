@@ -606,6 +606,47 @@ def _removed_pdf_urls():
         return spark.createDataFrame([], "native_id STRING, _pdf_removed BOOLEAN")
 
 
+def _junk_reference(x):
+    # A GROBID "reference" that isn't one (oxjob #2188): no letters, a section heading, a link label, a
+    # table-of-contents line (unless what precedes the dot leaders is a dated reference), or a publisher's note /
+    # author bio / e-mail line. Judged 99%+ junk per class (two-model panel, 12 Nov 2026); the same rules as
+    # oxjobs working/junk-entries-in-reference-lists/work/10_rules_v2.sql, which #2000's matcher input filter reads.
+    t = f"trim(coalesce({x}, ''))"
+    letters = f"length(regexp_replace({t}, '[^\\\\p{{L}}]', ''))"
+    tn = f"lower(trim(regexp_replace({t}, '[^\\\\p{{L}}\\\\p{{N}}]+', ' ')))"
+    year = "(?<![0-9])(1[5-9][0-9]{2}|20[0-2][0-9])(?![0-9])"
+    initials = "\\\\p{Lu}[\\\\p{L}''-]+,?\\\\s+(\\\\p{Lu}\\\\.\\\\s?-?){1,3}"
+    n_years = f"size(regexp_extract_all({t}, '{year}', 0))"
+    n_initials = f"size(regexp_extract_all({t}, '{initials}', 0))"
+    leaders = "(\\\\.\\\\s*){6,}|(…\\\\s*){3,}|(·\\\\s*){6,}"
+    toc_head = f"regexp_extract({t}, '^(.*?)({leaders})', 1)"
+    return f"""(
+      {letters} = 0
+      OR {tn} RLIKE '^(([0-9]+|[ivx]+|[a-z])\\\\s)?(references?|referencias?|referências|referências bibliográficas|referencias bibliográficas|referencias bibliograficas|references cited|reference list|list of references|references and notes|notes and references|bibliographic references|bibliography|bibliographie|bibliografia|bibliografía|bibliograficas|bibliográficas|bibliografía consultada|bibliographies|literatur|literaturverzeichnis|literatura|literature|literature cited|literatuur|literatuurlijst|works cited|other works cited|cited literature|sources|primary sources|secondary sources|archival sources|other sources|online sources|internet sources|web sources|electronic sources|notes|endnotes|footnotes|fuentes|quellen|daftar|daftar pustaka|daftar rujukan|daftar isi|pustaka|lähteet|kirjallisuus|sisällys|kaynakça|kaynaklar|çevrimiçi kaynaklar|internet kaynakları|litteratur|litteraturliste|referenser|källförteckning|källor|kilder|kildeliste|heimildaskrá|heimildir|riferimenti|riferimenti bibliografici|bibliografie|źródła|zdroje|список литературы|литература|список использованной литературы|spisok literatury|література|список літератури|参考文献|引用文献|外国語文献|日本語文献|欧文文献|문헌|참고문헌|sitography|sitografia|webgrafia|webography|further reading|suggested reading|appendix|annex|index|índice|indice|sommaire|inhaltsverzeichnis|contents|table of contents|books|articles|websites|legislation|cases|statutes)$'
+      OR {tn} RLIKE '^((google scholar|crossref|cross ref|pubmed|pubmed central|pmc free article|pmc|cas|web of science|wos|isi|scopus|medline|full text|free full text|publisher full text|view article|view at publisher|publisher site|find this article|search google scholar|open url|openurl|link|links|article|abstract|pdf|html|doi|ref|google|ads|nasa ads|inspire|mathscinet|zbmath|chemport|jstor|europe pmc|semantic scholar|n a|na|none|null|nil|unknown|tbd|xxx)\\\\s*)+$'
+      OR ({t} RLIKE '{leaders}'
+          AND NOT ({toc_head} RLIKE '{year}'
+                   AND ({toc_head} RLIKE '{initials}' OR {toc_head} RLIKE '(?i)https?:|www\\\\.|retrieved|accessed|available')))
+      OR (({tn} RLIKE '^(disclaimer publisher s note|publisher s note|author biograph)'
+           OR {t} RLIKE '(?i)^\\\\s*(e-?\\\\s?mail|email address)[^:]{{0,20}}:\\\\s*\\\\S*[\\\\w.+-]+@[\\\\w-]+\\\\.[\\\\w.]+'
+           OR ({t} RLIKE '[\\\\w.+-]+@[\\\\w-]+\\\\.[A-Za-z]{{2,}}' AND NOT {t} RLIKE '@/' AND {letters} < 40 AND {n_years} = 0))
+          AND NOT ({n_years} >= 1 AND {n_initials} >= 1))
+    )"""
+
+
+# MDPI's "Disclaimer/Publisher's Note" glued onto the last reference is cut off; the note on its own is junk above.
+_REFERENCES_TRIMMED = (
+    "transform(references, r -> named_struct('raw', "
+    "regexp_replace(r.raw, '(?is)(?<=\\\\S)\\\\s*Disclaimer/Publisher.s Note:.*$', '')))"
+)
+# Junk entries drop out; a list left with none becomes NULL, so another list of the work can win (oxjob #1700's
+# lesson); a list GROBID found empty stays as it was.
+CLEAN_REFERENCES = (
+    f"CASE WHEN size(references) > 0 AND NOT exists({_REFERENCES_TRIMMED}, r -> NOT {_junk_reference('r.raw')}) "
+    f"THEN NULL ELSE filter({_REFERENCES_TRIMMED}, r -> NOT {_junk_reference('r.raw')}) END"
+)
+
+
 @dlt.table
 def pdf_combined():
     return (
@@ -615,6 +656,7 @@ def pdf_combined():
             "is_oa",
             col("is_oa") & ~_front_matter_url("native_id") & ~coalesce(col("_pdf_removed"), lit(False)),
         )
+        .withColumn("references", expr(CLEAN_REFERENCES))
         .drop("_pdf_removed")
     )
 
