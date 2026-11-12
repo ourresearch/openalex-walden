@@ -1,18 +1,18 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Incremental citation-shaped work vectors (nightly, oxjob #2000)
+# MAGIC # Incremental reference-style work vectors (nightly, oxjob #2000)
 # MAGIC
-# MAGIC Keeps `openalex.vector_search.work_citation_embeddings_qwen3` current with `openalex.works.openalex_works`. The reference
+# MAGIC Keeps `openalex.vector_search.work_reference_style_embeddings_qwen3` current with `openalex.works.openalex_works`. The reference
 # MAGIC matcher (#2000) searches these vectors with a reference string: each work is embedded as it would be cited,
 # MAGIC "first 3 authors (et al). title. journal. year" (Casey, 10 Nov 2026: the cited work came first 88% of the time vs 50%
 # MAGIC with the title + abstract vectors). Runs nightly from `jobs/embed_qwen3_nightly.yaml` after the `embed` task, on the same
 # MAGIC endpoint. Built once from the 434.4M-work backfill of 11 Nov 2026 (oxjobs reference-matcher `work/cite_embed.py`).
 # MAGIC
 # MAGIC Steps, all idempotent (a failed run is simply re-run):
-# MAGIC 1. Candidates = works updated in the last `lookback_days` whose citation text differs from the table's `text` (or that
+# MAGIC 1. Candidates = works updated in the last `lookback_days` whose reference-style text differs from the table's `text` (or that
 # MAGIC    have no vector), plus every titled work with no vector at all.
 # MAGIC 2. Embed them in chunks via `ai_query('databricks-qwen3-embedding-0-6b', text)` into a staging table (unit float16).
-# MAGIC 3. Each new vector's list = its nearest centroid (`/Volumes/openalex/vector_search/work_citation_index/centroids.npy`),
+# MAGIC 3. Each new vector's list = its nearest centroid (`/Volumes/openalex/vector_search/work_reference_style_index/centroids.npy`),
 # MAGIC    then one MERGE into the table. A work whose embedding failed keeps its old row, so it is a candidate again next run.
 # MAGIC 4. Delete rows of works no longer in `openalex_works` (merged or deleted works must never be linked).
 # MAGIC
@@ -34,10 +34,10 @@ MAX_GONE = int(dbutils.widgets.get("max_gone"))
 
 ENDPOINT = "databricks-qwen3-embedding-0-6b"
 W = "openalex.works.openalex_works"
-DST = "openalex.vector_search.work_citation_embeddings_qwen3"
-CHG = "openalex.vector_search.citation_incremental_changed"
-STG = "openalex.vector_search.citation_incremental_staged"
-VOL = "/Volumes/openalex/vector_search/work_citation_index"
+DST = "openalex.vector_search.work_reference_style_embeddings_qwen3"
+CHG = "openalex.vector_search.reference_style_incremental_changed"
+STG = "openalex.vector_search.reference_style_incremental_staged"
+VOL = "/Volumes/openalex/vector_search/work_reference_style_index"
 D, LISTS_PER_GROUP = 1024, 16
 
 # Same text as the backfill (oxjobs reference-matcher work/cite_embed.py). Changing this re-embeds the whole corpus.
@@ -105,7 +105,7 @@ def unit_fp16(s: pd.Series) -> pd.Series:
     return s.map(one)
 
 
-spark.udf.register("cite_unit_fp16", unit_fp16)
+spark.udf.register("ref_style_unit_fp16", unit_fp16)
 spark.sql(f"CREATE OR REPLACE TABLE {STG} (work_id BIGINT, text STRING, v BINARY, error STRING)")
 n_chunks = (n_cand + CHUNK_ROWS - 1) // CHUNK_ROWS if n_cand else 0
 
@@ -116,7 +116,7 @@ def embed_chunk(k, retries=3):
         try:
             spark.sql(f"""
                 INSERT INTO {STG}
-                SELECT work_id, text, cite_unit_fp16(r.result), r.errorMessage
+                SELECT work_id, text, ref_style_unit_fp16(r.result), r.errorMessage
                 FROM (SELECT work_id, text, ai_query('{ENDPOINT}', text, failOnError => false) AS r FROM {CHG} WHERE chunk = {k})
             """)
             return k, attempt, time.time() - t, None
@@ -163,10 +163,10 @@ def assign(batches):
 (spark.sql(f"SELECT work_id, v, text FROM {STG} WHERE v IS NOT NULL").dropDuplicates(["work_id"])
  .mapInArrow(assign, "work_id bigint, list_id int, v binary, text string")
  .withColumn("lg", (F.col("list_id") / LISTS_PER_GROUP).cast("int"))
- .createOrReplaceTempView("cite_assigned"))
-spark.sql("CACHE TABLE cite_assigned_c AS SELECT * FROM cite_assigned")
+ .createOrReplaceTempView("ref_style_assigned"))
+spark.sql("CACHE TABLE ref_style_assigned_c AS SELECT * FROM ref_style_assigned")
 m = spark.sql(f"""
-MERGE INTO {DST} t USING cite_assigned_c s ON t.work_id = s.work_id
+MERGE INTO {DST} t USING ref_style_assigned_c s ON t.work_id = s.work_id
 WHEN MATCHED THEN UPDATE SET list_id = s.list_id, v = s.v, text = s.text, embedded_at = current_timestamp(), lg = s.lg
 WHEN NOT MATCHED THEN INSERT (work_id, list_id, v, text, embedded_at, lg)
      VALUES (s.work_id, s.list_id, s.v, s.text, current_timestamp(), s.lg)

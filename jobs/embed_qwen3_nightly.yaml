@@ -12,9 +12,9 @@
 #               (tonight's new works; re-embedded works only if reembed_cap > 0, default 0) -> openalex.works.work_related_works, which the next
 #               Walden End 2 End serves (CreateWorksEnriched). One scan of work_vectors_ivf on its own cluster, ~$3-5; fails before
 #               writing if tonight's recall@10 is under min_recall. Runs beside the other tasks, so a failure holds up nothing.
-#   6. citation_embed — EmbedCitationQwen3Incremental (oxjob #2000): the reference matcher's citation-shaped vectors
-#               ("authors. title. journal. year") for new/changed/missing works -> work_citation_embeddings_qwen3, each in
-#               its nearest list of /Volumes/openalex/vector_search/work_citation_index/centroids.npy; drops rows of works no
+#   6. reference_style_embed — EmbedWorkReferenceStyleIncremental (oxjob #2000): the reference matcher's reference-style vectors
+#               ("authors. title. journal. year") for new/changed/missing works -> work_reference_style_embeddings_qwen3, each in
+#               its nearest list of /Volumes/openalex/vector_search/work_reference_style_index/centroids.npy; drops rows of works no
 #               longer present. After embed (the endpoint to itself), on its own cluster; nothing waits on it.
 # The sync only runs if the embed task succeeds. All are idempotent; a failed run is simply re-run.
 resources:
@@ -77,17 +77,17 @@ resources:
               mode: write
           job_cluster_key: related_works_cluster
           timeout_seconds: 10800
-        # oxjob #2000: citation-shaped vectors for the reference matcher (new + changed works, minutes; ≈$3.4 per 1M works)
-        - task_key: citation_embed
+        # oxjob #2000: reference-style vectors for the reference matcher (new + changed works, minutes; ≈$3.4 per 1M works)
+        - task_key: reference_style_embed
           depends_on:
             - task_key: embed
           notebook_task:
-            notebook_path: notebooks/vector_search/EmbedCitationQwen3Incremental
+            notebook_path: notebooks/vector_search/EmbedWorkReferenceStyleIncremental
             source: GIT
             base_parameters:
               lookback_days: "{{job.parameters.lookback_days}}"
               max_works: "{{job.parameters.max_works}}"
-          job_cluster_key: citation_embed_cluster
+          job_cluster_key: reference_style_embed_cluster
           timeout_seconds: 14400
         - task_key: stage
           depends_on:
@@ -130,7 +130,7 @@ resources:
             data_security_mode: SINGLE_USER
             runtime_engine: STANDARD
             num_workers: 8
-        - job_cluster_key: citation_embed_cluster   # oxjob #2000: ai_query + nearest-centroid lists; on demand (a spot loss restarts the endpoint calls)
+        - job_cluster_key: reference_style_embed_cluster   # oxjob #2000: ai_query + nearest-centroid lists; on demand (a spot loss restarts the endpoint calls)
           new_cluster:
             cluster_name: ""
             spark_version: 16.4.x-scala2.13
