@@ -30,6 +30,21 @@ NOTICE_TITLE_ELEMENTS = ["correction", "retraction", "expression of concern"]
 TITLE_BLANK_ORIGINAL_TITLE_SET_SQL = (
     "NOT coalesce(exists(title, x -> trim(x) <> ''), false) AND exists(`original-title`, x -> trim(x) <> '')")
 ORIGINAL_TITLE_SQL = "get(filter(`original-title`, x -> trim(x) <> ''), 0)"
+# oxjob #2187: an entry with no DOI, no text and no article-title gets its raw text from its fields; bare keys are dropped.
+# Entries with an article-title keep raw NULL: #2054 carries their title matches by coalesce(raw, title).
+REFERENCES_SQL = """filter(transform(reference, r -> CASE
+  WHEN coalesce(nullif(trim(r.DOI), ''), nullif(trim(r.unstructured), ''), nullif(trim(r.`article-title`), '')) IS NOT NULL
+  THEN named_struct('doi', r.DOI, 'pmid', CAST(NULL AS STRING), 'arxiv', CAST(NULL AS STRING),
+    'title', r.`article-title`, 'authors', r.author, 'year', r.year, 'raw', r.unstructured)
+  ELSE named_struct('doi', r.DOI, 'pmid', CAST(NULL AS STRING), 'arxiv', CAST(NULL AS STRING),
+    'title', coalesce(nullif(trim(r.`volume-title`), ''), nullif(trim(r.`series-title`), '')),
+    'authors', r.author, 'year', r.year,
+    'raw', nullif(concat_ws('. ', nullif(trim(TRAILING '.' FROM trim(r.author)), ''), nullif(trim(r.year), ''),
+      nullif(trim(TRAILING '.' FROM trim(r.`volume-title`)), ''), nullif(trim(TRAILING '.' FROM trim(r.`series-title`)), ''),
+      nullif(concat_ws(', ', nullif(concat_ws(' ', nullif(trim(r.`journal-title`), ''),
+        nullif(concat(coalesce(trim(r.volume), ''), coalesce('(' || nullif(trim(r.issue), '') || ')', '')), '')), ''),
+        nullif(trim(r.`first-page`), '')), '')), ''))
+  END), x -> coalesce(nullif(trim(x.doi), ''), nullif(trim(x.title), ''), x.raw) IS NOT NULL)"""
 
 # Affiliation-as-Author Fix - Publishers excluded from filtering
 # These publishers have < 0.1% affected rate and should not have their records modified
@@ -534,23 +549,9 @@ def crossref_parsed():
                 )
             )
         )  # funders: no ror in crossref?
-        .withColumn(
-            "references",
-            F.transform(
-                "reference",
-                lambda ref: F.struct(
-                    ref["DOI"].alias(
-                        "doi"
-                    ),  # sometimes null and doi is not available to parse from the unstructured/raw field
-                    F.lit(None).cast("string").alias("pmid"),
-                    F.lit(None).cast("string").alias("arxiv"),
-                    ref["article-title"].alias("title"),  # always null
-                    ref["author"].alias("authors"),  # always null
-                    ref["year"].alias("year"),  #  always null
-                    ref["unstructured"].alias("raw")
-                )
-            )
-        )
+        .withColumn("references", F.expr(REFERENCES_SQL))
+        # NULL, not []: CreateSuperLocations skips only a NULL list, so an empty one outranks the record's PDF list
+        .withColumn("references", F.when(F.size("references") > 0, F.col("references")))
         .withColumn(
             "urls",
             F.array_union(
