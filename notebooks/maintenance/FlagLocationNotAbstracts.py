@@ -50,6 +50,9 @@
 # MAGIC   Crossref only). Bar: 0 real of 250 + 0 of 100 weakest matches (Opus 5.5).
 # MAGIC - **Held texts** (`HELD_TABLE`): texts a rule matches but a job holds back (e.g. its works would fall back to
 # MAGIC   an unread text). Every rule's keys skip them; delete a row to release it at the next build.
+# MAGIC - **Judged keys** (`JUDGED_TABLE`, oxjob #1800, 12 Nov 2026): keys a judged read made, which no rule here can
+# MAGIC   re-derive (first: tfteaser-v1, T&F 200-char body teasers that Jev's opening-desc-v1 read as not describing the
+# MAGIC   work, ~118K keys; Opus bar 0/150 book reviews, 1/150 other). Carried over unchanged on every build.
 # MAGIC - **Revert:** remove the join in CreateSuperLocations, or `TRUNCATE` these tables. Never DROP them while
 # MAGIC   CreateSuperLocations reads them: a missing table fails the nightly.
 # MAGIC
@@ -110,6 +113,8 @@ CITATION_LINE_KEYS = r"""
     AND left(na, least(length(na), length(nt))) = left(nt, least(length(na), length(nt)))
   GROUP BY 1, 2"""
 HELD_TABLE = "openalex.abstracts.not_abstract_held_texts"
+# oxjob #1800 (12 Nov 2026): keys a judged read made (Jev / Opus, e.g. tfteaser-v1), which no rule here re-derives.
+JUDGED_TABLE = "openalex.abstracts.not_abstract_judged_keys"
 # Longest list text is 1,835 characters of key; templates need <= 1,500 plain and wordings <= 200 of key.
 # Raw text longer than this cannot match (markup inflates, so the cap is generous); it skips the Python UDF.
 MAX_LEN = 6000
@@ -203,6 +208,12 @@ CREATE TABLE IF NOT EXISTS {HELD_TABLE} (
   abstract_hash BIGINT, text_len INT, filter_commit STRING, why STRING, held_at TIMESTAMP
 ) COMMENT 'oxjob #1800: texts a not-abstract rule matches but a job holds back (keyed like not_abstract_texts). FlagLocationNotAbstracts leaves them out of not_abstract_texts on a rebuild. Delete a row to release it.'
 """)
+spark.sql(f"""
+CREATE TABLE IF NOT EXISTS {JUDGED_TABLE} (
+  abstract_hash BIGINT, text_len INT, reason STRING, n_rows BIGINT, provenances ARRAY<STRING>, sample_text STRING,
+  filter_commit STRING, built_at TIMESTAMP
+) COMMENT 'oxjob #1800: not_abstract_texts keys that come from a judged read (Jev / Opus), not a rule the build can re-derive. FlagLocationNotAbstracts carries them over on a rebuild. Delete a row to drop the key at the next build (and from not_abstract_texts to drop it now).'
+""")
 
 rows = (spark.table(SOURCE_TABLE)
         .where(F.col("abstract").isNotNull() & (F.length("abstract") <= MAX_LEN) & (F.trim("abstract") != ""))
@@ -251,6 +262,12 @@ SELECT c.abstract_hash, c.text_len, FALSE AS is_list, 'template' AS reason, c.n_
 FROM ({CITATION_LINE_KEYS.replace('SOURCE_TABLE', SOURCE_TABLE)}) c
 LEFT ANTI JOIN flagged_texts f ON f.abstract_hash = c.abstract_hash AND f.text_len = c.text_len
 LEFT ANTI JOIN {SHORT_TABLE} st ON st.text = trim(c.abstract)
+UNION ALL
+-- Judged keys (see the header): carried over as written; a key another block already makes is left to that block.
+SELECT j.abstract_hash, j.text_len, FALSE AS is_list, j.reason, j.n_rows, j.provenances, j.sample_text, j.filter_commit,
+       current_timestamp() AS built_at
+FROM {JUDGED_TABLE} j
+LEFT ANTI JOIN flagged_texts f ON f.abstract_hash = j.abstract_hash AND f.text_len = j.text_len
 ) k
 -- Held texts (see the header) are keyed by no rule.
 LEFT ANTI JOIN {HELD_TABLE} h ON h.abstract_hash = k.abstract_hash AND h.text_len = k.text_len
