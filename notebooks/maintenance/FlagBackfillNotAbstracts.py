@@ -49,6 +49,12 @@
 # MAGIC   reason `page_marked_opening`. The work_ids are #2162's list `PAGE_OPENING_TABLE` (built once by #2162
 # MAGIC   `work/opening_backfill_build.sql` after its re-parse wave); this notebook copies them so a rebuild keeps them.
 # MAGIC   Revert that part: drop the branch below.
+# MAGIC - **ACS page chrome** (oxjob #1432, 12 Nov 2026): a work whose backfill text is an old ACS Publications landing
+# MAGIC   page's furniture and nothing else ("ADVERTISEMENT RETURN TO ISSUE ... Cite this: ... Article Views ... LEARN
+# MAGIC   ABOUT THESE METRICS ... Get e-Alerts": title, authors, citation, metrics and menus, no abstract) is flagged with
+# MAGIC   reason `page_chrome` by the SQL rule `ACS_CHROME` (634,659 works on 12 Nov; bar: Opus 5.5 read 100 of 100 random
+# MAGIC   flagged texts as chrome only, #1432 README § Wave 3). Texts that say "abstract" anywhere but the export menu are
+# MAGIC   left alone. Revert that part: drop the branch below.
 # MAGIC - **Revert:** remove the anti-join from CreateWorksBase (one line), or `TRUNCATE` this table. Never
 # MAGIC   DROP it while CreateWorksBase reads it: a missing table fails the nightly.
 # MAGIC
@@ -86,6 +92,15 @@ DEPOSIT_NOTICE = r"""(
   trim(COL) RLIKE '^(Submitted by|Made available in DSpace on|Approved for entry into archive by|Rejected by|Item withdrawn by) '
   AND instr(COL, 'No. of bitstreams') > 0 AND instr(COL, '%%%%') = 0
   AND length(regexp_replace(trim(COL), '(?i)[^\\n]{0,200}?: \\d+ bytes, checksum: [0-9a-f]{32} \\((MD5|SHA-1|SHA1)\\)', ' ')) <= 150)"""
+# oxjob #1432 (12 Nov 2026): rule acs-chrome-v1, a SQL predicate on a text column. Keep byte-identical with #1432
+# work/acs_rule.sql.
+ACS_CHROME_COMMIT = "oxjob1432-acs-chrome-v1"
+ACS_CHROME = r"""(trim(COL) LIKE 'ADVERTISEMENT RETURN TO ISSUE%'
+ AND instr(COL, 'LEARN ABOUT THESE METRICS') > 0
+ AND instr(COL, 'Get e-Alerts') > 0
+ AND length(trim(substring_index(COL, 'Get e-Alerts', -1))) = 0
+ AND NOT replace(COL, 'Citation and abstract', '') RLIKE '(?i)abstract'
+ AND length(COL) <= 6000)"""
 # A dry run writes elsewhere first (job parameter target_table), to diff a new filter commit against the live table.
 dbutils.widgets.text("target_table", "openalex.abstracts.abstracts_backfill_not_abstract")
 TARGET_TABLE = dbutils.widgets.get("target_table")
@@ -247,12 +262,25 @@ LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = e.work_id
 LEFT ANTI JOIN DIFFERENT_ITEM_TABLE di ON di.work_id = e.work_id
 LEFT ANTI JOIN PAGE_OPENING_TABLE po ON po.work_id = e.work_id
 WHERE e.abstract IS NOT NULL AND DEPOSIT_NOTICE_SQL
+UNION ALL
+-- ACS page chrome (see the header). One row per work: skip works another branch flags (a deposit notice can't match).
+SELECT e.work_id, 'page_chrome' AS reason, length(e.abstract) AS text_len, 'ACS_CHROME_COMMIT' AS filter_commit,
+       current_timestamp() AS built_at
+FROM eff_backfill e
+LEFT ANTI JOIN flagged_backfill f ON f.work_id = e.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.text = trim(e.abstract)) s ON s.work_id = e.work_id
+LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = e.work_id
+LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = e.work_id
+LEFT ANTI JOIN DIFFERENT_ITEM_TABLE di ON di.work_id = e.work_id
+LEFT ANTI JOIN PAGE_OPENING_TABLE po ON po.work_id = e.work_id
+WHERE ACS_CHROME_SQL
 """.replace("TARGET_TABLE", TARGET_TABLE).replace("FILTER_COMMIT", FILTER_COMMIT).replace("SHORT_TABLE", SHORT_TABLE)
    .replace("PEER_REVIEW_TABLE", PEER_REVIEW_TABLE).replace("PDF_BACKFILL_TABLE", PDF_BACKFILL_TABLE)
    .replace("DIFFERENT_ITEM_TABLE", DIFFERENT_ITEM_TABLE).replace("PAGE_OPENING_TABLE", PAGE_OPENING_TABLE)
    .replace("SOURCE_TABLE", SOURCE_TABLE)
    .replace("REPAIR_TABLE", REPAIR_TABLE).replace("DEPOSIT_NOTICE_COMMIT", DEPOSIT_NOTICE_COMMIT)
-   .replace("DEPOSIT_NOTICE_SQL", DEPOSIT_NOTICE.replace("COL", "e.abstract")))
+   .replace("DEPOSIT_NOTICE_SQL", DEPOSIT_NOTICE.replace("COL", "e.abstract"))
+   .replace("ACS_CHROME_SQL", ACS_CHROME.replace("COL", "e.abstract")).replace("ACS_CHROME_COMMIT", ACS_CHROME_COMMIT))
 # INSERT OVERWRITE replaces the rows atomically: CreateWorksBase never sees the table missing or half-built.
 
 # COMMAND ----------
