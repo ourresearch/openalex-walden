@@ -237,7 +237,8 @@ class Fixture:
             created_date TIMESTAMP, funded_outputs VARCHAR[], funded_outputs_count BIGINT, primary_topic VARCHAR, topics VARCHAR[],
             parent_awards VARCHAR[], sub_awards VARCHAR[], sub_awards_count BIGINT, parent_awards_full VARCHAR[], sub_awards_full VARCHAR[],
             amount_usd DOUBLE, amount_usd_basis VARCHAR, recipient_countries VARCHAR[], recipient_regions VARCHAR[], recipient_countries_full VARCHAR[],
-            recipient_regions_full VARCHAR[], recipients VARCHAR[], recipients_full VARCHAR[])""")  # funding-flows columns (oxjob #1570) the payload selects
+            recipient_regions_full VARCHAR[], recipients VARCHAR[], recipients_full VARCHAR[], keywords VARCHAR[],
+            sustainable_development_goals VARCHAR[])""")  # funding-flows columns (oxjob #1570) the payload selects
         con.execute("CREATE TABLE kaken_projects_v (project_id VARCHAR, institution VARCHAR)")
         con.execute("CREATE TABLE affiliation_lookup_v (raw_affiliation_string VARCHAR, institution_ids_override BIGINT[], model_response STRUCT(id VARCHAR, score DOUBLE)[])")
         con.execute("CREATE TABLE answers (raw_affiliation_string VARCHAR, institution_ids BIGINT[])")

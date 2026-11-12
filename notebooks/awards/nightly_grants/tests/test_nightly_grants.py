@@ -415,7 +415,7 @@ def _field_mapping(overrides=None):
 
 def test_award_mapping_matches_the_provisioned_index():
     assert sync_awards.mapping_mismatches(_field_mapping(), "awards-v4") == []
-    assert len(sync_awards.AWARD_FIELD_MAPPINGS) == 33     # 25 sub-award fields + 4 investigator author ids + 4 institution ids (#1847)
+    assert len(sync_awards.AWARD_FIELD_MAPPINGS) == 36     # 25 sub-award fields + 4 investigator author ids + 4 institution ids (#1847) + keyword and SDG ids (#2125)
 
 
 def test_an_unprovisioned_investigator_author_id_stops_the_sync():

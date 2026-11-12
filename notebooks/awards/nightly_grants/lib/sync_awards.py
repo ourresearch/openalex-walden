@@ -74,7 +74,11 @@ AWARD_FIELD_MAPPINGS = {"sub_awards_count": {"type": "long"},
                         # each investigator's institutions (Casey 11-09): mapped before the first night that sends them, or
                         # dynamic mapping would type the ids as text and only a reindex fixes it
                         **{f"{slot}.institutions.id": {"type": "keyword"}
-                           for slot in ("lead_investigator", "co_lead_investigator", "investigators", "investigators_full")}}
+                           for slot in ("lead_investigator", "co_lead_investigator", "investigators", "investigators_full")},
+                        # keywords and SDGs as works map them (oxjob #2125; notebooks/elastic/PatchAwardKeywordsSdgsMapping.py):
+                        # the filters keywords.id and sustainable_development_goals.id(.lower) are term queries on these
+                        "keywords.id": {"type": "keyword"}, "sustainable_development_goals.id": {"type": "keyword"},
+                        "sustainable_development_goals.id.lower": {"type": "keyword"}}
 
 
 def mapping_mismatches(field_mapping_response, index):

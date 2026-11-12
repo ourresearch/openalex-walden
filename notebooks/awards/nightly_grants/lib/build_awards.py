@@ -467,7 +467,8 @@ def project(c):
       transform(sort_array(collect_set(l.work_id)),x->concat('https://openalex.org/W',x)) funded_outputs,
       count(DISTINCT l.work_id) funded_outputs_count FROM {r}embedded_links_resolved l
       WHERE l.status='ACTIVE' GROUP BY l.stable_id""")
-    c.zero('TOPICS_UNIQUE','SELECT award_id FROM topics_v GROUP BY award_id HAVING count(*)<>1')
+    for v in ('topics_v','keywords_v','sdgs_v'):    # AwardTopics' three tables (oxjob #2125): one row per award each
+        c.zero(v.split('_')[0].upper()+'_UNIQUE',f'SELECT award_id FROM {v} GROUP BY award_id HAVING count(*)<>1')
     c.artifact('awards_candidate',f"""SELECT m.payload.* EXCEPT(id,funder_id,funder,start_year,end_year,works_api_url,priority),
       m.stable_id id,e.funder_id,
       CASE WHEN e.funder_id IS NULL THEN m.payload.funder ELSE named_struct(
@@ -476,10 +477,11 @@ def project(c):
       CASE WHEN m.payload.start_year>year(CAST(:ts AS TIMESTAMP))+1 THEN NULL ELSE m.payload.end_year END end_year,
       concat('https://api.openalex.org/works?filter=awards.id:G',m.stable_id) works_api_url,
       slice(coalesce(a.funded_outputs,array()),1,100) funded_outputs,coalesce(a.funded_outputs_count,0) funded_outputs_count,
-      t.topics,t.topics[0] primary_topic,:rid release_id
+      t.topics,t.topics[0] primary_topic,k.keywords,s.sdgs sustainable_development_goals,:rid release_id
       FROM {metadata} m JOIN {r}state_candidate e USING(stable_id)
       LEFT JOIN funders_v f ON f.funder_id=e.funder_id LEFT JOIN {r}award_aggregates a USING(stable_id)
-      LEFT JOIN topics_v t ON t.award_id=m.stable_id WHERE e.status='ACTIVE'""")
+      LEFT JOIN topics_v t ON t.award_id=m.stable_id LEFT JOIN keywords_v k ON k.award_id=m.stable_id
+      LEFT JOIN sdgs_v s ON s.award_id=m.stable_id WHERE e.status='ACTIVE'""")
     nih_fold.project(c)                           # NIH project record: number, title/people, dates, amount (no-op without NIH pairs)
     c.artifact('aliases_candidate',f"""SELECT k.staging_id old_id,k.funder_id,k.award_key old_funder_award_id,
       k.stable_id old_stable_id,x.stable_id canonical_stable_id,x.stable_id canonical_id,

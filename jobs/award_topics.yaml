@@ -11,9 +11,8 @@ resources:
         keywords (ScoreAwardKeywords): Jason's Modal app oxjob1322-keywords-nightly, student_qwen4b_v3fix, <= 10 B200s, the shipped
         closed-vocabulary normaliser -> award_keywords;
         sdgs (ScoreAwardSdgs): ai_query databricks-qwen3-embedding-0-6b + the works head sdg_jev_head_v2 (threshold 0.4) -> award_sdgs.
-        Nightly Grants still reads openalex.awards.award_topics (inputs.topics), which this job no longer writes; award_topics_v2 has
-        its columns (award_id, topics, source, created/updated_datetime) plus not_classifiable and text_key, so switching Nightly to
-        it is a config change, made separately. Estimates (Jason's rates): topics ~$5.5/M + $0.45 a container start; keywords
+        Nightly Grants serves the three tables (inputs topics / keywords / sdgs: award_topics_v2, award_keywords, award_sdgs, oxjob #2125);
+        the BERT table openalex.awards.award_topics is no longer read or written. Estimates (Jason's rates): topics ~$5.5/M + $0.45 a container start; keywords
         $7.6-12.2/M; SDGs ~$3.4/M. 6.85M usable awards (2026-11-08) -> one-time backfill ~$41 + $57-89 + $23.
         Every task defaults to dry_run = true and to dev tables (openalex_dev.rohan_lab.awt_*); the Modal queue copy defaults to
         openalex.transient.awt_queue because the apps read openalex.(works|transient) only. warehouse_id has no default: the apps

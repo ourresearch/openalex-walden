@@ -349,6 +349,9 @@ SELECT
   oa.funded_outputs_count,
   oa.primary_topic,
   oa.topics,
+  -- As works serve them (oxjob #2125): {id, display_name, score}, [] when the award has none.
+  COALESCE(oa.keywords, ARRAY()) AS keywords,
+  COALESCE(oa.sustainable_development_goals, ARRAY()) AS sustainable_development_goals,
   COALESCE(iap.institution_awarded, ARRAY()) AS institution_awarded,
   -- Denormalized siblings (object mapping in v4) for fast term filtering — see oxjob #123.2.
   -- Same content as the rich nested versions; v4 mapping declares the rich ones as nested

@@ -30,13 +30,19 @@ def legacy_flow_hash_expression(base,cols):
     return (f"CASE WHEN {no_links} AND NOT ({present}) THEN {base} WHEN NOT ({present}) THEN {with_links} ELSE {with_flows} END")
 
 
+ENRICH_COLUMNS=('keywords','sustainable_development_goals')   # AwardTopics (oxjob #2125)
+
+
 def hash_expression(base, cols):
-    """Empty recipients preserve the prior release hash exactly, including its flow wrapper."""
+    """Empty recipients preserve the prior release hash exactly, including its flow wrapper; so do empty keywords and SDGs."""
     old = legacy_flow_hash_expression(base, cols)
-    if 'recipients_full' not in cols:
+    if 'recipients_full' in cols:
+        old = (f"CASE WHEN coalesce(size(recipients_full),0)=0 THEN {old} "
+               f"ELSE xxhash64(concat_ws('|',CAST(({old}) AS STRING),to_json(recipients_full))) END")
+    if not set(ENRICH_COLUMNS) <= cols:
         return old
-    return (f"CASE WHEN coalesce(size(recipients_full),0)=0 THEN {old} "
-            f"ELSE xxhash64(concat_ws('|',CAST(({old}) AS STRING),to_json(recipients_full))) END")
+    return (f"CASE WHEN coalesce(size(keywords),0)=0 AND coalesce(size(sustainable_development_goals),0)=0 THEN {old} "
+            f"ELSE xxhash64(concat_ws('|',CAST(({old}) AS STRING),to_json(keywords),to_json(sustainable_development_goals))) END")
 
 
 SORTED_ON_READ=('institution_awarded','institution_awarded_full')
@@ -81,7 +87,7 @@ def run(c):
     prev_cols=set(c.sql(f'SELECT * FROM {prev} LIMIT 0').columns)
     c.artifact('previous_api_hash',f'SELECT id,updated_date,{hash_expression(base,prev_cols)} content_hash FROM {previous_sorted(prev,prev_cols)}')
     c.zero('PREVIOUS_API_HASH_UNIQUE',f'SELECT id FROM {r}previous_api_hash GROUP BY id HAVING count(*)<>1')
-    expression=hash_expression(base,prev_cols|set(LINK_COLUMNS)|set(FLOW_COLUMNS)|{'recipients_full'})
+    expression=hash_expression(base,prev_cols|set(LINK_COLUMNS)|set(FLOW_COLUMNS)|{'recipients_full'}|set(ENRICH_COLUMNS))
     c.artifact('new_api_hash',f'SELECT id,{expression} content_hash FROM {r}api_payload')
     c.artifact('api_candidate',f"""SELECT a.* EXCEPT(updated_date),
       CASE WHEN p.id IS NULL OR NOT(n.content_hash <=> p.content_hash) THEN date_trunc('SECOND',CAST(:ts AS TIMESTAMP)) ELSE p.updated_date END updated_date
