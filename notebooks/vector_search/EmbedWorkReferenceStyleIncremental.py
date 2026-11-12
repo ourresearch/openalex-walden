@@ -46,6 +46,33 @@ TEXT = """concat_ws('. ',
                 CASE WHEN size(w.authorships) > 3 THEN ' et al' ELSE '' END), ''),
   w.title, w.primary_location.source.display_name, CAST(w.publication_year AS STRING))"""
 
+TABLE_COMMENT = (
+    "Every OpenAlex work written the way a reference in a paper would cite it, with its embedding, so references can be "
+    "matched to works (reference matcher, oxjob #2000). One row per work. The text is the first 3 authors (plus \"et al\" "
+    "if more), title, journal or source, and year, e.g. \"Michael Calnan, Jonathan Gabe. From Consumerism to Partnership? "
+    "Britain's National Health Service at the Turn of the Century. International Journal of Health Services. 2001\". "
+    "Embedded with databricks-qwen3-embedding-0-6b. Kept current every night by the job \"Embed works with Qwen3\" (step "
+    "reference_style_embed): new and changed works are added, merged-away works removed. Each work is filed in one of "
+    "16,384 search lists (list_id), so a search only reads the lists nearest a reference; the list centres are in "
+    "/Volumes/openalex/vector_search/work_reference_style_index/centroids.npy.")
+COLUMN_COMMENTS = {
+    "work_id": "OpenAlex work id without the W (W2150692393 -> 2150692393)",
+    "list_id": "which of the 16,384 search lists the work is filed in",
+    "v": "the embedding: 1,024 numbers, unit length, stored as float16 bytes (2 KB per work)",
+    "text": "the reference-style text that was embedded",
+    "embedded_at": "when this vector was made",
+    "lg": "list_id / 16, the table is partitioned on it so a search reads only the lists it needs",
+}
+
+
+def lit(s):
+    return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+cols = ", ".join(f"{c} {t} COMMENT {lit(COLUMN_COMMENTS[c])}" for c, t in
+                 [("work_id", "BIGINT"), ("list_id", "INT"), ("v", "BINARY"), ("text", "STRING"), ("embedded_at", "TIMESTAMP"), ("lg", "INT")])
+spark.sql(f"CREATE TABLE IF NOT EXISTS {DST} ({cols}) PARTITIONED BY (lg) COMMENT {lit(TABLE_COMMENT)} "
+          "TBLPROPERTIES ('delta.enableDeletionVectors' = 'true')")
 print(f"lookback={LOOKBACK_DAYS}d parallel={PARALLEL} chunk_rows={CHUNK_ROWS:,} max_works={MAX_WORKS:,}")
 
 # COMMAND ----------
