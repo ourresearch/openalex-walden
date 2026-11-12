@@ -31,6 +31,13 @@
 # MAGIC pre-registered per stratum (own abstract and losses), EXPLORE § 45. Each mode rewrites only its own rows
 # MAGIC (`INSERT INTO ... REPLACE WHERE`, one atomic commit).
 # MAGIC
+# MAGIC **Opening mode (oxjob #2162, 12 Nov 2026).** A publisher-marked opening (T&F books' "first-paragraph", Cambridge Core's
+# MAGIC "extract") that describes the work stays its abstract (Jason, landing-pages charter § 6 2026-11-11 20:19). Parseland
+# MAGIC no longer emits marked openings (parseland-lib 5ad0605), so `mode=opening` writes the ones a Jev reader
+# MAGIC (`opening-desc-v1`, p >= 0.15) keeps, for works with no legacy backfill row, as rows with `path = 'landing_page_opening'`.
+# MAGIC It rewrites only those rows; `fill` mode leaves them alone. Revert: `DELETE FROM openalex.abstracts.repo_description_fill
+# MAGIC WHERE path = 'landing_page_opening'`.
+# MAGIC
 # MAGIC **MANUAL TRIGGER ONLY; built once per mode.** New records keep the ingest parse. Re-running a mode replaces that mode's
 # MAGIC rows; the table is never dropped, because CreateWorksBase reads it every night.
 # MAGIC **Revert:** `TRUNCATE TABLE openalex.abstracts.repo_description_fill` (the next nightly takes the abstracts back
@@ -50,15 +57,22 @@ from pyspark.sql.window import Window
 from openalex.dlt.transform import udf_abstract_features
 
 dbutils.widgets.text("source_table", "", "accepted choices: work_id, native_id, path, endpoint_id, p_abstract, text[, replace_hash]")
-dbutils.widgets.dropdown("mode", "fill", ["fill", "replace"], "fill: works with no abstract; replace: works showing the stub")
+dbutils.widgets.dropdown("mode", "fill", ["fill", "replace", "opening"],
+                         "fill: works with no abstract; replace: works showing the stub; opening: #2162 kept openings")
 SOURCE = dbutils.widgets.get("source_table").strip()
 MODE = dbutils.widgets.get("mode")
 assert SOURCE, "source_table is required"
 FILTER_COMMIT = {  # stored on every row
     "fill": "repo-desc-v1 >= 0.95 on rule desc-v2 (oxjobs #1800 EXPLORE § 41)",
     "replace": "repo-desc-v1 >= 0.95 on rule desc-v2, replacing the shown short first description (oxjobs #1800 EXPLORE § 45)",
+    "opening": "opening-desc-v1 >= 0.15 on a page-marked opening parseland-lib 5ad0605 drops (oxjobs #2162 EXPLORE § 5)",
 }[MODE]
-MODE_ROWS = "replace_hash IS NULL" if MODE == "fill" else "replace_hash IS NOT NULL"  # the rows this mode owns
+OPENING = "coalesce(path, '') = 'landing_page_opening'"  # oxjob #2162's rows
+MODE_ROWS = {  # the rows this mode owns
+    "fill": f"replace_hash IS NULL AND NOT {OPENING}",
+    "replace": "replace_hash IS NOT NULL",
+    "opening": OPENING,
+}[MODE]
 TARGET = "openalex.abstracts.repo_description_fill"
 LEGACY = "openalex.abstracts.abstracts_backfill"  # CreateWorksBase unions the fill into it: no work may be in both
 REPEAT_MIN = 5
@@ -88,8 +102,13 @@ if "replace_hash" not in spark.table(TARGET).columns:  # the table predates repl
 
 src = (spark.table(SOURCE).withColumn("work_id", F.col("work_id").cast("bigint"))  # before the window: one row per key
        .join(spark.table(LEGACY).select("work_id"), "work_id", "left_anti"))  # one row per work in the union
-if MODE == "fill":
-    src = src.withColumn("replace_hash", F.lit(None).cast("bigint"))
+if MODE == "opening":  # one row per work: works another mode already holds are left out
+    src = (src.withColumn("replace_hash", F.lit(None).cast("bigint")).withColumn("path", F.lit("landing_page_opening"))
+           .join(spark.table(TARGET).filter(f"NOT {OPENING}").select("work_id"), "work_id", "left_anti"))
+elif MODE == "fill":
+    src = (src.withColumn("replace_hash", F.lit(None).cast("bigint"))
+           # one row per work: works #2162's opening rows hold are left out
+           .join(spark.table(TARGET).filter(OPENING).select("work_id"), "work_id", "left_anti"))
 else:
     assert "replace_hash" in src.columns, "replace mode needs replace_hash in the source"
     src = (src.withColumn("replace_hash", F.col("replace_hash").cast("bigint")).filter("replace_hash IS NOT NULL")
