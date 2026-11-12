@@ -1120,6 +1120,28 @@ def test_the_deadline_and_an_empty_account_stop_every_call_and_each_batch_is_kep
     assert asked == 2 and len(client.calls) == 2                             # out of credit: not one more call
 
 
+def test_the_nights_items_are_read_a_batch_at_a_time_each_only_when_the_one_before_is_used():   # 11-10: no stream held open
+    qs, calls = iaa.jev_questions(), []
+    rows = [dict(item, qn=q) for q, item in zip([1, 2, 3, 4, 9], jev_items(5))]   # a gap in qn (5-8)
+
+    def fetch(lo, hi):
+        calls.append((lo, hi))
+        return [r for r in rows if lo < r["qn"] <= hi]
+    it = iaa.items_by_batch(fetch, 2, 9)
+    assert [r["qn"] for r in __import__("itertools").islice(it, 2)] == [1, 2] and calls == [(0, 2)]   # the next batch waits
+    assert [r["qn"] for r in it] == [3, 4, 9] and calls == [(0, 2), (2, 4), (4, 6), (6, 8), (8, 10)]  # the gap isn't the end
+    rows[4]["qn"] = 5
+    now, calls[:] = [0], []
+
+    class Slow(FakeJev):   # every call takes 5 simulated seconds
+        def decide(self, state, qs):
+            now[0] += 5
+            return super().decide(state, qs)
+    client = Slow({f"e{i}": link("c1", 0.9) for i in range(5)})
+    got, asked = iaa.judge_items(client, iaa.items_by_batch(fetch, 2, 5), qs, deadline_s=8, batch=2, threads=1, clock=lambda: now[0])
+    assert asked == 2 and calls == [(0, 2)]   # past the deadline after batch 1 (two calls, 10 s): batch 2 is not even read
+
+
 def test_the_prompt_is_the_graded_one_for_lists_of_1_to_20():
     qs = iaa.jev_questions()
     assert sorted(qs, key=lambda k: int(k[4:])) == [f"sp_k{k}" for k in range(1, 21)]

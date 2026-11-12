@@ -188,7 +188,20 @@ def ask(client, item, qs, late=lambda: False):
         return {"ok": False, "error": repr(e)[:300]}
 
 
-def judge_items(client, items, qs, deadline_s, batch=2000, threads=64, clock=time.monotonic, on_answers=None, grace_s=120.0):
+JEV_BATCH = 2000   # Jev items asked (and saved) together; JudgeWithJev also reads them from <prefix>jev_items this many at a time
+
+
+def items_by_batch(fetch, batch, last):
+    """The night's items, a batch at a time: fetch(lo, hi) returns the rows with lo < qn <= hi, in qn order, up to the last qn (a
+    gap in qn is skipped, never taken as the end). Each batch is fetched only when the one before it has been used, so no query
+    result stays open while Jev is asked."""
+    lo = 0
+    while lo < last:
+        yield from fetch(lo, lo + batch)
+        lo += batch
+
+
+def judge_items(client, items, qs, deadline_s, batch=JEV_BATCH, threads=64, clock=time.monotonic, on_answers=None, grace_s=120.0):
     """Ask Jev about the night's items (already capped by judge.sql), a batch at a time. No call starts after deadline_s seconds or once
     the client is out of credit (checked before each batch, after its rows arrive, and before each call); a call still running
     grace_s after the deadline is abandoned (no answer, asked again next night), so a retrying call cannot hold up decide.
