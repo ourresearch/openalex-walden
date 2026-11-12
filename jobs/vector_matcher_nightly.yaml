@@ -43,7 +43,7 @@ resources:
           job_cluster_key: vector_gpu
           libraries:
             - pypi:
-                package: "sentence-transformers>=3.4"
+                package: "sentence-transformers==6.2.0"
           timeout_seconds: 3600
         # g5.12xlarge on-demand capacity runs out in us-east-1 at this hour: 6 Oct (start 30 min), 12 Oct (no node after 24 min,
         # night lost), 13 Oct (start 31 min); g6.12xlarge was out too in a 13 Oct test. If Vector_Embed fails, the same embed runs
@@ -65,7 +65,7 @@ resources:
           job_cluster_key: vector_gpu_fallback
           libraries:
             - pypi:
-                package: "sentence-transformers>=3.4"
+                package: "sentence-transformers==6.2.0"
           timeout_seconds: 3600
         - task_key: Vector_Pool
           depends_on:
