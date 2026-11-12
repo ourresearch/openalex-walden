@@ -22,6 +22,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.getcwd(), "lib"))
 import modal_call as M  # noqa: E402
+import papers_topics as PT  # noqa: E402
 
 for name, default in [("state_prefix", "openalex_dev.rohan_lab.awt_"), ("modal_queue_table", "openalex.transient.awt_queue"),
                       ("target", "openalex_dev.rohan_lab.awt_award_topics_v2"),
@@ -37,14 +38,7 @@ MAX_NC, MAX_NC_ALL = float(dbutils.widgets.get("max_nc_share")), float(dbutils.w
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
 QUEUE, RAW = f"{P}queue", f"{P}topics_raw"
 SOURCE = M.APPS["topics"]["model_tag"]
-TOPICS_TYPE = ("ARRAY<STRUCT<id: STRING, display_name: STRING, score: FLOAT, subfield: STRUCT<id: STRING, display_name: STRING>, "
-               "field: STRUCT<id: STRING, display_name: STRING>, domain: STRUCT<id: STRING, display_name: STRING>>>")
-VOCAB = """SELECT CAST(t.topic_id AS INT) AS tid, t.display_name,
-    named_struct('id', concat('https://openalex.org/subfields/', s.subfield_id), 'display_name', s.display_name) AS subfield,
-    named_struct('id', concat('https://openalex.org/fields/', f.field_id), 'display_name', f.display_name) AS field,
-    named_struct('id', concat('https://openalex.org/domains/', d.domain_id), 'display_name', d.display_name) AS domain
-  FROM openalex.common.topics t JOIN openalex.common.subfields s USING (subfield_id) JOIN openalex.common.fields f USING (field_id)
-  JOIN openalex.common.domains d USING (domain_id)"""
+TOPICS_TYPE, VOCAB = PT.TOPICS_TYPE, PT.VOCAB   # one copy of the served shape and the vocabulary, shared with the papers task
 
 
 def log(msg):

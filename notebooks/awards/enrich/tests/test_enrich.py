@@ -94,14 +94,15 @@ def test_modal_call_starts_once_and_a_retry_polls_the_same_call(monkeypatch):
     assert fs.files["/Volumes/openalex/works/data/topics_nightly/awards/awt-1/_call_id.txt"] == "fc-abcdefghij12"
 
 
-def test_award_topics_job_runs_the_four_notebooks_with_safe_defaults():
+def test_award_topics_job_runs_its_notebooks_with_safe_defaults():
     yaml = pytest.importorskip("yaml")
     import re
     repo = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
     raw = open(os.path.join(repo, "jobs", "award_topics.yaml")).read()
     job = yaml.safe_load(raw)["resources"]["jobs"]["AwardTopics"]
     tasks = {t["task_key"]: t for t in job["tasks"]}
-    assert list(tasks) == ["build_queue", "topics", "keywords", "sdgs"] and "job_clusters" not in job and "schedule" not in job
+    assert list(tasks) == ["build_queue", "topics", "keywords", "sdgs", "papers"] and "job_clusters" not in job and "schedule" not in job
+    assert [d["task_key"] for d in tasks["papers"]["depends_on"]] == ["topics"]   # both write award_topics_v2: text first
     params = {p["name"]: p["default"] for p in job["parameters"]}
     assert params["dry_run"] == "true" and params["warehouse_id"] == "" and params["state_prefix"].startswith("openalex_dev.")
     assert not any(w in raw for w in M.FORBIDDEN_WAREHOUSES)

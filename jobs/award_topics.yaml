@@ -11,6 +11,9 @@ resources:
         keywords (ScoreAwardKeywords): Jason's Modal app oxjob1322-keywords-nightly, student_qwen4b_v3fix, <= 10 B200s, the shipped
         closed-vocabulary normaliser -> award_keywords;
         sdgs (ScoreAwardSdgs): ai_query databricks-qwen3-embedding-0-6b + the works head sdg_jev_head_v2 (threshold 0.4) -> award_sdgs.
+        papers (BuildAwardTopicsFromPapers, after topics; oxjob #2125 part 2): awards with no text row get their papers' topics
+        (2+ papers with a top share >= 0.5, or 1 paper that 2 of 3 signals confirm) -> award_topics_v2, source papers_v1; a full
+        pass, ~3 min of serverless (1,802,577 awards on 2026-11-10). A text row always wins.
         Nightly Grants serves the three tables (inputs topics / keywords / sdgs: award_topics_v2, award_keywords, award_sdgs, oxjob #2125);
         the BERT table openalex.awards.award_topics is no longer read or written. Estimates (Jason's rates): topics ~$5.5/M + $0.45 a container start; keywords
         $7.6-12.2/M; SDGs ~$3.4/M. 6.85M usable awards (2026-11-08) -> one-time backfill ~$41 + $57-89 + $23.
@@ -130,6 +133,18 @@ resources:
               target: "{{job.parameters.sdgs_target}}"
               awards_table: "{{job.parameters.awards_table}}"
               max_usd: "{{job.parameters.sdgs_max_usd}}"
+              dry_run: "{{job.parameters.dry_run}}"
+          environment_key: Default
+        - task_key: papers
+          depends_on:
+            - task_key: topics
+          notebook_task:
+            notebook_path: notebooks/awards/enrich/BuildAwardTopicsFromPapers
+            source: GIT
+            base_parameters:
+              state_prefix: "{{job.parameters.state_prefix}}"
+              awards_table: "{{job.parameters.awards_table}}"
+              target: "{{job.parameters.topics_target}}"
               dry_run: "{{job.parameters.dry_run}}"
           environment_key: Default
       git_source:
