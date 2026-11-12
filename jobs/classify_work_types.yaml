@@ -29,7 +29,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 0 16 * * ?"   # daily 16:00 UTC, after End 2 End lands
         timezone_id: UTC
-        pause_status: PAUSED                     # unpaused by hand once the backfill is loaded (RUN-GOLINE1.md)
+        pause_status: UNPAUSED                   # backfill loaded 11 Nov (315.1M scores); dark nights from 12 Nov (RUN-GOLINE1.md 2.3)
       parameters:
         - name: schema
           default: "openalex.works"
