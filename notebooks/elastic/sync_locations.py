@@ -330,8 +330,10 @@ DROP_REPLICAS = IS_FULL_SYNC or record_count >= LARGE_SYNC_THRESHOLD
 # oxjob #1642: honour the night's keep_replicas pre-clear like sync_works (#1638), so a large incremental doesn't drop
 # locations' replicas and rebuild ~3 TB of copies into the US morning (night 2026-11-09: ~11M location docs from #2093 + #2094).
 # shortcut: kept only up to KEEP_REPLICAS_MAX docs; past that, writing every doc twice costs more than one rebuild
-# (6 Nov's 205M re-send ran with replicas 0).
-KEEP_REPLICAS_MAX = 30_000_000
+# (6 Nov's 205M re-send ran with replicas 0). Break-even, measured 12 Nov: replicas kept ~10.3K docs/s (night 11-12,
+# 20.9M in 34 min, 2 writers) vs dropped ~27K docs/s (6 Nov) plus re-copying locations-v4's 3.6 TB of primaries at
+# the 40 MB/s per-node recovery throttle (~75 min, index yellow) -> about 75M docs (night 11-13: ~48M with #2187).
+KEEP_REPLICAS_MAX = 75_000_000
 if DROP_REPLICAS and not IS_FULL_SYNC and record_count <= KEEP_REPLICAS_MAX and spark.sql(
         "SELECT openalex.works.e2e_override_active('keep_replicas', 'false') AS active").collect()[0].active:
     print(f"keep_replicas pre-cleared: replicas stay at 1 for this {record_count:,}-record sync")
