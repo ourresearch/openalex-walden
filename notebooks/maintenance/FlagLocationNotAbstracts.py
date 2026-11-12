@@ -42,6 +42,14 @@
 # MAGIC   is unique (checksums, timestamps), so they are found by rule `DEPOSIT_NOTICE` (reason `deposit_notice`, every
 # MAGIC   provenance), not by a list. A '%%%%' join or text left after the file entries means a real abstract follows
 # MAGIC   the notice: kept. Bar: 0 real of 250 random flagged works (Opus 5.5).
+# MAGIC - **Citation lines** (oxjob #1800, 12 Nov 2026): OUP Academic pages with no abstract carry a 160-char meta
+# MAGIC   description "<authors>; <title>, <journal>, Volume N, Issue N, <date>, Pages ..." that the Oxford parser
+# MAGIC   took as the abstract (~395K works). Each text is unique, so rule `CITATION_LINE_KEYS` finds them: a
+# MAGIC   landing-page or Crossref text <= 170 chars whose part after the first "; " starts like the record's title
+# MAGIC   (its own, else its DOI's Crossref title), >= 10 letters+digits. Reason `template` (landing pages and
+# MAGIC   Crossref only). Bar: 0 real of 250 + 0 of 100 weakest matches (Opus 5.5).
+# MAGIC - **Held texts** (`HELD_TABLE`): texts a rule matches but a job holds back (e.g. its works would fall back to
+# MAGIC   an unread text). Every rule's keys skip them; delete a row to release it at the next build.
 # MAGIC - **Revert:** remove the join in CreateSuperLocations, or `TRUNCATE` these tables. Never DROP them while
 # MAGIC   CreateSuperLocations reads them: a missing table fails the nightly.
 # MAGIC
@@ -77,6 +85,31 @@ DEPOSIT_NOTICE = r"""(
   trim(COL) RLIKE '^(Submitted by|Made available in DSpace on|Approved for entry into archive by|Rejected by|Item withdrawn by) '
   AND instr(COL, 'No. of bitstreams') > 0 AND instr(COL, '%%%%') = 0
   AND length(regexp_replace(trim(COL), '(?i)[^\\n]{0,200}?: \\d+ bytes, checksum: [0-9a-f]{32} \\((MD5|SHA-1|SHA1)\\)', ' ')) <= 150)"""
+# oxjob #1800 (12 Nov 2026): rule oupcite-v1 (see the header). Same SQL as the 12 Nov write
+# (oxjobs working/parseland-swarm-abstracts/work/oupcite/rule.sql). OUP landing-page rows carry no title, hence
+# the DOI's Crossref title. Over 170 chars the same shape is reference-work keyword lists and real blurbs.
+CITATION_LINE_COMMIT = "oupcite-v1: OUP Academic citation line (#1800, 12 Nov 2026)"
+CITATION_LINE_KEYS = r"""
+  SELECT xxhash64(abstract) AS abstract_hash, length(abstract) AS text_len, first(abstract) AS abstract,
+         count(*) AS n_rows, collect_set(provenance) AS provenances
+  FROM (
+    SELECT r.provenance, r.abstract,
+           regexp_replace(lower(coalesce(r.title, cr.cr_title)), '[^\\p{L}\\p{N}]', '') AS nt,
+           regexp_replace(lower(substring(r.abstract, r.p + 2)), '[^\\p{L}\\p{N}]', '') AS na
+    FROM (
+      SELECT provenance, title, abstract, instr(abstract, '; ') AS p,
+             lower(get(filter(ids, x -> x.namespace = 'doi').id, 0)) AS doi
+      FROM SOURCE_TABLE
+      WHERE provenance IN ('landing_page', 'crossref') AND abstract IS NOT NULL AND length(abstract) <= 170
+        AND instr(abstract, '; ') > 1
+    ) r
+    LEFT JOIN (SELECT lower(native_id) AS doi, max(title) AS cr_title FROM SOURCE_TABLE
+               WHERE provenance = 'crossref' AND title IS NOT NULL GROUP BY 1) cr ON cr.doi = r.doi
+  ) s
+  WHERE nt IS NOT NULL AND least(length(na), length(nt)) >= 10
+    AND left(na, least(length(na), length(nt))) = left(nt, least(length(na), length(nt)))
+  GROUP BY 1, 2"""
+HELD_TABLE = "openalex.abstracts.not_abstract_held_texts"
 # Longest list text is 1,835 characters of key; templates need <= 1,500 plain and wordings <= 200 of key.
 # Raw text longer than this cannot match (markup inflates, so the cap is generous); it skips the Python UDF.
 MAX_LEN = 6000
@@ -165,6 +198,11 @@ CREATE TABLE IF NOT EXISTS {TARGET_TABLE} (
   provenances ARRAY<STRING>, sample_text STRING, filter_commit STRING, built_at TIMESTAMP
 ) COMMENT 'oxjob #1800: distinct abstract texts in openalex.works.locations_parsed that are not abstracts per parseland-lib not_abstract.is_not_abstract, keyed by xxhash64(abstract) + length(abstract). CreateSuperLocations NULLs them (owner guard on is_list texts). Built by notebooks/maintenance/FlagLocationNotAbstracts.'
 """)
+spark.sql(f"""
+CREATE TABLE IF NOT EXISTS {HELD_TABLE} (
+  abstract_hash BIGINT, text_len INT, filter_commit STRING, why STRING, held_at TIMESTAMP
+) COMMENT 'oxjob #1800: texts a not-abstract rule matches but a job holds back (keyed like not_abstract_texts). FlagLocationNotAbstracts leaves them out of not_abstract_texts on a rebuild. Delete a row to release it.'
+""")
 
 rows = (spark.table(SOURCE_TABLE)
         .where(F.col("abstract").isNotNull() & (F.length("abstract") <= MAX_LEN) & (F.trim("abstract") != ""))
@@ -179,6 +217,7 @@ flagged.createOrReplaceTempView("flagged_texts")
 
 spark.sql(f"""
 INSERT OVERWRITE {TARGET_TABLE}
+SELECT * FROM (
 SELECT abstract_hash, text_len, reason = 'list' AS is_list, reason, n_rows, provenances,
        left(abstract, 500) AS sample_text, '{FILTER_COMMIT}' AS filter_commit, current_timestamp() AS built_at
 FROM flagged_texts
@@ -204,6 +243,17 @@ FROM (
   WHERE lp.abstract IS NOT NULL AND {DEPOSIT_NOTICE.replace('COL', 'lp.abstract')}
   GROUP BY 1, 2
 ) d LEFT ANTI JOIN flagged_texts f ON f.abstract_hash = d.abstract_hash AND f.text_len = d.text_len
+UNION ALL
+-- Citation lines (see the header): reason 'template', so CreateSuperLocations applies them to landing pages and
+-- Crossref only. Skips texts another block keys (judged short texts by text, the UDF's by key).
+SELECT c.abstract_hash, c.text_len, FALSE AS is_list, 'template' AS reason, c.n_rows, c.provenances,
+       left(c.abstract, 500) AS sample_text, '{CITATION_LINE_COMMIT}' AS filter_commit, current_timestamp() AS built_at
+FROM ({CITATION_LINE_KEYS.replace('SOURCE_TABLE', SOURCE_TABLE)}) c
+LEFT ANTI JOIN flagged_texts f ON f.abstract_hash = c.abstract_hash AND f.text_len = c.text_len
+LEFT ANTI JOIN {SHORT_TABLE} st ON st.text = trim(c.abstract)
+) k
+-- Held texts (see the header) are keyed by no rule.
+LEFT ANTI JOIN {HELD_TABLE} h ON h.abstract_hash = k.abstract_hash AND h.text_len = k.text_len
 """)
 # INSERT OVERWRITE replaces the rows atomically: CreateSuperLocations never sees the table missing or half-built.
 
