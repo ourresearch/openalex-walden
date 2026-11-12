@@ -12,12 +12,13 @@
 # MAGIC Pairs: `openalex.works.notice_link_pairs` (MapWorkIds rebuilds it nightly), plus `extra_pairs_sql`: a SELECT of
 # MAGIC `notice_ns, notice_id, target_ns, target_id` (ns `doi` = cleaned lowercase DOI, `pmid` = digits) for hand-checked pairs
 # MAGIC no record declares. A record moves when it carries a notice's DOI or PMID and its work also holds a record carrying the
-# MAGIC target's. Held: a record that itself carries a target id (`carries_target_id`: mislabelled, not a notice), and a record
+# MAGIC target's. Held: a record that also carries the article's own DOI or PMID (`carries_target_id`: a target id that is not
+# MAGIC itself a notice id on the work; moving it would take the article's map rows), and a record
 # MAGIC sharing a DOI / PMID with a held one on the same work (`shares_key_with_held`: moving it would split the notice). Also held
 # MAGIC without blocking anything: the article's own MAG record (`articles_own_mag_record`, its MAG id is the work's id), which
 # MAGIC carries a notice's PMID because MAG linked the wrong one (1,031 on the 2026-11-11 stage). And every record of a work the
-# MAGIC notice owns (`notice_owns_the_work`, ~950 works): its notice records were pinned there before any other record, or its
-# MAGIC primary location is a notice and nothing else was pinned there earlier. There the article was merged into the notice's
+# MAGIC notice owns (`notice_owns_the_work`): its primary location is a notice and no other record was pinned there earlier
+# MAGIC (pin age alone held works that show as the article, 2026-11-12). There the article was merged into the notice's
 # MAGIC work, so the article's records are the ones to move (W3026924908: an erratum's work since 2020 that #1902 merged its
 # MAGIC 2018 article into); moving the notice off would hand the notice's id to the article.
 # MAGIC
@@ -115,11 +116,18 @@ if MODE == "stage":
                array_sort(collect_set(notice_type)) AS notice_types, array_sort(collect_set(target)) AS targets
         FROM mv GROUP BY ALL
       ),
+      -- an id the record carries that some notice is about and that is not itself a notice id on this work: the article's
+      -- own id (a notice that has its own correction is a target too, and still moves)
+      work_notice_ids AS (
+        SELECT DISTINCT ak.work_id, ak.ns, ak.id FROM ak JOIN pairs p ON p.notice_ns = ak.ns AND p.notice_id = ak.id
+      ),
       held1 AS (
         SELECT DISTINCT r.provenance, r.native_id_namespace, r.native_id
         FROM rec r
-        JOIN tgt t ON t.provenance = r.provenance AND t.native_id_namespace = r.native_id_namespace
-                  AND t.native_id = r.native_id AND t.work_id = r.old_work_id
+        JOIN ak k ON k.provenance = r.provenance AND k.native_id_namespace = r.native_id_namespace
+                 AND k.native_id = r.native_id AND k.work_id = r.old_work_id
+        LEFT SEMI JOIN pairs p ON p.target_ns = k.ns AND p.target_id = k.id
+        LEFT ANTI JOIN work_notice_ids w ON w.work_id = k.work_id AND w.ns = k.ns AND w.id = k.id
       ),
       held_keys AS (
         SELECT DISTINCT ak.work_id, ak.ns, ak.id
@@ -150,8 +158,8 @@ if MODE == "stage":
       ),
       notice_owns AS (
         SELECT a.work_id FROM ages a
-        WHERE a.other_first IS NULL OR a.notice_first < a.other_first
-           OR (a.work_id IN (SELECT id FROM notice_primary) AND NOT a.other_first < a.notice_first)
+        WHERE a.work_id IN (SELECT id FROM notice_primary)
+          AND (a.other_first IS NULL OR NOT a.other_first < a.notice_first)
       ),
       t AS (
         SELECT r.provenance, r.native_id_namespace, r.native_id, l.doi_clean, l.pmid, l.title, r.old_work_id,
