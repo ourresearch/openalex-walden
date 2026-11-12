@@ -75,6 +75,7 @@ LOSS_METRICS = {
     "missing_author_ids": ["recent_works_missing_author_ids"],
     "work_author_curations": ["work_author_curations"],
     "location_curations": ["location_curations"],
+    "reference_lists_filed": ["reference_lists_filed"],  # a count, not a loss: parse_work_references' 20% re-file line
 }
 for _names in list(LOSS_METRICS.values()):
     for _m in _names:
