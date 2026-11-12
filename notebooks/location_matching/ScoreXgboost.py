@@ -65,6 +65,14 @@ spark.sql(f"""
            CASE WHEN k LIKE 'd:%' THEN regexp_replace(substr(k, 3), '[^a-zA-Z0-9\\\\./-]', '') ELSE substr(k, 3) END AS id
     FROM {T}fr LATERAL VIEW explode(keys) e AS k
     WHERE k LIKE 'd:%' OR k LIKE 'p:%'
+    UNION
+    -- a repository record's DOI / PMID is in its ids, not its keys (a DOAJ copy of a correction bound to its article, 2026-11-12)
+    SELECT seed_id, lower(i.namespace),
+           CASE WHEN lower(i.namespace) = 'doi'
+                THEN regexp_replace(regexp_replace(lower(trim(i.id)), '^https?://(dx\\\\.)?doi\\\\.org/', ''), '[^a-zA-Z0-9\\\\./-]', '')
+                ELSE regexp_extract(i.id, '([0-9]+)$', 1) END
+    FROM {T}fr LATERAL VIEW explode(ids) e AS i
+    WHERE lower(i.namespace) IN ('doi', 'pmid')
   ),
   tk AS (
     SELECT DISTINCT rk.seed_id, n.target_ns, n.target_id
