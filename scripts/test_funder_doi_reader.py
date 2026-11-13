@@ -109,9 +109,12 @@ class Precedence(unittest.TestCase):
         self.assertIn("CASE WHEN m.resolution_path='ROR' AND m.usable", c)
         self.assertIn("AND NOT pair_disagreement AND resolution_path='ROR' AND award_number IS NOT NULL", c)
 
-    def test_crossref_new_links_carry_no_awards(self):
+    def test_crossref_identifier_references_carry_awards_names_are_links_only(self):
+        # 11-13: since the 10-16 switch every new reference entered with array(), so no new Crossref grant number was minted.
+        # ROR / FundRef DOI references carry their ids again. Behaviour: notebooks/awards/tests/test_create_crossref_work_funders.py
         ev = one(CR, 'CREATE OR REPLACE TABLE openalex.awards.crossref_work_funder_evidence')
-        self.assertIn("SELECT DISTINCT n.work_id,n.funder_id,CAST(array() AS ARRAY<STRING>) award_ids,'accepted' disposition", ev)
+        self.assertIn("CASE WHEN n.resolution_path IN ('ROR','FundRef DOI')\n  AND openalex.common.is_usable_award_id(aid) THEN aid END", ev)
+        self.assertIn("SELECT n.work_id,n.funder_id,n.award_ids,'accepted' disposition", ev)
         self.assertIn('LEFT ANTI JOIN preserved old USING(work_id,funder_id)', ev)
 
 
