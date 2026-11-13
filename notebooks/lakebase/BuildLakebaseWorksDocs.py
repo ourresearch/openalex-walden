@@ -375,29 +375,8 @@ df_transformed = (
         F.col("title"),
         F.col("display_name"),
         F.col("ids"),
-        F.expr("""
-            array_sort(
-                array_distinct(
-                    array_compact(
-                        flatten(
-                            TRANSFORM(locations, loc ->
-                                CASE
-                                WHEN loc.provenance IN ('crossref', 'pubmed', 'datacite')
-                                    THEN array(loc.provenance, IF(loc.source.is_in_doaj, 'doaj', NULL))
-                                WHEN loc.provenance = 'repo' AND lower(loc.native_id) like 'oai:arxiv.org%'
-                                    THEN array('arxiv')
-                                WHEN loc.provenance = 'repo' AND lower(loc.native_id) like 'oai:doaj.org/%'
-                                    THEN array('doaj')
-                                WHEN loc.provenance = 'mag' AND lower(loc.source.display_name) = 'pubmed'
-                                    THEN array('pubmed')
-                                ELSE array()
-                                END
-                            )
-                        )
-                    )
-                )
-            )
-        """).alias("indexed_in"),
+        # oxjob #2184: indexed_in is computed once, in CreateWorksBase (openalex_works.indexed_in), as in sync_works.
+        F.coalesce(F.col("indexed_in"), F.array().cast("array<string>")).alias("indexed_in"),
         F.col("publication_date"),
         F.col("publication_year"),
         F.col("language"),
