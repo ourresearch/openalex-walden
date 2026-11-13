@@ -128,6 +128,12 @@ resources:
             notebook_path: notebooks/location_matching/KnnSearch
             source: GIT
           job_cluster_key: knn_gpu
+          # 13 Nov 2026 (#1642): AWS had no g5.2xlarge in the zones 'auto' tried (us-east-1e has none, 1a sold out) and the
+          # cluster gave up at 00:40 CT after its second capacity round, failing the night at Map_Work_Ids (night 11-12's got
+          # nodes on its third round). A retry asks AWS again on a fresh cluster; KnnSearch overwrites its two tables.
+          max_retries: 3
+          min_retry_interval_millis: 120000
+          retry_on_timeout: false
         - task_key: features
           depends_on:
             - task_key: knn
