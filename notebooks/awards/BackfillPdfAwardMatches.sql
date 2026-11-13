@@ -167,8 +167,8 @@ SELECT COUNT(DISTINCT work_id) AS works_with_sections FROM openalex.pdf.backfill
 -- COMMAND ----------
 
 -- Step 3: match the funders' current award lists against the re-extracted sections
--- (semantics identical to TagPdfAwardsIncremental Step 5), insert only NEW matches
-INSERT INTO openalex.pdf.grobid_award_matches
+-- (semantics identical to TagPdfAwardsIncremental Step 5) -> staging table, so the costly match runs once
+CREATE OR REPLACE TABLE openalex.pdf.backfill_award_matches AS
 WITH funder_regexes AS (
   SELECT
     fnk.name AS funder_name,
@@ -289,6 +289,10 @@ candidate_awards AS (
   SELECT
     oa.funder_id,
     oa.funder_award_id,
+    -- TRUE when any award with this number comes from a funder's own grant feed, not from paper metadata (the list
+    -- is DEPOSITED in nightly_grants/lib/work_awards.py). Per number, so two awards sharing a number carry the same flag.
+    bool_or(NOT COALESCE(oa.provenance IN ('crossref_work_funders','crossref_work.grants','crossref_work','europepmc_work_funders','datacite_work_funders'), false))
+      OVER (PARTITION BY oa.funder_id, oa.funder_award_id) AS from_funder_feed,
     -- Word-boundary regex match; escape regex metacharacters (verbatim from
     -- the incremental job — \b prevents short ids matching inside longer runs)
     CONCAT('\\b',
@@ -321,19 +325,73 @@ paper_funder_sections AS (
 )
 SELECT
   /*+ BROADCAST(ua) */
-  pfs.work_id AS paper_id,
+  pfs.work_id,
   ua.funder_id,
   ua.funder_award_id,
-  pfs.all_sections AS funding_sections,
-  now() AS batch_time
+  ua.from_funder_feed,
+  ua.award_match_pattern,
+  pfs.all_sections
 FROM usable_awards ua
 JOIN paper_funder_sections pfs
   ON pfs.funder_id_numeric = ua.funder_id
-  AND pfs.all_sections RLIKE ua.award_match_pattern
+  AND pfs.all_sections RLIKE ua.award_match_pattern;
+
+-- COMMAND ----------
+
+-- Step 3b: drop cut-short numbers, insert only NEW matches
+INSERT INTO openalex.pdf.grobid_award_matches
+WITH nested_awards AS (
+  -- Longest number wins (verbatim from the incremental job): drop a matched number when every place it occurs in the
+  -- text is the start of a longer matched number of the same funder ("016.Veni" inside "016.Veni.173.076").
+  SELECT s.work_id, s.funder_id, s.funder_award_id, s.all_sections, s.award_match_pattern
+  FROM openalex.pdf.backfill_award_matches s
+  JOIN openalex.pdf.backfill_award_matches l
+    ON l.work_id = s.work_id AND l.funder_id = s.funder_id AND l.all_sections = s.all_sections
+    AND startswith(l.funder_award_id, s.funder_award_id)
+    AND substr(l.funder_award_id, LENGTH(s.funder_award_id) + 1) RLIKE '^(?!/[A-Za-z ]+(/|$))(?!/[A-Za-z]{2,}-)(?!.*10\\.13039)(?!.*/[A-Z][0-9]{4}$)(?!.*[a-z].*[a-z])(?!.*[A-Z]{4}$)[.\\-/]?(?=[0-9A-Za-z]).*[0-9]'
+  GROUP BY s.work_id, s.funder_id, s.funder_award_id, s.all_sections, s.award_match_pattern
+  HAVING NOT bool_or(s.from_funder_feed)
+    AND NOT s.all_sections RLIKE CONCAT(s.award_match_pattern, '(?!(?:',
+      array_join(collect_set(regexp_replace(substr(l.funder_award_id, LENGTH(s.funder_award_id) + 1), '([\\[\\](){}+*?^$.|\\\\])', '\\\\$1')), '|'),
+      ')\\b)')
+),
+standalone_awards AS (
+  -- A number that papers cite on its own at least as often as inside a longer number is a real number, and the longer
+  -- form is that number plus a code ("81171037/H0903", "639088/ERC-2014-STG"). Counted per paper over the match table:
+  -- the number's own rows and every number that starts with it, so dropping a nested row never changes the count.
+  SELECT funder_id, funder_award_id
+  FROM (
+    SELECT /*+ BROADCAST(n) */ n.funder_id, n.funder_award_id, g.paper_id,
+      bool_or(g.funder_award_id = n.funder_award_id
+        AND g.funding_sections RLIKE CONCAT(n.award_match_pattern, '(?![.\\-/]?[0-9A-Za-z])')) AS alone
+    FROM (SELECT DISTINCT funder_id, funder_award_id, award_match_pattern FROM nested_awards) n
+    JOIN openalex.pdf.grobid_award_matches g
+      ON g.funder_id = n.funder_id AND startswith(g.funder_award_id, n.funder_award_id)
+    GROUP BY n.funder_id, n.funder_award_id, g.paper_id
+  )
+  GROUP BY funder_id, funder_award_id
+  HAVING count_if(alone) >= count_if(NOT alone)
+),
+cut_short_awards AS (
+  SELECT n.work_id, n.funder_id, n.funder_award_id, n.all_sections
+  FROM nested_awards n
+  LEFT ANTI JOIN standalone_awards k
+    ON n.funder_id = k.funder_id AND n.funder_award_id = k.funder_award_id
+)
+SELECT
+  m.work_id AS paper_id,
+  m.funder_id,
+  m.funder_award_id,
+  m.all_sections AS funding_sections,
+  now() AS batch_time
+FROM openalex.pdf.backfill_award_matches m
+LEFT ANTI JOIN cut_short_awards x
+  ON m.work_id = x.work_id AND m.funder_id = x.funder_id
+  AND m.funder_award_id = x.funder_award_id AND m.all_sections = x.all_sections
 LEFT ANTI JOIN openalex.pdf.grobid_award_matches g
-  ON pfs.work_id = g.paper_id
-  AND ua.funder_id = g.funder_id
-  AND ua.funder_award_id = g.funder_award_id;
+  ON m.work_id = g.paper_id
+  AND m.funder_id = g.funder_id
+  AND m.funder_award_id = g.funder_award_id;
 
 -- COMMAND ----------
 

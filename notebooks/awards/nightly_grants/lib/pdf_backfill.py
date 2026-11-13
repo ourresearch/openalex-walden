@@ -28,6 +28,8 @@ any error holds the funders being processed and is reported in counts.
 """
 import json
 
+from work_awards import DEPOSITED
+
 LEDGER_COLUMNS = ("funder_id BIGINT, sources ARRAY<STRING>, first_seen_run STRING, backfill_run STRING, pairs_found BIGINT, "
                   "status STRING, detail STRING, updated_at TIMESTAMP")
 # Budget: 4e9 checks per funder (measured 09-25 on the FCT pilot). The night's total is 4e9 too, not the pilot's 6e9: the match
@@ -79,8 +81,9 @@ def due_funders(c, s, raw):
 
 
 def match_sql(c, funders_view, t):
-    """BackfillPdfAwardMatches.sql steps 1-3 for the funders in `funders_view` (column funder_id_numeric). Returns the SELECT of
-    NEW rows (paper_id, funder_id, funder_award_id, funding_sections) for target table t['grobid']."""
+    """BackfillPdfAwardMatches.sql steps 1-3 for the funders in `funders_view` (column funder_id_numeric). The costly match is
+    built once as `pdfbf_matches`. Returns the SELECT of NEW rows (paper_id, funder_id, funder_award_id, funding_sections)
+    for target table t['grobid'], which reads `pdfbf_matches` several times."""
     r = c.r
     # names that can matter: the due funders' own names, and any name containing one (only those can cover a due funder's name)
     c.artifact("pdfbf_names", f"""SELECT DISTINCT a.id,a.name FROM {t['funder_names_keep']} a
@@ -104,7 +107,7 @@ def match_sql(c, funders_view, t):
         FROM xmls)
       SELECT DISTINCT work_id,concat_ws(' ',funders,acknowledgement,funding) AS all_sections FROM raw_sections
       WHERE funders!='' OR acknowledgement!='' OR funding!=''""")
-    return f"""WITH funder_regexes AS (
+    c.artifact("pdfbf_matches", f"""WITH funder_regexes AS (
         SELECT fnk.name AS funder_name,fnk.id AS funder_id,CAST(regexp_extract(fnk.id,'F(\\\\d+)',1) AS BIGINT) AS funder_id_numeric,
           fa.display_name AS funder_display_name,fa.ids.ror AS ror_id,fa.ids.doi AS doi,
           CONCAT(
@@ -142,6 +145,8 @@ def match_sql(c, funders_view, t):
         UNION ALL SELECT fa.id AS funder_id,alt_name FROM {t['funders_api']} fa JOIN {funders_view} bf ON fa.id=bf.funder_id_numeric
         LATERAL VIEW explode(fa.alternate_titles) alt AS alt_name),
       candidate_awards AS (SELECT oa.funder_id,oa.funder_award_id,
+          bool_or(NOT COALESCE(oa.provenance IN {DEPOSITED},false))
+            OVER (PARTITION BY oa.funder_id,oa.funder_award_id) AS from_funder_feed,
           CONCAT('\\\\b',regexp_replace(oa.funder_award_id,'([\\\\[\\\\](){{}}+*?^$.|\\\\\\\\])','\\\\\\\\$1'),'\\\\b') AS award_match_pattern
         FROM {t['awards']} oa JOIN {funders_view} bf ON oa.funder_id=bf.funder_id_numeric
         WHERE openalex.common.is_usable_award_id(oa.funder_award_id)),
@@ -152,9 +157,29 @@ def match_sql(c, funders_view, t):
       paper_funder_sections AS (SELECT /*+ REPARTITION(512, work_id) */ s.work_id,tw.funder_id_numeric,s.all_sections
         FROM {r}pdfbf_sections s JOIN {r}pdfbf_target_works tw ON tw.work_id=s.work_id
         LEFT ANTI JOIN suppressed_funder_windows x ON s.work_id=x.work_id AND s.all_sections=x.all_sections AND tw.funder_id_numeric=x.funder_id_numeric)
-    SELECT /*+ BROADCAST(ua) */ DISTINCT pfs.work_id AS paper_id,ua.funder_id,ua.funder_award_id,pfs.all_sections AS funding_sections
-    FROM usable_awards ua JOIN paper_funder_sections pfs ON pfs.funder_id_numeric=ua.funder_id AND pfs.all_sections RLIKE ua.award_match_pattern
-    LEFT ANTI JOIN {t['grobid']} g ON pfs.work_id=g.paper_id AND ua.funder_id=g.funder_id AND ua.funder_award_id=g.funder_award_id"""
+    SELECT /*+ BROADCAST(ua) */ DISTINCT pfs.work_id,ua.funder_id,ua.funder_award_id,ua.from_funder_feed,ua.award_match_pattern,pfs.all_sections
+        FROM usable_awards ua JOIN paper_funder_sections pfs ON pfs.funder_id_numeric=ua.funder_id AND pfs.all_sections RLIKE ua.award_match_pattern""")
+    return f"""WITH nested_awards AS (SELECT s.work_id,s.funder_id,s.funder_award_id,s.all_sections,s.award_match_pattern FROM {r}pdfbf_matches s
+        JOIN {r}pdfbf_matches l ON l.work_id=s.work_id AND l.funder_id=s.funder_id AND l.all_sections=s.all_sections
+          AND startswith(l.funder_award_id,s.funder_award_id)
+          AND substr(l.funder_award_id,LENGTH(s.funder_award_id)+1) RLIKE '^(?!/[A-Za-z ]+(/|$))(?!/[A-Za-z]{{2,}}-)(?!.*10\\\\.13039)(?!.*/[A-Z][0-9]{{4}}$)(?!.*[a-z].*[a-z])(?!.*[A-Z]{{4}}$)[.\\\\-/]?(?=[0-9A-Za-z]).*[0-9]'
+        GROUP BY s.work_id,s.funder_id,s.funder_award_id,s.all_sections,s.award_match_pattern
+        HAVING NOT bool_or(s.from_funder_feed) AND NOT s.all_sections RLIKE CONCAT(s.award_match_pattern,'(?!(?:',
+          array_join(collect_set(regexp_replace(substr(l.funder_award_id,LENGTH(s.funder_award_id)+1),'([\\\\[\\\\](){{}}+*?^$.|\\\\\\\\])','\\\\\\\\$1')),'|'),')\\\\b)')),
+      standalone_awards AS (SELECT funder_id,funder_award_id FROM (
+          SELECT /*+ BROADCAST(n) */ n.funder_id,n.funder_award_id,g.paper_id,
+            bool_or(g.funder_award_id=n.funder_award_id
+              AND g.funding_sections RLIKE CONCAT(n.award_match_pattern,'(?![.\\\\-/]?[0-9A-Za-z])')) AS alone
+          FROM (SELECT DISTINCT funder_id,funder_award_id,award_match_pattern FROM nested_awards) n
+          JOIN {t['grobid']} g ON g.funder_id=n.funder_id AND startswith(g.funder_award_id,n.funder_award_id)
+          GROUP BY n.funder_id,n.funder_award_id,g.paper_id)
+        GROUP BY funder_id,funder_award_id HAVING count_if(alone)>=count_if(NOT alone)),
+      cut_short_awards AS (SELECT n.work_id,n.funder_id,n.funder_award_id,n.all_sections FROM nested_awards n
+        LEFT ANTI JOIN standalone_awards k ON n.funder_id=k.funder_id AND n.funder_award_id=k.funder_award_id)
+    SELECT m.work_id AS paper_id,m.funder_id,m.funder_award_id,m.all_sections AS funding_sections
+    FROM {r}pdfbf_matches m LEFT ANTI JOIN cut_short_awards x ON m.work_id=x.work_id AND m.funder_id=x.funder_id
+      AND m.funder_award_id=x.funder_award_id AND m.all_sections=x.all_sections
+    LEFT ANTI JOIN {t['grobid']} g ON m.work_id=g.paper_id AND m.funder_id=g.funder_id AND m.funder_award_id=g.funder_award_id"""
 
 
 def run(c):
