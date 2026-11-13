@@ -35,7 +35,7 @@ dbutils.widgets.text("reembed_cap", "0")            # re-embedded works per nigh
 dbutils.widgets.text("max_queries", "3000000")      # guardrail: refuse an absurd night before scanning
 dbutils.widgets.text("nprobe", "32")
 dbutils.widgets.text("exact_sample", "200")         # queries also searched exactly, for tonight's recall@10
-dbutils.widgets.text("min_recall", "0.85")          # dry run 29 Oct: 0.927 on 2,000 (backfill r2 GPU, 8-bit codes: 0.823);
+dbutils.widgets.text("min_recall", "0.85")          # recall counting ties (step 5). Dry run 29 Oct: 0.927 on 2,000 (backfill r2 GPU, 8-bit codes: 0.823);
                                                     # a 200-query sample moves ~0.015, so 0.85 trips only on a real fault
 dbutils.widgets.text("append_vectors", "true")
 dbutils.widgets.text("check_sample", "0")           # tests only: recompute this many backfill works (never written) and
@@ -309,21 +309,34 @@ step(f"scan done in {stats['scan_min']} min")
 
 # 5. Recall@10 on the exact sample: the scan's top 10 (same candidate rules, before title / venue rules) vs exact top 10.
 #    kind=1 rows carry the sample's position in S as qi.
+#    The gate reads recall10 counting ties (oxjob #2194, 13 Nov 2026; the usual ANN-benchmark definition): a scan
+#    candidate is a hit when it scores at least the exact 10th score (less 1e-4 for float sums in a different order).
+#    Works with the same text have the same vector, so when 16 back covers or tables of contents tie at 1.0 the exact
+#    top 10 is an arbitrary 10 of them, and the old count (same ids only) scored a perfect scan 0. That stopped the
+#    12 and 13 Nov runs (0.8395, 0.834 on J-STAGE back issues) while recall counting ties was 0.903 on 13 Nov.
+#    recall10_ids keeps the old count in the log.
 spark.createDataFrame(pd.DataFrame({"si": np.arange(len(S), dtype=np.int32), "qi": S.astype(np.int32)})) \
     .createOrReplaceTempView("rw_smap")
 rec = spark.sql(f"""
-WITH ivf AS (SELECT qi, cand FROM (SELECT qi, cand, MAX(score) s FROM {PARTS} WHERE kind = 0 GROUP BY qi, cand)
+WITH ivf AS (SELECT qi, cand, s FROM (SELECT qi, cand, MAX(score) s FROM {PARTS} WHERE kind = 0 GROUP BY qi, cand)
              QUALIFY ROW_NUMBER() OVER (PARTITION BY qi ORDER BY s DESC) <= 10),
-ex AS (SELECT m.qi, x.cand FROM (SELECT qi AS si, cand, MAX(score) s FROM {PARTS} WHERE kind = 1 GROUP BY qi, cand) x
+ex AS (SELECT m.qi, x.cand, x.s FROM (SELECT qi AS si, cand, MAX(score) s FROM {PARTS} WHERE kind = 1 GROUP BY qi, cand) x
        JOIN rw_smap m ON m.si = x.si
-       QUALIFY ROW_NUMBER() OVER (PARTITION BY m.qi ORDER BY x.s DESC) <= 10)
-SELECT COUNT(DISTINCT ex.qi) n, COUNT(ivf.cand) / (10 * COUNT(DISTINCT ex.qi)) recall10
-FROM ex LEFT JOIN ivf ON ivf.qi = ex.qi AND ivf.cand = ex.cand
+       QUALIFY ROW_NUMBER() OVER (PARTITION BY m.qi ORDER BY x.s DESC) <= 10),
+ex_last AS (SELECT qi, MIN(s) s_last, COUNT(*) n_ex FROM ex GROUP BY qi),
+by_ids AS (SELECT COUNT(ivf.cand) hits FROM ex LEFT JOIN ivf ON ivf.qi = ex.qi AND ivf.cand = ex.cand),
+by_ties AS (SELECT SUM(LEAST(t.n_ex, h.n)) hits
+            FROM ex_last t JOIN (SELECT i.qi, COUNT(*) n FROM ivf i JOIN ex_last l ON l.qi = i.qi
+                                 WHERE i.s >= l.s_last - 1e-4 GROUP BY i.qi) h ON h.qi = t.qi)
+SELECT (SELECT COUNT(*) FROM ex_last) n,
+       (SELECT hits FROM by_ids) / (10 * (SELECT COUNT(*) FROM ex_last)) recall10_ids,
+       COALESCE((SELECT hits FROM by_ties), 0) / (10 * (SELECT COUNT(*) FROM ex_last)) recall10
 """)
 r = rec.first()
 stats["recall10"] = None if r.recall10 is None else round(float(r.recall10), 4)
+stats["recall10_ids"] = None if r.recall10_ids is None else round(float(r.recall10_ids), 4)
 stats["recall_n"] = int(r.n)
-step(f"recall@10 = {stats['recall10']} on {r.n} sampled queries (bar {MIN_RECALL})")
+step(f"recall@10 = {stats['recall10']} counting ties ({stats['recall10_ids']} same ids) on {r.n} sampled queries (bar {MIN_RECALL})")
 
 # COMMAND ----------
 
