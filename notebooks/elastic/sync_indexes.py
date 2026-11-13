@@ -48,7 +48,7 @@ print("Hash snapshot complete")
 # MAGIC         ('crossref', 'Crossref', 'Crossref, the largest DOI registration agency, indexing scholarly journal articles, books, and conference proceedings'),
 # MAGIC         ('pubmed',   'PubMed',   'PubMed, the National Library of Medicine''s index of biomedical and life sciences literature'),
 # MAGIC         ('datacite', 'DataCite', 'DataCite, a DOI registration agency focused on research data and other non-traditional scholarly outputs'),
-# MAGIC         ('doaj',     'DOAJ',     'DOAJ, the Directory of Open Access Journals, a curated index of peer-reviewed open access journals'),
+# MAGIC         ('doaj',     'DOAJ',     'The article index of DOAJ, the Directory of Open Access Journals: works DOAJ holds an article record of. Whether a journal is on the DOAJ journal list is a different attribute, is_in_doaj on the source'),
 # MAGIC         ('arxiv',    'arXiv',    'arXiv, the open-access preprint repository for physics, mathematics, computer science, and related fields')
 # MAGIC     AS t(id, display_name, description)
 # MAGIC ),
