@@ -458,6 +458,9 @@ resources:
             - task_key: Optimize_Works_Enriched
           notebook_task:
             notebook_path: notebooks/end2end/Guardrails
+            base_parameters:
+              # oxjob #1642 (13 Nov 2026): Check 1 counts every stamp since the run started (a repair keeps this value)
+              run_start: "{{job.start_time.iso_datetime}}"
             source: GIT
         # oxjob #784: ledger works that vanished from openalex_works. Runs after
         # Guardrails so a pathological run is stopped before it can ledger the loss.
