@@ -10,9 +10,9 @@
 # MAGIC **Source**: `openalex.works.locations_mapped`
 # MAGIC **Target**: `s3://openalex-pdfs/_manifest/content_index/` (R2 via S3 API)
 # MAGIC
-# MAGIC **Switch** (oxjob #1958): from the 2026-11-16 run `content_index/` holds one row per work location that has
+# MAGIC **Switch** (oxjob #1958): from the 2026-11-23 run `content_index/` holds one row per work location that has
 # MAGIC a file (work ids repeat), the same six columns plus `version` and `is_primary` (rule in `utils/content_files.py`).
-# MAGIC `_manifest/content_index_preview/` has held that layout since 2026-11-02 and is written until the 2026-11-22 run.
+# MAGIC `_manifest/content_index_preview/` has held that layout since 2026-11-02 and is written until the 2026-11-29 run.
 # MAGIC Each folder holds one file, `manifest.parquet`, replaced in full by each run (one upload, so never empty or partial).
 # MAGIC
 # MAGIC Output is one Parquet file:
@@ -43,8 +43,8 @@ R2_ENDPOINT = f"https://{CF_ACCOUNT_ID}.r2.cloudflarestorage.com"
 R2_BUCKET = "openalex-pdfs"
 R2_PREFIX = "_manifest/content_index"
 R2_PREVIEW_PREFIX = "_manifest/content_index_preview"
-SWITCH_DATE = date(2026, 11, 16)  # content_index/ takes the per-location layout (oxjob #1958)
-PREVIEW_END = date(2026, 11, 23)  # content_index_preview/ is no longer written from this run
+SWITCH_DATE = date(2026, 11, 23)  # content_index/ takes the per-location layout (oxjob #1958)
+PREVIEW_END = date(2026, 11, 30)  # content_index_preview/ is no longer written from this run
 
 R2_ACCESS_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-access-key-id")
 R2_SECRET_KEY = dbutils.secrets.get(scope="cloudflare", key="r2-secret-access-key")
