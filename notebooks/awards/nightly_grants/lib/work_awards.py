@@ -19,6 +19,7 @@ LEGS = [('work_funder','paper_id','award_ids',True,1,False,False),
         ('datacite_work_funders','work_id','award_ids',True,4,True,False),
         ('europepmc_work_funders','work_id','award_ids',True,4,True,False),
         ('kaken_work_funders','work_id','award_ids',True,3,False,False),
+        ('fwf_work_funders','work_id','award_ids',True,3,False,False),   # FWF's own output lists (oxjob #1765)
         ('relink','work_id','target_award_id',False,4,True,True),
         (list_legs.NUMBER_LEG,'work_id','number',False,4,True,True)]   # number-kind ADD lists (list_legs.py), registry mode like relink
 

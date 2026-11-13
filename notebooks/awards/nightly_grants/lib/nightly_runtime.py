@@ -28,7 +28,7 @@ WRITE_TARGET = re.compile(r"\s*(?:CREATE (?:OR REPLACE )?TABLE|MERGE INTO|UPDATE
 REQUIRED_INPUTS = {
     "raw", "gtr", "crossref", "datacite", "crossref_grants", "datacite_items", "funders", "awards", "aliases",
     "works", "topics", "keywords", "sdgs", "work_funder", "grobid", "crossref_work_funders", "nwo_work_funders", "anr_work_funders",
-    "datacite_work_funders", "europepmc_work_funders", "kaken_work_funders", "relink", "affiliation_lookup",
+    "datacite_work_funders", "europepmc_work_funders", "kaken_work_funders", "fwf_work_funders", "relink", "affiliation_lookup",
     "institutions_api", "previous_api", "merged_work_ids", "kaken_projects",
 }
 DERIVED = {"crossref_records", "datacite_records", "funder_map", "normalization", "normalization_work", "continuity",

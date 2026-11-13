@@ -11,6 +11,9 @@ resources:
         (additive only; never drops a previously served pair). Split out of
         CreateHakaiWorkFunders so this table can stay fresh nightly without also
         forcing Hakai_Work_Funders's PAUSED-by-design on-demand scrape steps to run.
+        Also runs create_fwf_work_funders (oxjob #1765), independent of the union task:
+        FWF's output lists -> openalex.awards.fwf_work_funders, a Nightly Grants leg that
+        drops the links FWF removes.
       schedule:
         # 02:30 UTC — after DataCite_Work_Funders (02:00 UTC, the only input to this union
         # with a live nightly feed; it commits in ~45 s, measured 2026-08-24), before
@@ -30,6 +33,19 @@ resources:
             notebook_path: notebooks/awards/CreateFunderReportedWorkFunders
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        # FWF's output lists -> openalex.awards.fwf_work_funders, a Nightly Grants leg (oxjob #1765). Independent of the
+        # task above (no depends_on: either can fail without stopping the other). Not in that task's union, which never
+        # drops a pair: FWF deletions must drop. Daily, but a run whose FWF object is the one the last finished run read
+        # writes nothing (seconds); the weekly fetch writes a new object on Mondays.
+        - task_key: create_fwf_work_funders
+          notebook_task:
+            notebook_path: notebooks/awards/CreateFWFWorkAwards
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+          timeout_seconds: 3600
+          email_notifications:
+            on_failure:
+              - rohan@openalex.org
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub

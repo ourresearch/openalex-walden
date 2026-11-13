@@ -48,6 +48,7 @@
     "datacite_work_funders": "openalex.awards.datacite_work_funders",
     "europepmc_work_funders": "openalex.awards.europepmc_work_funders",
     "kaken_work_funders": "openalex.awards.kaken_work_funders",
+    "fwf_work_funders": "openalex.awards.fwf_work_funders",
     "relink": "openalex.awards.award_relink_map",
     "kaken_projects": "openalex.awards.kaken_projects_raw",
     "affiliation_lookup": "openalex.institutions.affiliation_strings_lookup",
