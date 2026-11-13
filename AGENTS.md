@@ -45,6 +45,12 @@ Morning after any walden ship, check the End 2 End result before reading any "af
 acceptance test. Step-by-step (front-load the upstream job, pre-clear, morning checks, the manual-run
 fallback): `docs/runbooks/end2end-guardrails-override.md`.
 
+## GPU batch when AWS GPUs are short
+
+For a big one-off GPU job (embeddings, model scoring) that AWS can't supply GPUs for, run it on Modal and land the results
+through S3 with a per-job keyless IAM role: `docs/runbooks/modal-gpu-batch-via-s3.md`, code in `scripts/modal_s3_batch/`
+(oxjob #2000, 13 Nov 2026: 1.62B texts on ~50 H100s in ~2.5 h after us-east-1 ran out of L40S/A100/H100).
+
 ## Landing Page & PDF Integration
 
 Landing page and PDF data get merged into crossref/repo records at two pipeline stages:

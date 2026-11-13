@@ -1,0 +1,66 @@
+# Per-job IAM role for a Modal GPU batch that reads and writes ONE S3 prefix, with no stored key: the Modal containers
+# present their OIDC token (MODAL_IDENTITY_TOKEN) to the provider oidc.modal.com, which already exists in this account
+# (precedents: argus-offdesk-readonly #1831, oxjob2000-modal-refemb #2000). Runbook: docs/runbooks/modal-gpu-batch-via-s3.md
+#
+# Deploy (an AWS admin; on the mini, one phone code):
+#   aws-mini-admin <code> cloudformation deploy --template-file scripts/modal_s3_batch/role.yaml \
+#     --stack-name <job>-modal-s3 --capabilities CAPABILITY_NAMED_IAM \
+#     --parameter-overrides RoleName=<job>-modal-s3 AppName=<modal app name> Prefix=<job>/<task>
+# Remove after the run (one more code): aws-mini-admin <code> cloudformation delete-stack --stack-name <job>-modal-s3
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Modal app AppName reads/writes s3://Bucket/Prefix/ only (OIDC, no key)"
+Parameters:
+  RoleName:
+    Type: String
+    Description: "e.g. oxjob2000-modal-refemb"
+  AppName:
+    Type: String
+    Description: "The modal.App(...) name; only that app's functions can assume the role"
+  Prefix:
+    Type: String
+    AllowedPattern: "^[a-z0-9][a-z0-9_./-]*[a-z0-9]$"
+    Description: "Prefix inside the bucket, no leading or trailing slash, e.g. oxjob2000/refemb"
+  Bucket:
+    Type: String
+    Default: openalex-sandbox
+    Description: "Must be a bucket Databricks can read (openalex-sandbox has a Unity Catalog external location)"
+  ModalWorkspaceId:
+    Type: String
+    Default: ac-y1mqNX3ygQK2Qujkqwnkvf
+    Description: "Modal workspace id from the token's sub claim (modal run app.py::ident)"
+Resources:
+  ModalS3Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: !Sub "Modal app ${AppName} (workspace ${ModalWorkspaceId}): s3://${Bucket}/${Prefix}/ only"
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.modal.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "oidc.modal.com:aud": oidc.modal.com
+              StringLike:
+                "oidc.modal.com:sub": !Sub "modal:workspace_id:${ModalWorkspaceId}:environment_name:main:app_name:${AppName}:*"
+      Policies:
+        - PolicyName: one-prefix-only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub "arn:aws:s3:::${Bucket}/${Prefix}/*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${Bucket}"
+                Condition:
+                  StringLike:
+                    "s3:prefix": [!Sub "${Prefix}/*"]
+Outputs:
+  RoleArn:
+    Value: !GetAtt ModalS3Role.Arn
