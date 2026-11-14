@@ -3,6 +3,8 @@
 -- nt: normalized title (markup stripped, common accents folded, letters/digits only)
 -- akey: first-author "initial surname"; bands: 6 MinHash bands (2 rows each) over title tokens >= 3 chars minus stopwords
 -- keys: identity keys of the work and all its locations (d: DOI, p: PMID, u: URL, n: repository native id)
+-- oxjob #2065: a minted data-series work (a location of provenance `openalex-series`) is never a candidate: no record is
+-- a copy of it (its children are linked in CreateWorkParents), and features.sql keeps only pairs whose work is in this table.
 CREATE OR REPLACE TABLE openalex.works.location_work_match_keys AS
 WITH b AS (
   SELECT id, publication_year AS yr,
@@ -14,6 +16,7 @@ WITH b AS (
       'AAAAAACEEEEIIIINOOOOOOUUUUYaaaaaaceeeeiiiinoooooouuuuyy')) AS a0,
     ids, locations
   FROM openalex.works.openalex_works VERSION AS OF __V__
+  WHERE NOT exists(locations, l -> l.provenance = 'openalex-series')
 ),
 n AS (
   SELECT id, yr, nt, ids, locations,
