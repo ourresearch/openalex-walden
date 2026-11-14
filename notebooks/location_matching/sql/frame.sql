@@ -3,11 +3,13 @@
 -- when the shadow measured the model: a record declaring a version / preprint link to a record minting or bound tonight (it binds
 -- to that work in assign_work_ids' second pass), and a record whose only identifiers are a new PMID or arXiv id (it mints on them).
 -- `decision` / `work_id` say what the title rule would have done (title_bind = its pick, the matcher's `bound` input).
+-- oxjob #2065: a minted data-series record (provenance `openalex-series`, written by CreateLocationsWithTypes) is never given to
+-- the matcher: no source names that work, so it mints on its own synthetic key in assign_work_ids and can match nothing.
 CREATE OR REPLACE TABLE openalex.works.location_work_match_frame AS
 WITH v AS (SELECT * FROM __VERDICTS__),
 f AS (
   SELECT s.* FROM v s
-  WHERE s.first_sight AND s.work_id IS NULL
+  WHERE s.first_sight AND s.work_id IS NULL AND s.provenance <> 'openalex-series'
     AND (s.title_pick IS NOT NULL OR (
     NOT (s.doi IS NULL AND (s.pmid IS NOT NULL OR s.arxiv IS NOT NULL))
     AND NOT EXISTS (
