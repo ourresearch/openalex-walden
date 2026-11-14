@@ -7,6 +7,11 @@ CREATE OR REPLACE TABLE openalex.works.location_work_match_frame AS
 WITH v AS (SELECT * FROM __VERDICTS__),
 f AS (
   SELECT s.* FROM v s
+  -- oxjob #2065: a Crossref component admitted as a work (notebooks/ingest/CreateCrossrefComponentWorks) never goes to the
+  -- matcher: it carries no title key and no authors, its parent is known from its DOI, and the 7.5M of the backfill night are
+  -- ~75x a night's frame. Left without a decision, it mints on its own DOI in assign_work_ids like any unmatched DOI record.
+  LEFT ANTI JOIN openalex.crossref.crossref_component_works cw
+    ON s.provenance = 'crossref' AND s.native_id_namespace = 'doi' AND cw.native_id = s.native_id
   WHERE s.first_sight AND s.work_id IS NULL
     AND (s.title_pick IS NOT NULL OR (
     NOT (s.doi IS NULL AND (s.pmid IS NOT NULL OR s.arxiv IS NOT NULL))
