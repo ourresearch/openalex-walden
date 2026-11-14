@@ -3,8 +3,11 @@
 -- nt: normalized title (markup stripped, common accents folded, letters/digits only)
 -- akey: first-author "initial surname"; bands: 6 MinHash bands (2 rows each) over title tokens >= 3 chars minus stopwords
 -- keys: identity keys of the work and all its locations (d: DOI, p: PMID, u: URL, n: repository native id)
--- oxjob #2065: a minted data-series work (a location of provenance `openalex-series`) is never a candidate: no record is
--- a copy of it (its children are linked in CreateWorkParents), and features.sql keeps only pairs whose work is in this table.
+-- oxjob #2065: a minted data-series work (a location of provenance `openalex-series`) and a Crossref component admitted as a
+-- work (a figure, table or supporting file titled "Figure 2 of <article title>") are never candidates: no record is a copy
+-- of either (their parents are linked in CreateWorkParents), a component's made-up title would block it with every new copy
+-- of its article, and features.sql keeps only pairs whose work is in this table. coalesce: a NULL raw_type must not make
+-- exists() NULL and drop the work.
 CREATE OR REPLACE TABLE openalex.works.location_work_match_keys AS
 WITH b AS (
   SELECT id, publication_year AS yr,
@@ -16,7 +19,7 @@ WITH b AS (
       'AAAAAACEEEEIIIINOOOOOOUUUUYaaaaaaceeeeiiiinoooooouuuuyy')) AS a0,
     ids, locations
   FROM openalex.works.openalex_works VERSION AS OF __V__
-  WHERE NOT exists(locations, l -> l.provenance = 'openalex-series')
+  WHERE NOT exists(locations, l -> coalesce(l.provenance = 'openalex-series' OR (l.provenance = 'crossref' AND l.raw_type = 'component'), false))
 ),
 n AS (
   SELECT id, yr, nt, ids, locations,
