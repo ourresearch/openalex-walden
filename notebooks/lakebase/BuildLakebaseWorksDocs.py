@@ -407,6 +407,9 @@ df_transformed = (
         F.col("is_xpac"),
         F.col("biblio"),
         F.col("volume"),
+        F.col("parent_works"),  # oxjob #2065
+        F.col("lineage"),
+        F.col("child_works_count"),
         F.col("referenced_works"),
         F.col("referenced_works_count"),
         F.coalesce(F.col("related_works"), F.lit([])).alias("related_works"),

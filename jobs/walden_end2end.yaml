@@ -237,6 +237,18 @@ resources:
             notebook_path: notebooks/end2end/CreateWorksBase
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        # oxjob #2065: which works each work is part of (chapter -> book, DataCite IsPartOf): parent_works, lineage,
+        # child_works_count, merged onto the work by Works_Enriched. Needs tonight's live works, types and titles, so it
+        # follows Works_Base. ~3 min on a 4X-Large; off the critical path (the author steps take hours).
+        - task_key: Work_Parents
+          timeout_seconds: 1800
+          max_retries: 1
+          depends_on:
+            - task_key: Works_Base
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateWorkParents
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
         # oxjob #2006: one "merged away -> live winner" map for every reader inside the night. Built from tonight's live
         # set (openalex_works_base) once all of the day's merges and MergeDeclaredLinks' are in merged_work_ids; the
         # snapshot's refresh_merged_works_map rebuilds it after Track_Deleted_Works (adds tonight's auto_emptied rows) and
@@ -440,6 +452,8 @@ resources:
             - task_key: parse_referenced_works
             # cells 5-6 redirect citations through merged_work_ids_map (oxjob #2006)
             - task_key: Merged_Work_Ids_Map
+            # the parent/child merge reads work_parents (oxjob #2065)
+            - task_key: Work_Parents
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT
