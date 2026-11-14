@@ -75,6 +75,9 @@ if spark.catalog.tableExists(QUEUE) and not DRY:
 # COMMAND ----------
 
 scorable = "(length(trim(w.title)) > 0 OR length(w.abstract) > 0)"   # = the corpus export filter
+# oxjob #2065: a Crossref component (a figure, table or file of an article) has a made-up title, "Figure 2 of <its article's
+# title>": its topics would be its article's again, and the 7.5M of the backfill night would fill the queue for three nights
+scorable += " AND NOT coalesce(w.primary_location.provenance = 'crossref' AND w.primary_location.raw_type = 'component', false)"
 # new = no row yet; rescore = a row scored on other text (oxjob #2085), or forced (every served work in FORCE)
 changed = "true" if FORCE_RESCORE else "served_key IS NOT NULL AND served_key <> text_key"
 cand = f"""SELECT * FROM (

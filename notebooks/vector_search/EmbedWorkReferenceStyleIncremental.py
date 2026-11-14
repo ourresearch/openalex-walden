@@ -87,6 +87,7 @@ WITH recent AS (
   FROM {W} w
   WHERE w.updated_date >= current_timestamp() - INTERVAL {LOOKBACK_DAYS} DAYS
     AND w.title IS NOT NULL AND length(trim(w.title)) > 0
+    AND NOT coalesce(w.primary_location.provenance = 'crossref' AND w.primary_location.raw_type = 'component', false)  -- oxjob #2065: a Crossref component's title is made up from its article's
 ),
 changed AS (
   SELECT r.*, 'changed' AS reason
@@ -100,6 +101,7 @@ missing AS (
   LEFT ANTI JOIN {DST} d ON d.work_id = w.id
   WHERE (w.updated_date IS NULL OR w.updated_date < current_timestamp() - INTERVAL {LOOKBACK_DAYS} DAYS)
     AND w.title IS NOT NULL AND length(trim(w.title)) > 0
+    AND NOT coalesce(w.primary_location.provenance = 'crossref' AND w.primary_location.raw_type = 'component', false)  -- oxjob #2065: a Crossref component's title is made up from its article's
 ),
 cand AS (SELECT * FROM changed UNION ALL SELECT * FROM missing)
 SELECT cand.*, CAST((row_number() OVER (ORDER BY work_id) - 1) / {CHUNK_ROWS} AS INT) AS chunk

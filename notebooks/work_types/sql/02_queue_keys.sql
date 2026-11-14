@@ -6,6 +6,9 @@ CREATE OR REPLACE TEMP VIEW wt_live AS
 SELECT id AS work_id
 FROM openalex.works.openalex_works_base
 WHERE (${include_xpac} OR coalesce(is_xpac, false) = false)
-  AND (${chunks} = 1 OR pmod(id, ${chunks}) = ${chunk});
+  AND (${chunks} = 1 OR pmod(id, ${chunks}) = ${chunk})
+  -- oxjob #2065: a Crossref component is typed by its record (supplementary-materials, or peer-review for a PLOS review
+  -- letter) in CreateLocationsWithTypes; the student has only a made-up title to read, so it is never asked
+  AND NOT coalesce(primary_location.provenance = 'crossref' AND primary_location.raw_type = 'component', false);
 
 CREATE OR REPLACE TEMP VIEW wt_work_set AS SELECT work_id FROM wt_live;
