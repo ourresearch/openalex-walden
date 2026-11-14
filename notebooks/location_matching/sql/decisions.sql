@@ -4,6 +4,10 @@
 -- that are copies of it reaches 0.910 (qwen_copy_bind, location_work_match_copy_sums from WriteDecisions, 2026-11-01), else mint. No fallback (Casey 2026-10-26): every record at >= 0.01 has a Qwen score or the run has already failed,
 -- with one named exception (Casey 2026-10-27): qwen_over_cap = the record's prompt fills the token cap before its first
 -- candidate, so Qwen saw nothing to compare; it mints. A record with no Qwen row at all is qwen_missing and fails the night.
+-- Same page (oxjob #2026, 2026-11-14): where the model would mint a repository record whose page sits on exactly one work through
+-- its repository or MAG copy with the same title (location_work_match_pages, pages.sql), bind that work (layer page_bind); a model
+-- bind is never overridden. Replay on night 11-14: the rule fired on 21,433 records; where the model bound, it picked the same work
+-- for 20,926 of 20,980; the 453 it minted are the copies #2026's cleanups merged by hand.
 -- A model bind only ever names a work that existed before the run. cmp: same_bind / both_mint / other_work (both bind, different works) / model_mints
 -- (the nightly binds, the model mints) / model_binds (the nightly mints or parks, the model binds). rule_pick = the model's work
 -- is the title tier's own pick; emb_only = the model's work came only from the embedding neighbours.
@@ -41,8 +45,13 @@ d AS (
   LEFT JOIN x USING (seed_id) LEFT JOIN q USING (seed_id)
   LEFT JOIN openalex.works.location_work_match_copy_sums c ON c.seed_id = s.seed_id
 ),
+p AS (
+  SELECT d.* EXCEPT (layer), pg.work_id AS p_cid,
+    CASE WHEN pg.work_id IS NOT NULL AND d.layer IN ('no_candidates', 'xgb_mint', 'qwen_over_cap', 'qwen_mint') THEN 'page_bind' ELSE d.layer END AS layer
+  FROM d LEFT JOIN openalex.works.location_work_match_pages pg ON pg.seed_id = d.seed_id
+),
 m AS (
-  SELECT d.*, CASE layer WHEN 'qwen_bind' THEN q_cid WHEN 'qwen_copy_bind' THEN c_cid END AS model_work FROM d
+  SELECT p.*, CASE layer WHEN 'qwen_bind' THEN q_cid WHEN 'qwen_copy_bind' THEN c_cid WHEN 'page_bind' THEN p_cid END AS model_work FROM p
 )
 SELECT DATE'__NIGHT__', '__MODE__', m.provenance, m.native_id_namespace, m.native_id, m.seed_id, m.prov, m.decision, m.nightly_work,
   m.model_work, m.layer, m.x_cid, m.x_p, m.q_cid, m.q_p,

@@ -112,13 +112,13 @@ resources:
             source: GIT
           environment_key: Default
         - task_key: candidates
-          # runs alongside the GPU search
+          # runs alongside the GPU search; pages.sql = the same-page twins decisions.sql binds (oxjob #2026)
           depends_on:
             - task_key: keys
           notebook_task:
             notebook_path: notebooks/location_matching/RunMatchSql
             base_parameters:
-              sql: candidates.sql
+              sql: candidates.sql,pages.sql
             source: GIT
           environment_key: Default
         - task_key: knn
