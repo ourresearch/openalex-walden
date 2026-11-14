@@ -105,8 +105,11 @@ cand = f"""SELECT * FROM (
            t.text_key AS tagged_key, k.work_id IS NOT NULL AS served
     FROM openalex.works.openalex_works w
     LEFT JOIN (SELECT work_id, text_key FROM {TAGGED}) t ON t.work_id = w.id
-    LEFT JOIN (SELECT work_id FROM {TARGET}) k ON k.work_id = w.id""" + (f"""
-    WHERE w.id IN (SELECT id FROM {FORCE})""" if FORCE else "") + f"""
+    LEFT JOIN (SELECT work_id FROM {TARGET}) k ON k.work_id = w.id
+    -- oxjob #2065: a Crossref component has a made-up title ("Figure 2 of <its article's title>"): its keywords would be its
+    -- article's again, and the 7.5M of the backfill night would fill the queue for four nights
+    WHERE NOT coalesce(w.primary_location.provenance = 'crossref' AND w.primary_location.raw_type = 'component', false)""" + (f"""
+      AND w.id IN (SELECT id FROM {FORCE})""" if FORCE else "") + f"""
   )
 ) WHERE NOT {'served' if FORCE else 'retag'} OR ({changed})"""
 # One pass over openalex_works: the newest max_works of each kind, with each kind's full count for the log.
