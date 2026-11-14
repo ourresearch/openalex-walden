@@ -406,7 +406,6 @@ df_transformed = (
         F.col("is_retracted"),
         F.col("is_xpac"),
         F.col("biblio"),
-        F.col("volume"),
         F.col("parent_works"),  # oxjob #2065
         F.col("lineage"),
         F.col("child_works_count"),
