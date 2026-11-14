@@ -1,0 +1,37 @@
+# Crossref components that are part of a work (oxjob #2065, step 4).
+# Builds openalex.crossref.crossref_component_records (every Crossref DOI typed `component`) and
+# openalex.crossref.crossref_component_works (the ones whose article is a work, shaped like a locations_parsed row).
+# The Union All Works pipeline reads the second table through its own flow (locations_parsed_crossref_component), so
+# the nightly picks up whatever is there; Work_Parents and the location matcher frame read it too.
+# Runs before the nightly (05:00 UTC). The first run reads all of crossref_items once (the backfill, ~7.5M admitted);
+# later runs read its change feed (~2K new components a night).
+# Paused or unpaused HERE, never in the Jobs UI: a bundle deploy re-applies pause_status on every push.
+# Revert: pause, then DELETE FROM openalex.crossref.crossref_component_works (the flow passes the deletes on and the
+# works leave on the next nightly).
+resources:
+  jobs:
+    Crossref_Components:
+      name: Crossref components
+      description: |
+        oxjob #2065 step 4: admits Crossref `component` records (figures, tables, supporting files, review letters)
+        whose DOI minus its suffix is the DOI of a live work, with a title made from the suffix and the parent, and
+        the parent's license, language and open flag. Feeds the Union All Works flow
+        locations_parsed_crossref_component. Notebook: notebooks/ingest/CreateCrossrefComponentWorks.
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: 0 30 3 * * ?
+        timezone_id: UTC
+        pause_status: PAUSED
+      tasks:
+        - task_key: crossref_component_works
+          timeout_seconds: 5400
+          notebook_task:
+            notebook_path: notebooks/ingest/CreateCrossrefComponentWorks
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true

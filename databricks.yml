@@ -57,6 +57,7 @@ include:
   - jobs/vector_filter_sync_qwen3.yaml
   - jobs/union_all_works.yaml
   - jobs/crossref.yaml
+  - jobs/crossref_components.yaml
   - jobs/datacite.yaml
   - jobs/landing_page.yaml
   - jobs/pubmed.yaml
