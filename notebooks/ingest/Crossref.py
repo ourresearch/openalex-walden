@@ -564,9 +564,13 @@ def crossref_parsed():
         .withColumn("volume", F.col("volume"))
         .withColumn("first_page", F.expr(CROSSREF_PAGES_SQL).getField("first_page"))  # oxjob #2240: "17-1-17-28", "253-62"
         .withColumn("last_page", F.expr(CROSSREF_PAGES_SQL).getField("last_page"))
+        # oxjob #1500 (Kyle 2026-10-02): a retraction notice is not retracted. A notice's own update-to names the paper it
+        # retracts, so update-to flags a record only when it names the record itself (a self-stamp); updated-by (the
+        # retracted paper's side, which Crossref and Retraction Watch fill) flags as before.
         .withColumn("is_retracted",
-            F.exists(F.col("update-to"), lambda x: F.lower(x["label"]) == "retraction") |
-            F.exists(F.col("updated-by"), lambda x: F.lower(x["label"]) == "retraction")
+            F.coalesce(F.exists(F.col("updated-by"), lambda x: F.lower(x["label"]) == "retraction"), F.lit(False)) |
+            F.coalesce(F.exists(F.col("update-to"), lambda x: (F.lower(x["label"]) == "retraction")
+                                & (F.lower(x["DOI"]) == F.lower(F.col("native_id")))), F.lit(False))
         )
         .withColumn("abstract", F.substring(F.col("abstract"), 0, MAX_ABSTRACT_LENGTH))
         .withColumn("source_name", F.coalesce(F.col("`container-title`")[0], F.col("institution")[0]["name"]))
