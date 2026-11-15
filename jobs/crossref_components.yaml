@@ -21,7 +21,7 @@ resources:
       schedule:
         quartz_cron_expression: 0 30 3 * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        pause_status: UNPAUSED
       tasks:
         - task_key: crossref_component_works
           timeout_seconds: 5400
