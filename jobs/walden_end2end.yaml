@@ -402,7 +402,9 @@ resources:
           min_retry_interval_millis: 60000
           retry_on_timeout: true
         - task_key: Author_Matching
-          timeout_seconds: 3900
+          # 15 Nov 2026 (#1642): 3900 -> 7800. Night 2026-11-15 brought 5.18M vector-match seats (19x a normal night; 4.9M on
+          # #2065's new Crossref component works) and Author_Matching has no fallback if it times out. Ceiling only.
+          timeout_seconds: 7800
           depends_on:
             - task_key: Author_Affiliations
             - task_key: Topics
