@@ -322,6 +322,30 @@ dlt.create_auto_cdc_flow(
 
 # COMMAND ----------
 
+# oxjob #2241: a date Crossref states only as a year (issued/published/published-print [2022], as Springer deposits its
+# chapters) was padded to 1 January and, being the earliest date, beat the full online date later that same year:
+# 3,283,097 visible works served a 1 January no source states (W4312963213: print [2022], online 2022-11-19, DOI created
+# 2022-11-18, served 2022-01-01). Each publication date keeps its precision (its number of date-parts), and a year-only
+# date is dropped when another publication date of the record states a month or a day in the same year. Then the
+# earliest of the kept dates, created and deposited, exactly as before: no year changes, no source gains precedence, and
+# a record whose only publication date is a year keeps 1 January (#1154 / #1709 own that case). try_to_date: an invalid
+# online or print date (Feb 30) is NULL, never an error. The same strings run the backfill (oxjobs #2241 work/gen_sql.py).
+# Dry run over all 180.2M records (14 Nov 2026): 3,439,694 change, 0 change year, 0 move earlier; every other record keeps
+# its date. Revert: git revert, then #2241 work/10_revert.sql.
+PUB_DATE_PARTS_FIELDS = ["issued", "published", "published-online", "published-print", "approved"]
+
+
+def _padded_date_sql(field):
+    parts = f"get(`{field}`.`date-parts`, 0)"
+    return (f"named_struct('d', try_to_date(format_string('%04d-%02d-%02d', get({parts}, 0), coalesce(get({parts}, 1), 1), "
+            f"coalesce(get({parts}, 2), 1))), 'p', size({parts}))")
+
+
+PUB_DATES_SQL = "array(" + ", ".join(_padded_date_sql(f) for f in PUB_DATE_PARTS_FIELDS) + ")"
+PUBLISHED_DATE_SQL = ("least(array_min(transform(filter(_pub_dates, c -> c.d IS NOT NULL AND NOT coalesce(c.p = 1 AND "
+                      "exists(_pub_dates, f -> f.d IS NOT NULL AND f.p >= 2 AND year(f.d) = year(c.d)), false)), c -> c.d)), "
+                      "created_date, deposited)")
+
 # Transformed Table
 @dlt.view(
     name="crossref_parsed_source",
@@ -493,40 +517,9 @@ def crossref_parsed():
         .withColumn("language", F.col("language"))
         .withColumn("created_date", F.to_date(F.col("created.`date-time`")))
         .withColumn("deposited", F.to_date(F.col("deposited.`date-time`")))
-        .withColumn(
-            "issued",
-            F.make_date(
-                F.get(F.col("issued.`date-parts`")[0], 0),
-                F.coalesce(F.get(F.col("issued.`date-parts`")[0], 1), F.lit(1)),
-                F.coalesce(F.get(F.col("issued.`date-parts`")[0], 2), F.lit(1))
-            )
-        )
-        .withColumn(
-            "published",
-            F.make_date(
-                F.get(F.col("published.`date-parts`")[0], 0),
-                F.coalesce(F.get(F.col("published.`date-parts`")[0], 1), F.lit(1)),
-                F.coalesce(F.get(F.col("published.`date-parts`")[0], 2), F.lit(1))
-            )
-        )
-        .withColumn(
-            "approved",
-            F.make_date(
-                F.get(F.col("approved.`date-parts`")[0], 0),
-                F.coalesce(F.get(F.col("approved.`date-parts`")[0], 1), F.lit(1)),
-                F.coalesce(F.get(F.col("approved.`date-parts`")[0], 2), F.lit(1))
-            )
-        )
-        .withColumn(
-            "published_date",
-            F.least(
-                F.col("issued"),
-                F.col("created_date"),
-                F.col("published"),
-                F.col("approved"),
-                F.col("deposited")
-            )
-        )
+        # oxjob #2241: publication dates with their precision; a year-only date never beats a finer date in its own year
+        .withColumn("_pub_dates", F.expr(PUB_DATES_SQL))
+        .withColumn("published_date", F.expr(PUBLISHED_DATE_SQL))
         .withColumn("issue", F.col("issue"))
         .withColumn("volume", F.col("volume"))
         .withColumn("first_page", F.get(F.split("page", "-"), 0))
