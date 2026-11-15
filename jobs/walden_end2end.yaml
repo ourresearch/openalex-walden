@@ -210,6 +210,16 @@ resources:
             notebook_path: notebooks/end2end/ApplyLocationCurations
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        # oxjob #2242: curations of a work's own fields (is_retracted first) from users-api POST /curations, and the view
+        # work_curated_fields that Works_Base lays over the computed values.
+        - task_key: Sync_Work_Field_Curations
+          timeout_seconds: 1200
+          max_retries: 1
+          min_retry_interval_millis: 60000
+          notebook_task:
+            notebook_path: notebooks/end2end/SyncWorkFieldCurations
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: parse_referenced_works
           # 4-6 min until oxjob #2054; per-list filing adds the list check (~15 min in the 10% rehearsal, scaled). Off the
           # critical path: Works_Enriched also waits for the author steps, which take hours.
@@ -232,6 +242,7 @@ resources:
           timeout_seconds: 3000
           depends_on:
             - task_key: Apply_Location_Curations
+            - task_key: Sync_Work_Field_Curations
             - task_key: Work_Volumes
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorksBase
