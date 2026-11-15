@@ -60,6 +60,13 @@ for fn in sorted(glob.glob(f"{nd}/*.parquet")):
     for i in range(T.num_rows):
         r = {c: D[c][i] for c in NCOLS}; r["v"] = V[i]; r["qf"] = norm_first(r["pn_first"] or "") or first_token(r["raw_name"]); night[r["block_key"]].append(r); nseats += 1
 log(f"night: {nseats} seats in {len(night)} blocks ({time.time()-t0:.0f}s)")
+# 15 Nov 2026 (#1642): the forked workers share `night` copy-on-write, but Python refcounts touch its pages, so each worker ends up
+# holding its own copy (~2.2 KB a seat). Night 2026-11-15 (5,178,309 seats, 19x normal: #2065's Crossref components) OOM-killed the
+# r5.4xlarge driver at 80/128 files with 14 procs. Cap the workers so the copies fit in ~60% of RAM; a normal night keeps all procs.
+try:
+    _mem = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"); _fit = max(1, int(0.6 * _mem / max(1, nseats * 2200)))
+    if _fit < NPROC: log(f"procs {NPROC} -> {_fit}: {nseats} seats x ~2.2 KB per worker copy vs {_mem / 1e9:.0f} GB RAM"); NPROC = _fit
+except (ValueError, OSError): pass
 # do-not-reassign (#1370, requested 2026-09-25): a seat Unmix removed from a profile must never go back to it. Candidates listed for the seat in
 # openalex.authors.profile_move_dnr are dropped before ranking. Tolerant: the table does not exist until #1370 creates it.
 DNR_T = arg("--dnr-table", f"{A}.profile_move_dnr"); dnr = defaultdict(set)
