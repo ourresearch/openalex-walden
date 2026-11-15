@@ -46,6 +46,46 @@ REFERENCES_SQL = """filter(transform(reference, r -> CASE
         nullif(trim(r.`first-page`), '')), '')), ''))
   END), x -> coalesce(nullif(trim(x.doi), ''), nullif(trim(x.title), ''), x.raw) IS NOT NULL)"""
 
+# oxjob #2240: page strings read the way NCBI reads them (its StartPage / EndPage). MEDLINE writes ranges short
+# ("358-60" is 358-360, "C845-53" is C845-C853), lists as "27, 31-2, 34-7" (27-37) or "1001-6; discussion 1006-7"
+# (1001-1007), and supplements as "Suppl 4:165-6" (165-166); Crossref deposits chapter pages as "17-1-17-28".
+# Splitting at the first hyphen served last_page "60" for 358-360 on ~5.4M works.
+# first_page = the first item's start; last_page = the end of the last item that reads as a page or range (leading
+# words like "author reply" and a trailing "passim" / "contd" set aside; "2 pp." is a page count and doesn't read), its dropped leading digits put back and the
+# start's letter prefix carried. A string whose first item doesn't read, or whose end would run backwards ("358-12"),
+# keeps the old split at the first hyphen: never invent a page. Pure SQL, so the same text backfills existing rows.
+# PubMed.py holds the same builder (the test checks the copies match). Tests: notebooks/ingest/tests/test_page_ranges.py.
+_PG_ITEM = "^[A-Za-z]*[0-9]+(-[A-Za-z]*[0-9]+)?$"
+_PG_RANGE = "^([A-Za-z]*)([0-9]+)-([A-Za-z]*)([0-9]+)$"
+_PG_COMPOUND = "^([A-Za-z]*[0-9]+-[0-9]+)-([A-Za-z]*[0-9]+-[0-9]+)$"
+
+
+def page_range_sql(page):
+    """SQL for named_struct(first_page, last_page) read from a page-string SQL expression."""
+    def end(x):  # last page of a readable item x; NULL when restoring the dropped digits would run it backwards
+        p1, n1, p2, n2 = (f"regexp_extract({x}, '{_PG_RANGE}', {i})" for i in (1, 2, 3, 4))
+        full = (f"CASE WHEN length({n2}) < length({n1}) "
+                f"THEN concat(substr({n1}, 1, length({n1}) - length({n2})), {n2}) ELSE {n2} END")
+        return (f"CASE WHEN {x} NOT RLIKE '{_PG_RANGE}' THEN {x} "
+                f"WHEN length({n2}) < length({n1}) AND {full} < {n1} THEN NULL "
+                f"ELSE concat(CASE WHEN {p2} <> '' THEN {p2} ELSE {p1} END, {full}) END")
+    items = ("transform(split(regexp_replace(pg_s, '^[Ss][Uu][Pp][Pp][^:]*: *', ''), '[,;]'), (pg_x, pg_n) -> "
+             "regexp_replace(CASE WHEN pg_n > 0 THEN regexp_replace(trim(pg_x), '^[A-Za-z][A-Za-z ]*[A-Za-z] +', '') "
+             "ELSE trim(pg_x) END, '(?i) +(passim|contd|cont|continued)[.]?$', ''))")
+    read = (f"get(transform(array({items}), pg_i -> CASE WHEN get(pg_i, 0) RLIKE '{_PG_ITEM}' THEN "
+            f"get(transform(array(try_element_at(filter(pg_i, pg_x -> pg_x RLIKE '{_PG_ITEM}'), -1)), pg_l -> "
+            f"CASE WHEN {end('pg_l')} IS NOT NULL THEN named_struct('first_page', "
+            f"regexp_extract(get(pg_i, 0), '^([A-Za-z]*[0-9]+)', 1), 'last_page', {end('pg_l')}) END), 0) END), 0)")
+    compound = (f"CASE WHEN pg_s RLIKE '{_PG_COMPOUND}' THEN named_struct("
+                f"'first_page', regexp_extract(pg_s, '{_PG_COMPOUND}', 1), "
+                f"'last_page', regexp_extract(pg_s, '{_PG_COMPOUND}', 2)) END")
+    old_first = f"get(split({page}, '-'), 0)"
+    old = f"named_struct('first_page', {old_first}, 'last_page', coalesce(get(split({page}, '-'), 1), {old_first}))"
+    return f"get(transform(array(trim({page})), pg_s -> coalesce({compound}, {read}, {old})), 0)"
+
+
+CROSSREF_PAGES_SQL = page_range_sql("page")
+
 # Affiliation-as-Author Fix - Publishers excluded from filtering
 # These publishers have < 0.1% affected rate and should not have their records modified
 AFFILIATION_AS_AUTHOR_EXCLUDED_PUBLISHERS = [
@@ -522,8 +562,8 @@ def crossref_parsed():
         .withColumn("published_date", F.expr(PUBLISHED_DATE_SQL))
         .withColumn("issue", F.col("issue"))
         .withColumn("volume", F.col("volume"))
-        .withColumn("first_page", F.get(F.split("page", "-"), 0))
-        .withColumn("last_page", F.coalesce(F.get(F.split("page", "-"), 1), "first_page"))
+        .withColumn("first_page", F.expr(CROSSREF_PAGES_SQL).getField("first_page"))  # oxjob #2240: "17-1-17-28", "253-62"
+        .withColumn("last_page", F.expr(CROSSREF_PAGES_SQL).getField("last_page"))
         .withColumn("is_retracted",
             F.exists(F.col("update-to"), lambda x: F.lower(x["label"]) == "retraction") |
             F.exists(F.col("updated-by"), lambda x: F.lower(x["label"]) == "retraction")
