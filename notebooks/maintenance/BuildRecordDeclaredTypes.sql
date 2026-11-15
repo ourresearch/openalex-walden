@@ -6,6 +6,8 @@
 -- type. Type only: location types, matching and merges are untouched.
 -- Shared like openalex.sources.article_page_journal_sources: each job inserts and deletes only its own platform's rows.
 --   platform 'diva' (oxjob #2236): DiVA, the shared repository of ~50 Swedish universities (diva-portal.org, diva2:<pid>)
+--   platforms 'ads', 'aps', 'eric', 'osti', 'ntrs', 'inis', 'worldbank' (oxjob #2243): MAG crawls of report servers,
+--   catalogues and meeting-abstract hosts (NASA ADS, APS, ERIC, OSTI, NASA NTRS, INIS, World Bank documents)
 -- Revert one platform: DELETE FROM openalex.works.record_declared_types WHERE platform = '<platform>' (the next night types
 -- its works back). Revert the mechanism: drop the rdt join and its WHEN in CreateWorksBase first (its LEFT JOIN fails on a
 -- missing table), then this table.
@@ -85,6 +87,189 @@ SELECT provenance, native_id, type, 'diva' AS platform, record_key, declared_cod
        TIMESTAMP '2026-11-14 19:57:00' AS harvested_at  -- UTC: harvest finished 13:57 CT
 FROM typed
 WHERE n_types = 1 AND type IS NOT NULL
+
+-- COMMAND ----------
+
+-- platforms ads, aps, eric, osti, ntrs, inis, worldbank (oxjob #2243): MAG crawls of report servers, catalogues and
+-- meeting-abstract hosts, typed article by the cascade's default, take the type their host's own record declares:
+--   ads        NASA ADS doctype (ADS search API by bibcode): abstract, inproceedings, phdthesis, techreport, proposal, ...
+--   aps        absimage.aps.org / meetings.aps.org: APS meeting abstracts by construction (no harvest)
+--   eric       ERIC publicationtype of ED documents (ERIC API); EJ (journal articles) are not read
+--   osti       OSTI product_type (OSTI API); Journal Article gets no row
+--   ntrs       NASA NTRS stiType (NTRS search API, every record listed by published-date slices, plus per-id reads)
+--   inis       INIS resource_type / resource_subtype || imprint title (INIS records API by RN)
+--   worldbank  World Bank documents API majdocty / docty, by the documents.worldbank.org/curated id or guid
+-- Harvested 15 Nov 2026 by oxjobs #2243 work/harvest.py and work/ntrs_enum.py into
+-- /Volumes/openalex/works/data/record_declared_types/2026_11/<platform>.csv (key, declared_code); work/upload_declared.py.
+-- The mapping onto OpenAlex work types follows help.openalex.org/data/work-types; a host type with no clear match gets no
+-- row (the work stays article). A record already holding another platform's row keeps it (LEFT ANTI JOIN): one row per
+-- record, or the End 2 End's LEFT JOIN would repeat the work. Bars (fresh random 100 per host vs the host's own record
+-- read again): oxjobs #2243 README. To refresh: harvest again, upload, set harvested_at, re-run these two cells.
+-- Revert: DELETE FROM openalex.works.record_declared_types WHERE platform IN (...) (the next night types them back).
+DELETE FROM openalex.works.record_declared_types WHERE platform IN ('ads', 'aps', 'eric', 'osti', 'ntrs', 'inis', 'worldbank');
+
+-- COMMAND ----------
+
+INSERT INTO openalex.works.record_declared_types
+WITH recs AS (
+  SELECT DISTINCT provenance, native_id, landing_page_url AS u,
+         regexp_replace(lower(try_parse_url(landing_page_url, 'HOST')), '^www\\.', '') AS host
+  FROM openalex.works.locations_mapped
+  WHERE provenance = 'mag'
+    AND landing_page_url RLIKE '(?i)^https?://(www\\.)?(ui\\.adsabs\\.harvard\\.edu|adsabs\\.harvard\\.edu|absimage\\.aps\\.org|meetings\\.aps\\.org|eric\\.ed\\.gov|files\\.eric\\.ed\\.gov|osti\\.gov|ntrs\\.nasa\\.gov|inis\\.iaea\\.org|documents\\.worldbank\\.org)([/:?]|$)'
+),
+keyed AS (
+  SELECT provenance, native_id,
+    CASE
+      WHEN host IN ('ui.adsabs.harvard.edu', 'adsabs.harvard.edu') THEN 'ads'
+      WHEN host IN ('absimage.aps.org', 'meetings.aps.org') THEN 'aps'
+      WHEN host IN ('eric.ed.gov', 'files.eric.ed.gov') THEN 'eric'
+      WHEN host = 'osti.gov' THEN 'osti'
+      WHEN host = 'ntrs.nasa.gov' THEN 'ntrs'
+      WHEN host = 'inis.iaea.org' THEN 'inis'
+      WHEN host = 'documents.worldbank.org' THEN 'worldbank'
+    END AS platform,
+    CASE
+      WHEN host IN ('ui.adsabs.harvard.edu', 'adsabs.harvard.edu')
+        THEN replace(replace(replace(replace(regexp_extract(u, '/abs/([^/?#]+)', 1), '%26', '&'), '%2E', '.'), '%3A', ':'), '%25', '%')
+      WHEN host IN ('absimage.aps.org', 'meetings.aps.org') THEN regexp_replace(u, '^https?://(www\\.)?', '')
+      WHEN host IN ('eric.ed.gov', 'files.eric.ed.gov') THEN upper(regexp_extract(u, '(?i)(ED[0-9]{5,7})', 1))
+      WHEN host = 'osti.gov' THEN regexp_extract(u, '(?i)(?:biblio/|osti_id=|servlets/purl/|pages/biblio/)([0-9]+)', 1)
+      WHEN host = 'ntrs.nasa.gov' THEN regexp_extract(u, '(?i)(?:R=|citations/|archive/nasa/casi\\.ntrs\\.nasa\\.gov/)([0-9]{8,11})', 1)
+      WHEN host = 'inis.iaea.org' THEN regexp_extract(u, '(?i)RN(?::|%3A)([0-9A-Z]+)', 1)
+      WHEN host = 'documents.worldbank.org' THEN coalesce(
+        nullif(concat('id:', regexp_extract(u, '/curated/[a-z]{2}/[0-9]{4}/[0-9]{2}/([0-9]+)', 1)), 'id:'),
+        nullif(concat('guid:', regexp_extract(u, '/curated/[a-z]{2}/([0-9]{12,})', 1)), 'guid:'))
+    END AS record_key
+  FROM recs
+),
+decl AS (
+  SELECT 'ads' AS platform, key, declared_code FROM read_files('/Volumes/openalex/works/data/record_declared_types/2026_11/ads.csv',
+    format => 'csv', header => true, schema => 'key STRING, declared_code STRING')
+  UNION ALL
+  SELECT 'eric', key, declared_code FROM read_files('/Volumes/openalex/works/data/record_declared_types/2026_11/eric.csv',
+    format => 'csv', header => true, schema => 'key STRING, declared_code STRING')
+  UNION ALL
+  SELECT 'osti', key, declared_code FROM read_files('/Volumes/openalex/works/data/record_declared_types/2026_11/osti.csv',
+    format => 'csv', header => true, schema => 'key STRING, declared_code STRING')
+  UNION ALL
+  SELECT 'ntrs', key, declared_code FROM read_files('/Volumes/openalex/works/data/record_declared_types/2026_11/ntrs.csv',
+    format => 'csv', header => true, schema => 'key STRING, declared_code STRING')
+  UNION ALL
+  SELECT 'inis', key, declared_code FROM read_files('/Volumes/openalex/works/data/record_declared_types/2026_11/inis.csv',
+    format => 'csv', header => true, schema => 'key STRING, declared_code STRING')
+  UNION ALL
+  SELECT 'worldbank', key, declared_code FROM read_files('/Volumes/openalex/works/data/record_declared_types/2026_11/worldbank.csv',
+    format => 'csv', header => true, schema => 'key STRING, declared_code STRING')
+  UNION ALL
+  -- APS: the host is the declaration (every page is a meeting abstract)
+  SELECT DISTINCT 'aps', record_key, 'APS meeting abstract (absimage.aps.org / meetings.aps.org)' FROM keyed WHERE platform = 'aps'
+),
+typed AS (
+  SELECT k.provenance, k.native_id, k.platform, k.record_key, d.declared_code AS code,
+    CASE k.platform
+      WHEN 'aps' THEN 'conference-abstract'
+      -- NASA ADS doctype (ADS's own record; https://ui.adsabs.harvard.edu/help/search/search-syntax doctype list)
+      WHEN 'ads' THEN CASE d.declared_code
+        WHEN 'abstract' THEN 'conference-abstract'          -- meeting abstract
+        WHEN 'inproceedings' THEN 'conference-paper'
+        WHEN 'phdthesis' THEN 'dissertation'
+        WHEN 'mastersthesis' THEN 'dissertation'
+        WHEN 'techreport' THEN 'report'
+        WHEN 'intechreport' THEN 'report'
+        WHEN 'book' THEN 'book'
+        WHEN 'inbook' THEN 'book-chapter'
+        WHEN 'bookreview' THEN 'book-review'
+        WHEN 'catalog' THEN 'dataset'                       -- a data catalog (VizieR)
+        WHEN 'dataset' THEN 'dataset'
+        WHEN 'software' THEN 'software'
+        WHEN 'erratum' THEN 'erratum'
+        WHEN 'editorial' THEN 'editorial'
+        WHEN 'proposal' THEN 'other'                        -- observing / research proposals
+        WHEN 'circular' THEN 'other'
+        WHEN 'newsletter' THEN 'other'
+        WHEN 'obituary' THEN 'other'
+        WHEN 'pressrelease' THEN 'other'
+        WHEN 'talk' THEN 'other'
+        END                                                 -- article, eprint, misc: no row; proceedings: no row (a sample of 15
+                                                            -- was 6 whole volumes and 9 single papers)
+      -- ERIC publicationtype (all of a record's types, '; '-joined); first match wins
+      WHEN 'eric' THEN CASE
+        WHEN d.declared_code LIKE '%Journal Articles%' THEN NULL
+        WHEN d.declared_code LIKE '%Dissertations/Theses%' THEN 'dissertation'
+        WHEN d.declared_code LIKE '%Book/Product Reviews%' THEN 'book-review'
+        WHEN d.declared_code LIKE '%Collected Works - Serial%' THEN 'other'   -- a whole issue of a serial
+        WHEN d.declared_code RLIKE 'Books|Collected Works - (Proceedings|General)' THEN 'book'
+        WHEN d.declared_code LIKE '%Speeches/Meeting Papers%' THEN 'conference-paper'
+        WHEN d.declared_code RLIKE 'Reports - |Information Analyses|ERIC Digests|Numerical/Quantitative Data' THEN 'report'
+        WHEN d.declared_code LIKE '%Machine-Readable Data Files%' THEN 'dataset'
+        WHEN d.declared_code LIKE '%Computer Programs%' THEN 'software'
+        WHEN d.declared_code RLIKE 'Guides - |Tests/Questionnaires|Reference Materials|Legal/Legislative|Non-Print Media|Multilingual/Bilingual|Creative Works|Translations|Opinion Papers|Historical Materials' THEN 'other'
+        WHEN d.declared_code LIKE '%ERIC Publications%' THEN 'report'
+        END
+      -- OSTI product_type
+      WHEN 'osti' THEN CASE d.declared_code
+        WHEN 'Technical Report' THEN 'report'
+        WHEN 'Program Document' THEN 'report'
+        WHEN 'Conference' THEN 'conference-paper'
+        WHEN 'Thesis/Dissertation' THEN 'dissertation'
+        WHEN 'Book' THEN 'book'
+        WHEN 'Patent' THEN 'other'
+        WHEN 'Dataset' THEN 'dataset'
+        WHEN 'Software' THEN 'software'
+        WHEN 'Multimedia' THEN 'other'
+        END                                                 -- Journal Article, Accepted Manuscript, Miscellaneous: no row
+      -- NASA NTRS stiType
+      WHEN 'ntrs' THEN CASE
+        -- CONFERENCE_PROCEEDINGS: 18 of 20 sampled are single papers (2 whole volumes), so conference-paper
+        WHEN d.declared_code IN ('CONFERENCE_PAPER', 'MEETING_PAPER', 'CONFERENCE_PROCEEDINGS', 'CONFERENCE_PUBLICATION') THEN 'conference-paper'
+        WHEN d.declared_code IN ('ABSTRACT', 'EXTENDED_ABSTRACT') THEN 'conference-abstract'
+        WHEN d.declared_code = 'CONTRIBUTION_TO_LARGER_WORK' THEN 'book-chapter'
+        WHEN d.declared_code IN ('CONTRACTOR_REPORT', 'CONTRACTOR_OR_GRANTEE_REPORT', 'TECHNICAL_MEMORANDUM', 'TECHNICAL_PUBLICATION',
+                                 'TECHNICAL_NOTE', 'TECHNICAL_REPORT', 'REFERENCE_PUBLICATION', 'SPECIAL_PUBLICATION',
+                                 'TECHNICAL_TRANSLATION', 'NASA_TECHNICAL_REPORT') THEN 'report'
+        WHEN d.declared_code = 'THESIS_DISSERTATION' THEN 'dissertation'
+        WHEN d.declared_code = 'BOOK_CHAPTER' THEN 'book-chapter'
+        WHEN d.declared_code = 'BOOK' THEN 'book'
+        WHEN d.declared_code IN ('PRESENTATION', 'POSTER', 'VIDEO') THEN 'other'
+        END                                                 -- REPRINT, PREPRINT, OTHER, STI_TYPE_NONE: no row
+      -- INIS '<resource_type> / <iaea:resource_subtype list> || <iaea:imprint title>' (the imprint is the host volume; a
+      -- conference record printed in a 'Programme and abstracts' / 'Book of abstracts' volume is an abstract, not a paper)
+      WHEN 'inis' THEN CASE
+        WHEN d.declared_code LIKE 'publication-article%' THEN NULL
+        WHEN regexp_replace(d.declared_code, ' \\|\\| .*$', '') RLIKE '^publication-(report|book|thesis).*Thesis'
+          OR d.declared_code LIKE 'publication-thesis%' THEN 'dissertation'
+        WHEN regexp_replace(d.declared_code, ' \\|\\| .*$', '') RLIKE '^publication-(report|book) / .*Conference'
+          AND regexp_extract(d.declared_code, ' \\|\\| (.*)$', 1) RLIKE '(?i)abstract|summar|r[eé]sum[eé]|kurzfassung|tezis|thesen|annotat'
+          THEN 'conference-abstract'
+        WHEN regexp_replace(d.declared_code, ' \\|\\| .*$', '') RLIKE '^publication-(report|book) / .*Conference'
+          THEN 'conference-paper'                           -- a paper in proceedings / a conference paper issued as a report
+        WHEN d.declared_code LIKE 'publication-report%' THEN 'report'
+        WHEN d.declared_code LIKE 'publication-patent%' THEN 'other'
+        END                                                 -- book without Conference (chapter or monograph), other: no row
+      -- World Bank documents API: '<majdocty> / <docty>'. Project and board paperwork that reports, assesses or reviews -> report,
+      -- agreements, letters, plans, data sheets, speeches, newsletters -> other; Publication -> book; Journal Article: no row
+      WHEN 'worldbank' THEN CASE
+        WHEN d.declared_code LIKE '%Journal Article%' THEN NULL
+        WHEN d.declared_code RLIKE '/ Publication$' THEN 'book'
+        WHEN d.declared_code RLIKE 'Agreement|Letter|Memorandum|Aide Memoire|Speech|Statement|Newsletter|Viewpoint|Data Sheet|Checklist|Procurement Plan|Engagement Plan|Commitment Plan|Indigenous Peoples Plan|Resettlement Plan|Management Plan' THEN 'other'
+        WHEN d.declared_code RLIKE 'Report|Assessment|Document|Paper|Evaluation|Review|Framework|Summary|Brief|Note|Study|Auditing' THEN 'report'
+        END
+    END AS type
+  FROM keyed k JOIN decl d ON d.platform = k.platform AND d.key = k.record_key
+  WHERE k.record_key IS NOT NULL AND k.record_key <> ''
+),
+one AS (
+  SELECT provenance, native_id, min(platform) AS platform, min(type) AS type, min(record_key) AS record_key, min(code) AS declared_code
+  FROM typed WHERE type IS NOT NULL
+  GROUP BY provenance, native_id
+  HAVING count(DISTINCT type) = 1 AND count(DISTINCT platform) = 1
+)
+SELECT o.provenance, o.native_id, o.type, o.platform, o.record_key, o.declared_code, 2243 AS oxjob,
+       TIMESTAMP '2026-11-15 13:03:00' AS harvested_at
+FROM one o
+-- one row per record across every platform: the End 2 End's LEFT JOIN would otherwise repeat the work
+LEFT ANTI JOIN openalex.works.record_declared_types t ON t.provenance = o.provenance AND t.native_id = o.native_id
 
 -- COMMAND ----------
 
