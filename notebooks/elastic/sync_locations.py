@@ -370,7 +370,9 @@ print(f"Processed {totals.partitions} partitions; indexed {totals.indexed or 0:,
 # Doc-level failures below ERROR_TOLERANCE must not freeze the watermark and regrow
 # the window (sync_works 08-18: 1 error out of 43.9M held back a 44M re-sync);
 # tolerated docs are retried only if their rows get re-stamped upstream.
-ERROR_TOLERANCE = 500
+# oxjob #1642 (16 Nov 2026): a fixed 500 froze the locations watermark from 12 to 16 Nov: three nights each re-sent everything
+# since 12 Nov (night 11-15: 103.5M docs, 2,570 errors = 0.0025%) and the window kept regrowing. Tolerate 1 doc in 10,000.
+ERROR_TOLERANCE = max(500, int((totals.indexed or 0) * 1e-4))
 total_errors = int(totals.errors or 0)
 
 if total_errors >= ERROR_TOLERANCE:
