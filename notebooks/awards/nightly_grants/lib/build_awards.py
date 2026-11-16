@@ -110,14 +110,28 @@ def prepare(c):
     c.zero('SOURCE_RECEIPTS_COMPLETE',"SELECT * FROM receipts_v WHERE success IS NOT TRUE OR parser_ok IS NOT TRUE OR coverage_complete IS NOT TRUE")
     c.zero('RECEIPT_FAMILY_UNIQUE','SELECT family FROM receipts_v GROUP BY family HAVING COUNT(*)<>1')
     c.zero('ADAPTER_RECEIPT_MISSING',f'SELECT DISTINCT coalesce(o.payload.provenance,o.family) FROM {r}observations o LEFT ANTI JOIN receipts_v s ON coalesce(o.payload.provenance,o.family)=s.family')
+    # A staging key carries the funder id as the source wrote it, so the same number under a funder and under one merged into it are two
+    # keys. A paper-made record with an unknown key takes the one live grant already keyed with its number under a funder of the same
+    # merged family; an unknown key would otherwise open a second grant (294 did on 1 Oct, the first night after 65 funder merges).
+    # More than one such grant, or none: the record opens a grant as before. Registry records (direct, native) never take this path.
+    c.artifact('merged_funder_keys',f"""WITH family AS (SELECT funder_id,canonical_funder_id FROM {r}funder_canon WHERE canonical_funder_id IN
+        (SELECT canonical_funder_id FROM {r}funder_canon GROUP BY canonical_funder_id HAVING count(*)>1))
+      SELECT f.canonical_funder_id,k.award_key,min(x.stable_id) stable_id FROM {r}keys_before k JOIN family f ON f.funder_id=k.funder_id
+      JOIN {r}resolve_before x ON x.owner_id=k.stable_id AND x.status='ACTIVE' WHERE k.key_type='STAGING' AND k.award_key IS NOT NULL
+      GROUP BY f.canonical_funder_id,k.award_key HAVING count(DISTINCT x.stable_id)=1""")
     c.artifact('lookup',f"""SELECT o.*,kn.stable_id native_original_owner,ks.stable_id staging_original_owner,
-      rn.stable_id native_hit,rs.stable_id staging_hit,coalesce(rn.stable_id,rs.stable_id) existing_id
+      rn.stable_id native_hit,rs.stable_id staging_hit,
+      CASE WHEN rn.stable_id IS NULL AND ks.stable_id IS NULL AND o.namespace IS NULL AND NOT o.is_direct THEN mk.stable_id END merged_funder_hit,
+      coalesce(rn.stable_id,rs.stable_id,CASE WHEN ks.stable_id IS NULL AND o.namespace IS NULL AND NOT o.is_direct THEN mk.stable_id END) existing_id
       FROM {r}observations o LEFT JOIN {r}keys_before kn ON kn.key_type='NATIVE'
         AND kn.namespace=o.namespace AND kn.source_record_id=o.source_record_id
       LEFT JOIN {r}keys_before ks ON ks.key_type='STAGING' AND ks.staging_id=o.staging_id
         AND ks.funder_id <=> o.source_funder_id AND ks.award_key <=> o.award_key
       LEFT JOIN {r}resolve_before rn ON rn.owner_id=kn.stable_id
-      LEFT JOIN {r}resolve_before rs ON rs.owner_id=ks.stable_id""")
+      LEFT JOIN {r}resolve_before rs ON rs.owner_id=ks.stable_id
+      LEFT JOIN {r}funder_canon fo ON fo.funder_id=o.source_funder_id
+      LEFT JOIN {r}merged_funder_keys mk ON mk.canonical_funder_id=fo.canonical_funder_id AND mk.award_key=o.award_key""")
+    c.count('merged_funder_key_hits',f'(SELECT observation_key FROM {r}lookup WHERE merged_funder_hit IS NOT NULL) x')
     c.zero('NATIVE_STAGING_DISAGREE',f'SELECT * FROM {r}lookup WHERE native_hit IS NOT NULL AND staging_hit IS NOT NULL AND native_hit<>staging_hit')
     # op14 (Q5 risk 2): a native-keyed observation whose only hit is a STAGING key owned by a REDIRECTED entity would inherit the
     # redirect's equivalence without native proof; block it.
