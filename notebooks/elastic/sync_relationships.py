@@ -2,9 +2,9 @@
 # NOTE: Like sync_study_designs, this tiny closed-vocabulary entity builds its API table and
 # syncs it to Elasticsearch in one notebook.
 #
-# "relationships" (oxjob #2065) is the vocabulary behind works.parent_works[].relationship: the kind of
-# part-of link between a work and its parent. Four values. The values themselves are written by
-# notebooks/end2end/CreateWorkParents; this notebook only describes and counts them.
+# "relationships" is the vocabulary of work-to-work links: citation (a work's referenced_works, oxjob #1490) and the
+# four part-of kinds of works.parent_works[].relationship (oxjob #2065), written by notebooks/end2end/CreateWorkParents.
+# This notebook only describes and counts them; the API's /links serves the links themselves.
 #
 # Naming rule (Jason, 15 Nov 2026, oxjob #1490): a relationship value is a NOUN that names the link itself, not one
 # end of it (citation, retraction, review), so it reads the same from either work; the description reads from the work
@@ -31,6 +31,7 @@ HASH_EXPR = hash_expr()
 
 # key, display_name, description. Keep in step with openalex-elastic-api (tests) and the help page.
 VOCAB = [
+    ("citation", "Citation", "The work cites another work: that work is in its reference list."),
     ("volume", "Volume",
      "The work is in a book or proceedings volume: a chapter, entry, front matter or paper of that volume."),
     ("component", "Component",
@@ -50,7 +51,16 @@ _DATACITE = ("DataCite", "IsPartOf",
 _CROSSREF = ("Crossref", "isPartOf",
              "https://www.crossref.org/documentation/schema-library/markup-guide-metadata-segments/relationships/")
 _PART_OF = [_DCTERMS, _SCHEMA, _DATACITE, _CROSSREF]
+_DATACITE_DOCS = "https://datacite-metadata-schema.readthedocs.io/en/4.6/appendices/appendix-1/relationType/"
 STANDARD_TERMS = {
+    "citation": [
+        ("Dublin Core", "references", "http://purl.org/dc/terms/references"),
+        ("schema.org", "citation", "https://schema.org/citation"),
+        ("DataCite", "References", _DATACITE_DOCS + "#references"),
+        ("DataCite", "Cites", _DATACITE_DOCS + "#cites"),
+        ("Crossref", "references", _CROSSREF[2]),
+        ("CiTO", "cites", "http://purl.org/spar/cito/cites"),
+    ],
     "volume": _PART_OF,
     "component": _PART_OF,
     "data-series": _PART_OF + [("DCAT", "inSeries", "https://www.w3.org/ns/dcat#inSeries")],
@@ -71,8 +81,9 @@ print("Hash snapshot complete")
 
 # COMMAND ----------
 
-# Rebuild work_relationships_api. works_count = works with a parent of that kind, every work counted (children are
-# often outside the default view, and the filter the record links to shows them all), once per kind.
+# Rebuild work_relationships_api. works_count = works that carry a link of that kind (citation: works with a reference
+# list match; part-of: works with a parent of that kind), every work counted (children are often outside the default
+# view, and the filter the record links to shows them all), once per kind.
 # Before the first End 2 End that carries the column, openalex_works has no parent_works: counts are 0 until then
 # instead of failing the common-entities job.
 spark.createDataFrame(
@@ -93,16 +104,22 @@ else:
     print("openalex_works has no parent_works column yet: counts are 0")
     counts_sql = "SELECT CAST(NULL AS STRING) AS slug, CAST(0 AS BIGINT) AS works_count WHERE FALSE"
 
+citation_sql = """
+    SELECT 'citation' AS slug, COUNT(*) AS works_count
+    FROM openalex.works.openalex_works WHERE referenced_works_count > 0"""
+
 spark.sql(f"""
 CREATE OR REPLACE TABLE {TABLE} AS
-WITH counts AS ({counts_sql})
+WITH counts AS ({counts_sql} UNION ALL {citation_sql})
 SELECT
     CONCAT('https://openalex.org/relationships/', v.slug) AS id,
     v.display_name,
     v.description,
     v.standard_terms,
     COALESCE(c.works_count, 0) AS works_count,
-    CONCAT('https://api.openalex.org/works?filter=parent_works.relationship:', v.slug) AS works_api_url,
+    CONCAT('https://api.openalex.org/works?filter=',
+           CASE v.slug WHEN 'citation' THEN 'has_references:true' ELSE CONCAT('parent_works.relationship:', v.slug) END
+    ) AS works_api_url,
     TIMESTAMP '2026-11-14 00:00:00' AS created_date,
     CAST(NULL AS TIMESTAMP) AS updated_date
 FROM work_relationship_vocab v
@@ -210,7 +227,7 @@ try:
     else:
         # Fields added after the index was created (standard_terms, oxjob #1490); a no-op once present.
         client.indices.put_mapping(index=INDEX_NAME, properties={"standard_terms": STANDARD_TERMS_MAPPING})
-    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # four rows
+    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # five rows
     actions = [{"_op_type": "index", "_index": INDEX_NAME, "_id": r["id"], "_source": r} for r in rows]
     ok, errors = helpers.bulk(client, actions, raise_on_error=False)
     if errors:
