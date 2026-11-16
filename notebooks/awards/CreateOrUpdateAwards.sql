@@ -399,7 +399,8 @@ CREATE OR REPLACE TEMP VIEW awards_sources AS SELECT * FROM VALUES
  (356, 'zhejiang_nsf', 403, 98, array(4320338464L), 'frozen', 4),
  (357, 'zonmw_projects_jsonapi', 92, 98, array(4320321007L), 'frozen', 4),
  (358, 'fct', 385, 98, array(4320334779L, 4320324421L, 4320320300L, 4320335322L), 'weekly', 4),
- (359, 'fwf_open_api', 51, 98, array(4320321181L), 'weekly', 4)
+ (359, 'fwf_open_api', 51, 98, array(4320321181L), 'weekly', 4),
+ (360, 'bhf_europepmc_grist', 575, 98, array(4320319992L), 'frozen', 4)
 AS t(ord, source, source_priority, row_floor_pct, funder_ids, fetch_cadence, chunk);
 
 -- COMMAND ----------
@@ -758,7 +759,8 @@ SELECT * FROM VALUES
  ('wt_grant_foundation', 's3://openalex-ingest/awards/wt_grant/wt_grant_grants.parquet'),
  ('wwtf_project_database', 's3://openalex-ingest/awards/wwtf/wwtf_projects.parquet'),
  ('zhejiang_nsf', 's3://openalex-ingest/awards/zhejiang_nsf/zhejiang_nsf_projects.parquet'),
- ('zonmw_projects_jsonapi', 's3://openalex-ingest/awards/zonmw/zonmw_projects.parquet')
+ ('zonmw_projects_jsonapi', 's3://openalex-ingest/awards/zonmw/zonmw_projects.parquet'),
+ ('bhf_europepmc_grist', 's3://openalex-ingest/awards/bhf/bhf_grist_projects.parquet')
 AS t(source, object)
 UNION ALL
 SELECT 'nsf_award_search' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
@@ -34047,7 +34049,7 @@ FROM m));
 
 -- COMMAND ----------
 
--- Chunk 4 of 4: sources 301 to 359 in sources.csv order. Each source's candidate rows: its mapping over
+-- Chunk 4 of 4: sources 301 to 360 in sources.csv order. Each source's candidate rows: its mapping over
 -- its pinned object, cast to the raw contract, compared with its slice.
 CREATE OR REPLACE TEMP VIEW awards_candidate_4 AS
 WITH awards_incoming AS (
@@ -40725,6 +40727,115 @@ incoming AS (
     FROM awards_transformed
 )
 SELECT * FROM incoming)
+UNION ALL
+-- British Heart Foundation from its own Europe PMC GRIST grant deposit (oxjob #1357, Zendesk 24588), read from
+-- s3://openalex-ingest/awards/bhf/bhf_grist_projects.parquet written by scripts/local/bhf_grist_to_s3.py.
+-- Same mapping as diabetes_uk_europepmc_grist, plus fallback_start_year/fallback_end_year: the PDF's years where GRIST
+-- has no date (the fetcher also keeps the PDF's amount, institution and scheme where GRIST has none).
+-- Priority sits above bhf_annual_reports (395), so for a reference both carry this row wins the metadata election
+-- (dates, abstract, structured PI names); the PDF rows keep the references GRIST lacks.
+-- created_date and updated_date are the run timestamp.
+-- bhf_europepmc_grist: priority 575, frozen fetch cadence (descriptive).
+SELECT 'bhf_europepmc_grist' AS _source, * FROM (
+WITH bhf_europepmc_grist_input AS (
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/bhf/bhf_grist_projects.parquet', format => 'parquet'))
+    WHERE _file_path = try_element_at(session.awards_objects, 'bhf_europepmc_grist')
+),
+src_funder AS (
+    SELECT funder_id, display_name, ror_id, doi
+    FROM openalex.funders.funders
+    WHERE funder_id = 4320319992  -- British Heart Foundation
+),
+
+people AS (
+    SELECT
+        funder_award_id,
+        TRANSFORM(
+            FILTER(
+                from_json(people_json, 'ARRAY<STRUCT<given_name:STRING, family_name:STRING, title:STRING, orcid:STRING, institution:STRING, institution_ror:STRING>>'),
+                p -> p.family_name IS NOT NULL
+            ),
+            p -> named_struct(
+                'given_name', NULLIF(TRIM(p.given_name), ''),
+                'family_name', NULLIF(TRIM(p.family_name), ''),
+                'orcid', CASE WHEN p.orcid RLIKE '^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$' THEN CONCAT('https://orcid.org/', p.orcid) END,
+                'role_start', CAST(NULL AS DATE),
+                'affiliation', named_struct(
+                    'name', NULLIF(TRIM(p.institution), ''),
+                    'country', CAST(NULL AS STRING),
+                    'ids', CASE WHEN p.institution_ror IS NOT NULL
+                                THEN array(named_struct('id', p.institution_ror, 'type', 'ror', 'asserted_by', 'funder'))
+                                ELSE CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) END
+                )
+            )
+        ) AS investigators
+    FROM bhf_europepmc_grist_input
+),
+
+awards_transformed AS (
+SELECT
+    abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000 as id,
+    NULLIF(TRIM(g.title), '') as display_name,
+    NULLIF(TRIM(g.abstract), '') as description,
+    f.funder_id,
+    TRIM(g.funder_award_id) as funder_award_id,
+    TRY_CAST(g.amount AS DOUBLE) as amount,
+    CASE WHEN TRY_CAST(g.amount AS DOUBLE) IS NOT NULL THEN NULLIF(TRIM(g.currency), '') END as currency,
+    struct(
+        CONCAT('https://openalex.org/F', f.funder_id) as id,
+        f.display_name,
+        f.ror_id,
+        f.doi
+    ) as funder,
+    g.funding_type as funding_type,
+    NULLIF(TRIM(g.award_type), '') as funder_scheme,
+    'bhf_europepmc_grist' as provenance,
+    TRY_TO_DATE(g.start_date, 'yyyy-MM-dd') as start_date,
+    TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
+    COALESCE(YEAR(TRY_TO_DATE(g.start_date, 'yyyy-MM-dd')), TRY_CAST(g.fallback_start_year AS INT)) as start_year,  -- PDF award year when GRIST has no date
+    COALESCE(YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')), TRY_CAST(g.fallback_end_year AS INT)) as end_year,
+    try_element_at(p.investigators, 1) as lead_investigator,
+    try_element_at(p.investigators, 2) as co_lead_investigator,
+    CASE WHEN size(p.investigators) > 0 THEN p.investigators END as investigators,
+    g.landing_page_url as landing_page_url,
+    CAST(NULL AS STRING) as doi,
+    concat('https://api.openalex.org/works?filter=awards.id:G',
+           abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(TRIM(g.funder_award_id))))) % 9000000000) as works_api_url,
+    session.awards_timestamp as created_date,
+    session.awards_timestamp as updated_date
+FROM bhf_europepmc_grist_input g
+JOIN people p ON p.funder_award_id = g.funder_award_id
+CROSS JOIN src_funder f
+WHERE g.funder_award_id IS NOT NULL AND TRIM(g.funder_award_id) != ''
+),
+incoming AS (
+    SELECT CAST(id AS bigint) AS id,
+        CAST(display_name AS string) AS display_name,
+        CAST(description AS string) AS description,
+        CAST(funder_id AS bigint) AS funder_id,
+        CAST(funder_award_id AS string) AS funder_award_id,
+        CAST(amount AS double) AS amount,
+        CAST(currency AS string) AS currency,
+        CAST(funder AS struct<id:string,display_name:string,ror_id:string,doi:string>) AS funder,
+        CAST(funding_type AS string) AS funding_type,
+        CAST(funder_scheme AS string) AS funder_scheme,
+        CAST(provenance AS string) AS provenance,
+        CAST(start_date AS date) AS start_date,
+        CAST(end_date AS date) AS end_date,
+        CAST(start_year AS bigint) AS start_year,
+        CAST(end_year AS bigint) AS end_year,
+        CAST(lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS lead_investigator,
+        CAST(co_lead_investigator AS struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>) AS co_lead_investigator,
+        CAST(investigators AS array<struct<given_name:string,family_name:string,orcid:string,role_start:date,affiliation:struct<name:string,country:string,ids:array<struct<id:string,type:string,asserted_by:string>>>>>) AS investigators,
+        CAST(landing_page_url AS string) AS landing_page_url,
+        CAST(doi AS string) AS doi,
+        CAST(works_api_url AS string) AS works_api_url,
+        CAST(created_date AS timestamp) AS created_date,
+        CAST(updated_date AS timestamp) AS updated_date,
+        575 AS priority
+    FROM awards_transformed
+)
+SELECT * FROM incoming)
 ),
 baseline AS (
     SELECT b.* FROM awards_baseline b LEFT SEMI JOIN awards_sources s ON s.source = b.provenance AND s.chunk = 4
@@ -40878,4 +40989,4 @@ VALUES (c.id, c.display_name, c.description, c.funder_id, c.funder_award_id, c.a
 
 SELECT CASE WHEN exists(session.awards_results, r -> r.state = 'skipped')
  THEN raise_error('Skipped sources: ' || concat_ws(', ', transform(filter(session.awards_results, r -> r.state = 'skipped'), r -> r.source)))
- ELSE 'All 359 sources written' END AS result;
+ ELSE 'All 360 sources written' END AS result;
