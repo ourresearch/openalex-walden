@@ -20,6 +20,12 @@ resources:
           default: "dry_run"
         - name: out_prefix
           default: "openalex.transient.repo_reparse"
+        # oxjob #2266: repo_items instead of the raw files (a parse change that needs no new field), and an optional
+        # table of native_ids that limits what is re-sent
+        - name: source
+          default: "s3"
+        - name: native_ids_table
+          default: ""
       tasks:
         - task_key: repo_reparse
           # serverless's default environment failed to pip install the dlt_utils wheel (27 Oct); version 4 works
@@ -31,6 +37,8 @@ resources:
               endpoint_ids: "{{job.parameters.endpoint_ids}}"
               mode: "{{job.parameters.mode}}"
               out_prefix: "{{job.parameters.out_prefix}}"
+              source: "{{job.parameters.source}}"
+              native_ids_table: "{{job.parameters.native_ids_table}}"
           timeout_seconds: 7200
       environments:
         - environment_key: Default
