@@ -76,7 +76,8 @@ print("Hash snapshot complete")
 # Before the first End 2 End that carries the column, openalex_works has no parent_works: counts are 0 until then
 # instead of failing the common-entities job.
 spark.createDataFrame(
-    [(slug, name, desc, [list(t) for t in STANDARD_TERMS[slug]]) for slug, name, desc in VOCAB],
+    [(slug, name, desc, [dict(zip(("vocabulary", "term", "url"), t)) for t in STANDARD_TERMS[slug]])
+     for slug, name, desc in VOCAB],
     "slug STRING, display_name STRING, description STRING, "
     "standard_terms ARRAY<STRUCT<vocabulary: STRING, term: STRING, url: STRING>>",
 ).createOrReplaceTempView("work_relationship_vocab")
