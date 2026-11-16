@@ -82,7 +82,8 @@ resources:
         # oxjob #1949: send this build to Elasticsearch right away. Sync Authors used to run on its own 05:00 CT cron,
         # before this 12:00 UTC build, so the list API and /works author filters ran ~22 h behind single GETs and the
         # snapshot. ALL_DONE: it also runs when Delete_Emptied_Authors' guard trips, so a held delete never stalls the
-        # list API (the delete pass drains every unsent ledger row; the update pass looks back 2 days). Desk's
+        # list API (the delete pass drains every unsent ledger row; the update pass sends everything stamped since the
+        # last clean sync started, its watermark in openalex.works.elastic_sync_state, oxjob #2287). Desk's
         # Sentry bridge still reports the upstream failure (SUCCESS_WITH_FAILURES counts as a failure).
         - task_key: Sync_Authors_to_Elasticsearch
           depends_on:
