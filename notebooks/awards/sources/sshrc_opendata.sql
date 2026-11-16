@@ -66,11 +66,13 @@ awards_transformed AS (
         CAST(g.start_year AS INT) as start_year,
         CAST(NULL AS INT) as end_year,
 
+        -- SSHRC prints a person as 'Family, Given' (107,374 of 114,404 names, 16 Nov): family before the first comma, given after
+        -- it, as arc.sql reads a comma name. A name with no comma is an institution ('Cégep de Sherbrooke') and stays whole.
         CASE
             WHEN g.applicant_name IS NOT NULL AND TRIM(g.applicant_name) != '' THEN
                 struct(
-                    CAST(NULL AS STRING) as given_name,  -- Not available separately
-                    TRIM(g.applicant_name) as family_name,  -- Store full name in family_name
+                    CASE WHEN g.applicant_name LIKE '%,%' THEN NULLIF(TRIM(SUBSTRING(g.applicant_name, INSTR(g.applicant_name, ',') + 1)), '') END as given_name,
+                    CASE WHEN g.applicant_name LIKE '%,%' THEN TRIM(SUBSTRING_INDEX(g.applicant_name, ',', 1)) ELSE TRIM(g.applicant_name) END as family_name,
                     CAST(NULL AS STRING) as orcid,
                     CAST(NULL AS DATE) as role_start,
                     struct(

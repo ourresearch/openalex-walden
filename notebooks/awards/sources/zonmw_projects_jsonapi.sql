@@ -30,6 +30,10 @@ raw_prepped AS (
             CASE WHEN YEAR(TRY_TO_DATE(end_date, 'yyyy-MM-dd')) BETWEEN 1900 AND 2035 THEN YEAR(TRY_TO_DATE(end_date, 'yyyy-MM-dd')) END
         ) AS end_year_int,
         NULLIF(TRIM(project_leader_name), '') AS leader_full_name,
+        -- ZonMw prints '[titles] initials [prefix] surname [degrees]' ('dr. M.M. van der Krogt PhD'): titles and degrees off
+        TRIM(REGEXP_REPLACE(REGEXP_REPLACE(TRIM(project_leader_name),
+            '^(([Pp]rof|[Dd]rs?|[Ii]r|[Ii]ng|[Mm]r|[Ee]m|[Dd]hr|[Mm]evr|[Mm]w|[Mm]\\.?[Ss]c|[Bb]\\.?[Ss]c|md|[Pp]h[Dd]|[Dd]ipl)\\.?\\s+)+', ''),
+            '(\\s+(PhD|PHD|MD|MSc|BSc|MBA|MA|MPH|BA|MHA|LLM|MPA|MPhil|em\\.))+$', '')) AS leader_clean_name,
         NULLIF(TRIM(primary_organization), '') AS leader_affiliation_name,
         CONCAT_WS('\\n\\n',
             NULLIF(TRIM(description), ''),
@@ -46,6 +50,16 @@ raw_prepped AS (
             NULLIF(TRIM(main_subject), '')
         ) AS scheme_source
     FROM zonmw_projects_jsonapi_input
+),
+-- The leading initials ('M.M.', 'PJT', 'P. H. J.', 'E J W', 'Th.') are the given name and the rest the family name, prefix included
+-- ('van der Krogt'), as nwopen.sql builds a Dutch name. A name that starts with no initials ('Dikbas', 'van Dijk') stays whole.
+raw_named AS (
+    SELECT
+        *,
+        NULLIF(REGEXP_EXTRACT(leader_clean_name, '^((?:[A-Z](?:[a-z]{1,2}\\.|\\.)?)+(?:\\s+(?:[A-Z](?:[a-z]{1,2}\\.|\\.)?){1,3}(?=\\s))*)\\s+(\\S.*)$', 1), '') AS leader_given_name,
+        COALESCE(NULLIF(REGEXP_EXTRACT(leader_clean_name, '^((?:[A-Z](?:[a-z]{1,2}\\.|\\.)?)+(?:\\s+(?:[A-Z](?:[a-z]{1,2}\\.|\\.)?){1,3}(?=\\s))*)\\s+(\\S.*)$', 2), ''),
+                 NULLIF(leader_clean_name, '')) AS leader_family_name
+    FROM raw_prepped
 ),
 
 awards_transformed AS (
@@ -73,8 +87,8 @@ SELECT
     CASE
         WHEN rp.leader_full_name IS NOT NULL OR rp.leader_affiliation_name IS NOT NULL THEN
             struct(
-                CAST(NULL AS STRING) AS given_name,
-                rp.leader_full_name AS family_name,
+                rp.leader_given_name AS given_name,
+                rp.leader_family_name AS family_name,
                 CAST(NULL AS STRING) AS orcid,
                 CAST(NULL AS DATE) AS role_start,
                 struct(
@@ -99,7 +113,7 @@ SELECT
            TRY_CAST(abs(xxhash64(CONCAT('4320321007:zonmw:', LOWER(TRIM(rp.slug))))) % 9000000000 AS STRING)) AS works_api_url,
     session.awards_timestamp AS created_date,
     session.awards_timestamp AS updated_date
-FROM raw_prepped rp
+FROM raw_named rp
 JOIN funder_resolved f ON f.funder_id = 4320321007
 WHERE rp.project_number IS NOT NULL
   AND rp.display_name IS NOT NULL
