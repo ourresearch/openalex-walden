@@ -192,6 +192,13 @@ def test_production_source_prefixes():
     assert 'dev-gr1009' not in SQL and 'dev-gr1009' not in (AWARDS / 'sources.csv').read_text()
 
 
+def test_arc_lead_strips_the_same_titles_as_the_team():
+    """arc: the lead's given and family names are read with the team's title list (names card 5: Em/Prof, A/Pr, stacked titles);
+    the lead's own shorter list left 'Em/Prof' or 'Dr' (of 'Prof Dr') as the given name on 1,948 grants."""
+    titles = re.findall(r"regexp_replace\((?:lead_investigator|trim\(x\)), '([^']*)'", branch_of('arc'), re.I)
+    assert len(titles) == 3 and len(set(titles)) == 1 and 'Em/Prof' in titles[0] and titles[0].endswith(')+')
+
+
 def test_fct_leaves_the_hand_run_job():
     """fct: read by the Awards job from openalex-ingest's prefix; its notebook, hand-run task and laptop loader are gone."""
     group = branch_of('fct')

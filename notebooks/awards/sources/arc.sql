@@ -11,6 +11,7 @@ arc_funder AS (
     WHERE funder_id = 4320334704  -- Australian Research Council
 ),
 
+-- The lead: first word given, last word family, after the titles arc_team strips (names card 5: Em/Prof, A/Pr, 'Prof Dr').
 pi_parsed AS (
     SELECT
         *,
@@ -20,7 +21,7 @@ pi_parsed AS (
                 TRIM(SUBSTRING_INDEX(lead_investigator, ',', -1))
             ELSE
                 TRIM(SPLIT(
-                    TRIM(REGEXP_REPLACE(lead_investigator, '^(Dr|Prof|Professor|Associate Professor|A/Prof|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Adj/Prof|Adjunct Professor)\\s+', '')),
+                    TRIM(REGEXP_REPLACE(lead_investigator, '^((Dr|Prof|Professor|Associate Professor|A/Prof|A/Pr|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Em/Prof|E/Prof|E/Pr|Adj/Prof|Adjunct Professor|Hon)\\.?\\s+)+', '')),
                     ' '
                 )[0])
         END as pi_given_name,
@@ -31,7 +32,7 @@ pi_parsed AS (
             ELSE
                 TRIM(ELEMENT_AT(
                     SPLIT(
-                        TRIM(REGEXP_REPLACE(lead_investigator, '^(Dr|Prof|Professor|Associate Professor|A/Prof|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Adj/Prof|Adjunct Professor)\\s+', '')),
+                        TRIM(REGEXP_REPLACE(lead_investigator, '^((Dr|Prof|Professor|Associate Professor|A/Prof|A/Pr|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Em/Prof|E/Prof|E/Pr|Adj/Prof|Adjunct Professor|Hon)\\.?\\s+)+', '')),
                         ' '
                     ),
                     -1
