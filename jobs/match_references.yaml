@@ -1,0 +1,100 @@
+resources:
+  jobs:
+    Match_References:
+      name: Match References
+      description: |
+        End 2 End's Match_References task (oxjob #2296; the reference matcher of #2000): links tonight's new reference texts that
+        print no DOI / PMID / arXiv id to the works they cite. Each text the matcher has never seen is matched once; every reference
+        row printing it gets that answer; a row of a list filed tonight whose text was seen before takes that text's earlier link.
+        Started by End 2 End after parse_referenced_works; no schedule of its own; one run at a time.
+        Steps (notebooks/references/matcher/MatchReferences, one task each): prepare (tonight's rows and texts, new texts embedded,
+        same-text links, author + volume + page lookup) -> search (Modal app reference-matcher: best 30 works per text) ->
+        candidates (clue features + checklist, reader prompts; first re-checks #2000's review bench) -> reader (Modal: the 2B
+        reader on the unsure band) -> decide (links into openalex.works.reference_matcher_links under run <mode>-<night>).
+        mode shadow (from 2026-11-17, Casey: 3 nights before turning it on): nothing is served and a failing step only logs
+        (openalex.works.reference_matcher_nights). mode live: decide also applies the links to work_references and registers the
+        run in reference_matcher_runs; any failure fails the run, and End 2 End with it (Casey 2026-11-16).
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      timeout_seconds: 18000
+      max_concurrent_runs: 1
+      parameters:
+        - name: mode
+          # shadow | live (End 2 End sets it) | test (with test_texts: a replay into openalex.transient.oxjob2296_test_*)
+          default: shadow
+        - name: night
+          default: "{{job.start_time.iso_date}}"
+        - name: job_run_id
+          default: "{{job.run_id}}"
+        - name: catchup_from_version
+          # also take the lists filed in work_reference_lists_changes versions from this one on (a catch-up after missed nights)
+          default: ""
+        - name: max_texts
+          # prepare fails when a night has more new texts than this (a normal night: 1-2M; Casey's spend line is $500)
+          default: "8000000"
+        - name: max_usd
+          # a Modal stage fails when its estimate is over this (a normal night: a few dollars each)
+          default: "60"
+        - name: test_texts
+          default: ""
+        - name: scope_table
+          default: ""
+      tasks:
+        - task_key: prepare
+          notebook_task:
+            notebook_path: notebooks/references/matcher/MatchReferences
+            base_parameters:
+              stage: prepare
+            source: GIT
+          environment_key: Matcher
+        - task_key: search
+          depends_on:
+            - task_key: prepare
+          notebook_task:
+            notebook_path: notebooks/references/matcher/MatchReferences
+            base_parameters:
+              stage: search
+            source: GIT
+          environment_key: Matcher
+        - task_key: candidates
+          depends_on:
+            - task_key: search
+          notebook_task:
+            notebook_path: notebooks/references/matcher/MatchReferences
+            base_parameters:
+              stage: candidates
+            source: GIT
+          environment_key: Matcher
+        - task_key: reader
+          depends_on:
+            - task_key: candidates
+          notebook_task:
+            notebook_path: notebooks/references/matcher/MatchReferences
+            base_parameters:
+              stage: reader
+            source: GIT
+          environment_key: Matcher
+        - task_key: decide
+          depends_on:
+            - task_key: reader
+          notebook_task:
+            notebook_path: notebooks/references/matcher/MatchReferences
+            base_parameters:
+              stage: decide
+            source: GIT
+          environment_key: Matcher
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true
+      environments:
+        - environment_key: Matcher
+          spec:
+            environment_version: "4"
+            dependencies:
+              # the checklist and combiner are refit from #2000's training rows each run; 1.8.0 reproduces #2000's models exactly
+              - scikit-learn==1.8.0
