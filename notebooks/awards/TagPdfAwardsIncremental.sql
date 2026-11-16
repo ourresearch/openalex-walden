@@ -1,14 +1,26 @@
 -- Databricks notebook source
 -- MAGIC %md
 -- MAGIC ### Tag PDF Awards (Incremental)
--- MAGIC Incremental pipeline: extract funder sections from recent PDFs,
+-- MAGIC Incremental pipeline: extract funder sections from recent PDFs and (oxjob #2215) landing pages,
 -- MAGIC match to screened funders, then match awards by funder.
 -- MAGIC
--- MAGIC Writes to: `openalex.works.fulltext_work_funders`, `openalex.pdf.grobid_award_matches`
+-- MAGIC Writes to: `openalex.works.fulltext_work_funders`, `openalex.pdf.grobid_award_matches`, and its own state
+-- MAGIC (`openalex.pdf.funder_award_parse_checkpoint`, `openalex.pdf.landing_page_funder_checkpoint`,
+-- MAGIC `openalex.pdf.landing_page_funder_rows`)
 -- MAGIC
 -- MAGIC Uses a checkpoint table with two columns:
 -- MAGIC - `window_start`: start of the range to process (set by previous run)
 -- MAGIC - `run_cutoff`: set to `now()` at the start of each run, used as the end of the range
+-- MAGIC
+-- MAGIC Landing pages (oxjob #2215, 16 Nov 2026): Parseland's verbatim acknowledgments and funding statement, read in
+-- MAGIC ingest order on their own checkpoint (steps 1a, 1b, 6b) and matched by the same steps. Rows only a landing page
+-- MAGIC gave are logged (steps 4a, 5c). Revert: drop the landing-page branch and logging cells, then delete the logged rows with
+-- MAGIC `MERGE INTO openalex.works.fulltext_work_funders t USING (SELECT DISTINCT work_id, funder_id FROM
+-- MAGIC openalex.pdf.landing_page_funder_rows WHERE kind = 'funder') s ON t.work_id = s.work_id AND t.funder_id = s.funder_id
+-- MAGIC WHEN MATCHED THEN DELETE`, and the same for `openalex.pdf.grobid_award_matches` on (paper_id, funder_id,
+-- MAGIC funder_award_id) with kind = 'award' (proved on clones 16 Nov: both tables back to their exact row counts). Limit: a
+-- MAGIC PDF that matches a logged pair later is not inserted (step 4 skips pairs already there), so a revert drops that pair
+-- MAGIC until the PDF is matched again.
 
 -- COMMAND ----------
 
@@ -36,8 +48,68 @@ SET run_cutoff = now();
 
 -- COMMAND ----------
 
--- Step 2: Extract funder/acknowledgement/funding sections from PDFs in window,
---         map (native_id, native_id_namespace) -> work_id
+-- Step 1a (oxjob #2215): the landing-page checkpoint, (ingested_at, taxicab_id) after done_through up to run_through.
+-- landing_page_parsed has one writer (the LandingPageWork pipeline), which stamps each
+-- batch with one ingested_at and commits batches in order, so a batch still being written always sorts after every
+-- page read here: nothing is skipped and no time lag is needed. Starts at the 14 Nov 2026 Parseland deploy that added
+-- the sections (earlier rows have none).
+CREATE TABLE IF NOT EXISTS openalex.pdf.landing_page_funder_checkpoint (
+  done_through_ts TIMESTAMP,
+  done_through_id STRING,
+  run_through_ts TIMESTAMP,
+  run_through_id STRING
+);
+
+-- COMMAND ----------
+
+INSERT INTO openalex.pdf.landing_page_funder_checkpoint
+SELECT TIMESTAMP'2026-11-14 16:00:00', '', TIMESTAMP'2026-11-14 16:00:00', ''
+WHERE NOT EXISTS (SELECT 1 FROM openalex.pdf.landing_page_funder_checkpoint);
+
+-- COMMAND ----------
+
+-- Funder and award rows that only a landing page gave (oxjob #2215), so they can be found and removed.
+CREATE TABLE IF NOT EXISTS openalex.pdf.landing_page_funder_rows (
+  kind STRING,
+  work_id BIGINT,
+  funder_id STRING,
+  funder_award_id STRING,
+  logged_at TIMESTAMP
+);
+
+-- COMMAND ----------
+
+-- Step 1b (oxjob #2215): this run's landing pages end at the 500,000th page with a section after done_through (or at the
+-- last one). Fixed here, before step 2, so every read of funder_sections sees the same pages and a failed run retries
+-- the same range.
+-- shortcut: a fixed 500K cap; a corpus re-parse (~11M pages with a section) drains in ~22 daily runs unless run more often.
+-- The page filter here and in step 2's recent_pages must stay the same. The bare ingested_at bound repeats the struct
+-- test so the scan can skip files; keep it.
+MERGE INTO openalex.pdf.landing_page_funder_checkpoint t
+USING (
+  WITH cp AS (SELECT done_through_ts, done_through_id FROM openalex.pdf.landing_page_funder_checkpoint),
+  pending AS (
+    SELECT lp.ingested_at, coalesce(lp.taxicab_id, '') AS tid
+    FROM openalex.landing_page.landing_page_parsed lp
+    CROSS JOIN cp
+    WHERE lp.ingested_at >= cp.done_through_ts
+      AND struct(lp.ingested_at, coalesce(lp.taxicab_id, '')) > struct(cp.done_through_ts, cp.done_through_id)
+      AND lp.had_error = false
+      AND (lp.acknowledgments IS NOT NULL OR lp.funding_statement IS NOT NULL)
+    ORDER BY lp.ingested_at, tid
+    LIMIT 500000
+  )
+  SELECT max(struct(ingested_at, tid)) AS through FROM pending
+) s
+ON true
+WHEN MATCHED THEN UPDATE SET
+  t.run_through_ts = coalesce(s.through.ingested_at, t.done_through_ts),
+  t.run_through_id = coalesce(s.through.tid, t.done_through_id);
+
+-- COMMAND ----------
+
+-- Step 2: Extract funder/acknowledgement/funding sections from PDFs in window (and, oxjob #2215, from the landing
+--         pages in step 1b's range), map (native_id, native_id_namespace) -> work_id; source = 'pdf' | 'landing_page'
 CREATE OR REPLACE TEMP VIEW funder_sections AS
 WITH checkpoint AS (
   SELECT window_start, run_cutoff FROM openalex.pdf.funder_award_parse_checkpoint
@@ -88,12 +160,52 @@ raw_sections AS (
       block -> regexp_replace(block, '<[^>]+>', ' ')
     ), ' ') AS funding
   FROM with_work_id
+),
+-- oxjob #2215: landing pages in this run's range (step 1b), their sections as Parseland read them (verbatim text, no
+-- markup), mapped to works through the record the page was fetched for (its DOI or repository id), as PDFs are.
+lp_window AS (
+  SELECT done_through_ts, done_through_id, run_through_ts, run_through_id
+  FROM openalex.pdf.landing_page_funder_checkpoint
+),
+recent_pages AS (
+  SELECT lp.native_id, lp.native_id_namespace,
+    coalesce(lp.acknowledgments, '') AS acknowledgement,
+    coalesce(lp.funding_statement, '') AS funding
+  FROM openalex.landing_page.landing_page_parsed lp
+  CROSS JOIN lp_window w
+  WHERE lp.ingested_at >= w.done_through_ts AND lp.ingested_at <= w.run_through_ts
+    AND struct(lp.ingested_at, coalesce(lp.taxicab_id, '')) > struct(w.done_through_ts, w.done_through_id)
+    AND struct(lp.ingested_at, coalesce(lp.taxicab_id, '')) <= struct(w.run_through_ts, w.run_through_id)
+    AND lp.had_error = false
+    AND (lp.acknowledgments IS NOT NULL OR lp.funding_statement IS NOT NULL)
+),
+page_work_ids AS (
+  SELECT rp.native_id, rp.native_id_namespace, MAX(lm.work_id) AS work_id
+  FROM (SELECT DISTINCT native_id, native_id_namespace FROM recent_pages) rp
+  JOIN openalex.works.locations_mapped lm
+    ON rp.native_id = lm.native_id AND rp.native_id_namespace = lm.native_id_namespace
+  WHERE lm.work_id IS NOT NULL
+  GROUP BY rp.native_id, rp.native_id_namespace
+),
+page_sections AS (
+  SELECT DISTINCT pw.work_id, '' AS funders, rp.acknowledgement, rp.funding
+  FROM recent_pages rp
+  JOIN page_work_ids pw
+    ON rp.native_id = pw.native_id AND rp.native_id_namespace = pw.native_id_namespace
 )
 SELECT
   work_id, funders, acknowledgement, funding,
-  concat_ws(' ', funders, acknowledgement, funding) AS all_sections
+  concat_ws(' ', funders, acknowledgement, funding) AS all_sections,
+  'pdf' AS source
 FROM raw_sections
-WHERE funders != '' OR acknowledgement != '' OR funding != '';
+WHERE funders != '' OR acknowledgement != '' OR funding != ''
+UNION ALL
+SELECT
+  work_id, funders, acknowledgement, funding,
+  concat_ws(' ', funders, acknowledgement, funding) AS all_sections,
+  'landing_page' AS source
+FROM page_sections
+WHERE acknowledgement != '' OR funding != '';
 
 -- COMMAND ----------
 
@@ -103,6 +215,7 @@ CREATE OR REPLACE TABLE openalex.pdf.funder_matches_staging AS
 WITH funder_regexes AS (
   SELECT
     fnk.name AS funder_name,
+    LOWER(fnk.name) AS funder_name_lc,
     fnk.id AS funder_id,
     CAST(regexp_extract(fnk.id, 'F(\\d+)', 1) AS BIGINT) AS funder_id_numeric,
     fa.display_name AS funder_display_name,
@@ -145,10 +258,13 @@ WITH funder_regexes AS (
     ON CAST(regexp_extract(fnk.id, 'F(\\d+)', 1) AS BIGINT) = fa.id
 ),
 matched_aliases AS (
-  SELECT DISTINCT fs.work_id, fs.all_sections, fr.*
-  FROM funder_sections fs
+  SELECT DISTINCT fs.work_id, fs.all_sections, fs.source, fr.*
+  FROM (SELECT *, LOWER(all_sections) AS sections_lc FROM funder_sections) fs
   CROSS JOIN funder_regexes fr
-  WHERE fs.all_sections RLIKE fr.match_regex
+  -- oxjob #2215: every alias regex matches the alias's own letters, so a section that does not contain the alias
+  -- (case-folded) cannot match; the cheap test runs first and the regex, compiled anew for each pair, only on those.
+  WHERE contains(fs.sections_lc, fr.funder_name_lc)
+    AND fs.all_sections RLIKE fr.match_regex
 ),
 alias_spans AS (
   -- Zero-width lookahead enumerates overlapping occurrences on ORIGINAL text.
@@ -214,7 +330,8 @@ SELECT DISTINCT
   m.funder_id,
   m.funder_id_numeric,
   m.ror_id,
-  m.doi
+  m.doi,
+  m.source
 FROM matched_aliases m
 LEFT ANTI JOIN suppressed_funder_windows x
   ON m.work_id = x.work_id AND m.all_sections = x.all_sections
@@ -273,9 +390,25 @@ LEFT ANTI JOIN author_countries h ON h.work_id = a.work_id AND h.country = a.hom
 
 -- COMMAND ----------
 
--- Step 4: INSERT work-funder pairs
+-- Step 4a (oxjob #2215): log the pairs step 4 is about to add that only a landing page gave (no PDF in this run
+-- matched the same pair), so they can be removed by work_id + funder_id. Its exclusions are step 4's: change both.
+INSERT INTO openalex.pdf.landing_page_funder_rows
+SELECT DISTINCT 'funder' AS kind, s.work_id, s.funder_id, CAST(NULL AS STRING) AS funder_award_id, now() AS logged_at
+FROM openalex.pdf.funder_matches_staging s
+LEFT ANTI JOIN (SELECT DISTINCT work_id, funder_id FROM openalex.pdf.funder_matches_staging WHERE source = 'pdf') p
+  ON s.work_id = p.work_id AND s.funder_id = p.funder_id
+LEFT ANTI JOIN openalex.works.fulltext_work_funders f
+  ON s.work_id = f.work_id AND s.funder_id = f.funder_id
+LEFT ANTI JOIN distrusted_acronym_matches d
+  ON s.work_id = d.work_id AND s.funder_id = d.funder_id
+WHERE s.source = 'landing_page';
+
+-- COMMAND ----------
+
+-- Step 4: INSERT work-funder pairs (DISTINCT, oxjob #2215: a work's PDF and landing page can match the same alias in
+-- one run; the staging rows then differ only in all_sections and source). Step 4a logs with the same exclusions.
 INSERT INTO openalex.works.fulltext_work_funders
-SELECT s.work_id, s.funder_name, s.funder_display_name, s.funder_id, s.ror_id, s.doi
+SELECT DISTINCT s.work_id, s.funder_name, s.funder_display_name, s.funder_id, s.ror_id, s.doi
 FROM openalex.pdf.funder_matches_staging s
 LEFT ANTI JOIN openalex.works.fulltext_work_funders f
   ON s.work_id = f.work_id AND s.funder_id = f.funder_id
@@ -333,7 +466,7 @@ usable_awards AS (
 ),
 paper_funder_sections AS (
   SELECT /*+ REPARTITION(512, work_id) */
-  DISTINCT fm.work_id, fm.funder_id_numeric, fm.all_sections
+  DISTINCT fm.work_id, fm.funder_id_numeric, fm.all_sections, fm.source
   FROM openalex.pdf.funder_matches_staging fm
 )
 SELECT
@@ -343,7 +476,8 @@ SELECT
   ua.funder_award_id,
   ua.from_funder_feed,
   ua.award_match_pattern,
-  pfs.all_sections
+  pfs.all_sections,
+  pfs.source
 FROM usable_awards ua
 JOIN paper_funder_sections pfs
   ON pfs.funder_id_numeric = ua.funder_id
@@ -412,6 +546,31 @@ LEFT ANTI JOIN openalex.pdf.grobid_award_matches g
 
 -- COMMAND ----------
 
+-- Step 5c (oxjob #2215): log the award rows step 5b just added that only a landing page gave (step 1 stamped run_cutoff
+-- before 5b's batch_time).
+INSERT INTO openalex.pdf.landing_page_funder_rows
+SELECT DISTINCT 'award' AS kind, g.paper_id, CAST(g.funder_id AS STRING), g.funder_award_id, now() AS logged_at
+FROM openalex.pdf.grobid_award_matches g
+JOIN (
+  SELECT DISTINCT work_id, funder_id, funder_award_id, all_sections FROM openalex.pdf.award_matches_staging
+  WHERE source = 'landing_page'
+) m
+  ON g.paper_id = m.work_id AND g.funder_id = m.funder_id AND g.funder_award_id = m.funder_award_id
+  AND g.funding_sections = m.all_sections
+LEFT ANTI JOIN (
+  SELECT DISTINCT work_id, funder_id, funder_award_id FROM openalex.pdf.award_matches_staging WHERE source = 'pdf'
+) p
+  ON g.paper_id = p.work_id AND g.funder_id = p.funder_id AND g.funder_award_id = p.funder_award_id
+WHERE g.batch_time >= (SELECT run_cutoff FROM openalex.pdf.funder_award_parse_checkpoint);
+
+-- COMMAND ----------
+
 -- Step 6: Advance checkpoint — promote run_cutoff to window_start
 UPDATE openalex.pdf.funder_award_parse_checkpoint
 SET window_start = run_cutoff;
+
+-- COMMAND ----------
+
+-- Step 6b (oxjob #2215): the landing pages of this run are done
+UPDATE openalex.pdf.landing_page_funder_checkpoint
+SET done_through_ts = run_through_ts, done_through_id = run_through_id;
