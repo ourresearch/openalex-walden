@@ -38,6 +38,16 @@
 # MAGIC It rewrites only those rows; `fill` mode leaves them alone. Revert: `DELETE FROM openalex.abstracts.repo_description_fill
 # MAGIC WHERE path = 'landing_page_opening'`.
 # MAGIC
+# MAGIC **DOI page mode (oxjob #2274, 16 Nov 2026).** A landing page's abstract reaches works only through the Crossref super
+# MAGIC location, so a DOI with no Crossref record (JaLC on J-STAGE, KCI, AME, DataCite) never shows the abstract its page
+# MAGIC carries: ~0.23M works with no other abstract (oxjobs #2274 EXPLORE § 1). `mode=doi_page` writes, for works with no
+# MAGIC Crossref location, no location abstract and no legacy backfill row, the newest page abstract of their DOI that passes
+# MAGIC every not-abstract check CreateSuperLocations applies (source built by oxjobs #2274 `work/fill2_src.sql`: citation-line
+# MAGIC pages, component DOIs carrying the parent's abstract, texts under 100 characters out), as rows with
+# MAGIC `path = 'landing_page_doi'`. Bar: 40 of 40 seeded rows the work's own abstract (EXPLORE § 3). It rewrites only those
+# MAGIC rows; the other modes leave them alone. Revert: `DELETE FROM openalex.abstracts.repo_description_fill WHERE path =
+# MAGIC 'landing_page_doi'`.
+# MAGIC
 # MAGIC **MANUAL TRIGGER ONLY; built once per mode.** New records keep the ingest parse. Re-running a mode replaces that mode's
 # MAGIC rows; the table is never dropped, because CreateWorksBase reads it every night.
 # MAGIC **Revert:** `TRUNCATE TABLE openalex.abstracts.repo_description_fill` (the next nightly takes the abstracts back
@@ -57,8 +67,9 @@ from pyspark.sql.window import Window
 from openalex.dlt.transform import udf_abstract_features
 
 dbutils.widgets.text("source_table", "", "accepted choices: work_id, native_id, path, endpoint_id, p_abstract, text[, replace_hash]")
-dbutils.widgets.dropdown("mode", "fill", ["fill", "replace", "opening"],
-                         "fill: works with no abstract; replace: works showing the stub; opening: #2162 kept openings")
+dbutils.widgets.dropdown("mode", "fill", ["fill", "replace", "opening", "doi_page"],
+                         "fill: works with no abstract; replace: works showing the stub; opening: #2162 kept openings; "
+                         "doi_page: #2274 page abstracts of DOIs with no Crossref record")
 SOURCE = dbutils.widgets.get("source_table").strip()
 MODE = dbutils.widgets.get("mode")
 assert SOURCE, "source_table is required"
@@ -66,14 +77,19 @@ FILTER_COMMIT = {  # stored on every row
     "fill": "repo-desc-v1 >= 0.95 on rule desc-v2 (oxjobs #1800 EXPLORE § 41)",
     "replace": "repo-desc-v1 >= 0.95 on rule desc-v2, replacing the shown short first description (oxjobs #1800 EXPLORE § 45)",
     "opening": "opening-desc-v1 >= 0.15 on a page-marked opening parseland-lib 5ad0605 drops (oxjobs #2162 EXPLORE § 5)",
+    "doi_page": "newest page abstract of a DOI with no Crossref record, every not-abstract check passed (oxjobs #2274 EXPLORE § 3)",
 }[MODE]
 # oxjob #2162's rows. Plain comparisons: REPLACE WHERE refuses coalesce() ("Table does not support overwrite by expression").
 OPENING = "path = 'landing_page_opening'"
 NOT_OPENING = "(path IS NULL OR path <> 'landing_page_opening')"
+DOI_PAGE = "path = 'landing_page_doi'"  # oxjob #2274's rows
+PAGE_MODES = "(path = 'landing_page_opening' OR path = 'landing_page_doi')"  # rows the page modes own
+NOT_PAGE_MODES = "(path IS NULL OR (path <> 'landing_page_opening' AND path <> 'landing_page_doi'))"
 MODE_ROWS = {  # the rows this mode owns
-    "fill": f"replace_hash IS NULL AND {NOT_OPENING}",
+    "fill": f"replace_hash IS NULL AND {NOT_PAGE_MODES}",
     "replace": "replace_hash IS NOT NULL",
     "opening": OPENING,
+    "doi_page": DOI_PAGE,
 }[MODE]
 TARGET = "openalex.abstracts.repo_description_fill"
 LEGACY = "openalex.abstracts.abstracts_backfill"  # CreateWorksBase unions the fill into it: no work may be in both
@@ -107,10 +123,13 @@ src = (spark.table(SOURCE).withColumn("work_id", F.col("work_id").cast("bigint")
 if MODE == "opening":  # one row per work: works another mode already holds are left out
     src = (src.withColumn("replace_hash", F.lit(None).cast("bigint")).withColumn("path", F.lit("landing_page_opening"))
            .join(spark.table(TARGET).filter(NOT_OPENING).select("work_id"), "work_id", "left_anti"))
+elif MODE == "doi_page":  # one row per work: works another mode already holds are left out
+    src = (src.withColumn("replace_hash", F.lit(None).cast("bigint")).withColumn("path", F.lit("landing_page_doi"))
+           .join(spark.table(TARGET).filter("path IS NULL OR path <> 'landing_page_doi'").select("work_id"), "work_id", "left_anti"))
 elif MODE == "fill":
     src = (src.withColumn("replace_hash", F.lit(None).cast("bigint"))
-           # one row per work: works #2162's opening rows hold are left out
-           .join(spark.table(TARGET).filter(OPENING).select("work_id"), "work_id", "left_anti"))
+           # one row per work: works #2162's opening rows and #2274's DOI-page rows hold are left out
+           .join(spark.table(TARGET).filter(PAGE_MODES).select("work_id"), "work_id", "left_anti"))
 else:
     assert "replace_hash" in src.columns, "replace mode needs replace_hash in the source"
     src = (src.withColumn("replace_hash", F.col("replace_hash").cast("bigint")).filter("replace_hash IS NOT NULL")
