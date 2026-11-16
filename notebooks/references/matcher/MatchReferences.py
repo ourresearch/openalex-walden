@@ -124,11 +124,19 @@ def record(status, info):
         .write.mode("append").saveAsTable(NIGHTS)
 
 
+ORDER = ["prepare", "search", "candidates", "reader", "decide"]
+
+
 def earlier_failure():
+    """The first earlier stage of this job run whose latest attempt did not finish ok (a repaired run reruns those)."""
     if JOB_RUN == "manual":
         return None
-    r = spark.sql(f"SELECT stage FROM {NIGHTS} WHERE job_run_id = '{JOB_RUN}' AND status IN ('failed', 'skipped') LIMIT 1").collect()
-    return r[0].stage if r else None
+    before = ORDER[:ORDER.index(STAGE)]
+    if not before:
+        return None
+    got = {r.stage: r.status for r in spark.sql(f"""SELECT stage, max_by(status, at) status FROM {NIGHTS}
+        WHERE job_run_id = '{JOB_RUN}' GROUP BY stage""").collect()}
+    return next((s for s in before if got.get(s) != "ok"), None)
 
 
 def count(t, where="true"):
