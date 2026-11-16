@@ -90,6 +90,24 @@ def landing_page_staged():
                 F.length(F.col("abstract")) > MAX_ABSTRACT_LENGTH,
                 F.substring(F.col("abstract"), 1, MAX_ABSTRACT_LENGTH)
             ).otherwise(F.col("abstract")).alias("abstract"),
+            # oxjob #2215: the page's reference list, only when Parseland has positive evidence the page shows the
+            # whole list (references_complete; a sample or a "show more" list is never used). Page order, each entry's
+            # verbatim text and the DOI the page links for it (bare, may be NULL), in the common record's reference
+            # struct. CreateSuperLocations ranks it below Crossref, repository and PDF lists (references_priority 3),
+            # so it fills only works with no other list. No list, or an empty one, stays NULL.
+            # Revert: drop this column (landing_page_combined keeps it, all NULL from then on).
+            F.when(
+                F.coalesce(F.col("references_complete"), F.lit(False)) & (F.size(F.col("references")) > 0),
+                F.transform(F.array_sort(F.col("references")), lambda r: F.struct(
+                    r["doi"].alias("doi"),
+                    F.lit(None).cast(StringType()).alias("pmid"),
+                    F.lit(None).cast(StringType()).alias("arxiv"),
+                    F.lit(None).cast(StringType()).alias("title"),
+                    F.lit(None).cast(StringType()).alias("authors"),
+                    F.lit(None).cast(StringType()).alias("year"),
+                    r["raw"].alias("raw"),
+                ))
+            ).alias("references"),
             F.expr("""
                 array_distinct(
                     array_union(
