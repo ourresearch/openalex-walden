@@ -313,6 +313,13 @@ def normalize_license(text):
         # publisher-specific
         ("elsevier.com/openaccess/userlicense", None),
         ("pubs.acs.org/page/policy/authorchoice_termsofuse.html", "other-oa"),
+        # oxjob #1228: a publisher's own licence for its paid open access option, registered only on OA articles,
+        # counts as open (help.openalex.org Licenses: publisher-specific open licences, like ACS AuthorChoice above).
+        # IEEE OAPA.html (IEEE.html, the copyright transfer, stays unmapped); Optica #VOR-OA (#VOR, #AM, #GOV and
+        # #OPG-OO stay unmapped). Keep in step with the copies in PDF.py and RepoBackfill.py (oxjob #991).
+        ("licenseinformation/oapa.html", "other-oa"),
+        ("10.1364/oa_license_v1#voroa", "other-oa"),
+        ("10.1364/oa_license_v2#voroa", "other-oa"),
         ("arxiv.orgperpetual", "other-oa"),
         ("arxiv.orgnonexclusive", "other-oa"),
         

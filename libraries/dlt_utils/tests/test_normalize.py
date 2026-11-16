@@ -150,3 +150,20 @@ def test_sql_shape():
     assert sql == (f"CASE WHEN lower(trim(d)) RLIKE '{ARXIV_DOI_PATTERN}' "
                    f"THEN concat('arXiv:', regexp_extract(lower(trim(d)), '{ARXIV_DOI_PATTERN}', 1)) END")
     assert "\\" not in sql and "'" not in ARXIV_DOI_PATTERN
+
+
+def test_publisher_specific_open_licences():
+    """oxjob #1228: IEEE OAPA and Optica VOR-OA are the publishers' own open access licences; their
+    non-OA siblings (IEEE.html, Optica #VOR / #AM / #GOV / #OPG-OO) and the Elsevier user licence stay unmapped."""
+    assert normalize_license("https://ieeexplore.ieee.org/Xplorehelp/downloads/license-information/OAPA.html") == "other-oa"
+    assert normalize_license("https://doi.org/10.1364/OA_License_v1#VOR-OA") == "other-oa"
+    assert normalize_license("https://doi.org/10.1364/OA_License_v2#VOR-OA") == "other-oa"
+    assert normalize_license("https://ieeexplore.ieee.org/Xplorehelp/downloads/license-information/IEEE.html") is None
+    assert normalize_license("https://ieeexplore.ieee.org/Xplorehelp/downloads/license-information/USG.html") is None
+    assert normalize_license("https://doi.org/10.1364/OA_License_v1#VOR") is None
+    assert normalize_license("https://doi.org/10.1364/OA_License_v2#VOR") is None
+    assert normalize_license("https://doi.org/10.1364/OA_License_v1#AM") is None
+    assert normalize_license("https://doi.org/10.1364/OA_License_v1#GOV") is None
+    assert normalize_license("https://doi.org/10.1364/OA_License_v2#OPG-OO") is None
+    assert normalize_license("https://doi.org/10.1364/OA_License_v2#CCBY") == "cc-by"
+    assert normalize_license("https://www.elsevier.com/open-access/userlicense/1.0/") is None
