@@ -22,7 +22,8 @@ WAREHOUSE = os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID", "69a583ace3bdc8d0")
 
 def step_sql():
     nb = json.load(open(NOTEBOOK))
-    src = "".join(nb["cells"][4]["source"])
+    # the main statement's cell (found by content: cells were added before it since, e.g. oxjob #1912's)
+    src = next("".join(c["source"]) for c in nb["cells"] if "dedupe_gate AS (" in "".join(c["source"]))
     start = src.index("dedupe_gate AS (")
     end = src.index("-- 6. Compute corresponding ids")
     return src[start:end].rstrip().rstrip(",")
@@ -33,6 +34,8 @@ def seat(name, aid=None, orcid=None, ras=(), corr=False, inst=()):
 
 
 A = "https://openalex.org/A"
+CONFIRM_SRC_TYPE = "ARRAY<STRUCT<provenance: STRING, native_id: STRING, nk: ARRAY<ARRAY<STRING>>>>"
+SEAT_KEYS_TYPE = "ARRAY<STRUCT<name: STRING, orcid: STRING>>"
 # (label, deposit_byline, seats, expected surviving names, extra checks)
 CASES = [
     ("whole list repeated (CIPEEX / OJS per-language copies)", False,
@@ -117,7 +120,9 @@ def build_sql():
                     f"{'TRUE' if pub else 'FALSE'} AS deposit_byline, ARRAY({auths}) AS authorships")
     return ("WITH fixtures AS (\n" + "\nUNION ALL\n".join(rows) + "\n),\n"
             "enriched_authorships AS (SELECT work_id, updated_datetime, deposit_byline, "
-            "TRANSFORM(authorships, a -> a.author.id) AS author_ids, authorships FROM fixtures),\n"
+            "TRANSFORM(authorships, a -> a.author.id) AS author_ids, authorships, "
+            # oxjob #2186: no confirming records here, so step 5b-E passes every fixture through
+            f"CAST(NULL AS {CONFIRM_SRC_TYPE}) AS confirm_src, CAST(NULL AS {SEAT_KEYS_TYPE}) AS seat_keys FROM fixtures),\n"
             + step_sql() + "\n"
             "SELECT o.work_id, TO_JSON(o.authorships) AS out, TO_JSON(f.authorships) AS input FROM one_seat_per_person o "
             "JOIN fixtures f USING (work_id) ORDER BY o.work_id")
