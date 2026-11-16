@@ -86,9 +86,14 @@ df = spark.sql("""
           MIN_BY(STRUCT(native_id, native_id_namespace), grobid_s3_id)
         ) AS src,
         MAX(updated_date) AS updated_date
-      FROM openalex.works.locations_mapped
+      FROM openalex.works.locations_mapped lm
       WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
         AND work_id IS NOT NULL
+        -- PDFs that were never in R2 (oxjob #2298); the per-location layout skips every excluded file
+        AND NOT EXISTS (
+          SELECT 1 FROM openalex.pdf.manifest_excluded_pdfs x
+          WHERE x.label = 'MISSING' AND x.pdf_uuid = REPLACE(lm.pdf_s3_id, '.pdf', '')
+        )
       GROUP BY work_id
     )
 """)
