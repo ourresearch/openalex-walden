@@ -611,14 +611,42 @@ def parse_repo_records(df, id_hosts, abstract=None, issue=None, volume=None, fir
             ).otherwise(F.col("_relation_urls"))
         )
     )
+    # oxjob #2266: Zenodo's oai_dc (since its 2023 move to InvenioRDM) lists only https://doi.org/<doi>, so the
+    # doi.org filter below dropped 7.6M of Zenodo's 8.8M records. Those with Zenodo's own DOI (10.5281/zenodo.*) reach
+    # their DataCite work as a Zenodo location already and stay out. The ~1.22M with a publisher's or funder's DOI were
+    # the only Zenodo copy of their work: their record page, built from the OAI id, is the landing page.
+    .withColumn(
+        "urls",
+        F.when(
+            (F.col("_oai_host") == "zenodo.org")
+            & F.col("_oai_local").rlike(r"^[0-9]+$")
+            & ~F.exists("urls", lambda x: ~x["url"].contains("doi.org"))
+            & ~F.exists("ids", lambda x: (x["namespace"] == "doi") & F.lower(x["id"]).startswith("10.5281/zenodo")),
+            F.array(F.struct(
+                F.concat(F.lit("https://zenodo.org/records/"), F.col("_oai_local")).alias("url"),
+                F.lit("html").alias("content_type"),
+            )),
+        ).otherwise(F.col("urls"))
+    )
+    # oxjob #2266: Zenodo is a trusted host (#933), but a Zenodo record can say its files are restricted, closed or
+    # embargoed (info:eu-repo/semantics/...Access in dc:rights, beside a licence that applies once access is granted).
+    # Such a copy is not open, whatever its licence. 28K of the records above say so.
+    .withColumn(
+        "_zenodo_not_open",
+        (F.col("_oai_host") == "zenodo.org") & F.exists(
+            F.coalesce(F.col("`ns0:metadata`.`ns1:dc`.`dc:rights`"), F.array().cast("array<string>")),
+            lambda x: F.coalesce(F.lower(x).rlike(r"info:eu-repo/semantics/(restricted|closed|embargoed)access"),
+                                 F.lit(False)),
+        ),
+    )
     .drop("has_pmcid", "pmcid", "_identifier_urls", "_relation_urls", "_oai_host", "_oai_local")
     .filter(F.size(F.col("urls")) > 0)
     .filter(F.size(F.filter(F.col("urls"), lambda x: ~x.url.contains("doi.org"))) > 0)
     .withColumn("mesh", F.lit(None).cast("string"))
     .withColumn(
         "is_oa",
-        F.when(
-            F.lower(F.col("license")).startswith("cc") | 
+        F.when(F.col("_zenodo_not_open"), F.lit(False)).when(
+            F.lower(F.col("license")).startswith("cc") |
             F.lower(F.col("license")).contains("other-oa") |
             F.lower(F.col("license")).contains("public-domain") |
             F.expr(TRUSTED_HOST_IS_OA_EXPR),
