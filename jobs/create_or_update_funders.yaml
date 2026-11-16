@@ -17,7 +17,7 @@ resources:
           - rohan@openalex.org
         no_alert_for_skipped_runs: true
       max_concurrent_runs: 1
-      timeout_seconds: 7200   # >= task 3000 + retry interval 600 + retried task 3000, so the one retry can actually run
+      timeout_seconds: 11400   # >= task 5400 + retry interval 600 + retried task 5400, so the one retry can actually run
       tasks:
         - task_key: fetch_resolve_publish
           notebook_task:
@@ -29,7 +29,7 @@ resources:
               run_id: "{{job.run_id}}"
               max_mints: "280"   # fuse: more mints in one night stops the run for a person; nothing is applied. First run: 234-235 measured + 45 margin (MAXMINTS-EVIDENCE 10-14); set back to "200" after the first clean night
           environment_key: Default
-          timeout_seconds: 3000
+          timeout_seconds: 5400   # reviewed edits apply one at a time, about 6 s each: 333 merges took 33 of the run's 41 minutes in rehearsal
           max_retries: 1
           min_retry_interval_millis: 600000
       environments:

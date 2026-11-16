@@ -42,7 +42,9 @@ def validate():
     csv_merges = [(int(r['funder_id']), int(r['target'])) for r in edits if r['action'] == 'merge']
     twin_cell = next(s for s in release if '-- name_twin_merges:' in s)
     sql_merges = [(int(a), int(b)) for a, b in re.findall(r'\((\d+)L,(\d+)L\)', twin_cell)]
-    assert csv_merges == sql_merges and len(csv_merges) == 0
+    # edits.csv merges are applied by the daily job alone; the name release, its lookup build and the reported reader stay merge-free
+    # (the daily's re-sign carries lookup rows to the survivor, and its remap leaves no loser id in a source table).
+    assert sql_merges == []
     deferred=list(csv.DictReader((FUNDER_DIR / 'deferred_merges.csv').open(newline='')))
     assert len(deferred)==59 and all(r['action']=='merge' for r in deferred)
     assert 'WHERE false' in twin_cell
@@ -50,10 +52,9 @@ def validate():
     assert all(c.startswith('%sql') for c in sources(FUNDER_DIR / 'SeedFunders.ipynb')), 'Seed notebook must be SQL only'
     assert not any(':mode' in s for s in funders), 'Daily notebook has no mode: the seed is SeedFunders.ipynb'
     edits_cell=next(s for s in funders if '-- registry_edits:' in s)
-    assert 'WHERE false' in edits_cell, 'Deferred edits must stay inert'
     assert [(int(a),int(b)) for a,b in re.findall(r"\(\d+L,'merge',(\d+)L,'(\d+)',CAST\(NULL AS STRING\)\)",edits_cell)] == csv_merges
     losers = {a for a, _ in csv_merges}
-    assert len(losers) == 0 and not losers.intersection(b for _, b in csv_merges), 'Merge chain/cycle'
+    assert len(losers) == len(csv_merges) and not losers.intersection(b for _, b in csv_merges), 'Merge chain/cycle'
     assert all(r['reviewed_by'] and r['reason'] for r in edits)
 
     merge = next(s for s in funders if '-- Apply reviewed edits' in s)
@@ -171,7 +172,7 @@ def validate():
     assert [(bytes.fromhex(k).decode('utf-8'),int(fid),rule) for k,fid,rule in re.findall(r"\('([0-9a-f]+)',(\d+)L,'(reviewed|programme)'\)",release_aliases)] == csv_aliases
     release_merges=next(s for s in release if '-- name_twin_merges:' in s)
     assert 'CAST(NULL AS BIGINT) loser_id' in release_merges and 'WHERE false' in release_merges
-    assert [(int(a),int(b)) for a,b in re.findall(r'\((\d+)L,(\d+)L\)',release_merges)] == csv_merges
+    assert not re.findall(r'\((\d+)L,(\d+)L\)',release_merges)
     activate = next(s for s in release if "IF :phase = 'activate'" in s)
     assert "MERGE INTO" not in activate
     assert "count(*)=0" in activate
@@ -192,7 +193,7 @@ def validate():
     assert 'SET VAR' not in reported_gate and reported.index(reported_gate)+2 == reported.index(reported_source)
     assert reported[reported.index(reported_gate)+1].splitlines()[1:] == SET_VAR_CELL
     assert 'CAST(NULL AS BIGINT) loser_id' in reported_source and 'WHERE false' in reported_source
-    assert [(int(a),int(b)) for a,b in re.findall(r'\((\d+)L,(\d+)L\)',reported_source)] == csv_merges
+    assert not re.findall(r'\((\d+)L,(\d+)L\)',reported_source)
     assert 'CASE WHEN funder_names_active THEN coalesce(m.survivor_id,s.funder_id) ELSE s.funder_id END' in reported_source
     assert 'SELECT DISTINCT s.work_id' in reported_source
     assert not any('fundref' in c.lower() or '10.13039' in c for c in reported), 'FunderReported has no DOI input: no FundRef step'
@@ -208,7 +209,7 @@ def validate():
     assert 'DROP VIEW openalex.funders.funders;' in (package/'ROLLBACK.sql').read_text()
     assert 'ALTER TABLE openalex.funders.funders_v41_table RENAME TO openalex.funders.funders;' in (package/'ROLLBACK.sql').read_text()
     assert 'early rollback forbidden' in (package/'ROLLBACK.sql').read_text()
-    print('PASS: 151 Crossref trap funders (rule 1: 129 hard, 21 shared-name, 1 added), 204 aliases, 0 active merges (59 deferred), preserved fields, forward readers ROR -> names with FundRef DOI backup key (fills no-name refs; Crossref name wins conflicts, DataCite holds them; deleted funders never match), immutable reference cuts, literal history preservation, required catalogue-bound lookup, production-only publication, unscheduled dev-default release job')
+    print(f'PASS: 151 Crossref trap funders (rule 1: 129 hard, 21 shared-name, 1 added), 204 aliases, {len(csv_merges)} active merges (59 listed as deferred), preserved fields, forward readers ROR -> names with FundRef DOI backup key (fills no-name refs; Crossref name wins conflicts, DataCite holds them; deleted funders never match), immutable reference cuts, literal history preservation, required catalogue-bound lookup, production-only publication, unscheduled dev-default release job')
 
 
 if __name__ == '__main__':

@@ -293,6 +293,25 @@ def test_propagation_keeps_backup_remap_and_residue_per_target():
         assert any(n in names for n in (f'-- propagation_remap_{t}', f'-- propagation_delete_{t}')), t
 
 
+def test_award_id_junctions_fold_onto_the_winner_then_delete():
+    names = [s.split('\n')[1] for s in CELLS if s.startswith('%sql\n-- propagation_')]
+    for t in ('europepmc', 'datacite', 'anr', 'kaken'):
+        insert, delete, after = (names.index(f'-- propagation_{step}_awards_{t}_work_funders') for step in ('insert', 'delete', 'after'))
+        assert insert + 1 == delete == after - 1, t
+        s = CELLS[cell(f'-- propagation_insert_awards_{t}_work_funders')]
+        assert "WHERE m.status='merged' GROUP BY t.work_id, m.merged_into_id" in s and 'WHEN NOT MATCHED THEN INSERT' in s
+        assert 'funder_id=m.merged_into_id' not in s.replace(' ', ''), 'a re-key leaves two rows for one (work, funder)'
+
+
+def test_crossref_junction_keeps_a_merged_funders_rows():
+    # The Crossref reader mints a grant row per (funder, number) from this table: a re-stamped number is a second grant.
+    names = [s.split('\n')[1] for s in CELLS if s.startswith('%sql\n-- propagation_')]
+    assert '-- propagation_insert_awards_crossref_work_funders' not in names and '-- propagation_remap_awards_crossref_work_funders' not in names
+    delete = CELLS[cell('-- propagation_delete_awards_crossref_work_funders')]
+    assert "WHEN MATCHED AND m.status='withdrawn' THEN DELETE;" in delete and 'merged_into_id' not in delete.split('MERGE INTO')[1]
+    assert "WHERE m.status='withdrawn';" in CELLS[cell('-- propagation_after_awards_crossref_work_funders')]
+
+
 def test_seed_ranking_is_built_once():
     rank = next(s for s in SEED if '-- seed_ranking:' in s)
     assert rank.count('CREATE OR REPLACE TEMP VIEW') == 2 and 'shared_dec AS (' in rank
