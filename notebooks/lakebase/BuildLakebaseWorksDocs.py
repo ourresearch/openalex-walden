@@ -301,6 +301,9 @@ def iso_ts(col_name: str):
 
 empty_sdg_array = F.array().cast("array<struct<id:string,display_name:string,score:double>>")
 empty_study_design_array = F.array().cast("array<struct<id:string,display_name:string>>")  # oxjob #1312
+# oxjob #2264: is_pulled reaches openalex_works on the first End 2 End run after it ships; a run before that must not
+# fail on the missing column.
+is_pulled_col = F.coalesce(F.col("is_pulled"), F.lit(False)) if "is_pulled" in df.columns else F.lit(False)
 
 df_transformed = (
     df
@@ -404,6 +407,7 @@ df_transformed = (
         F.col("open_access"),
         F.col("is_paratext"),
         F.col("is_retracted"),
+        is_pulled_col.alias("is_pulled"),  # oxjob #2264, as in sync_works
         F.col("is_xpac"),
         F.col("biblio"),
         F.col("parent_works"),  # oxjob #2065
