@@ -229,15 +229,11 @@ url_pattern = r"(https?://\S+|www\.\S+)"
 
 # COMMAND ----------
 
-repository_schema = StructType([
-    StructField("ns0:header", StructType([
-        # StructField("@status", StringType(), True),
-        StructField("ns0:identifier", StringType(), True),
-        StructField("ns0:datestamp", TimestampType(), True),
-        StructField("ns0:setSpec", ArrayType(StringType()), True)
-    ]), True),
-    StructField("ns0:metadata", StructType([
-        StructField("ns1:dc", StructType([
+# oxjob #227: prefixes the oai_dc wrapper gets besides ns1 (why: repository_schema below), in coalesce order.
+DC_WRAPPER_ALIASES = ("ns2:dc", "ns3:dc", "dc:dc")
+
+# The Dublin Core record's fields, the same under every wrapper prefix.
+_dc_record_struct = StructType([
             StructField("dc:title", StringType(), True),
             StructField("dc:creator", ArrayType(StringType()), True),
             StructField("dc:contributor", ArrayType(StringType()), True),
@@ -263,9 +259,43 @@ repository_schema = StructType([
             StructField("ns4:accessRights", ArrayType(StringType()), True),
             StructField("ns4:license", ArrayType(StringType()), True),
             StructField("dc:relation", ArrayType(StringType()), True)
-        ]), True)
+        ])
+
+repository_schema = StructType([
+    StructField("ns0:header", StructType([
+        # StructField("@status", StringType(), True),
+        StructField("ns0:identifier", StringType(), True),
+        StructField("ns0:datestamp", TimestampType(), True),
+        StructField("ns0:setSpec", ArrayType(StringType()), True)
+    ]), True),
+    StructField("ns0:metadata", StructType([
+        StructField("ns1:dc", _dc_record_struct, True),
+        # oxjob #227: the same record under the other prefixes its wrapper gets in a harvested file. ElementTree names
+        # a namespace ns<count of namespaces seen so far, registered ones included>, so the oai_dc wrapper is ns1 only
+        # when nothing else came first: xsi:schemaLocation on <metadata> (WestminsterResearch, EPrints) makes it ns2,
+        # dc and xsi both make it ns3. A wrapper in the dc-elements namespace itself, <dc xmlns="http://purl.org/dc/
+        # elements/1.1/"> instead of <oai_dc:dc> (IRUA, UAntwerp: every record since at least Jan 2025), is stored as
+        # <dc:dc>, "dc" being ElementTree's registered prefix. ns1:dc came back NULL for all of them: no title, so
+        # repo_parsed dropped the record (19,253 IRUA rows, 0 parsed). Read only here: fold_dc_wrapper() moves the
+        # one present into ns1:dc before anything is stored, so no table gains a column.
+        *[StructField(name, _dc_record_struct, True) for name in DC_WRAPPER_ALIASES],
     ]), True)
 ])
+
+
+def fold_dc_wrapper(df):
+  """oxjob #227: `ns0:metadata` as stored, struct<ns1:dc>: the oai_dc wrapper under whichever prefix the file gave it
+  (ns1:dc, else DC_WRAPPER_ALIASES in order). Applied where the raw files are read (repo_items, RepoReparse.py), so
+  tables keep their schema and every reader of `ns0:metadata`.`ns1:dc` sees these records too. A record with no
+  <metadata> (deleted) stays NULL."""
+  return df.withColumn(
+      "ns0:metadata",
+      F.when(
+          F.col("`ns0:metadata`").isNotNull(),
+          F.struct(F.coalesce(*[F.col(f"`ns0:metadata`.`{name}`") for name in ("ns1:dc", *DC_WRAPPER_ALIASES)])
+                   .alias("ns1:dc")),
+      ),
+  )
 
 # COMMAND ----------
 
@@ -329,6 +359,7 @@ def repo_items():
       # stream read it. Stable across re-reads, so a full refresh no longer restamps the
       # corpus (the #542 taxicab hazard). Rows before the cutover carry pipeline-read times.
       .withColumn("ingested_at", F.col("_metadata.file_modification_time"))
+      .transform(fold_dc_wrapper)  # oxjob #227: the oai_dc wrapper under any prefix read as ns1:dc; stored shape unchanged
   )
 
 # COMMAND ----------
