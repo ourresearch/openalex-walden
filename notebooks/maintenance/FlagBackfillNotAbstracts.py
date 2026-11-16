@@ -55,6 +55,9 @@
 # MAGIC   reason `page_chrome` by the SQL rule `ACS_CHROME` (634,659 works on 12 Nov; bar: Opus 5.5 read 100 of 100 random
 # MAGIC   flagged texts as chrome only, #1432 README § Wave 3). Texts that say "abstract" anywhere but the export menu are
 # MAGIC   left alone. Revert that part: drop the branch below.
+# MAGIC   Rule acs-chrome-v2 (oxjob #1051, 15 Nov 2026): the leading "ADVERTISEMENT " is optional, so Chemical &
+# MAGIC   Engineering News pages and other ACS pages that start "RETURN TO ISSUE" match too (v1 missed all of them;
+# MAGIC   every other clause unchanged). Revert that part: put the LIKE line back.
 # MAGIC - **Revert:** remove the anti-join from CreateWorksBase (one line), or `TRUNCATE` this table. Never
 # MAGIC   DROP it while CreateWorksBase reads it: a missing table fails the nightly.
 # MAGIC
@@ -92,10 +95,10 @@ DEPOSIT_NOTICE = r"""(
   trim(COL) RLIKE '^(Submitted by|Made available in DSpace on|Approved for entry into archive by|Rejected by|Item withdrawn by) '
   AND instr(COL, 'No. of bitstreams') > 0 AND instr(COL, '%%%%') = 0
   AND length(regexp_replace(trim(COL), '(?i)[^\\n]{0,200}?: \\d+ bytes, checksum: [0-9a-f]{32} \\((MD5|SHA-1|SHA1)\\)', ' ')) <= 150)"""
-# oxjob #1432 (12 Nov 2026): rule acs-chrome-v1, a SQL predicate on a text column. Keep byte-identical with #1432
-# work/acs_rule.sql.
-ACS_CHROME_COMMIT = "oxjob1432-acs-chrome-v1"
-ACS_CHROME = r"""(trim(COL) LIKE 'ADVERTISEMENT RETURN TO ISSUE%'
+# oxjob #1432 (12 Nov 2026): rule acs-chrome-v1, a SQL predicate on a text column; oxjob #1051 (15 Nov 2026): v2,
+# the leading 'ADVERTISEMENT ' made optional. Keep byte-identical with #1051 work/acs_rule_v2.sql.
+ACS_CHROME_COMMIT = "oxjob1051-acs-chrome-v2"
+ACS_CHROME = r"""(trim(COL) RLIKE '^(ADVERTISEMENT )?RETURN TO ISSUE'
  AND instr(COL, 'LEARN ABOUT THESE METRICS') > 0
  AND instr(COL, 'Get e-Alerts') > 0
  AND length(trim(substring_index(COL, 'Get e-Alerts', -1))) = 0
