@@ -473,9 +473,13 @@ def check_bench(train_dir, chk, comb, fe):
     G = X.set_index(["qi", "cand"])
     if len(L) != len(G) or not L.index.equals(L.index.intersection(G.index)):
         raise RuntimeError(f"bench pairs differ: stored {len(L)}, now {len(G)}")
-    for c in fe["feats0"] + ["p"]:
+    for c in fe["feats0"]:
         if not np.array_equal(L.loc[G.index, c].to_numpy(float), G[c].to_numpy(float), equal_nan=True):
             raise RuntimeError(f"bench feature {c} differs from #2000's")
+    # the checklist score may differ in the last bits on another machine's math library (fit_models allows 1e-9 too)
+    dp = float(np.abs(L.loc[G.index, "p"].to_numpy(float) - G["p"].to_numpy(float)).max())
+    if dp >= 1e-9:
+        raise RuntimeError(f"bench checklist scores differ from #2000's by up to {dp:.2e}")
     scores = pd.read_parquet(f"{train_dir}/bench_reader.parquet")
     Xr = X.merge(scores.rename(columns={"p": "rp"})[["qi", "cand", "rp"]], on=["qi", "cand"], how="left")
     got = decide_bucket(Xr, bp[["qi", "cand_canon", "type", "title", "au", "year", "venue", "rtext", "ord"]].copy(), comb, fe,
