@@ -246,8 +246,8 @@ if MODE == "write":
         print(f"created {TARGET}")
     endpoint_list = ", ".join(f"'{e}'" for e in ENDPOINTS)  # validated above
     # A native_ids_table run stages only part of each endpoint, so it must not delete the endpoint's other rows.
-    delete_clause = "" if NATIVE_IDS else \
-        f"WHEN NOT MATCHED BY SOURCE AND t.repository_id IN ({endpoint_list}) THEN DELETE"
+    delete_clause = ("" if NATIVE_IDS
+                     else f"WHEN NOT MATCHED BY SOURCE AND t.repository_id IN ({endpoint_list}) THEN DELETE")
     # Row-level MERGE, never an overwrite: an overwrite is not a row-level change feed and breaks the pipeline's
     # readChangeFeed stream until a full refresh (jobs/repo_backfill.yaml). Unchanged records are left alone, so a
     # re-run re-sends only what a schema change actually changed.
