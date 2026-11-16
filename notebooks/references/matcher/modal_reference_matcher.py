@@ -7,8 +7,10 @@
 - `run_search`: the night's reference vectors (table_in: text_hash, v) -> the best 30 works each by inner product over the
   reference-style work vectors (openalex.vector_search.work_reference_style_embeddings_qwen3), searching the 256 nearest of
   its 16,384 lists (#2000's corpus run: nprobe 256, pool 30). The lists live on the Modal Volume as built on 13 Nov 2026
-  (/data/index, 431.6M works); works embedded since then (new or changed) are exported each night into /data/delta and
-  replace their old rows in the lists they belong to, so the search always sees the current vectors. Output parquet
+  (431.6M works) or as last rebuilt; works embedded since then (new or changed) are exported each night into the delta and
+  replace their old rows in the lists they belong to, so the search always sees the current vectors. A night that sees
+  more than REBUILD_AT re-embedded works starts `rebuild_lists` in the background (a fresh copy, ~20 min, then the search
+  switches to it through /data/current.json). Output parquet
   (text_hash, cand, score, rank, probe_rank) PUT to out_dir on a Unity Catalog Volume.
 - `run_reader`: the reader (Qwen/Qwen3.5-2B + LoRA r2b_c5, vLLM) on the night's prompt table (table_in: shard, seed_id, prefix,
   seats): p(yes) per candidate slot, one parquet per shard (seed_id, cid, p) to out_dir. #2000's corpus run's scoring, unchanged.
@@ -48,11 +50,14 @@ reader_image = (modal.Image.from_registry("nvidia/cuda:12.9.1-devel-ubuntu22.04"
 INDEX = "openalex.vector_search.work_reference_style_embeddings_qwen3"
 D, N_LG, LISTS_PER_GROUP = 1024, 1024, 16
 NPROBE, POOL, SUB = 256, 30, 1_000_000
-# The lists on /data/index were exported 13 Nov 2026 14:40-15:21 UTC. Works embedded from the start of that day are re-read
-# into the delta (an overlap is harmless: a delta row replaces the index row of the same work).
-DELTA_START = "2026-11-13 00:00:00"
-DELTA_MARGIN_H = 6          # each night re-reads the last hours before the previous night's newest row (late commits)
-MAX_DELTA_ROWS = 40_000_000  # past this the lists must be rebuilt (index_all in #2000's refsearch_modal.py); ~2 weeks at today's rate
+# Which lists and delta the search reads: /data/current.json, written by rebuild_lists. Without it, the lists #2000 built,
+# exported 13 Nov 2026 14:40-15:21 UTC; works embedded from the start of that day are re-read into the delta (an overlap is
+# harmless: a delta row replaces the list row of the same work).
+CURRENT = "/data/current.json"
+FIRST = {"index": "/data/index", "delta": "/data/delta", "delta_start": "2026-11-13 00:00:00"}
+DELTA_MARGIN_H = 6           # each night re-reads the last hours before the previous night's newest row (late commits)
+REBUILD_AT = 20_000_000      # a night that sees more re-embedded works than this starts a rebuild of the lists (~10 days)
+MAX_DELTA_ROWS = 40_000_000  # past this the search refuses (memory): the rebuild has not happened
 ADAPTER, BASE = "r2b_c5", "Qwen/Qwen3.5-2B"
 READER_GPUS = 8              # leave room on the shared Modal GPU cap for other production jobs
 DEFAULT_WAREHOUSE = "3996dc0a9b183ce3"
@@ -204,16 +209,18 @@ def export_queries(table: str, build_id: str, warehouse: str):
     return {"queries": int(len(h)), "seconds": round(time.time() - t0, 1)}
 
 
-@app.function(image=cpu_image, volumes={"/data": svol}, secrets=[DBX], timeout=3 * 3600, cpu=4, memory=96 * 1024)
+@app.function(image=cpu_image, volumes={"/data": svol}, secrets=[DBX], timeout=3 * 3600, cpu=4, memory=96 * 1024, nonpreemptible=True)
 def refresh_delta(warehouse: str):
     """Works embedded since the last export (new or changed vectors) -> one more delta file; manifest /data/delta/manifest.json."""
     import numpy as np
     svol.reload()
     t0 = time.time()
-    os.makedirs("/data/delta", exist_ok=True)
-    mpath = "/data/delta/manifest.json"
+    cur = _current()
+    dd = cur["delta"]
+    os.makedirs(dd, exist_ok=True)
+    mpath = f"{dd}/manifest.json"
     man = json.load(open(mpath)) if os.path.exists(mpath) else {"newest": None, "files": []}
-    since = (f"timestamp'{man['newest']}' - INTERVAL {DELTA_MARGIN_H} HOURS" if man["newest"] else f"timestamp'{DELTA_START}'")
+    since = (f"timestamp'{man['newest']}' - INTERVAL {DELTA_MARGIN_H} HOURS" if man["newest"] else f"timestamp'{cur['delta_start']}'")
     ids, lst, vs, newest = [], [], [], None
     for t in sql_arrow(f"SELECT work_id, list_id, v, CAST(embedded_at AS STRING) e FROM {INDEX} WHERE embedded_at >= {since}", warehouse):
         for b in t.to_batches():
@@ -225,26 +232,30 @@ def refresh_delta(warehouse: str):
     n = int(sum(len(x) for x in ids))
     if n:
         name = f"d{len(man['files']):04d}"
-        np.save(f"/data/delta/{name}.ids.npy", np.concatenate(ids))
-        np.save(f"/data/delta/{name}.lst.npy", np.concatenate(lst))
-        np.save(f"/data/delta/{name}.v.npy", np.concatenate(vs))
+        np.save(f"{dd}/{name}.ids.npy", np.concatenate(ids))
+        np.save(f"{dd}/{name}.lst.npy", np.concatenate(lst))
+        np.save(f"{dd}/{name}.v.npy", np.concatenate(vs))
         man["files"].append({"name": name, "rows": n, "since": since, "newest": newest})
         man["newest"] = newest
         json.dump(man, open(mpath, "w"))
         svol.commit()
-    return {"exported": n, "files": len(man["files"]), "newest": man["newest"], "seconds": round(time.time() - t0, 1)}
+    return {"exported": n, "files": len(man["files"]), "newest": man["newest"], "lists": cur["index"], "seconds": round(time.time() - t0, 1)}
 
 
-def _load_delta():
+def _current():
+    return json.load(open(CURRENT)) if os.path.exists(CURRENT) else dict(FIRST)
+
+
+def _load_delta(dd):
     """Every delta file, the latest row per work kept -> (ids sorted, lst, v) and the rows grouped by list group."""
     import numpy as np
-    mpath = "/data/delta/manifest.json"
+    mpath = f"{dd}/manifest.json"
     man = json.load(open(mpath)) if os.path.exists(mpath) else {"files": []}
     if not man["files"]:
         return np.zeros(0, np.int64), {}, 0
-    ids = np.concatenate([npy(f"/data/delta/{f['name']}.ids.npy") for f in man["files"]])
-    lst = np.concatenate([npy(f"/data/delta/{f['name']}.lst.npy") for f in man["files"]])
-    V = np.concatenate([npy(f"/data/delta/{f['name']}.v.npy") for f in man["files"]])
+    ids = np.concatenate([npy(f"{dd}/{f['name']}.ids.npy") for f in man["files"]])
+    lst = np.concatenate([npy(f"{dd}/{f['name']}.lst.npy") for f in man["files"]])
+    V = np.concatenate([npy(f"{dd}/{f['name']}.v.npy") for f in man["files"]])
     # later files win: unique over the reversed order keeps each work's newest row
     _, first = np.unique(ids[::-1], return_index=True)
     keep = np.sort(len(ids) - 1 - first)
@@ -256,25 +267,29 @@ def _load_delta():
     for g in range(N_LG):
         sel = order[bounds[g]:bounds[g + 1]]
         if len(sel):
-            groups[g] = (ids[sel], lst[sel], V[sel])
+            sel = sel[np.argsort(lst[sel], kind="stable")]
+            groups[g] = (ids[sel], lst[sel], np.ascontiguousarray(V[sel]))
     return np.sort(ids), groups, len(ids)
 
 
 @app.function(image=gpu_image, gpu="H100", volumes={"/data": svol}, secrets=[DBX], timeout=4 * 3600, cpu=16, memory=200 * 1024)
 def search_gpu(build_id: str, out_dir: str, nprobe: int = NPROBE, pool: int = POOL, readers: int = 16):
-    """Best `pool` works per query. The lists stream past the GPU once; each list's rows are the 13 Nov index's rows minus works
-    re-embedded since (their rows come from the delta instead) plus the delta rows filed in that list. #2000's search_chunk loop."""
+    """Best `pool` works per query. The lists stream past the GPU once (#2000's search_chunk loop); in each list group the
+    built rows of works re-embedded since are masked out (score -inf) and the group's delta rows are scanned as a second block.
+    Nothing is copied on the CPU: the cost stays reading the lists (~0.9 TB)."""
     import numpy as np, pyarrow as pa, pyarrow.parquet as pq, torch
     svol.reload()
     T = {"start": time.time()}
     dev = "cuda"
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False
-    cent = torch.from_numpy(np.load("/data/index/centroids.npy")).float().to(dev)
+    cur = _current()
+    ix = cur["index"]
+    cent = torch.from_numpy(np.load(f"{ix}/centroids.npy")).float().to(dev)
     L = cent.shape[0]
     H = npy(f"/data/nightly/{build_id}/q.h.npy")
     V = npy(f"/data/nightly/{build_id}/q.v.npy")
     n = len(H)
-    delta_ids, delta_groups, n_delta = _load_delta()
+    delta_ids, delta_groups, n_delta = _load_delta(cur["delta"])
     if n_delta > MAX_DELTA_ROWS:
         raise RuntimeError(f"{n_delta:,} re-embedded works since the lists were built (> {MAX_DELTA_ROWS:,}): rebuild the lists")
     T["load"] = time.time()
@@ -301,16 +316,14 @@ def search_gpu(build_id: str, out_dir: str, nprobe: int = NPROBE, pool: int = PO
     qq = queue.Queue(maxsize=readers)
 
     def load(g):
-        ids, lst, Vg = npy(f"/data/index/lg{g:04d}.ids.npy"), npy(f"/data/index/lg{g:04d}.lst.npy"), npy(f"/data/index/lg{g:04d}.v.npy")
-        if len(delta_ids):
-            keep = ~np.isin(ids, delta_ids, assume_unique=True)
-            ids, lst, Vg = ids[keep], lst[keep], Vg[keep]
+        ids, lst, Vg = npy(f"{ix}/lg{g:04d}.ids.npy"), npy(f"{ix}/lg{g:04d}.lst.npy"), npy(f"{ix}/lg{g:04d}.v.npy")
+        # works re-embedded since the lists were built: their rows here are stale
+        stale = np.isin(ids, delta_ids, assume_unique=True) if len(delta_ids) else None
+        blocks = [(ids, lst, Vg, stale if stale is not None and stale.any() else None)]
         if g in delta_groups:
             di, dl, dv = delta_groups[g]
-            ids, lst, Vg = np.concatenate([ids, di]), np.concatenate([lst, dl]), np.concatenate([Vg, dv])
-            o = np.argsort(lst, kind="stable")
-            ids, lst, Vg = ids[o], lst[o], np.ascontiguousarray(Vg[o])
-        return g, ids, lst, Vg
+            blocks.append((di, dl, dv, None))
+        return g, blocks
 
     err = []
 
@@ -337,35 +350,40 @@ def search_gpu(build_id: str, out_dir: str, nprobe: int = NPROBE, pool: int = PO
         item = qq.get()
         if item is None:
             break
-        g, ids, lst, Vg = item
-        if len(ids) == 0:
-            continue
-        rows_seen += len(ids)
-        Vt = torch.from_numpy(Vg).to(dev)
-        It = torch.from_numpy(ids).to(dev)
-        starts = np.flatnonzero(np.r_[True, lst[1:] != lst[:-1]])
-        for a, e in zip(starts, np.r_[starts[1:], len(lst)]):
-            l, nl = int(lst[a]), int(e - a)
-            kk = min(pool, nl)
-            Vl, Il = Vt[a:e], It[a:e]
-            for s in subs:
-                q0, q1 = int(s["ptr"][l]), int(s["ptr"][l + 1])
-                if q1 == q0:
-                    continue
-                bq = max(1, min(q1 - q0, LIM // nl))
-                for b in range(q0, q1, bq):
-                    qb = s["qix"][b:min(b + bq, q1)].long()
-                    rb = s["rix"][b:min(b + bq, q1)]
-                    S = s["Q"][qb] @ Vl.T
-                    tv, ti = torch.topk(S, kk, dim=1, sorted=False)
-                    pairs += S.numel()
-                    cs = torch.cat([s["bs"][qb], tv.float()], 1)
-                    ci = torch.cat([s["bi"][qb], Il[ti]], 1)
-                    cr = torch.cat([s["br"][qb], rb[:, None].expand(-1, kk)], 1)
-                    top = torch.topk(cs, pool, dim=1, sorted=False).indices
-                    s["bs"][qb] = cs.gather(1, top)
-                    s["bi"][qb] = ci.gather(1, top)
-                    s["br"][qb] = cr.gather(1, top)
+        g, blocks = item
+        for ids, lst, Vg, stale in blocks:
+            if len(ids) == 0:
+                continue
+            rows_seen += len(ids) - (int(stale.sum()) if stale is not None else 0)
+            Vt = torch.from_numpy(Vg).to(dev)
+            It = torch.from_numpy(ids).to(dev)
+            St = torch.from_numpy(stale).to(dev) if stale is not None else None
+            starts = np.flatnonzero(np.r_[True, lst[1:] != lst[:-1]])
+            for a, e in zip(starts, np.r_[starts[1:], len(lst)]):
+                l, nl = int(lst[a]), int(e - a)
+                kk = min(pool, nl)
+                Vl, Il = Vt[a:e], It[a:e]
+                Ml = St[a:e] if St is not None and bool(stale[a:e].any()) else None
+                for s in subs:
+                    q0, q1 = int(s["ptr"][l]), int(s["ptr"][l + 1])
+                    if q1 == q0:
+                        continue
+                    bq = max(1, min(q1 - q0, LIM // nl))
+                    for b in range(q0, q1, bq):
+                        qb = s["qix"][b:min(b + bq, q1)].long()
+                        rb = s["rix"][b:min(b + bq, q1)]
+                        S = s["Q"][qb] @ Vl.T
+                        if Ml is not None:
+                            S.masked_fill_(Ml[None, :], float("-inf"))
+                        tv, ti = torch.topk(S, kk, dim=1, sorted=False)
+                        pairs += S.numel()
+                        cs = torch.cat([s["bs"][qb], tv.float()], 1)
+                        ci = torch.cat([s["bi"][qb], Il[ti]], 1)
+                        cr = torch.cat([s["br"][qb], rb[:, None].expand(-1, kk)], 1)
+                        top = torch.topk(cs, pool, dim=1, sorted=False).indices
+                        s["bs"][qb] = cs.gather(1, top)
+                        s["bi"][qb] = ci.gather(1, top)
+                        s["br"][qb] = cr.gather(1, top)
     if err:
         raise RuntimeError(f"list reader failed: {err[0][:500]}")
     torch.cuda.synchronize()
@@ -375,7 +393,7 @@ def search_gpu(build_id: str, out_dir: str, nprobe: int = NPROBE, pool: int = PO
         sc, o = torch.sort(s["bs"], dim=1, descending=True)
         bi, br = s["bi"].gather(1, o).cpu().numpy(), s["br"].gather(1, o).cpu().numpy()
         sc = sc.cpu().numpy()
-        keep = bi >= 0
+        keep = (bi >= 0) & np.isfinite(sc)
         m = sc.shape[0]
         th = np.broadcast_to(H[s["a"]:s["a"] + m][:, None], sc.shape)
         rk = np.broadcast_to(np.arange(1, pool + 1, dtype=np.int16)[None, :], sc.shape)
@@ -385,7 +403,7 @@ def search_gpu(build_id: str, out_dir: str, nprobe: int = NPROBE, pool: int = PO
         put_file(f"{out_dir}/part-{j:03d}.parquet", buf.getvalue())
         rows += tab.num_rows
     T["write"] = time.time()
-    st = {"queries": int(n), "rows": int(rows), "delta_works": int(n_delta), "list_rows_seen": int(rows_seen), "pairs_scored": int(pairs),
+    st = {"queries": int(n), "rows": int(rows), "lists": ix, "delta_works": int(n_delta), "list_rows_seen": int(rows_seen), "pairs_scored": int(pairs),
           "gpu": torch.cuda.get_device_name(0), "nprobe": nprobe, "pool": pool, "parts": len(subs)}
     prev = T["start"]
     for key in ("load", "probes", "scan", "write"):
@@ -396,7 +414,8 @@ def search_gpu(build_id: str, out_dir: str, nprobe: int = NPROBE, pool: int = PO
     return st
 
 
-@app.function(image=cpu_image, secrets=[DBX], timeout=5 * 3600, cpu=1, memory=2048)
+# the two orchestrators are non-preemptible: a restarted one would start its GPU stage a second time
+@app.function(image=cpu_image, volumes={"/data": svol}, secrets=[DBX], timeout=5 * 3600, cpu=1, memory=2048, nonpreemptible=True)
 def run_search(table_in: str, out_dir: str, build_id: str, warehouse: str):
     t0 = time.time()
     dq = refresh_delta.spawn(warehouse)
@@ -405,10 +424,92 @@ def run_search(table_in: str, out_dir: str, build_id: str, warehouse: str):
     if q["queries"] == 0:
         return {"stage": "search", "queries": 0, "delta": d, "rows": 0, "wall_s": round(time.time() - t0, 1), "version": VERSION_MARK}
     s = search_gpu.remote(build_id, out_dir)
+    if s["delta_works"] > REBUILD_AT:
+        s["rebuild"] = _start_rebuild(warehouse)
     # container-seconds x list price (H100 $3.95/h + 16 cpu + 160 GiB, plus the two CPU exports); Modal billing is the truth
     usd = s["total_s"] * (3.95 + 16 * 0.0473 + 200 * 0.008) / 3600 + (q["seconds"] + d["seconds"]) * (4 * 0.0473 + 80 * 0.008) / 3600
     return {"stage": "search", "queries": q["queries"], "export_s": q["seconds"], "delta": d, **s, "usd_est": round(usd, 2),
             "wall_s": round(time.time() - t0, 1), "version": VERSION_MARK}
+
+
+# ---------- rebuilding the lists ----------
+
+@app.function(image=cpu_image, volumes={"/data": svol}, secrets=[DBX], timeout=3 * 3600, cpu=4, memory=40 * 1024,
+              max_containers=48, retries=modal.Retries(max_retries=2, initial_delay=30.0))
+def index_range(out: str, lo: int, hi: int, warehouse: str):
+    """List groups [lo, hi) of the works' vectors -> one set of files per group in `out`, rows sorted by list (#2000's index_range)."""
+    import numpy as np
+    svol.reload()
+    todo = [g for g in range(lo, hi) if not os.path.exists(f"{out}/lg{g:04d}.v.npy")]
+    if not todo:
+        return {"lo": lo, "hi": hi, "skipped": True}
+    t0 = time.time()
+    parts = {}
+    for t in sql_arrow(f"SELECT lg, list_id, work_id, v FROM {INDEX} WHERE lg >= {min(todo)} AND lg <= {max(todo)}", warehouse):
+        for b in t.to_batches():
+            lgs = b.column("lg").to_numpy(zero_copy_only=False)
+            lst = b.column("list_id").to_numpy(zero_copy_only=False).astype(np.int32)
+            ids = b.column("work_id").to_numpy(zero_copy_only=False).astype(np.int64)
+            V = vec16(b.column("v"))
+            for g in np.unique(lgs):
+                m = lgs == g
+                parts.setdefault(int(g), []).append((lst[m], ids[m], np.array(V[m])))
+    rows = 0
+    for g in todo:
+        got = parts.pop(g, [])
+        lst = np.concatenate([x[0] for x in got]) if got else np.zeros(0, np.int32)
+        ids = np.concatenate([x[1] for x in got]) if got else np.zeros(0, np.int64)
+        V = np.concatenate([x[2] for x in got]) if got else np.zeros((0, D), np.float16)
+        o = np.argsort(lst, kind="stable")
+        np.save(f"{out}/lg{g:04d}.ids.npy", ids[o])
+        np.save(f"{out}/lg{g:04d}.lst.npy", lst[o])
+        np.save(f"{out}/lg{g:04d}.v.npy", np.ascontiguousarray(V[o]))
+        rows += len(ids)
+    svol.commit()
+    return {"lo": lo, "hi": hi, "rows": rows, "seconds": round(time.time() - t0, 1)}
+
+
+@app.function(image=cpu_image, volumes={"/data": svol}, secrets=[DBX], timeout=8 * 3600, cpu=2, memory=4096)
+def rebuild_lists(warehouse: str):
+    """A fresh copy of the lists from the works' vectors as they are now, then /data/current.json points at it with an empty
+    delta starting a few hours before the copy began. The previous lists stay until the next rebuild removes them."""
+    import shutil, httpx
+    svol.reload()
+    start = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(time.time() - DELTA_MARGIN_H * 3600))
+    stamp = time.strftime("%Y%m%d%H%M", time.gmtime())
+    out, dd = f"/data/index_{stamp}", f"/data/delta_{stamp}"
+    os.makedirs(out, exist_ok=True)
+    r = httpx.get(f"{_host()}/api/2.0/fs/files/Volumes/openalex/vector_search/work_reference_style_index/centroids.npy", headers=_H(), timeout=600)
+    r.raise_for_status()
+    open(f"{out}/centroids.npy", "wb").write(r.content)
+    svol.commit()
+    res = list(index_range.starmap([(out, a, min(a + 8, N_LG), warehouse) for a in range(0, N_LG, 8)], order_outputs=False))
+    svol.reload()
+    missing = [g for g in range(N_LG) if not os.path.exists(f"{out}/lg{g:04d}.v.npy")]
+    if missing:
+        raise RuntimeError(f"rebuild left {len(missing)} list groups missing")
+    old = _current()
+    json.dump({"index": out, "delta": dd, "delta_start": start, "built": stamp, "rows": sum(x.get("rows", 0) for x in res)}, open(CURRENT, "w"))
+    svol.commit()
+    # remove lists older than the ones just replaced (a search that started before the switch may still read those)
+    for name in os.listdir("/data"):
+        p = f"/data/{name}"
+        if name.startswith(("index_", "delta_")) and p not in (out, dd, old["index"], old["delta"]):
+            shutil.rmtree(p, ignore_errors=True)
+    os.remove("/data/rebuild.lock") if os.path.exists("/data/rebuild.lock") else None
+    svol.commit()
+    return {"lists": out, "rows": sum(x.get("rows", 0) for x in res)}
+
+
+def _start_rebuild(warehouse):
+    """Start rebuild_lists unless one started in the last 12 hours."""
+    svol.reload()
+    lock = "/data/rebuild.lock"
+    if os.path.exists(lock) and time.time() - os.path.getmtime(lock) < 12 * 3600:
+        return "already running"
+    open(lock, "w").write(time.strftime("%Y-%m-%d %H:%M:%S"))
+    svol.commit()
+    return rebuild_lists.spawn(warehouse).object_id
 
 
 # ---------- reader ----------
@@ -505,7 +606,7 @@ class Reader:
                 "gpu_s": round(t2 - t1, 1), "cold_s": round(self.cold_s, 1)}
 
 
-@app.function(image=cpu_image, secrets=[DBX], timeout=4 * 3600, cpu=1, memory=2048)
+@app.function(image=cpu_image, secrets=[DBX], timeout=4 * 3600, cpu=1, memory=2048, nonpreemptible=True)
 def run_reader(table_in: str, out_dir: str, build_id: str, warehouse: str):
     t0 = time.time()
     shards = [int(r[0]) for r in sql_rows(f"SELECT DISTINCT shard FROM {table_in} ORDER BY shard", warehouse)]
@@ -550,7 +651,7 @@ def api():
         if not OUT_RX.match(out_dir) or ".." in out_dir: raise HTTPException(400, "out_dir must be a folder under /Volumes/openalex/<schema>/<volume>/")
         if not BUILD_RX.match(build_id) or not WH_RX.match(warehouse): raise HTTPException(400, "build_id / warehouse not allowed")
         fn = run_search if stage == "search" else run_reader
-        call = fn.spawn(table_in, out_dir, build_id, warehouse)
+        call = await fn.spawn.aio(table_in, out_dir, build_id, warehouse)
         return {"call_id": call.object_id, "version": VERSION_MARK}
 
     @web.post("/status")
@@ -560,7 +661,7 @@ def api():
         if not re.match(r"^fc-[A-Za-z0-9]{10,40}$", call_id): raise HTTPException(400, "bad call_id")
         fc = modal.FunctionCall.from_id(call_id)
         try:
-            return {"state": "done", "result": fc.get(timeout=0)}
+            return {"state": "done", "result": await fc.get.aio(timeout=0)}
         except TimeoutError:
             return {"state": "running"}
         except Exception as e:
