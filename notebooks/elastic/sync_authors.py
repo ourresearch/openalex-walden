@@ -4,6 +4,7 @@
 # COMMAND ----------
 
 import uuid
+import time
 from datetime import datetime, timedelta
 from pyspark.sql import functions as F
 from elasticsearch import Elasticsearch, helpers
@@ -15,54 +16,17 @@ log = logging.getLogger(__name__)
 
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 
-# Watermark-incremental (oxjob #2287): same pattern and table as sync_works and sync_locations (#850), keyed by
-# index_name. The fixed 2-day window sent every build's stamps two mornings running (16 Nov: a 44.9M re-stamp went out
-# twice); now each run sends what was stamped since the last clean run started.
+# Watermark-incremental (oxjob #2287), as sync_works and sync_locations (#850): send what was stamped since the last
+# clean run started, kept in the shared state table under the index name. Replaces a fixed 2-day window that sent
+# every build's stamps two mornings running.
 SYNC_STATE_TABLE = "openalex.works.elastic_sync_state"
 FALLBACK_LOOKBACK_DAYS = 2     # no watermark row yet: midnight UTC two days back, the window before #2287
-WATERMARK_BUFFER_SECONDS = 60  # clock skew only. The Authors build stamps minutes before this task in the same
-# run, so any longer buffer re-sends the previous build (sync_works 08-18: a 6h buffer re-sent 42.4M).
+# Clock skew only: the Authors build stamps minutes before this task, so a longer buffer re-sends the previous build.
+WATERMARK_BUFFER_SECONDS = 60
+ERROR_TOLERANCE = 500          # a run with fewer doc errors still advances (sync_works 08-18: 1 error froze a 44M re-send)
 
-# Captured BEFORE the works-sync wait and any read; becomes the next watermark only if this run finishes clean.
+# Captured before the works-sync wait and any read; becomes the next watermark only if this run finishes clean.
 sync_started_at = datetime.utcnow()
-
-# since_date: catch-up from a given UTC date or time ("2026-11-14" or "2026-11-14 12:00:00"); reads updated_date >= it
-# and leaves the watermark untouched, like sync_works' since_ts. dry_run: print the selection and its count, send
-# nothing, skip the works-sync wait, touch nothing.
-dbutils.widgets.text("since_date", "")
-dbutils.widgets.text("dry_run", "false")
-SINCE_DATE = dbutils.widgets.get("since_date").strip()
-DRY_RUN = dbutils.widgets.get("dry_run").lower() == "true"
-
-# COMMAND ----------
-
-# oxjob #1642 (1 Nov 2026): don't write authors while the End 2 End's works sync is writing. Since #1949 this job runs
-# right after each 12:00 UTC Authors build, so on a night that runs late it lands on Sync_to_Elasticsearch: on 1 Nov at
-# 06:31 CT (26-node base) the two together made the API log ~340 main-ES ConnectionTimeouts in one minute. Wait (up to
-# 3 h) while that task runs. Any error in this check proceeds, so the wait can never stop the sync.
-import time
-from databricks.sdk import WorkspaceClient
-
-E2E_JOB_ID, E2E_TASK, WAIT_MAX_S = 616701029470182, "Sync_to_Elasticsearch", 3 * 3600
-
-
-def works_sync_running():
-    w = WorkspaceClient()
-    for r in w.jobs.list_runs(job_id=E2E_JOB_ID, active_only=True):
-        run = w.jobs.get_run(r.run_id)
-        if any(t.task_key == E2E_TASK and t.state and str(t.state.life_cycle_state).endswith("RUNNING") for t in run.tasks or []):
-            return True
-    return False
-
-
-t0 = time.time()
-try:
-    while not DRY_RUN and works_sync_running() and time.time() - t0 < WAIT_MAX_S:
-        print(f"End 2 End {E2E_TASK} is running: waiting ({(time.time() - t0) / 60:.0f} min so far)", flush=True)
-        time.sleep(120)
-except Exception as e:
-    print(f"works-sync wait skipped: {e}")
-print(f"works-sync wait: {(time.time() - t0) / 60:.0f} min")
 
 # COMMAND ----------
 
@@ -92,7 +56,13 @@ filter(array_distinct(flatten(filter(transform(affiliations, a -> transform(a.ye
 """
 
 dbutils.widgets.text("is_full_sync", "false")
+# since_date (oxjob #2287): catch-up from a UTC date or time ("2026-11-14", "2026-11-14 12:00:00"); the watermark is
+# untouched, like sync_works' since_ts. dry_run: report what would be sent and stop, before the works-sync wait.
+dbutils.widgets.text("since_date", "")
+dbutils.widgets.text("dry_run", "false")
 IS_FULL_SYNC = dbutils.widgets.get("is_full_sync").lower() == "true"
+SINCE_DATE = dbutils.widgets.get("since_date").strip()
+DRY_RUN = dbutils.widgets.get("dry_run").lower() == "true"
 print(f"IS_FULL_SYNC: {IS_FULL_SYNC}  SINCE_DATE: {SINCE_DATE or '-'}  DRY_RUN: {DRY_RUN}")
 if IS_FULL_SYNC and SINCE_DATE:
     raise ValueError("is_full_sync and since_date can't both be set")
@@ -105,12 +75,11 @@ def read_watermark():
     ).collect()
     return rows[0].last_sync_started_at if rows else None
 
-# oxjob #2287: doc failures are counted and returned, as in sync_locations, so the watermark advances only after a
-# clean run. Before, the first failed doc dropped the rest of its partition silently and the run still "succeeded".
 def send_partition_to_elastic(partition, index_name):
     client = Elasticsearch(
         hosts=[ELASTIC_URL],
         max_retries=3,
+        retry_on_timeout=True,
         request_timeout=180
     )
 
@@ -123,8 +92,9 @@ def send_partition_to_elastic(partition, index_name):
                 "_source": row._source.asDict(True)
             }
 
-    count = 0
-    errors = []
+    # oxjob #2287: failed docs are counted and returned, so the watermark advances only after a clean run (the old code
+    # dropped the rest of a partition at its first failure, silently). Past 1000 failures ES is in trouble: stop here.
+    count, n_errors, reasons = 0, 0, []
     try:
         for success, info in helpers.parallel_bulk(
             client,
@@ -136,24 +106,82 @@ def send_partition_to_elastic(partition, index_name):
         ):
             if success:
                 count += 1
-            else:
-                errors.append(info)
-
-        if errors:
-            print(f"PARTITION HAD {len(errors)} FAILED DOCS (indexed {count}) to {index_name}. First 5 reasons:")
-            for e in errors[:5]:
-                print(str(e)[:500])
-            if len(errors) > 1000:
-                raise Exception(f"{len(errors)} failed docs in one partition - aborting")
+                continue
+            n_errors += 1
+            if len(reasons) < 5:
+                reasons.append(str(info)[:500])
+            if n_errors > 1000:
+                break
     finally:
         client.close()
 
-    yield (count, len(errors))
+    if n_errors:
+        print(f"PARTITION HAD {n_errors} FAILED DOCS (indexed {count}) to {index_name}"
+              f"{'; stopped early' if n_errors > 1000 else ''}. First reasons:")
+        for r in reasons:
+            print(r)
+    yield (count, n_errors)
+
+# COMMAND ----------
+
+# Which rows: everything (full sync), a since_date catch-up, or everything stamped since the watermark.
+if IS_FULL_SYNC:
+    sync_since, since_from = None, "full sync"
+elif SINCE_DATE:
+    sync_since, since_from = datetime.fromisoformat(SINCE_DATE), "since_date (watermark untouched)"
+else:
+    watermark = read_watermark()
+    if watermark is not None:
+        sync_since = watermark - timedelta(seconds=WATERMARK_BUFFER_SECONDS)
+        since_from = f"watermark {watermark} minus {WATERMARK_BUFFER_SECONDS}s"
+    else:
+        sync_since = (sync_started_at - timedelta(days=FALLBACK_LOOKBACK_DAYS)).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+        since_from = f"no watermark for {CONFIG['index_name']}: {FALLBACK_LOOKBACK_DAYS}-day fallback"
+print(f"Selecting updated_date >= {sync_since} UTC ({since_from})")
+
+df = spark.table(CONFIG["table_name"])
+if sync_since is not None:
+    df = df.filter(F.col("updated_date") >= sync_since.strftime("%Y-%m-%d %H:%M:%S"))
+
+if DRY_RUN:
+    # The exit value is the run's output (it replaces this cell's prints), so the count goes in it.
+    dbutils.notebook.exit(f"DRY RUN: {df.count():,} authors with updated_date >= {sync_since} UTC ({since_from}) "
+                          f"would go to {CONFIG['index_name']}; nothing sent")
+
+# COMMAND ----------
+
+# oxjob #1642 (1 Nov 2026): don't write authors while the End 2 End's works sync is writing. Since #1949 this job runs
+# right after each 12:00 UTC Authors build, so on a night that runs late it lands on Sync_to_Elasticsearch: on 1 Nov at
+# 06:31 CT (26-node base) the two together made the API log ~340 main-ES ConnectionTimeouts in one minute. Wait (up to
+# 3 h) while that task runs. Any error in this check proceeds, so the wait can never stop the sync.
+from databricks.sdk import WorkspaceClient
+
+E2E_JOB_ID, E2E_TASK, WAIT_MAX_S = 616701029470182, "Sync_to_Elasticsearch", 3 * 3600
+
+
+def works_sync_running():
+    w = WorkspaceClient()
+    for r in w.jobs.list_runs(job_id=E2E_JOB_ID, active_only=True):
+        run = w.jobs.get_run(r.run_id)
+        if any(t.task_key == E2E_TASK and t.state and str(t.state.life_cycle_state).endswith("RUNNING") for t in run.tasks or []):
+            return True
+    return False
+
+
+t0 = time.time()
+try:
+    while works_sync_running() and time.time() - t0 < WAIT_MAX_S:
+        print(f"End 2 End {E2E_TASK} is running: waiting ({(time.time() - t0) / 60:.0f} min so far)", flush=True)
+        time.sleep(120)
+except Exception as e:
+    print(f"works-sync wait skipped: {e}")
+print(f"works-sync wait: {(time.time() - t0) / 60:.0f} min")
 
 # COMMAND ----------
 
 # Set replicas to 0 for faster bulk indexing during full sync
-if IS_FULL_SYNC and not DRY_RUN:
+if IS_FULL_SYNC:
     try:
         client = Elasticsearch(
             hosts=[ELASTIC_URL],
@@ -180,32 +208,7 @@ if IS_FULL_SYNC and not DRY_RUN:
 
 print(f"\n=== Processing {CONFIG['table_name']} ===")
 
-# Which rows: everything (full sync), a catch-up from since_date (watermark untouched), or the watermark path.
-ADVANCE_WATERMARK = not SINCE_DATE and not DRY_RUN
-if IS_FULL_SYNC:
-    sync_since = None
-elif SINCE_DATE:
-    sync_since = datetime.fromisoformat(SINCE_DATE)
-    print(f"since_date catch-up: updated_date >= {sync_since} UTC (watermark untouched)")
-else:
-    watermark = read_watermark()
-    if watermark is not None:
-        sync_since = watermark - timedelta(seconds=WATERMARK_BUFFER_SECONDS)
-        print(f"Watermark {watermark} minus {WATERMARK_BUFFER_SECONDS}s buffer -> syncing from {sync_since}")
-    else:
-        sync_since = (sync_started_at - timedelta(days=FALLBACK_LOOKBACK_DAYS)).replace(
-            hour=0, minute=0, second=0, microsecond=0)
-        print(f"No watermark for {CONFIG['index_name']}; falling back to {FALLBACK_LOOKBACK_DAYS}-day lookback from {sync_since}")
-
-df = spark.table(f"{CONFIG['table_name']}")
-if sync_since is not None:
-    df = df.filter(F.col("updated_date") >= F.lit(sync_since.strftime("%Y-%m-%d %H:%M:%S")).cast("timestamp"))
-
-if DRY_RUN:
-    print(f"DRY RUN: {df.count():,} records would be sent to {CONFIG['index_name']}; nothing sent")
-    dbutils.notebook.exit("dry run")
-
-totals = None
+totals, total_errors = None, 0
 try:
     df = (df
         .withColumn("id", F.concat(F.lit("https://openalex.org/A"), F.col("id").cast("string")))
@@ -230,8 +233,8 @@ try:
         F.sum("indexed_count").alias("indexed"),
         F.sum("error_count").alias("errors"),
     ).collect()[0]
-    print(f"Processed {totals.partitions} partitions; indexed {totals.indexed or 0:,} docs, "
-          f"{totals.errors or 0} doc errors")
+    total_errors = int(totals.errors or 0)
+    print(f"Processed {totals.partitions} partitions; indexed {totals.indexed or 0:,} docs, {total_errors} doc errors")
 
     print(f"Completed indexing {CONFIG['table_name']} to {CONFIG['index_name']}")
 
@@ -248,23 +251,23 @@ print("\nIndexing operation completed!")
 
 # COMMAND ----------
 
-# Advance after a clean-enough run (oxjob #2287, as sync_locations #850): a failed or partial sync leaves the
-# watermark in place, so the next run re-covers the gap. Doc-level failures below ERROR_TOLERANCE must not freeze it
-# and regrow the window (sync_works 08-18: 1 error out of 43.9M held back a 44M re-sync); tolerated docs are retried
-# only if their authors get re-stamped. A since_date catch-up never moves it.
-ERROR_TOLERANCE = 500
-if not ADVANCE_WATERMARK:
+# As sync_locations (#850): a failed or partial run leaves the watermark in place and the next run re-covers the gap.
+# Under ERROR_TOLERANCE doc errors it still advances; those authors go again only when re-stamped.
+if SINCE_DATE:
     print("since_date catch-up: watermark not touched")
 elif totals is None:
     print("Watermark NOT advanced: the sync failed (see above). The next run re-covers the gap.")
-elif int(totals.errors or 0) >= ERROR_TOLERANCE:
-    print(f"Watermark NOT advanced: {totals.errors} doc errors (tolerance {ERROR_TOLERANCE}). "
+elif total_errors >= ERROR_TOLERANCE:
+    print(f"Watermark NOT advanced: {total_errors} doc errors (tolerance {ERROR_TOLERANCE}). "
           "The incremental window regrows until a clean run.")
 else:
-    if totals.errors:
-        print(f"Tolerating {totals.errors} doc errors (< {ERROR_TOLERANCE})")
+    if total_errors:
+        print(f"Tolerating {total_errors} doc errors (< {ERROR_TOLERANCE})")
     stamp = sync_started_at.strftime("%Y-%m-%d %H:%M:%S")
-    spark.sql(f"""MERGE INTO {SYNC_STATE_TABLE} AS t
+    # Other syncs MERGE their own rows of this table the same morning, hence the retry (as BuildLakebaseWorksDocs).
+    for attempt in range(3):
+        try:
+            spark.sql(f"""MERGE INTO {SYNC_STATE_TABLE} AS t
 USING (SELECT '{CONFIG['index_name']}' AS index_name,
               TIMESTAMP'{stamp}' AS last_sync_started_at,
               CURRENT_TIMESTAMP() AS updated_at) AS s
@@ -274,6 +277,12 @@ WHEN MATCHED THEN UPDATE SET t.last_sync_started_at = s.last_sync_started_at,
 WHEN NOT MATCHED THEN INSERT (index_name, last_sync_started_at, updated_at)
 VALUES (s.index_name, s.last_sync_started_at, s.updated_at)
 """)
+            break
+        except Exception as e:
+            if attempt == 2:
+                raise
+            print(f"Watermark MERGE attempt {attempt + 1} failed ({e}); retrying in 30 s")
+            time.sleep(30)
     print(f"Watermark for {CONFIG['index_name']} advanced to {stamp} (UTC)")
 
 # COMMAND ----------
