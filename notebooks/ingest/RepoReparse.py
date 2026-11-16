@@ -38,6 +38,7 @@ import sys
 import types
 
 import pyspark.sql.functions as F
+from pyspark.sql.types import StructType
 from pyspark.sql.window import Window
 
 from openalex.dlt.oai_ids import read_endpoint_hosts, with_rekeyed_native_id
@@ -45,12 +46,18 @@ from openalex.dlt.oai_ids import read_endpoint_hosts, with_rekeyed_native_id
 dbutils.widgets.text("endpoint_ids", "", "comma-separated endpoint ids (folders under repositories/)")
 dbutils.widgets.dropdown("mode", "dry_run", ["dry_run", "write"], "dry_run: scratch tables only; write: MERGE into the side table")
 dbutils.widgets.text("out_prefix", "openalex.transient.repo_reparse", "scratch table prefix")
+# oxjob #2266: a change to the parse, not the schema, needs no raw file: repo_items holds the struct the pipeline read.
+dbutils.widgets.dropdown("source", "s3", ["s3", "repo_items"], "s3: the raw files; repo_items: the stored structs")
+dbutils.widgets.text("native_ids_table", "", "optional: re-send only the records whose native_id is in this table")
 ENDPOINTS = [e.strip() for e in dbutils.widgets.get("endpoint_ids").split(",") if e.strip()]
 MODE = dbutils.widgets.get("mode")
 OUT = dbutils.widgets.get("out_prefix")
+SOURCE = dbutils.widgets.get("source")
+NATIVE_IDS = dbutils.widgets.get("native_ids_table").strip()
 assert ENDPOINTS, "endpoint_ids is empty"
 assert all(re.fullmatch(r"[A-Za-z0-9_-]+", e) for e in ENDPOINTS), f"bad endpoint id in {ENDPOINTS}"
-print(f"mode={MODE} endpoints={ENDPOINTS}")
+assert not NATIVE_IDS or re.fullmatch(r"[A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+", NATIVE_IDS), NATIVE_IDS
+print(f"mode={MODE} source={SOURCE} endpoints={ENDPOINTS} native_ids_table={NATIVE_IDS or '-'}")
 
 # The Repo pipeline's Spark settings, so the same code behaves the same (jobs/repo_pipeline.yaml; DLT runs ANSI off).
 spark.conf.set("spark.sql.ansi.enabled", "false")
@@ -86,22 +93,47 @@ print(f"loaded Repo.py; target {TARGET}")
 # is, so placeholder-host records of different journals never collide. Staged once: serverless has no cache, and every
 # later step would otherwise list and parse the S3 files again.
 ID_HOSTS = read_endpoint_hosts(spark)
+
+
+def _by_name(col, dtype):
+    """col as dtype, struct fields matched by NAME (a struct cast matches by position)."""
+    if not isinstance(dtype, StructType):
+        return col.cast(dtype)
+    return F.when(col.isNull(), F.lit(None).cast(dtype)).otherwise(
+        F.struct(*[_by_name(col.getField(f.name), f.dataType).alias(f.name) for f in dtype.fields]))
+
+
+if SOURCE == "s3":
+    source_df = (
+        spark.read
+        .format("xml")
+        .option("rowTag", "ns0:record")
+        .option("compression", "gzip")
+        .option("recursiveFileLookup", "true")
+        .schema(repo["repository_schema"])
+        .load([f"s3a://openalex-ingest/repositories/{e}/" for e in ENDPOINTS])
+        .withColumn("repository_id", F.regexp_extract(F.col("_metadata.file_path"), r"repositories/([^/]+)/", 1))
+        # S3's LastModified in whole seconds; repo_items got the file event's milliseconds, so a re-sent record's
+        # ingested_at moves by under a second. Harmless: rank 2 already orders it ahead of the stored copy.
+        .withColumn("ingested_at", F.col("_metadata.file_modification_time"))
+        .withColumn("file_path", F.col("_metadata.file_path"))
+    )
+else:
+    # oxjob #2266: Zenodo is millions of one-record files, too many to list and re-read. repo_items stores dc:relation in
+    # another position than repository_schema, so the struct is rebuilt by field name. It keeps no file path.
+    source_df = (
+        spark.table("openalex.repo.repo_items")
+        .filter(F.col("repository_id").isin(ENDPOINTS))
+        .select(*[_by_name(F.col(f"`{f.name}`"), f.dataType).alias(f.name) for f in repo["repository_schema"].fields],
+                "repository_id", "ingested_at", F.lit(None).cast("string").alias("file_path"))
+    )
 (
-    spark.read
-    .format("xml")
-    .option("rowTag", "ns0:record")
-    .option("compression", "gzip")
-    .option("recursiveFileLookup", "true")
-    .schema(repo["repository_schema"])
-    .load([f"s3a://openalex-ingest/repositories/{e}/" for e in ENDPOINTS])
-    .withColumn("repository_id", F.regexp_extract(F.col("_metadata.file_path"), r"repositories/([^/]+)/", 1))
-    # S3's LastModified in whole seconds; repo_items got the file event's milliseconds, so a re-sent record's
-    # ingested_at moves by under a second. Harmless: rank 2 already orders it ahead of the stored copy.
-    .withColumn("ingested_at", F.col("_metadata.file_modification_time"))
-    .withColumn("file_path", F.col("_metadata.file_path"))
+    source_df
     .filter(F.col("`ns0:header`.`ns0:identifier`").isNotNull())  # no OAI id = no key in repo_works
     .withColumn("oai_identifier", F.col("`ns0:header`.`ns0:identifier`"))
     .transform(lambda d: with_rekeyed_native_id(d, ID_HOSTS, "repository_id"))
+    .transform(lambda d: d.join(F.broadcast(spark.table(NATIVE_IDS).select("native_id").distinct()), "native_id",
+                                "left_semi") if NATIVE_IDS else d)
     .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_raw")
 )
 raw = spark.table(f"{OUT}_raw")
@@ -213,6 +245,9 @@ if MODE == "write":
          .create())
         print(f"created {TARGET}")
     endpoint_list = ", ".join(f"'{e}'" for e in ENDPOINTS)  # validated above
+    # A native_ids_table run stages only part of each endpoint, so it must not delete the endpoint's other rows.
+    delete_clause = "" if NATIVE_IDS else \
+        f"WHEN NOT MATCHED BY SOURCE AND t.repository_id IN ({endpoint_list}) THEN DELETE"
     # Row-level MERGE, never an overwrite: an overwrite is not a row-level change feed and breaks the pipeline's
     # readChangeFeed stream until a full refresh (jobs/repo_backfill.yaml). Unchanged records are left alone, so a
     # re-run re-sends only what a schema change actually changed.
@@ -225,7 +260,7 @@ if MODE == "write":
         WHEN MATCHED AND NOT (t.`ns0:header` <=> s.`ns0:header` AND t.`ns0:metadata` <=> s.`ns0:metadata`)
           THEN UPDATE SET *
         WHEN NOT MATCHED THEN INSERT *
-        WHEN NOT MATCHED BY SOURCE AND t.repository_id IN ({endpoint_list}) THEN DELETE
+        {delete_clause}
     """).show(truncate=False)
     spark.table(TARGET).filter(F.col("repository_id").isin(ENDPOINTS)).groupBy("repository_id").agg(
         F.count("*").alias("records"),
