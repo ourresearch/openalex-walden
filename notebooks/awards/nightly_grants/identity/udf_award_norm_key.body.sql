@@ -71,7 +71,7 @@ SELECT COALESCE(
       WHEN funder_id = 4320311904 THEN (LPAD(NULLIF(regexp_extract(_n, '^(\\d{5,6})(?:[/_ ][A-Z](?:[/_ ]\\d{2})?([/_ ][A-Z])?)?$', 1), ''),6,'0'))
       WHEN funder_id = 4320334627 THEN (NULLIF(regexp_replace(_n,' ',''),''))
       WHEN funder_id = 2461203286 THEN (NULLIF(regexp_replace(regexp_replace(_n,'^(MOST|NSC|NSTC)[ -]*',''),'[ -]',''),''))
-      WHEN funder_id = 4320334506 THEN (CAST(CAST(NULLIF(regexp_extract(regexp_replace(regexp_replace(_n,'^[#]+ ?',''),'^(950[- ]|[A-Z]{2}[0-9](?=[0-9]{6}([-_][0-9]+)?$)|[A-Z]{3,4}([0-9][- ]|[- ])?|[A-Z]{2}([0-9][- ]|[- ]))',''),'^(\\d{4,6})([-_]\\d+)?$',1),'') AS BIGINT) AS STRING))
+      WHEN funder_id = 4320334506 THEN (CAST(CAST(NULLIF(regexp_extract(regexp_replace(regexp_replace(_n,'^[#]+ ?',''),'^(950[- ]|[A-Z]{2}[0-9](?=[0-9]{6}([-_][0-9]+)?$)|[A-Z]{3,4}([0-9]?[- #:]+)?|[A-Z]{2}[0-9]?[- #:]+)',''),'^(\\d{4,6})([-_]\\d+)?$',1),'') AS BIGINT) AS STRING))
       WHEN funder_id = 4320306230 THEN (NULLIF(regexp_replace(_n,' ',''),''))
       WHEN funder_id = 4320321091 THEN (NULLIF(regexp_extract(regexp_replace(_n,' ',''),'((8888\\d|99999)\\.\\d{6}/\\d{4}-\\d{2})', 1), ''))
       WHEN funder_id = 4320322511 THEN (NULLIF(regexp_extract(regexp_replace(_n,' ',''),'(20\\d{2}/\\d{2}/[A-Z]{1,2}/[A-Z]{2,3}\\d{1,2}/\\d{5})', 1), ''))

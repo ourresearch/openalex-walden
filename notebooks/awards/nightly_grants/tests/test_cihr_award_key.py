@@ -115,6 +115,22 @@ def test_a_separated_code_keys_as_before(cited, key):
     assert cihr_key(cited, "deposited") == key
 
 
+@pytest.mark.parametrize("cited,key", [
+    ("PJT: 178385", "178385"), ("CBR#104072", "104072"), ("MOP #81213", "81213"), ("FRN# 114506", "114506"),
+    ("MOP - 133712", "133712"), ("ACD- 187254", "187254"), ("MOP -74575", "74575"), ("VR5 #172669", "172669"),
+    ("OV3:170344", "170344"), ("#MOP#130465", "130465"), ("PS: 175257", "175257"),
+])
+def test_a_code_followed_by_punctuation_keys_its_number(cited, key):
+    assert cihr_key(cited, "deposited") == key
+
+
+@pytest.mark.parametrize("cited,key", [("NO 130465", "130465"), ("NO: 130465", "130465"), ("APP: 568789", "568789"),
+                                       ("REF# 12345", "12345"), ("ID: 1234", "1234")])
+def test_a_label_word_reads_like_a_code(cited, key):
+    # known: on 15 Nov this retired 4 paper-only CIHR records that the rule before did not (ID 1, APP 2, REF 1)
+    assert cihr_key(cited, "deposited") == key
+
+
 @pytest.mark.parametrize("cited", ["APP1043567", "DMS1234567", "RES0064610", "GNT1110773", "MOP0123456"])
 def test_a_longer_code_ending_in_a_digit_written_onto_the_number_is_not_read(cited):
     assert cihr_key(cited, "deposited") is None                # the old rule keyed the last six digits

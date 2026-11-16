@@ -162,11 +162,14 @@ FUNDERS = {
     # (CA128978, NS104513, DK62267; on 15 Nov 264 paper links under CIHR were
     # numbers in another funder's registry), and so are a few CIHR shorthands
     # (PS175257, FS154313: 269 links that stay as they are). Two letters with a
-    # separator read as before (PS 175257, OV3-170344).
+    # separator read as before (PS 175257, OV3-170344). After a code, the
+    # separator may be any run of spaces, '-', '#' and ':' (PJT: 178385,
+    # CBR#104072, MOP - 133712); that only adds keys where there were none. A
+    # label word reads like a code, as 'NO 130465' always did ('APP: 568789').
     # The gram below is the ingest guard's grammar and is left as it was.
     rkey="CAST(CAST(" + ex(r"^(\\d{4,6})_\\d+$") + " AS BIGINT) AS STRING)",
     xkey="CAST(CAST(NULLIF(regexp_extract(regexp_replace(regexp_replace(norm,'^[#]+ ?',''),"
-         "'^(950[- ]|[A-Z]{2}[0-9](?=[0-9]{6}([-_][0-9]+)?$)|[A-Z]{3,4}([0-9][- ]|[- ])?|[A-Z]{2}([0-9][- ]|[- ]))',''),'^(\\\\d{4,6})([-_]\\\\d+)?$',1),'') AS BIGINT) AS STRING)",
+         "'^(950[- ]|[A-Z]{2}[0-9](?=[0-9]{6}([-_][0-9]+)?$)|[A-Z]{3,4}([0-9]?[- #:]+)?|[A-Z]{2}[0-9]?[- #:]+)',''),'^(\\\\d{4,6})([-_]\\\\d+)?$',1),'') AS BIGINT) AS STRING)",
     gram=r"norm rlike '^#? ?(950[- ])?([A-Z]{2,4}[0-9]?[- ]?)?\\d{4,6}([-_]\\d+)?$'"),
   "AHA": dict(fid=4320306230,
     rkey="NULLIF(regexp_replace(norm,' ',''),'')",
