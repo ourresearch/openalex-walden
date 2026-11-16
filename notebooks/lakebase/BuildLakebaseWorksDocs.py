@@ -273,9 +273,11 @@ def sanitize_name(col_name: str):
   unwanted_chars_pattern = r"[^\p{L}\p{M}\p{N}\p{P}\p{S}\p{Z}\x{200C}\x{200D}]"
   multiple_spaces_pattern = r"\s+"
 
+  col = F.col(col_name) if isinstance(col_name, str) else col_name  # oxjob #1610: or a Column (each alternate title)
+
   return F.trim(
       F.regexp_replace(
-          F.regexp_replace(F.col(col_name), unwanted_chars_pattern, ""),
+          F.regexp_replace(col, unwanted_chars_pattern, ""),
           multiple_spaces_pattern, " "
       )
   )
@@ -316,6 +318,9 @@ df_transformed = (
     .withColumn("publication_year", F.year("publication_date"))
     .withColumn("title", sanitize_name("title"))
     .withColumn("display_name", sanitize_name("display_name"))
+    # oxjob #1610: as in sync_works, [] when none
+    .withColumn("alternate_titles", F.coalesce(F.transform("alternate_titles", lambda t: sanitize_name(t)), F.array().cast("array<string>"))
+                if "alternate_titles" in df.columns else F.array().cast("array<string>"))
     .withColumn("ids",
         F.transform_values("ids",
             lambda k, v: F.when(k == "doi",
@@ -377,6 +382,7 @@ df_transformed = (
         F.col("doi"),
         F.col("title"),
         F.col("display_name"),
+        F.col("alternate_titles"),  # oxjob #1610
         F.col("ids"),
         # oxjob #2184: indexed_in is computed once, in CreateWorksBase (openalex_works.indexed_in), as in sync_works.
         F.coalesce(F.col("indexed_in"), F.array().cast("array<string>")).alias("indexed_in"),
