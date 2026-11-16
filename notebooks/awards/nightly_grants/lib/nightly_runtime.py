@@ -49,7 +49,13 @@ class Nightly:
         self.started = datetime.now(timezone.utc).replace(microsecond=0)
         self.params = {"rid": self.run_id, "ts": self.started.strftime("%Y-%m-%d %H:%M:%S")}
         self.p = config["registry_prefix"]                    # award_entities, award_keys, run log, lock, carried state
-        self.r = config["scratch_prefix"]                     # overwritten every night
+        # A check run (stop_before_apply) builds in its own scratch, so the night's scratch stays the last applied run's:
+        # Produce NIH PubMed Relinks and DataCite Work Funders read it (both failed closed 11-01..11-05 after check runs).
+        check = bool(config.get("stop_before_apply"))
+        self.r = config.get("check_scratch_prefix") if check else config["scratch_prefix"]   # overwritten every run of its kind
+        self.require(self.r, "CHECK_SCRATCH_PREFIX_REQUIRED")
+        self.require(not check or not (self.r.startswith(config["scratch_prefix"]) or config["scratch_prefix"].startswith(self.r)),
+                     "CHECK_RUN_WOULD_WRITE_NIGHTLY_SCRATCH")
         ident(self.p + "award_entities"); ident(self.r + "x")
         self.fence = tuple(config["write_fence"])             # every write target must start with one of these
         self.require(len(self.fence) > 0, "WRITE_FENCE_REQUIRED")

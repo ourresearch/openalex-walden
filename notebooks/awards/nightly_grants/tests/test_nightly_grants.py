@@ -125,6 +125,36 @@ def test_input_set_is_exact():
         c.bind_inputs()
 
 
+def test_check_run_builds_in_its_own_scratch():
+    # 11-01..11-05: check runs rewrote the night's ngr_ scratch, so NIH relinks and DataCite Work Funders failed closed.
+    fence = ["dev.lab.ngr_", "dev.lab.ngrcheck_"]
+    spark = FakeSpark()
+    check = Nightly(spark, config(stop_before_apply=True, check_scratch_prefix="dev.lab.ngrcheck_", write_fence=fence))
+    assert check.r == "dev.lab.ngrcheck_"
+    check.artifact("work_key_map", "SELECT 1 x")
+    assert "dev.lab.ngrcheck_work_key_map" in spark.statements[-1][0]
+    assert not any("dev.lab.ngr_s_" in s for s, _ in spark.statements)
+    assert Nightly(FakeSpark(), config(check_scratch_prefix="dev.lab.ngrcheck_", write_fence=fence)).r == "dev.lab.ngr_s_"
+
+
+def test_check_run_refuses_the_nights_scratch():
+    with pytest.raises(RuntimeError, match="CHECK_SCRATCH_PREFIX_REQUIRED"):
+        Nightly(FakeSpark(), config(stop_before_apply=True))
+    for prefix in ("dev.lab.ngr_s_", "dev.lab.ngr_s_check_", "dev.lab.ngr_"):   # the same, inside it, or around it
+        with pytest.raises(RuntimeError, match="CHECK_RUN_WOULD_WRITE_NIGHTLY_SCRATCH"):
+            Nightly(FakeSpark(), config(stop_before_apply=True, check_scratch_prefix=prefix))
+
+
+def test_prod_check_scratch_is_separate_and_fenced():
+    import json
+    cfg = json.loads((ROOT / "config.prod.json").read_text())
+    check, night = cfg["check_scratch_prefix"], cfg["scratch_prefix"]
+    assert not check.startswith(night) and not night.startswith(check)
+    assert any(check.startswith(f) for f in cfg["write_fence"])
+    assert Nightly(FakeSpark(), {**cfg, "stop_before_apply": True}, "1").r == check
+    assert Nightly(FakeSpark(), cfg, "1").r == night
+
+
 # ---------- notebook order ----------
 def calls_in_order(path):
     tree = ast.parse(path.read_text())

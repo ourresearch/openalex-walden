@@ -1,8 +1,10 @@
 {
   "registry_prefix": "openalex.awards.",
   "scratch_prefix": "openalex.awards.ngr_",
+  "check_scratch_prefix": "openalex.awards.ngrcheck_",
   "write_fence": [
     "openalex.awards.ngr_",
+    "openalex.awards.ngrcheck_",
     "openalex.awards.award_entities",
     "openalex.awards.award_keys",
     "openalex.awards.award_nightly_",
