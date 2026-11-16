@@ -38,7 +38,7 @@ import sys
 import types
 
 import pyspark.sql.functions as F
-from pyspark.sql.types import StructType
+from pyspark.sql.types import StructField, StructType
 from pyspark.sql.window import Window
 
 from openalex.dlt.oai_ids import read_endpoint_hosts, with_rekeyed_native_id
@@ -103,6 +103,13 @@ def _by_name(col, dtype):
         F.struct(*[_by_name(col.getField(f.name), f.dataType).alias(f.name) for f in dtype.fields]))
 
 
+# oxjob #227: the shape repo_items stores. repository_schema also reads the oai_dc wrapper under the other prefixes a file
+# gives it (DC_WRAPPER_ALIASES), and fold_dc_wrapper moves that into `ns0:metadata`.`ns1:dc` before anything is stored, so
+# a stored row has only ns1:dc (rebuilding it by repository_schema's names would ask for fields it doesn't have).
+STORED_SCHEMA = StructType([
+    StructField(f.name, StructType([f.dataType["ns1:dc"]]), f.nullable) if f.name == "ns0:metadata" else f
+    for f in repo["repository_schema"].fields])
+
 if SOURCE == "s3":
     source_df = (
         spark.read
@@ -117,6 +124,7 @@ if SOURCE == "s3":
         # ingested_at moves by under a second. Harmless: rank 2 already orders it ahead of the stored copy.
         .withColumn("ingested_at", F.col("_metadata.file_modification_time"))
         .withColumn("file_path", F.col("_metadata.file_path"))
+        .transform(repo["fold_dc_wrapper"])  # oxjob #227: the oai_dc wrapper under any prefix read as ns1:dc, as repo_items stores it
     )
 else:
     # oxjob #2266: Zenodo is millions of one-record files, too many to list and re-read. repo_items stores dc:relation in
@@ -124,7 +132,7 @@ else:
     source_df = (
         spark.table("openalex.repo.repo_items")
         .filter(F.col("repository_id").isin(ENDPOINTS))
-        .select(*[_by_name(F.col(f"`{f.name}`"), f.dataType).alias(f.name) for f in repo["repository_schema"].fields],
+        .select(*[_by_name(F.col(f"`{f.name}`"), f.dataType).alias(f.name) for f in STORED_SCHEMA.fields],
                 "repository_id", "ingested_at", F.lit(None).cast("string").alias("file_path"))
     )
 (
