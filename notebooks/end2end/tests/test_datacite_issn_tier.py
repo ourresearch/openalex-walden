@@ -6,6 +6,7 @@ pytest.
 """
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -41,16 +42,21 @@ def cte(name):
         i += 1
 
 
+FIX_TABLE = "openalex.works.datacite_container_issn_fix"  # oxjob #693 backlog table, a temp view here
 TIER = ",\n".join(f"{n} as ({cte(n)})" for n in
-                  ("datacite_issn_journal_map", "datacite_issn_exploded", "datacite_issn_candidates"))
+                   ("datacite_issn_journal_map", "datacite_issn_exploded", "datacite_issn_candidates")
+                   ).replace(FIX_TABLE, "datacite_container_issn_fix")
 
 J1, J2 = 101, 202  # J1 holds ISSN 1111-1111 and e-ISSN 2222-2222; J2 holds 3333-3333
 SOURCES = [(J1, "journal", ["1111-1111", "2222-2222"], True), (J2, "journal", ["3333-3333"], False),
            (303, "repository", ["4444-4444"], False)]
 
 
+DAY = date(2026, 1, 9)
+
+
 def loc(doi, *ids, raw_type="JournalArticle"):
-    return ("datacite", doi, raw_type, [{"id": i, "namespace": ns, "relationship": rel} for ns, i, rel in ids])
+    return ("datacite", "doi", doi, raw_type, DAY, [{"id": i, "namespace": ns, "relationship": rel} for ns, i, rel in ids])
 
 
 LOCATIONS = [
@@ -67,11 +73,23 @@ LOCATIONS = [
         (None, "2222-2222", "IsPartOf"), ("eissn", None, "IsPartOf"), ("eissn", "2222-2222", None)),
 ]
 
+# oxjob #693 backlog: records parsed before 6022b344 carry the container ISSN only in the fix table
+LOCATIONS += [
+    loc("10/fix-only"),  # Journal of Nanostructure in Chemistry's case: nothing in ids
+    loc("10/fix-and-ids-same-journal", ("issn", "1111-1111", "IsPartOf")),
+    loc("10/fix-other-journal", ("issn", "1111-1111", "IsPartOf")),  # ids say J1, the fix row says J2: ambiguous, none
+    loc("10/fix-stale"),  # re-sent since the fix was built: its updated_date moved on, the row no longer counts
+    loc("10/fix-dataset", raw_type="Dataset"),  # genre guard still applies
+]
+FIXES = [("doi", "10/fix-only", "2222-2222", DAY), ("doi", "10/fix-and-ids-same-journal", "2222-2222", DAY),
+         ("doi", "10/fix-other-journal", "3333-3333", DAY), ("doi", "10/fix-stale", "2222-2222", date(2025, 1, 1)),
+         ("doi", "10/fix-dataset", "2222-2222", DAY)]
+
 
 @pytest.fixture(scope="module")
 def candidates():
     from pyspark.sql import SparkSession
-    from pyspark.sql.types import ArrayType, BooleanType, LongType, StringType, StructField, StructType
+    from pyspark.sql.types import ArrayType, BooleanType, DateType, LongType, StringType, StructField, StructType
     try:
         spark = SparkSession.builder.master("local[1]").appName("datacite_issn_tier").getOrCreate()
     except Exception as e:  # pragma: no cover - no JVM
@@ -82,9 +100,14 @@ def candidates():
     ).createOrReplaceTempView("sources_filtered")
     ids_type = ArrayType(StructType([StructField(n, StringType()) for n in ("id", "namespace", "relationship")]))
     spark.createDataFrame(LOCATIONS, StructType([
-        StructField("provenance", StringType()), StructField("native_id", StringType()),
-        StructField("raw_type", StringType()), StructField("ids", ids_type)])
+        StructField("provenance", StringType()), StructField("native_id_namespace", StringType()),
+        StructField("native_id", StringType()), StructField("raw_type", StringType()),
+        StructField("updated_date", DateType()), StructField("ids", ids_type)])
     ).createOrReplaceTempView("all_locations")
+    spark.createDataFrame(FIXES, StructType([
+        StructField("native_id_namespace", StringType()), StructField("native_id", StringType()),
+        StructField("issn", StringType()), StructField("fix_updated_date", DateType())])
+    ).createOrReplaceTempView("datacite_container_issn_fix")
     rows = spark.sql(f"with {TIER} select native_id, issn_journal_id from datacite_issn_candidates").collect()
     yield {r.native_id: r.issn_journal_id for r in rows}
     spark.stop()
@@ -110,4 +133,14 @@ def test_issns_of_two_journals_match_nothing(candidates):
 
 def test_relation_genre_and_source_type_guards_hold(candidates):
     for doi in ("10/not-container", "10/dataset", "10/repository-issn", "10/other-namespaces"):
+        assert doi not in candidates, doi
+
+
+def test_backlog_fix_rows_attach_like_ids(candidates):
+    assert candidates["10/fix-only"] == J1
+    assert candidates["10/fix-and-ids-same-journal"] == J1
+
+
+def test_backlog_fix_rows_keep_the_tier_guards(candidates):
+    for doi in ("10/fix-other-journal", "10/fix-stale", "10/fix-dataset"):
         assert doi not in candidates, doi
