@@ -247,10 +247,21 @@ FUNDERS = {
     # FWF grant DOIs 10.55776/P37169 (audit-flagged misattribution class).
     # Control: foreign fires 7.8% but registry-hits 0.6% of fires -> NOT
     # extractive; XGRAM = DOI form only (bare P+5digit collides w/ JSPS).
+    # 2026-11-13 (oxjob #1765 c): part-projects of Special Research Areas (F)
+    # and National Research Networks (S) are cited as the main number plus a
+    # 2-digit part (F6804 = part 04 of F68, S11407 = part 07 of S114); FWF
+    # lists only the main grant. The deposited key drops the part, and the
+    # registry key takes 2-digit F/S numbers so the two meet (F68, not the
+    # generic fallback f68). Left alone: F10xx (four-digit SFB numbers from
+    # 2024 on, F1002) and a part of 00 (F8100 is the grant itself). Every
+    # other programme keeps its full number: there the shorter number is a
+    # different grant (I2096 is not I20).
     rkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
-         r"'^([A-Z]{1,3}\\d{3,7})$', 1), '')",
-    xkey=r"NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
-         r"'^(?:10\\.55776/|HTTPS?://(?:DX\\.)?DOI\\.ORG/10\\.55776/)?([A-Z]{1,3}\\d{3,7})(?:-[A-Z]\\d{1,3})?$', 1), '')",
+         r"'^([A-Z]{1,3}\\d{3,7}|[FS]\\d{2})$', 1), '')",
+    xkey=r"COALESCE(NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'^(?:10\\.55776/|HTTPS?://(?:DX\\.)?DOI\\.ORG/10\\.55776/)?(F(?!10)\\d{2}|S\\d{2,3})(?!00)\\d{2}(?:-[A-Z]\\d{1,3})?$', 1), ''),"
+         r" NULLIF(regexp_extract(regexp_replace(norm,' ',''),"
+         r"'^(?:10\\.55776/|HTTPS?://(?:DX\\.)?DOI\\.ORG/10\\.55776/)?([A-Z]{1,3}\\d{3,7})(?:-[A-Z]\\d{1,3})?$', 1), ''))",
     gram=r"regexp_replace(norm,' ','') rlike"
          r" '^(10\\.55776/|HTTPS?://(DX\\.)?DOI\\.ORG/10\\.55776/)?[A-Z]{1,3}\\d{3,7}(-[A-Z]\\d{1,3})?$'"),
   "ISCIII": dict(fid=4320334923,
