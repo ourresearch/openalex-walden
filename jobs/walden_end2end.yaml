@@ -438,7 +438,10 @@ resources:
           # oxjob #1642: on 8 and 9 Nov the main CREATE OR REPLACE TABLE work_authorships read all its input (4.43B rows,
           # 3.71 GB spill, 21 of its usual 24 task-hours) and then stalled until cancelled; a re-run took ~4 min. 25 min
           # (healthy task: 9-14 min) and one retry recover it without a person; worst case ~ the old single 40-min attempt.
-          timeout_seconds: 1500
+          # oxjob #1642 (16 Nov): 25 -> 45 min. Night 11-17 adds cells before the main statement (#2186's confirming-sources
+          # table ~3-11 min, #1346's org-author CTAS ~5 min) to the ~10 min of setup; the main statement keeps its own
+          # 12-min STATEMENT_TIMEOUT, so a freeze still fails fast.
+          timeout_seconds: 2700
           max_retries: 2
           # oxjob #1642 (10-11 Nov): the main statement freezes on a warm cluster (8 of 8 attempts that started right after
           # Author_Matching on jobs-4xl, 8-11 Nov) and finishes in ~4 min on a cold one (9 of 9 starts after the warehouse had
