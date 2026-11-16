@@ -349,7 +349,12 @@ def pubmed_parsed():
                 0,
             ),
             "type": F.lit(None).cast("string"),
-            "version": F.lit('publishedVersion'),
+            # oxjob #2143: a record NLM types "Preprint" (bioRxiv, medRxiv, Research Square, arXiv... from the NIH preprint
+            # pilot) is the submitted version; every other PubMed record is the published one.
+            "version": F.when(
+                F.array_contains(F.col("MedlineCitation.Article.PublicationTypelist.PublicationType._VALUE"), "Preprint"),
+                F.lit('submittedVersion'),
+            ).otherwise(F.lit('publishedVersion')),
             "license": F.lit(None).cast("string"),
             "language":  convert_language_code_udf(F.get(F.col("MedlineCitation.Article.Language"), 0)),
             "created_date": F.when(
