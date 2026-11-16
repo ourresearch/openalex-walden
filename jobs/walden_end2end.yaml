@@ -242,6 +242,18 @@ resources:
             job_id: ${resources.jobs.Match_References.id}
             job_parameters:
               mode: shadow
+        # oxjob #2314, SHADOW: one citations table (each citation once, with its sources), built after the lists are filed and
+        # tonight's merge map exists. Nothing depends on it yet and its SQL error handler only logs, so a failure doesn't stop
+        # the publish. The switch makes Works_Enriched depend on it and read it (job PLAN step 4).
+        - task_key: Citations
+          timeout_seconds: 1800
+          depends_on:
+            - task_key: parse_referenced_works
+            - task_key: Merged_Work_Ids_Map
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateWorkCitations
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Work_Volumes
           timeout_seconds: 1200
           depends_on:
