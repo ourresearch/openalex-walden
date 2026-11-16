@@ -18,6 +18,15 @@ MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
 MAX_AFFILIATION_STRING_LENGTH = 1000
 unallowed_types = ["component", "grant"]
+# oxjob #1135: a Protein Data Bank entry (10.2210/pdbXXXX/pdb) is a whole dataset record, not a piece of an article.
+# wwPDB re-deposits each entry as Crossref type `dataset` when it revises it (every deposit since May 2025), and those
+# are works (228K on Worldwide Protein Data Bank, S7407063902). The 80,025 entries not revised since still carry the old
+# type `component` and were dropped with the figures (ZD 1129: 10.2210/pdb8ehb/pdb, 10.2210/pdb100d/pdb). Read them as
+# the dataset deposit: type `dataset` here, and the source named from `publisher` below (their deposit has no container
+# title). Untitled records (withdrawn entries, 5,354) and the old alternate DOIs of the same entries (/pdbx, /mmcif: 969)
+# stay out. Records the stream already dropped come back by a one-time re-feed (oxjob #1135 PLAN.md). Revert: git revert.
+PDB_COMPONENT_SQL = ("coalesce(type = 'component' AND lower(native_id) RLIKE '^10[.]2210/pdb[0-9a-z]{4}/pdb$' "
+                     "AND exists(title, x -> trim(x) <> ''), false)")
 # oxjob #1722: notices that carry the notice word as a trailing title element (Cureus: ["<article title>",
 # "Correction"]). Keeping only title[0] gave the notice its article's exact title, so the type cascade
 # typed it article and title keys joined it to the article. Lowercase, exact match on the trimmed element.
@@ -329,6 +338,7 @@ def crossref_snapshots_exploded():
         F.coalesce(F.get(F.col("indexed.`date-parts`")[0], 1), F.lit(1)),
         F.coalesce(F.get(F.col("indexed.`date-parts`")[0], 2), F.lit(1))
     ))
+    .withColumn("type", F.when(F.expr(PDB_COMPONENT_SQL), F.lit("dataset")).otherwise(F.col("type")))  # oxjob #1135
     .filter(~F.col("type").isin(unallowed_types))
   )
 
@@ -573,7 +583,10 @@ def crossref_parsed():
                                 & (F.lower(x["DOI"]) == F.lower(F.col("native_id")))), F.lit(False))
         )
         .withColumn("abstract", F.substring(F.col("abstract"), 0, MAX_ABSTRACT_LENGTH))
-        .withColumn("source_name", F.coalesce(F.col("`container-title`")[0], F.col("institution")[0]["name"]))
+        .withColumn("source_name", F.coalesce(F.col("`container-title`")[0], F.col("institution")[0]["name"],
+            # oxjob #1135: wwPDB's old deposits name no container; its dataset deposits name "Worldwide Protein Data Bank",
+            # which is also the deposits' publisher
+            F.when(F.lower(F.col("native_id")).rlike("^10[.]2210/pdb[0-9a-z]{4}/pdb$"), F.col("publisher"))))
         .withColumn("publisher", F.col("publisher"))
         .withColumn("funders",
             F.transform(
