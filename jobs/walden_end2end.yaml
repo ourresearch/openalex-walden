@@ -230,6 +230,18 @@ resources:
             notebook_path: notebooks/parsing/parse_work_references
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        # oxjob #2296: the reference matcher (#2000) on tonight's new id-less references, a run of the job Match References.
+        # SHADOW (Casey 2026-11-16: 3 nights, then on): it writes only its own tables, serves nothing, and nothing waits for it;
+        # a failing step only logs. Turning it on: mode live here, Works_Enriched depends on this task, and the shadow runs are
+        # registered in reference_matcher_runs (oxjob #2296 PLAN). Live, a failure fails End 2 End (Casey 2026-11-16).
+        - task_key: Match_References
+          timeout_seconds: 18000
+          depends_on:
+            - task_key: parse_referenced_works
+          run_job_task:
+            job_id: ${resources.jobs.Match_References.id}
+            job_parameters:
+              mode: shadow
         - task_key: Work_Volumes
           timeout_seconds: 1200
           depends_on:
