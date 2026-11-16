@@ -146,12 +146,27 @@ FUNDERS = {
          # 182A, 002) and optional -MYn / letter suffix / trailing hyphen
          r" or norm rlike '^(MOST|NSC|NSTC)?[ -]*\\d{2,3}[ -]+\\d{4}[ -]+[A-Z0-9][ -]+[A-Z0-9]{3,4}[ -]+\\d{3}([ -]+MY\\d)?([ -]+[A-Z0-9]{1,3})?[ -]*$'"),
   "CIHR": dict(fid=4320334506,
-    # derived 2026-08-03 (worklist #16): registry = NNNNNN_1 (application no. +
-    # installment); deposits = program prefixes (MOP/PJT/FDN...), '950-' funding
-    # reference wrapper, '#' decorations. Match key = application number as int.
+    # derived 2026-08-03 (worklist #16): registry = CIHR's funding reference
+    # number (FRN), NNNNNN_n; deposits = program prefixes (MOP/PJT/FDN...),
+    # '950-' funding reference wrapper, '#' decorations. Match key = the FRN's
+    # first number as int (papers cite MOP-130465 for FRN 130465_1).
+    # 2026-11-15: a program code takes a digit only when a separator follows it
+    # (OV3-170344), or when it is two letters and a digit written onto exactly
+    # six digits (OV3170344, VR1172711): CIHR's codes of that shape. Before, any
+    # code written straight onto the number took the number's first digit:
+    # HBF134179 keyed 34179, not 134179. A longer code ending in a digit written
+    # onto the number is not read (APP1043567, RES0064610: mostly other funders'
+    # 7-digit numbers; 88 paper numbers under CIHR on 15 Nov, and their last six
+    # digits named an FRN for 16 of them). Two letters written straight onto the
+    # number are not read either: that is how NIH numbers filed under CIHR look
+    # (CA128978, NS104513, DK62267; on 15 Nov 264 paper links under CIHR were
+    # numbers in another funder's registry), and so are a few CIHR shorthands
+    # (PS175257, FS154313: 269 links that stay as they are). Two letters with a
+    # separator read as before (PS 175257, OV3-170344).
+    # The gram below is the ingest guard's grammar and is left as it was.
     rkey="CAST(CAST(" + ex(r"^(\\d{4,6})_\\d+$") + " AS BIGINT) AS STRING)",
     xkey="CAST(CAST(NULLIF(regexp_extract(regexp_replace(regexp_replace(norm,'^[#]+ ?',''),"
-         "'^(950[- ]|[A-Z]{2,4}[0-9]?[- ]?)',''),'^(\\\\d{4,6})([-_]\\\\d+)?$',1),'') AS BIGINT) AS STRING)",
+         "'^(950[- ]|[A-Z]{2}[0-9](?=[0-9]{6}([-_][0-9]+)?$)|[A-Z]{3,4}([0-9][- ]|[- ])?|[A-Z]{2}([0-9][- ]|[- ]))',''),'^(\\\\d{4,6})([-_]\\\\d+)?$',1),'') AS BIGINT) AS STRING)",
     gram=r"norm rlike '^#? ?(950[- ])?([A-Z]{2,4}[0-9]?[- ]?)?\\d{4,6}([-_]\\d+)?$'"),
   "AHA": dict(fid=4320306230,
     rkey="NULLIF(regexp_replace(norm,' ',''),'')",
