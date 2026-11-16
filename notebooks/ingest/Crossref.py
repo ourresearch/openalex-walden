@@ -209,6 +209,29 @@ def normalize_title_udf(title_series: pd.Series) -> pd.Series:
 
 # COMMAND ----------
 
+def affiliation_string(aff):
+    """oxjob #1242: the raw affiliation string is the publisher's whole affiliation, `name` then its `place` values.
+
+    Crossref affiliation objects can carry the city / country in `place`, apart from `name` (ACS on ~88% of its records
+    since mid-2025; also Taylor & Francis, OUP, IEEE, Emerald, Frontiers, PNAS, AIP ...: ~16% of 2025-26 records with
+    affiliations, sample of 600 on 16 Nov 2026). Reading only `name` served "University of South Carolina" for
+    name "University of South Carolina" + place ["Columbia, United States"], and the matcher lost the country.
+    Format: name, then each place value not already in the name, joined by ", " (the "name, city, country" form of
+    the matcher's own institution names, utils/affiliation_matcher/nightly.py names_for_dense). Trailing separators
+    on the name (ACS: "Dresden University of Technology , , Nöthnitzer Str. 61 , ,") go before the join. A name
+    with no letter, or no new place, keeps its bytes, so records without `place` are unchanged.
+    Revert: return aff["name"] (then re-feed the same DOIs).
+    """
+    name = aff["name"]
+    places = F.transform(
+        F.filter(F.coalesce(aff["place"], F.array().cast("array<string>")), lambda p: F.trim(p) != ""),
+        lambda p: F.trim(p))
+    new_places = F.filter(places, lambda p: ~F.lower(name).contains(F.lower(p)))
+    return F.when(
+        name.rlike(r"\p{L}") & (F.size(new_places) > 0),
+        F.concat_ws(", ", F.regexp_replace(name, r"[\s,;]+$", ""), F.array_join(new_places, ", "))
+    ).otherwise(name)
+
 def create_author_struct(author):
     """Transform raw Crossref author to normalized author struct."""
     return F.struct(
@@ -221,7 +244,7 @@ def create_author_struct(author):
         F.transform(
             author["affiliation"],
             lambda aff: F.struct(
-                F.substring(aff["name"], 0, MAX_AFFILIATION_STRING_LENGTH).alias("name"),
+                F.substring(affiliation_string(aff), 0, MAX_AFFILIATION_STRING_LENGTH).alias("name"),  # oxjob #1242
                 F.substring(F.get(aff["department"], 0), 0, MAX_AFFILIATION_STRING_LENGTH).alias("department"),
                 F.when(
                     F.get(aff["id"]["id-type"], 0) == "ROR",
