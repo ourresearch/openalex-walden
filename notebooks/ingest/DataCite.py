@@ -150,6 +150,63 @@ CASE
 END
 """
 
+# oxjob #126 (support factory, ZD 7975 / 8145 / 22287 / 26237): the chain above prefers a Submitted date, else the
+# string-earliest date of ANY dateType, so a record WITH dates[] is often dated by a date DataCite itself defines as
+# something other than publication: a deposit-era Submitted/Updated/Issued stamp years after its own publicationYear
+# (CMU KiltHub 10.1184/r1/6473273: publicationYear 2010, everything else 2018-06-29), a field-collection date (DRUM
+# 10.13020/3eks-j059: Collected 1998, Available 2020-05-12, publicationYear 2020), or a manuscript's Submitted date the
+# year before it came out (10.11576/ao-7841: Submitted 2025-01-27, Issued 2026-03-06, publicationYear 2026). This
+# expression only acts where the pick contradicts the record's own publication statements, and only takes dates the
+# record states (publicationYear and its Issued/Available/Copyrighted dates), so it follows the 26 Oct 2026 rule
+# "right = what the record owner says" (plans/data-bugs.md). Three cases, publicationYear 1900..this year:
+#   late:    pick's year > publicationYear -> earliest dated Issued on or before 31 Dec of publicationYear, else
+#            earliest dated Issued/Available/Copyrighted in that year, else any Issued <= that year, else 1 Jan
+#            (generalises #1865's rule 1 from future picks to every pick).
+#   content: pick < publicationYear and the pick is a Collected/Coverage/Valid date (what the content covers, never
+#            when it was published) -> earliest Issued/Available/Copyrighted date in publicationYear.
+#   prepub1: pick in the year before publicationYear and it is a Submitted/Accepted/Created date -> same.
+# Untouched: a pick that is itself an Issued/Available/Copyrighted date; Submitted/Accepted/Created picks 2+ years
+# early (digitised theses where that date may be the work's real date: #126's open dateType review); records with no
+# publication-type date in publicationYear. Day precision: a dated value ("2026-03-06") beats a year-only one ("2026").
+# Bar (16 Nov 2026, 75 sampled visible works): new date = the record's own publication year 75/75; on landing pages
+# that state a date, 7/8 agree with the new year, 0/8 with the old. Records parsed before this rule are fixed by
+# rows of openalex.works.datacite_publication_year_fix (rule '126_*'). Revert: drop this expression and its
+# withColumn line, and delete those rows.
+_DC_PUB_DATE = "lower(d.dateType) IN ('issued', 'available', 'copyrighted')"
+_DC_DATED = "length(trim(d.date)) >= 7"
+# coalesce: an unparseable date must read as "not the pick", not NULL (exists() is three-valued; NULL would skip the row)
+_DC_PICK_IS = ("exists(attributes.dates, d -> lower(d.dateType) IN ({types})"
+               " AND coalesce(try_cast(d.date AS DATE) = published_date, false))")
+
+
+def _dc_min_date(dtype_cond, x_cond):
+    """Earliest parsed date among attributes.dates whose dateType matches dtype_cond, kept when x_cond(x) holds."""
+    return (f"array_min(filter(transform(filter(attributes.dates, d -> {dtype_cond}), d -> try_cast(d.date AS DATE)),"
+            f" x -> {x_cond}))")
+
+
+_DC_IN_PY = f"year(x) = {_DC_PY}"
+_DC_LE_PY = f"x >= DATE'1900-01-01' AND x <= make_date({_DC_PY}, 12, 31)"
+_DC_PUB_IN_PY = (f"coalesce({_dc_min_date(f'{_DC_PUB_DATE} AND {_DC_DATED}', _DC_IN_PY)},"
+                 f" {_dc_min_date(_DC_PUB_DATE, _DC_IN_PY)})")
+DATACITE_PY_AGREE_SQL = f"""
+CASE
+  WHEN published_date IS NULL OR attributes.dates IS NULL OR size(attributes.dates) = 0
+       OR NOT coalesce(attributes.publicationYear BETWEEN 1900 AND year(current_date()), false) THEN published_date
+  WHEN year(published_date) > {_DC_PY} THEN
+    coalesce({_dc_min_date(f"lower(d.dateType) = 'issued' AND {_DC_DATED}", _DC_LE_PY)},
+             {_DC_PUB_IN_PY},
+             {_dc_min_date("lower(d.dateType) = 'issued'", _DC_LE_PY)},
+             make_date({_DC_PY}, 1, 1))
+  WHEN year(published_date) < {_DC_PY}
+       AND NOT {_DC_PICK_IS.format(types="'issued', 'available', 'copyrighted'")}
+       AND ({_DC_PICK_IS.format(types="'collected', 'coverage', 'valid'")}
+            OR (year(published_date) = {_DC_PY} - 1 AND {_DC_PICK_IS.format(types="'submitted', 'accepted', 'created'")}))
+    THEN coalesce({_DC_PUB_IN_PY}, published_date)
+  ELSE published_date
+END
+"""
+
 def _not_heritage_client(client_col):
     """True unless the record's DataCite client is on the #1647 heritage list. A NULL client is kept."""
     if not HERITAGE_DATACITE_CLIENTS:
@@ -321,6 +378,7 @@ def datacite_parsed():
             ),
         )
         .withColumn("published_date", F.expr(DATACITE_NODATES_PY_SQL))  # oxjob #2091
+        .withColumn("published_date", F.expr(DATACITE_PY_AGREE_SQL))  # oxjob #126
         .withColumn("published_date", F.expr(DATACITE_FUTURE_DATE_FIX_SQL))  # oxjob #1865
         .withColumn(
             "published_date",
