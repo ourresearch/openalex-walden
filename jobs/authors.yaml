@@ -38,6 +38,12 @@ resources:
             notebook_path: notebooks/authors/ApplyAuthorOrcidCurations
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        # oxjob #1107: names hidden from a profile on request (author display_name_alternatives remove curations)
+        - task_key: Sync_Author_Hidden_Names
+          notebook_task:
+            notebook_path: notebooks/authors/SyncAuthorHiddenNames
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
         - task_key: Create_Author_Observed_Orcids
           notebook_task:
             notebook_path: notebooks/authors/CreateAuthorObservedOrcids
@@ -61,6 +67,7 @@ resources:
             - task_key: Create_Author_Canonical_Names
             - task_key: Apply_Author_Orcid_Curations
             - task_key: Create_Author_Observed_Orcids
+            - task_key: Sync_Author_Hidden_Names
           notebook_task:
             notebook_path: notebooks/authors/CreateAuthors
             source: GIT
