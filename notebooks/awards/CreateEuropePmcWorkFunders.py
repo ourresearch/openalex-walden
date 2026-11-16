@@ -220,7 +220,15 @@ print("resolved (work,funder,grant) mentions:", epmc_resolved.count())
 # MAGIC   openalex.common.extract_grant_doi(e.funder_award_id) AS doi,
 # MAGIC   CONCAT('https://api.openalex.org/works?filter=awards.id:G', ABS(XXHASH64(CONCAT(f.funder_id, ':', e.normalized_award_id))) % 9000000000) AS works_api_url,
 # MAGIC   CURRENT_TIMESTAMP() AS created_date, CURRENT_TIMESTAMP() AS updated_date
-# MAGIC FROM guarded e JOIN funders f ON f.funder_id = e.funder_id;
+# MAGIC FROM guarded e JOIN funders f ON f.funder_id = e.funder_id
+# MAGIC -- #690 ticket 7682: an ERC call identifier (ERC-2021-ADG, ERC‐2015‐AdG with Unicode hyphens, ERC 2019 StG ...) names
+# MAGIC -- an ERC call, never a grant. Under an EU programme funder (European Commission, European Research Council, FP7, H2020,
+# MAGIC -- Horizon Europe and their programme children: 86 funders, whose grants are the 6- or 9-digit agreement numbers of the
+# MAGIC -- erc and cordis registries, none of which has this shape) it mints no award; works keep the funder and their real
+# MAGIC -- grant numbers. Other funders are untouched (Kyle 2026-07-28 rule 4: the guard runs only where a registry tests it).
+# MAGIC WHERE NOT (coalesce(f.display_name, '') RLIKE '^(European Commission|European Research Council|Seventh Framework Programme|Horizon 2020( Framework Programme)?|(FP7|H2020|HORIZON EUROPE) .+)$'
+# MAGIC   AND regexp_replace(upper(trim(regexp_replace(e.funder_award_id, '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'))), '\\s+', ' ')
+# MAGIC       RLIKE '^ERC[-_ ]?(19|20)[0-9]{2}[-_ ]?(STG|COG|ADG|SYG|POC[0-9]?|POC[-_ ]?(LS|SM)[0-9]?)$');
 
 # COMMAND ----------
 
