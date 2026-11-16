@@ -54,15 +54,16 @@ awards_transformed AS (
         TRY_CAST(g.start_year AS INT) as start_year,
         TRY_CAST(g.end_year AS INT) as end_year,
 
+        -- PI = the record's funded person from fundingGroupPerson (ticket 22814, oxjob #123); blank names are NULL.
         CASE
-            WHEN g.pi_family_name IS NOT NULL THEN
+            WHEN NULLIF(TRIM(g.pi_family_name), '') IS NOT NULL OR NULLIF(TRIM(g.pi_given_name), '') IS NOT NULL THEN
                 struct(
-                    g.pi_given_name as given_name,
-                    g.pi_family_name as family_name,
-                    CAST(NULL AS STRING) as orcid,
+                    NULLIF(TRIM(g.pi_given_name), '') as given_name,
+                    NULLIF(TRIM(g.pi_family_name), '') as family_name,
+                    NULLIF(TRIM(CAST(g.pi_orcid AS STRING)), '') as orcid,
                     CAST(NULL AS DATE) as role_start,
                     struct(
-                        CAST(NULL AS STRING) as name,
+                        NULLIF(TRIM(CAST(g.pi_affiliation_name AS STRING)), '') as name,
                         'Finland' as country,
                         CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
                     ) as affiliation
@@ -70,21 +71,47 @@ awards_transformed AS (
             ELSE NULL
         END as lead_investigator,
 
-        CAST(NULL AS STRUCT<
-            given_name:STRING,
-            family_name:STRING,
-            orcid:STRING,
-            role_start:DATE,
-            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
-        >) as co_lead_investigator,
+        CASE
+            WHEN NULLIF(TRIM(g.co_pi_family_name), '') IS NOT NULL OR NULLIF(TRIM(g.co_pi_given_name), '') IS NOT NULL THEN
+                struct(
+                    NULLIF(TRIM(g.co_pi_given_name), '') as given_name,
+                    NULLIF(TRIM(g.co_pi_family_name), '') as family_name,
+                    NULLIF(TRIM(CAST(g.co_pi_orcid AS STRING)), '') as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        NULLIF(TRIM(CAST(g.co_pi_affiliation_name AS STRING)), '') as name,
+                        'Finland' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
+            ELSE NULL
+        END as co_lead_investigator,
 
-        CAST(NULL AS ARRAY<STRUCT<
-            given_name:STRING,
-            family_name:STRING,
-            orcid:STRING,
-            role_start:DATE,
-            affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
-        >>) as investigators,
+        CASE
+            WHEN g.other_investigators_json IS NOT NULL THEN
+                transform(
+                    from_json(CAST(g.other_investigators_json AS STRING),
+                        'ARRAY<STRUCT<given_name:STRING, family_name:STRING, orcid:STRING, affiliation_name:STRING, affiliation_country:STRING>>'),
+                    p -> struct(
+                        p.given_name as given_name,
+                        p.family_name as family_name,
+                        p.orcid as orcid,
+                        CAST(NULL AS DATE) as role_start,
+                        struct(
+                            p.affiliation_name as name,
+                            'Finland' as country,
+                            CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                        ) as affiliation
+                    )
+                )
+            ELSE CAST(NULL AS ARRAY<STRUCT<
+                given_name:STRING,
+                family_name:STRING,
+                orcid:STRING,
+                role_start:DATE,
+                affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
+            >>)
+        END as investigators,
 
         CONCAT('https://research.fi/en/results/funding/', CAST(g.project_id AS STRING)) as landing_page_url,
 

@@ -8,7 +8,7 @@ processes it into a parquet file, and uploads it to S3 for Databricks ingestion.
 
 Data Source: https://research.fi/en/results/fundings?funder=0245893-9
 API: https://researchfi-api-production.2.rahtiapp.fi/portalapi/funding/_search
-Output: s3://openalex-ingest/awards/academy_of_finland/academy_of_finland_projects.parquet
+Output: s3://openalex-ingest/awards/academy_of_finland/academy_of_finland_projects_v2.parquet
 
 What this script does:
 1. Queries the Research.fi Elasticsearch API for all Academy of Finland fundings
@@ -89,7 +89,7 @@ REQUEST_DELAY = 0.2  # Seconds between requests
 
 # S3 destination
 S3_BUCKET = "openalex-ingest"
-S3_KEY = "awards/academy_of_finland/academy_of_finland_projects.parquet"
+S3_KEY = "awards/academy_of_finland/academy_of_finland_projects_v2.parquet"  # v2: PI from fundingGroupPerson (#123, ZD 22814)
 
 
 # =============================================================================
@@ -136,26 +136,56 @@ def fetch_page(from_offset: int, size: int = PAGE_SIZE) -> list[dict]:
 def parse_grant(grant: dict) -> dict:
     """Parse a single grant into our schema."""
 
-    # Extract PI info from fundingGroupPerson if available
-    pi_given_name = grant.get("fundingContactPersonFirstNames")
-    pi_family_name = grant.get("fundingContactPersonLastName")
-    pi_orcid = None
-    pi_affiliation_name = None
-    pi_affiliation_country = None
+    # PI info lives in fundingGroupPerson (ticket 22814, oxjob #123). Each research.fi funding record is one
+    # sub-project of a consortium: fundedPerson == 1 marks the person(s) this record funds (its PI), while
+    # roleInFundingGroup == "leader" marks the consortium leader, who is often the PI of a sibling record.
+    # Keys are fundingGroupPersonFirstNames / fundingGroupPersonLastName / fundingGroupPersonOrcid and
+    # consortiumOrganizationNameEn (fundedPersonOrganizationNameEn is only a sector, e.g. "University").
+    # fundingContactPersonFirstNames / LastName are " " on almost every record; they are only a fallback.
+    def _clean(value):
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
 
-    # Try to get more PI details from fundingGroupPerson
-    funding_group = grant.get("fundingGroupPerson", [])
-    if funding_group and isinstance(funding_group, list):
-        for person in funding_group:
-            if isinstance(person, dict):
-                # Get ORCID if available
-                if not pi_orcid and person.get("orcid"):
-                    pi_orcid = person.get("orcid")
-                # Get affiliation
-                if not pi_affiliation_name and person.get("organizationNameEn"):
-                    pi_affiliation_name = person.get("organizationNameEn") or person.get("organizationNameFi")
-                    pi_affiliation_country = "Finland"  # Research.fi is Finland-focused
-                break  # Just get first person's details
+    def _person(p: dict) -> dict:
+        return {
+            "given_name": _clean(p.get("fundingGroupPersonFirstNames")),
+            "family_name": _clean(p.get("fundingGroupPersonLastName")),
+            "orcid": _clean(p.get("fundingGroupPersonOrcid")),
+            "affiliation_name": _clean(p.get("consortiumOrganizationNameEn"))
+                                or _clean(p.get("consortiumOrganizationNameFi")),
+            "affiliation_country": "Finland",  # Research.fi is Finland-focused
+        }
+
+    funding_group = grant.get("fundingGroupPerson") or []
+    if not isinstance(funding_group, list):
+        funding_group = []
+    funding_group = [p for p in funding_group if isinstance(p, dict)]
+    funded = [_person(p) for p in funding_group if p.get("fundedPerson") == 1]
+    if not funded:
+        # No funded-person flag: fall back to people on this record's own sub-project number.
+        project_number = str(grant.get("funderProjectNumber"))
+        funded = [_person(p) for p in funding_group if str(p.get("consortiumProject")) == project_number]
+    funded = [p for p in funded if p["family_name"] or p["given_name"]]
+
+    if funded:
+        lead = funded[0]
+    else:
+        lead = {
+            "given_name": _clean(grant.get("fundingContactPersonFirstNames")),
+            "family_name": _clean(grant.get("fundingContactPersonLastName")),
+            "orcid": None,
+            "affiliation_name": None,
+            "affiliation_country": None,
+        }
+    pi_given_name = lead["given_name"]
+    pi_family_name = lead["family_name"]
+    pi_orcid = lead["orcid"]
+    pi_affiliation_name = lead["affiliation_name"]
+    pi_affiliation_country = lead["affiliation_country"] if (pi_family_name or pi_given_name) else None
+    co_pi = funded[1] if len(funded) > 1 else {}
+    other_investigators = funded[2:]
 
     # Extract fields of science
     fields_of_science = grant.get("fieldsOfScience", [])
@@ -216,6 +246,11 @@ def parse_grant(grant: dict) -> dict:
         "pi_orcid": pi_orcid,
         "pi_affiliation_name": pi_affiliation_name,
         "pi_affiliation_country": pi_affiliation_country,
+        "co_pi_given_name": co_pi.get("given_name"),
+        "co_pi_family_name": co_pi.get("family_name"),
+        "co_pi_orcid": co_pi.get("orcid"),
+        "co_pi_affiliation_name": co_pi.get("affiliation_name"),
+        "other_investigators_json": json.dumps(other_investigators, ensure_ascii=False) if other_investigators else None,
         "fields_of_science": json.dumps(fos_names) if fos_names else None,
         "homepage": grant.get("projectHomepage"),
         "funder_name": grant.get("funderNameEn"),
@@ -310,6 +345,8 @@ def process_grants(grants: list[dict], output_dir: Path) -> Path:
     print(f"    - With amount: {df['amount_eur'].notna().sum():,}")
     print(f"    - With PI name: {df['pi_family_name'].notna().sum():,}")
     print(f"    - With ORCID: {df['pi_orcid'].notna().sum():,}")
+    print(f"    - With PI affiliation: {df['pi_affiliation_name'].notna().sum():,}")
+    print(f"    - With co-PI: {df['co_pi_family_name'].notna().sum():,}")
     print(f"    - With start year: {df['start_year'].notna().sum():,}")
 
     if "funding_type" in df.columns:
@@ -431,7 +468,7 @@ def main():
     print("Pipeline complete!" if upload_success else "Pipeline FAILED")
     print(f"{'='*60}")
     print(f"\nNext step:")
-    print(f"  In Databricks, run: notebooks/awards/CreateAcademyOfFinlandAwards.ipynb")
+    print(f"  The nightly Awards job (notebooks/awards/CreateOrUpdateAwards.sql, sources.csv row researchfi) reads {S3_KEY}")
 
 
 if __name__ == "__main__":

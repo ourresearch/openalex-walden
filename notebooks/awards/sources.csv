@@ -7,7 +7,7 @@ kaken,10,F4320334764,s3://openalex-ingest/awards/kaken/,monthly,98
 aacr_funded_research,560,F4320306091,s3://openalex-ingest/awards/aacr/aacr_projects.parquet,frozen,98
 aar_rome_prize_fellows,172,F4320320895,s3://openalex-ingest/awards/aar_rome_prize/aar_rome_prize_fellows.parquet,frozen,98
 aas_arise_grantees,134,F4320327323,s3://openalex-ingest/awards/aas_arise/aas_arise_grantees.parquet,frozen,98
-researchfi,24,F4320321108,s3://openalex-ingest/awards/academy_of_finland/academy_of_finland_projects.parquet,frozen,98
+researchfi,24,F4320321108,s3://openalex-ingest/awards/academy_of_finland/academy_of_finland_projects_v2.parquet,frozen,98
 acmedsci,323,F4320320241,s3://openalex-ingest/awards/acmedsci/acmedsci_awards.parquet,frozen,98
 ada_research_database,496,F4320306089,s3://openalex-ingest/awards/ada/ada_projects.parquet,frozen,98
 bdns_aei,31,F4320335598,s3://openalex-ingest/awards/aei/aei_grants.parquet,frozen,98
