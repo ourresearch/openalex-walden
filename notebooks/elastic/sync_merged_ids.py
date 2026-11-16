@@ -25,6 +25,8 @@
 # MAGIC - sources: the registry's `openalex_sources.public.source_merge` plus the legacy files.
 # MAGIC - works (2026-10-27, #1037): `openalex.works.merged_work_ids` plus the legacy files minus the "Deleted Work"
 # MAGIC   placeholder W4285719527. Map table `openalex.works.merged_work_ids_map` (the ledger owns the plain name).
+# MAGIC - institutions (2026-11-16, #1037, ZD 4322 / 23578): `openalex.institutions.institutions.merge_into_id` plus the
+# MAGIC   legacy files, minus the "Deleted Institution" placeholder I4389424196 (6,139 rows: deletions, not merges).
 # MAGIC
 # MAGIC **Rules.** One edge per loser (the latest). A loser that is live again (the matcher refilled it)
 # MAGIC is left out: its own record answers. A chain whose end is not live after 8 hops is left out:
@@ -38,7 +40,7 @@
 from pyspark.sql import functions as F
 from elasticsearch import Elasticsearch, helpers
 
-dbutils.widgets.dropdown("entity", "authors", ["authors", "sources", "works"])
+dbutils.widgets.dropdown("entity", "authors", ["authors", "sources", "works", "institutions"])
 dbutils.widgets.text("max_shrink_fraction", "0.02")
 dbutils.widgets.text("shrink_guard_override", "false")
 dbutils.widgets.text("full_resync", "false")
@@ -96,6 +98,20 @@ CFG = {
         "es_index": "merge-works",
         "shards": 2,
         "partitions": 512,
+    },
+    # institutions (2026-11-16, #1037): same best-effort redirect. Rows into I4389424196 ("Deleted Institution"
+    # placeholder) are deletions, not merges.
+    "institutions": {
+        "prefix": "I",
+        "live": "openalex.institutions.institutions_api",
+        "map": "openalex.institutions.merged_institution_ids",
+        "synced": "openalex.institutions.merged_institution_ids_in_es",
+        "legacy_table": "openalex.institutions.institution_merge_edges_legacy",
+        "legacy_s3": "s3://openalex/legacy-data/merged_ids/institutions/",
+        "legacy_exclude": ("I4389424196",),
+        "es_index": "merge-institutions",
+        "shards": 1,
+        "partitions": 8,
     },
 }[ENTITY]
 if LIVE_TABLE:
@@ -216,6 +232,16 @@ elif ENTITY == "works":
       SELECT loser_work_id AS loser_id, winner_work_id AS winner_id, CAST(merged_at AS DATE) AS merge_date,
              'merged_work_ids' AS ledger, 2 AS prio
       FROM openalex.works.merged_work_ids
+      UNION ALL
+      SELECT loser_id, winner_id, merge_date, 'legacy_merged_ids', 1 FROM {CFG['legacy_table']}
+    """
+elif ENTITY == "institutions":
+    # merge_into_date is a timestamp string ('2023-11-22 13:48:43'); try_cast so one odd value can't fail the build
+    edges_sql = f"""
+      SELECT id AS loser_id, merge_into_id AS winner_id, try_cast(substr(merge_into_date, 1, 10) AS DATE) AS merge_date,
+             'institutions_merge_into_id' AS ledger, 2 AS prio
+      FROM openalex.institutions.institutions
+      WHERE merge_into_id IS NOT NULL AND merge_into_id <> {CFG['legacy_exclude'][0][1:]}
       UNION ALL
       SELECT loser_id, winner_id, merge_date, 'legacy_merged_ids', 1 FROM {CFG['legacy_table']}
     """

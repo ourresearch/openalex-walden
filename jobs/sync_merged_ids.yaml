@@ -40,6 +40,16 @@ resources:
           max_retries: 1
           min_retry_interval_millis: 300000
           timeout_seconds: 7200
+        # #1037 (2026-11-16, ZD 4322 / 23578): merged institution IDs, same best effort
+        - task_key: merged_institutions
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_merged_ids
+            source: GIT
+            base_parameters:
+              entity: institutions
+          max_retries: 1
+          min_retry_interval_millis: 300000
+          timeout_seconds: 3600
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
