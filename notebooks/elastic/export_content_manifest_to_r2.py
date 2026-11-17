@@ -89,10 +89,10 @@ df = spark.sql("""
       FROM openalex.works.locations_mapped lm
       WHERE (pdf_s3_id IS NOT NULL OR grobid_s3_id IS NOT NULL)
         AND work_id IS NOT NULL
-        -- PDFs that were never in R2 (oxjob #2298); the per-location layout skips every excluded file
+        -- files that failed the byte check: missing, HTML, damaged or truncated (oxjob #2298, #981), as in the per-location layout
         AND NOT EXISTS (
           SELECT 1 FROM openalex.pdf.manifest_excluded_pdfs x
-          WHERE x.label = 'MISSING' AND x.pdf_uuid = REPLACE(lm.pdf_s3_id, '.pdf', '')
+          WHERE x.pdf_uuid = REPLACE(lm.pdf_s3_id, '.pdf', '')
         )
       GROUP BY work_id
     )
