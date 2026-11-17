@@ -12,8 +12,8 @@ resources:
         queue (works with an abstract in a research-carrying type and no row at
         the current student or Jev tagger_version), Jev over the queue under the
         run's caps, rebuild the served table openalex.works.works_study_design.
-        Since 2026-09-26 the student task is out of the job (Jason: accuracy
-        over cost; Jev on every work is ~$2.5K/yr): new works all go to Jev.
+        Since 2026-09-26 the student task is out of the job (accuracy over
+        cost): new works all go to Jev.
         Student rows already written stay served until re-tagged.
         Nightly caps (max_works / max_usd / max_minutes) cover the day's new works
         (~100K, ~$6). The backfill (~180M works, ~$11K) is the same job run by hand
@@ -46,7 +46,7 @@ resources:
         - name: max_total_usd
           # ceiling on Jev spend across ALL runs (sum of usd in works_study_design_progress); the tag task
           # fails at it instead of starting. Raise deliberately. Jev spend to 2026-09-24 was ~$2.0K; $3,186 on
-          # 2026-10-25. Raised 4000 -> 5500 for the xpac works (oxjob #1649: 22.5M works, ~$1,250; Jason's yes).
+          # 2026-10-25. Raised 4000 -> 5500 for the xpac works (oxjob #1649: 22.5M works).
           default: "5500"
         - name: jev_residual_only
           # false since 2026-09-26: Jason's call, accuracy over cost; Jev tags every queued work and the

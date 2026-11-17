@@ -411,7 +411,7 @@ resources:
             source: GIT
             warehouse_id: 4d37bf76372a2901
         # oxjob #1401 / #1348: vector matcher for tonight's new seats (seat-vector band + Claude Sonnet 5.5 zone judge) ->
-        # openalex.authors.vector_match_decisions, which MatchAuthors cell 9 LEFT JOINs. Stopgap judge (~$540/night; charter § 6).
+        # openalex.authors.vector_match_decisions, which MatchAuthors cell 9 LEFT JOINs. Stopgap judge, to be replaced by a distilled one.
         - task_key: Vector_Matcher
           depends_on:
             - task_key: Author_Affiliations
