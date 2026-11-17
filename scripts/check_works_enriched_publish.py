@@ -30,8 +30,8 @@ WRITE = re.compile(r"\b(?:MERGE\s+INTO|INSERT\s+(?:INTO|OVERWRITE)(?:\s+TABLE)?|
                    r"ALTER\s+TABLE|OPTIMIZE|RESTORE(?:\s+TABLE)?|CREATE\s+(?:OR\s+REPLACE\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?)"
                    r"\s+" + LIVE, re.I)
 PUBLISH = re.compile(r"INSERT\s+OVERWRITE\s+(?:TABLE\s+)?" + LIVE + r"\s+BY\s+NAME\s+SELECT\s+\*\s+FROM\s+"
-                     r"openalex\.works\.openalex_works_candidate\b", re.I)
-VIEW = re.compile(r"CREATE\s+OR\s+REPLACE\s+VIEW\s+openalex\.works\.openalex_works_candidate\b[\s\S]*?\bFROM\s+"
+                     + re.escape(CANDIDATE) + r"\b", re.I)
+VIEW = re.compile(r"CREATE\s+OR\s+REPLACE\s+VIEW\s+" + re.escape(CANDIDATE) + r"\b[\s\S]*?\bFROM\s+"
                   r"openalex\.works\.openalex_works_build\b", re.I)
 CWE = "notebooks/end2end/CreateWorksEnriched.ipynb"
 PUB = "notebooks/end2end/PublishWorks.ipynb"
@@ -66,60 +66,37 @@ def publish_problems(cells):
 
 
 def tasks(yaml_text):
-    """{task_key: {"deps": [...], "notebook": str|None, "works_table": str|None}} from walden_end2end.yaml's task list
-    (8-space '- task_key:' items; regex, so CI needs no YAML library)."""
-    out, cur, in_deps = {}, None, False
-    for line in yaml_text.splitlines():
-        m = re.match(r"^        - task_key: (\S+)", line)
-        if m:
-            cur = out.setdefault(m.group(1), {"deps": [], "notebook": None, "works_table": None})
-            in_deps = False
-            continue
-        if cur is None or not line.strip() or line.lstrip().startswith("#"):
-            continue
-        indent = len(line) - len(line.lstrip())
-        if indent <= 6:
-            cur, in_deps = None, False
-            continue
-        if re.match(r"^          depends_on:\s*$", line):
-            in_deps = True
-            continue
-        d = re.match(r"^            - task_key: (\S+)", line)
-        if in_deps and d:
-            cur["deps"].append(d.group(1))
-            continue
-        if indent <= 10:
-            in_deps = False
-        n = re.match(r"^\s+notebook_path: (\S+)", line)
-        if n:
-            cur["notebook"] = n.group(1)
-        wt = re.match(r"^\s+works_table: (\S+)", line)
-        if wt:
-            cur["works_table"] = wt.group(1).strip("'\"")
+    """{task_key: {"deps": [...], "notebook": str|None, "works_table": str|None}} from walden_end2end.yaml's task list:
+    one chunk per 8-space '- task_key:' item, its 12-space '- task_key:' lines are its depends_on (regex, so CI needs no
+    YAML library)."""
+    out = {}
+    for chunk in re.split(r"^        - task_key: ", yaml_text, flags=re.M)[1:]:
+        key = chunk.split(None, 1)[0]
+        nb = re.search(r"^\s+notebook_path: (\S+)", chunk, re.M)
+        wt = re.search(r"^\s+works_table: (\S+)", chunk, re.M)
+        out[key] = {"deps": re.findall(r"^            - task_key: (\S+)", chunk, re.M),
+                    "notebook": nb and nb.group(1), "works_table": wt and wt.group(1).strip("'\"")}
     return out
+
+
+# Each task depends on exactly the one before it, and is the only task that does: nothing reads openalex_works between
+# tonight's build and its accepted publish (every other reader depends on Optimize_Works_Enriched).
+CHAIN = ["Works_Enriched", "Guardrails", "Publish_Works", "Optimize_Works_Enriched"]
 
 
 def job_problems(yaml_text):
     t = tasks(yaml_text)
-    out = []
-    want = {"Guardrails": ["Works_Enriched"], "Publish_Works": ["Guardrails"], "Optimize_Works_Enriched": ["Publish_Works"]}
-    for key, deps in want.items():
-        if key not in t:
-            out.append(f"{JOB}: no task {key}")
-        elif t[key]["deps"] != deps:
-            out.append(f"{JOB}: {key} depends on {t[key]['deps']}, expected {deps}")
-    if "Guardrails" in t and t["Guardrails"]["works_table"] != CANDIDATE:
-        out.append(f"{JOB}: Guardrails must check the candidate (base_parameters works_table: {CANDIDATE}), "
-                   f"found {t['Guardrails']['works_table']!r}")
-    if "Publish_Works" in t and t["Publish_Works"]["notebook"] != "notebooks/end2end/PublishWorks":
-        out.append(f"{JOB}: Publish_Works runs {t['Publish_Works']['notebook']!r}, expected notebooks/end2end/PublishWorks")
-    for key, v in t.items():
-        if "Works_Enriched" in v["deps"] and key != "Guardrails":
-            out.append(f"{JOB}: {key} depends on Works_Enriched: only Guardrails may (before the accept, openalex_works "
-                       f"still holds the last accepted night); depend on Optimize_Works_Enriched")
-        if "Guardrails" in v["deps"] and key != "Publish_Works":
-            out.append(f"{JOB}: {key} depends on Guardrails: only Publish_Works may (openalex_works is tonight's only "
-                       f"after Publish_Works); depend on Optimize_Works_Enriched")
+    out = [f"{JOB}: no task {k}" for k in CHAIN if k not in t]
+    for up, down in zip(CHAIN, CHAIN[1:]):
+        after = sorted(k for k, v in t.items() if up in v["deps"])
+        if t.get(down, {}).get("deps") != [up] or after != [down]:
+            out.append(f"{JOB}: {down} must depend on {up} alone, and be the only task that does (found {down} -> "
+                       f"{t.get(down, {}).get('deps')}, tasks after {up}: {after}); other readers depend on "
+                       f"Optimize_Works_Enriched")
+    if t.get("Guardrails", {}).get("works_table") != CANDIDATE:
+        out.append(f"{JOB}: Guardrails must check the candidate (base_parameters works_table: {CANDIDATE})")
+    if t.get("Publish_Works", {}).get("notebook") != "notebooks/end2end/PublishWorks":
+        out.append(f"{JOB}: Publish_Works must run notebooks/end2end/PublishWorks")
     return out
 
 
@@ -198,9 +175,7 @@ def self_test():
     assert job_problems(job(wt="openalex.works.openalex_works")), "Guardrails must read the candidate"
     assert job_problems(job(sync_dep="Guardrails")), "a reader right after Guardrails runs before the publish"
     assert job_problems(job(sync_dep="Works_Enriched")), "a reader right after Works_Enriched"
-    t = tasks(job())
-    assert t["Guardrails"]["deps"] == ["Works_Enriched"] and t["Sync_to_Elasticsearch"]["deps"] == ["Optimize_Works_Enriched"], t
-    assert "es_sync_cluster" not in t
+    assert job_problems(job(sync_dep="Publish_Works")), "a reader beside Optimize"
     print("self-test OK")
 
 
