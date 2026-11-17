@@ -418,7 +418,10 @@ resources:
             - task_key: Topics
           run_job_task:
             job_id: ${resources.jobs.Vector_Matcher_Nightly.id}
-          timeout_seconds: 5400
+          # 17 Nov 2026 (#1642, night 11-17): 5400 -> 7200. The 4-GPU embed cluster got no AWS capacity for 29 min, the 1-GPU
+          # fallback embedded 1,974,557 seats in 38 min, and this limit cut Vector_Decide 3 min in (03:58-05:28 CT), so
+          # Author_Matching ran on the name cascade alone. The child job allows 9000 s.
+          timeout_seconds: 7200
         # Passes whether the vector matcher succeeded, failed or timed out: Author_Matching then runs on the name cascade alone.
         - task_key: Vector_Matcher_Gate
           timeout_seconds: 1200
