@@ -121,6 +121,16 @@ resources:
               sql: candidates.sql,pages.sql
             source: GIT
           environment_key: Default
+        - task_key: start_knn_cluster
+          # oxjob #2198: starts knn_gpu with the job, so its 7-13 min start overlaps the steps before knn. No depends_on, and
+          # knn does not wait for it: a night with nothing to decide still excludes knn. Same retries as knn.
+          notebook_task:
+            notebook_path: notebooks/location_matching/StartKnnCluster
+            source: GIT
+          job_cluster_key: knn_gpu
+          max_retries: 3
+          min_retry_interval_millis: 120000
+          retry_on_timeout: false
         - task_key: knn
           depends_on:
             - task_key: embed
