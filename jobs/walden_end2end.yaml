@@ -242,10 +242,9 @@ resources:
             job_id: ${resources.jobs.Match_References.id}
             job_parameters:
               mode: shadow
-        # oxjob #2314, SHADOW: one citations table, an exact copy of what Works_Enriched serves (each citation once, with
-        # the inputs that hold it), built after the lists are filed and tonight's merge map exists. Nothing depends on it
-        # yet and its SQL error handler only logs, so a failure doesn't stop the publish. The switch makes Works_Enriched
-        # depend on it and read it (job PLAN).
+        # oxjob #2314: one citations table (each citation once, with the inputs that hold it), built after the lists are filed
+        # and tonight's merge map exists; Works_Enriched sets every work's referenced_works from it. A failure stops the
+        # night before Works_Enriched, like any upstream step.
         - task_key: Citations
           timeout_seconds: 1800
           depends_on:
@@ -498,6 +497,8 @@ resources:
             - task_key: Works_Fulltext
             # referenced_works merge (cell 5) reads its output; Works_Base does not
             - task_key: parse_referenced_works
+            # referenced_works comes from the citations table (oxjob #2314)
+            - task_key: Citations
             # cells 5-6 redirect citations through merged_work_ids_map (oxjob #2006)
             - task_key: Merged_Work_Ids_Map
             # the parent/child merge reads work_parents (oxjob #2065)
