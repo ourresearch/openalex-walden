@@ -131,8 +131,10 @@ def current_export():
         cur = json.load(open(f"{VEC_ROOT}/current.json"))
     except Exception as e:
         return None, f"no export ({e!r})"
+    # LIQUID TAGGING is automatic clustering's metadata-only commit (no rows); counted, it sent nights to the table read (#2198)
     last = spark.sql(f"""SELECT max(version) AS v FROM (DESCRIBE HISTORY {SRC})
-      WHERE operation NOT IN ('OPTIMIZE', 'VACUUM START', 'VACUUM END', 'SET TBLPROPERTIES', 'ANALYZE')""").collect()[0].v
+      WHERE operation NOT IN ('OPTIMIZE', 'VACUUM START', 'VACUUM END', 'SET TBLPROPERTIES', 'ANALYZE',
+                              'LIQUID TAGGING')""").collect()[0].v
     if cur["version"] < last:
         return None, f"export at v{cur['version']} but the table changed at v{last}"
     return json.load(open(f"{VEC_ROOT}/{cur['build']}/manifest.json")), "ok"
