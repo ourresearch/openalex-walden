@@ -130,6 +130,8 @@ resources:
         # in both format trees. Must run AFTER export_works (its export rm -r's the
         # works directories first); update_meta depends on it so its _temp/ scratch
         # is written before the finalizer's cleanup pass.
+        # retry_on_timeout (#1642, 17 Nov): a serverless task's timeout counts time spent 'Waiting for cluster';
+        # on 17 Nov serverless could not launch 12:46-13:26 CT and export_deleted_works timed out unstarted.
         - task_key: export_deleted_works
           depends_on:
             - task_key: export_works
@@ -139,6 +141,7 @@ resources:
           environment_key: serverless
           max_retries: 1
           min_retry_interval_millis: 300000
+          retry_on_timeout: true
           timeout_seconds: 1800
         - task_key: update_meta
           depends_on:
@@ -177,6 +180,7 @@ resources:
           environment_key: serverless
           max_retries: 1
           min_retry_interval_millis: 300000
+          retry_on_timeout: true
           timeout_seconds: 5400
         # oxjob #1124: loser -> winner maps → {fmt}/{authors,sources,works}/merged_ids.csv.gz in both
         # format trees. A leaf after update_meta (so after export_authors + export_sources, which
@@ -195,6 +199,7 @@ resources:
           environment_key: serverless
           max_retries: 1
           min_retry_interval_millis: 300000
+          retry_on_timeout: true
           timeout_seconds: 1800
         - task_key: smoke_tests
           depends_on:
