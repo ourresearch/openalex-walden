@@ -26,6 +26,7 @@ import sys
 
 LIVE = r"openalex\.works\.openalex_works(?![A-Za-z0-9_])"
 CANDIDATE = "openalex.works.openalex_works_candidate"
+BUILD = "openalex.works.openalex_works_build"
 WRITE = re.compile(r"\b(?:MERGE\s+INTO|INSERT\s+(?:INTO|OVERWRITE)(?:\s+TABLE)?|UPDATE|DELETE\s+FROM|TRUNCATE\s+TABLE|"
                    r"ALTER\s+TABLE|OPTIMIZE|RESTORE(?:\s+TABLE)?|CREATE\s+(?:OR\s+REPLACE\s+)?TABLE(?:\s+IF\s+NOT\s+EXISTS)?)"
                    r"\s+" + LIVE, re.I)
@@ -74,8 +75,9 @@ def tasks(yaml_text):
         key = chunk.split(None, 1)[0]
         nb = re.search(r"^\s+notebook_path: (\S+)", chunk, re.M)
         wt = re.search(r"^\s+works_table: (\S+)", chunk, re.M)
-        out[key] = {"deps": re.findall(r"^            - task_key: (\S+)", chunk, re.M),
-                    "notebook": nb and nb.group(1), "works_table": wt and wt.group(1).strip("'\"")}
+        ct = re.search(r"^\s+content_table: (\S+)", chunk, re.M)
+        out[key] = {"deps": re.findall(r"^            - task_key: (\S+)", chunk, re.M), "notebook": nb and nb.group(1),
+                    "works_table": wt and wt.group(1).strip("'\""), "content_table": ct and ct.group(1).strip("'\"")}
     return out
 
 
@@ -93,8 +95,10 @@ def job_problems(yaml_text):
             out.append(f"{JOB}: {down} must depend on {up} alone, and be the only task that does (found {down} -> "
                        f"{t.get(down, {}).get('deps')}, tasks after {up}: {after}); other readers depend on "
                        f"Optimize_Works_Enriched")
-    if t.get("Guardrails", {}).get("works_table") != CANDIDATE:
-        out.append(f"{JOB}: Guardrails must check the candidate (base_parameters works_table: {CANDIDATE})")
+    g = t.get("Guardrails", {})
+    if g.get("works_table") != CANDIDATE or g.get("content_table") != BUILD:
+        out.append(f"{JOB}: Guardrails must check tonight's candidate (base_parameters works_table: {CANDIDATE}, "
+                   f"content_table: {BUILD}), not the published table")
     if t.get("Publish_Works", {}).get("notebook") != "notebooks/end2end/PublishWorks":
         out.append(f"{JOB}: Publish_Works must run notebooks/end2end/PublishWorks")
     return out
@@ -128,7 +132,7 @@ def self_test():
     assert publish_problems([old_pub]), "the publish must read the candidate Guardrails checked"
     assert publish_problems([pub, "SELECT 1"]), "one cell"
 
-    def job(guard_deps="Works_Enriched", wt=CANDIDATE, sync_dep="Optimize_Works_Enriched", extra=""):
+    def job(guard_deps="Works_Enriched", wt=CANDIDATE, ct=BUILD, sync_dep="Optimize_Works_Enriched", extra=""):
         return f"""resources:
   jobs:
     Walden_End_2_End:
@@ -149,6 +153,7 @@ def self_test():
               # a comment
               run_start: "{{{{job.start_time.iso_datetime}}}}"
               works_table: {wt}
+              content_table: {ct}
             source: GIT
         - task_key: Publish_Works
           depends_on:
@@ -173,6 +178,7 @@ def self_test():
     assert job_problems(job()) == [], job_problems(job())
     assert job_problems(job(guard_deps="Optimize_Works_Enriched")), "Guardrails after Optimize (#2004's order)"
     assert job_problems(job(wt="openalex.works.openalex_works")), "Guardrails must read the candidate"
+    assert job_problems(job(ct="openalex.works.openalex_works")), "checks 3-10 must read tonight's build"
     assert job_problems(job(sync_dep="Guardrails")), "a reader right after Guardrails runs before the publish"
     assert job_problems(job(sync_dep="Works_Enriched")), "a reader right after Works_Enriched"
     assert job_problems(job(sync_dep="Publish_Works")), "a reader beside Optimize"

@@ -517,8 +517,10 @@ resources:
             base_parameters:
               # oxjob #1642 (13 Nov 2026): Check 1 counts every stamp since the run started (a repair keeps this value)
               run_start: "{{job.start_time.iso_datetime}}"
-              # oxjob #2052: check the candidate, not the published table
+              # oxjob #2052: check the candidate, not the published table. Checks 1-2 (served dates) read the view;
+              # Checks 3-10 read no date column, so they read the build (same rows and columns, without the view's joins)
               works_table: openalex.works.openalex_works_candidate
+              content_table: openalex.works.openalex_works_build
             source: GIT
         - task_key: Publish_Works
           timeout_seconds: 3600
