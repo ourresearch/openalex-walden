@@ -431,10 +431,12 @@ def stage_reader():
         raise RuntimeError(f"reader cost estimate ${res['usd_est']} > max_usd {W['max_usd']}")
     (spark.read.parquet(f"{OUT}/reader").select(F.split("seed_id", ":").getItem(1).cast("long").alias("qi"), F.col("cid").alias("cand"), "p")
      .write.mode("append").saveAsTable(f"{P}reader_scores"))
+    # a prompt whose every slot shows neither ' yes' nor ' no' among the reader's top tokens has no score; decide treats it as
+    # unread, as #2000's corpus run did (15 of 747,834 prompts on 16 Nov). Many of them means the reader is broken.
     missing = spark.sql(f"SELECT count(*) n FROM {P}reader_rows r LEFT ANTI JOIN {P}reader_scores s ON s.qi = r.qi").first().n
-    if missing:
-        raise RuntimeError(f"{missing:,} prompts have no reader score")
-    return {"prompts": n, **{k: v for k, v in res.items() if k not in ("version",)}}
+    if missing > max(100, 0.001 * n):
+        raise RuntimeError(f"{missing:,} of {n:,} prompts have no reader score")
+    return {"prompts": n, "prompts_without_score": missing, **{k: v for k, v in res.items() if k not in ("version",)}}
 
 
 def stage_decide():
