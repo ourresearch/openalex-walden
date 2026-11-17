@@ -6,7 +6,7 @@
 # MAGIC the nightly ES / Lakebase syncs (incremental by `updated_date`) don't carry the new keywords. This notebook is the
 # MAGIC control task of the one-off job that reloads every work, on the server, with no session awake:
 # MAGIC
-# MAGIC - `prepare`: wait for the night's End 2 End; require Guardrails SUCCESS (else stop: nothing published); wait for
+# MAGIC - `prepare`: wait for the night's End 2 End; require Publish_Works SUCCESS (after Guardrails, oxjob #2052; else stop: nothing published); wait for
 # MAGIC   the run's own Sync_to_Elasticsearch to finish; set the works index's replicas to 0.
 # MAGIC - `wait_lakebase`: wait until the run's own Sync_Works_to_Lakebase is done.
 # MAGIC - `restore_replicas`: replicas back to 1, refresh.
@@ -108,6 +108,13 @@ def wait_task(run_id, key):
     raise TimeoutError(f"{key} not done by the deadline")
 
 
+def publish_task(run_id):
+    """The task after which openalex_works holds the run's accepted build: Publish_Works (oxjob #2052, after Guardrails);
+    a run from before #2052 has none, and there Guardrails was the last gate (CreateWorksEnriched had published)."""
+    run = w.jobs.get_run(run_id)
+    return "Publish_Works" if any(t.task_key == "Publish_Works" for t in (run.tasks or [])) else "Guardrails"
+
+
 def es():
     from elasticsearch import Elasticsearch
     return Elasticsearch(hosts=[dbutils.secrets.get(scope="elastic", key="elastic_url")], request_timeout=180,
@@ -118,9 +125,10 @@ def es():
 
 if MODE == "prepare":
     rid = wait_for_run(E2E_JOB, RUN_START, "End 2 End")
-    res = wait_task(rid, "Guardrails")
+    key = publish_task(rid)
+    res = wait_task(rid, key)
     if res != "SUCCESS":
-        raise RuntimeError(f"Guardrails ended {res}: publish blocked, so no keywords catch-up")
+        raise RuntimeError(f"{key} ended {res}: nothing published, so no keywords catch-up")
     res = wait_task(rid, "Sync_to_Elasticsearch")
     log(f"End 2 End Sync_to_Elasticsearch ended {res}; the ES reload may start")
     if DRY:
