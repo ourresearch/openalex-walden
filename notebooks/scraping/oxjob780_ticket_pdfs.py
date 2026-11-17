@@ -32,6 +32,8 @@ from urllib3.util import Retry
 
 dbutils.widgets.text("dry_run", "true", "true = check only, store nothing")
 DRY_RUN = dbutils.widgets.get("dry_run").strip().lower() == "true"
+dbutils.widgets.text("steps", "check,pmc,refetch", "which steps to run")
+STEPS = {x.strip() for x in dbutils.widgets.get("steps").split(",") if x.strip()}
 
 PDF_BUCKET = "openalex-pdfs"
 PMC_BUCKET = "https://pmc-oa-opendata.s3.amazonaws.com/"
@@ -166,7 +168,7 @@ def first_text(body):
 # COMMAND ----------
 
 check_rows = []
-for work, (pdf_id, served_size) in DAMAGED.items():
+for work, (pdf_id, served_size) in (DAMAGED.items() if "check" in STEPS else []):
     head, body = r2_file(pdf_id)
     r = {"work": work, "role": "served", "pdf_id": pdf_id, "served_size": served_size,
          "same_as_served": len(body) == served_size, **head, **byte_check(body)}
@@ -198,7 +200,7 @@ already = {r.native_id for r in spark.sql(
         ",".join(f"'{p[0]}'" for p in PMC))).collect()}
 
 tx_rows, report = [], []
-for native_id, digits, key, md5 in PMC:
+for native_id, digits, key, md5 in (PMC if "pmc" in STEPS else []):
     pmc_url = f"https://pmc.ncbi.nlm.nih.gov/articles/PMC{digits}/pdf/"
     if native_id in already:
         report.append({"step": "pmc", "native_id": native_id, "result": "already stored, skipped"})
@@ -225,7 +227,7 @@ for native_id, digits, key, md5 in PMC:
 
 # COMMAND ----------
 
-for work, url, doi in REFETCH:
+for work, url, doi in (REFETCH if "refetch" in STEPS else []):
     rep = {"step": "refetch", "work": work, "url": url}
     if DRY_RUN:
         report.append({**rep, "result": "dry run, not fetched"})
@@ -240,6 +242,7 @@ for work, url, doi in REFETCH:
         report.append(rep)
         print(json.dumps(rep))
         continue
+    rep["body"] = resp.text[:300] if resp.status_code >= 400 else None
     rep.update({k: d.get(k) for k in ("id", "status_code", "resolved_url", "content_type", "s3_path", "is_soft_block")})
     if d.get("id") and d.get("s3_path") and "pdf" in (d.get("content_type") or ""):
         try:
