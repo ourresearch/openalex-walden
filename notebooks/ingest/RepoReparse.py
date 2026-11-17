@@ -13,7 +13,9 @@
 # MAGIC
 # MAGIC **Use it when** a parser change needs a field `repo_items` never stored. `repo_items` keeps the parsed struct, not
 # MAGIC the XML, so neither a refresh of Repo's parsed tables nor a re-harvest delivers a field added to the schema later
-# MAGIC (repo_parsed's streaming dedup keeps the first copy of each record forever). First use: Persée's
+# MAGIC (repo_parsed's streaming dedup keeps the first copy of each record forever). Also use it, with `copy=latest`, when
+# MAGIC a re-harvest changed records without changing their datestamps (an endpoint moved to a new OAI context; oxjob
+# MAGIC #883, KOPS): the same dedup dropped the new copies, and `latest` re-sends them. First use: Persée's
 # MAGIC `dcterms:accessRights` (CC BY-NC-SA), in the schema since 27 Sep, after ~838K Persée records were stored.
 # MAGIC
 # MAGIC Both modes first stage the raw copies and the chosen copy per record in `<out_prefix>_raw` / `<out_prefix>_items`.
@@ -49,15 +51,22 @@ dbutils.widgets.text("out_prefix", "openalex.transient.repo_reparse", "scratch t
 # oxjob #2266: a change to the parse, not the schema, needs no raw file: repo_items holds the struct the pipeline read.
 dbutils.widgets.dropdown("source", "s3", ["s3", "repo_items"], "s3: the raw files; repo_items: the stored structs")
 dbutils.widgets.text("native_ids_table", "", "optional: re-send only the records whose native_id is in this table")
+# oxjob #883: which copy of a (native_id, datestamp) to re-send. earliest = the copy repo_parsed kept (a parse or schema
+# change). latest = the newest delivery, for a re-harvest that changed a record's content but not its datestamp (an
+# endpoint moved to a new OAI context: KOPS's /server/oai/request copies carry the item URL its /dini copies lacked, and
+# repo_parsed's (native_id, datestamp) dedup dropped them).
+dbutils.widgets.dropdown("copy", "earliest", ["earliest", "latest"], "earliest: the copy repo_parsed kept; latest: the newest delivery")
 ENDPOINTS = [e.strip() for e in dbutils.widgets.get("endpoint_ids").split(",") if e.strip()]
 MODE = dbutils.widgets.get("mode")
 OUT = dbutils.widgets.get("out_prefix")
 SOURCE = dbutils.widgets.get("source")
 NATIVE_IDS = dbutils.widgets.get("native_ids_table").strip()
+COPY = dbutils.widgets.get("copy")
+assert COPY in ("earliest", "latest"), COPY
 assert ENDPOINTS, "endpoint_ids is empty"
 assert all(re.fullmatch(r"[A-Za-z0-9_-]+", e) for e in ENDPOINTS), f"bad endpoint id in {ENDPOINTS}"
 assert not NATIVE_IDS or re.fullmatch(r"[A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+", NATIVE_IDS), NATIVE_IDS
-print(f"mode={MODE} source={SOURCE} endpoints={ENDPOINTS} native_ids_table={NATIVE_IDS or '-'}")
+print(f"mode={MODE} source={SOURCE} copy={COPY} endpoints={ENDPOINTS} native_ids_table={NATIVE_IDS or '-'}")
 
 # The Repo pipeline's Spark settings, so the same code behaves the same (jobs/repo_pipeline.yaml; DLT runs ANSI off).
 spark.conf.set("spark.sql.ansi.enabled", "false")
@@ -153,9 +162,11 @@ stored = WORKS.join(F.broadcast(raw.select("native_id").distinct()), "native_id"
 # (Persée has two), and repo_parsed keeps whichever copy of a (native_id, datestamp) it read first. So per (native_id,
 # datestamp): the copy from the endpoint repo_works holds the record under, else the earliest delivery. Letting the
 # latest copy win moved 131K Persée locations to the other endpoint's source in the 27 Oct dry run.
+# copy=latest (oxjob #883) keeps the endpoint rule first and takes the newest delivery from that endpoint.
+_order = [F.col("ingested_at").asc(), F.col("file_path").asc()] if COPY == "earliest" else \
+    [F.col("ingested_at").desc(), F.col("file_path").desc()]
 _pick = Window.partitionBy("native_id", F.col("`ns0:header`.`ns0:datestamp`")).orderBy(
-    (F.col("repository_id") == F.col("_stored_endpoint")).desc_nulls_last(),
-    F.col("ingested_at").asc(), F.col("file_path").asc())
+    (F.col("repository_id") == F.col("_stored_endpoint")).desc_nulls_last(), *_order)
 (
     raw.join(stored.select("native_id", F.col("endpoint_id").alias("_stored_endpoint")), "native_id", "left")
     .withColumn("_copy", F.row_number().over(_pick))
