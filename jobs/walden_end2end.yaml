@@ -709,6 +709,7 @@ resources:
           depends_on:
             - task_key: Delete_Works_from_Elasticsearch
             - task_key: Sync_RAS_to_Elasticsearch
+            - task_key: Delete_Locations_from_Elasticsearch  # location receipts (oxjob #2095)
           notebook_task:
             notebook_path: notebooks/end2end/CurationReceipts
             base_parameters:
