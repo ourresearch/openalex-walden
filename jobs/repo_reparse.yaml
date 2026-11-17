@@ -26,6 +26,11 @@ resources:
           default: "s3"
         - name: native_ids_table
           default: ""
+        # oxjob #883 / #1960: which copy of a (record, datestamp) to re-send. earliest = the copy repo_parsed kept (a
+        # parse or schema change); latest = the newest delivery (a re-harvest or metadata_prefix switch that changed
+        # records without moving their datestamps: KOPS, ORA)
+        - name: copy
+          default: "earliest"
       tasks:
         - task_key: repo_reparse
           # serverless's default environment failed to pip install the dlt_utils wheel (27 Oct); version 4 works
@@ -39,6 +44,7 @@ resources:
               out_prefix: "{{job.parameters.out_prefix}}"
               source: "{{job.parameters.source}}"
               native_ids_table: "{{job.parameters.native_ids_table}}"
+              copy: "{{job.parameters.copy}}"
           timeout_seconds: 7200
       environments:
         - environment_key: Default
