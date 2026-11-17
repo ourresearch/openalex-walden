@@ -14,8 +14,8 @@
 # MAGIC
 # MAGIC Stops before any GPU spend if the tagged record is missing or not seeded (`min_tagged_rows`: an empty record would
 # MAGIC re-queue the ~53M works that were tagged and came out empty), or if a rule table / the kid0 UDF is missing.
-# MAGIC If today's End 2 End is still before Guardrails, waits for it (up to `wait_e2e_hours`), so the queue and the
-# MAGIC normalisation read a finished `openalex_works`.
+# MAGIC If today's End 2 End has not yet published (its Publish_Works task, after Guardrails; oxjob #2052), waits for it
+# MAGIC (up to `wait_e2e_hours`), so the queue and the normalisation read tonight's accepted `openalex_works`.
 
 # COMMAND ----------
 
@@ -55,7 +55,8 @@ def log(msg):
 
 # COMMAND ----------
 
-# Wait while today's End 2 End has not yet passed Guardrails (CreateWorksEnriched is still rewriting openalex_works).
+# Wait while today's End 2 End has not yet published openalex_works: its Publish_Works task runs after Guardrails accepts
+# (oxjob #2052). A run from before #2052 has no Publish_Works; there CreateWorksEnriched published, so Guardrails' end counts.
 from databricks.sdk import WorkspaceClient  # noqa: E402
 
 w = WorkspaceClient()
@@ -65,16 +66,17 @@ while True:
     pending = []
     for r in active:
         run = w.jobs.get_run(r.run_id)
-        g = [t for t in (run.tasks or []) if t.task_key == "Guardrails"]
+        g = ([t for t in (run.tasks or []) if t.task_key == "Publish_Works"]
+             or [t for t in (run.tasks or []) if t.task_key == "Guardrails"])
         if not g or g[0].end_time in (None, 0):
             pending.append(r.run_id)
     if not pending:
-        log("no End 2 End run before Guardrails; go")
+        log("no End 2 End run before its publish; go")
         break
     if time.time() > deadline:
-        log(f"End 2 End run(s) {pending} still before Guardrails after {WAIT_H} h; going anyway (inputs are a consistent Delta snapshot)")
+        log(f"End 2 End run(s) {pending} still before their publish after {WAIT_H} h; going anyway (inputs are a consistent Delta snapshot)")
         break
-    log(f"End 2 End run(s) {pending} still before Guardrails; waiting 5 min")
+    log(f"End 2 End run(s) {pending} still before their publish; waiting 5 min")
     time.sleep(300)
 
 # COMMAND ----------

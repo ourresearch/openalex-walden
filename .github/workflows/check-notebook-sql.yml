@@ -12,6 +12,7 @@ on:
       - 'scripts/check_notebook_sql_dollar.py'
       - 'scripts/gen_awards_sql.py'
       - 'scripts/check_works_enriched_publish.py'
+      - 'jobs/walden_end2end.yaml'
       - '.github/workflows/check-notebook-sql.yml'
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       - 'scripts/check_notebook_sql_dollar.py'
       - 'scripts/gen_awards_sql.py'
       - 'scripts/check_works_enriched_publish.py'
+      - 'jobs/walden_end2end.yaml'
 
 permissions:
   contents: read
@@ -34,7 +36,7 @@ jobs:
         run: python3 scripts/check_notebook_sql_dollar.py notebooks
       - name: Awards notebook is what sources.csv and sources/*.sql render
         run: python3 scripts/gen_awards_sql.py --check
-      - name: CreateWorksEnriched writes openalex_works only in its publish cell (oxjob #2004)
+      - name: openalex_works is written only by Publish_Works, after Guardrails accepts the candidate (oxjob #2004, #2052)
         run: |
           python3 scripts/check_works_enriched_publish.py --self-test
           python3 scripts/check_works_enriched_publish.py

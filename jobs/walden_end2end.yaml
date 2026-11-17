@@ -502,31 +502,47 @@ resources:
             notebook_path: notebooks/end2end/CreateWorksEnriched
             source: GIT
             warehouse_id: 4d37bf76372a2901
-        - task_key: Optimize_Works_Enriched
-          timeout_seconds: 1500
-          depends_on:
-            - task_key: Works_Enriched
-          notebook_task:
-            notebook_path: notebooks/end2end/OptimizeWorksEnriched
-            source: GIT
-            warehouse_id: 4d37bf76372a2901
+        # oxjob #2052: Guardrails checks the night's build BEFORE anyone can read it. It reads the candidate view
+        # (openalex_works_candidate, defined by CreateWorksEnriched's last cell: the build with its stored dates), and
+        # Publish_Works writes that view to openalex_works only after Guardrails succeeds. A rejected night never reaches
+        # openalex_works: the table keeps the last accepted build until a repair passes. Then Optimize_Works_Enriched, and
+        # every task that reads openalex_works depends on it. Before night 2026-11-18 the order was Works_Enriched (which
+        # published) -> Optimize -> Guardrails. scripts/check_works_enriched_publish.py checks this order.
         - task_key: Guardrails
           timeout_seconds: 1200
           depends_on:
-            - task_key: Optimize_Works_Enriched
+            - task_key: Works_Enriched
           notebook_task:
             notebook_path: notebooks/end2end/Guardrails
             base_parameters:
               # oxjob #1642 (13 Nov 2026): Check 1 counts every stamp since the run started (a repair keeps this value)
               run_start: "{{job.start_time.iso_datetime}}"
+              # oxjob #2052: check the candidate, not the published table
+              works_table: openalex.works.openalex_works_candidate
             source: GIT
+        - task_key: Publish_Works
+          timeout_seconds: 3600
+          depends_on:
+            - task_key: Guardrails
+          notebook_task:
+            notebook_path: notebooks/end2end/PublishWorks
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Optimize_Works_Enriched
+          timeout_seconds: 1500
+          depends_on:
+            - task_key: Publish_Works
+          notebook_task:
+            notebook_path: notebooks/end2end/OptimizeWorksEnriched
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
         # oxjob #784: ledger works that vanished from openalex_works. Runs after
         # Guardrails so a pathological run is stopped before it can ledger the loss.
         # Feeds Delete_Works_from_Elasticsearch and the snapshot's deleted_ids.csv.
         - task_key: Track_Deleted_Works
           timeout_seconds: 1200
           depends_on:
-            - task_key: Guardrails
+            - task_key: Optimize_Works_Enriched  # after Guardrails -> Publish_Works (oxjob #2052)
           notebook_task:
             notebook_path: notebooks/end2end/TrackDeletedWorks
             source: GIT
@@ -539,7 +555,7 @@ resources:
         - task_key: Track_Deleted_Locations
           timeout_seconds: 1200
           depends_on:
-            - task_key: Guardrails
+            - task_key: Optimize_Works_Enriched  # after Guardrails -> Publish_Works (oxjob #2052)
           notebook_task:
             notebook_path: notebooks/end2end/TrackDeletedLocations
             source: GIT
@@ -548,7 +564,7 @@ resources:
         - task_key: Full_Snapshot
           timeout_seconds: 15300
           depends_on:
-            - task_key: Guardrails
+            - task_key: Optimize_Works_Enriched  # after Guardrails -> Publish_Works (oxjob #2052)
             - task_key: Track_Deleted_Works
           run_job_task:
             job_id: ${resources.jobs.Full_Snapshot.id}
@@ -559,7 +575,7 @@ resources:
         - task_key: Sync_to_Elasticsearch
           timeout_seconds: 37200
           depends_on:
-            - task_key: Guardrails
+            - task_key: Optimize_Works_Enriched  # after Guardrails -> Publish_Works (oxjob #2052)
           notebook_task:
             notebook_path: notebooks/elastic/sync_works
             base_parameters:
@@ -634,7 +650,7 @@ resources:
           job_cluster_key: es_sync_cluster
         - task_key: Sync_Works_to_Lakebase
           depends_on:
-            - task_key: Guardrails
+            - task_key: Optimize_Works_Enriched  # after Guardrails -> Publish_Works (oxjob #2052)
           notebook_task:
             notebook_path: notebooks/lakebase/BuildLakebaseWorksDocs
             base_parameters:
@@ -663,7 +679,7 @@ resources:
         - task_key: Refresh_RAS_Counts
           timeout_seconds: 1200
           depends_on:
-            - task_key: Guardrails
+            - task_key: Optimize_Works_Enriched  # after Guardrails -> Publish_Works (oxjob #2052)
           notebook_task:
             notebook_path: notebooks/end2end/RefreshRasWorksCounts
             source: GIT
@@ -698,7 +714,7 @@ resources:
         - task_key: Wunpaywall
           timeout_seconds: 1200
           depends_on:
-            - task_key: Guardrails
+            - task_key: Optimize_Works_Enriched  # after Guardrails -> Publish_Works (oxjob #2052)
           notebook_task:
             notebook_path: notebooks/end2end/CreateWunpaywall
             source: GIT

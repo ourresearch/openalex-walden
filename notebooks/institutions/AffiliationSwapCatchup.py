@@ -7,7 +7,7 @@
 # MAGIC notebook is the control task of the one-off job that does, on the server, with no session awake:
 # MAGIC
 # MAGIC - `prepare`: wait for the night's Works_Enriched; read the `openalex_works_hash` MERGE's changed-row count and
-# MAGIC   **cancel End 2 End above `cancel_above`**; wait for Guardrails to pass (the run's publish gate); build
+# MAGIC   **cancel End 2 End above `cancel_above`**; wait for the run to publish (Publish_Works, after Guardrails passes; oxjob #2052); build
 # MAGIC   `changed_works` (hash changed, date kept: the swap plus the night's ordinary changes) and `changed_rows` (their
 # MAGIC   full rows) on a SQL warehouse, which prunes files by id; set the works index's replicas to 0.
 # MAGIC - `wait_lakebase`: wait until the run's own Sync_Works_to_Lakebase is done (same docs tables).
@@ -107,6 +107,13 @@ def wait_task(run_id, key):
     raise TimeoutError(f"{key} not done by the deadline")
 
 
+def publish_task(run_id):
+    """The task after which openalex_works holds the run's accepted build: Publish_Works (oxjob #2052, after Guardrails);
+    a run from before #2052 has none, and there Guardrails was the last gate (CreateWorksEnriched had published)."""
+    run = w.jobs.get_run(run_id)
+    return "Publish_Works" if any(t.task_key == "Publish_Works" for t in (run.tasks or [])) else "Guardrails"
+
+
 def es():
     from elasticsearch import Elasticsearch
     return Elasticsearch(hosts=[dbutils.secrets.get(scope="elastic", key="elastic_url")], request_timeout=180,
@@ -134,9 +141,10 @@ if MODE == "prepare":
         else:
             w.jobs.cancel_run(rid)
             raise RuntimeError(f"CANCELLED End 2 End run {rid}: {changed:,} works changed > {CANCEL_ABOVE:,}")
-    res = wait_task(rid, "Guardrails")
+    key = publish_task(rid)
+    res = wait_task(rid, key)
     if res != "SUCCESS":
-        raise RuntimeError(f"Guardrails ended {res}: publish blocked, so no catch-up")
+        raise RuntimeError(f"{key} ended {res}: nothing published, so no catch-up")
     if TEST_ROWS:
         rows_table, n = TEST_ROWS, int(sql(f"SELECT COUNT(*) FROM {TEST_ROWS}")[0][0])
         log(f"TEST: using {TEST_ROWS} ({n:,} rows)")

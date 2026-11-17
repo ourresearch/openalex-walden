@@ -159,10 +159,14 @@ with `"value": "true"`. Then deal with the schedule:
 ## 4. If it goes wrong
 
 - Run red at Guardrails despite the row: a check the row didn't name fired, or a named one went
-  past its cap. Read the Guardrails task output. If the loss is the planned change, name it and
-  repair from Guardrails: `scripts/preclear_e2e.py --current-run --raise --max-loss <name>=<N>
+  past its cap. Nothing is published: since night 2026-11-18 (oxjob #2052) Guardrails checks the
+  candidate view before `Publish_Works` writes `openalex_works`, so the table and every reader keep the
+  last accepted night until the repair passes. Read the Guardrails task output. If the loss is the planned change, name it and
+  repair from Guardrails (it re-runs Guardrails, then Publish_Works, Optimize and everything after): `scripts/preclear_e2e.py --current-run --raise --max-loss <name>=<N>
   --reason "..." --by <who>` (Check 1: `--max-changed N`). If it is not planned, that is the bug the
   check exists for: find it before accepting anything.
+- Run red at Publish_Works: `openalex_works` is untouched (the publish commits once); repair from
+  Publish_Works.
 - Run red elsewhere (ES sync, snapshot): the works Delta table is already written; rerun with
   "Repair run" from the failed task. A pre-cleared window still covers a same-morning repair; a
   manual run keeps its parameter.
