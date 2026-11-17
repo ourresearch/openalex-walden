@@ -9,6 +9,10 @@
 # MAGIC Crossref's own records carry a Retraction Watch retraction only when Retraction Watch names the notice's DOI (Crossref,
 # MAGIC community thread 16586, 2026-10-15), so ~1.3K retractions never reach a Crossref record; we read the file itself.
 # MAGIC
+# MAGIC `reason` is Retraction Watch's own list, ";"-separated, each with a leading "+" ("+Retract and Replace;+Withdrawn as
+# MAGIC Out of Date;"). `CreateWorksBase` reads it for is_pulled: a retract-and-replace, or a review withdrawn only as out of
+# MAGIC date, is not pulled (oxjob #2264, plans/retractions.md § 3 and § 5 decision 1).
+# MAGIC
 # MAGIC A failed run leaves the table as it was, and the nightly reads the previous day's file.
 
 # COMMAND ----------
@@ -44,11 +48,12 @@ def parse_date(value):
 req = urllib.request.Request(URL, headers={"User-Agent": "OpenAlex walden (mailto:team@ourresearch.org)"})
 reader = csv.DictReader(io.StringIO(urllib.request.urlopen(req, timeout=300).read().decode("utf-8")))
 missing = {"Record ID", "Title", "Publisher", "ArticleType", "RetractionDate", "RetractionDOI", "OriginalPaperDOI",
-           "RetractionNature"} - set(reader.fieldnames)
+           "RetractionNature", "Reason"} - set(reader.fieldnames)
 assert not missing, f"the Retraction Watch file has no {sorted(missing)} column: table left as it was"
 rows = [
     (int(r["Record ID"]), norm_doi(r["OriginalPaperDOI"]), norm_doi(r["RetractionDOI"]), r["RetractionNature"].strip(),
-     parse_date(r["RetractionDate"]), r["ArticleType"].strip(), r["Title"].strip(), r["Publisher"].strip())
+     parse_date(r["RetractionDate"]), r["ArticleType"].strip(), r["Title"].strip(), r["Publisher"].strip(),
+     r["Reason"].strip() or None)
     for r in reader
 ]
 
@@ -59,7 +64,7 @@ assert len(rows) >= 0.95 * current, "today's file is over 5% shorter than the la
 # COMMAND ----------
 
 (spark.createDataFrame(rows, "record_id INT, original_paper_doi STRING, retraction_doi STRING, retraction_nature STRING, "
-                             "retraction_date DATE, article_type STRING, title STRING, publisher STRING")
+                             "retraction_date DATE, article_type STRING, title STRING, publisher STRING, reason STRING")
  .withColumn("loaded_at", F.current_timestamp())
  .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(TABLE))
 
