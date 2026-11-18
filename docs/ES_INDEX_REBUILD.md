@@ -112,6 +112,14 @@ means the swap takes effect for the API the instant the `_aliases` call lands.
    analyzer change below): `sustainable_development_goals_aurora` (removed from the API and walden 2026-11-02, oxjob
    #1300; ~174M works-v40 docs still carry it in `_source`, which the API excludes) and `x_sdgs` (the shadow field
    dropped 2026-10-04, oxjob #1300; 0 docs). Delete this note once a rebuild has dropped them.
+   **Waiting on the next works rebuild: the six author-position fields** (oxjob #1474: `first_author_ids`,
+   `first_author_institution_ids`, `first_author_countries` and the same three for `last_`). Once the one-off
+   `notebooks/elastic/PatchWorksAuthorPositionMapping.py` (walden branch `oxjob-1474-position-fields-v2`, a desk run)
+   has added them to the live mapping (check `GET works/_mapping`, or oxjob #1474's Log), the verbatim copy carries
+   them and `sync_works` fills every document during the load; nothing to do by hand. If the live mapping lacks them,
+   `sync_works` leaves them out: run the patch on the new index before the load. Only works the nightly re-sent carry
+   them before that rebuild, so `verify` needs all six in `expect_diff`, and the API can't filter on them until the
+   swap. After the swap, write a Log row on oxjob #1474 (its API filters ship next), then delete this note.
 5. **Settings.** Copy the old index's settings (analysis, sort, codec, merge policy, translog). Build-time overrides:
    `number_of_replicas: 0`, `refresh_interval: "-1"`, `index.routing.allocation.total_shards_per_node:
    ceil(shards / data nodes)` so primaries spread evenly. Record the old index's live values for step 6.
