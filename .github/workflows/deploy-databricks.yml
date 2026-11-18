@@ -41,6 +41,25 @@ jobs:
       - name: Validate bundle
         run: databricks bundle validate
 
+      # oxjob #1642 (18 Nov 2026): a deploy that adds or drops a Walden End 2 End task while a run is active makes Databricks
+      # refuse every repair of that run ("job structure has changed"; 16, 17 Nov; 18 Nov 07:32 CT #2186's Language_Copies
+      # landed mid-sync and its deploy was cancelled by hand). Such a deploy now waits here until the run ends. Fail-open:
+      # anything this step cannot read lets the deploy go ahead as before.
+      - name: Hold an End 2 End task change while a run is active
+        timeout-minutes: 340
+        run: |
+          JOB=616701029470182
+          want=$(databricks bundle validate -o json 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin)['resources']['jobs']['Walden_End_2_End']['tasks']))" 2>/dev/null || echo "")
+          for i in $(seq 1 66); do
+            have=$(databricks jobs get "$JOB" -o json 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin)['settings']['tasks']))" 2>/dev/null || echo "")
+            active=$(databricks jobs list-runs --job-id "$JOB" --active-only -o json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get('runs',[]); print(len(d))" 2>/dev/null || echo "")
+            if [ -z "$want" ] || [ -z "$have" ] || [ -z "$active" ]; then echo "could not read tasks / runs (want=$want have=$have active=$active): deploying"; exit 0; fi
+            if [ "$want" = "$have" ]; then echo "End 2 End task count unchanged ($have): deploying"; exit 0; fi
+            if [ "$active" = "0" ]; then echo "End 2 End tasks $have -> $want and no run active: deploying"; exit 0; fi
+            echo "End 2 End tasks $have -> $want while a run is active: waiting 5 min ($i/66)"; sleep 300
+          done
+          echo "End 2 End run still active after 5.5 h: not deploying a task change; re-run this workflow when the run ends"; exit 1
+
       - name: Deploy bundle
         run: databricks bundle deploy
 
