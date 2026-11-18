@@ -139,24 +139,12 @@ CREDIT_ROLES = (
     "writing-original-draft", "writing-review-editing",
 )
 _CREDIT_URL = re.compile(r"credit\.niso\.org/contributor-roles/([a-z-]+)", re.I)
-# A role's text, normalized by _credit_key, -> its slug. Spellings seen in PMC JATS and on CRediT's own pages.
-_CREDIT_TERMS = {
-    "conceptualization": "conceptualization", "conceptualisation": "conceptualization",
-    "data curation": "data-curation",
-    "formal analysis": "formal-analysis",
-    "funding acquisition": "funding-acquisition",
-    "investigation": "investigation",
-    "methodology": "methodology",
-    "project administration": "project-administration",
-    "resources": "resources",
-    "software": "software",
-    "supervision": "supervision",
-    "validation": "validation",
-    "visualization": "visualization", "visualisation": "visualization",
-    "writing original draft": "writing-original-draft",
+# A role's text, normalized by _credit_key, -> its slug: each slug's own words plus spellings seen in PMC JATS.
+_CREDIT_TERMS = {s.replace("-", " "): s for s in CREDIT_ROLES} | {
+    "conceptualisation": "conceptualization",
+    "visualisation": "visualization",
     "writing original draft preparation": "writing-original-draft",
     "writing review and editing": "writing-review-editing",
-    "writing review editing": "writing-review-editing",
 }
 
 

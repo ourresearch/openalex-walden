@@ -2,14 +2,7 @@ resources:
   jobs:
     Crossref_Contributor_Roles:
       name: Crossref Contributor Roles
-      description: |
-        CRediT contributor roles from Crossref deposits (oxjob #2075). Walden's Crossref pipeline reads raw files
-        with a schema that predates Crossref's author[].role, so roles are dropped there; this job reads only DOI,
-        indexed time and authors with their roles from the same raw files (s3://openalex-ingest/crossref/updates/
-        and new-works/, last 3 days, idempotent) and keeps the newest record per DOI in
-        openalex.crossref.crossref_contributor_roles. Internal until the authorship schema is approved.
-        The first backfill (from 2026-05-20, when Crossref began sending roles) is the same notebook with
-        from_date set, run by hand on a larger cluster.
+      description: CRediT roles from Crossref's raw files into openalex.crossref.crossref_contributor_roles (oxjob #2075); see notebooks/ingest/CrossrefContributorRoles.
       schedule:
         # after the day's Crossref pulls land (~02:40 UTC)
         quartz_cron_expression: 0 30 3 * * ?
@@ -23,7 +16,7 @@ resources:
             notebook_path: notebooks/ingest/CrossrefContributorRoles
             source: GIT
             base_parameters:
-              days_back: "3"
+              days_back: "1"
           max_retries: 1
           min_retry_interval_millis: 600000
           timeout_seconds: 10800

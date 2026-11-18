@@ -28,9 +28,15 @@
 # COMMAND ----------
 
 import datetime as dt
+import os
+import sys
 import time
 
-from pyspark.sql import functions as F
+REPO_ROOT = os.path.abspath(os.path.join(os.getcwd(), "..", ".."))
+sys.path.insert(0, REPO_ROOT)
+from utils.pmc_jats import CREDIT_ROLES  # noqa: E402  the 14 CRediT slugs, shared with the PMC parser
+
+from pyspark.sql import functions as F  # noqa: E402
 
 dbutils.widgets.text("target", "openalex.crossref.crossref_contributor_roles", "target table")
 dbutils.widgets.text("days_back", "3", "daily mode: re-read this many days back from today (UTC)")
@@ -50,14 +56,6 @@ EXTRA = [p.strip().rstrip("/") + "/" for p in dbutils.widgets.get("extra_paths")
 MAX_MINUTES = float(dbutils.widgets.get("max_minutes"))
 BASE = "s3://openalex-ingest/crossref"
 T0 = time.time()
-
-# The 14 CRediT roles (ANSI/NISO Z39.104-2022), as Crossref spells them (the slugs of credit.niso.org's role URLs);
-# the same list as utils/pmc_jats.py CREDIT_ROLES.
-CREDIT_ROLES = [
-    "conceptualization", "data-curation", "formal-analysis", "funding-acquisition", "investigation", "methodology",
-    "project-administration", "resources", "software", "supervision", "validation", "visualization",
-    "writing-original-draft", "writing-review-editing",
-]
 
 # Only what this notebook reads; Spark skips every other field while parsing.
 RAW_SCHEMA = (
@@ -103,14 +101,13 @@ if FROM_DATE:
     start = dt.date.fromisoformat(FROM_DATE)
     end = dt.date.fromisoformat(TO_DATE) if TO_DATE else today
     days = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
-    chunks = [(f"{days[i]:%Y-%m-%d}..{days[min(i + CHUNK_DAYS, len(days)) - 1]:%Y-%m-%d}", days[i:i + CHUNK_DAYS])
-              for i in range(0, len(days), CHUNK_DAYS)]
+    chunks = [(f"{ds[0]}..{ds[-1]}", ds) for ds in (days[i:i + CHUNK_DAYS] for i in range(0, len(days), CHUNK_DAYS))]
     done = {r.chunk for r in spark.table(PROGRESS).select("chunk").distinct().collect()}
     todo = [(label, ds) for label, ds in chunks if label not in done]
     print(f"backfill {start}..{end}: {len(chunks)} chunks, {len(chunks) - len(todo)} already done")
 else:
     days = [today - dt.timedelta(days=i) for i in range(DAYS_BACK, -1, -1)]
-    todo = [(f"daily:{days[0]:%Y-%m-%d}..{days[-1]:%Y-%m-%d}", days)]
+    todo = [(f"daily:{days[0]}..{days[-1]}", days)]
 plans = [(label, [p for d in ds for p in day_paths(d)]) for label, ds in todo]
 if EXTRA:
     plans.append(("extra:" + ",".join(EXTRA), [p for p in EXTRA if exists(p)]))
@@ -134,8 +131,7 @@ def read_chunk(paths):
             .select(F.explode("items").alias("r"), F.col("_metadata.file_path").alias("source_file"))
             .select(F.lower(F.trim("r.DOI")).alias("doi"),
                     F.to_timestamp(F.col("r.indexed.`date-time`")).alias("indexed_at"),
-                    F.col("r.member").alias("member"), F.col("r.publisher").alias("publisher"),
-                    F.col("r.type").alias("type"), F.expr(authors_expr).alias("authors"), "source_file")
+                    "r.member", "r.publisher", "r.type", F.expr(authors_expr).alias("authors"), "source_file")
             .filter("doi IS NOT NULL AND doi != ''")
             .withColumn("n_authors_with_roles", F.expr("coalesce(size(filter(authors, a -> size(a.roles) > 0)), 0)"))
             # role-less records only need to say "this DOI's newest record has no roles": drop the author list
@@ -157,8 +153,8 @@ for n, (label, paths) in enumerate(plans, 1):
         continue
     t = time.time()
     latest = read_chunk(paths).cache()
-    stats = latest.agg(F.sum("_n").alias("records"), F.count("*").alias("dois"),
-                       F.count_if(F.col("n_authors_with_roles") > 0).alias("with_roles")).first()
+    records, dois, with_roles = (int(v or 0) for v in latest.agg(
+        F.sum("_n"), F.count("*"), F.count_if(F.col("n_authors_with_roles") > 0)).first())
     latest.drop("_n").withColumn("updated_at", F.current_timestamp()).createOrReplaceTempView("chunk_latest")
     spark.sql(f"""
       MERGE INTO {TARGET} t USING chunk_latest s ON t.doi = s.doi
@@ -168,12 +164,12 @@ for n, (label, paths) in enumerate(plans, 1):
     latest.unpersist()
     secs = time.time() - t
     spark.createDataFrame(
-        [(run_id, label, len(paths), int(stats.records or 0), int(stats.dois or 0), int(stats.with_roles or 0), secs)],
+        [(run_id, label, len(paths), records, dois, with_roles, secs)],
         "run_id string, chunk string, n_paths int, n_records bigint, n_dois bigint, n_dois_with_roles bigint, seconds double",
     ).withColumn("done_at", F.current_timestamp()).write.mode("append").saveAsTable(PROGRESS)
     left = len(plans) - n
-    print(f"chunk {n}/{len(plans)} {label}: {len(paths)} folders, {int(stats.records or 0):,} records, "
-          f"{int(stats.dois or 0):,} DOIs, {int(stats.with_roles or 0):,} with CRediT roles, {secs:.0f}s; "
+    print(f"chunk {n}/{len(plans)} {label}: {len(paths)} folders, {records:,} records, "
+          f"{dois:,} DOIs, {with_roles:,} with CRediT roles, {secs:.0f}s; "
           f"ETA {left * (time.time() - T0) / n / 60:.0f} min")
 
 # COMMAND ----------

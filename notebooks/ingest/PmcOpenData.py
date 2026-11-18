@@ -255,7 +255,8 @@ latest = spark.sql(f"""
 per_doi = (latest
            .withColumn("_rank", F.expr("""row_number() OVER (PARTITION BY doi ORDER BY
                 coalesce(is_manuscript, false) ASC, version DESC, pmcid DESC)"""))
-           .filter("_rank = 1"))
+           .filter("_rank = 1")
+           .persist())  # read twice: pmc_oa_authors and pmc_oa_contributor_roles
 authors_df = per_doi.select(
     "doi", "pmcid", "version", "is_manuscript", "license_code",
     F.expr("""transform(authors, a -> named_struct(
@@ -275,9 +276,8 @@ print(f"{AUTHORS}: {s.n:,} DOIs, {s.corr:,} with a corresponding author, {s.aff:
 
 # COMMAND ----------
 
-# pmc_oa_contributor_roles (oxjob #2075): the same newest version per DOI as pmc_oa_authors, kept only when an author
-# states CRediT roles. Versions read before pmc-jats-3 carry no roles (NULL), so a DOI appears once its newest version
-# has been read at pmc-jats-3. position = the author's index in the article's author list (pmc_jats.parse_front order).
+# pmc_oa_contributor_roles (oxjob #2075). Versions read before pmc-jats-3 carry roles NULL, so a DOI appears once its
+# newest version is read at pmc-jats-3. position = index in parse_front's author list.
 roles_df = per_doi.filter("exists(authors, a -> size(a.roles) > 0)").select(
     "doi", "pmcid", "version", "is_manuscript", "parser_version",
     F.expr("""transform(authors, (a, i) -> named_struct('position', i, 'given', a.given, 'family', a.family,
@@ -287,4 +287,5 @@ roles_df = per_doi.filter("exists(authors, a -> size(a.roles) > 0)").select(
 )
 roles_df.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(ROLES)
 s = spark.sql(f"""SELECT count(*) n, sum(n_authors_with_roles) authors FROM {ROLES}""").first()
+per_doi.unpersist()
 print(f"{ROLES}: {s.n:,} DOIs with CRediT roles, {s.authors or 0:,} authors with roles")
