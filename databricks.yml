@@ -61,6 +61,7 @@ include:
   - jobs/datacite.yaml
   - jobs/landing_page.yaml
   - jobs/pubmed.yaml
+  - jobs/pubmed_books.yaml
   - jobs/irdb.yaml
   - jobs/hal_tei.yaml
   - jobs/repo.yaml
