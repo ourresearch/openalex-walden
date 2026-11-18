@@ -130,7 +130,9 @@ def build_sql():
             "enriched_authorships AS (SELECT work_id, updated_datetime, deposit_byline, "
             "TRANSFORM(authorships, a -> a.author.id) AS author_ids, authorships, "
             # oxjob #2186: no confirming records here, so step 5b-E passes every fixture through
-            f"CAST(NULL AS {CONFIRM_SRC_TYPE}) AS confirm_src, CAST(NULL AS {SEAT_KEYS_TYPE}) AS seat_keys FROM fixtures),\n"
+            f"CAST(NULL AS {CONFIRM_SRC_TYPE}) AS confirm_src, CAST(NULL AS {SEAT_KEYS_TYPE}) AS seat_keys, "
+            # oxjob #2186 step 5b-F: no language-copy targets here
+            "CAST(NULL AS ARRAY<INT>) AS lc_t FROM fixtures),\n"
             + step_sql() + "\n"
             "SELECT o.work_id, TO_JSON(o.authorships) AS out, TO_JSON(f.authorships) AS input FROM one_seat_per_person o "
             "JOIN fixtures f USING (work_id) ORDER BY o.work_id")

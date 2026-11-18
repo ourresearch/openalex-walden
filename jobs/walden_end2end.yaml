@@ -272,6 +272,20 @@ resources:
             notebook_path: notebooks/end2end/CreateWorksBase
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        # oxjob #2186 (step 5b-F): bylines that are language copies of the same people (Ukrainian / Russian / romanized), per
+        # seat the seat it folds into; CreateWorkAuthorships drops the copies. Reads only openalex_works_base, so it runs
+        # after Works_Base, off the critical path (the author steps take hours). A Python UDF over ~813K candidate works.
+        # Revert: remove this task and Authorships' dependency on it (and the 5b-F edits in CreateWorkAuthorships).
+        - task_key: Language_Copies
+          timeout_seconds: 2700
+          max_retries: 1
+          depends_on:
+            - task_key: Works_Base
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateLanguageCopyGroups
+            source: GIT
+            # jobs-xl (X-Large): the job tier's smaller SQL warehouse
+            warehouse_id: 3996dc0a9b183ce3
         # oxjob #2065: which works each work is part of (chapter -> book, DataCite IsPartOf): parent_works, lineage,
         # child_works_count, merged onto the work by Works_Enriched. Needs tonight's live works, types and titles, so it
         # follows Works_Base. ~3 min on a 4X-Large; off the critical path (the author steps take hours).
@@ -483,6 +497,7 @@ resources:
           retry_on_timeout: true
           depends_on:
             - task_key: Apply_Work_Author_Curations
+            - task_key: Language_Copies  # oxjob #2186 step 5b-F
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorkAuthorships
             source: GIT

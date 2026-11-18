@@ -141,7 +141,8 @@ def build_sql():
             "enriched_authorships AS (SELECT work_id, updated_datetime, deposit_byline, "
             "TRANSFORM(authorships, a -> a.author.id) AS author_ids, authorships, confirm_src, "
             "CASE WHEN confirm_src IS NOT NULL THEN TRANSFORM(authorships, a -> NAMED_STRUCT('name', a.raw_author_name, "
-            f"'orcid', a.raw_orcid)) ELSE CAST(NULL AS {SEAT_KEYS_TYPE}) END AS seat_keys FROM fixtures),\n"
+            f"'orcid', a.raw_orcid)) ELSE CAST(NULL AS {SEAT_KEYS_TYPE}) END AS seat_keys, "
+            "CAST(NULL AS ARRAY<INT>) AS lc_t FROM fixtures),\n"
             + step_sql() + "\n"
             "SELECT o.work_id, TO_JSON(o.authorships) AS out, TO_JSON(f.authorships) AS input FROM one_seat_confirmed o "
             "JOIN fixtures f USING (work_id) ORDER BY o.work_id")
