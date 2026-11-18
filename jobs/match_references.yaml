@@ -7,7 +7,7 @@ resources:
         print no DOI / PMID / arXiv id to the works they cite. Each text the matcher has never seen is matched once; every reference
         row printing it gets that answer; a row of a list filed tonight whose text was seen before takes that text's earlier link.
         Started by End 2 End after parse_referenced_works; no schedule of its own; one run at a time.
-        Steps (notebooks/references/matcher/MatchReferences, one task each): prepare (tonight's rows and texts, new texts embedded,
+        Steps (notebooks/references/matcher/MatchReferences, one task each): prepare (tonight's rows and texts, new texts embedded on Modal,
         same-text links, author + volume + page lookup) -> search (Modal app reference-matcher: best 30 works per text) ->
         candidates (clue features + checklist, reader prompts; first re-checks #2000's review bench) -> reader (Modal: the 2B
         reader on the unsure band) -> decide (links into openalex.works.reference_matcher_links under run <mode>-<night>).
@@ -32,11 +32,12 @@ resources:
           # also take the lists filed in work_reference_lists_changes versions from this one on (a catch-up after missed nights)
           default: ""
         - name: max_texts
-          # prepare fails when a night has more new texts than this (a normal night: 1-2M; Casey's spend line is $500)
-          default: "8000000"
+          # a tripwire, not a cap: prepare fails above this (normal nights 1-3M new texts; 18 Nov's parse wave 27.6M). Big nights
+          # are matched in full: the GPUs scale with the night (Casey 2026-11-18)
+          default: "60000000"
         - name: max_usd
-          # a Modal stage fails when its estimate is over this (a normal night: a few dollars each)
-          default: "60"
+          # a Modal stage fails when its estimate is over this (a normal night: a few dollars each; 27.6M texts: ~$30-70)
+          default: "200"
         - name: test_texts
           default: ""
         - name: scope_table

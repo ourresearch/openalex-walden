@@ -2,7 +2,7 @@
 (jobs/match_references.yaml, notebook MatchReferences) POSTs here and polls, as the location matcher does
 (notebooks/location_matching/modal_location_matcher.py).
 
-- `api` (bearer token LOCATION_MATCH_TOKEN): POST /start {stage: search | reader, table_in, out_dir, build_id, warehouse?}
+- `api` (bearer token LOCATION_MATCH_TOKEN): POST /start {stage: embed | search | reader, table_in, out_dir, build_id, warehouse?}
   spawns `run_search` or `run_reader` and returns its call id; POST /status {call_id} says running / done (result) / failed.
 - `run_search`: the night's reference vectors (table_in: text_hash, v) -> the best 30 works each by inner product over the
   reference-style work vectors (openalex.vector_search.work_reference_style_embeddings_qwen3), searching the 256 nearest of
@@ -12,6 +12,9 @@
   more than REBUILD_AT re-embedded works starts `rebuild_lists` in the background (a fresh copy, ~20 min, then the search
   switches to it through /data/current.json). Output parquet
   (text_hash, cand, score, rank, probe_rank) PUT to out_dir on a Unity Catalog Volume.
+- `run_embed`: the night's new texts (table_in: text_hash, text, chunk) -> unit float16 vectors with Qwen3-Embedding-0.6B on vLLM,
+  4 engines per H100, one call per chunk; the instruction, pooling and format of #2000's backfill vectors (refemb_app.py), so
+  tonight's vectors match the ones the texts are joined to. Output parquet per chunk (text_hash, text, v) to out_dir.
 - `run_reader`: the reader (Qwen/Qwen3.5-2B + LoRA r2b_c5, vLLM) on the night's prompt table (table_in: shard, seed_id, prefix,
   seats): p(yes) per candidate slot, one parquet per shard (seed_id, cid, p) to out_dir. #2000's corpus run's scoring, unchanged.
 
@@ -34,7 +37,7 @@ import time
 import modal
 
 APP = "reference-matcher"
-VERSION_MARK = "reference-matcher v1 2026-11-16 (nprobe 256, pool 30, delta lists; reader r2b_c5)"
+VERSION_MARK = "reference-matcher v2 2026-11-18 (embed on vLLM; search grid of text slices x list shards; reader r2b_c5)"
 app = modal.App(APP)
 svol = modal.Volume.from_name("oxjob2000-refsearch", version=2)
 qvol = modal.Volume.from_name("oxjob2000-qwen")
@@ -42,6 +45,10 @@ DBX = modal.Secret.from_name("oxjob-databricks")
 TOKEN = modal.Secret.from_name("location-work-matcher-token")
 cpu_image = modal.Image.debian_slim(python_version="3.12").pip_install("httpx", "pyarrow", "numpy", "fastapi[standard]")
 gpu_image = modal.Image.debian_slim(python_version="3.12").pip_install("torch==2.14.1", "numpy", "pyarrow", "httpx")
+embed_image = (modal.Image.from_registry("nvidia/cuda:12.9.1-devel-ubuntu22.04", add_python="3.12")
+               .pip_install("vllm==0.30.0", "pyarrow", "httpx", "numpy")
+               .env({"TOKENIZERS_PARALLELISM": "false", "PYTHONUNBUFFERED": "1", "CUDA_HOME": "/usr/local/cuda"})
+               .add_local_file(__file__, "/root/reference_matcher_engines.py"))   # the engines' child processes import it by this name
 reader_image = (modal.Image.from_registry("nvidia/cuda:12.9.1-devel-ubuntu22.04", add_python="3.12")
                 .pip_install("vllm==0.30.0", "peft", "huggingface_hub[hf_xet]", "httpx", "pyarrow")
                 .env({"HF_HOME": "/root/hf", "TOKENIZERS_PARALLELISM": "false", "PYTHONUNBUFFERED": "1", "HF_XET_HIGH_PERFORMANCE": "1",
@@ -51,6 +58,10 @@ INDEX = "openalex.vector_search.work_reference_style_embeddings_qwen3"
 D, N_LG, LISTS_PER_GROUP = 1024, 1024, 16
 NPROBE, POOL, SUB = 256, 30, 1_000_000
 PART = 7_000_000             # queries per GPU container (#2000 ran 7.9M per H100); a bigger night spreads over more
+LIST_SHARDS = 4              # each search container reads a quarter of the lists (~225 GB), so reading never queues behind one disk
+EMBED_MODEL = "/vol/models/Qwen3-Embedding-0.6B"   # = Qwen/Qwen3-Embedding-0.6B, the model of every reference and work vector
+INSTRUCTION = "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "  # = sql/ref_text_key.sql
+ENGINES = 4                  # vLLM engines per H100 (#2000, 12 Nov: one engine is CPU-bound; 4 gave ~4,000 texts/s)
 # Which lists and delta the search reads: /data/current.json, written by rebuild_lists. Without it, the lists #2000 built,
 # exported 13 Nov 2026 14:40-15:21 UTC; works embedded from the start of that day are re-read into the delta (an overlap is
 # harmless: a delta row replaces the list row of the same work).
@@ -60,7 +71,8 @@ DELTA_MARGIN_H = 6           # each night re-reads the last hours before the pre
 REBUILD_AT = 20_000_000      # a night that sees more re-embedded works than this starts a rebuild of the lists (~10 days)
 MAX_DELTA_ROWS = 40_000_000  # past this the search refuses (memory): the rebuild has not happened
 ADAPTER, BASE = "r2b_c5", "Qwen/Qwen3.5-2B"
-READER_GPUS = 8              # leave room on the shared Modal GPU cap for other production jobs
+READER_GPUS = 24             # leave room on the shared Modal GPU cap (50) for other production jobs
+EMBED_GPUS = 20
 DEFAULT_WAREHOUSE = "3996dc0a9b183ce3"
 TABLE_RX = re.compile(r"^openalex\.(works|transient)\.[A-Za-z0-9_]{1,120}$")
 OUT_RX = re.compile(r"^/Volumes/openalex/[A-Za-z0-9_]+/[A-Za-z0-9_]+(/[A-Za-z0-9_.=-]+){1,6}$")
@@ -273,8 +285,10 @@ def _load_delta(dd):
     return np.sort(ids), groups, len(ids)
 
 
-@app.function(image=gpu_image, gpu="H100", volumes={"/data": svol}, secrets=[DBX], timeout=4 * 3600, cpu=16, memory=200 * 1024)
-def search_gpu(build_id: str, out_dir: str, lo: int = 0, hi: int = -1, nprobe: int = NPROBE, pool: int = POOL, readers: int = 16):
+@app.function(image=gpu_image, gpu="H100", volumes={"/data": svol}, secrets=[DBX], timeout=4 * 3600, cpu=16, memory=200 * 1024,
+              max_containers=16)
+def search_gpu(build_id: str, out_dir: str, lo: int = 0, hi: int = -1, g_lo: int = 0, g_hi: int = N_LG, nprobe: int = NPROBE,
+               pool: int = POOL, readers: int = 16):
     """Best `pool` works per query. The lists stream past the GPU once (#2000's search_chunk loop); in each list group the
     built rows of works re-embedded since are masked out (score -inf) and the group's delta rows are scanned as a second block.
     Nothing is copied on the CPU: the cost stays reading the lists (~0.9 TB)."""
@@ -334,8 +348,8 @@ def search_gpu(build_id: str, out_dir: str, lo: int = 0, hi: int = -1, nprobe: i
         from concurrent.futures import ThreadPoolExecutor, as_completed
         try:
             with ThreadPoolExecutor(readers) as ex:
-                it = iter(range(N_LG))
-                pending = {ex.submit(load, g) for g in [next(it) for _ in range(readers)]}
+                it = iter(range(g_lo, g_hi))
+                pending = {ex.submit(load, g) for g in [x for x in (next(it, None) for _ in range(readers)) if x is not None]}
                 while pending:
                     d = next(as_completed(pending))
                     pending.remove(d)
@@ -403,7 +417,7 @@ def search_gpu(build_id: str, out_dir: str, lo: int = 0, hi: int = -1, nprobe: i
         tab = pa.table({"text_hash": th[keep], "cand": bi[keep], "score": sc[keep], "rank": rk[keep], "probe_rank": br[keep]})
         buf = io.BytesIO()
         pq.write_table(tab, buf, compression="zstd")
-        put_file(f"{out_dir}/part-{lo // PART:03d}-{j:03d}.parquet", buf.getvalue())
+        put_file(f"{out_dir}/part-{lo // PART:03d}-{g_lo:04d}-{j:03d}.parquet", buf.getvalue())
         rows += tab.num_rows
     T["write"] = time.time()
     st = {"queries": int(n), "rows": int(rows), "lists": ix, "delta_works": int(n_delta), "list_rows_seen": int(rows_seen), "pairs_scored": int(pairs),
@@ -427,7 +441,9 @@ def run_search(table_in: str, out_dir: str, build_id: str, warehouse: str):
     if q["queries"] == 0:
         return {"stage": "search", "queries": 0, "delta": d, "rows": 0, "wall_s": round(time.time() - t0, 1), "version": VERSION_MARK}
     n = q["queries"]
-    parts = list(search_gpu.starmap([(build_id, out_dir, a, min(a + PART, n)) for a in range(0, n, PART)]))
+    # a grid: query slices of PART x list shards; each container keeps the best 30 of its lists, the notebook keeps the best 30 overall
+    ng = N_LG // LIST_SHARDS
+    parts = list(search_gpu.starmap([(build_id, out_dir, a, min(a + PART, n), g, g + ng) for a in range(0, n, PART) for g in range(0, N_LG, ng)]))
     s = {k: parts[0][k] for k in ("lists", "delta_works", "list_rows_seen", "gpu", "nprobe", "pool")}
     s.update(containers=len(parts), rows=sum(p["rows"] for p in parts), pairs_scored=sum(p["pairs_scored"] for p in parts),
              total_s=max(p["total_s"] for p in parts), gpu_s=sum(p["total_s"] for p in parts))
@@ -517,6 +533,113 @@ def _start_rebuild(warehouse):
     open(lock, "w").write(time.strftime("%Y-%m-%d %H:%M:%S"))
     svol.commit()
     return rebuild_lists.spawn(warehouse).object_id
+
+
+# ---------- embedding ----------
+
+def engine_loop(k, util, inq, outq):
+    """One vLLM engine in a child process (several share the GPU): (tag, texts) -> unit float16 rows saved under /tmp (#2000's)."""
+    import numpy as np
+    from vllm import LLM
+    llm = LLM(model=EMBED_MODEL, runner="pooling", dtype="bfloat16", max_model_len=8192, gpu_memory_utilization=util,
+              enable_prefix_caching=False)
+    llm.embed([INSTRUCTION + "warm up"] * 64, use_tqdm=False)
+    outq.put(("ready", k))
+    while True:
+        job = inq.get()
+        if job is None:
+            return
+        tag, texts = job
+        parts = []
+        for i in range(0, len(texts), 20000):
+            outs = llm.embed([INSTRUCTION + t for t in texts[i:i + 20000]], use_tqdm=False)
+            V = np.asarray([o.outputs.embedding for o in outs], dtype=np.float32)
+            V /= np.linalg.norm(V, axis=1, keepdims=True)
+            parts.append(V.astype(np.float16))
+        path = f"/tmp/out_{tag}_{k}.npy"
+        np.save(path, np.concatenate(parts) if parts else np.zeros((0, D), np.float16))
+        outq.put((tag, path))
+
+
+@app.cls(image=embed_image, gpu="H100", volumes={"/vol": qvol}, secrets=[DBX], timeout=2 * 3600, memory=48 * 1024, cpu=12,
+         scaledown_window=120, max_containers=EMBED_GPUS, retries=modal.Retries(max_retries=2, initial_delay=30.0))
+class Embedder:
+    @modal.enter()
+    def start(self):
+        import multiprocessing as mp, queue
+        sys.path.insert(0, "/root")
+        import reference_matcher_engines
+        ctx = mp.get_context("spawn")
+        self.inq = [ctx.Queue() for _ in range(ENGINES)]
+        self.outq = ctx.Queue()
+        self.ps = [ctx.Process(target=reference_matcher_engines.engine_loop, args=(k, round(0.85 / ENGINES, 3), self.inq[k], self.outq))
+                   for k in range(ENGINES)]
+        for p in self.ps:
+            p.start()
+        t0, ready = time.time(), 0
+        while ready < ENGINES:
+            try:
+                self.outq.get(timeout=30)
+                ready += 1
+            except queue.Empty:
+                dead = [k for k, p in enumerate(self.ps) if not p.is_alive()]
+                if dead or time.time() - t0 > 1200:
+                    raise RuntimeError(f"embedding engines failed to start: dead {dead}, {time.time() - t0:.0f}s")
+        self.cold_s = time.time() - t0
+
+    @modal.method()
+    def chunk(self, table: str, k: int, out_dir: str, warehouse: str):
+        import queue, numpy as np, pyarrow as pa, pyarrow.parquet as pq
+        t0 = time.time()
+        t = pa.concat_tables(list(sql_arrow(f"SELECT text_hash, text FROM {table} WHERE chunk = {int(k)}", warehouse)) or
+                             [pa.table({"text_hash": pa.array([], pa.int64()), "text": pa.array([], pa.string())})])
+        texts = t.column("text").to_pylist()
+        t1 = time.time()
+        n = len(texts)
+        cuts = [n * e // ENGINES for e in range(ENGINES + 1)]
+        for e in range(ENGINES):
+            self.inq[e].put((f"c{k}", texts[cuts[e]:cuts[e + 1]]))
+        got = {}
+        while len(got) < ENGINES:
+            try:
+                _, path = self.outq.get(timeout=30)
+            except queue.Empty:
+                if any(not p.is_alive() for p in self.ps):
+                    raise RuntimeError("an embedding engine died mid-chunk")
+                continue
+            got[int(path.rsplit("_", 1)[1][:-4])] = path
+        V = np.concatenate([np.load(got[e]) for e in range(ENGINES)])
+        for p in got.values():
+            os.remove(p)
+        if len(V) != n:
+            raise RuntimeError(f"chunk {k}: {len(V)} vectors for {n} texts")
+        t2 = time.time()
+        out = pa.table({"text_hash": t.column("text_hash").cast(pa.int64()), "text": t.column("text"),
+                        "v": pa.array([r.tobytes() for r in V], type=pa.binary())})
+        buf = io.BytesIO()
+        pq.write_table(out, buf, compression="zstd")
+        put_file(f"{out_dir}/chunk={k:05d}.parquet", buf.getvalue())
+        return {"chunk": k, "texts": n, "fetch_s": round(t1 - t0, 1), "embed_s": round(t2 - t1, 1), "cold_s": round(self.cold_s, 1)}
+
+    @modal.exit()
+    def stop(self):
+        for q in self.inq:
+            q.put(None)
+
+
+@app.function(image=cpu_image, secrets=[DBX], timeout=4 * 3600, cpu=1, memory=2048, nonpreemptible=True)
+def run_embed(table_in: str, out_dir: str, build_id: str, warehouse: str):
+    t0 = time.time()
+    chunks = [int(r[0]) for r in sql_rows(f"SELECT DISTINCT chunk FROM {table_in} ORDER BY chunk", warehouse)]
+    if not chunks:
+        return {"stage": "embed", "chunks": 0, "texts": 0, "wall_s": round(time.time() - t0, 1), "version": VERSION_MARK}
+    res, errors = [], []
+    for r in Embedder().chunk.starmap([(table_in, k, out_dir, warehouse) for k in chunks], order_outputs=False, return_exceptions=True):
+        (errors if isinstance(r, Exception) else res).append(repr(r)[:300] if isinstance(r, Exception) else r)
+    gpu_s = sum(r["fetch_s"] + r["embed_s"] for r in res) + sum(r["cold_s"] for r in res[:EMBED_GPUS])
+    usd = gpu_s * (3.95 + 12 * 0.0473 + 48 * 0.008) / 3600
+    return {"stage": "embed", "chunks": len(chunks), "chunks_done": len(res), "errors": errors, "texts": sum(r["texts"] for r in res),
+            "usd_est": round(usd, 2), "wall_s": round(time.time() - t0, 1), "version": VERSION_MARK}
 
 
 # ---------- reader ----------
@@ -653,11 +776,11 @@ def api():
         stage = str(b.get("stage", ""))
         table_in, out_dir = str(b.get("table_in", "")), str(b.get("out_dir", "")).rstrip("/")
         build_id, warehouse = str(b.get("build_id", "")), str(b.get("warehouse", DEFAULT_WAREHOUSE))
-        if stage not in ("search", "reader"): raise HTTPException(400, "stage must be search or reader")
+        if stage not in ("embed", "search", "reader"): raise HTTPException(400, "stage must be embed, search or reader")
         if not TABLE_RX.match(table_in): raise HTTPException(400, "table_in must be openalex.works.* or openalex.transient.*")
         if not OUT_RX.match(out_dir) or ".." in out_dir: raise HTTPException(400, "out_dir must be a folder under /Volumes/openalex/<schema>/<volume>/")
         if not BUILD_RX.match(build_id) or not WH_RX.match(warehouse): raise HTTPException(400, "build_id / warehouse not allowed")
-        fn = run_search if stage == "search" else run_reader
+        fn = {"embed": run_embed, "search": run_search, "reader": run_reader}[stage]
         call = await fn.spawn.aio(table_in, out_dir, build_id, warehouse)
         return {"call_id": call.object_id, "version": VERSION_MARK}
 

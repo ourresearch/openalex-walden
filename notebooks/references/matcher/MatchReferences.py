@@ -10,9 +10,10 @@
 # MAGIC In scope: rows of the lists `parse_referenced_works` filed tonight (`work_reference_lists_changes`, action `file`) that
 # MAGIC print no DOI / PMID / arXiv id, are unlinked or linked to a dead id, and are not junk (#2188's classes in SKIP) -
 # MAGIC the selection of #2000's corpus run. Stages (job "Match References", one task each; `stage` widget):
-# MAGIC 1. `prepare` - tonight's rows and texts; new texts embedded (`ai_query`, the endpoint the search vectors use); same-text
-# MAGIC    links; author + volume + first page + year lookup.
-# MAGIC 2. `search` - Modal app `reference-matcher` (modal_reference_matcher.py): best 30 works per new text.
+# MAGIC 1. `prepare` - tonight's rows and texts; new texts embedded on Modal (Qwen3-Embedding-0.6B on vLLM, as every reference
+# MAGIC    vector); same-text links; author + volume + first page + year lookup.
+# MAGIC 2. `search` - Modal app `reference-matcher` (modal_reference_matcher.py): best 30 works per new text. The GPUs scale with
+# MAGIC    the night (Casey 18 Nov: scale up on a big night rather than queue): slices of 7M texts x 4 shares of the lists.
 # MAGIC 3. `candidates` - candidate pairs with the works' fields, clue features and the checklist score (refmatch.py), reader
 # MAGIC    prompts for the unsure band. First re-runs #2000's review bench through refmatch.py: any difference fails the stage.
 # MAGIC 4. `reader` - Modal: the fine-tuned 2B reader scores each prompt's candidates.
@@ -53,9 +54,9 @@ import cloudpickle  # noqa: E402
 cloudpickle.register_pickle_by_value(RM)   # the workers get refmatch's code with each function, not an import
 
 for name, default in [("stage", "prepare"), ("mode", "shadow"), ("night", ""), ("job_run_id", "manual"), ("catchup_from_version", ""),
-                      ("max_texts", "8000000"), ("volume_dir", "/Volumes/openalex/works/data/reference_matcher"),
+                      ("max_texts", "60000000"), ("volume_dir", "/Volumes/openalex/works/data/reference_matcher"),
                       ("endpoint", "https://wordslikethis--reference-matcher-api.us-east.modal.run"), ("secret_scope", "modal"),
-                      ("secret_key", "location_matcher_token"), ("warehouse_id", "3996dc0a9b183ce3"), ("max_usd", "60"),
+                      ("secret_key", "location_matcher_token"), ("warehouse_id", "3996dc0a9b183ce3"), ("max_usd", "200"),
                       ("max_minutes", "150"), ("shard_prompts", "20000"), ("scope_table", ""), ("test_texts", "")]:
     dbutils.widgets.text(name, default)
 W = {k: dbutils.widgets.get(k).strip() for k in ("stage", "mode", "night", "job_run_id", "catchup_from_version", "max_texts", "volume_dir",
@@ -79,9 +80,8 @@ RUNS, NIGHTS = "openalex.works.reference_matcher_runs", "openalex.works.referenc
 REFEMB = "openalex.vector_search.reference_embeddings_qwen3"
 WR = "openalex.works.work_references"
 CHANGES = "openalex.works.work_reference_lists_changes"
-ENDPOINT = "databricks-qwen3-embedding-0-6b"
 SKIP = ("section_heading", "link_label_placeholder", "toc_dot_leaders", "boilerplate_bio_email", "no_letters", "datacite_url_only", "url_only")
-NB = 2048
+NB_MIN, TEXTS_PER_BUCKET = 2048, 1000   # pandas batches: ~1,000 texts each (a 13K-text batch crashed a worker, 18 Nov)
 T0 = time.time()
 
 
@@ -101,7 +101,6 @@ def sql_part(path, key=None):
 
 
 TEXT_SQL = sql_part("sql/ref_text_key.sql", "text")
-INSTRUCTION_SQL = sql_part("sql/ref_text_key.sql", "instruction")
 RULES = sql_part("sql/junk_rules.sql")
 RULES = RULES[RULES.index("b AS ("):RULES.rindex("SELECT 1")]
 
@@ -255,47 +254,24 @@ def stage_prepare_new(info):
     c = spark.sql(f"SELECT count_if(NOT seen) new FROM {P}texts").first()
     if TEST:
         spark.sql(f"CREATE OR REPLACE TABLE {P}reuse (citing_work_id BIGINT, native_id STRING, ref_ind INT, text_hash BIGINT, cited_work_id BIGINT, score DOUBLE, in_band BOOLEAN)")
-    # embed the new texts (the instruction is prepended at embed time only), in chunks, 4 at a time
-    from concurrent.futures import ThreadPoolExecutor
-    from pyspark.sql.functions import pandas_udf
-
-    @pandas_udf("binary")
-    def unit_fp16(s: pd.Series) -> pd.Series:
-        def one(a):
-            if a is None:
-                return None
-            v = np.asarray(a, dtype=np.float32)
-            n = np.linalg.norm(v)
-            return (v / n).astype(np.float16).tobytes() if n > 0 else None
-        return s.map(one)
-    spark.udf.register("refmatch_unit_fp16", unit_fp16)
+    # embed the new texts on Modal GPUs (Qwen3-Embedding-0.6B on vLLM, the model, instruction and format of every reference vector)
     chunk = 250_000
     spark.sql(f"""CREATE OR REPLACE TABLE {P}new AS SELECT text_hash, text, raw_text,
       CAST((row_number() OVER (ORDER BY text_hash, text) - 1) / {chunk} AS INT) AS chunk FROM {P}texts WHERE NOT seen""")
-    spark.sql(f"CREATE OR REPLACE TABLE {P}q (text_hash BIGINT, text STRING, raw_text STRING, v BINARY, error STRING) CLUSTER BY (text_hash)")
-    n_chunks = (c.new + chunk - 1) // chunk
-
-    def embed(k):
-        for attempt in range(1, 4):
-            try:
-                spark.sql(f"""INSERT INTO {P}q SELECT text_hash, text, raw_text, refmatch_unit_fp16(r.result), r.errorMessage
-                    FROM (SELECT text_hash, text, raw_text, ai_query('{ENDPOINT}', concat({INSTRUCTION_SQL}, text), failOnError => false) r
-                          FROM {P}new WHERE chunk = {k})""")
-                return None
-            except Exception as e:  # noqa: BLE001
-                spark.sql(f"DELETE FROM {P}q WHERE text_hash IN (SELECT text_hash FROM {P}new WHERE chunk = {k})")
-                log(f"embed chunk {k} attempt {attempt}: {str(e)[:200]}")
-                time.sleep(30 * attempt)
-        return k
-
-    with ThreadPoolExecutor(4) as ex:
-        failed = [k for k in ex.map(embed, range(n_chunks)) if k is not None]
-    if failed:
-        raise RuntimeError(f"embedding chunks failed after 3 tries: {failed}")
-    bad = count(f"{P}q", "v IS NULL")
-    # a text the endpoint could not embed is left out tonight: it stays unseen, so it is matched when its list is filed again
-    spark.sql(f"DELETE FROM {P}q WHERE v IS NULL")
-    info.update(embedded=count(f"{P}q"), embed_failed=bad, embed_usd_est=round(c.new * 3.4 / 1e6, 2))
+    spark.sql(f"CREATE OR REPLACE TABLE {P}q (text_hash BIGINT, text STRING, raw_text STRING, v BINARY) CLUSTER BY (text_hash)")
+    if c.new:
+        res = modal_call("embed", f"{P}new", f"{OUT}/embed")
+        if res["errors"] or res["chunks_done"] != res["chunks"] or res["texts"] != c.new:
+            raise RuntimeError(f"embedding incomplete: {json.dumps({k: v for k, v in res.items() if k != 'version'})[:1500]}")
+        if float(res.get("usd_est", 0)) > float(W["max_usd"]):
+            raise RuntimeError(f"embedding cost estimate ${res['usd_est']} > max_usd {W['max_usd']}")
+        (spark.read.parquet(f"{OUT}/embed").select("text_hash", "text", "v")
+         .join(spark.table(f"{P}new").select("text_hash", "text", "raw_text"), ["text_hash", "text"])
+         .select("text_hash", "text", "raw_text", "v").write.mode("append").saveAsTable(f"{P}q"))
+        info.update(embed_usd_est=res["usd_est"], embed_wall_s=res["wall_s"])
+    info["embedded"] = count(f"{P}q")
+    if info["embedded"] != c.new:
+        raise RuntimeError(f"{info['embedded']:,} vectors for {c.new:,} new texts")
 
     # first author surname + volume + first page + year, against every work with a volume and a first page (#2000 19_rd_lookup)
     spark.sql(f"""CREATE OR REPLACE TABLE {P}lookup CLUSTER BY (text_hash) AS
@@ -338,9 +314,12 @@ def stage_search():
         raise RuntimeError(f"search covered {res['queries']:,} of {n:,} texts")
     if float(res.get("usd_est", 0)) > float(W["max_usd"]):
         raise RuntimeError(f"search cost estimate ${res['usd_est']} > max_usd {W['max_usd']}")
-    (spark.read.parquet(f"{OUT}/knn").select("text_hash", "cand", F.col("score").cast("double"), F.col("rank").cast("int"),
-                                             F.col("probe_rank").cast("int"))
-     .write.mode("append").saveAsTable(f"{P}knn"))
+    # each search container kept the best 30 among its share of the lists: keep the best 30 overall, ranked again
+    spark.sql(f"""INSERT INTO {P}knn
+SELECT text_hash, cand, score, rank, probe_rank FROM (
+  SELECT text_hash, cand, CAST(score AS DOUBLE) score, CAST(probe_rank AS INT) probe_rank,
+    CAST(row_number() OVER (PARTITION BY text_hash ORDER BY score DESC, cand) AS INT) rank
+  FROM parquet.`{OUT}/knn`) WHERE rank <= 30""")
     got = spark.sql(f"SELECT count(*) n, count(DISTINCT text_hash) t FROM {P}knn").first()
     if got.t != n:
         raise RuntimeError(f"search results for {got.t:,} of {n:,} texts")
@@ -348,6 +327,7 @@ def stage_search():
 
 
 def stage_candidates():
+    NB = max(NB_MIN, int(count(f"{P}q") / TEXTS_PER_BUCKET))
     t = time.time()
     chk, comb, fe = RM.fit_models(TRAIN)
     n, same = RM.check_bench(TRAIN, chk, comb, fe)
@@ -440,6 +420,7 @@ def stage_reader():
 
 
 def stage_decide():
+    NB = max(NB_MIN, int(count(f"{P}q") / TEXTS_PER_BUCKET))
     _, comb, fe = RM.fit_models(TRAIN)
 
     def decide_fn(X, Pp):
