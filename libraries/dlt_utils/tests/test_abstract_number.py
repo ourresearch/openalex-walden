@@ -6,6 +6,7 @@ found while measuring the scope on openalex_works (draws A-C).
 
 from openalex.dlt.abstract_number import (
     abstract_number_form, abstract_number_prefix, strip_abstract_number, form_sql, prefix_sql, guard_sql, series_sql,
+    series_key, series_key_sql, letter_code_shape,
 )
 
 
@@ -104,3 +105,57 @@ def test_sql_builders_render():
     assert "BETWEEN year - 1 AND year + 1" in g and g.startswith("coalesce(")
     s = series_sql("openalex.works.openalex_works")
     assert "HAVING count(*) >= 20" in s and "S4210172488" in s
+    assert "0.9 * count(*)" in s and "series_key" in s
+    assert "'letter_code'" in g and "'IL'" in g
+    assert series_key_sql("form", "prefix").startswith("CASE WHEN form = 'letter_code' THEN concat('letter_code:'")
+
+
+# Letter codes (D7 step 1b): titles from draw B of 18 Nov 2026, the guard cases from the targeted molecule check.
+
+def test_letter_codes_are_found_with_their_separator():
+    assert abstract_number_prefix("P095. Immune compromised mice develop colitis", 2016) == ("letter_code", "P095. ")
+    assert abstract_number_prefix("Mo1428 Hemoclip Application Using CAP-Fitted Forward Endoscopy", 2015) == \
+        ("letter_code", "Mo1428 ")
+    assert abstract_number_prefix("MP63-19 THE CHANGING FACE OF READMISSIONS", 2016) == ("letter_code", "MP63-19 ")
+    assert abstract_number_prefix("EP-1667: MR-Guided Radiotherapy of Head and Neck Cancers", 2017) == \
+        ("letter_code", "EP-1667: ")
+    assert abstract_number_prefix("P1.24 Mutations in ANO5 represent a common cause", 2012) == ("letter_code", "P1.24 ")
+    assert abstract_number_prefix("PO-04-230 DRUG REPURPOSING", 2026) == ("letter_code", "PO-04-230 ")
+    assert abstract_number_prefix("S180 – Change of Mucosal Immunity Due to Radiotherapy", 2008) == \
+        ("letter_code", "S180 – ")
+    # the meeting year inside a code is not a year guard
+    assert abstract_number_prefix("IDF2022-1156 Cognitive dysfunction in older adults", 2023)[0] == "letter_code"
+    assert abstract_number_prefix("WCN25-1894 CHRONIC KIDNEY DISEASE", 2025) == ("letter_code", "WCN25-1894 ")
+
+
+def test_letter_code_shape_and_series():
+    assert letter_code_shape("MP63-19 ") == "MP9-9"
+    assert letter_code_shape("P095. ") == "P9"
+    assert letter_code_shape("Mo1428 ") == "Mo9"
+    assert letter_code_shape("EP-1667: ") == "EP-9"
+    assert series_key("letter_code", "MP63-19 ") == "letter_code:MP9-9"
+    assert series_key("num_colon", "46: ") == "num_colon"
+    title = "MP63-19 THE CHANGING FACE OF READMISSIONS"
+    assert strip_abstract_number(title, 2016, series_forms=("letter_code:MP9-9",)) == "THE CHANGING FACE OF READMISSIONS"
+    # another shape in the same source-year is another series
+    assert strip_abstract_number(title, 2016, series_forms=("letter_code:MP9",)) == title
+    assert strip_abstract_number(title, 2016, series_forms=("letter_code",)) == title
+
+
+def test_molecule_names_keep_their_letters():
+    # series of these held in PLoS ONE, Blood and J Immunol before the guard
+    assert abstract_number_prefix("IL-10 Can Enhance FcγR-mediated Mast Cell Activation", 2010) is None
+    assert abstract_number_prefix("CD4 Cell Levels during Treatment for Tuberculosis", 2014) is None
+    assert abstract_number_prefix("MiR-21 Enhances Melanoma Invasiveness", 2013) is None
+    assert abstract_number_prefix("COVID-19 Vaccination Rates Among Adults", 2021) is None
+    assert abstract_number_prefix("SU5416 Inhibits Angiogenesis", 2001) is None
+    # a Sunday poster code is not the drug prefix
+    assert abstract_number_prefix("Su634 IMPLICATIONS OF NEAR-INFRARED IMAGING", 2021) == ("letter_code", "Su634 ")
+
+
+def test_letter_code_needs_a_capital_next():
+    assert abstract_number_form("Tu2243 STUMP APPENDICITIS") == "letter_code"
+    assert abstract_number_form("H2 production by algae") is None
+    assert abstract_number_form("Phase 3 Trial") is None
+    assert abstract_number_form("D-7-42 ICAを用いた脳電位解析法の検討") == "letter_code"
+    assert abstract_number_form("OP-121-1 腹腔鏡下") is None
