@@ -559,12 +559,12 @@ def _strip_tags_sql(x, tag=""):
 
 
 _BD = "BookDocument"
-_BOOK_DOI = (f"coalesce(filter({_BD}.ArticleIdList.ArticleId, x -> x._IdType = 'doi')[0]._VALUE, "
-             f"filter({_BD}.ELocationID, e -> e._EIdType = 'doi')[0]._VALUE, "
-             f"filter({_BD}.Book.ELocationID, e -> e._EIdType = 'doi')[0]._VALUE)")
-_BOOK_PMID = f"coalesce(filter(PubmedBookData.ArticleIdList.ArticleId, x -> x._IdType = 'pubmed')[0]._VALUE, {_BD}.PMID._VALUE)"
-_BOOK_NBK = f"filter({_BD}.ArticleIdList.ArticleId, x -> x._IdType = 'bookaccession')[0]._VALUE"
-_BOOK_HISTORY_PUBMED = "filter(PubmedBookData.History.PubMedPubDate, x -> x._PubStatus = 'pubmed')[0]"
+_BOOK_DOI = (f"coalesce(get(filter({_BD}.ArticleIdList.ArticleId, x -> x._IdType = 'doi'), 0)._VALUE, "
+             f"get(filter({_BD}.ELocationID, e -> e._EIdType = 'doi'), 0)._VALUE, "
+             f"get(filter({_BD}.Book.ELocationID, e -> e._EIdType = 'doi'), 0)._VALUE)")
+_BOOK_PMID = f"coalesce(get(filter(PubmedBookData.ArticleIdList.ArticleId, x -> x._IdType = 'pubmed'), 0)._VALUE, {_BD}.PMID._VALUE)"
+_BOOK_NBK = f"get(filter({_BD}.ArticleIdList.ArticleId, x -> x._IdType = 'bookaccession'), 0)._VALUE"
+_BOOK_HISTORY_PUBMED = "get(filter(PubmedBookData.History.PubMedPubDate, x -> x._PubStatus = 'pubmed'), 0)"
 
 # One SQL expression per pubmed_parsed column, in pubmed_parsed's order.
 PUBMED_BOOK_COLUMNS = {
@@ -578,7 +578,7 @@ PUBMED_BOOK_COLUMNS = {
                 f"'given', substr(a.ForeName, 1, {MAX_AUTHOR_NAME_LENGTH}), "
                 f"'family', substr(coalesce(a.LastName, a.CollectiveName), 1, {MAX_AUTHOR_NAME_LENGTH}), "
                 f"'name', CAST(NULL AS STRING), "
-                f"'orcid', filter(a.Identifier, i -> i._Source = 'ORCID')[0]._VALUE, "
+                f"'orcid', get(filter(a.Identifier, i -> i._Source = 'ORCID'), 0)._VALUE, "
                 f"'affiliations', transform(a.AffiliationInfo, f -> named_struct("
                 f"'name', substr(f.Affiliation, 1, {MAX_AFFILIATION_STRING_LENGTH}), "
                 f"'department', CAST(NULL AS STRING), 'ror_id', CAST(NULL AS STRING)))))"),
@@ -612,7 +612,7 @@ PUBMED_BOOK_COLUMNS = {
     "funders": ("CAST(array() AS ARRAY<STRUCT<doi: STRING, ror: STRING, name: STRING, awards: ARRAY<STRING>>>)"),
     "references": (f"transform(flatten(coalesce({_BD}.ReferenceList.Reference, array())), r -> named_struct("
                    f"'doi', CAST(NULL AS STRING), "
-                   f"'pmid', filter(r.ArticleIdList.ArticleId, x -> x._IdType = 'pubmed')[0]._VALUE, "
+                   f"'pmid', get(filter(r.ArticleIdList.ArticleId, x -> x._IdType = 'pubmed'), 0)._VALUE, "
                    f"'arxiv', CAST(NULL AS STRING), 'title', CAST(NULL AS STRING), 'authors', CAST(NULL AS STRING), "
                    f"'year', CAST(NULL AS STRING), 'raw', r.Citation))"),
     # PubMed's page for the record, then the full text on NCBI Bookshelf (free to read)
@@ -650,7 +650,8 @@ def pubmed_book_parsed():
             "version", "license", "language", "published_date", "created_date", "updated_date", "issue", "volume",
             "first_page", "last_page", "is_retracted", "abstract", "source_name", "publisher", "funders",
             "references", "urls", "mesh", "ingested_at")
-    .filter("native_id IS NOT NULL"))
+    # 9 of 37,578 records (17 Nov 2026) have an empty BookTitle and no part title: nothing to name a work by
+    .filter("native_id IS NOT NULL AND title IS NOT NULL"))
 
 # COMMAND ----------
 
