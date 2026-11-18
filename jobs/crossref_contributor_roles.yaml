@@ -1,0 +1,53 @@
+resources:
+  jobs:
+    Crossref_Contributor_Roles:
+      name: Crossref Contributor Roles
+      description: |
+        CRediT contributor roles from Crossref deposits (oxjob #2075). Walden's Crossref pipeline reads raw files
+        with a schema that predates Crossref's author[].role, so roles are dropped there; this job reads only DOI,
+        indexed time and authors with their roles from the same raw files (s3://openalex-ingest/crossref/updates/
+        and new-works/, last 3 days, idempotent) and keeps the newest record per DOI in
+        openalex.crossref.crossref_contributor_roles. Internal until the authorship schema is approved.
+        The first backfill (from 2026-05-20, when Crossref began sending roles) is the same notebook with
+        from_date set, run by hand on a larger cluster.
+      schedule:
+        # after the day's Crossref pulls land (~02:40 UTC)
+        quartz_cron_expression: 0 30 3 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: Read_Crossref_Contributor_Roles
+          job_cluster_key: roles_cluster
+          notebook_task:
+            notebook_path: notebooks/ingest/CrossrefContributorRoles
+            source: GIT
+            base_parameters:
+              days_back: "3"
+          max_retries: 1
+          min_retry_interval_millis: 600000
+          timeout_seconds: 10800
+      job_clusters:
+        - job_cluster_key: roles_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+            node_type_id: m5d.2xlarge
+            driver_node_type_id: m5d.2xlarge
+            num_workers: 4
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            custom_tags:
+              oxjob: "2075"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true

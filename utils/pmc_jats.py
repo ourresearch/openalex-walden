@@ -1,7 +1,7 @@
 """Read authorship facts from PMC open-data JATS (oxjob #1793).
 
-Only the article's <front> is read: contributors, their affiliations, ORCIDs and corresponding flags, plus the
-article type and whether an abstract exists. Pure Python (stdlib), so it runs on the driver, in mapInPandas, and on
+Only the article's <front> is read: contributors, their affiliations, ORCIDs, corresponding flags and CRediT roles,
+plus the article type and whether an abstract exists. Pure Python (stdlib), so it runs on the driver, in mapInPandas, and on
 a laptop against saved XML. `fetch_front()` streams an object and stops at </front>, so the body is never downloaded
 in full.
 
@@ -11,6 +11,9 @@ Rules (EXPLORE § 2-3 of #1793):
   <corresp> line that flags no contributor is recorded (corresp_notes) but assigns nobody.
 - Affiliations: an author's <xref ref-type="aff" rid=...> targets, or an <aff> nested in the contrib. When no author
   links to any aff, a single article-level aff applies to every author; several unlinked affs apply to nobody.
+- CRediT roles (oxjob #2075): the <role> elements inside an author's <contrib>, kept only when they name one of the 14
+  CRediT roles (by a credit.niso.org role URL, else by the term's text). Roles are taken as the article states them per
+  author, never inferred: an "Author contributions" footnote that names people by initials is not read.
 """
 import html.entities
 import re
@@ -18,7 +21,7 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ET
 
-PARSER_VERSION = "pmc-jats-2"  # 2: affiliation text skips <institution-id>; named entities decoded
+PARSER_VERSION = "pmc-jats-3"  # 2: affiliation text skips <institution-id>; named entities decoded. 3: CRediT roles (#2075)
 BUCKET_HTTPS = "https://pmc-oa-opendata.s3.amazonaws.com"
 _FRONT_END = b"</front>"
 _MAX_FRONT_BYTES = 4 * 1024 * 1024
@@ -128,6 +131,64 @@ def _aff_text(aff):
     return t[:1000] if len(t) > 3 else None
 
 
+# The 14 CRediT roles (ANSI/NISO Z39.104-2022, https://credit.niso.org/), by the slug of their credit.niso.org URL.
+# Crossref deposits use the same slugs (`role` with vocabulary "credit"), so both sources speak one vocabulary.
+CREDIT_ROLES = (
+    "conceptualization", "data-curation", "formal-analysis", "funding-acquisition", "investigation", "methodology",
+    "project-administration", "resources", "software", "supervision", "validation", "visualization",
+    "writing-original-draft", "writing-review-editing",
+)
+_CREDIT_URL = re.compile(r"credit\.niso\.org/contributor-roles/([a-z-]+)", re.I)
+# A role's text, normalized by _credit_key, -> its slug. Spellings seen in PMC JATS and on CRediT's own pages.
+_CREDIT_TERMS = {
+    "conceptualization": "conceptualization", "conceptualisation": "conceptualization",
+    "data curation": "data-curation",
+    "formal analysis": "formal-analysis",
+    "funding acquisition": "funding-acquisition",
+    "investigation": "investigation",
+    "methodology": "methodology",
+    "project administration": "project-administration",
+    "resources": "resources",
+    "software": "software",
+    "supervision": "supervision",
+    "validation": "validation",
+    "visualization": "visualization", "visualisation": "visualization",
+    "writing original draft": "writing-original-draft",
+    "writing original draft preparation": "writing-original-draft",
+    "writing review and editing": "writing-review-editing",
+    "writing review editing": "writing-review-editing",
+}
+
+
+def _credit_key(text):
+    t = (text or "").lower().replace("&", " and ")
+    t = re.sub(r"[^a-z]+", " ", t)
+    return _WS.sub(" ", t).strip()
+
+
+def credit_roles(contrib):
+    """CRediT role slugs a <contrib> states in its <role> elements, first-seen order, no repeats (oxjob #2075).
+
+    A <role> counts when its vocab-term-identifier or content-type is a credit.niso.org role URL, else when its text
+    is a CRediT term; one <role> may list several terms separated by commas or semicolons. Anything else ("Editor",
+    "Author", free text) is dropped."""
+    out = []
+    for r in contrib.iter("role"):
+        slugs = []
+        for attr in ("vocab-term-identifier", "content-type", "specific-use"):
+            m = _CREDIT_URL.search(r.get(attr) or "")
+            if m:
+                slugs = [m.group(1).lower()]
+                break
+        if not slugs:
+            terms = [r.get("vocab-term")] if r.get("vocab-term") else re.split(r"[,;]", _text(r, skip=()))
+            slugs = [_CREDIT_TERMS.get(_credit_key(t)) for t in terms]
+        for slug in slugs:
+            if slug in CREDIT_ROLES and slug not in out:
+                out.append(slug)
+    return out
+
+
 def parse_front(raw):
     """Authorship facts from a JATS document (bytes). Returns a dict; raises on unparseable XML."""
     root = _front_root(raw)
@@ -188,7 +249,7 @@ def parse_front(raw):
                     linked.append(t)
             corresp = c.get("corresp") == "yes" or c.find(".//xref[@ref-type='corresp']") is not None
             authors.append({"given": given, "family": family, "name": name, "orcid": orcid,
-                            "affiliations": linked, "is_corresponding": corresp})
+                            "affiliations": linked, "is_corresponding": corresp, "roles": credit_roles(c)})
     if authors and len(affs_all) == 1 and not any(a["affiliations"] for a in authors):
         for a in authors:
             a["affiliations"] = [affs_all[0]]

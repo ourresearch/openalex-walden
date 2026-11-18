@@ -18,6 +18,9 @@
 # MAGIC - `pmc_oa_progress`: one row per finished chunk (restart-safe: a rerun anti-joins on (key, etag, parser_version)).
 # MAGIC - `pmc_oa_authors`: one row per DOI, the authors of its newest readable version with Walden's `author_key`
 # MAGIC   (`udf_last_name_only`), shaped like `locations_parsed.authors` (rebuilt each run).
+# MAGIC - `pmc_oa_contributor_roles`: the same newest version per DOI, only DOIs where an author states CRediT roles
+# MAGIC   (`<role>`, oxjob #2075), each author with its position and role slugs (rebuilt each run). Internal until the
+# MAGIC   authorship schema for roles is approved.
 # MAGIC
 # MAGIC Why authors only (EXPLORE § 1-3 of #1793): the bucket adds a corresponding author to ~1.2M works (its flags
 # MAGIC agree with ours 99.1%); abstracts, licences and author lists add ~0.
@@ -75,6 +78,7 @@ INVENTORY = f"{SCHEMA}.pmc_oa_inventory"
 ARTICLES = f"{SCHEMA}.pmc_oa_articles"
 PROGRESS = f"{SCHEMA}.pmc_oa_progress"
 AUTHORS = f"{SCHEMA}.pmc_oa_authors"
+ROLES = f"{SCHEMA}.pmc_oa_contributor_roles"
 PARSER_VERSION = pmc_jats.PARSER_VERSION
 BUCKET = pmc_jats.BUCKET_HTTPS
 T0 = time.time()
@@ -83,6 +87,7 @@ AUTHOR_TYPE = StructType([
     StructField("given", StringType()), StructField("family", StringType()), StructField("name", StringType()),
     StructField("orcid", StringType()), StructField("affiliations", ArrayType(StringType())),
     StructField("is_corresponding", BooleanType()),
+    StructField("roles", ArrayType(StringType())),  # CRediT role slugs (oxjob #2075, parser pmc-jats-3)
 ])
 ARTICLE_SCHEMA = StructType([
     StructField("key", StringType()), StructField("etag", StringType()), StructField("last_modified", StringType()),
@@ -100,6 +105,9 @@ ARTICLE_SCHEMA = StructType([
 
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {ARTICLES} ({', '.join(f'`{f.name}` {f.dataType.simpleString()}' for f in ARTICLE_SCHEMA.fields)})
 USING DELTA COMMENT 'PMC open-data article versions read from s3://pmc-oa-opendata (oxjob #1793). Append-only: newest fetched_at per key wins. Data: PMC (NLM).'""")
+# Tables created before pmc-jats-3 lack authors[].roles; an append with the new field would fail on the schema.
+if "roles" not in spark.table(ARTICLES).schema["authors"].dataType.elementType.fieldNames():
+    spark.sql(f"ALTER TABLE {ARTICLES} ADD COLUMNS (authors.element.roles ARRAY<STRING> COMMENT 'CRediT role slugs (oxjob #2075)')")
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {PROGRESS} (
   run_id STRING, chunk_no INT, n_todo INT, n_ok INT, n_failed INT, seconds DOUBLE, parser_version STRING, done_at TIMESTAMP
 ) USING DELTA COMMENT 'One row per finished chunk of PmcOpenData (oxjob #1793)'""")
@@ -264,3 +272,19 @@ authors_df.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable
 s = spark.sql(f"""SELECT count(*) n, count_if(is_corresponding_exists) corr, count_if(affiliations_exist) aff FROM {AUTHORS}""").first()
 print(f"{AUTHORS}: {s.n:,} DOIs, {s.corr:,} with a corresponding author, {s.aff:,} with affiliations "
       f"({(time.time() - T0) / 60:.0f} min total)")
+
+# COMMAND ----------
+
+# pmc_oa_contributor_roles (oxjob #2075): the same newest version per DOI as pmc_oa_authors, kept only when an author
+# states CRediT roles. Versions read before pmc-jats-3 carry no roles (NULL), so a DOI appears once its newest version
+# has been read at pmc-jats-3. position = the author's index in the article's author list (pmc_jats.parse_front order).
+roles_df = per_doi.filter("exists(authors, a -> size(a.roles) > 0)").select(
+    "doi", "pmcid", "version", "is_manuscript", "parser_version",
+    F.expr("""transform(authors, (a, i) -> named_struct('position', i, 'given', a.given, 'family', a.family,
+        'name', a.name, 'orcid', a.orcid, 'roles', coalesce(a.roles, array())))""").alias("authors"),
+    F.expr("size(filter(authors, a -> size(a.roles) > 0))").alias("n_authors_with_roles"),
+    "fetched_at",
+)
+roles_df.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(ROLES)
+s = spark.sql(f"""SELECT count(*) n, sum(n_authors_with_roles) authors FROM {ROLES}""").first()
+print(f"{ROLES}: {s.n:,} DOIs with CRediT roles, {s.authors or 0:,} authors with roles")
