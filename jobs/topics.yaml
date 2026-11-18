@@ -87,6 +87,14 @@ resources:
             notebook_path: notebooks/topics/nightly/MergeTopicsV2
             source: GIT
           environment_key: Default
+          # 18 Nov 2026 (#1642): the append_rows CTAS hung 66 min on serverless (a MAP_FROM_ENTRIES aggregate stage, the shape
+          # of the #2342 Authorships hang) and Vector_Matcher / Author_Matching wait on Topics; a cancel + repair ran it in 16 min.
+          # The merge is idempotent and gated (a retry finds REPLACED saved and the MERGE re-applies the same rows), so a hang
+          # now times out and retries by itself. 2.1M-work builds take ~16 min; max_works 3M ~23 min.
+          timeout_seconds: 2400
+          max_retries: 1
+          retry_on_timeout: true
+          min_retry_interval_millis: 60000
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
