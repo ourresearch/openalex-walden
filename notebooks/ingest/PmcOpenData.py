@@ -147,7 +147,16 @@ del inv, frames
 # COMMAND ----------
 
 # To do: inventory keys whose (key, etag) has no successful read at this parser version.
-done = spark.sql(f"""SELECT key, etag FROM {ARTICLES} WHERE error IS NULL AND parser_version = '{PARSER_VERSION}'""")
+# Also done: a version read fine before that now answers 404 at this parser version. PMC removed it after the inventory
+# was taken, and the earlier read stands. Without this, a parser bump re-tries ~1,800 removed versions every night,
+# and on a small day they trip the systemic-failure check below (oxjob #2075, 18 Nov 2026).
+done = spark.sql(f"""
+  SELECT key, etag FROM {ARTICLES} WHERE error IS NULL AND parser_version = '{PARSER_VERSION}'
+  UNION
+  SELECT key, etag FROM {ARTICLES} gone
+  WHERE parser_version = '{PARSER_VERSION}' AND error LIKE '%HTTPError 404%'
+    AND EXISTS (SELECT 1 FROM {ARTICLES} ok WHERE ok.key = gone.key AND ok.etag = gone.etag AND ok.error IS NULL)
+""")
 todo = spark.table(INVENTORY).join(done, ["key", "etag"], "left_anti")
 if ONLY_SQL:
     todo = todo.join(spark.sql(ONLY_SQL).select("pmcid").distinct(), "pmcid", "left_semi")
