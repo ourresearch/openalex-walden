@@ -10,7 +10,8 @@ resources:
       schedule:
         quartz_cron_expression: 0 10/20 * * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        # oxjob #1062 refetch-1062-aps-accepted-2026-11 (26,138 APS pages, 18 Nov 2026); re-pause when it settles
+        pause_status: UNPAUSED
       max_concurrent_runs: 1
       queue:
         enabled: true
