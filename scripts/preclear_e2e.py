@@ -21,7 +21,8 @@ location_curations. Numbers take K/M suffixes (6.5M). A merge of N works can dro
 count the losers that carry X and name it, or Guardrails fails that check. Name the night's total with headroom (x1.2).
 
 Rules (they do not bend): whoever pilots the change runs this (Jason, 2026-10-14): for Jason's changes the job session
-that owns the change runs it on his yes, `--by jason`, and tells Casey in #dev; Casey runs it for his own. Only for the
+that owns the change runs it on his yes, `--by jason`, and says so in #bot as its own bot (never #dev, #2117);
+Casey runs it for his own. Only for the
 flag class that will actually fire. A night has ONE row per flag: the first change files it, every later change raises
 it in place with --raise and the night's new totals. `guardrails_override` never authorises a mass delete or an
 oversized feed; those have their own flags.

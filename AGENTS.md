@@ -7,8 +7,9 @@ exists to catch the unexpected (a bug that re-stamps 200M works), not to budget 
 a change across nights, trim it or delay it to fit under the line: make it as big and as fast as it can be and
 pre-clear it. **Whoever pilots a change owns its pre-clear (Jason, 2026-10-14; replaces "Casey runs every
 pre-clear", 2026-10-06).** For Jason's changes, the job session that owns the change sizes it, asks Jason for the write
-and the capped pre-clear in one question, runs `preclear_e2e.py --by jason` itself on his yes, and tells Casey in #dev
-(informed, not a gate). Casey pre-clears his own changes the same way. Never route someone else's change through
+and the capped pre-clear in one question, runs `preclear_e2e.py --by jason` itself on his yes, and posts one line in the
+agents' Slack channel #bot as its own bot (informed, not a gate; agents never post in #dev or as a person: oxjobs
+AGENTS.md § Slack, #2117). Casey pre-clears his own changes the same way. Never route someone else's change through
 Casey: it piles work on him and makes him answer for changes he didn't make. Full rule: `~/ox/CLAUDE.md` Batch Job Rule 7.
 
 `Walden End 2 End` runs `notebooks/end2end/Guardrails` after `CreateWorksEnriched`. Check 1 fails
@@ -25,7 +26,7 @@ content hash; a small entity-side change can re-stamp tens of millions of works.
 near 7.5M, the change's owner pre-clears the scheduled run with
 `scripts/preclear_e2e.py --max-changed <planned stamps + a normal night> --reason "..." --by <who said yes>`
 (and `--max-deleted` with `deleted_works_guard_override` for a wave that deletes works), which writes a row bound to
-that night's run in `openalex.works.e2e_overrides`, and say so in #dev. **A row raises only the checks it names
+that night's run in `openalex.works.e2e_overrides`, and say so in #bot as its own bot (never #dev, #2117). **A row raises only the checks it names
 (oxjob #2005, from the Thu 5 Nov 2026 run):** name every planned loss over its line on the same command line,
 `--max-loss works=N,abstracts=N,affiliations=N,institutions=N,fulltext=N,citations=N,work_author_curations=N`; a loss it
 doesn't name fails Guardrails as before. A merge of N works can drop each "works with X" count by up to N: count the
