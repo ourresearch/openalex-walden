@@ -165,6 +165,9 @@ def main():
     ap.add_argument("--reason", help="what change, how many works, oxjob id")
     ap.add_argument("--by", help="who gave the yes")
     ap.add_argument("--night", help="CT evening date (YYYY-MM-DD) the run belongs to; default = the next 05:00 UTC")
+    ap.add_argument("--later-night", action="store_true",
+                    help="allow a NEW row for a run after the next one (18 Nov 2026: two lanes meant the next run and filed "
+                         "or raised a later one: --night is the CT evening date, not the UTC run date)")
     ap.add_argument("--current-run", action="store_true", help="the run that started at the last 05:00 UTC (a repair)")
     ap.add_argument("--max-changed", type=count, help="guardrails_override: works this run may stamp (Check 1); default the 7.5M line")
     ap.add_argument("--max-deleted", type=count, help="deleted_works_guard_override: works that may disappear; also names works=N")
@@ -264,6 +267,19 @@ def main():
                       "Count the losers that carry each and name the ones over 2M (--max-loss), or Guardrails fails them.")
 
     start = run_start(a.night, a.current_run)
+    nxt = run_start(None, False)
+    if start > nxt and not a.later_night:
+        # A row for a run after the next one is almost always a date slip (18 Nov 2026: #1199 filed '+10K on 10,771,000' as
+        # a NEW 10.78M row on the 20 Nov run; #891's raise for the next run went to the one after). Filing early on purpose
+        # is fine: say so with --later-night.
+        _, later = sql(f"SELECT max_changed FROM {TABLE} WHERE valid_from = TIMESTAMP '{start:%Y-%m-%d %H:%M:%S}' "
+                       f"AND valid_until > current_timestamp() AND flag IN ({', '.join(q(f) for f in flags)})", wh)
+        if not later:
+            ev = (nxt - timedelta(days=1)).date()
+            sys.exit(f"refused: --night {a.night} is the run starting {start:%Y-%m-%d %H:%M} UTC, but the NEXT run starts "
+                     f"{nxt:%Y-%m-%d %H:%M} UTC (--night {ev}), and the later run has no row yet. --night takes the CT "
+                     f"EVENING date. For the next run use --night {ev} (add --raise if it has a row: --list). To file for "
+                     f"the later run on purpose, add --later-night.")
     # A planned night's row closes 18 h after its start (the run and a morning repair). A --current-run row (a repair of
     # the run in progress, possibly late in the day) stays open until the next run starts, never into it.
     until = start + timedelta(hours=24 if a.current_run else WINDOW_AFTER_START_H)
