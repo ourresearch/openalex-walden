@@ -50,6 +50,7 @@ reader_image = (modal.Image.from_registry("nvidia/cuda:12.9.1-devel-ubuntu22.04"
 INDEX = "openalex.vector_search.work_reference_style_embeddings_qwen3"
 D, N_LG, LISTS_PER_GROUP = 1024, 1024, 16
 NPROBE, POOL, SUB = 256, 30, 1_000_000
+PART = 7_000_000             # queries per GPU container (#2000 ran 7.9M per H100); a bigger night spreads over more
 # Which lists and delta the search reads: /data/current.json, written by rebuild_lists. Without it, the lists #2000 built,
 # exported 13 Nov 2026 14:40-15:21 UTC; works embedded from the start of that day are re-read into the delta (an overlap is
 # harmless: a delta row replaces the list row of the same work).
@@ -273,7 +274,7 @@ def _load_delta(dd):
 
 
 @app.function(image=gpu_image, gpu="H100", volumes={"/data": svol}, secrets=[DBX], timeout=4 * 3600, cpu=16, memory=200 * 1024)
-def search_gpu(build_id: str, out_dir: str, nprobe: int = NPROBE, pool: int = POOL, readers: int = 16):
+def search_gpu(build_id: str, out_dir: str, lo: int = 0, hi: int = -1, nprobe: int = NPROBE, pool: int = POOL, readers: int = 16):
     """Best `pool` works per query. The lists stream past the GPU once (#2000's search_chunk loop); in each list group the
     built rows of works re-embedded since are masked out (score -inf) and the group's delta rows are scanned as a second block.
     Nothing is copied on the CPU: the cost stays reading the lists (~0.9 TB)."""
@@ -287,7 +288,9 @@ def search_gpu(build_id: str, out_dir: str, nprobe: int = NPROBE, pool: int = PO
     cent = torch.from_numpy(np.load(f"{ix}/centroids.npy")).float().to(dev)
     L = cent.shape[0]
     H = npy(f"/data/nightly/{build_id}/q.h.npy")
-    V = npy(f"/data/nightly/{build_id}/q.v.npy")
+    hi = len(H) if hi < 0 else hi
+    H = H[lo:hi]
+    V = np.ascontiguousarray(np.load(f"/data/nightly/{build_id}/q.v.npy", mmap_mode="r")[lo:hi])   # this container's slice only
     n = len(H)
     delta_ids, delta_groups, n_delta = _load_delta(cur["delta"])
     if n_delta > MAX_DELTA_ROWS:
@@ -400,7 +403,7 @@ def search_gpu(build_id: str, out_dir: str, nprobe: int = NPROBE, pool: int = PO
         tab = pa.table({"text_hash": th[keep], "cand": bi[keep], "score": sc[keep], "rank": rk[keep], "probe_rank": br[keep]})
         buf = io.BytesIO()
         pq.write_table(tab, buf, compression="zstd")
-        put_file(f"{out_dir}/part-{j:03d}.parquet", buf.getvalue())
+        put_file(f"{out_dir}/part-{lo // PART:03d}-{j:03d}.parquet", buf.getvalue())
         rows += tab.num_rows
     T["write"] = time.time()
     st = {"queries": int(n), "rows": int(rows), "lists": ix, "delta_works": int(n_delta), "list_rows_seen": int(rows_seen), "pairs_scored": int(pairs),
@@ -423,11 +426,15 @@ def run_search(table_in: str, out_dir: str, build_id: str, warehouse: str):
     d = dq.get()
     if q["queries"] == 0:
         return {"stage": "search", "queries": 0, "delta": d, "rows": 0, "wall_s": round(time.time() - t0, 1), "version": VERSION_MARK}
-    s = search_gpu.remote(build_id, out_dir)
+    n = q["queries"]
+    parts = list(search_gpu.starmap([(build_id, out_dir, a, min(a + PART, n)) for a in range(0, n, PART)]))
+    s = {k: parts[0][k] for k in ("lists", "delta_works", "list_rows_seen", "gpu", "nprobe", "pool")}
+    s.update(containers=len(parts), rows=sum(p["rows"] for p in parts), pairs_scored=sum(p["pairs_scored"] for p in parts),
+             total_s=max(p["total_s"] for p in parts), gpu_s=sum(p["total_s"] for p in parts))
     if s["delta_works"] > REBUILD_AT:
         s["rebuild"] = _start_rebuild(warehouse)
-    # container-seconds x list price (H100 $3.95/h + 16 cpu + 160 GiB, plus the two CPU exports); Modal billing is the truth
-    usd = s["total_s"] * (3.95 + 16 * 0.0473 + 200 * 0.008) / 3600 + (q["seconds"] + d["seconds"]) * (4 * 0.0473 + 80 * 0.008) / 3600
+    # container-seconds x list price (H100 $3.95/h + 16 cpu + 200 GiB, plus the two CPU exports); Modal billing is the truth
+    usd = s["gpu_s"] * (3.95 + 16 * 0.0473 + 200 * 0.008) / 3600 + (q["seconds"] + d["seconds"]) * (4 * 0.0473 + 80 * 0.008) / 3600
     return {"stage": "search", "queries": q["queries"], "export_s": q["seconds"], "delta": d, **s, "usd_est": round(usd, 2),
             "wall_s": round(time.time() - t0, 1), "version": VERSION_MARK}
 
