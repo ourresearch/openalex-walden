@@ -405,7 +405,13 @@ dlt.create_auto_cdc_flow(
 # online or print date (Feb 30) is NULL, never an error. The same strings run the backfill (oxjobs #2241 work/gen_sql.py).
 # Dry run over all 180.2M records (14 Nov 2026): 3,439,694 change, 0 change year, 0 move earlier; every other record keeps
 # its date. Revert: git revert, then #2241 work/10_revert.sql.
-PUB_DATE_PARTS_FIELDS = ["issued", "published", "published-online", "published-print", "approved"]
+# oxjob #1157 (card D6, Jason 17 Nov 2026; RULINGS § 3 "Work dates"): a work's date is the earliest date the publisher
+# states (issued, published, online, print, approved, posted). The DOI registration day (created) and the deposit day count
+# only when the record states no online and no posted date: then they stand in for when the work went online (Elsevier and
+# others deposit only a print date). Before, they always joined the least(), so a DOI registered months or years ahead of
+# its stated online date dated the work (MIT Press 10.1162/rest_a_01152: registered 2021-12-22, online 2024-03-19). No
+# month cutoff (Jason). The same strings run the backfill (oxjobs #1157 work/). Revert: git revert, then #1157's revert SQL.
+PUB_DATE_PARTS_FIELDS = ["issued", "published", "published-online", "published-print", "approved", "posted"]
 
 
 def _padded_date_sql(field):
@@ -417,7 +423,7 @@ def _padded_date_sql(field):
 PUB_DATES_SQL = "array(" + ", ".join(_padded_date_sql(f) for f in PUB_DATE_PARTS_FIELDS) + ")"
 PUBLISHED_DATE_SQL = ("least(array_min(transform(filter(_pub_dates, c -> c.d IS NOT NULL AND NOT coalesce(c.p = 1 AND "
                       "exists(_pub_dates, f -> f.d IS NOT NULL AND f.p >= 2 AND year(f.d) = year(c.d)), false)), c -> c.d)), "
-                      "created_date, deposited)")
+                      "CASE WHEN _pub_dates[2].d IS NULL AND _pub_dates[5].d IS NULL THEN least(created_date, deposited) END)")
 
 # Transformed Table
 @dlt.view(
