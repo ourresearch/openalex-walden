@@ -11,9 +11,9 @@ resources:
         same-text links, author + volume + page lookup) -> search (Modal app reference-matcher: best 30 works per text) ->
         candidates (clue features + checklist, reader prompts; first re-checks #2000's review bench) -> reader (Modal: the 2B
         reader on the unsure band) -> decide (links into openalex.works.reference_matcher_links under run <mode>-<night>).
-        mode shadow (from 2026-11-17, Casey: 3 nights before turning it on): nothing is served and a failing step only logs
-        (openalex.works.reference_matcher_nights). mode live: decide also applies the links to work_references and registers the
-        run in reference_matcher_runs; any failure fails the run, and End 2 End with it (Casey 2026-11-16).
+        mode live (End 2 End from the 2026-11-21 run; shadow 2026-11-17..20): decide also applies the links to work_references and
+        registers the run in reference_matcher_runs; any failure fails the run, and End 2 End with it (Casey 2026-11-16). mode
+        shadow: nothing is served and a failing step only logs (openalex.works.reference_matcher_nights).
       email_notifications:
         on_failure:
           - casey@ourresearch.org
