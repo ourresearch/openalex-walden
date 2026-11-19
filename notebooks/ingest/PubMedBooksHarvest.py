@@ -104,7 +104,8 @@ out_dir = f"{PREFIX}{today}/"
 done_files = set()
 if today in existing:
     done_files = {f.name for f in dbutils.fs.ls(out_dir)}
-local = "/local_disk0/tmp/pubmed_books" if os.path.isdir("/local_disk0") else "/tmp/pubmed_books"
+# serverless refuses dbutils.fs.cp from a local file: path (18 Nov run), so each file is staged in a UC Volume
+local = "/Volumes/openalex/authors/oxjob_tmp/pubmed_books_harvest"
 os.makedirs(local, exist_ok=True)
 t0, done = time.time(), 0
 for f_i in range(0, len(ids), PER_FILE):
@@ -126,7 +127,7 @@ for f_i in range(0, len(ids), PER_FILE):
             g.write(inner)
         g.write(TAIL)
     # written whole, then copied: the stream never sees a partial file
-    dbutils.fs.cp(f"file:{path}", out_dir + name)
+    dbutils.fs.cp(path, out_dir + name)
     os.remove(path)
     done += len(chunk)
     rate = done / max(time.time() - t0, 1)
