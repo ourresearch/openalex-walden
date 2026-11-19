@@ -49,3 +49,21 @@ def test_non_credit_roles_dropped():
 def test_slugs_are_the_fourteen():
     assert len(pmc_jats.CREDIT_ROLES) == 14
     assert set(pmc_jats._CREDIT_TERMS.values()) == set(pmc_jats.CREDIT_ROLES)
+
+
+def test_role_url_holding_the_term_text():
+    # Frontiers writes the role's text, not its slug, into the credit.niso.org URL (PMC12440966).
+    c = ET.fromstring(
+        '<contrib>'
+        '<role content-type="https://credit.niso.org/contributor-roles/Writing - review &amp; editing/"/>'
+        '<role content-type="https://credit.niso.org/contributor-roles/Formal Analysis/">Formal Analysis</role>'
+        '<role content-type="https://credit.niso.org/contributor-roles/Writing%20-%20original%20draft/"/>'
+        '<role content-type="https://credit.niso.org/contributor-roles/software/"/>'
+        '</contrib>')
+    assert pmc_jats.credit_roles(c) == ["writing-review-editing", "formal-analysis", "writing-original-draft", "software"]
+
+
+def test_unknown_url_tail_falls_back_to_text():
+    c = ET.fromstring('<contrib><role content-type="https://credit.niso.org/contributor-roles/Something/">'
+                      'Data curation</role></contrib>')
+    assert pmc_jats.credit_roles(c) == ["data-curation"]
