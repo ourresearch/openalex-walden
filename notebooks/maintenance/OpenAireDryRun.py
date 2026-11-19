@@ -58,12 +58,8 @@ print("loaded Repo.py; endpoints:", ENDPOINTS)
 
 # repo_items_openaire, in batch: the same select as the DLT table
 files = (spark.read.format("binaryFile").option("pathGlobFilter", "*.xml.gz").option("recursiveFileLookup", "true")
-         .load([f"s3a://openalex-ingest/openaire/{e}/" for e in ENDPOINTS]))
-items = (files
-         .select(F.explode(repo["parse_openaire_file_udf"](F.col("content"), F.col("path"))).alias("r"),
-                 F.regexp_extract(F.col("path"), r"openaire/([^/]+)/", 1).alias("repository_id"),
-                 F.col("path").alias("file_path"), F.col("modificationTime").alias("ingested_at"))
-         .select("r.*", "repository_id", "file_path", "ingested_at"))
+         .load([f"{repo['OPENAIRE_S3_PATH']}{e}/" for e in ENDPOINTS]))
+items = repo["openaire_files_as_items"](files)
 items.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_items")
 display(spark.sql(f"""SELECT repository_id, count(*) records, count_if(parse_error IS NOT NULL) parse_errors,
   count_if(is_deleted) deleted, count_if(dc IS NULL AND NOT is_deleted AND parse_error IS NULL) not_openaire, count_if(is_open) open,
@@ -73,7 +69,7 @@ display(spark.sql(f"""SELECT repository_id, count(*) records, count_if(parse_err
 
 # COMMAND ----------
 
-src = spark.table(f"{OUT}_items").withColumn("_commit_version", F.lit(0).cast("long"))
+src = spark.table(f"{OUT}_items")  # parse_openaire_records adds _commit_version (OPENAIRE_PARSER_VERSION)
 enriched = repo["enrich_hal_tei"](repo["parse_openaire_records"](src, repo["read_endpoint_hosts"](spark) if REKEY else {}))
 enriched.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_enriched")
 _seq = enriched.schema["_sequence"].dataType
