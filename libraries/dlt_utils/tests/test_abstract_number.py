@@ -215,6 +215,8 @@ def test_series_table_and_append_agree():
     assert a.startswith("INSERT INTO x.series (source_id, year, form, series_key")
     assert f"'{RULE_VERSION}'" in a and "LEFT ANTI JOIN x.series t ON t.source_id <=> s.source_id" in a
     assert "FROM x.works w LEFT JOIN x.pre n" in a and "LEFT ANTI JOIN x.excl e" in a
+    b = series_append_sql("x.series", "x.excl", "x.build")  # step 4: titles as deposited, no prefixes table
+    assert "FROM x.build w\n" in b and "LEFT JOIN" not in b.split("SELECT a.*")[0].split("FROM x.build w")[1][:5]
     assert excluded_table_ddl("x.excl").startswith("CREATE TABLE IF NOT EXISTS x.excl (\n  source_id STRING NOT NULL")
 
 
@@ -224,3 +226,75 @@ def test_builder_notebook_is_generated_from_the_module():
     notebook = Path(__file__).resolve().parents[3] / BUILDER_NOTEBOOK
     assert notebook.read_text(encoding="utf-8") == builder_notebook_sql(), \
         f"{BUILDER_NOTEBOOK} differs from abstract_number.builder_notebook_sql(): regenerate it (see its docstring)"
+
+
+def test_display_title_twins():
+    from openalex.dlt.abstract_number import display_title, display_title_sql
+    assert display_title("#303 Risk-reducing bilateral oophorectomy", "#303 ") == "Risk-reducing bilateral oophorectomy"
+    assert display_title("46: THE JULY EFFECT IN THE ICU REVISITED", "46: ") == "THE JULY EFFECT IN THE ICU REVISITED"
+    assert display_title("A title that changed since", "#303 ") == "A title that changed since"  # stale prefix: whole
+    assert display_title("#303 Risk", None) == "#303 Risk" and display_title(None, "#303 ") is None
+    sql = display_title_sql()
+    assert sql.startswith("CASE WHEN title_abstract_number IS NOT NULL AND substr(title, 1, length(title_abstract_number))")
+    assert sql.endswith("ELSE title END")
+
+
+def test_work_prefixes_sql_renders():
+    from openalex.dlt.abstract_number import work_prefixes_sql
+    s = work_prefixes_sql("x.build", "x.series", "x.excl", "x.cur")
+    assert "FROM x.build w" in s and "LEFT SEMI JOIN x.series s ON s.source_id = g.source_id" in s
+    assert "LEFT ANTI JOIN x.excl e ON e.source_id = g.source_id" in s
+    assert "SELECT work_id FROM x.cur WHERE title IS NOT NULL" in s and s.endswith("WHERE NOT g.guarded")
+    assert "s.series_key = g.series_key" in s  # a letter_code series only strips its own code shape
+
+
+def test_strip_cell_switch():
+    from openalex.dlt.abstract_number import enriched_strip_cell_sql, STRIP_SWITCH_ON
+    assert STRIP_SWITCH_ON is False  # D7 step 6 flips it
+    off, on = enriched_strip_cell_sql(False), enriched_strip_cell_sql(True)
+    # off: one SELECT, nothing written; no scripting block for the push night to parse
+    assert "BEGIN" not in off and "MERGE" not in off and "INSERT" not in off and "CREATE" not in off
+    assert off.rstrip().endswith("AS d7_title_strip") and off.count(";") == 0
+    from openalex.dlt.abstract_number import enriched_column_cell_sql
+    assert enriched_column_cell_sql().count(";") == 0 and enriched_column_cell_sql().count("ALTER TABLE") == 1
+    # on: the scripting block
+    assert on.count("BEGIN") == 2 and on.rstrip().endswith("END")
+    assert "INSERT INTO openalex.works.title_abstract_number_series" in on
+    assert "FROM openalex.works.openalex_works_build w" in on  # series and prefixes from tonight's build
+    assert "UPDATE SET t.title_abstract_number = s.prefix" in on
+    assert "UPDATE SET t.title_abstract_number = p.title_abstract_number" in on  # fallback: last night's
+    assert "t.title =" not in on  # title itself is never written
+
+
+def test_enriched_notebook_cells_are_generated_from_the_module():
+    from openalex.dlt.abstract_number import (enriched_cells_in_notebook, enriched_column_cell_sql,
+                                              enriched_strip_cell_sql, ENRICHED_NOTEBOOK)
+    column, strip = enriched_cells_in_notebook()
+    assert column == enriched_column_cell_sql() and strip == enriched_strip_cell_sql(), \
+        f"{ENRICHED_NOTEBOOK}'s D7 cells differ from the module: regenerate (enriched_strip_cell_sql's docstring)"
+
+
+def test_enriched_notebook_order_and_hash():
+    import json
+    from pathlib import Path
+    from openalex.dlt.abstract_number import ENRICHED_NOTEBOOK, ENRICHED_COLUMN_CELL, ENRICHED_STRIP_CELL
+    nb = json.loads((Path(__file__).resolve().parents[3] / ENRICHED_NOTEBOOK).read_text(encoding="utf-8"))
+    srcs = ["".join(c["source"]) for c in nb["cells"]]
+    first = lambda prefix: next(i for i, s in enumerate(srcs) if s.startswith(prefix))  # noqa: E731
+    column, strip = first(ENRICHED_COLUMN_CELL), first(ENRICHED_STRIP_CELL)
+    alt_merge = first("-- oxjob #1610: before the hash cell")
+    fulltext = first("-------- Merge related_works + fulltext")
+    hashed = first("-- Per-run scratch (recreated every run")
+    assert alt_merge < column < strip < fulltext < hashed  # type is final, the fulltext MERGE stays last, then the hash
+    assert "CASE WHEN title_abstract_number IS NOT NULL THEN CONCAT('title_abstract_number:', title_abstract_number) END" \
+        in srcs[hashed]
+
+
+def test_publishers_serve_the_display_title():
+    from pathlib import Path
+    from openalex.dlt.abstract_number import PUBLISH_FILES, display_title_sql
+    root = Path(__file__).resolve().parents[3]
+    for f in PUBLISH_FILES:
+        text = (root / f).read_text(encoding="utf-8")
+        assert display_title_sql().replace('"', '\\"') in text or display_title_sql() in text, f
+        assert "title_abstract_number" in text, f

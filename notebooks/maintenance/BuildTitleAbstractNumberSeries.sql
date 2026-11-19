@@ -6,12 +6,13 @@
 -- A conference abstract's leading program number or code leaves its displayed title ("#303 Risk-reducing ...",
 -- "46: THE JULY EFFECT ...", "Mo1428 Hemoclip ...") only when the work's source-year holds a series of that form:
 -- openalex.works.title_abstract_number_series holds those series, openalex.works.title_abstract_number_excluded takes one out.
--- Append-only: each run adds the series the rules find in titles AS DEPOSITED (through openalex.works.work_title_abstract_numbers,
--- which puts back what the strip dropped) that the table lacks, dated, and never changes or deletes a row.
+-- Append-only: each run adds the series the rules find in titles AS DEPOSITED (openalex_works.title is never
+-- stripped: the strip happens at publish) that the table lacks, dated, and never changes or deletes a row.
 -- Take a series out with a row in openalex.works.title_abstract_number_excluded (source_id; year and series_key NULL = all), never a DELETE.
--- Nothing reads these tables until the strip is wired and switched on (#1162 PLAN, D7 steps 4 and 6).
+-- CreateWorksEnriched runs the same statements each night once the strip is switched on (#1162 PLAN, D7 steps 4
+-- and 6); run this notebook by hand only to create and inspect the tables before that.
 -- Measured 19 Nov 2026 on openalex_works: 6,738 series, 1,252,251 works (#1162 work/d7_step3_series_2026-11-19.md;
--- this SQL built openalex.oxlane.oxjob1162_d7_series_frozen). Revert: DROP the three tables (no reader yet).
+-- this SQL built openalex.oxlane.oxjob1162_d7_series_frozen). Revert: DROP the two tables (no reader until the switch).
 
 -- COMMAND ----------
 
@@ -28,11 +29,6 @@ LEFT ANTI JOIN openalex.works.title_abstract_number_excluded t ON t.source_id = 
 
 -- COMMAND ----------
 
-CREATE TABLE IF NOT EXISTS openalex.works.work_title_abstract_numbers (work_id BIGINT, prefix STRING, form STRING)
-COMMENT 'oxjob #1162 (ruling D7): the conference abstract number the displayed title of each work dropped (internal; not an API field). Written by the strip (CreateWorksBase); empty until it runs.';
-
--- COMMAND ----------
-
 CREATE TABLE IF NOT EXISTS openalex.works.title_abstract_number_series (
   source_id STRING, year INT, form STRING, series_key STRING, n_titles BIGINT, n_distinct BIGINT,
   n_supplement BIGINT, n_conference_abstract BIGINT, n_pass BIGINT, n_pass_latin BIGINT, n_pass_short BIGINT,
@@ -45,12 +41,12 @@ COMMENT 'oxjob #1162 (ruling D7): source-years whose leading conference abstract
 INSERT INTO openalex.works.title_abstract_number_series (source_id, year, form, series_key, n_titles, n_distinct, n_supplement, n_conference_abstract, n_pass, n_pass_latin, n_pass_short, n_pass_year_number, n_pass_paged, median_pages, n_pass_paged_first_pages, added_on, rule_version)
 SELECT s.source_id, s.year, s.form, s.series_key, s.n_titles, s.n_distinct, s.n_supplement, s.n_conference_abstract, s.n_pass, s.n_pass_latin, s.n_pass_short, s.n_pass_year_number, s.n_pass_paged, s.median_pages, s.n_pass_paged_first_pages, current_date(), '2026-11-19'
 FROM (WITH w AS (
-  SELECT w.primary_location.source.id AS source_id, w.publication_year AS year, w.type, concat(coalesce(n.prefix, ''), w.title) AS title,
+  SELECT w.primary_location.source.id AS source_id, w.publication_year AS year, w.type, w.title AS title,
          w.biblio.first_page AS fp, w.biblio.last_page AS lp, w.biblio.issue AS issue
-  FROM openalex.works.openalex_works w LEFT JOIN openalex.works.work_title_abstract_numbers n ON n.work_id = w.id
+  FROM openalex.works.openalex_works w
   WHERE w.primary_location.source.type IN ('journal', 'conference')
     AND w.type NOT IN ('book', 'book-chapter', 'dataset', 'reference-entry', 'dissertation', 'book-review', 'editorial', 'paratext', 'erratum', 'retraction')
-    AND (concat(coalesce(n.prefix, ''), w.title) RLIKE '^[#0-9]' OR substr(concat(coalesce(n.prefix, ''), w.title), 1, 12) RLIKE '^[A-Za-z]{1,6}[0-9]{0,2}-?[0-9]')
+    AND (w.title RLIKE '^[#0-9]' OR substr(w.title, 1, 12) RLIKE '^[A-Za-z]{1,6}[0-9]{0,2}-?[0-9]')
 ), f AS (
   SELECT *, CASE WHEN title RLIKE '^[0-9]{4}-[A-Z]{2,4}-[0-9]{1,5}-[A-Z]{2,8}\\s+\\S' THEN 'code' WHEN title RLIKE '^#\\s?[0-9]{1,6}(\\s*[:.–—-]\\s*|\\s+)\\S' THEN 'hash' WHEN title RLIKE '^[0-9]{1,6}:\\s+\\S' THEN 'num_colon' WHEN title RLIKE '^[0-9]{1,5}\\.\\s+\\p{Lu}' THEN 'num_dot' WHEN title RLIKE '^[0-9]{1,5}\\s+\\p{Lu}' THEN 'num_space' WHEN title RLIKE '^[A-Za-z]{1,6}[0-9]{0,2}-?[0-9]{1,5}(?:[.-][0-9]{1,4})?[A-Za-z]?\\s*[:.–—-]?\\s+\\p{Lu}' THEN 'letter_code' END AS form FROM w
 ), p AS (

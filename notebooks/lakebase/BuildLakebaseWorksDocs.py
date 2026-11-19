@@ -169,8 +169,14 @@ WHERE updated_date >= {SINCE_SQL}
 
 # COMMAND ----------
 
+# oxjob #1162 (ruling D7): a conference abstract's leading number leaves the served title. CreateWorksEnriched stores it
+# in title_abstract_number (NULL on every other work); `title` itself keeps it for keys and models. This is
+# abstract_number.display_title_sql() verbatim (a test checks the copy); a table without the column serves title.
+D7_DISPLAY_TITLE = "CASE WHEN title_abstract_number IS NOT NULL AND substr(title, 1, length(title_abstract_number)) = title_abstract_number THEN substr(title, length(title_abstract_number) + 1) ELSE title END"
+_rows = spark.sql(SQL_QUERY)
 df = (
-    spark.sql(SQL_QUERY)
+    _rows
+    .withColumn("title", F.expr(D7_DISPLAY_TITLE) if "title_abstract_number" in _rows.columns else F.col("title"))
     .withColumn("display_name", F.col("title"))
     # First cast to date/timestamp
     .withColumn("created_date", F.to_timestamp("created_date"))

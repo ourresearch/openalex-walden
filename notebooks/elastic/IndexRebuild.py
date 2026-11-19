@@ -686,9 +686,13 @@ elif MODE == "verify":
                         f"the FAIL check is 'docs: new vs Delta at V' below"))
     # The truth check: the new index vs the source at V on fields that compare directly (no sync-side transforms).
     v_tbl = src(SOURCE_VERSION) if SOURCE_VERSION else src()
+    # oxjob #1162 (ruling D7): sync_works serves display_name without the conference abstract number CreateWorksEnriched
+    # stores in title_abstract_number. abstract_number.display_title_sql() verbatim (a test checks the copy).
+    D7_DISPLAY_TITLE = "CASE WHEN title_abstract_number IS NOT NULL AND substr(title, 1, length(title_abstract_number)) = title_abstract_number THEN substr(title, length(title_abstract_number) + 1) ELSE title END"
+    d7_title = D7_DISPLAY_TITLE if "title_abstract_number" in spark.sql(f"SELECT * FROM {v_tbl} LIMIT 0").columns else "title"
     DELTA_FIELDS = {  # es _source path -> SQL expression on the source row; both sides normalised by norm()
         "publication_year": "publication_year", "type": "type", "language": "language",
-        "display_name": "title", "updated_date": "updated_date", "cited_by_count": "cited_by_count",
+        "display_name": d7_title, "updated_date": "updated_date", "cited_by_count": "cited_by_count",
         "fwci": "fwci", "citation_normalized_percentile.value": "citation_normalized_percentile.value",
         "institutions_distinct_count": "institutions_distinct_count", "referenced_works_count": "referenced_works_count",
         "open_access.is_oa": "open_access.is_oa", "open_access.oa_status": "open_access.oa_status",
