@@ -10,7 +10,8 @@ resources:
       schedule:
         quartz_cron_expression: 0 10/20 * * * ?
         timezone_id: UTC
-        pause_status: PAUSED
+        # oxjob #1646 xpac-pilot-1646-2026-11 (99,884 xpac works, 19 Nov 2026); re-pause when it reads complete
+        pause_status: UNPAUSED
       max_concurrent_runs: 1
       queue:
         enabled: true
