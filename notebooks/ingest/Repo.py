@@ -878,6 +878,7 @@ def _coar_code(uri):
     return m.group(1) if m else None
 
 
+SAME_ITEM_RELATIONS = {"IsIdenticalTo", "IsVersionOf", "IsVariantFormOf", "IsOriginalFormOf"}
 EUREPO_TEXT = {"openaccess": "open", "embargoedaccess": "embargoed", "restrictedaccess": "restricted",
                "closedaccess": "closed"}
 
@@ -921,8 +922,8 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
         family = _t(c.find(f"{DATACITE}familyName")) or _t(c.find(f"{DATACITE3}familyName"))
         given = _t(c.find(f"{DATACITE}givenName")) or _t(c.find(f"{DATACITE3}givenName"))
         # "Family, Given" as oai_dc writes it, when the display name isn't (CWI: "A.C. Kik (Annette)" with family Kik)
-        if len(names) == 1 and family and "," not in names[0]:
-            names = [f"{family}, {given}" if given else family]
+        if len(names) == 1 and family and given and "," not in names[0]:
+            names = [f"{family}, {given}"]
         oid = next((_t(n) for n in c.findall(f"{DATACITE}nameIdentifier") + c.findall(f"{DATACITE3}nameIdentifier")
                     if (n.get("nameIdentifierScheme") or "").upper() == "ORCID"), None)
         m = re.search(r"(\d{4}-\d{4}-\d{4}-\d{3}[\dX])", oid or "")
@@ -985,6 +986,14 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
             val = None  # a bare PMID matches nothing in extract_ids; skipped rather than faked into a URL
         if val and val not in identifier:
             identifier.append(val)
+    # DSpace 7's crosswalk puts the item's own DOI in a relatedIdentifier (IsIdenticalTo; IsVersionOf for the published
+    # version of an accepted manuscript), where its oai_dc has it in dc:identifier. Other relations
+    # (IsPartOf, IsSupplementTo, References ...) name other things and stay out.
+    for i in _dc(res, "relatedIdentifier"):
+        if (i.get("relatedIdentifierType") or "").upper() == "DOI" and i.get("relationType") in SAME_ITEM_RELATIONS:
+            d = re.search(r"10\.\d{4,9}/\S+", _t(i) or "")
+            if d and f"doi:{d.group(0)}" not in identifier:
+                identifier.append(f"doi:{d.group(0)}")
     identifier += [f for f in files if f not in identifier]  # open files only: a restricted file is no copy
 
     vers = res.find(f"{OAIRE}version")
