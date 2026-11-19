@@ -107,6 +107,9 @@ def _statement(statement, warehouse, fmt, timeout=3600):
         st = httpx.get(f"{_host()}/api/2.0/sql/statements/{sid}", headers=_H(), timeout=120).json()
     if st["status"]["state"] != "SUCCEEDED":
         raise RuntimeError(json.dumps(st["status"])[:1000])
+    if st.get("manifest", {}).get("truncated"):
+        # EXTERNAL_LINKS stops at 100 GiB a result (19 Nov: 52.4M query vectors were cut at 52.1M); callers slice their reads
+        raise RuntimeError(f"statement {sid}: result truncated at {st['manifest'].get('total_row_count')} rows")
     return sid, st
 
 
@@ -204,14 +207,18 @@ def npy(path):
 
 @app.function(image=cpu_image, volumes={"/data": svol}, secrets=[DBX], timeout=3 * 3600, cpu=4, memory=64 * 1024)
 def export_queries(table: str, build_id: str, warehouse: str):
-    """The night's reference vectors -> /data/nightly/<build_id>/q.h.npy (text_hash) + q.v.npy (float16)."""
+    """The night's reference vectors -> /data/nightly/<build_id>/q.h.npy (text_hash) + q.v.npy (float16), read in slices of at most
+    ~20M rows (one result may not pass 100 GiB, ~50M vectors)."""
     import numpy as np
     t0 = time.time()
+    n = int(sql_rows(f"SELECT count(*) FROM {table}", warehouse)[0][0])
+    k = 1 + n // 20_000_000
     hs, vs = [], []
-    for t in sql_arrow(f"SELECT text_hash, v FROM {table}", warehouse):
-        for b in t.to_batches():
-            hs.append(b.column("text_hash").to_numpy(zero_copy_only=False).astype(np.int64))
-            vs.append(np.array(vec16(b.column("v"))))
+    for j in range(k):
+        for t in sql_arrow(f"SELECT text_hash, v FROM {table} WHERE pmod(text_hash, {k}) = {j}", warehouse):
+            for b in t.to_batches():
+                hs.append(b.column("text_hash").to_numpy(zero_copy_only=False).astype(np.int64))
+                vs.append(np.array(vec16(b.column("v"))))
     h = np.concatenate(hs) if hs else np.zeros(0, np.int64)
     V = np.concatenate(vs) if vs else np.zeros((0, D), np.float16)
     base = f"/data/nightly/{build_id}"
