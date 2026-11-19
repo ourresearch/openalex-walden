@@ -18,10 +18,11 @@ Rules (EXPLORE § 2-3 of #1793):
 import html.entities
 import re
 import time
+from urllib.parse import unquote
 import urllib.request
 import xml.etree.ElementTree as ET
 
-PARSER_VERSION = "pmc-jats-3"  # 2: affiliation text skips <institution-id>; named entities decoded. 3: CRediT roles (#2075)
+PARSER_VERSION = "pmc-jats-4"  # 2: affiliation text skips <institution-id>; named entities decoded. 3: CRediT roles (#2075). 4: role URLs that hold the term text (#2075)
 BUCKET_HTTPS = "https://pmc-oa-opendata.s3.amazonaws.com"
 _FRONT_END = b"</front>"
 _MAX_FRONT_BYTES = 4 * 1024 * 1024
@@ -138,7 +139,9 @@ CREDIT_ROLES = (
     "project-administration", "resources", "software", "supervision", "validation", "visualization",
     "writing-original-draft", "writing-review-editing",
 )
-_CREDIT_URL = re.compile(r"credit\.niso\.org/contributor-roles/([a-z-]+)", re.I)
+# The URL's last segment: usually the slug, but some publishers (Frontiers) put the role's text there
+# ("contributor-roles/Writing - review & editing/"), so capture the whole segment and map it like text.
+_CREDIT_URL = re.compile(r"credit\.niso\.org/contributor-roles/([^/\"]+)", re.I)
 # A role's text, normalized by _credit_key, -> its slug: each slug's own words plus spellings seen in PMC JATS.
 _CREDIT_TERMS = {s.replace("-", " "): s for s in CREDIT_ROLES} | {
     "conceptualisation": "conceptualization",
@@ -166,8 +169,11 @@ def credit_roles(contrib):
         for attr in ("vocab-term-identifier", "content-type", "specific-use"):
             m = _CREDIT_URL.search(r.get(attr) or "")
             if m:
-                slugs = [m.group(1).lower()]
-                break
+                tail = unquote(m.group(1)).strip()
+                slug = tail.lower() if tail.lower() in CREDIT_ROLES else _CREDIT_TERMS.get(_credit_key(tail))
+                if slug:
+                    slugs = [slug]
+                    break
         if not slugs:
             terms = [r.get("vocab-term")] if r.get("vocab-term") else re.split(r"[,;]", _text(r, skip=()))
             slugs = [_CREDIT_TERMS.get(_credit_key(t)) for t in terms]
