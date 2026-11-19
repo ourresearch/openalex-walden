@@ -91,7 +91,14 @@ Matching strategies:
 ### is_corresponding
 - From crossref, pubmed and **landing_page** rows (key-based or positional match), unranked: every flagged row counts
   (in practice only landing_page rows carry flags, often several per DOI)
-- PDF is_corresponding is not used
+- GROBID's PDF is_corresponding flag is not used (it marks whichever author GROBID attached an email to: ~80% right
+  on works we'd fill, oxjob #736)
+- **The PDF's own correspondence line** (`openalex.pdf.pdf_corresponding_named`, oxjob #736): a text reader of the
+  stored PDF ("*Corresponding author", "Correspondence to:", an envelope or a symbol whose legend says so) named someone
+  on 2.4M publisher copies and 0.9M repository copies whose works showed none (one-time read, 18 Nov 2026). The last
+  cell of Create{Crossref,Repo}SuperAuthorships fills from it: TRUE only, only where no author of the DOI / PMH id is
+  flagged after every other rule and no legacy row flags anyone, only at a seat whose author_key is unique, never all
+  seats of a 3+ list, never two co-authors who share a surname (97 of 100 right in a blind check)
 - **pmc_oa** (`openalex.pubmed_central.pmc_oa_authors`, from `notebooks/ingest/PmcOpenData`, oxjob #1793): fill-only.
   Its flags count only on DOIs where no non-PDF source flags anyone and no `works_legacy.work_authors` row flags
   anyone on the work (a second flagged source fans out the join, #736; a source flag outranks legacy in
