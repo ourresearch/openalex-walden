@@ -666,7 +666,7 @@ def parse_repo_records(df, id_hosts, abstract=None, issue=None, volume=None, fir
     .transform(lambda d: d if pdf_urls is None else d.withColumn("urls", F.transform(
         "urls", lambda u: F.struct(
             u["url"].alias("url"),
-            F.when(F.array_contains(F.coalesce(pdf_urls, F.array().cast("array<string>")), u["url"]), F.lit("pdf"))
+            F.when(F.array_contains(pdf_urls, u["url"]), F.lit("pdf"))  # a NULL array matches nothing
              .otherwise(u["content_type"]).alias("content_type")))))
     .drop("has_pmcid", "pmcid", "_identifier_urls", "_relation_urls", "_oai_host", "_oai_local")
     .filter(F.size(F.col("urls")) > 0)
@@ -822,6 +822,10 @@ OPENAIRE_S3_PATH = "s3a://openalex-ingest/openaire/"
 # Endpoints whose open records count as open copies without a file link: feeds that never list files, switched only
 # after their landing pages pass the bar (oxjob #2429 ACCEPTANCE Test 1). Everyone else needs an open file.
 OPENAIRE_OPEN_WITHOUT_FILE = set()
+# Feeds _sequence's commit-version slot (this stream has no change feed): a parser fix bumps it, then a full refresh of
+# the *_openaire tables re-emits every record at the new version, which outranks the stored row it ties with on date,
+# rank and ingested_at. Without it the content hash decides those ties and about half the fixes are dropped (#880).
+OPENAIRE_PARSER_VERSION = 1
 
 # --- openaire_dc: begin (verbatim from oxjob #2429 work/openaire_dc.py) ---
 import gzip
@@ -1104,15 +1108,25 @@ parse_openaire_file_udf = F.udf(parse_openaire_file, ArrayType(_openaire_row_typ
 )
 @dlt.expect("file_parsed", "parse_error IS NULL")
 def repo_items_openaire():
-    return (
+    return openaire_files_as_items(
         spark.readStream
         .format("cloudFiles")
         .option("cloudFiles.format", "binaryFile")
         .option("pathGlobFilter", "*.xml.gz")
         .option("cloudFiles.schemaLocation", "dbfs:/pipelines/repo/openaire_schema")
         .option("cloudFiles.useManagedFileEvents", "true")  # as repo_items
-        .option("cloudFiles.maxFilesPerTrigger", "2000")
+        # as repo_items (#911): a file holds one or a few records, so small batches leave the executors idle; the
+        # byte cap bounds a batch of the big files a full-feed harvest can write (each <= ~4 MB of XML)
+        .option("cloudFiles.maxFilesPerTrigger", "50000")
+        .option("cloudFiles.maxBytesPerTrigger", "4g")
         .load(OPENAIRE_S3_PATH)
+    )
+
+
+def openaire_files_as_items(files):
+    """binaryFile rows of openaire/<endpoint id>/ -> repo_items_openaire rows. Shared with the dry run
+    (notebooks/maintenance/OpenAireDryRun.py)."""
+    return (files
         .select(
             F.explode(parse_openaire_file_udf(F.col("content"), F.col("path"))).alias("r"),
             F.regexp_extract(F.col("path"), r"openaire/([^/]+)/", 1).alias("repository_id"),
@@ -1124,8 +1138,7 @@ def repo_items_openaire():
 
 
 def openaire_items_as_repo_items(df):
-    """repo_items_openaire rows -> repo_items' shape (`ns0:header`, `ns0:metadata`.`ns1:dc`) plus their own columns.
-    Shared with the dry run (notebooks/maintenance/OpenAireDryRun.py)."""
+    """repo_items_openaire rows -> repo_items' shape (`ns0:header`, `ns0:metadata`.`ns1:dc`) plus their own columns."""
     return df.select(
         F.struct(
             F.col("oai_id").alias("ns0:identifier"),
@@ -1134,6 +1147,7 @@ def openaire_items_as_repo_items(df):
         ).alias("ns0:header"),
         F.when(~F.col("is_deleted") & F.col("dc").isNotNull(), F.struct(F.col("dc").alias("ns1:dc"))).alias("ns0:metadata"),
         "repository_id", "ingested_at", "pdf_urls", "volume", "issue", "first_page", "last_page",
+        F.lit(OPENAIRE_PARSER_VERSION).cast("long").alias("_commit_version"),
     )
 
 
