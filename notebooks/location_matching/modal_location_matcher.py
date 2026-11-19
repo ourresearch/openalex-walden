@@ -43,7 +43,7 @@ gpu_image = (modal.Image.debian_slim(python_version="3.12")
 TOKEN = modal.Secret.from_name("location-work-matcher-token")
 DBX = modal.Secret.from_name("oxjob-databricks")
 
-MAXC = 8                  # max GPU containers
+MAXC = 16                 # max GPU containers (8 until oxjob #2198, 19 Nov 2026)
 MAXLEN = 12000            # tokens per record (training cap)
 BATCH_TOKENS, BATCH_ROWS = 24000, 16
 DEFAULT_WAREHOUSE = "3996dc0a9b183ce3"
