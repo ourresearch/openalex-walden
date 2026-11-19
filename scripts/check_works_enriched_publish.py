@@ -15,6 +15,9 @@ This checks:
 - jobs/walden_end2end.yaml runs Works_Enriched -> Guardrails (reading the candidate) -> Publish_Works ->
   Optimize_Works_Enriched, and nothing else depends on Works_Enriched or on Guardrails, so no task can read
   openalex_works between tonight's build and its accepted publish.
+- Guardrails' CANDIDATE_DEFINITION is the view's SELECT, word for word (whitespace and case aside). Checks 1-2 read the
+  view's tables directly only while the live view has exactly that definition; a view changed without Guardrails would
+  still be judged right, by reading the view, but ~1.6 min slower every night.
 
 usage: check_works_enriched_publish.py [REPO_ROOT]   (default: .)
        check_works_enriched_publish.py --self-test
@@ -35,6 +38,7 @@ PUBLISH = re.compile(r"INSERT\s+OVERWRITE\s+(?:TABLE\s+)?" + LIVE + r"\s+BY\s+NA
 VIEW = re.compile(r"CREATE\s+OR\s+REPLACE\s+VIEW\s+" + re.escape(CANDIDATE) + r"\b[\s\S]*?\bFROM\s+"
                   r"openalex\.works\.openalex_works_build\b", re.I)
 CWE = "notebooks/end2end/CreateWorksEnriched.ipynb"
+GUARD = "notebooks/end2end/Guardrails.ipynb"
 PUB = "notebooks/end2end/PublishWorks.ipynb"
 JOB = "jobs/walden_end2end.yaml"
 
@@ -56,6 +60,21 @@ def enriched_problems(cells):
         out.append(f"{CWE}: expected the candidate view (CREATE OR REPLACE VIEW {CANDIDATE} ... FROM "
                    f"openalex.works.openalex_works_build) as the last code cell; found it in code cells {views} of {len(code)}")
     return out
+
+
+def norm_sql(sql):
+    return " ".join(strip_comments(sql).split()).lower()
+
+
+def definition_problems(cwe_cells, guard_cells):
+    """The view's SELECT (CreateWorksEnriched's last code cell, after its AS line) must equal Guardrails'
+    CANDIDATE_DEFINITION."""
+    view = re.search(r"^AS\s*$([\s\S]*)", strip_comments(cwe_cells[-1]) if cwe_cells else "", re.M)
+    mine = [m.group(1) for c in guard_cells for m in re.finditer(r'^CANDIDATE_DEFINITION = """([\s\S]*?)"""', c, re.M)]
+    if not view or len(mine) != 1 or norm_sql(view.group(1)) != norm_sql(mine[0]):
+        return [f"{GUARD}: CANDIDATE_DEFINITION must be the candidate view's SELECT in {CWE}'s last code cell, word for "
+                f"word; else Checks 1-2 fall back to reading the view, ~1.6 min slower (found {len(mine)} definitions)"]
+    return []
 
 
 def publish_problems(cells):
@@ -125,6 +144,12 @@ def self_test():
     assert enriched_problems([clone, old_pub, view]), "a publish in CreateWorksEnriched (#2004's place) fails"
     assert enriched_problems([clone, "SELECT * FROM openalex.works.openalex_works_hash", view]) == []
 
+    guard = ('x = 1\nCANDIDATE_DEFINITION = """\nSELECT b.* EXCEPT (updated_date)\nFROM openalex.works.openalex_works_build b '
+             'LEFT JOIN openalex.works.openalex_works_hash h ON h.id = b.id\n"""\n')
+    assert definition_problems([clone, view], ["y = 2", guard]) == [], definition_problems([clone, view], [guard])
+    assert definition_problems([clone, view], [guard.replace("h.id = b.id", "h.id = b.work_id")]), "drifted"
+    assert definition_problems([clone, view], ["y = 2"]), "no definition"
+
     pub = ("BEGIN\n  IF fast THEN\n    INSERT OVERWRITE openalex.works.openalex_works BY NAME\n    SELECT * FROM "
            f"{CANDIDATE};\n  ELSE\n    CREATE OR REPLACE TABLE openalex.works.openalex_works DEEP CLONE "
            "openalex.works.openalex_works_build;\n  END IF;\nEND")
@@ -190,7 +215,9 @@ if __name__ == "__main__":
         self_test()
         sys.exit(0)
     root = sys.argv[1] if len(sys.argv) > 1 else "."
-    found = (enriched_problems(code_cells(os.path.join(root, CWE))) + publish_problems(code_cells(os.path.join(root, PUB)))
+    cwe = code_cells(os.path.join(root, CWE))
+    found = (enriched_problems(cwe) + publish_problems(code_cells(os.path.join(root, PUB)))
+             + definition_problems(cwe, code_cells(os.path.join(root, GUARD)))
              + job_problems(open(os.path.join(root, JOB), encoding="utf-8").read()))
     for p in found:
         print(p)
