@@ -159,3 +159,68 @@ def test_letter_code_needs_a_capital_next():
     assert abstract_number_form("Phase 3 Trial") is None
     assert abstract_number_form("D-7-42 ICAを用いた脳電位解析法の検討") == "letter_code"
     assert abstract_number_form("OP-121-1 腹腔鏡下") is None
+
+
+# D7 step 3 (19 Nov 2026): the frozen series table, its exclusion list and the series rules that keep chapters,
+# session headings, years and dates out (oxjob #1162 work/d7_step3_series_2026-11-19.md).
+
+from openalex.dlt.abstract_number import (  # noqa: E402
+    EXCLUDED_SOURCES, EXCLUDED_SOURCE_IDS, RULE_VERSION, _SERIES_COLUMNS, series_table_ddl, excluded_table_ddl,
+    excluded_seed_sql, series_append_sql,
+)
+
+
+def test_a_day_of_the_month_keeps_its_number():
+    # Homily Service and The Expository Times title their items by date
+    assert abstract_number_prefix("24 October 2004", 2004) is None
+    assert abstract_number_prefix("10 December 2006 • Second Sunday in Advent", 2006) is None
+    assert abstract_number_prefix("24 June: Proper 7", 2001) is None
+    # ticket examples (ZD 26225, ZD 339) still lose theirs
+    assert abstract_number_prefix("511 Obturative nerve complication in laparoscopic treatment", 2021) == \
+        ("num_space", "511 ")
+    assert abstract_number_prefix("1402: STANDARDIZING WEANING OF HIGH-FLOW NASAL CANNULA", 2019) == \
+        ("num_colon", "1402: ")
+    assert abstract_number_prefix("46: THE “JULY EFFECT” IN THE ICU REVISITED", 2015) == ("num_colon", "46: ")
+
+
+def test_exclusion_seed_list():
+    assert len(EXCLUDED_SOURCE_IDS) == len(set(EXCLUDED_SOURCE_IDS)) == len(EXCLUDED_SOURCES) == 12
+    assert all(s.startswith("https://openalex.org/S") and reason for s, reason in EXCLUDED_SOURCES)
+    seed = excluded_seed_sql("t.x")
+    assert seed.startswith("INSERT INTO t.x") and "LEFT ANTI JOIN t.x" in seed
+    assert all(s in seed for s in EXCLUDED_SOURCE_IDS)
+    assert "\\'" in seed  # a quote inside a reason is escaped
+
+
+def test_series_rules_render():
+    s = series_sql()
+    assert "count_if(NOT guarded) >= 20" in s
+    assert "BETWEEN 1800 AND year + 1" in s and "'hash'" in s
+    assert "size(split(rest, '\\\\s+')) <= 4" in s
+    assert "coalesce(a.median_pages, 0) >= 10" in s
+    assert "NOT IN ('https://openalex.org/S4210172488'" in s and "\nAND NOT (a.n_pass_latin" in s
+    t = series_sql(excluded_table="x.excl")
+    assert "LEFT ANTI JOIN x.excl e ON e.source_id = a.source_id" in t and "\nWHERE NOT (a.n_pass_latin" in t
+    assert "NOT IN ('https://openalex.org/S4210172488'" not in t
+    d = series_sql(prefixes_table="x.pre")
+    assert "LEFT JOIN x.pre n ON n.work_id = w.id" in d and "concat(coalesce(n.prefix, ''), w.title) AS title" in d
+
+
+def test_series_table_and_append_agree():
+    ddl = series_table_ddl("x.series")
+    assert ddl.startswith("CREATE TABLE IF NOT EXISTS x.series")
+    ddl_cols = [c.strip().split()[0] for c in ddl.split("(", 1)[1].split(")\nCOMMENT")[0].split(",")]
+    assert ddl_cols == list(_SERIES_COLUMNS) + ["added_on", "rule_version"]
+    a = series_append_sql("x.series", "x.excl", "x.works", "x.pre")
+    assert a.startswith("INSERT INTO x.series (source_id, year, form, series_key")
+    assert f"'{RULE_VERSION}'" in a and "LEFT ANTI JOIN x.series t ON t.source_id <=> s.source_id" in a
+    assert "FROM x.works w LEFT JOIN x.pre n" in a and "LEFT ANTI JOIN x.excl e" in a
+    assert excluded_table_ddl("x.excl").startswith("CREATE TABLE IF NOT EXISTS x.excl (\n  source_id STRING NOT NULL")
+
+
+def test_builder_notebook_is_generated_from_the_module():
+    from pathlib import Path
+    from openalex.dlt.abstract_number import BUILDER_NOTEBOOK, builder_notebook_sql
+    notebook = Path(__file__).resolve().parents[3] / BUILDER_NOTEBOOK
+    assert notebook.read_text(encoding="utf-8") == builder_notebook_sql(), \
+        f"{BUILDER_NOTEBOOK} differs from abstract_number.builder_notebook_sql(): regenerate it (see its docstring)"
