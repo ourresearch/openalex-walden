@@ -918,6 +918,11 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
     creators, orcids = [], []
     for c in _dc(res, "creator"):
         names = [x for x in (_t(n) for n in c.findall(f"{DATACITE}creatorName") + c.findall(f"{DATACITE3}creatorName")) if x]
+        family = _t(c.find(f"{DATACITE}familyName")) or _t(c.find(f"{DATACITE3}familyName"))
+        given = _t(c.find(f"{DATACITE}givenName")) or _t(c.find(f"{DATACITE3}givenName"))
+        # "Family, Given" as oai_dc writes it, when the display name isn't (CWI: "A.C. Kik (Annette)" with family Kik)
+        if len(names) == 1 and family and "," not in names[0]:
+            names = [f"{family}, {given}" if given else family]
         oid = next((_t(n) for n in c.findall(f"{DATACITE}nameIdentifier") + c.findall(f"{DATACITE3}nameIdentifier")
                     if (n.get("nameIdentifierScheme") or "").upper() == "ORCID"), None)
         m = re.search(r"(\d{4}-\d{4}-\d{4}-\d{3}[\dX])", oid or "")
