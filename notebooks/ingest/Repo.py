@@ -824,7 +824,6 @@ OPENAIRE_S3_PATH = "s3a://openalex-ingest/openaire/"
 OPENAIRE_OPEN_WITHOUT_FILE = set()
 
 # --- openaire_dc: begin (verbatim from oxjob #2429 work/openaire_dc.py) ---
-import datetime
 import gzip
 import io
 import xml.etree.ElementTree as ET
@@ -874,8 +873,14 @@ def _dc(res, local):
 
 
 def _coar_code(uri):
-    m = re.search(r"/(c_[0-9a-f]+)\s*$", uri or "")
+    m = re.search(r"/(c_[0-9a-f]+)/?\s*$", uri or "")
     return m.group(1) if m else None
+
+
+def _access_of(uri):
+    """A COAR access-right URI (or an eu-repo one, which some feeds put in accessRightsURI) -> open / embargoed / ..."""
+    m = re.search(r"info:eu-repo/semantics/(\w+access)", uri or "", re.I)
+    return COAR_ACCESS.get(_coar_code(uri)) or (EUREPO_TEXT.get(m.group(1).lower()) if m else None)
 
 
 SAME_ITEM_RELATIONS = {"IsIdenticalTo", "IsVersionOf", "IsVariantFormOf", "IsOriginalFormOf"}
@@ -887,7 +892,7 @@ def _access(res):
     """(access, source): the record's COAR access right (datacite:rights; a few feeds put the eu-repo statement in
     dc:rights instead), else the most open of its files'."""
     for r in _dc(res, "rights"):
-        a = COAR_ACCESS.get(_coar_code(r.get("rightsURI"))) or ACCESS_LABEL.get((_t(r) or "").lower())
+        a = _access_of(r.get("rightsURI")) or ACCESS_LABEL.get((_t(r) or "").lower())
         if a:
             return a, "rights"
     for r in res.findall(f"{DC}rights"):
@@ -895,21 +900,20 @@ def _access(res):
         if m and m.group(1).lower() in EUREPO_TEXT:
             return EUREPO_TEXT[m.group(1).lower()], "dc_rights"
     order = ["open", "embargoed", "restricted", "closed"]
-    files = [COAR_ACCESS.get(_coar_code(f.get("accessRightsURI"))) for f in res.findall(f"{OAIRE}file")]
+    files = [_access_of(f.get("accessRightsURI")) for f in res.findall(f"{OAIRE}file")]
     files = [f for f in files if f]
     if files:
         return min(files, key=order.index), "file"
     return None, None
 
 
-def openaire_to_dc(res, today=None, open_needs_file=True):
+def openaire_to_dc(res, open_needs_file=True):
     """One <oaire:resource> element -> dict: `dc` (Repo.py's ns1:dc fields) plus access, version, file URLs, ORCIDs.
 
     open_needs_file: an open record counts as an open copy only when it lists a file that is itself open (or carries no
     access right of its own). A record that is "open" with no file is usually a link to the publisher's copy or a
     news clipping (Wageningen, 6 of 45 open records sampled 19 Nov); feeds that never list files (TNO) are switched
     with it False only after their landing pages pass the bar."""
-    today = today or datetime.date.today().isoformat()
 
     titles = [(t.get("titleType"), _t(t)) for t in _dc(res, "title")]
     main = next((t for ty, t in titles if not ty and t), None) or next((t for _, t in titles if t), None)
@@ -921,7 +925,7 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
         names = [x for x in (_t(n) for n in c.findall(f"{DATACITE}creatorName") + c.findall(f"{DATACITE3}creatorName")) if x]
         family = _t(c.find(f"{DATACITE}familyName")) or _t(c.find(f"{DATACITE3}familyName"))
         given = _t(c.find(f"{DATACITE}givenName")) or _t(c.find(f"{DATACITE3}givenName"))
-        # "Family, Given" as oai_dc writes it, when the display name isn't (CWI: "A.C. Kik (Annette)" with family Kik)
+        # "Family, Given" as oai_dc writes it, when the display name isn't (some feeds: "A.B. Family (Given)")
         if len(names) == 1 and family and given and "," not in names[0]:
             names = [f"{family}, {given}"]
         oid = next((_t(n) for n in c.findall(f"{DATACITE}nameIdentifier") + c.findall(f"{DATACITE3}nameIdentifier")
@@ -937,12 +941,9 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
         dates.setdefault(d.get("dateType"), _t(d))
     issued = dates.get("Issued") or dates.get("Accepted") or dates.get("Created") or _t(res.find(f"{DC}date"))
 
+    # shortcut: an embargoed record stays closed until the repository re-stamps it open. Its "Available" date can't be
+    # read as the embargo's end: some feeds give every record one in the past, closed ones included.
     access, access_from = _access(res)
-    available = dates.get("Available")
-    # An embargo that has run out: the file is free now, whatever the record still says (HalTei.py does the same).
-    embargo_ended = bool(available and re.match(r"\d{4}-\d{2}-\d{2}", available) and available[:10] <= today)
-    if access == "embargoed" and embargo_ended:
-        access, access_from = "open", access_from + "+embargo_ended"
 
     files, pdf_urls, files_seen = [], [], False
     for f in res.findall(f"{OAIRE}file"):
@@ -950,8 +951,8 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
         if not (u and re.match(r"https?://", u)):
             continue
         files_seen = True
-        code = COAR_ACCESS.get(_coar_code(f.get("accessRightsURI")))
-        if code is None or code == "open" or (code == "embargoed" and embargo_ended):
+        code = _access_of(f.get("accessRightsURI"))
+        if code is None or code == "open":
             if u not in files:
                 files.append(u)
                 if "pdf" in (f.get("mimeType") or "").lower():
@@ -961,12 +962,16 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
     # A closed copy's licence is left out, or Repo.py's licence fallback would reopen it.
     lic = [x for x in (l.get("uri") or _t(l) for l in res.findall(f"{OAIRE}licenseCondition")) if x]
     # An open record with a CC licence and no file stays open, as its oai_dc licence already made it (Repo.py's
-    # licence rule; Wageningen dry run 19 Nov: 68 of 16,984 records).
+    # licence rule).
     has_cc = any("creativecommons.org" in x for x in lic)
     is_open = access == "open" and (bool(files) or has_cc or not open_needs_file)
     if access == "open" and not is_open:
         access_from += "+no_open_file" if files_seen else "+no_file"
-    if is_open:
+    if access is None:  # no access right at all: the licence decides, as in oai_dc (Repo.py's licence rule)
+        is_open = has_cc
+    if access is None:
+        rights = [x for x in lic if "creativecommons.org" in x]
+    elif is_open:
         rights = [x for x in lic if "creativecommons.org" in x] + [EUREPO_ACCESS["open"]]
     else:
         rights = [EUREPO_ACCESS[access]] if access in ("embargoed", "restricted", "closed") else []
@@ -1028,7 +1033,7 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
             "dc:publisher": publisher[0] if publisher else None,
             "dc:rights": rights or None,
             "ns4:accessRights": None,
-            "ns4:license": (lic or None) if is_open else None,
+            "ns4:license": (lic or None) if is_open or access is None else None,
             "dc:relation": None,
         },
         "access": access,
@@ -1042,7 +1047,7 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
     }
 
 
-def parse_record(rec, today=None, open_needs_file=True):
+def parse_record(rec, open_needs_file=True):
     """One OAI <record> element -> dict with header fields and `p` (openaire_to_dc) or None."""
     h = rec.find(OAI + "header")
     out = {"oai_id": _t(h.find(OAI + "identifier")), "datestamp": _t(h.find(OAI + "datestamp")),
@@ -1053,7 +1058,7 @@ def parse_record(rec, today=None, open_needs_file=True):
     # local name only: a few feeds (TNO) write <resource> with no default namespace, its children still prefixed
     if out["is_deleted"] or res is None or res.tag.rsplit("}", 1)[-1] != "resource":
         return out
-    out["p"] = openaire_to_dc(res, today, open_needs_file)
+    out["p"] = openaire_to_dc(res, open_needs_file)
     return out
 # --- openaire_dc: end ---
 
