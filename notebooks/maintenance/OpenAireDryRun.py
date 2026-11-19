@@ -66,7 +66,7 @@ items = (files
          .select("r.*", "repository_id", "file_path", "ingested_at"))
 items.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_items")
 display(spark.sql(f"""SELECT repository_id, count(*) records, count_if(parse_error IS NOT NULL) parse_errors,
-  count_if(is_deleted) deleted, count_if(dc IS NULL AND NOT is_deleted) not_openaire, count_if(is_open) open,
+  count_if(is_deleted) deleted, count_if(dc IS NULL AND NOT is_deleted AND parse_error IS NULL) not_openaire, count_if(is_open) open,
   count_if(access = 'open' AND NOT is_open) open_without_file, count_if(access IN ('closed', 'restricted', 'embargoed')) closed,
   count_if(access IS NULL AND dc IS NOT NULL) no_access_right, count_if(size(pdf_urls) > 0) with_pdf
   FROM {OUT}_items GROUP BY 1"""))
@@ -96,7 +96,7 @@ WITH new AS (
 )
 SELECT coalesce(n.native_id, o.native_id) AS native_id, coalesce(n.endpoint_id, o.endpoint_id) AS endpoint_id,
   n.native_id IS NOT NULL AS in_feed, o.native_id IS NOT NULL AS in_repo_works,
-  n.native_id IS NOT NULL AND (o.native_id IS NULL OR n.updated_date >= o.updated_date) AS replaces,
+  n.native_id IS NOT NULL AND (o.native_id IS NULL OR o.updated_date IS NULL OR n.updated_date >= o.updated_date) AS replaces,
   o.is_oa AS old_is_oa, n.is_oa AS new_is_oa, o.license AS old_license, n.license AS new_license,
   o.version AS old_version, n.version AS new_version,
   o.title AS old_title, n.title AS new_title, o.normalized_title AS old_normalized_title,
@@ -116,6 +116,8 @@ display(spark.sql(f"""SELECT endpoint_id, count(*) rows, count_if(in_feed) in_fe
   count_if(replaces AND in_repo_works AND old_title <=> new_title) title_same,
   count_if(replaces AND in_repo_works AND old_normalized_title <=> new_normalized_title) normalized_title_same,
   count_if(replaces AND in_repo_works AND old_authors <=> new_authors) authors_same,
+  count_if(replaces AND in_repo_works AND size(old_authors) <=> size(new_authors)) author_count_same,
+  count_if(replaces AND in_repo_works AND size(old_dois) > 0 AND size(new_dois) = 0) doi_lost,
   count_if(replaces AND in_repo_works AND old_dois <=> new_dois) dois_same,
   count_if(replaces AND in_repo_works AND size(old_dois) = 0 AND size(new_dois) > 0) doi_added,
   count_if(replaces AND in_repo_works AND old_published_date <=> new_published_date) published_date_same,
