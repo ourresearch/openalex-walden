@@ -950,14 +950,16 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
                 files.append(u)
                 if "pdf" in (f.get("mimeType") or "").lower():
                     pdf_urls.append(u)
-    is_open = access == "open" and (bool(files) or not open_needs_file)
-    if access == "open" and not is_open:
-        access_from += "+no_open_file" if files_seen else "+no_file"
-
     # Rights in Repo.py's terms: a CC licence first only on an open copy (Repo.py picks the first creativecommons.org
     # value), then the eu-repo access statement (openAccess -> other-oa; the others restrict and block the fallbacks).
     # A closed copy's licence is left out, or Repo.py's licence fallback would reopen it.
     lic = [x for x in (l.get("uri") or _t(l) for l in res.findall(f"{OAIRE}licenseCondition")) if x]
+    # An open record with a CC licence and no file stays open, as its oai_dc licence already made it (Repo.py's
+    # licence rule; Wageningen dry run 19 Nov: 68 of 16,984 records).
+    has_cc = any("creativecommons.org" in x for x in lic)
+    is_open = access == "open" and (bool(files) or has_cc or not open_needs_file)
+    if access == "open" and not is_open:
+        access_from += "+no_open_file" if files_seen else "+no_file"
     if is_open:
         rights = [x for x in lic if "creativecommons.org" in x] + [EUREPO_ACCESS["open"]]
     else:
@@ -984,9 +986,11 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
     version = None
     if vers is not None:
         version = COAR_VERSION.get(_coar_code(vers.get("uri"))) or VERSION_LABEL.get((_t(vers) or "").lower().replace(" ", ""))
-    # dc:type as DSpace's oai_dc writes it: the resource type, then the eu-repo version, which Repo.py's version rule reads
+    # The eu-repo version goes where only Repo.py's version rule reads it (the text of the whole record): in dc:type,
+    # where DSpace's oai_dc puts it, best_type_udf ranks it as an article and it became raw_native_type (dry run 19 Nov).
     rtype = res.find(f"{OAIRE}resourceType")
-    dc_type = [x for x in [_t(rtype)] if x] + ([f"info:eu-repo/semantics/{version}"] if version else [])
+    dc_type = [x for x in [_t(rtype)] if x]
+    subjects = [x for x in (_t(s) for s in _dc(res, "subject")) if x] + ([f"info:eu-repo/semantics/{version}"] if version else [])
 
     def texts(path):
         return [x for x in (_t(e) for e in res.findall(path)) if x]
@@ -999,7 +1003,7 @@ def openaire_to_dc(res, today=None, open_needs_file=True):
             "dc:title": title,
             "dc:creator": creators,
             "dc:contributor": contributors,
-            "dc:subject": [x for x in (_t(s) for s in _dc(res, "subject")) if x],
+            "dc:subject": subjects,
             "dc:description": texts(f"{DC}description"),
             "dc:source": cit["Title"],
             "dc:date": [issued] if issued else [],
