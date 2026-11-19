@@ -14,7 +14,10 @@
 #     repo_parsed. A selective refresh of repo_parsed + repo_enriched for a parser fix
 #     therefore skips every record those flows hold (Persée since 27 Oct) unless the
 #     selection also names repo_parsed_reparse + repo_enriched_reparse (and the two
-#     *_hal_tei tables, if the fix is in shared parse code).
+#     *_hal_tei tables, if the fix is in shared parse code). The oai_openaire flow (#2429)
+#     is a rank-2 side flow too: a shared parse fix also refreshes repo_items_openaire,
+#     repo_parsed_openaire and repo_enriched_openaire, after bumping Repo.py's
+#     OPENAIRE_PARSER_VERSION so the re-emitted rows win their ties.
 resources:
   pipelines:
     repo_pipeline:
