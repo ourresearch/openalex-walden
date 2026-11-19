@@ -10,7 +10,8 @@ submittedVersion, then a PDF that has its XML, then the lowest UUID as the last 
 manifest the XML always comes from the same location as the PDF. The content API serves the primary
 row's XML, else the XML of the work's best row that has one: 37,206 works (2026-11-09) had their only
 XML on a non-primary row. Locations whose PDF failed the byte check
-(`openalex.pdf.manifest_excluded_pdfs`) are left out.
+(`openalex.pdf.manifest_excluded_pdfs`) are left out, and so are closed PDFs
+(`openalex.pdf.closed_pdfs`, not moved back: kept in the private bucket openalex-pdfs-closed, oxjob #2430).
 """
 
 LOCATIONS_MAPPED = "openalex.works.locations_mapped"
@@ -47,6 +48,10 @@ def content_files_sql(extra_where: str = "", table: str = LOCATIONS_MAPPED) -> s
           AND NOT EXISTS (
             SELECT 1 FROM openalex.pdf.manifest_excluded_pdfs x
             WHERE x.pdf_uuid = REPLACE(lm.pdf_s3_id, '.pdf', '')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM openalex.pdf.closed_pdfs c
+            WHERE c.key = lm.pdf_s3_id AND c.moved_back_at IS NULL
           )
           {extra_where}
     """

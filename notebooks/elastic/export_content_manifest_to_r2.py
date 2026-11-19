@@ -94,6 +94,11 @@ df = spark.sql("""
           SELECT 1 FROM openalex.pdf.manifest_excluded_pdfs x
           WHERE x.pdf_uuid = REPLACE(lm.pdf_s3_id, '.pdf', '')
         )
+        -- closed PDFs, kept in the private bucket (oxjob #2430), as in the per-location layout
+        AND NOT EXISTS (
+          SELECT 1 FROM openalex.pdf.closed_pdfs c
+          WHERE c.key = lm.pdf_s3_id AND c.moved_back_at IS NULL
+        )
       GROUP BY work_id
     )
 """)
