@@ -365,13 +365,14 @@ def repo_items():
 # COMMAND ----------
 
 def parse_repo_records(df, id_hosts, abstract=None, issue=None, volume=None, first_page=None, last_page=None,
-                       dedupe=True):
+                       dedupe=True, pdf_urls=None):
   """repo_parsed's column rules for any stream of oai_dc-shaped records (`ns0:header`, `ns0:metadata`.`ns1:dc`,
   repository_id, ingested_at): repo_items (the live harvest) and hal_tei_parsed (HAL rebuilt from its TEI, oxjob
   #1786). The keyword columns replace what oai_dc can't carry; with the defaults the plan is exactly repo_parsed's.
   dedupe=False skips the (native_id, datestamp) dedup, whose streaming state keeps the FIRST copy forever: the HAL
   TEI stream lets every copy through so the latest harvest (and a re-emitted CDF row, via _commit_version) wins
-  in repo_works' _sequence instead."""
+  in repo_works' _sequence instead. pdf_urls (oxjob #2429): a column of URLs the record itself says are PDFs; those
+  urls are typed pdf whatever their text says."""
   return (df
     .filter(F.col("ns0:metadata").isNotNull())  # doaj deleted articles have no metadata
     # oxjob #1407: native_id is the OAI header id, except that a placeholder host is replaced by the
@@ -660,6 +661,13 @@ def parse_repo_records(df, id_hosts, abstract=None, issue=None, volume=None, fir
             )),
         ).otherwise(F.col("urls"))
     )
+    # oxjob #2429: an oai_openaire record names its files' mime types, so its PDFs are typed pdf even when the URL
+    # doesn't say so (Wageningen's https://edepot.wur.nl/215208). Other streams skip this step: their plan is unchanged.
+    .transform(lambda d: d if pdf_urls is None else d.withColumn("urls", F.transform(
+        "urls", lambda u: F.struct(
+            u["url"].alias("url"),
+            F.when(F.array_contains(F.coalesce(pdf_urls, F.array().cast("array<string>")), u["url"]), F.lit("pdf"))
+             .otherwise(u["content_type"]).alias("content_type")))))
     .drop("has_pmcid", "pmcid", "_identifier_urls", "_relation_urls", "_oai_host", "_oai_local")
     .filter(F.size(F.col("urls")) > 0)
     .filter(F.size(F.filter(F.col("urls"), lambda x: ~x.url.contains("doi.org"))) > 0)
@@ -796,6 +804,332 @@ def parse_reparse_records(df, id_hosts):
     """repo_reparse_items rows -> repo_parsed rows. Shared with RepoReparse.py's dry run. Same endpoint re-key as
     repo_parsed, so a record keeps its native_id."""
     return parse_repo_records(df, id_hosts, dedupe=False)
+
+
+# COMMAND ----------
+
+# oxjob #2429: repositories harvested in oai_openaire (OpenAIRE Guidelines for Literature Repositories v4). Many put no
+# access statement and no file link in oai_dc (Wageningen's dc:rights names only the institution), so their open files
+# read closed; the same record in oai_openaire carries the COAR access right and the file URLs. An endpoint switched to
+# metadata_prefix oai_openaire keeps its id and lands in s3://openalex-ingest/openaire/<endpoint id>/ (harvester
+# PREFIX_S3_FOLDER), not repositories/, which repo_items reads with a fixed oai_dc schema. Each record is rebuilt as the
+# oai_dc record repo_parsed reads (same native_id, endpoint and rules; the access right written as the eu-repo statement
+# those rules already read), then flows into repo_works like HAL TEI: its own stream, no dedup, rank 2 in _sequence, so
+# on the same datestamp it replaces the oai_dc row harvested before the switch.
+# The parser block is copied verbatim from oxjobs todo/openaire-format-repository-feeds/work/openaire_dc.py, where it
+# is tested against both formats of the same records; edit both.
+OPENAIRE_S3_PATH = "s3a://openalex-ingest/openaire/"
+# Endpoints whose open records count as open copies without a file link: feeds that never list files, switched only
+# after their landing pages pass the bar (oxjob #2429 ACCEPTANCE Test 1). Everyone else needs an open file.
+OPENAIRE_OPEN_WITHOUT_FILE = set()
+
+# --- openaire_dc: begin (verbatim from oxjob #2429 work/openaire_dc.py) ---
+import datetime
+import gzip
+import io
+import xml.etree.ElementTree as ET
+
+OAI = "{http://www.openarchives.org/OAI/2.0/}"
+OAIRE = "{http://namespace.openaire.eu/schema/oaire/}"
+DATACITE = "{http://datacite.org/schema/kernel-4}"
+DATACITE3 = "{http://datacite.org/schema/kernel-3}"  # a few DSpace crosswalks still bind kernel-3
+DC = "{http://purl.org/dc/elements/1.1/}"
+DCTERMS = "{http://purl.org/dc/terms/}"
+XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+
+COAR_ACCESS = {  # http://purl.org/coar/access_right/<code>
+    "c_abf2": "open",
+    "c_f1cf": "embargoed",
+    "c_16ec": "restricted",
+    "c_14cb": "closed",  # metadata only access
+}
+ACCESS_LABEL = {"open access": "open", "embargoed access": "embargoed", "restricted access": "restricted",
+                "metadata only access": "closed", "closed access": "closed"}
+EUREPO_ACCESS = {"open": "info:eu-repo/semantics/openAccess", "embargoed": "info:eu-repo/semantics/embargoedAccess",
+                 "restricted": "info:eu-repo/semantics/restrictedAccess", "closed": "info:eu-repo/semantics/closedAccess"}
+COAR_VERSION = {  # http://purl.org/coar/version/<code> -> Repo.py's version vocabulary
+    "c_970fb48d4fbd8a85": "publishedVersion",   # VoR
+    "c_ab4af688f83e57aa": "acceptedVersion",    # AM
+    "c_e19f295774971610": "acceptedVersion",    # P (proof)
+    "c_71e4c1898caa6e32": "submittedVersion",   # SMUR
+    "c_b1a7d7d4d402bcce": "submittedVersion",   # AO (author's original)
+    "c_dc82b40f9837b551": "publishedVersion",   # CVoR (corrected VoR)
+    "c_be7fb7dd8ff6fe43": "publishedVersion",   # EVoR (enhanced VoR)
+}
+VERSION_LABEL = {"vor": "publishedVersion", "am": "acceptedVersion", "smur": "submittedVersion",
+                 "ao": "submittedVersion", "p": "acceptedVersion", "cvor": "publishedVersion", "evor": "publishedVersion",
+                 "publishedversion": "publishedVersion", "acceptedversion": "acceptedVersion",
+                 "submittedversion": "submittedVersion"}
+
+
+def _t(el):
+    if el is None:
+        return None
+    return re.sub(r"\s+", " ", "".join(el.itertext())).strip() or None
+
+
+def _dc(res, local):
+    """Elements named `local` under either DataCite namespace."""
+    return res.findall(f".//{DATACITE}{local}") + res.findall(f".//{DATACITE3}{local}")
+
+
+def _coar_code(uri):
+    m = re.search(r"/(c_[0-9a-f]+)\s*$", uri or "")
+    return m.group(1) if m else None
+
+
+EUREPO_TEXT = {"openaccess": "open", "embargoedaccess": "embargoed", "restrictedaccess": "restricted",
+               "closedaccess": "closed"}
+
+
+def _access(res):
+    """(access, source): the record's COAR access right (datacite:rights; a few feeds put the eu-repo statement in
+    dc:rights instead), else the most open of its files'."""
+    for r in _dc(res, "rights"):
+        a = COAR_ACCESS.get(_coar_code(r.get("rightsURI"))) or ACCESS_LABEL.get((_t(r) or "").lower())
+        if a:
+            return a, "rights"
+    for r in res.findall(f"{DC}rights"):
+        m = re.search(r"info:eu-repo/semantics/(\w+access)", _t(r) or "", re.I)
+        if m and m.group(1).lower() in EUREPO_TEXT:
+            return EUREPO_TEXT[m.group(1).lower()], "dc_rights"
+    order = ["open", "embargoed", "restricted", "closed"]
+    files = [COAR_ACCESS.get(_coar_code(f.get("accessRightsURI"))) for f in res.findall(f"{OAIRE}file")]
+    files = [f for f in files if f]
+    if files:
+        return min(files, key=order.index), "file"
+    return None, None
+
+
+def openaire_to_dc(res, today=None, open_needs_file=True):
+    """One <oaire:resource> element -> dict: `dc` (Repo.py's ns1:dc fields) plus access, version, file URLs, ORCIDs.
+
+    open_needs_file: an open record counts as an open copy only when it lists a file that is itself open (or carries no
+    access right of its own). A record that is "open" with no file is usually a link to the publisher's copy or a
+    news clipping (Wageningen, 6 of 45 open records sampled 19 Nov); feeds that never list files (TNO) are switched
+    with it False only after their landing pages pass the bar."""
+    today = today or datetime.date.today().isoformat()
+
+    titles = [(t.get("titleType"), _t(t)) for t in _dc(res, "title")]
+    main = next((t for ty, t in titles if not ty and t), None) or next((t for _, t in titles if t), None)
+    sub = next((t for ty, t in titles if ty == "Subtitle" and t), None)
+    title = f"{main}: {sub}" if main and sub and sub.lower() not in main.lower() else main
+
+    creators, orcids = [], []
+    for c in _dc(res, "creator"):
+        names = [x for x in (_t(n) for n in c.findall(f"{DATACITE}creatorName") + c.findall(f"{DATACITE3}creatorName")) if x]
+        oid = next((_t(n) for n in c.findall(f"{DATACITE}nameIdentifier") + c.findall(f"{DATACITE3}nameIdentifier")
+                    if (n.get("nameIdentifierScheme") or "").upper() == "ORCID"), None)
+        m = re.search(r"(\d{4}-\d{4}-\d{4}-\d{3}[\dX])", oid or "")
+        for name in names:  # some feeds (TNO) put every author's creatorName in one creator element
+            creators.append(name)
+            orcids.append(m.group(1) if m and len(names) == 1 else None)
+    contributors = [x for x in (_t(c.find(f"{DATACITE}contributorName")) for c in _dc(res, "contributor")) if x]
+
+    dates = {}
+    for d in _dc(res, "date"):
+        dates.setdefault(d.get("dateType"), _t(d))
+    issued = dates.get("Issued") or dates.get("Accepted") or dates.get("Created") or _t(res.find(f"{DC}date"))
+
+    access, access_from = _access(res)
+    available = dates.get("Available")
+    # An embargo that has run out: the file is free now, whatever the record still says (HalTei.py does the same).
+    embargo_ended = bool(available and re.match(r"\d{4}-\d{2}-\d{2}", available) and available[:10] <= today)
+    if access == "embargoed" and embargo_ended:
+        access, access_from = "open", access_from + "+embargo_ended"
+
+    files, pdf_urls, files_seen = [], [], False
+    for f in res.findall(f"{OAIRE}file"):
+        u = _t(f)
+        if not (u and re.match(r"https?://", u)):
+            continue
+        files_seen = True
+        code = COAR_ACCESS.get(_coar_code(f.get("accessRightsURI")))
+        if code is None or code == "open" or (code == "embargoed" and embargo_ended):
+            if u not in files:
+                files.append(u)
+                if "pdf" in (f.get("mimeType") or "").lower():
+                    pdf_urls.append(u)
+    is_open = access == "open" and (bool(files) or not open_needs_file)
+    if access == "open" and not is_open:
+        access_from += "+no_open_file" if files_seen else "+no_file"
+
+    # Rights in Repo.py's terms: a CC licence first only on an open copy (Repo.py picks the first creativecommons.org
+    # value), then the eu-repo access statement (openAccess -> other-oa; the others restrict and block the fallbacks).
+    # A closed copy's licence is left out, or Repo.py's licence fallback would reopen it.
+    lic = [x for x in (l.get("uri") or _t(l) for l in res.findall(f"{OAIRE}licenseCondition")) if x]
+    if is_open:
+        rights = [x for x in lic if "creativecommons.org" in x] + [EUREPO_ACCESS["open"]]
+    else:
+        rights = [EUREPO_ACCESS[access]] if access in ("embargoed", "restricted", "closed") else []
+
+    identifier = []
+    for i in _dc(res, "identifier") + _dc(res, "alternateIdentifier"):
+        typ = (i.get("identifierType") or i.get("alternateIdentifierType") or "").upper()
+        val = _t(i)
+        if not val:
+            continue
+        if typ == "DOI":
+            d = re.search(r"10\.\d{4,9}/\S+", val)
+            val = f"doi:{d.group(0)}" if d else None
+        elif typ == "HANDLE" and not val.startswith("http"):
+            val = f"http://hdl.handle.net/{val.removeprefix('hdl:')}"
+        elif typ in ("PMID",):
+            val = None  # a bare PMID matches nothing in extract_ids; skipped rather than faked into a URL
+        if val and val not in identifier:
+            identifier.append(val)
+    identifier += [f for f in files if f not in identifier]  # open files only: a restricted file is no copy
+
+    vers = res.find(f"{OAIRE}version")
+    version = None
+    if vers is not None:
+        version = COAR_VERSION.get(_coar_code(vers.get("uri"))) or VERSION_LABEL.get((_t(vers) or "").lower().replace(" ", ""))
+    # dc:type as DSpace's oai_dc writes it: the resource type, then the eu-repo version, which Repo.py's version rule reads
+    rtype = res.find(f"{OAIRE}resourceType")
+    dc_type = [x for x in [_t(rtype)] if x] + ([f"info:eu-repo/semantics/{version}"] if version else [])
+
+    def texts(path):
+        return [x for x in (_t(e) for e in res.findall(path)) if x]
+
+    cit = {k: _t(res.find(f"{OAIRE}citation{k}")) for k in ("Title", "Volume", "Issue", "StartPage", "EndPage")}
+    publisher = texts(f"{DC}publisher")
+    lang = texts(f"{DC}language")
+    return {
+        "dc": {
+            "dc:title": title,
+            "dc:creator": creators,
+            "dc:contributor": contributors,
+            "dc:subject": [x for x in (_t(s) for s in _dc(res, "subject")) if x],
+            "dc:description": texts(f"{DC}description"),
+            "dc:source": cit["Title"],
+            "dc:date": [issued] if issued else [],
+            "dc:type": dc_type,
+            "dc:identifier": identifier,
+            "dc:language": lang[0] if lang else None,
+            "dc:format": texts(f"{DC}format") or None,
+            "dc:publisher": publisher[0] if publisher else None,
+            "dc:rights": rights or None,
+            "ns4:accessRights": None,
+            "ns4:license": (lic or None) if is_open else None,
+            "dc:relation": None,
+        },
+        "access": access,
+        "access_from": access_from,
+        "is_open": is_open,
+        "version": version,
+        "file_urls": files,
+        "pdf_urls": pdf_urls,
+        "creator_orcids": orcids,
+        "volume": cit["Volume"], "issue": cit["Issue"], "first_page": cit["StartPage"], "last_page": cit["EndPage"],
+    }
+
+
+def parse_record(rec, today=None, open_needs_file=True):
+    """One OAI <record> element -> dict with header fields and `p` (openaire_to_dc) or None."""
+    h = rec.find(OAI + "header")
+    out = {"oai_id": _t(h.find(OAI + "identifier")), "datestamp": _t(h.find(OAI + "datestamp")),
+           "set_spec": [_t(s) for s in h.findall(OAI + "setSpec")], "is_deleted": h.get("status") == "deleted",
+           "p": None}
+    md = rec.find(OAI + "metadata")
+    res = md[0] if md is not None and len(md) else None
+    # local name only: a few feeds (TNO) write <resource> with no default namespace, its children still prefixed
+    if out["is_deleted"] or res is None or res.tag.rsplit("}", 1)[-1] != "resource":
+        return out
+    out["p"] = openaire_to_dc(res, today, open_needs_file)
+    return out
+# --- openaire_dc: end ---
+
+
+def parse_openaire_file(data, path):
+    """Harvester file bytes (gzip or not) -> one row per record, streamed record by record as HalTei.py does. A file
+    that fails to parse becomes one error row (counted by the expectation), never a failed update."""
+    m = re.search(r"openaire/([^/]+)/", path or "")
+    needs_file = not (m and m.group(1) in OPENAIRE_OPEN_WITHOUT_FILE)
+    try:
+        stream = gzip.GzipFile(fileobj=io.BytesIO(data)) if data[:2] == b"\x1f\x8b" else io.BytesIO(data)
+        out = []
+        for _, el in ET.iterparse(stream, events=("end",)):
+            if el.tag == OAI + "record":
+                r = parse_record(el, open_needs_file=needs_file)
+                p = r.pop("p") or {}
+                out.append({**r, **{k: p.get(k) for k in ("dc", "access", "access_from", "is_open", "version", "pdf_urls",
+                                                          "creator_orcids", "volume", "issue", "first_page", "last_page")}})
+                el.clear()
+        return out
+    except Exception as e:  # noqa: BLE001 -- surfaced as a row, never swallowed
+        return [{"is_deleted": False, "parse_error": f"{type(e).__name__}: {e}"[:1000]}]
+
+
+_openaire_row_type = StructType([
+    StructField("oai_id", StringType()), StructField("datestamp", StringType()),
+    StructField("set_spec", ArrayType(StringType())), StructField("is_deleted", BooleanType()),
+    StructField("dc", _dc_record_struct),  # repository_schema's ns1:dc: same names and types
+    StructField("access", StringType()), StructField("access_from", StringType()), StructField("is_open", BooleanType()),
+    StructField("version", StringType()), StructField("pdf_urls", ArrayType(StringType())),
+    StructField("creator_orcids", ArrayType(StringType())),
+    StructField("volume", StringType()), StructField("issue", StringType()),
+    StructField("first_page", StringType()), StructField("last_page", StringType()),
+    StructField("parse_error", StringType()),
+])
+parse_openaire_file_udf = F.udf(parse_openaire_file, ArrayType(_openaire_row_type))
+
+
+@dlt.table(
+    name="repo_items_openaire",
+    table_properties={"quality": "bronze"},
+    comment="oai_openaire records as harvested (oxjob #2429), one row per record per file, rebuilt as oai_dc + access",
+)
+@dlt.expect("file_parsed", "parse_error IS NULL")
+def repo_items_openaire():
+    return (
+        spark.readStream
+        .format("cloudFiles")
+        .option("cloudFiles.format", "binaryFile")
+        .option("pathGlobFilter", "*.xml.gz")
+        .option("cloudFiles.schemaLocation", "dbfs:/pipelines/repo/openaire_schema")
+        .option("cloudFiles.useManagedFileEvents", "true")  # as repo_items
+        .option("cloudFiles.maxFilesPerTrigger", "2000")
+        .load(OPENAIRE_S3_PATH)
+        .select(
+            F.explode(parse_openaire_file_udf(F.col("content"), F.col("path"))).alias("r"),
+            F.regexp_extract(F.col("path"), r"openaire/([^/]+)/", 1).alias("repository_id"),
+            F.col("path").alias("file_path"),
+            F.col("modificationTime").alias("ingested_at"),  # S3 object mtime: when the harvester delivered it (#911)
+        )
+        .select("r.*", "repository_id", "file_path", "ingested_at")
+    )
+
+
+def openaire_items_as_repo_items(df):
+    """repo_items_openaire rows -> repo_items' shape (`ns0:header`, `ns0:metadata`.`ns1:dc`) plus their own columns.
+    Shared with the dry run (notebooks/maintenance/OpenAireDryRun.py)."""
+    return df.select(
+        F.struct(
+            F.col("oai_id").alias("ns0:identifier"),
+            F.col("datestamp").cast("timestamp").alias("ns0:datestamp"),
+            F.col("set_spec").alias("ns0:setSpec"),
+        ).alias("ns0:header"),
+        F.when(~F.col("is_deleted") & F.col("dc").isNotNull(), F.struct(F.col("dc").alias("ns1:dc"))).alias("ns0:metadata"),
+        "repository_id", "ingested_at", "pdf_urls", "volume", "issue", "first_page", "last_page",
+    )
+
+
+def parse_openaire_records(df, id_hosts):
+    """repo_items_openaire rows -> repo_parsed rows. Shared with the dry run."""
+    return parse_repo_records(
+        openaire_items_as_repo_items(df.filter(F.col("parse_error").isNull())), id_hosts, dedupe=False,
+        volume=F.col("volume"), issue=F.col("issue"), first_page=F.col("first_page"), last_page=F.col("last_page"),
+        pdf_urls=F.col("pdf_urls"),
+    )
+
+
+@dlt.table(
+    name="repo_parsed_openaire",
+    temporary=True,
+    comment="oai_openaire records (oxjob #2429) parsed with repo_parsed's rules"
+)
+def repo_parsed_openaire():
+    return parse_openaire_records(dlt.read_stream("repo_items_openaire"), read_endpoint_hosts(spark))
 
 # COMMAND ----------
 
@@ -1021,6 +1355,14 @@ def repo_enriched_reparse():
 # The same rules and rank as HAL TEI, one body: every flow into repo_works must carry one identical _sequence type.
 enrich_reparse = enrich_hal_tei  # shared with RepoReparse.py's dry run
 
+
+# oxjob #2429: oai_openaire records, rank 2 like HAL TEI and the re-parse: on the same datestamp the openaire row beats the
+# oai_dc row harvested before the endpoint was switched (same native_id); after the switch only this stream delivers.
+@dlt.table(name="repo_enriched_openaire",
+           comment="oai_openaire records (oxjob #2429) after repo_enriched's rules; fourth CDC source of repo_works")
+def repo_enriched_openaire():
+    return enrich_hal_tei(dlt.read_stream("repo_parsed_openaire"))
+
 dlt.create_streaming_table(
     name="repo_works",
     comment="Final repository works table with unique identifiers",
@@ -1056,3 +1398,6 @@ dlt.create_auto_cdc_flow(source="repo_enriched_hal_tei", name="repo_works_hal_te
 
 # oxjob #1828: the third flow, raw files re-parsed with today's schema.
 dlt.create_auto_cdc_flow(source="repo_enriched_reparse", name="repo_works_reparse", **REPO_WORKS_CDC)
+
+# oxjob #2429: the fourth flow, repositories harvested in oai_openaire.
+dlt.create_auto_cdc_flow(source="repo_enriched_openaire", name="repo_works_openaire", **REPO_WORKS_CDC)
