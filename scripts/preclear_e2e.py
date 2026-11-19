@@ -10,6 +10,8 @@ own line. Until then a capped guardrails_override row raised Check 1 and switche
 curation decline gates off. So name every planned change on the same command line:
 
     --max-changed N   works this run may stamp (Guardrails Check 1; its line is 7.5M)
+    --add N           your change's stamps (x1.2), added to the row's cap inside the UPDATE itself, so a raise can't be
+                      built on a stale read (a new row starts at the 7.5M line + N). Prefer it to --raise --max-changed
     --max-loss works=N,abstracts=N,...   losses (each check's line is 2M works; citations 5%; curations 10 rows)
     --max-deleted N   works that may disappear (TrackDeletedWorks / delete_works); also names works=N on the
                       night's guardrails_override row (filed or raised in place for you)
@@ -32,6 +34,7 @@ oversized feed; those have their own flags.
     scripts/preclear_e2e.py --flags guardrails_override,deleted_works_guard_override --max-changed 21.5M \
         --max-deleted 7.5M --max-loss abstracts=7M,affiliations=3M,institutions=3M --reason ... --by casey
     scripts/preclear_e2e.py --raise --max-changed 34M --max-loss abstracts=7.2M --reason "+ #1528 ..." --by jason
+    scripts/preclear_e2e.py --raise --add 528K --reason "+ #952 ..." --by jason   # adds to whatever the row holds now
     scripts/preclear_e2e.py --current-run --raise --max-loss works=2.5M --reason ... --by ...  # this morning's repair
     scripts/preclear_e2e.py --night 2026-09-24 --max-changed ... --reason ... --by ...  # CT evening date of a later run
     scripts/preclear_e2e.py --list                                     # rows whose window has not ended
@@ -171,6 +174,9 @@ def main():
                          "or raised a later one: --night is the CT evening date, not the UTC run date)")
     ap.add_argument("--current-run", action="store_true", help="the run that started at the last 05:00 UTC (a repair)")
     ap.add_argument("--max-changed", type=count, help="guardrails_override: works this run may stamp (Check 1); default the 7.5M line")
+    ap.add_argument("--add", type=count,
+                    help="guardrails_override: add N stamps to the row's cap in the UPDATE itself (no stale base); a new row "
+                         "starts at the 7.5M line + N. Instead of --max-changed")
     ap.add_argument("--max-deleted", type=count, help="deleted_works_guard_override: works that may disappear; also names works=N")
     ap.add_argument("--max-loss", type=losses, default={}, help="guardrails_override: losses by name, e.g. works=4.3M,abstracts=6M")
     ap.add_argument("--raise", dest="raise_", action="store_true",
@@ -242,6 +248,15 @@ def main():
         sys.exit("--current-run and --night name different runs; give one")
     if a.max_changed is not None and "guardrails_override" not in flags:
         sys.exit("--max-changed caps guardrails_override; add it to --flags")
+    # 19 Nov 2026 (#1642): sessions raise night 11-20's one row in turn, each sending a total it computed from its own read.
+    # One read the row before three raises landed (10:50-10:56 CT) and sent its total at 11:00: higher than the row, so the
+    # lower-cap refusal passed it, and 698,300 stamps vanished from the cap. --add does the sum in the UPDATE.
+    if a.add is not None and a.max_changed is not None:
+        sys.exit("--add and --max-changed both set the stamp cap; give one (--add for a raise)")
+    if a.add is not None and "guardrails_override" not in flags:
+        sys.exit("--add raises guardrails_override's cap; add it to --flags")
+    if a.add is not None:
+        a.raise_ = True    # --add is always raise-or-file: it adds to the night's one row, or files it at the line + N
     if a.max_loss and "guardrails_override" not in flags:
         sys.exit("--max-loss names Guardrails' and the curation gates' losses, which ride guardrails_override; add it to --flags")
     if a.max_deleted is not None and "deleted_works_guard_override" not in flags:
@@ -340,13 +355,20 @@ def main():
                     f"reason = concat(reason, {q(f' | RAISED {stamp} by {a.by}: {a.reason}')})"]
             if caps.get(f) is not None:
                 sets.insert(0, f"max_changed = {caps[f]}")
+            elif f == "guardrails_override" and a.add is not None:
+                sets.insert(0, f"max_changed = coalesce(max_changed, {STAMPS_LINE}) + {a.add}")
             write(f"UPDATE {TABLE} SET {', '.join(sets)} WHERE flag = {q(f)} AND created_at = TIMESTAMP '{created}'")
+            if f == "guardrails_override" and a.add is not None and not a.dry_run:
+                _, now_row = sql(f"SELECT max_changed FROM {TABLE} WHERE flag = {q(f)} AND created_at = TIMESTAMP '{created}'", wh)
+                print(f"raised {f} in place (row of {created} UTC): max_changed +{a.add:,} -> {int(now_row[0][0]):,}; "
+                      f"losses {show_map(new_loss)}")
+                continue
             print(f"raised {f} in place (row of {created} UTC): max_changed {old_changed} -> "
                   f"{caps.get(f) if caps.get(f) is not None else old_changed}; losses {show_map(new_loss)}")
             continue
         cap = caps.get(f)
         if f == "guardrails_override" and cap is None:
-            cap = STAMPS_LINE     # a row names stamps explicitly; at the line it raises nothing (never NULL = uncapped)
+            cap = STAMPS_LINE + (a.add or 0)     # a row names stamps explicitly; at the line it raises nothing (never NULL = uncapped)
         write(f"INSERT INTO {TABLE} (valid_from, valid_until, flag, reason, requested_by, created_at, max_changed, max_loss) "
               f"VALUES (TIMESTAMP '{start:%Y-%m-%d %H:%M:%S}', TIMESTAMP '{until:%Y-%m-%d %H:%M:%S}', {q(f)}, {q(a.reason)}, "
               f"{q(a.by)}, current_timestamp(), {cap if cap is not None else 'NULL'}, {map_sql(row_loss)})")
