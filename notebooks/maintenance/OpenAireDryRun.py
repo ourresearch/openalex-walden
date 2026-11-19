@@ -23,6 +23,10 @@ import pyspark.sql.functions as F
 
 dbutils.widgets.text("endpoint_ids", "0a26303df1172c2974a", "comma-separated endpoint ids (folders under openaire/)")
 dbutils.widgets.text("out_prefix", "openalex.transient.oxjob2429", "scratch table prefix")
+# read_endpoint_hosts reads the endpoint registry (catalog openalex_sources), which only the pipeline's service principal
+# can use; it re-keys only placeholder OAI hosts (ojs.pkp.sfu.ca, localhost, ...), so a run as a person passes false.
+dbutils.widgets.text("rekey_hosts", "false", "true = re-key placeholder hosts from the registry (run as the SP)")
+REKEY = dbutils.widgets.get("rekey_hosts").lower() == "true"
 ENDPOINTS = [e.strip() for e in dbutils.widgets.get("endpoint_ids").split(",") if e.strip()]
 OUT = dbutils.widgets.get("out_prefix")
 
@@ -70,7 +74,7 @@ display(spark.sql(f"""SELECT repository_id, count(*) records, count_if(parse_err
 # COMMAND ----------
 
 src = spark.table(f"{OUT}_items").withColumn("_commit_version", F.lit(0).cast("long"))
-enriched = repo["enrich_hal_tei"](repo["parse_openaire_records"](src, repo["read_endpoint_hosts"](spark)))
+enriched = repo["enrich_hal_tei"](repo["parse_openaire_records"](src, repo["read_endpoint_hosts"](spark) if REKEY else {}))
 enriched.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_enriched")
 _seq = enriched.schema["_sequence"].dataType
 # every flow into repo_works carries one all-nullable struct<updated_date, col2..col5> (HalTeiCutoverDryRun.py)
