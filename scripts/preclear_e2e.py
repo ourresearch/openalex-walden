@@ -163,11 +163,25 @@ def show_map(m):
     return ", ".join(f"{k} {v:,}" for k, v in sorted(m.items())) if m else "no loss named"
 
 
+def checkout_fence(a):
+    """One agent session per oxjob (oxjob #2407). On a machine where agent sessions hold oxjob checkouts
+    (~/plexus/scripts/checkout.py), refuse a write unless this session holds the checkout of the job the change belongs
+    to: --job, else the first #id in --reason. Two sessions raising the same row a minute apart is what this stops.
+    Anywhere else it does nothing."""
+    here = os.path.expanduser("~/plexus/scripts")
+    if not os.path.exists(os.path.join(here, "checkout.py")):
+        return
+    sys.path.insert(0, here)
+    import checkout
+    checkout.fence([a.job], "guardrail pre-clear", (a.reason or "")[:160], text=a.reason or "", prefix="NOT WRITTEN")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--flags", default="guardrails_override", help="comma-separated; default guardrails_override")
     ap.add_argument("--reason", help="what change, how many works, oxjob id")
     ap.add_argument("--by", help="who gave the yes")
+    ap.add_argument("--job", help="the oxjob the change belongs to (default: the first #id in --reason)")
     ap.add_argument("--night", help="CT evening date (YYYY-MM-DD) the run belongs to; default = the next 05:00 UTC")
     ap.add_argument("--later-night", action="store_true",
                     help="allow a NEW row for a run after the next one (18 Nov 2026: two lanes meant the next run and filed "
@@ -192,6 +206,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="print the SQL writes instead of running them")
     ap.add_argument("--warehouse", default=None)
     a = ap.parse_args()
+    if not (a.list or a.dry_run):
+        checkout_fence(a)
     wh = a.warehouse or os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID") or DEFAULT_WAREHOUSE
 
     def write(statement):
