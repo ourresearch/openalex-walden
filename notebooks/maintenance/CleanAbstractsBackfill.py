@@ -38,7 +38,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.41-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.43-py3-none-any.whl
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -81,7 +81,9 @@ GATE_MOJIBAKE = (
     "|[\\u00e0-\\u00ef][\\u0080-\\u00bf]{2}"
     "|[\\u00f0-\\u00f4][\\u0080-\\u00bf]{3}"
 )
-GATE = f"({GATE_ENTITY})|({GATE_TAG})|({GATE_MOJIBAKE})"
+# oxjob #2059: a leading "Abstract" heading, any case (the cleaner decides which ones go)
+GATE_HEADING = r"^\s*(?i:a ?bstract)"
+GATE = f"({GATE_ENTITY})|({GATE_TAG})|({GATE_MOJIBAKE})|({GATE_HEADING})"
 
 print(f"source  : {SOURCE_TABLE}")
 print(f"stage   : {STAGE_TABLE}")

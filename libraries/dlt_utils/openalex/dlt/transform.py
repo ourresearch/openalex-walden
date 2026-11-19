@@ -1,5 +1,5 @@
 from .normalize import *
-from .text_clean import clean_text, clean_title
+from .text_clean import clean_text, clean_title, strip_abstract_heading
 
 def clean_abstract_text(abstract_string_input):
     # Shared cleaner: the searched `abstract`/`fulltext` ES fields and the
@@ -26,6 +26,8 @@ def clean_abstract_text(abstract_string_input):
     )
 
     abstract_s = " ".join(abstract_s.split()).strip()
+
+    abstract_s = strip_abstract_heading(abstract_s)  # oxjob #2059
 
     return abstract_s if abstract_s else None
 

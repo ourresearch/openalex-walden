@@ -275,6 +275,45 @@ def test_clean_text_idempotent_for_abstract_path():
         once = tc.clean_text(s)
         assert tc.clean_text(once) == once, f"clean_text not idempotent: {s!r}"
 
+# --- Abstract heading (oxjob #2059) ------------------------------------------- #
+
+def test_abstract_heading_dropped():
+    # served abstracts, 19 Nov 2026
+    for s, want in [
+        ("Abstract Celtic languages are today restricted", "Celtic languages are today restricted"),
+        ("ABSTRACT Coastal wetlands are critical", "Coastal wetlands are critical"),
+        ("A BSTRACT Coastal wetlands are critical", "Coastal wetlands are critical"),
+        ("abstract: The purpose of this pilot study", "The purpose of this pilot study"),
+        ("Abstract: the article talks about the central idea", "the article talks about the central idea"),
+        ("Abstract. Changes in the global temperature balance", "Changes in the global temperature balance"),
+        ("Abstract – An experimental scaling study", "An experimental scaling study"),
+        ("Abstract-We propose Geometric Ensembles", "We propose Geometric Ensembles"),
+        ("ABSTRACT:rn our research", "rn our research"),
+        ("Abstract Abstract The paper describes", "The paper describes"),
+        ("Abstract: ABSTRACT. We study", "We study"),
+        ("Abstract β‐Ga2O3 is a promising wide band gap material", "β‐Ga2O3 is a promising wide band gap material"),
+        ("Abstract 1. Introduction", "1. Introduction"),
+        ("Abstract", ""),
+        ("ABSTRACT:", ""),
+    ]:
+        assert tc.strip_abstract_heading(s) == want, s
+
+
+def test_abstract_word_in_a_sentence_kept():
+    for s in ["Abstract of purchase showing the negotiated prices", "Abstract in the thesis is a must",
+              "Abstract not available Bangladesh J Medicine 2022", "Abstracts of the 12th Congress",
+              "Abstractly, the model", "Abstract, concrete and mixed nouns", "The Abstract shows",
+              "Abstract p-Coumaric acid (p-CA) is a key precursor", ""]:
+        assert tc.strip_abstract_heading(s) == s, s
+    assert tc.strip_abstract_heading(None) is None
+
+
+def test_abstract_heading_strip_idempotent():
+    for s in ["Abstract Abstract The paper", "ABSTRACT: Abstract the x", "Abstract The Abstract of", "A BSTRACT A BSTRACT"]:
+        once = tc.strip_abstract_heading(s)
+        assert tc.strip_abstract_heading(once) == once, s
+
+
 def test_none_and_nonstr_passthrough():
     assert tc.clean_title(None) is None
     assert tc.clean_title("") == ""

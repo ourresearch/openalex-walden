@@ -557,6 +557,18 @@ def clean_text(s):
     return strip_tags(s)
 
 
+# oxjob #2059: a leading "Abstract" heading, any case ("A BSTRACT" is small caps), followed by a label mark or by a word
+# that doesn't start with a-z ("Abstract of purchase showing ..." is a sentence and keeps it).
+_ABSTRACT_HEADING_RE = re.compile(r"^(?:(?i:a ?bstract)(?:\s*[:.|\-–—]+\s*|\s+(?![\sa-z])|$))+")
+
+
+def strip_abstract_heading(s):
+    """Drop a leading 'Abstract' heading (any case) from whitespace-collapsed abstract text. Idempotent."""
+    if not s or not isinstance(s, str):
+        return s
+    return _ABSTRACT_HEADING_RE.sub("", s, count=1)
+
+
 def clean_title(title):
     """Clean a display title: mojibake + entities + strip-all-tags, then collapse whitespace.
     Preserves case and accents (it's display text, not the matching key). None/non-str pass
