@@ -230,10 +230,10 @@ resources:
             notebook_path: notebooks/parsing/parse_work_references
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
-        # oxjob #2296: the reference matcher (#2000) on tonight's new id-less references, a run of the job Match References.
-        # SHADOW (Casey 2026-11-16: 3 nights, then on): it writes only its own tables, serves nothing, and nothing waits for it;
-        # a failing step only logs. Turning it on: mode live here, Works_Enriched depends on this task, and the shadow runs are
-        # registered in reference_matcher_runs (oxjob #2296 PLAN). Live, a failure fails End 2 End (Casey 2026-11-16).
+        # oxjob #2296: the reference matcher (#2000) on tonight's new id-less references, a run of the job Match References. LIVE
+        # from the 2026-11-21 run (Casey, after 3 shadow nights): its links are applied to work_references before Works_Enriched
+        # reads it, and a failure fails End 2 End (Casey 2026-11-16). A normal night ~1-1.5 h; a repository parse wave scales up
+        # (52.4M new texts, 19 Nov: ~4.3 h). Back to shadow: mode shadow here and drop the Works_Enriched dependency.
         - task_key: Match_References
           timeout_seconds: 18000
           depends_on:
@@ -241,7 +241,7 @@ resources:
           run_job_task:
             job_id: ${resources.jobs.Match_References.id}
             job_parameters:
-              mode: shadow
+              mode: live
         # oxjob #2314: one citations table (each citation once, with the inputs that hold it), built after the lists are filed
         # and tonight's merge map exists; Works_Enriched sets every work's referenced_works from it. A failure stops the
         # night before Works_Enriched, like any upstream step.
@@ -512,6 +512,8 @@ resources:
             - task_key: Works_Fulltext
             # referenced_works merge (cell 5) reads its output; Works_Base does not
             - task_key: parse_referenced_works
+            # the reference matcher's links are in work_references once it is done (oxjob #2296)
+            - task_key: Match_References
             # referenced_works comes from the citations table (oxjob #2314)
             - task_key: Citations
             # cells 5-6 redirect citations through merged_work_ids_map (oxjob #2006)
