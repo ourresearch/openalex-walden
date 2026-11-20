@@ -507,20 +507,174 @@ def pubmed_parsed():
 
 # COMMAND ----------
 
+# oxjob #1104: PubMed's book records (PubmedBookArticle: NCBI Bookshelf parts such as StatPearls and GeneReviews
+# chapters, and whole books). NLM's baseline and update files carry none of them (17 Nov 2026: rowTag
+# PubmedBookArticle over every file in s3://openalex-ingest/pubmed/ = 0 rows), so ~40K PubMed records never became
+# works. The PubMed Books job (jobs/pubmed_books.yaml, notebooks/ingest/PubMedBooksHarvest.py) fetches all of them
+# through E-utilities into s3://openalex-ingest/pubmed_books/. They get their own stream, parse and CDC flow into
+# pubmed_works, keyed by PMID like every PubMed record (a PMID names one record, article or book).
+# The parse is pure SQL over an explicit schema (PUBMED_BOOK_SCHEMA, PUBMED_BOOK_COLUMNS), so a dry run on a SQL
+# warehouse reads the same text: SELECT these columns FROM read_files(<path>, format => 'xml', rowTag =>
+# 'PubmedBookArticle', schema => PUBMED_BOOK_SCHEMA), or over from_xml(<one record>, PUBMED_BOOK_SCHEMA). Its test
+# (18 StatPearls chapters) is tests/test_pubmed_books.py on walden branch oxjob1104-pubmed-books-v2.
+# ArticleTitle and AbstractText are read as STRING, which keeps their inline markup (<b>, <i>, <sup>) as text; the
+# tags are stripped below. Read as structs, spark-xml's _VALUE keeps only the text after the last inline tag (#1052).
+PUBMED_BOOKS_PATH = "s3a://openalex-ingest/pubmed_books/"
+PUBMED_BOOK_SCHEMA = """BookDocument STRUCT<
+    PMID: STRUCT<_VALUE: STRING, _Version: STRING>,
+    ArticleIdList: STRUCT<ArticleId: ARRAY<STRUCT<_VALUE: STRING, _IdType: STRING>>>,
+    Book: STRUCT<
+      Publisher: STRUCT<PublisherName: STRING, PublisherLocation: STRING>,
+      BookTitle: STRING,
+      PubDate: STRUCT<Year: STRING, Month: STRING, Day: STRING, MedlineDate: STRING>,
+      BeginningDate: STRUCT<Year: STRING, Month: STRING>,
+      Isbn: ARRAY<STRING>,
+      ELocationID: ARRAY<STRUCT<_VALUE: STRING, _EIdType: STRING>>>,
+    ArticleTitle: STRING,
+    Language: ARRAY<STRING>,
+    AuthorList: ARRAY<STRUCT<_Type: STRING, Author: ARRAY<STRUCT<LastName: STRING, ForeName: STRING,
+      Initials: STRING, CollectiveName: STRING, AffiliationInfo: ARRAY<STRUCT<Affiliation: STRING>>,
+      Identifier: ARRAY<STRUCT<_VALUE: STRING, _Source: STRING>>>>>>,
+    PublicationType: ARRAY<STRUCT<_VALUE: STRING, _UI: STRING>>,
+    Abstract: STRUCT<AbstractText: ARRAY<STRING>>,
+    ContributionDate: STRUCT<Year: STRING, Month: STRING, Day: STRING>,
+    DateRevised: STRUCT<Year: STRING, Month: STRING, Day: STRING>,
+    ELocationID: ARRAY<STRUCT<_VALUE: STRING, _EIdType: STRING>>,
+    ReferenceList: ARRAY<STRUCT<Reference: ARRAY<STRUCT<Citation: STRING,
+      ArticleIdList: STRUCT<ArticleId: ARRAY<STRUCT<_VALUE: STRING, _IdType: STRING>>>>>>>>,
+  PubmedBookData STRUCT<
+    History: STRUCT<PubMedPubDate: ARRAY<STRUCT<Year: STRING, Month: STRING, Day: STRING, _PubStatus: STRING>>>,
+    PublicationStatus: STRING,
+    ArticleIdList: STRUCT<ArticleId: ARRAY<STRUCT<_VALUE: STRING, _IdType: STRING>>>>"""
+
+
+def _book_date_sql(d):
+    """SQL DATE from a {Year, Month, Day} struct expression (month '06' or 'Jun'); month and day default to 1; NULL
+    when the year is missing or the date doesn't exist."""
+    ymd = f"concat_ws('-', {d}.Year, coalesce({d}.Month, '1'), coalesce({d}.Day, '1'))"
+    return f"CASE WHEN {d}.Year IS NOT NULL THEN coalesce(try_to_date({ymd}, 'y-M-d'), try_to_date({ymd}, 'y-MMM-d')) END"
+
+
+def _strip_tags_sql(x, tag=""):
+    """Markup out ('GeneReviews<sup>®</sup>' -> 'GeneReviews®'); tag=' ' where a tag separates words (abstract headings)."""
+    return f"nullif(trim(regexp_replace(regexp_replace({x}, '<[^>]+>', '{tag}'), '\\\\s+', ' ')), '')"
+
+
+_BD = "BookDocument"
+_BOOK_DOI = (f"coalesce(get(filter({_BD}.ArticleIdList.ArticleId, x -> x._IdType = 'doi'), 0)._VALUE, "
+             f"get(filter({_BD}.ELocationID, e -> e._EIdType = 'doi'), 0)._VALUE, "
+             f"get(filter({_BD}.Book.ELocationID, e -> e._EIdType = 'doi'), 0)._VALUE)")
+_BOOK_PMID = f"coalesce(get(filter(PubmedBookData.ArticleIdList.ArticleId, x -> x._IdType = 'pubmed'), 0)._VALUE, {_BD}.PMID._VALUE)"
+_BOOK_NBK = f"get(filter({_BD}.ArticleIdList.ArticleId, x -> x._IdType = 'bookaccession'), 0)._VALUE"
+_BOOK_HISTORY_PUBMED = "get(filter(PubmedBookData.History.PubMedPubDate, x -> x._PubStatus = 'pubmed'), 0)"
+
+# One SQL expression per pubmed_parsed column, in pubmed_parsed's order.
+PUBMED_BOOK_COLUMNS = {
+    "native_id": _BOOK_PMID,
+    "native_id_namespace": "'pmid'",
+    # a part's own title; a whole-book record has only the book's
+    "title": f"substr({_strip_tags_sql(f'coalesce({_BD}.ArticleTitle, {_BD}.Book.BookTitle)')}, 1, {MAX_TITLE_LENGTH})",
+    # book authors only: AuthorList Type="editors" are the book's editors, not this part's authors
+    "authors": (f"transform(flatten(transform(filter({_BD}.AuthorList, l -> coalesce(l._Type, 'authors') = 'authors'), "
+                f"l -> l.Author)), a -> named_struct("
+                f"'given', substr(a.ForeName, 1, {MAX_AUTHOR_NAME_LENGTH}), "
+                f"'family', substr(coalesce(a.LastName, a.CollectiveName), 1, {MAX_AUTHOR_NAME_LENGTH}), "
+                f"'name', CAST(NULL AS STRING), "
+                f"'orcid', get(filter(a.Identifier, i -> i._Source = 'ORCID'), 0)._VALUE, "
+                f"'affiliations', transform(a.AffiliationInfo, f -> named_struct("
+                f"'name', substr(f.Affiliation, 1, {MAX_AFFILIATION_STRING_LENGTH}), "
+                f"'department', CAST(NULL AS STRING), 'ror_id', CAST(NULL AS STRING)))))"),
+    "ids": (f"filter(array("
+            f"named_struct('id', {_BOOK_DOI}, 'namespace', 'doi', 'relationship', CAST(NULL AS STRING)), "
+            f"named_struct('id', {_BOOK_PMID}, 'namespace', 'pmid', 'relationship', 'self')), "
+            f"x -> x.id IS NOT NULL AND x.id != '')"),
+    # The work-type cascade owns type; raw_type says what the record is, in the cascade's own words ('book-chapter',
+    # 'book': CreateLocationsWithTypes types them so, and source matching's book guards read them). NLM's
+    # PublicationType on book records ('Study Guide', 'Review') describes the content, not that it is a book part.
+    "raw_type": f"CASE WHEN {_BD}.ArticleTitle IS NOT NULL THEN 'book-chapter' ELSE 'book' END",
+    "type": "CAST(NULL AS STRING)",
+    "version": "'publishedVersion'",
+    "license": "CAST(NULL AS STRING)",
+    "language": f"get({_BD}.Language, 0)",
+    # The date this part was posted (ContributionDate: GeneReviews' initial posting, StatPearls' current edition),
+    # else the book's own date, else the record's PubMed date.
+    "published_date": (f"coalesce({_book_date_sql(f'{_BD}.ContributionDate')}, "
+                       f"{_book_date_sql(f'{_BD}.Book.PubDate')}, {_book_date_sql(_BOOK_HISTORY_PUBMED)})"),
+    "created_date": _book_date_sql(_BOOK_HISTORY_PUBMED),
+    "updated_date": (f"coalesce({_book_date_sql(f'{_BD}.DateRevised')}, {_book_date_sql(f'{_BD}.ContributionDate')}, "
+                     f"{_book_date_sql(_BOOK_HISTORY_PUBMED)})"),
+    "issue": "CAST(NULL AS STRING)",
+    "volume": "CAST(NULL AS STRING)",
+    "first_page": "CAST(NULL AS STRING)",
+    "last_page": "CAST(NULL AS STRING)",
+    "is_retracted": "false",
+    "abstract": f"substr({_strip_tags_sql(f'array_join({_BD}.Abstract.AbstractText, chr(10))', ' ')}, 1, {MAX_ABSTRACT_LENGTH})",
+    "source_name": _strip_tags_sql(f"{_BD}.Book.BookTitle"),
+    "publisher": f"{_BD}.Book.Publisher.PublisherName",
+    "funders": ("CAST(array() AS ARRAY<STRUCT<doi: STRING, ror: STRING, name: STRING, awards: ARRAY<STRING>>>)"),
+    "references": (f"transform(flatten(coalesce({_BD}.ReferenceList.Reference, array())), r -> named_struct("
+                   f"'doi', CAST(NULL AS STRING), "
+                   f"'pmid', get(filter(r.ArticleIdList.ArticleId, x -> x._IdType = 'pubmed'), 0)._VALUE, "
+                   f"'arxiv', CAST(NULL AS STRING), 'title', CAST(NULL AS STRING), 'authors', CAST(NULL AS STRING), "
+                   f"'year', CAST(NULL AS STRING), 'raw', r.Citation))"),
+    # PubMed's page for the record, then the full text on NCBI Bookshelf (free to read)
+    "urls": (f"filter(array("
+             f"named_struct('url', concat('https://pubmed.ncbi.nlm.nih.gov/', {_BOOK_PMID}, '/'), 'content_type', 'html'), "
+             f"named_struct('url', concat('https://www.ncbi.nlm.nih.gov/books/', {_BOOK_NBK}, '/'), 'content_type', 'html')), "
+             f"u -> u.url IS NOT NULL)"),
+    "mesh": "CAST(NULL AS STRING)",
+}
+
+
+@dlt.table(name="pubmed_book_items", table_properties={'quality': 'bronze'})
+def pubmed_book_items():
+  return (spark.readStream
+      .format("cloudFiles")
+      .option("cloudFiles.format", "xml")
+      .option("rowTag", "PubmedBookArticle")
+      .option("compression", "gzip")
+      .option("mode", "PERMISSIVE")
+      .option("cloudFiles.useManagedFileEvents", "true")
+      .schema(PUBMED_BOOK_SCHEMA)
+      .load(PUBMED_BOOKS_PATH)
+      .withColumn("ingested_at", F.current_timestamp())
+  )
+
+
+@dlt.table(name="pubmed_book_parsed", comment="PubMed book records in pubmed_parsed's shape (oxjob #1104)")
+def pubmed_book_parsed():
+  cols = dict(PUBMED_BOOK_COLUMNS)
+  df = dlt.read_stream("pubmed_book_items").selectExpr(*[f"{v} AS {k}" for k, v in cols.items()], "ingested_at")
+  return (df
+    .withColumn("language", convert_language_code_udf(F.col("language")))
+    .withColumn("normalized_title", normalize_title_udf(F.col("title")))
+    .select("native_id", "native_id_namespace", "title", "normalized_title", "authors", "ids", "raw_type", "type",
+            "version", "license", "language", "published_date", "created_date", "updated_date", "issue", "volume",
+            "first_page", "last_page", "is_retracted", "abstract", "source_name", "publisher", "funders",
+            "references", "urls", "mesh", "ingested_at")
+    # 9 of 37,578 records (17 Nov 2026) have an empty BookTitle and no part title: nothing to name a work by
+    .filter("native_id IS NOT NULL AND title IS NOT NULL"))
+
+# COMMAND ----------
+
 # oxjob #837: total-order dedup sequence — ties on the lead value alone pick
 # refresh-dependent winners. PubMed's DateRevised is date-only (no finer publisher
 # timestamp exists), so updated_date stays the lead and the tiebreakers do the work.
 def _with_total_order_sequence(df, lead_col):
     hash_cols = [c for c, t in df.dtypes if not t.startswith("map") and not c.startswith("_")]
-    return df.withColumn("_sequence", F.struct(
+    seq = F.struct(
         lead_col.alias("lead"),
         F.coalesce(F.col("ingested_at"), F.lit("1970-01-01").cast("timestamp")).alias("harvested_at"),
         F.xxhash64(*[F.col(f"`{c}`") for c in hash_cols]).alias("content_hash"),
-    ))
+    )
+    # oxjob #1104: every flow into pubmed_works must carry one identical sequence type, nullability included, or DLT
+    # refuses the update; a table read back from storage is all-nullable while one built in the same update is not
+    # (Repo.py, oxjobs #1786 / #1828). So every field is nullable on every path.
+    seq_type = df.select(seq.alias("s")).schema["s"].dataType
+    return df.withColumn("_sequence", seq.cast(StructType([StructField(f.name, f.dataType, True) for f in seq_type.fields])))
 
-@dlt.table(name="pubmed_enriched",
-           comment="PubMed data after full parsing and author/feature enrichment.")
-def pubmed_enriched():
+def enrich_pubmed(df_parsed_input):
+    """pubmed_parsed-shaped rows -> pubmed_enriched rows. Shared by the article flow and the book flow (oxjob #1104)."""
     # Same walden works schema plus raw_type (mirrors Crossref/DataCite; shared schema lacks it)
     walden_works_with_raw_type_schema = StructType([
         StructField("provenance", StringType(), True), StructField("native_id", StringType(), True),
@@ -562,7 +716,6 @@ def pubmed_enriched():
         StructField("ingested_at", TimestampType(), True)
     ])
 
-    df_parsed_input = dlt.read_stream("pubmed_parsed")
     df_walden_works_schema = apply_initial_processing(df_parsed_input, "pubmed", walden_works_with_raw_type_schema)
 
     # enrich_with_features_and_author_keys is imported from your openalex.dlt.transform
@@ -571,6 +724,18 @@ def pubmed_enriched():
     return _with_total_order_sequence(
         apply_final_merge_key_and_filter(df_enriched), F.col("updated_date")
     )
+
+
+@dlt.table(name="pubmed_enriched",
+           comment="PubMed data after full parsing and author/feature enrichment.")
+def pubmed_enriched():
+    return enrich_pubmed(dlt.read_stream("pubmed_parsed"))
+
+
+@dlt.table(name="pubmed_book_enriched",
+           comment="PubMed book records after enrichment (oxjob #1104).")
+def pubmed_book_enriched():
+    return enrich_pubmed(dlt.read_stream("pubmed_book_parsed"))
 
 dlt.create_streaming_table(
     name="pubmed_works",
@@ -584,10 +749,14 @@ dlt.create_streaming_table(
     cluster_by=["native_id"]
 )
 
-dlt.apply_changes(
+# One set of CDC settings for every flow into pubmed_works (oxjob #1104: flows must agree on keys, sequence and columns).
+PUBMED_WORKS_CDC = dict(
     target="pubmed_works",
-    source="pubmed_enriched",
     keys=["native_id"],
     sequence_by="_sequence",
     except_column_list=["_sequence"]
 )
+dlt.apply_changes(source="pubmed_enriched", **PUBMED_WORKS_CDC)
+
+# oxjob #1104: the second flow, PubMed's book records (named; the flow above keeps its default name, "pubmed_works").
+dlt.create_auto_cdc_flow(source="pubmed_book_enriched", name="pubmed_works_books", **PUBMED_WORKS_CDC)
