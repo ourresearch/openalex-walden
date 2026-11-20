@@ -1,3 +1,6 @@
+# Not in databricks.yml: created with `databricks jobs create` from this file on 2026-11-19 (job 408025122314612, oxjob #2075/#2450)
+# while the bundle is out of sync with the workspace. Whoever reconciles the bundle: include this file and bind
+# that job instead of creating a second one.
 resources:
   jobs:
     Crossref_Contributor_Roles:
