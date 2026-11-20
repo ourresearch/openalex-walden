@@ -1,0 +1,65 @@
+resources:
+  jobs:
+    Work_Links:
+      name: Work Links
+      description: |
+        Work-to-work links for /links (oxjob #1490; plan: oxjobs working/references-entity/LINKS_TABLE_PLAN.md). Two steps:
+        Build_Work_Links writes openalex.works.work_links (origin, target, relationship) as a union of tables End 2 End has
+        already curated (work_citations' served rows, work_parents); Sync_Links_to_Elasticsearch sends the changes to the
+        links index (links-v1), keeping what the index holds in openalex.works.work_links_indexed. Its own job, after End 2 End
+        has run, so nothing in the nightly waits on it (Casey, 20 Nov 2026). Revert: pause this job; the index and tables
+        can be dropped.
+      schedule:
+        # 18:00 UTC: End 2 End's citation and parent tables are done by then (Publish_Works usually by 10:00 UTC).
+        quartz_cron_expression: 0 0 18 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+        no_alert_for_skipped_runs: true
+      timeout_seconds: 18000
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: Build_Work_Links
+          timeout_seconds: 1800
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateWorkLinks
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
+        - task_key: Sync_Links_to_Elasticsearch
+          timeout_seconds: 14400
+          depends_on:
+            - task_key: Build_Work_Links
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_links
+            base_parameters:
+              mode: "nightly"
+              max_push: "200000000"
+              writers: "24"
+              day_writers: "6"
+            source: GIT
+          job_cluster_key: links_sync_cluster
+      job_clusters:
+        - job_cluster_key: links_sync_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            aws_attributes:
+              first_on_demand: 1
+              availability: ON_DEMAND
+              zone_id: auto
+              spot_bid_price_percent: 100
+              ebs_volume_count: 0
+            node_type_id: rd-fleet.8xlarge
+            driver_node_type_id: rd-fleet.8xlarge
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 1
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main

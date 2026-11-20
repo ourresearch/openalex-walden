@@ -90,6 +90,7 @@ include:
   - jobs/topics.yaml
   - jobs/map_work_ids.yaml
   - jobs/match_references.yaml
+  - jobs/work_links.yaml
   - jobs/location_work_match_vectors.yaml
   - jobs/register_topic_classifier.yaml
   - jobs/sdg_frontfill.yaml
