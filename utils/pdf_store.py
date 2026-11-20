@@ -53,15 +53,19 @@ def _claim(table, r2, md5, pdf_id):
     item = {"md5": md5, "id": pdf_id, "created_date": now.isoformat()}
     conflict = table.meta.client.exceptions.ConditionalCheckFailedException
     try:
-        table.put_item(Item=item, ConditionExpression="attribute_not_exists(md5)",
-                       ReturnValuesOnConditionCheckFailure="ALL_OLD")
+        table.put_item(Item=item, ConditionExpression="attribute_not_exists(md5)")
         return None
-    except conflict as e:
-        held = e.response.get("Item", {})
-    held_id = held.get("id", {}).get("S")
-    if held_id and _exists(r2, held_id):
+    except conflict:
+        pass
+    # A plain read, not ReturnValuesOnConditionCheckFailure: older runtimes' boto3 rejects that parameter, and #981's
+    # PMC rescues (17 Nov) failed open on every file and stored 88,821 PDFs unchecked.
+    held = table.get_item(Key={"md5": md5}, ConsistentRead=True).get("Item", {})
+    held_id = held.get("id")
+    if not held_id:
+        return None  # the row went between the two calls (a move-out): store this one
+    if _exists(r2, held_id):
         return held_id
-    held_at = held.get("created_date", {}).get("S")
+    held_at = held.get("created_date")
     if held_at and now - datetime.datetime.fromisoformat(held_at) < IN_FLIGHT:
         return None  # another writer is uploading these bytes right now: keep its claim, store our own copy
     try:  # the held file left the bucket (moved out, or its upload failed): this one takes its place

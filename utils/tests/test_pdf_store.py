@@ -4,7 +4,7 @@ import os
 import sys
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ParamValidationError
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from utils import pdf_store  # noqa: E402
@@ -37,15 +37,18 @@ class FakeTable:
     def put_item(self, Item, ConditionExpression, ExpressionAttributeValues=None, **kw):
         if self.fail:
             raise RuntimeError("dynamodb down")
+        if kw:  # older boto3 (some Databricks runtimes) rejects newer parameters such as ReturnValuesOnConditionCheckFailure
+            raise ParamValidationError(report=f"Unknown parameter in input: {next(iter(kw))!r}")
         held = self.items.get(Item["md5"])
         ok = held is None if "attribute_not_exists" in ConditionExpression else (
             held is not None and held["id"] == ExpressionAttributeValues[":held"])
         if not ok:
-            resp = {"Error": {"Code": "ConditionalCheckFailedException"}}
-            if held:
-                resp["Item"] = {k: {"S": v} for k, v in held.items()}
-            raise DDB.exceptions.ConditionalCheckFailedException(resp, "PutItem")
+            raise DDB.exceptions.ConditionalCheckFailedException({"Error": {"Code": "ConditionalCheckFailedException"}}, "PutItem")
         self.items[Item["md5"]] = Item
+
+    def get_item(self, Key, ConsistentRead=False):
+        held = self.items.get(Key["md5"])
+        return {"Item": dict(held)} if held else {}
 
 
 def test_new_bytes_are_stored_and_claimed():
