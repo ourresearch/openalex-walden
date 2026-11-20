@@ -101,6 +101,8 @@ SELECT CASE WHEN nihp_ready <=> 'READY' THEN 'READY: writing allowed if every gu
 
 -- Last night's election must be complete and consistent: no Nightly run in progress, the served links and the scratch election tables
 -- all come from the latest SUCCEEDED run (each table's last data commit inside that run's window). Otherwise skip tonight (fail closed).
+-- A data commit is any commit but table maintenance (OPTIMIZE, VACUUM, statistics, table properties, REORG: files or metadata,
+-- not rows); the list is the same in CreateDataCiteWorkFunders.
 SELECT CASE WHEN NOT (nihp_ready <=> 'READY') THEN 'skipped: not ready'
   WHEN n.run_id IS NULL OR n.finished_at IS NULL THEN raise_error('NO_SUCCEEDED_NIGHTLY_RUN')
   WHEN coalesce(n.open_runs, 1) <> 0 THEN raise_error('NIGHTLY_RUN_IN_PROGRESS: Nightly Grants has a run without finished_at')
@@ -111,13 +113,13 @@ SELECT CASE WHEN NOT (nihp_ready <=> 'READY') THEN 'skipped: not ready'
 FROM (SELECT 1 one) base LEFT JOIN (
   WITH run AS (SELECT run_id, started_at, finished_at FROM openalex.awards.award_nightly_runs WHERE status LIKE 'SUCCEEDED%' ORDER BY started_at DESC LIMIT 1),
   h AS (
-    SELECT 'ngr_work_key_map' t, max(timestamp) ts FROM (DESCRIBE HISTORY openalex.awards.ngr_work_key_map) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','COMPUTE STATISTICS')
-    UNION ALL SELECT 'ngr_normalization_lookup', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_normalization_lookup) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','COMPUTE STATISTICS')
-    UNION ALL SELECT 'ngr_funder_canon', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_funder_canon) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','COMPUTE STATISTICS')
-    UNION ALL SELECT 'ngr_resolve_candidate', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_resolve_candidate) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','COMPUTE STATISTICS')
-    UNION ALL SELECT 'ngr_awards_candidate', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_awards_candidate) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','COMPUTE STATISTICS')
-    UNION ALL SELECT 'ngr_work_survivors', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_work_survivors) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','COMPUTE STATISTICS')
-    UNION ALL SELECT 'work_awards', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.work_awards) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','COMPUTE STATISTICS'))
+    SELECT 'ngr_work_key_map' t, max(timestamp) ts FROM (DESCRIBE HISTORY openalex.awards.ngr_work_key_map) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','ANALYZE','COMPUTE STATISTICS','COMPUTE STATS','SET TBLPROPERTIES','UNSET TBLPROPERTIES','REORG')
+    UNION ALL SELECT 'ngr_normalization_lookup', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_normalization_lookup) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','ANALYZE','COMPUTE STATISTICS','COMPUTE STATS','SET TBLPROPERTIES','UNSET TBLPROPERTIES','REORG')
+    UNION ALL SELECT 'ngr_funder_canon', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_funder_canon) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','ANALYZE','COMPUTE STATISTICS','COMPUTE STATS','SET TBLPROPERTIES','UNSET TBLPROPERTIES','REORG')
+    UNION ALL SELECT 'ngr_resolve_candidate', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_resolve_candidate) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','ANALYZE','COMPUTE STATISTICS','COMPUTE STATS','SET TBLPROPERTIES','UNSET TBLPROPERTIES','REORG')
+    UNION ALL SELECT 'ngr_awards_candidate', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_awards_candidate) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','ANALYZE','COMPUTE STATISTICS','COMPUTE STATS','SET TBLPROPERTIES','UNSET TBLPROPERTIES','REORG')
+    UNION ALL SELECT 'ngr_work_survivors', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.ngr_work_survivors) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','ANALYZE','COMPUTE STATISTICS','COMPUTE STATS','SET TBLPROPERTIES','UNSET TBLPROPERTIES','REORG')
+    UNION ALL SELECT 'work_awards', max(timestamp) FROM (DESCRIBE HISTORY openalex.awards.work_awards) WHERE operation NOT IN ('OPTIMIZE','VACUUM START','VACUUM END','ANALYZE','COMPUTE STATISTICS','COMPUTE STATS','SET TBLPROPERTIES','UNSET TBLPROPERTIES','REORG'))
   SELECT run.run_id, run.finished_at,
     (SELECT count(*) FROM openalex.awards.award_nightly_runs WHERE finished_at IS NULL) open_runs,
     count(DISTINCT CASE WHEN coalesce(h.ts BETWEEN run.started_at AND run.finished_at, false) THEN h.t END) good_tables,
