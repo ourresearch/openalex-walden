@@ -313,6 +313,12 @@ empty_study_design_array = F.array().cast("array<struct<id:string,display_name:s
 # fail on the missing column.
 is_pulled_col = F.coalesce(F.col("is_pulled"), F.lit(False)) if "is_pulled" in df.columns else F.lit(False)
 
+# oxjob #2075: authorships[].contributor_roles ({id, display_name}, [] when none). CreateWorksEnriched adds the
+# field; a run before the first build that carries it must not fail on it, so every seat gets [] until then.
+_cr_empty = "cast(array() as array<struct<id:string,display_name:string>>)"
+CONTRIBUTOR_ROLES_SQL = (f"coalesce(x.contributor_roles, {_cr_empty})"
+                         if "contributor_roles" in df.schema["authorships"].dataType.elementType.fieldNames()
+                         else _cr_empty)
 df_transformed = (
     df
     .withColumn("work_id", F.col("id").cast("bigint"))
@@ -358,7 +364,8 @@ df_transformed = (
             'raw_orcid', x.raw_orcid,
             'is_corresponding', x.is_corresponding,
             'raw_affiliation_strings', transform(x.raw_affiliation_strings, aff -> substring(aff, 1, 32000)),
-            'institutions', x.institutions
+            'institutions', x.institutions,
+            'contributor_roles', """ + CONTRIBUTOR_ROLES_SQL + """
         ))
     """))
     .withColumn("authorships", F.slice(F.col("authorships_full"), 1, 100))
