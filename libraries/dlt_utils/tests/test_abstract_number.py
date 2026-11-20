@@ -250,7 +250,7 @@ def test_work_prefixes_sql_renders():
 
 def test_strip_cell_switch():
     from openalex.dlt.abstract_number import enriched_strip_cell_sql, STRIP_SWITCH_ON
-    assert STRIP_SWITCH_ON is False  # D7 step 6 flips it
+    assert STRIP_SWITCH_ON is True  # D7 step 6 flipped it; revert = False + regenerate the cell
     off, on = enriched_strip_cell_sql(False), enriched_strip_cell_sql(True)
     # off: one SELECT, nothing written; no scripting block for the push night to parse
     assert "BEGIN" not in off and "MERGE" not in off and "INSERT" not in off and "CREATE" not in off
