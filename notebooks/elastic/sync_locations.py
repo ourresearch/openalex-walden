@@ -204,7 +204,9 @@ if IS_FULL_SYNC:
                 body={
                     "settings": {
                         "index": {
-                            "number_of_shards": 48,  # oxjob #2040: 12 made 275 GB shards that crowded works copies
+                            # oxjob #2040: 12 made 275 GB shards that crowded works copies. #2492 (Casey 20 Nov): 24 for
+                            # the lean index, ~30 GB each (0.70 TB fresh), ~2 copies per node at 26; splits to 48 later.
+                            "number_of_shards": 24,
                             "number_of_replicas": 0,
                             "refresh_interval": "-1",
                             "codec": "best_compression",  # oxjob #2492: -15% on a locations-v4 sample
