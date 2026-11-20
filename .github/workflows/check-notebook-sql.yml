@@ -12,7 +12,8 @@ on:
       - 'scripts/check_notebook_sql_dollar.py'
       - 'scripts/gen_awards_sql.py'
       - 'scripts/check_works_enriched_publish.py'
-      - 'jobs/walden_end2end.yaml'
+      - 'scripts/check_warehouse_notebooks_sql_only.py'
+      - 'jobs/**'
       - '.github/workflows/check-notebook-sql.yml'
   pull_request:
     paths:
@@ -20,7 +21,8 @@ on:
       - 'scripts/check_notebook_sql_dollar.py'
       - 'scripts/gen_awards_sql.py'
       - 'scripts/check_works_enriched_publish.py'
-      - 'jobs/walden_end2end.yaml'
+      - 'scripts/check_warehouse_notebooks_sql_only.py'
+      - 'jobs/**'
 
 permissions:
   contents: read
@@ -40,3 +42,7 @@ jobs:
         run: |
           python3 scripts/check_works_enriched_publish.py --self-test
           python3 scripts/check_works_enriched_publish.py
+      - name: A notebook run on a SQL warehouse holds only SQL cells (oxjob #1642)
+        run: |
+          python3 scripts/check_warehouse_notebooks_sql_only.py --self-test
+          python3 scripts/check_warehouse_notebooks_sql_only.py
