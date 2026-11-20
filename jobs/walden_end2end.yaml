@@ -250,6 +250,9 @@ resources:
           depends_on:
             - task_key: parse_referenced_works
             - task_key: Merged_Work_Ids_Map
+            # the reference matcher writes tonight's links into work_references (oxjob #2296); a few minutes, and the
+            # author steps take longer, so Works_Enriched does not start later for it
+            - task_key: Match_References
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorkCitations
             source: GIT
