@@ -14,7 +14,18 @@ resources:
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
+        # oxjob #2430: files whose location turned closed move to the private buckets (and back when it reopens)
+        # before the manifest is written; a failure here still lets the manifest run (pending files stay left out)
+        - task_key: Move_Closed_PDFs
+          notebook_task:
+            notebook_path: notebooks/elastic/move_closed_pdfs
+            source: GIT
+          job_cluster_key: manifest-cluster
+          timeout_seconds: 7200
         - task_key: export_content_manifest
+          depends_on:
+            - task_key: Move_Closed_PDFs
+          run_if: ALL_DONE
           notebook_task:
             notebook_path: notebooks/elastic/export_content_manifest_to_r2
             source: GIT
