@@ -20,7 +20,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
-PARSER_VERSION = "credit-fulltext-3"
+PARSER_VERSION = "credit-fulltext-4"
 
 CREDIT_ROLES = (
     "conceptualization", "data-curation", "formal-analysis", "funding-acquisition", "investigation", "methodology",
@@ -224,16 +224,19 @@ class Byline:
         self.n = len(self.names)
         self.seats = [s for s in (_Seat(i, _words(n)) for i, n in enumerate(self.names))
                       if s.words and not _GROUP.search(self.names[s.idx])]
-        # the same name twice on a byline is one person listed twice: a fit to one is a fit to both
+        # two seats with the same name may be one person listed twice or two people: a name fitting them is ambiguous
         self.seats_by_idx = {s.idx: s for s in self.seats}
         self.same = {}
         for s in self.seats:
             self.same.setdefault(tuple(s.words), []).append(s.idx)
 
     def _one(self, idxs):
-        """idxs fit; one person (possibly listed twice) -> their seats, else None."""
-        groups = {tuple(self.seats_by_idx[i].words) for i in idxs}
-        return self.same[groups.pop()] if len(groups) == 1 else None
+        """idxs fit; exactly one seat -> [it], else None (two people, or one name printed on two seats)."""
+        idxs = set(idxs)
+        if len(idxs) != 1:
+            return None
+        i = idxs.pop()
+        return [i] if len(self.same[tuple(self.seats_by_idx[i].words)]) == 1 else None
 
     def match(self, chunk):
         """(seats, how): the byline seats a name chunk names ('ALL' for "all authors"), or (None, why not)."""
@@ -258,7 +261,9 @@ class Byline:
             if re.fullmatch(r"[A-Z][a-z]{1,3}[A-Z]", c):   # "PvdS": particles as lower-case initials, letter by letter
                 tries.append([ch.lower() for ch in c])
             for p in tries:
-                for tier in (0, 1, 2):
+                # every given-first reading at once ("JS" fits John Smith and James Alan Smith: ambiguous); family
+                # first only when no given-first reading fits anyone
+                for tier in (1, 2):
                     hits = {s.idx for s in self.seats if any(_fits_initials(p, wl) for wl in s.word_lists(tier))}
                     if hits:
                         one = self._one(hits)
@@ -266,12 +271,30 @@ class Byline:
             return None, "unmatched"
         if not re.search(r"[A-Za-z]{2}", _fold(c)) or len(c) > 60 or re.search(r"\d", c):
             return None, "not_a_name"
+        if " " not in c and not c[:1].isupper():   # "may", "he": a word, not a surname
+            return None, "not_a_name"
         scores = {s.idx: _fits_full(c, s) for s in self.seats}
         best = max(scores.values(), default=0)
         if best == 0:
             return None, "unmatched"
         one = self._one([i for i, v in scores.items() if v == best])
         return (one, "full") if one else (None, "ambiguous")
+
+
+_ROLE_WORDS = {"data", "analysis", "analyses", "preprocessing", "processing", "labeling", "labelling", "design",
+               "collection", "experiment", "experiments", "interpretation", "writing", "editing", "review", "study",
+               "statistical", "statistics", "software", "sampling", "acquisition", "drafting", "manuscript", "figures",
+               "project", "approval", "final", "spectroscopy", "assays", "measurements", "modeling", "modelling",
+               "simulation", "simulations", "fieldwork", "survey", "literature", "search", "funding", "resources",
+               "supervision", "concept", "conception", "revision", "translation", "illustration", "illustrations"}
+
+
+def _looks_like_a_person(chunk):
+    """2-5 capitalized words with no role vocabulary: 'Robert Brown', not 'Data Preprocessing' or 'Experiment'."""
+    c = _strip_name(chunk)
+    ws = c.split()
+    return (2 <= len(ws) <= 5 and _looks_like_a_name(chunk)
+            and not any(w.lower().strip(".,;:()") in _ROLE_WORDS for w in ws))
 
 
 def _strip_name(chunk):
@@ -323,6 +346,8 @@ def _names(text, byline):
         words = ch.split()
         got, i = [], 0
         while i < len(words):
+            if not words[i][:1].isupper():   # "may be requested ...": prose, even if an author is called May
+                break
             for j in range(min(len(words), i + 6), i, -1):
                 s2, _ = byline.match(" ".join(words[i:j]))
                 if s2 is not None and s2 != "ALL":   # "All authors have accepted ..." is a sentence, not a name
@@ -346,7 +371,11 @@ def _names(text, byline):
             n += 1
             problems.append((ch.strip()[:60], why))
             continue
-        # anything else ends the run: a role outside CRediT ("Experiment, Y.K., ..."), a sentence, a reference
+        # anything else ends the run: a role outside CRediT ("Experiment, Y.K., ..."), a sentence, a reference. A
+        # written-out person's name that fits nobody ("Robert Brown") still counts against the byline check.
+        if why == "unmatched" and _looks_like_a_person(ch):
+            n += 1
+            problems.append((ch.strip()[:60], why))
         return stop()
     return seats, n, ok, problems, False
 
@@ -411,11 +440,13 @@ def _assign(roles, seats, slugs, byline):
 def _parse_term_first(st, terms, byline):
     """'Conceptualization, L.Y. and J.L.; data curation, G.C.; ...' and 'Conceptualization: Yao Wang. Data ...'."""
     roles, pend = {}, []
-    stats = {"chunks": 0, "matched": 0, "problems": [], "skipped_lead": 0, "dropped_empty": 0}
+    stats = {"chunks": 0, "matched": 0, "named": 0, "problems": [], "skipped_lead": 0, "dropped_empty": 0}
     lead = st[:terms[0][0]]
     if not _is_separator(lead):
-        # an opening clause in a role outside CRediT ("Concept, N.O.;") is skipped
-        if not re.search(r"[;.]\s*$", lead) or len(lead) > 200:
+        # an opening clause in a role outside CRediT ("Concept, N.O.;") is skipped; but a name before the first term
+        # means the names come first ("J.S. Conceptualization, Investigation. J.D. Methodology"), and reading that
+        # term first would hand each author's roles to the next one
+        if not re.search(r"[;.]\s*$", lead) or len(lead) > 200 or _holds_a_name(lead, byline):
             return None, stats
         stats["skipped_lead"] = 1
     for i, (a, b, slug) in enumerate(terms):
@@ -429,16 +460,15 @@ def _parse_term_first(st, terms, byline):
                 pend = []
             continue  # "Conceptualization, methodology, J.Z." : the next names cover both
         seg = seg.strip()
-        if not re.match(r"^[),:–—\-]|^\(?[A-Z]|^all\b|^each\b", seg, re.I):
+        if not (re.match(r"^[),:–—\-]|^\(?[A-Z]", seg) or re.match(r"^(?:all|each)\b", seg, re.I)):
             break
         seg = re.sub(r"^[),:–—\-\s]+", "", seg)
         seats, n, ok, problems, stopped = _names(seg, byline)
         stats["chunks"] += n
         stats["matched"] += ok
         stats["problems"] += problems
-        if not seats and n == 0:
-            break
-        _assign(roles, seats, pend, byline)
+        stats["named"] += sum(1 for x in seats if x != "ALL")
+        _assign(roles, seats, pend, byline)   # nothing when no names fit; either way these terms are done
         pend = []
     return roles, stats
 
@@ -450,7 +480,11 @@ def _parse_name_first(st, terms, byline):
     """'Dawei Li: Data curation (equal); Writing – original draft. Hongbo Liu: Funding acquisition ...' and
     'Oto Hanuš -Conceptualization, Funding acquisition'."""
     roles = {}
-    stats = {"chunks": 0, "matched": 0, "problems": [], "unknown_items": 0, "entry_cut": 0}
+    stats = {"chunks": 0, "matched": 0, "named": 0, "problems": [], "unknown_items": 0, "entry_cut": 0}
+    if _is_separator(st[:terms[0][0]]):
+        # a statement that opens with a term is term first ("Conceptualization: J. Smith, J. Doe - Methodology ...");
+        # reading its ' - ' as a name ending would give the next roles to the names before it
+        return None, stats
     spans = [(a, b) for a, b, _ in terms]
     # an entry starts where a name group ends in ':' (or ' - ') and a CRediT term follows
     ends = []
@@ -499,6 +533,7 @@ def _parse_name_first(st, terms, byline):
         stats["chunks"] += n
         stats["matched"] += ok
         stats["problems"] += problems
+        stats["named"] += sum(1 for x in seats if x != "ALL")
         _assign(roles, seats, kept, byline)
     return roles, stats
 
@@ -557,7 +592,8 @@ def parse(text, byline_names, min_match=0.8):
     # count as fitting for the check that the statement belongs to this paper
     chunks = stats["chunks"]
     fits = stats["matched"] + sum(1 for _, why in stats["problems"] if why == "ambiguous")
-    if chunks == 0 or fits / chunks < min_match:
+    # "all authors" alone says nothing about whether the text is this paper's: at least one name must fit
+    if chunks == 0 or fits / chunks < min_match or stats["named"] == 0:
         return Result("names_off_byline", layout=layout, stats=stats, statement=st)
     out = {i: [s for s in CREDIT_ROLES if s in v] for i, v in sorted(roles.items()) if v}
     return Result("ok", out, layout, stats, st)

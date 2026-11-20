@@ -121,5 +121,61 @@ def test_parenthetical_full_name_settles_shared_initials():
     assert r[3] == ["conceptualization"]
 
 
+def test_initials_that_fit_two_ways_are_skipped():
+    # "JS" fits John Smith (every word) and James Alan Smith (middle name left out)
+    text = ("Author Contributions: Conceptualization, JS and M.K.; writing-original draft, JS; writing-review and "
+            "editing, M.K. All authors have read")
+    st, r = roles(text, ["John Smith", "James Alan Smith", "Maria Klein"])
+    assert st == "ok"
+    assert set(r) == {2}
+
+
+def test_same_name_twice_on_the_byline_is_ambiguous():
+    text = ("Author Contributions: Conceptualization, W.W. and Y.L.; writing-original draft, W.W.; writing-review and "
+            "editing, Y.L. All authors have read")
+    st, r = roles(text, ["Wei Wang", "Yan Li", "Wei Wang"])
+    assert st == "ok"
+    assert set(r) == {1}
+
+
+def test_all_authors_alone_does_not_prove_the_text_is_this_papers():
+    text = ("Author Contributions: Conceptualization, all authors; writing-original draft, all authors. "
+            "Funding: none")
+    st, _ = roles(text, ["Maria Lopez", "Tom Smith"])
+    assert st != "ok"
+
+
+def test_unmatched_full_names_count_against_the_byline():
+    text = ("Author Contributions: Conceptualization, Alice Smith; methodology, Robert Brown; writing-original draft, "
+            "Robert Brown. Funding: none")
+    st, _ = roles(text, ["Alice Smith", "Tom Jones"])
+    assert st != "ok"
+
+
+def test_names_before_terms_without_colons_are_not_read_term_first():
+    # reading this term first would give J.S.'s roles to J.D. and J.D.'s to B.L.
+    text = ("Author contributions J.S. Conceptualization, Investigation. J.D. Methodology, Writing - original draft. "
+            "B.L. Supervision. Funding none")
+    st, r = roles(text, ["Jane Smith", "John Doe", "Bo Lee"])
+    assert st != "ok" or (r.get(1, []) != ["conceptualization", "investigation"])
+
+
+def test_term_first_with_dashes_is_not_read_name_first():
+    text = ("Author Contributions Conceptualization: Jane Smith, John Doe - Methodology, Validation: Jane Smith. "
+            "Writing - original draft: John Doe. Funding none")
+    st, r = roles(text, ["Jane Smith", "John Doe"])
+    assert st == "ok"
+    assert "methodology" not in r.get(1, [])
+    assert r[0] == ["conceptualization", "methodology", "validation"]
+
+
+def test_prose_after_a_term_is_not_a_surname():
+    text = ("Author Contributions: Conceptualization, A.M. and J.D.; writing-original draft, A.M.; writing-review and "
+            "editing, J.D.; resources: may be requested from the corresponding author. Funding: none")
+    st, r = roles(text, ["Anna May", "John Doe"])
+    assert st == "ok"
+    assert "resources" not in r.get(0, [])
+
+
 def test_same_role_list_as_the_structured_readers():
     assert CREDIT_ROLES == PMC_ROLES

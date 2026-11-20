@@ -17,8 +17,9 @@
 # MAGIC - `openalex.works.fulltext_contributor_roles_runs`: one row per run (restart point for the daily delta).
 # MAGIC
 # MAGIC Modes: `daily` reads works whose full text changed since the last run's newest `work_fulltext.updated_at`
-# MAGIC (minus an hour); `all` reads every work (first fill, or a parser change: bump `PARSER_VERSION`). A work whose new
-# MAGIC read no longer yields roles loses its row.
+# MAGIC (minus an hour), with or without a statement; `all` reads every work (first fill, or a parser change: bump
+# MAGIC `PARSER_VERSION`) and drops rows of works no longer read. A work whose new read yields no roles loses its row; a
+# MAGIC parser error never removes one, and more than 1% errors stops the run before the write.
 
 # COMMAND ----------
 
@@ -96,8 +97,10 @@ WITH ft AS (
   FROM openalex.works.work_fulltext {sample}
   WHERE {where}
 ),
-hit AS (SELECT * FROM ft WHERE p > 0)
-SELECT h.work_id, h.key, h.updated_at, substring(h.fulltext, greatest(h.p - 3000, 1), 7000) AS win,
+-- daily: every changed work, so one whose new text has no statement loses its old roles (win NULL)
+hit AS (SELECT * FROM ft WHERE p > 0 OR {str(MODE == "daily").upper()})
+SELECT h.work_id, h.key, h.updated_at,
+       CASE WHEN h.p > 0 THEN substring(h.fulltext, greatest(h.p - 3000, 1), 7000) END AS win,
        transform(w.authorships, a -> a.raw_author_name) AS byline
 FROM hit h JOIN openalex.works.openalex_works w ON w.id = h.work_id""")
 src = spark.sql(f"SELECT count(*) AS n, max(updated_at) AS mx FROM {CAND}").first()
@@ -143,7 +146,7 @@ def parse_partition(batches):
 
 parsed_tbl = TARGET + "_parsed"
 n_tasks = max(spark.sparkContext.defaultParallelism * 4, n_cand // 5000 + 1)
-# one row per work: the MERGE below must never see a work twice
+# one row per work: the MERGE below must never see a work twice (work_fulltext is keyed by work_id; this is a guard)
 (spark.table(CAND).dropDuplicates(["work_id"]).repartition(n_tasks).mapInPandas(parse_partition, schema=OUT)
  .withColumn("parser_version", F.lit(credit_statements.PARSER_VERSION))
  .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(parsed_tbl))
@@ -151,7 +154,13 @@ display(spark.sql(f"SELECT status, layout, count(*) AS n FROM {parsed_tbl} GROUP
 
 # COMMAND ----------
 
-# ok reads replace the stored row; a work read again without roles loses its row
+n_err = spark.sql(f"SELECT count_if(status LIKE 'error%') AS e FROM {parsed_tbl}").first().e
+if n_cand and n_err / n_cand > 0.01:
+    raise RuntimeError(f"{n_err:,} of {n_cand:,} reads raised errors: parser bug; nothing written")
+
+# ok reads replace the stored row; a work read again without roles loses its row; an error keeps the old row;
+# mode all also drops works it no longer reads
+drop_unread = "WHEN NOT MATCHED BY SOURCE THEN DELETE" if (MODE == "all" and not SAMPLE) else ""
 merge = spark.sql(f"""
 MERGE INTO {TARGET} AS t
 USING {parsed_tbl} AS s
@@ -160,11 +169,12 @@ WHEN MATCHED AND s.status = 'ok' THEN UPDATE SET
   t.authors = s.authors, t.n_authors_with_roles = s.n_authors_with_roles, t.layout = s.layout,
   t.parser_version = s.parser_version, t.fulltext_key = s.fulltext_key, t.fulltext_updated_at = s.fulltext_updated_at,
   t.updated_at = current_timestamp()
-WHEN MATCHED AND s.status != 'ok' THEN DELETE
+WHEN MATCHED AND s.status != 'ok' AND s.status NOT LIKE 'error%' THEN DELETE
 WHEN NOT MATCHED AND s.status = 'ok' THEN INSERT
   (work_id, authors, n_authors_with_roles, layout, parser_version, fulltext_key, fulltext_updated_at, updated_at)
   VALUES (s.work_id, s.authors, s.n_authors_with_roles, s.layout, s.parser_version, s.fulltext_key,
-          s.fulltext_updated_at, current_timestamp())""").first()
+          s.fulltext_updated_at, current_timestamp())
+{drop_unread}""").first()
 n_ok = spark.sql(f"SELECT count(*) AS n FROM {parsed_tbl} WHERE status = 'ok'").first().n
 n_removed = int(merge["num_deleted_rows"]) if "num_deleted_rows" in merge.asDict() else None
 secs = time.time() - T0
