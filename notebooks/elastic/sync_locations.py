@@ -22,6 +22,22 @@ dbutils.widgets.text("is_full_sync", "false")
 IS_FULL_SYNC = dbutils.widgets.get("is_full_sync").lower() == "true"
 print(f"IS_FULL_SYNC: {IS_FULL_SYNC}")
 
+# oxjob #2492: a full load into a new index beside the live one (rebuild and swap, docs/ES_INDEX_REBUILD.md). It never
+# touches the alias, its replicas or the watermark; the target keeps 0 replicas until checked, then the alias is swapped
+# by hand and the next nightly's incremental catches up.
+dbutils.widgets.text("target_index", "")
+TARGET_INDEX = dbutils.widgets.get("target_index").strip()
+if TARGET_INDEX:
+    assert IS_FULL_SYNC, "target_index takes a full load (is_full_sync=true)"
+    _c = Elasticsearch(hosts=[ELASTIC_URL], request_timeout=180, max_retries=5, retry_on_timeout=True)
+    try:
+        _live = _c.indices.get_alias(name=CONFIG["index_name"]).body
+    finally:
+        _c.close()
+    assert TARGET_INDEX not in _live, f"target_index {TARGET_INDEX!r} is the live index behind {CONFIG['index_name']}"
+WRITE_INDEX = TARGET_INDEX or CONFIG["index_name"]
+print(f"Writing to {WRITE_INDEX}")
+
 # Watermark-incremental (oxjob #850): same pattern and table as sync_works, keyed by
 # index_name. A failed night no longer ages out of a fixed window — the watermark stays
 # put and the next run re-covers the gap.
@@ -105,27 +121,11 @@ TS_FORMATS = (
     "yyyy-MM-dd HH:mm:ss.SSS||yyyy-MM-dd HH:mm:ss.SS||yyyy-MM-dd HH:mm:ss.S||"
     "yyyy-MM-dd HH:mm:ss||yyyy-MM-dd||strict_date_optional_time"
 )
+# oxjob #2492 (Casey 20 Nov): no abstract, authors or references. /locations never returned or queried them, and they were
+# 77% of locations-v4's 9.6 TB; serving them later means adding them back here and rebuilding (#911's 28 Aug note no longer holds).
 INDEX_MAPPING = {
     "dynamic": "strict",
     "properties": {
-        "abstract": {"type": "keyword", "ignore_above": 8191},
-        "authors": {
-            "properties": {
-                "affiliations": {
-                    "properties": {
-                        "department": {"type": "keyword"},
-                        "name": {"type": "keyword"},
-                        "ror_id": {"type": "keyword"},
-                    }
-                },
-                "author_key": {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}},
-                "family": {"type": "keyword"},
-                "given": {"type": "keyword"},
-                "is_corresponding": {"type": "boolean"},
-                "name": {"type": "keyword"},
-                "orcid": {"type": "keyword"},
-            }
-        },
         "created_date": {"type": "date", "format": TS_FORMATS, "ignore_malformed": True},
         # oxjob #1573: Crossref/DataCite record DOI, https://doi.org/ form. Built-in `lowercase` normalizer:
         # this index defines no custom `lower`, and adding one needs a close. Added live to locations-v3 2026-10-07.
@@ -168,17 +168,6 @@ INDEX_MAPPING = {
         "published_date": {"type": "date", "format": TS_FORMATS, "ignore_malformed": True},
         "publisher": {"type": "keyword", "ignore_above": 8191},
         "raw_type": {"type": "keyword"},
-        "references": {
-            "properties": {
-                "arxiv": {"type": "keyword"},
-                "authors": {"type": "keyword"},
-                "doi": {"type": "keyword"},
-                "pmid": {"type": "keyword"},
-                "raw": {"type": "keyword"},
-                "title": {"type": "keyword"},
-                "year": {"type": "keyword"},
-            }
-        },
         "source_id": {"type": "keyword"},
         "source_name": {"type": "keyword", "ignore_above": 8191},
         "title": {"type": "keyword", "ignore_above": 8191, "fields": {"text": {"type": "text"}}},
@@ -204,26 +193,27 @@ if IS_FULL_SYNC:
             max_retries=5,
             retry_on_timeout=True
         )
-        if client.indices.exists(index=CONFIG["index_name"]):
-            client.indices.put_settings(index=CONFIG["index_name"], body={
+        if client.indices.exists(index=WRITE_INDEX):
+            client.indices.put_settings(index=WRITE_INDEX, body={
                 "index": {"number_of_replicas": 0, "refresh_interval": "-1"}
             })
-            print(f"Set replicas to 0 and refresh_interval to -1 on {CONFIG['index_name']} for full sync")
+            print(f"Set replicas to 0 and refresh_interval to -1 on {WRITE_INDEX} for full sync")
         else:
             client.indices.create(
-                index=CONFIG["index_name"],
+                index=WRITE_INDEX,
                 body={
                     "settings": {
                         "index": {
                             "number_of_shards": 48,  # oxjob #2040: 12 made 275 GB shards that crowded works copies
                             "number_of_replicas": 0,
                             "refresh_interval": "-1",
+                            "codec": "best_compression",  # oxjob #2492: -15% on a locations-v4 sample
                         }
                     },
                     "mappings": INDEX_MAPPING,
                 },
             )
-            print(f"Created index {CONFIG['index_name']} with explicit mapping, replicas=0, refresh_interval=-1")
+            print(f"Created index {WRITE_INDEX} with explicit mapping, replicas=0, refresh_interval=-1")
     finally:
         client.close()
 
@@ -242,7 +232,7 @@ doc_columns = [
     "published_date", "created_date", "updated_date",
     "issue", "volume", "first_page", "last_page",
     "is_retracted", "is_oa", "is_oa_source",
-    "abstract", "authors", "ids", "urls", "references",
+    "ids", "urls",
     "source_name", "publisher", "source_id",
     "pdf_url", "landing_page_url", "pdf_s3_id", "grobid_s3_id",
     "endpoint_id", "ingested_at",
@@ -348,7 +338,7 @@ if DROP_REPLICAS and not IS_FULL_SYNC:
 
 df = df.repartition(2048)
 
-results_rdd = df.rdd.mapPartitions(lambda p: send_partition_to_elastic(p, CONFIG["index_name"]))
+results_rdd = df.rdd.mapPartitions(lambda p: send_partition_to_elastic(p, WRITE_INDEX))
 # ONE action only: a second action would recompute the RDD and re-send every partition.
 totals = spark.createDataFrame(results_rdd, "indexed_count LONG, error_count LONG").agg(
     F.count("*").alias("partitions"),
@@ -375,7 +365,9 @@ print(f"Processed {totals.partitions} partitions; indexed {totals.indexed or 0:,
 ERROR_TOLERANCE = max(500, int((totals.indexed or 0) * 1e-4))
 total_errors = int(totals.errors or 0)
 
-if total_errors >= ERROR_TOLERANCE:
+if TARGET_INDEX:
+    print(f"Watermark NOT advanced: a target_index load ({total_errors} doc errors); the nightly owns the watermark")
+elif total_errors >= ERROR_TOLERANCE:
     print(f"Watermark NOT advanced: {total_errors} doc errors (tolerance {ERROR_TOLERANCE}). "
           "The incremental window regrows until a clean run.")
 else:
@@ -410,11 +402,14 @@ client = Elasticsearch(
     retry_on_timeout=True
 )
 
-client.indices.refresh(index=CONFIG["index_name"], request_timeout=600)
-print(f"Refreshed index {CONFIG['index_name']}")
-print(f"{client.count(index=CONFIG['index_name'])['count']} documents in {CONFIG['index_name']}")
+client.indices.refresh(index=WRITE_INDEX, request_timeout=600)
+print(f"Refreshed index {WRITE_INDEX}")
+print(f"{client.count(index=WRITE_INDEX)['count']} documents in {WRITE_INDEX}")
 
-if IS_FULL_SYNC:
+if TARGET_INDEX:
+    client.indices.put_settings(index=WRITE_INDEX, body={"index": {"refresh_interval": "30s"}})
+    print(f"{WRITE_INDEX}: refresh_interval 30s; replicas stay 0 until it is checked, then add 1 and swap the alias")
+elif IS_FULL_SYNC:
     client.indices.put_settings(index=CONFIG["index_name"], body={
         "index": {"number_of_replicas": 1, "refresh_interval": "30s"}
     })
