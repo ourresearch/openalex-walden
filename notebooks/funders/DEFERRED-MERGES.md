@@ -1,6 +1,6 @@
 DEFERRED MERGES: 59; active merges in this switch 0; owner Rohan.
 
-**Update on the merge day (oxjob #667):** 332 duplicate merges from the 2026-10-01 duplicate scan are active in `edits.csv` and its `registry_edits` mirror. They include 34 of the 59 rows below; the other 25 stay deferred, as does NICHD (`DEFERRED.md`). Award owners move through a guarded update of `openalex.awards.award_funders_basis` on the same day, before the grants night; `sync_funders` writes the `merge-funders` redirects before it removes a loser.
+**Update on the merge day (oxjob #667):** 332 duplicate merges from the 2026-10-01 duplicate scan were applied by the daily Funders run of 17 Nov 2026 and recorded in `funders_propagated`. They include 34 of the 59 rows below; the other 25 stay deferred, as does NICHD (`DEFERRED.md`). Award owners moved through a guarded update of `openalex.awards.award_funders_basis` the same day, before the grants night; `sync_funders` wrote the `merge-funders` redirects before it removed a loser. Their rows have since left `edits.csv` and its `registry_edits` mirror (rows-out): an applied merge lives in the registry, and a listed row only made each daily run re-apply it as a no-op and take the propagation backups again.
 
 
 Coordinator decision 2026-10-13: defer every one of the 59 twin merges from the switch. NICHD F4320337364 → F4320337611 is an additional, separately deferred row and is not counted below. No merge may return automatically after a date. NICHD is eligible for a new reviewed release only Sun 10-18 after final fold checks.
