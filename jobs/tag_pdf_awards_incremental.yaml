@@ -2,6 +2,20 @@ resources:
   jobs:
     Tag_Pdf_Awards_Incremental:
       name: Tag Pdf Awards Incremental
+      # oxjob #1358: runs take 0.5-4 h (one 7.5 h, one 19 h in the 25 runs to 20 Nov 2026). It starts 06:00 UTC daily; a run that
+      # outlives 23 h is stopped before the next start, a failure emails, and a run past 6 h sends one duration warning.
+      email_notifications:
+        on_failure:
+          - rohan@openalex.org
+        on_duration_warning_threshold_exceeded:
+          - rohan@openalex.org
+        no_alert_for_skipped_runs: true
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 21600
+      timeout_seconds: 82800
       schedule:
         quartz_cron_expression: 0 0 13 * * ?
         timezone_id: UTC
