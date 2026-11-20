@@ -327,3 +327,62 @@ def test_funders_api_roles_are_sorted():
     api = ''.join(''.join(c['source']) for c in json.loads((ROOT / 'notebooks/funders/CreateFundersAPI.ipynb').read_text())['cells'])
     assert 'ARRAY_SORT(COLLECT_LIST(STRUCT(role, id, works_count))) AS roles' in api
     assert not any('-- funders_api_1' in s for s in CELLS)
+
+
+def rename_sql(tag, end):
+    s = CELLS[cell('-- Apply reviewed edits')]
+    return s[s.index(tag):s.index(end, s.index(tag))]
+
+
+def test_rename_is_set_based_and_writes_only_name_fields():
+    s = CELLS[cell('-- Apply reviewed edits')]
+    assert "FOR edit AS SELECT * FROM registry_edits WHERE action <> 'rename' ORDER BY row_no DO" in s   # not looped row by row
+    assert "edit.action = 'rename'" not in s
+    assert s.index('END FOR;') < s.index('-- edit_rename_check') < s.index('-- edit_rename:') < s.rindex('END;')
+    u = rename_sql('-- edit_rename:', 'END;')
+    assert u.count('MERGE INTO') == 1 and "MERGE INTO IDENTIFIER(trim(:prefix) || 'fuse_stage_funder') f" in u   # stage copy, before the fuse
+    assert 'NOT MATCHED' not in u and 'DELETE' not in u
+    assert set(re.findall(r'f\.(\w+) = ', u.split('UPDATE SET', 1)[1])) == {'alt_names', 'display_name', 'updated_date', 'run_id'}
+    # A rename never reaches propagation: only merge/withdraw edits make a propagation plan.
+    assert "registry_edits WHERE action IN ('merge','withdraw')" in CELLS[cell('-- propagation_map')]
+
+
+def test_rename_behaviour():
+    """edit_rename_check and edit_rename, transpiled to DuckDB on a toy stage table. The new name is shown and the old one kept as an
+    alternate (never the new name itself); other funders and fields are untouched; a second run changes nothing. The check passes a funder
+    merged after its rename and stops on one merged before it, on a ROR-minted funder and on a blank name."""
+    import pytest
+    duckdb, sqlglot = pytest.importorskip('duckdb'), pytest.importorskip('sqlglot')
+    con = duckdb.connect()
+    con.execute('CREATE MACRO assert_true(c, m) AS c')
+
+    def sql(tag, end):
+        q = re.sub(r"IDENTIFIER\(trim\(:prefix\) \|\| '(\w+)'\)", r'\1', '\n'.join(l for l in rename_sql(tag, end).split('\n') if not l.startswith('--')))
+        q = sqlglot.parse_one(q.replace("trim(:run_id)", "'t1'"), read='spark').sql(dialect='duckdb')
+        return re.sub(r'(SET |, )f\.(\w+) =', r'\1\2 =', q)    # DuckDB takes unqualified SET targets; the right-hand sides stay qualified
+    check, merge = sql('-- edit_rename_check', '-- edit_rename:'), sql('-- edit_rename:', 'END;')
+
+    def stage(extra=()):
+        con.execute('CREATE OR REPLACE TABLE fuse_stage_funder (funder_id BIGINT, status VARCHAR, ror_id VARCHAR, display_name VARCHAR, '
+                    'alt_names VARCHAR[], created_by VARCHAR, updated_date TIMESTAMP, run_id VARCHAR)')
+        con.execute("INSERT INTO fuse_stage_funder VALUES (1, 'active', 'r1', 'Consejo Nacional de Ciencia y Tecnología', ['CONACYT', 'SECIHTI'], "
+                    "'seed_v41', TIMESTAMP '2026-01-01', 'old'), (2, 'active', 'r2', 'Other', NULL, 'seed_v41', TIMESTAMP '2026-01-01', 'old'), "
+                    "(3, 'merged', NULL, 'Renamed earlier', ['x'], 'seed_v41', TIMESTAMP '2026-01-01', 'old')")
+        rows = [(0, 'rename', 1, 'SECIHTI'), (1, 'rename', 3, 'Renamed earlier')] + list(extra)
+        con.execute('CREATE OR REPLACE TABLE registry_edits (row_no INT, action VARCHAR, funder_id BIGINT, target VARCHAR)')
+        con.executemany('INSERT INTO registry_edits VALUES (?, ?, ?, ?)', rows)
+
+    stage()
+    assert con.execute(check).fetchone()[0] is True
+    for run in (1, 2):
+        con.execute(merge)
+        rows = {r[0]: r[1:] for r in con.execute('SELECT funder_id, status, ror_id, display_name, alt_names, run_id FROM fuse_stage_funder').fetchall()}
+        status, ror, name, alts, run_id = rows[1]
+        assert (status, ror, name, run_id) == ('active', 'r1', 'SECIHTI', 'fdt1')
+        assert sorted(alts) == ['CONACYT', 'Consejo Nacional de Ciencia y Tecnología'], (run, alts)
+        assert rows[2] == ('active', 'r2', 'Other', None, 'old') and rows[3] == ('merged', None, 'Renamed earlier', ['x'], 'old')
+    for bad in ((2, 'rename', 3, 'Never shown'), (2, 'rename', 9, 'Missing'), (2, 'rename', 2, ' ')):
+        stage([bad])
+        assert con.execute(check).fetchone()[0] is False, bad
+    stage(); con.execute("UPDATE fuse_stage_funder SET created_by = 'mint_ror' WHERE funder_id = 1")
+    assert con.execute(check).fetchone()[0] is False

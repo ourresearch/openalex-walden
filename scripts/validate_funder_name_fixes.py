@@ -56,11 +56,22 @@ def validate():
     losers = {a for a, _ in csv_merges}
     assert len(losers) == len(csv_merges) and not losers.intersection(b for _, b in csv_merges), 'Merge chain/cycle'
     assert all(r['reviewed_by'] and r['reason'] for r in edits)
+    # Reviewed renames: the mirror carries each new name as hex bytes, in CSV order; one per funder; never on a merged funder.
+    csv_renames = [(int(r['funder_id']), r['target']) for r in edits if r['action'] == 'rename']
+    sql_renames = [(int(a), bytes.fromhex(h).decode('utf-8')) for a, h in
+                   re.findall(r"\(\d+L,'rename',(\d+)L,cast\(unhex\('([0-9a-f]+)'\) AS STRING\),CAST\(NULL AS STRING\)\)", edits_cell)]
+    assert sql_renames == csv_renames, 'rename mirror differs from edits.csv'
+    renamed = [f for f, _ in csv_renames]
+    assert len(set(renamed)) == len(renamed) and not set(renamed) & (losers | {b for _, b in csv_merges}), 'rename twice or on a merge row'
+    assert all(t and t == t.strip() and '\n' not in t for _, t in csv_renames)
 
     merge = next(s for s in funders if '-- Apply reviewed edits' in s)
     merge = merge[merge.index('-- edit_merge:'):merge.index('-- edit_merge_ids')]
     fields = set(re.findall(r'f\.(\w+)\s*=', merge.split('UPDATE SET', 1)[1]))
     assert fields == {'status', 'merged_into_id', 'updated_date', 'run_id'}, fields
+    rename = next(s for s in funders if '-- Apply reviewed edits' in s)
+    rename = rename[rename.index('-- edit_rename:'):rename.rindex('END;')]
+    assert set(re.findall(r'f\.(\w+) = ', rename.split('UPDATE SET', 1)[1])) == {'alt_names', 'display_name', 'updated_date', 'run_id'}
     assert not any("trim(:prefix) <> 'openalex.funders.'" in s for s in funders), 'No dev-only harness in the daily notebook'
     for s in (alias_cell, twin_cell):
         assert s.startswith("%sql\nBEGIN\nIF :phase = 'stage' THEN\n") and "CREATE TABLE IDENTIFIER(:release_prefix ||" in s
