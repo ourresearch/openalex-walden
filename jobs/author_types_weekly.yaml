@@ -17,8 +17,8 @@ resources:
           default: "false"
       tasks:
         # Type_Organization_Seats (notebooks/authors/TypeOrganizationSeats, warehouse 4d37bf76372a2901, timeout 5400) is held
-        # out until the ROR organization fill (~13.2M seats) is cleared on its own (21 Nov 2026 19:10 CT): the approved plan
-        # approved named ~250K organization works. Put the task back here to start it.
+        # out until the ROR organization fill (~13.2M seats) is cleared on its own (21 Nov 2026 17:15 CT): the approved plan
+        # named ~250K organization works. Put the task back here to start it.
         - task_key: Check_Agent_Types
           timeout_seconds: 3600
           spark_python_task:
