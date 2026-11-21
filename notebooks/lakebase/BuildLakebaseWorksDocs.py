@@ -319,6 +319,12 @@ _cr_empty = "cast(array() as array<struct<id:string,display_name:string>>)"
 CONTRIBUTOR_ROLES_SQL = (f"coalesce(x.contributor_roles, {_cr_empty})"
                          if "contributor_roles" in df.schema["authorships"].dataType.elementType.fieldNames()
                          else _cr_empty)
+# oxjob #2437: authorships[].acted_on_behalf_of, the people or organizations an author (an AI agent, say) acted for:
+# {id, display_name}, an author or institution id, the same shape as contributor_roles. No source states one yet, so
+# the build has no such field and every seat gets []; the night CreateWorksEnriched adds it, it is served from there.
+ACTED_ON_BEHALF_OF_SQL = (f"coalesce(x.acted_on_behalf_of, {_cr_empty})"
+                          if "acted_on_behalf_of" in df.schema["authorships"].dataType.elementType.fieldNames()
+                          else _cr_empty)
 df_transformed = (
     df
     .withColumn("work_id", F.col("id").cast("bigint"))
@@ -365,7 +371,8 @@ df_transformed = (
             'is_corresponding', x.is_corresponding,
             'raw_affiliation_strings', transform(x.raw_affiliation_strings, aff -> substring(aff, 1, 32000)),
             'institutions', x.institutions,
-            'contributor_roles', """ + CONTRIBUTOR_ROLES_SQL + """
+            'contributor_roles', """ + CONTRIBUTOR_ROLES_SQL + """,
+            'acted_on_behalf_of', """ + ACTED_ON_BEHALF_OF_SQL + """
         ))
     """))
     .withColumn("authorships", F.slice(F.col("authorships_full"), 1, 100))
