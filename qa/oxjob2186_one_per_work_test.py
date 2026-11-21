@@ -6,7 +6,7 @@ seats, runs it on a SQL warehouse, and checks which seats it blocks. The name pa
 openalex.authors.author_names / openalex_authors (read only), as the nightly reads them; the test first checks that the names
 of every blocking case are parsed, so a block can't pass by accident of a missing parse.
 
-Cases: the dry run's examples (CHEN Baozhang onto Jing Chen's profile; Do Hoon Lim onto Il Han Kim's) and the forms of one
+Cases (21 Nov: ORCID picks are not logged; a seat that is itself an address is never blocked): the dry run's examples (CHEN Baozhang onto Jing Chen's profile; Do Hoon Lim onto Il Han Kim's) and the forms of one
 person that must pass (initials, accents, katakana vs kanji, Cyrillic vs Latin, identical names), the ORCID exemption, a tie
 between two seats picked tonight, and a holder that is itself in tonight's batch.
 
@@ -29,7 +29,7 @@ PENDING = [
     (2, 1, "Guillén-Gosálbez, G", 9000000002, "name"),   # same person (dry-run false unassign): pass
     (3, 4, "A Ronne", 9000000003, "name"),               # same person (dry-run false unassign): pass
     (4, 1, "Wei Wang", 9000000004, "name"),              # identical printed name: never blocked
-    (5, 2, "CHEN Baozhang", JING_CHEN, "orcid"),         # ORCID pick: logged as orcid_conflict, not blocked
+    (5, 2, "CHEN Baozhang", JING_CHEN, "orcid"),         # ORCID pick: never blocked (not logged since 21 Nov)
     (6, 2, "Zhe Zhang", 9000000006, "name"),             # tonight tie: lower seat wins ...
     (6, 5, "Zhenyang Zhang", 9000000006, "vector"),      # ... the other is blocked
     (7, 1, "イサオ ハヤシ", 9000000007, "name"),            # katakana reading vs kanji: one person, pass
@@ -41,6 +41,8 @@ PENDING = [
     (12, 3, "Junhong Li", 9000000012, "name"),           # #1893's classic: Jun Li holds the profile; full given names conflict
     (13, 2, "Chris Smith", 9000000013, "name"),          # nickname of the holder's given name (4+ letters shared): pass
     (14, 1, "Wendy Prin-Conti", 9000000014, "name"),     # the profile's other seat is an address, not a person: pass
+    (15, 5, "Universidad Ricardo Palma. Lima, Perú", 9000000015, "name"),  # the seat itself is an address (first shadow
+                                                         #   night, 21 Nov): never blocked, so no address-named profile is minted
 ]
 SERVED = [
     (1, 3, JING_CHEN, "CHEN Jing"), (2, 0, 9000000002, "Guillen-Gosalbez, Gonzalo"), (3, 0, 9000000003, "Anita RøNne"),
@@ -48,20 +50,25 @@ SERVED = [
     (8, 0, 9000000008, "Kulyk, Iryna V."), (9, 0, 9000000009, "Jing Chen"), (10, 13, 9000000010, "Il Han Kim"),
     (6, 2, None, "Zhe Zhang"),   # a batch seat as served (unbound): never a holder
     (12, 1, 9000000012, "Jun Li"), (13, 0, 9000000013, "Christopher Smith"),
-    (14, 0, 9000000014, "Université Sorbonne Nouvelle - Paris 3 (Francia)"),
+    (14, 0, 9000000014, "Université Sorbonne Nouvelle - Paris 3 (Francia)"), (15, 4, 9000000015, "Doris Gala A."),
 ]
-EXPECT = {(1, 2): "blocked", (5, 2): "orcid_conflict", (6, 5): "blocked", (10, 14): "blocked", (12, 3): "blocked"}   # every other seat: no row
+EXPECT = {(1, 2): "blocked", (6, 5): "blocked", (10, 14): "blocked", (12, 3): "blocked"}   # every other seat: no row
 MUST_PARSE = ["CHEN Baozhang", "CHEN Jing", "Zhe Zhang", "Zhenyang Zhang", "Do Hoon Lim", "Il Han Kim", "Junhong Li", "Jun Li"]
 
 
 def step_select():
+    """The cell's three statements (stage -> features -> judge) composed into one SELECT over the fixture tables."""
     cells = ["".join(c["source"]) for c in json.load(open(NOTEBOOK))["cells"]]
     cell = next(c for c in cells if c.startswith("-- oxjob #2186 step C"))
-    m = re.search(r"SELECT c\.\*, one_per_work_mode AS mode FROM \((.*)\) c\nWHERE one_per_work_mode", cell, re.S)
-    sel = m.group(1)
-    assert "openalex.authors.pending_author_assignments" in sel and "openalex.works.work_authors_curated" in sel
-    return sel.replace("openalex.authors.pending_author_assignments", "fx_pending").replace(
-        "openalex.works.work_authors_curated", "fx_served")
+    stage = re.search(r"CREATE OR REPLACE TABLE openalex\.authors\.one_per_work_stage\n  COMMENT '[^']*' AS\n(.*?);\nCREATE OR REPLACE TABLE "
+                      r"openalex\.authors\.one_per_work_stage_f", cell, re.S).group(1)
+    feat = re.search(r"CREATE OR REPLACE TABLE openalex\.authors\.one_per_work_stage_f\n  COMMENT '[^']*' AS\n(.*?);\nINSERT INTO", cell, re.S).group(1)
+    judge = re.search(r"SELECT c\.\*, one_per_work_mode AS mode FROM \((.*)\) c\nWHERE one_per_work_mode", cell, re.S).group(1)
+    assert "openalex.authors.pending_author_assignments" in stage and "openalex.works.work_authors_curated" in stage
+    stage = (stage.replace("openalex.authors.pending_author_assignments", "fx_pending")
+             .replace("openalex.works.work_authors_curated", "fx_served").replace("one_per_work_mode IN ('shadow', 'on')", "TRUE"))
+    feat = feat.replace("openalex.authors.one_per_work_stage", f"({stage})", 1)
+    return judge.replace("openalex.authors.one_per_work_stage_f", f"({feat})")   # read twice (seats, holders)
 
 
 def num(v):
