@@ -9,7 +9,8 @@
 # MAGIC Builds, in batch, exactly the rows the Repo pipeline's openaire flow would send to `repo_works` for the given
 # MAGIC endpoints, by running `notebooks/ingest/Repo.py` (`parse_openaire_file_udf`, `parse_openaire_records`,
 # MAGIC `enrich_hal_tei`) under a stub `dlt` module on the files already harvested to
-# MAGIC `s3://openalex-ingest/openaire/<endpoint id>/`. Writes only `<out_prefix>_*` scratch tables, then compares each
+# MAGIC `s3://openalex-ingest/openaire/<endpoint id>/` (or, for a feed switched but not yet promoted, `openaire-trial/`:
+# MAGIC widget `s3_folder`). Writes only `<out_prefix>_*` scratch tables, then compares each
 # MAGIC record with the `repo_works` row it would replace: OA flips, URL / title / author / id / date changes, records new
 # MAGIC to `repo_works`, and records `repo_works` holds that the feed no longer lists.
 
@@ -27,6 +28,10 @@ dbutils.widgets.text("out_prefix", "openalex.transient.oxjob2429", "scratch tabl
 # can use; it re-keys only placeholder OAI hosts (ojs.pkp.sfu.ca, localhost, ...), so a run as a person passes false.
 dbutils.widgets.text("rekey_hosts", "false", "true = re-key placeholder hosts from the registry (run as the SP)")
 REKEY = dbutils.widgets.get("rekey_hosts").lower() == "true"
+# A feed switched to oai_openaire lands in openaire-trial/<id>/ until its dry run passes and the harvester lists it as
+# live (openalex-ingest OPENAIRE_LIVE_ENDPOINTS); the flow reads only openaire/.
+dbutils.widgets.dropdown("s3_folder", "openaire", ["openaire", "openaire-trial"], "where the feed's files are")
+S3_FOLDER = dbutils.widgets.get("s3_folder")
 ENDPOINTS = [e.strip() for e in dbutils.widgets.get("endpoint_ids").split(",") if e.strip()]
 OUT = dbutils.widgets.get("out_prefix")
 
@@ -57,8 +62,11 @@ print("loaded Repo.py; endpoints:", ENDPOINTS)
 # COMMAND ----------
 
 # repo_items_openaire, in batch: the same select as the DLT table
+base = repo["OPENAIRE_S3_PATH"].replace("/openaire/", f"/{S3_FOLDER}/")
 files = (spark.read.format("binaryFile").option("pathGlobFilter", "*.xml.gz").option("recursiveFileLookup", "true")
-         .load([f"{repo['OPENAIRE_S3_PATH']}{e}/" for e in ENDPOINTS]))
+         .load([f"{base}{e}/" for e in ENDPOINTS]))
+# Repo.py takes the endpoint id from the "openaire/<id>/" part of the path: read a trial file as if it sat there
+files = files.withColumn("path", F.regexp_replace("path", f"/{S3_FOLDER}/", "/openaire/"))
 items = repo["openaire_files_as_items"](files)
 items.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{OUT}_items")
 display(spark.sql(f"""SELECT repository_id, count(*) records, count_if(parse_error IS NOT NULL) parse_errors,
