@@ -43,6 +43,11 @@ resources:
           notebook_task:
             notebook_path: notebooks/elastic/sync_study_designs
             source: GIT
+        # oxjob #2437: /author-types (human, organization, software-agent) and each type's works_count
+        - task_key: sync_author_types
+          notebook_task:
+            notebook_path: notebooks/elastic/sync_author_types
+            source: GIT
         - task_key: sync_contributor_roles
           notebook_task:
             notebook_path: notebooks/elastic/sync_contributor_roles

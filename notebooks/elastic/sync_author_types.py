@@ -32,17 +32,24 @@ VOCAB = [
      "The author is running software, such as an AI research agent or another bot."),
 ]
 
-# The same class in standard vocabularies (vocabulary, term, url), per value. Keep in step with the help page.
+# The same class in standard vocabularies (vocabulary, term, url), per value, best first: oxjobs #2437 work/crosswalk.md
+# section A1. Keep in step with the help page.
 STANDARD_TERMS = {
     "human": [
         ("W3C PROV-O", "Person", "http://www.w3.org/ns/prov#Person"),
         ("schema.org", "Person", "https://schema.org/Person"),
         ("Wikidata", "human (Q5)", "https://www.wikidata.org/wiki/Q5"),
+        ("DataCite", "Personal (nameType)",
+         "https://datacite-metadata-schema.readthedocs.io/en/4.7/properties/creator/#a-nametype"),
+        ("FOAF", "Person", "http://xmlns.com/foaf/0.1/Person"),
     ],
     "organization": [
         ("W3C PROV-O", "Organization", "http://www.w3.org/ns/prov#Organization"),
         ("schema.org", "Organization", "https://schema.org/Organization"),
         ("Wikidata", "organization (Q43229)", "https://www.wikidata.org/wiki/Q43229"),
+        ("DataCite", "Organizational (nameType)",
+         "https://datacite-metadata-schema.readthedocs.io/en/4.7/properties/creator/#a-nametype"),
+        ("FOAF", "Organization", "http://xmlns.com/foaf/0.1/Organization"),
     ],
     "software-agent": [
         ("W3C PROV-O", "SoftwareAgent", "http://www.w3.org/ns/prov#SoftwareAgent"),
