@@ -4,7 +4,8 @@
 # 655/665 on a fresh blind draw and 223/231 on new strings, 26-27 Oct; from 3 Nov names_u v8 and also "Affiliated Hospital of
 # X University" strings whose related organization is a hospital, patch layer 11's class, 155/160). About 300 strings a day. MERGEs only rows still equal
 # to their before ids, logs every row to oxjob1395_patches (layer 7, basis related_org_daily:*), fails above 20,000 strings.
-# Until the matcher's Jev teacher is retrained on the fixed question (#1832 PLAN step 4); then delete this job.
+# Task 2 (judges, oxjob #2493) takes the classes the rule holds out. Until the matcher's teacher is retrained on the fixed
+# question (#1832 PLAN step 4); then delete this job.
 # Revert: pause the job; undo a day by MERGEing before_ids back from its patches rows where institution_ids = after_ids.
 resources:
   jobs:
@@ -27,6 +28,28 @@ resources:
               path: notebooks/institutions/affiliation_related_org_guard.sql
               source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        # oxjob #2493: the related-organization classes the guard's rule can't read, decided by two judges (Sonnet 5.5, then
+        # Opus 5.5; bar 499/500 by GPT-6 Astra on 98,614 held-out pairs). Route A: university and related organization both
+        # linked; route B: university alone with a related organization among the candidates (drop, and add the related
+        # organization both judges say the string names; never empty). Writes patches layer 12, related_org_judges_daily_2493.
+        # Revert: set dry_run to "true" (or remove this task); undo a day by MERGEing before_ids back from its patches rows.
+        - task_key: judges
+          depends_on:
+            - task_key: guard
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/institutions/AffiliationRelatedOrgJudges
+            source: GIT
+            base_parameters:
+              since_hours: "72"
+              dry_run: "false"
+              max_pairs: "20000"
+              max_usd: "40"
+          timeout_seconds: 3600
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub

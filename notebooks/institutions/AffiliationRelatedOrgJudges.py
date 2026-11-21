@@ -12,14 +12,15 @@
 # MAGIC * **A, university and related organization both linked**, the name rule's held-out classes (`drop:absent`,
 # MAGIC   `drop:hosp_compound`, `drop:hosp_romance`): drop the university where two judges agree the string does not name it.
 # MAGIC * **B, university linked alone, a related organization among the matcher's candidates** (`scores`), the name rule
-# MAGIC   (with the related organization's names masked) says the string doesn't name the university: drop the university
-# MAGIC   where two judges agree, and add each related candidate both judges say the string names. A string is never left
-# MAGIC   empty: if nothing is added and nothing else stays, the university stays.
+# MAGIC   (with the related organization's names masked) says the string doesn't name the university: a swap. Where two
+# MAGIC   judges agree the string does not name the university AND two judges agree it names a related candidate, the
+# MAGIC   candidate replaces the university ("McGill University Health Centre" -> MUHC, not McGill). No swap, no change.
 # MAGIC
 # MAGIC **Judges:** Claude Sonnet 5.5, then Claude Opus 5.5 on Sonnet's verdicts that would change the answer, each blind to
 # MAGIC the other, one institution card (names, place, ROR parents, units, related) and up to 20 strings per prompt; the
-# MAGIC rubric is the institution QC judge of record (oxjob #1387). Only agreement acts. Bar: on the same classes from
-# MAGIC 98,614 held-out pairs (patch layer 12, oxjob #2493) a blind GPT-6 Astra draw found 499/500 drops right.
+# MAGIC rubric is the institution QC judge of record (oxjob #1387). Only agreement acts. Bars (blind GPT-6 Astra): route A
+# MAGIC 499/500 on 98,614 held-out pairs (patch layer 12, oxjob #2493); route B swaps on strings answered since 10 Nov:
+# MAGIC university removed 152/152 and related organization added 249/250 over two draws.
 # MAGIC
 # MAGIC **Writes** (unless `dry_run`): MERGE into `affiliation_matcher_answers` only where the answer still equals the
 # MAGIC record's `before_ids`; one `oxjob1395_patches` row per string (layer 12, `related_org_judges_daily_2493`); every
@@ -296,13 +297,18 @@ for p in pairs:
     by_s.setdefault(p["raw_affiliation_string"], {"live": list(p["live_ids"]), "rm": set(), "add": set(), "cls": set()})
 for p in pairs:
     s, u = p["raw_affiliation_string"], p["u_id"]
-    if (u, s) in drop_u:
-        d = by_s[s]
-        d["rm"].add(u)
-        d["cls"].add(f"{p['route']}:{p['verdict'][5:]}")
-        for h in p["h_cand_ids"] or []:
-            if (h, s) in add_h:
-                d["add"].add(h)
+    if (u, s) not in drop_u:
+        continue
+    d = by_s[s]
+    added = [h for h in (p["h_cand_ids"] or []) if (h, s) in add_h]
+    # Route B acts only as a swap: the university goes only when a related organization both judges say the string names
+    # comes in. Plain route-B removals judged 87/98 right (strings naming a unit of the university with no record of its
+    # own); swaps 152/152 on two draws (oxjob #2493 ACCEPTANCE Test 2).
+    if p["route"] == "B" and not added:
+        continue
+    d["rm"].add(u)
+    d["add"].update(added)
+    d["cls"].add(f"{p['route']}:{p['verdict'][5:]}")
 rec = []
 for s, d in by_s.items():
     if not d["rm"]:
