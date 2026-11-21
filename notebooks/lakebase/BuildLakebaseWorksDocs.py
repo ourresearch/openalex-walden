@@ -312,6 +312,9 @@ empty_study_design_array = F.array().cast("array<struct<id:string,display_name:s
 # oxjob #2264: is_pulled reaches openalex_works on the first End 2 End run after it ships; a run before that must not
 # fail on the missing column.
 is_pulled_col = F.coalesce(F.col("is_pulled"), F.lit(False)) if "is_pulled" in df.columns else F.lit(False)
+# oxjob #2481: reviewed_by_count reaches openalex_works on the first End 2 End run after it ships; a sync run before
+# that (the manual full sync) must not fail on the missing column. NULL on a work nothing reviews (the API serves 0).
+reviewed_by_count_col = F.col("reviewed_by_count") if "reviewed_by_count" in df.columns else F.lit(None).cast("int")
 
 # oxjob #2075: authorships[].contributor_roles ({id, display_name}, [] when none). CreateWorksEnriched adds the
 # field; a run before the first build that carries it must not fail on it, so every seat gets [] until then.
@@ -439,6 +442,7 @@ df_transformed = (
         F.col("parent_works"),  # oxjob #2065
         F.col("lineage"),
         F.col("child_works_count"),
+        reviewed_by_count_col.alias("reviewed_by_count"),  # oxjob #2481
         F.col("referenced_works"),
         F.col("referenced_works_count"),
         F.coalesce(F.col("related_works"), F.lit([])).alias("related_works"),

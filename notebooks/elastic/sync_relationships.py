@@ -2,9 +2,13 @@
 # NOTE: Like sync_study_designs, this tiny closed-vocabulary entity builds its API table and
 # syncs it to Elasticsearch in one notebook.
 #
-# "relationships" is the vocabulary of work-to-work links: citation (a work's referenced_works, oxjob #1490) and the
-# four part-of kinds of works.parent_works[].relationship (oxjob #2065), written by notebooks/end2end/CreateWorkParents.
-# This notebook only describes and counts them; the API's /links serves the links themselves.
+# "relationships" (link types from the /link-types rename, oxjob #2481) is the vocabulary of work-to-work links:
+# citation (a work's referenced_works, oxjob #1490), the four part-of kinds of works.parent_works[].relationship
+# (oxjob #2065), written by notebooks/end2end/CreateWorkParents, and review (oxjob #2481, rows of work_links built from
+# work_review_links). This notebook only describes and counts them; the API's /links serves the links themselves.
+# It writes the same records to two indexes: work-relationships-v1 (ids https://openalex.org/relationships/<slug>,
+# served at /relationships) and link-types-v1 (ids https://openalex.org/link-types/<slug>, served at /link-types).
+# /relationships redirects to /link-types after the notice period (oxjob #2481); then the first index can go.
 #
 # Naming rule (Jason, 15 Nov 2026, oxjob #1490): a relationship value is a NOUN that names the link itself, not one
 # end of it (citation, retraction, review), so it reads the same from either work; the description reads from the work
@@ -41,17 +45,19 @@ VOCAB = [
     ("part", "Part",
      "The work is declared part of another work in some other way: an article in an issue, a dataset in a "
      "collection, a component of a project."),
+    ("review", "Review",
+     "The work reviews another work: an evaluation of that specific work, such as a peer review, preprint review or "
+     "book review (a literature review article is the work type review, not this link)."),
 ]
 
 # The same link in standard vocabularies (vocabulary, term, url), per value. Keep in step with the help page.
 _DCTERMS = ("Dublin Core", "isPartOf", "http://purl.org/dc/terms/isPartOf")
 _SCHEMA = ("schema.org", "isPartOf", "https://schema.org/isPartOf")
-_DATACITE = ("DataCite", "IsPartOf",
-             "https://datacite-metadata-schema.readthedocs.io/en/4.6/appendices/appendix-1/relationType/#ispartof")
+_DATACITE_DOCS = "https://datacite-metadata-schema.readthedocs.io/en/4.7/appendices/appendix-1/relationType/"
+_DATACITE = ("DataCite", "IsPartOf", _DATACITE_DOCS + "#ispartof")
 _CROSSREF = ("Crossref", "isPartOf",
              "https://www.crossref.org/documentation/schema-library/markup-guide-metadata-segments/relationships/")
 _PART_OF = [_DCTERMS, _SCHEMA, _DATACITE, _CROSSREF]
-_DATACITE_DOCS = "https://datacite-metadata-schema.readthedocs.io/en/4.6/appendices/appendix-1/relationType/"
 STANDARD_TERMS = {
     "citation": [
         ("Dublin Core", "references", "http://purl.org/dc/terms/references"),
@@ -61,10 +67,19 @@ STANDARD_TERMS = {
         ("Crossref", "references", _CROSSREF[2]),
         ("CiTO", "cites", "http://purl.org/spar/cito/cites"),
     ],
-    "volume": _PART_OF,
+    # DataCite's IsPublishedIn ("A is published inside B, but is independent of other things published inside B")
+    # fits a chapter in its book better than IsPartOf.
+    "volume": [_DCTERMS, _SCHEMA, ("DataCite", "IsPublishedIn", _DATACITE_DOCS + "#ispublishedin"), _CROSSREF],
     "component": _PART_OF,
     "data-series": _PART_OF + [("DCAT", "inSeries", "https://www.w3.org/ns/dcat#inSeries")],
     "part": _PART_OF,
+    # oxjob #2481: exact equivalents first (crosswalk in that job, work/review_crosswalk.md).
+    "review": [
+        ("CiTO", "reviews", "http://purl.org/spar/cito/reviews"),
+        ("DataCite", "Reviews", _DATACITE_DOCS + "#reviews"),
+        ("Crossref", "isReviewOf", _CROSSREF[2]),
+        ("Wikidata", "review of (P6977)", "https://www.wikidata.org/wiki/Property:P6977"),
+    ],
 }
 assert set(STANDARD_TERMS) == {v[0] for v in VOCAB}, "every relationship lists its standard terms"
 
@@ -108,18 +123,26 @@ citation_sql = """
     SELECT 'citation' AS slug, COUNT(*) AS works_count
     FROM openalex.works.openalex_works WHERE referenced_works_count > 0"""
 
+# review (oxjob #2481): the works that review another work, from the links table the Work Links job builds.
+review_sql = """
+    SELECT 'review' AS slug, COUNT(DISTINCT origin_work_id) AS works_count
+    FROM openalex.works.work_links WHERE relationship = 'review'"""
+
 spark.sql(f"""
 CREATE OR REPLACE TABLE {TABLE} AS
-WITH counts AS ({counts_sql} UNION ALL {citation_sql})
+WITH counts AS ({counts_sql} UNION ALL {citation_sql} UNION ALL {review_sql})
 SELECT
     CONCAT('https://openalex.org/relationships/', v.slug) AS id,
     v.display_name,
     v.description,
     v.standard_terms,
     COALESCE(c.works_count, 0) AS works_count,
-    CONCAT('https://api.openalex.org/works?filter=',
-           CASE v.slug WHEN 'citation' THEN 'has_references:true' ELSE CONCAT('parent_works.relationship:', v.slug) END
-    ) AS works_api_url,
+    -- review: no works filter selects the reviews themselves; works reviewed are reviewed_by_count:>0.
+    CASE v.slug
+      WHEN 'citation' THEN 'https://api.openalex.org/works?filter=has_references:true'
+      WHEN 'review' THEN CAST(NULL AS STRING)
+      ELSE CONCAT('https://api.openalex.org/works?filter=parent_works.relationship:', v.slug)
+    END AS works_api_url,
     TIMESTAMP '2026-11-14 00:00:00' AS created_date,
     CAST(NULL AS TIMESTAMP) AS updated_date
 FROM work_relationship_vocab v
@@ -163,6 +186,7 @@ log = logging.getLogger(__name__)
 
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 INDEX_NAME = "work-relationships-v1"
+LINK_TYPES_INDEX = "link-types-v1"   # oxjob #2481: /link-types
 
 # standard_terms (oxjob #1490): displayed, not searched.
 STANDARD_TERMS_MAPPING = {
@@ -219,25 +243,39 @@ INDEX_BODY = {
     },
 }
 
-client = Elasticsearch(hosts=[ELASTIC_URL], max_retries=3, request_timeout=180)
-try:
-    if not client.indices.exists(index=INDEX_NAME):
-        client.indices.create(index=INDEX_NAME, body=INDEX_BODY)
-        print(f"Created index {INDEX_NAME} with explicit mapping")
+def as_link_type(row):
+    """The same record under its /link-types id; part-of works_api_urls use the parent_works.link_type filter."""
+    row = dict(row)
+    row["id"] = row["id"].replace("https://openalex.org/relationships/", "https://openalex.org/link-types/")
+    if row.get("works_api_url"):
+        row["works_api_url"] = row["works_api_url"].replace("parent_works.relationship:", "parent_works.link_type:")
+    return row
+
+
+def write_index(client, index_name, rows):
+    if not client.indices.exists(index=index_name):
+        client.indices.create(index=index_name, body=INDEX_BODY)
+        print(f"Created index {index_name} with explicit mapping")
     else:
         # Fields added after the index was created (standard_terms, oxjob #1490); a no-op once present.
-        client.indices.put_mapping(index=INDEX_NAME, properties={"standard_terms": STANDARD_TERMS_MAPPING})
-    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # five rows
-    actions = [{"_op_type": "index", "_index": INDEX_NAME, "_id": r["id"], "_source": r} for r in rows]
+        client.indices.put_mapping(index=index_name, properties={"standard_terms": STANDARD_TERMS_MAPPING})
+    actions = [{"_op_type": "index", "_index": index_name, "_id": r["id"], "_source": r} for r in rows]
     ok, errors = helpers.bulk(client, actions, raise_on_error=False)
     if errors:
-        raise RuntimeError(f"{len(errors)} documents failed to index: {errors[:3]}")
-    client.indices.refresh(index=INDEX_NAME)
+        raise RuntimeError(f"{len(errors)} documents failed to index into {index_name}: {errors[:3]}")
+    client.indices.refresh(index=index_name)
     live_ids = {r["id"] for r in rows}
-    hits = client.search(index=INDEX_NAME, size=1000, _source=False, query={"match_all": {}})["hits"]["hits"]
+    hits = client.search(index=index_name, size=1000, _source=False, query={"match_all": {}})["hits"]["hits"]
     stale = [h["_id"] for h in hits if h["_id"] not in live_ids]
     for doc_id in stale:
-        client.delete(index=INDEX_NAME, id=doc_id)
-    print(f"Indexed {ok} documents to {INDEX_NAME}; deleted {len(stale)} stale")
+        client.delete(index=index_name, id=doc_id)
+    print(f"Indexed {ok} documents to {index_name}; deleted {len(stale)} stale")
+
+
+client = Elasticsearch(hosts=[ELASTIC_URL], max_retries=3, request_timeout=180)
+try:
+    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # six rows
+    write_index(client, INDEX_NAME, rows)
+    write_index(client, LINK_TYPES_INDEX, [as_link_type(r) for r in rows])
 finally:
     client.close()
