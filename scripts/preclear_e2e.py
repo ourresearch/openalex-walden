@@ -80,6 +80,7 @@ LOSS_METRICS = {
     "work_author_curations": ["work_author_curations"],
     "location_curations": ["location_curations"],
     "reference_lists_filed": ["reference_lists_filed"],  # a count, not a loss: parse_work_references' 20% re-file line
+    "author_orcid_seats": ["author_orcid_seats"],  # Authors job: seats a planned change takes out of author_orcid_seats (CreateAuthorObservedOrcids guard, #1642)
 }
 for _names in list(LOSS_METRICS.values()):
     for _m in _names:
