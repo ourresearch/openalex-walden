@@ -50,6 +50,7 @@ def bin_matrix(col, scale):
 def segments(keys):
     """sorted string column -> list of (key, lo, hi)"""
     codes = pc.dictionary_encode(keys.combine_chunks()); idx = codes.indices.to_numpy(zero_copy_only=False); vals = codes.dictionary.to_pylist()
+    if len(idx) == 0: return []  # an empty pool file (a small night leaves some of the 128 dump partitions empty; night 11-21: IndexError)
     cuts = np.flatnonzero(np.diff(idx)) + 1; los = np.concatenate([[0], cuts]); his = np.concatenate([cuts, [len(idx)]])
     return [(vals[idx[lo]], int(lo), int(hi)) for lo, hi in zip(los, his)]
 # ---- night seats by block -------------------------------------------------------------------------------------------------------------

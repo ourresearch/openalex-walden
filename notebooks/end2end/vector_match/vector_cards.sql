@@ -1,6 +1,11 @@
 -- #1348 Vector_Cards: the seats MatchAuthors will match tonight (same predicate as MatchAuthors cell 7 needs_matching) with card components.
 DECLARE OR REPLACE VARIABLE max_updated_date TIMESTAMP DEFAULT to_timestamp('1900-01-01');
-SET VARIABLE max_updated_date = COALESCE((SELECT MAX(updated_at) - INTERVAL 1 SECOND FROM openalex.works.work_authors), to_timestamp('1900-01-01'));
+-- oxjob #1642 (21 Nov 2026): the same watermark as MatchAuthors cell 1. Rows stamped after the newest Works_Base stamp don't
+-- count: #2133's byline re-seat step stamps its moved rows with current_timestamp(), and night 11-21's Vector_Cards then
+-- picked 15 seats instead of ~800K (MatchAuthors, guarded since 10 Nov, matched them all). Same value on a normal night.
+SET VARIABLE max_updated_date = COALESCE((SELECT MAX(updated_at) - INTERVAL 1 SECOND FROM openalex.works.work_authors
+                                          WHERE updated_at <= (SELECT MAX(updated_date) FROM openalex.works.openalex_works_base)),
+                                         to_timestamp('1900-01-01'));
 CREATE OR REPLACE TABLE openalex.authors.vector_match_cards AS
 WITH raw_exploded AS (
   SELECT id AS work_id, created_date, publication_year, substr(title, 1, 120) AS title,
