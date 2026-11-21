@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS openalex.pdf.landing_page_funder_rows (
 -- Step 1b (oxjob #2215): this run's landing pages end at the 500,000th page with a section after done_through (or at the
 -- last one). Fixed here, before step 2, so every read of funder_sections sees the same pages and a failed run retries
 -- the same range.
--- shortcut: a fixed 500K cap; a corpus re-parse (~11M pages with a section) drains in ~22 daily runs unless run more often.
+-- shortcut: a fixed 500K cap for the daily run. A corpus re-parse drains in one run from a branch with a bigger cap
+-- (21 Nov 2026: 28.9M pages, #2215 EXPLORE section 15).
 -- The page filter here and in step 2's recent_pages must stay the same. The bare ingested_at bound repeats the struct
 -- test so the scan can skip files; keep it.
 MERGE INTO openalex.pdf.landing_page_funder_checkpoint t
@@ -259,7 +260,10 @@ WITH funder_regexes AS (
 ),
 matched_aliases AS (
   SELECT DISTINCT fs.work_id, fs.all_sections, fs.source, fr.*
-  FROM (SELECT *, LOWER(all_sections) AS sections_lc FROM funder_sections) fs
+  -- oxjob #2215: the sections are spread over 1,024 tasks first. The cross join is CPU-bound on a few MB of text, so
+  -- left to itself it ran in a handful of tasks (a 0.3% slice of the 21 Nov re-parse backlog: 292 s; spread: 51 s,
+  -- the same rows).
+  FROM (SELECT /*+ REPARTITION(1024) */ *, LOWER(all_sections) AS sections_lc FROM funder_sections) fs
   CROSS JOIN funder_regexes fr
   -- oxjob #2215: every alias regex matches the alias's own letters, so a section that does not contain the alias
   -- (case-folded) cannot match; the cheap test runs first and the regex, compiled anew for each pair, only on those.
@@ -418,7 +422,9 @@ LEFT ANTI JOIN distrusted_acronym_matches d
 -- COMMAND ----------
 
 -- Step 5: Match awards for matched funders -> materialize as staging table (the costly match runs once;
--- step 5b reads its result several times)
+-- step 5b reads its result several times). oxjob #2215: candidates come from a join on each award's key (see
+-- keyed_awards) instead of testing every award of a matched funder against every section: on 21 Nov's run (806K
+-- rows) 112 s on an X-Large instead of 134 min, the same 805,948 rows.
 CREATE OR REPLACE TABLE openalex.pdf.award_matches_staging AS
 WITH matched_funders AS (
   SELECT DISTINCT funder_id_numeric FROM openalex.pdf.funder_matches_staging
@@ -464,24 +470,59 @@ usable_awards AS (
   LEFT ANTI JOIN funder_alt_names fan
     ON ca.funder_award_id = fan.alt_name
 ),
+keyed_awards AS (
+  -- oxjob #2215: an award's key is its longest run of ASCII letters and digits. Its pattern is \b<number>\b with the
+  -- number escaped (a case-sensitive literal), so wherever the pattern matches, every such run of the number stands in
+  -- the text as a whole run of ASCII letters and digits: inside the number it ends at the number's other characters, at
+  -- its ends at \b. Joining sections to awards on that run therefore finds every pair the pattern can match, and the
+  -- pattern still decides; the result is the same as testing every award of the funder against every section (21 Nov
+  -- run's staging re-matched: 805,948 rows both ways, 0 differ; #2215 EXPLORE section 15). Awards with no such run (none
+  -- of 15.0M usable awards on 21 Nov) keep the old pairwise test.
+  SELECT ua.*,
+    aggregate(regexp_extract_all(ua.funder_award_id, '([A-Za-z0-9]+)', 1), '',
+      (acc, x) -> CASE WHEN length(x) > length(acc) THEN x ELSE acc END) AS award_key
+  FROM usable_awards ua
+),
 paper_funder_sections AS (
   SELECT /*+ REPARTITION(512, work_id) */
   DISTINCT fm.work_id, fm.funder_id_numeric, fm.all_sections, fm.source
   FROM openalex.pdf.funder_matches_staging fm
+),
+section_runs AS (
+  SELECT pfs.work_id, pfs.funder_id_numeric, pfs.all_sections, pfs.source, r.run
+  FROM paper_funder_sections pfs
+  LATERAL VIEW explode(array_distinct(regexp_extract_all(pfs.all_sections, '([A-Za-z0-9]+)', 1))) r AS run
 )
 SELECT
-  /*+ BROADCAST(ua) */
+  /*+ BROADCAST(ka) */
+  sr.work_id,
+  ka.funder_id,
+  ka.funder_award_id,
+  ka.from_funder_feed,
+  ka.award_match_pattern,
+  sr.all_sections,
+  sr.source
+FROM keyed_awards ka
+JOIN section_runs sr
+  ON sr.funder_id_numeric = ka.funder_id
+  AND sr.run = ka.award_key
+  AND sr.all_sections RLIKE ka.award_match_pattern
+WHERE ka.award_key != ''
+UNION ALL
+SELECT
+  /*+ BROADCAST(ka) */
   pfs.work_id,
-  ua.funder_id,
-  ua.funder_award_id,
-  ua.from_funder_feed,
-  ua.award_match_pattern,
+  ka.funder_id,
+  ka.funder_award_id,
+  ka.from_funder_feed,
+  ka.award_match_pattern,
   pfs.all_sections,
   pfs.source
-FROM usable_awards ua
+FROM keyed_awards ka
 JOIN paper_funder_sections pfs
-  ON pfs.funder_id_numeric = ua.funder_id
-  AND pfs.all_sections RLIKE ua.award_match_pattern;
+  ON pfs.funder_id_numeric = ka.funder_id
+  AND pfs.all_sections RLIKE ka.award_match_pattern
+WHERE ka.award_key = '';
 
 -- COMMAND ----------
 
