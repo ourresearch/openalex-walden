@@ -148,7 +148,8 @@ SELECT
       WHEN 'review' THEN CAST(NULL AS STRING)
       ELSE CONCAT('https://api.openalex.org/works?filter=parent_works.relationship:', v.slug)
     END AS works_api_url,
-    TIMESTAMP '2026-11-14 00:00:00' AS created_date,
+    -- review joined the vocabulary on 21 Nov 2026 (oxjob #2481); the rest on 14 Nov.
+    CASE v.slug WHEN 'review' THEN TIMESTAMP '2026-11-21 00:00:00' ELSE TIMESTAMP '2026-11-14 00:00:00' END AS created_date,
     CAST(NULL AS TIMESTAMP) AS updated_date
 FROM work_relationship_vocab v
 LEFT JOIN counts c ON c.slug = v.slug
