@@ -81,6 +81,8 @@ LOSS_METRICS = {
     "location_curations": ["location_curations"],
     "reference_lists_filed": ["reference_lists_filed"],  # a count, not a loss: parse_work_references' 20% re-file line
     "author_orcid_seats": ["author_orcid_seats"],  # Authors job: seats a planned change takes out of author_orcid_seats (CreateAuthorObservedOrcids guard, #1642)
+    "work_author_types": ["work_author_types"],  # TypeAuthorSeats: typed seats a planned rule change drops (#2437)
+    "work_author_types_added": ["work_author_types_added"],  # a count, not a loss: typed seats a new rule or source adds (#2437)
 }
 for _names in list(LOSS_METRICS.values()):
     for _m in _names:
