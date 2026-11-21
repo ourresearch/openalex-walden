@@ -30,7 +30,8 @@
 # MAGIC
 # MAGIC **Rules.** One edge per loser (the latest). A loser that is live again (the matcher refilled it)
 # MAGIC is left out: its own record answers. A chain whose end is not live after 8 hops is left out:
-# MAGIC that ID stays 404, like a deleted (not merged) ID. Deleted IDs are never mapped.
+# MAGIC that ID stays 404, like a deleted (not merged) ID. Deleted IDs are never mapped, except deleted author
+# MAGIC profiles whose works all went to one profile (old-registry ids, #1037 phase C; emptied profiles, phase D).
 # MAGIC
 # MAGIC Seat-move prestate tables live in `openalex.transient` (purged eventually), so each run's
 # MAGIC per-profile seat counts are copied once into `openalex.authors.author_seat_move_counts`.
@@ -199,6 +200,73 @@ if ENTITY == "authors":
               WHEN NOT MATCHED THEN INSERT *
             """)
     print(f"{RENAMES}: {spark.table(RENAMES).count():,} rows")
+
+# COMMAND ----------
+
+# MAGIC %md #### Authors: deleted emptied profiles whose works all moved to one profile (oxjob #1037 phase D, ZD 28057)
+# MAGIC `DeleteEmptiedAuthors` (Authors job, mornings) deletes a profile as `empty_curated_away` when claims or re-matching
+# MAGIC served every one of its seats on live works to other profiles (or to no one). Its id then 404'd with no redirect:
+# MAGIC 1,340,288 such ids on 21 Nov 2026, 118,773 deleted on 16 Nov alone. When every moved live seat now sits on ONE live
+# MAGIC profile, that profile is where the deleted profile's works went, so the id resolves to it, like a rename.
+# MAGIC
+# MAGIC Rule (audited 21 Nov 2026, #1037 `work/phaseD/audit_1121.md`: random 60 = 60/60 same person): one holder of all
+# MAGIC moved live seats; no seat still served to the deleted id (`ApplyWorkAuthorCurations` restores those that night);
+# MAGIC no more disclaimed seats than moved ones; no conflicting ORCID; and the names agree: a shared surname token, a token
+# MAGIC within edit distance max(1, len/3) (accents, spelling), or a name in a non-Latin script (transliteration). Held on
+# MAGIC purpose: profiles split between holders (majority-only holders audited 38/40, below the bar) and names that differ
+# MAGIC (a profile named for someone else whose seat it held). Only ids with no edge and not in the map are added, with
+# MAGIC the deletion date as merge_date, so a later merge still wins. A profile restored later is live again and drops
+# MAGIC out of the map (rule below). Remove: delete this cell, then `DELETE FROM openalex.authors.author_rename_edges
+# MAGIC WHERE source = 'emptied_curated_away'`.
+
+# COMMAND ----------
+
+EMPTIED_EDGES_SQL = r"""
+WITH d AS (
+  SELECT author_id, max(display_name) AS loser_name, max(orcid) AS loser_orcid, CAST(max(deleted_at) AS DATE) AS deleted_on
+  FROM openalex.authors.deleted_authors WHERE reason = 'empty_curated_away' GROUP BY author_id),
+d2 AS (
+  SELECT d.* FROM d
+  LEFT ANTI JOIN openalex.authors.openalex_authors l ON l.id = d.author_id
+  LEFT ANTI JOIN openalex.authors.merged_author_ids m ON m.id = d.author_id
+  LEFT ANTI JOIN openalex.authors.author_rename_edges r ON r.loser_id = d.author_id),
+s AS (
+  SELECT b.author_id AS loser_id, b.work_id, c.work_id IS NOT NULL AS has_row, c.author_id AS served_id
+  FROM openalex.works.work_authors b
+  JOIN d2 ON d2.author_id = b.author_id
+  LEFT SEMI JOIN (SELECT id FROM openalex.works.openalex_works) w ON w.id = b.work_id
+  LEFT JOIN openalex.works.work_authors_curated c ON c.work_id = b.work_id AND c.author_sequence = b.author_sequence),
+tot AS (
+  SELECT loser_id, count_if(served_id IS NOT NULL AND served_id <> loser_id) AS moved_seats,
+         count_if(has_row AND served_id IS NULL) AS disclaimed_seats, count_if(served_id = loser_id) AS self_seats
+  FROM s GROUP BY loser_id),
+holder AS (
+  SELECT loser_id, count(DISTINCT served_id) AS holders, max(served_id) AS winner_id
+  FROM s WHERE served_id IS NOT NULL AND served_id <> loser_id GROUP BY loser_id),
+c AS (
+  SELECT d2.author_id AS loser_id, h.winner_id, d2.deleted_on, d2.loser_name, oa.display_name AS winner_name,
+         filter(split(lower(regexp_replace(coalesce(d2.loser_name, ''), '[^\\p{L}]+', ' ')), ' '), x -> length(x) > 1) AS lt,
+         filter(split(lower(regexp_replace(coalesce(oa.display_name, ''), '[^\\p{L}]+', ' ')), ' '), x -> length(x) > 1) AS tt
+  FROM d2
+  JOIN tot t ON t.loser_id = d2.author_id
+  JOIN holder h ON h.loser_id = d2.author_id
+  JOIN openalex.authors.openalex_authors oa ON oa.id = h.winner_id
+  WHERE h.holders = 1 AND t.self_seats = 0 AND t.disclaimed_seats <= t.moved_seats
+    AND NOT (d2.loser_orcid IS NOT NULL AND oa.orcid IS NOT NULL AND lower(d2.loser_orcid) <> lower(oa.orcid)))
+SELECT loser_id, winner_id, deleted_on AS merge_date, 'emptied_curated_away' AS source
+FROM c
+WHERE (size(lt) > 0 AND size(tt) > 0 AND (array_contains(tt, element_at(lt, -1)) OR array_contains(lt, element_at(tt, -1))))
+   OR coalesce(loser_name, '') RLIKE '[\\p{L}&&[^\\p{IsLatin}]]' OR coalesce(winner_name, '') RLIKE '[\\p{L}&&[^\\p{IsLatin}]]'
+   OR exists(lt, a -> exists(tt, b -> levenshtein(a, b) <= greatest(1, floor(length(a) / 3))))
+"""
+
+if ENTITY == "authors":
+    spark.sql(f"""
+      MERGE INTO {RENAMES} t
+      USING ({EMPTIED_EDGES_SQL}) s
+      ON t.loser_id = s.loser_id
+      WHEN NOT MATCHED THEN INSERT (loser_id, winner_id, merge_date, source) VALUES (s.loser_id, s.winner_id, s.merge_date, s.source)
+    """).show()
 
 # COMMAND ----------
 
