@@ -19,6 +19,7 @@ include:
   - jobs/funder_name_release.yaml
   - jobs/ror_funder_proposals.yaml
   - jobs/authors.yaml
+  - jobs/author_types_weekly.yaml  # oxjob #2437
   - jobs/meta_tags_daily.yaml
   - jobs/landing_page_scoreboard.yaml
   - jobs/pmc_open_data.yaml

@@ -1,0 +1,55 @@
+# oxjob #2437: the author-type steps that run outside End 2 End, weekly (Sundays 17:00 UTC, clear of the nightly).
+#   Type_Organization_Seats: organization rows of openalex.works.work_author_types from DataCite creators with a ROR id
+#     (reads all of datacite_items, ~4 min on a 4X-Large). Over its lines it fails before writing; a planned change (the
+#     first fill, ~13.2M seats) runs once with allow_large_change = true. The next End 2 End lays the types on.
+#   Check_Agent_Types: the bar's two judges re-judge a sample of the week's new software-agent seats; fails under 97%.
+resources:
+  jobs:
+    Author_Types_Weekly:
+      name: Author Types Weekly (oxjob 2437)
+      schedule:
+        quartz_cron_expression: 0 0 17 ? * SUN
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      parameters:
+        - name: allow_large_change
+          default: "false"
+      tasks:
+        - task_key: Type_Organization_Seats
+          timeout_seconds: 5400
+          notebook_task:
+            notebook_path: notebooks/authors/TypeOrganizationSeats
+            source: GIT
+            warehouse_id: 4d37bf76372a2901   # jobs-4xl
+        - task_key: Check_Agent_Types
+          timeout_seconds: 3600
+          spark_python_task:
+            python_file: notebooks/authors/check_author_types.py
+            source: GIT
+            parameters: ["--sample", "100", "--floor", "0.97", "--max-usd", "10"]
+          job_cluster_key: author_type_cpu
+      job_clusters:
+        - job_cluster_key: author_type_cpu
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            node_type_id: m5d.xlarge
+            num_workers: 0
+            aws_attributes:
+              zone_id: auto
+              availability: ON_DEMAND
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: "local[*, 4]"
+            custom_tags:
+              ResourceClass: SingleNode
+              oxjob: "2437"
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      queue:
+        enabled: true

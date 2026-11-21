@@ -427,6 +427,50 @@ resources:
             notebook_path: notebooks/end2end/UpdateWorkAuthors
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        # oxjob #2437: author type per byline seat (openalex.works.work_author_types), which Authorships lays onto
+        # authorships[].author.type. The name rules propose software-agent seats (Type_Author_Seats, ~5 min on an X-Large),
+        # a model confirms them and the confirmed seats are written (Confirm_Author_Types, a few minutes on a normal night).
+        # After Author_Affiliations, which brings work_authors to tonight's bylines; beside Author_Matching. Optional for the
+        # night: Authorships waits for Author_Types_Gate, which passes whatever the confirmer's result, so a failure leaves
+        # last night's types in place.
+        - task_key: Type_Author_Seats
+          timeout_seconds: 2700
+          max_retries: 1
+          depends_on:
+            - task_key: Author_Affiliations
+          notebook_task:
+            notebook_path: notebooks/authors/TypeAuthorSeats
+            source: GIT
+            # jobs-xl (X-Large): the job tier's smaller SQL warehouse
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: Confirm_Author_Types
+          depends_on:
+            - task_key: Type_Author_Seats
+          # runs whatever Type_Author_Seats did: with last night's cards it confirms nothing new and writes the same rows
+          run_if: ALL_DONE
+          spark_python_task:
+            python_file: notebooks/authors/confirm_author_types.py
+            source: GIT
+            # --seed-table applies on the very first run only (the answers table empty): bar v3's answers, created at ship time
+            parameters: ["--max-calls", "2000", "--max-usd", "20", "--max-minutes", "30",
+                         "--seed-table", "openalex.works.work_author_type_confirmation_seed"]
+          job_cluster_key: author_type_cpu
+          timeout_seconds: 3600
+        - task_key: Author_Types_Gate
+          timeout_seconds: 1200
+          depends_on:
+            - task_key: Confirm_Author_Types
+          run_if: ALL_DONE
+          sql_task:
+            warehouse_id: 4d37bf76372a2901
+            file:
+              path: notebooks/end2end/gate_guarded_task_ran.sql
+              source: GIT
+            parameters:
+              guarded_state: "{{tasks.Confirm_Author_Types.result_state}}"
+          max_retries: 2
+          min_retry_interval_millis: 60000
+          retry_on_timeout: true
         # oxjob #1401 / #1348: vector matcher for tonight's new seats (seat-vector band + Claude Sonnet 5.5 zone judge) ->
         # openalex.authors.vector_match_decisions, which MatchAuthors cell 9 LEFT JOINs. Stopgap judge, to be replaced by a distilled one.
         - task_key: Vector_Matcher
@@ -501,6 +545,7 @@ resources:
           depends_on:
             - task_key: Apply_Work_Author_Curations
             - task_key: Language_Copies  # oxjob #2186 step 5b-F
+            - task_key: Author_Types_Gate  # oxjob #2437: author type per seat (passes even when the typing failed)
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorkAuthorships
             source: GIT
@@ -784,6 +829,24 @@ resources:
           max_retries: 2
           min_retry_interval_millis: 120000
       job_clusters:
+        # oxjob #2437: Confirm_Author_Types, network-bound (model calls), one small node
+        - job_cluster_key: author_type_cpu
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            node_type_id: m5d.xlarge
+            num_workers: 0
+            aws_attributes:
+              zone_id: auto
+              availability: ON_DEMAND
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: "local[*, 4]"
+            custom_tags:
+              ResourceClass: SingleNode
+              oxjob: "2437"
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
         - job_cluster_key: parseland_cluster
           new_cluster:
             cluster_name: ""
