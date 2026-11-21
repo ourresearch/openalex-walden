@@ -49,7 +49,8 @@ TIER = ",\n".join(f"{n} as ({cte(n)})" for n in
 
 J1, J2 = 101, 202  # J1 holds ISSN 1111-1111 and e-ISSN 2222-2222; J2 holds 3333-3333
 SOURCES = [(J1, "journal", ["1111-1111", "2222-2222"], True), (J2, "journal", ["3333-3333"], False),
-           (303, "repository", ["4444-4444"], False)]
+           (303, "repository", ["4444-4444"], False),
+           (404, "conference", ["5555-5555"], True)]  # oxjob #2494: a proceedings series with an ISSN (J. Phys. Conf. Ser.)
 
 
 DAY = date(2026, 1, 9)
@@ -68,6 +69,7 @@ LOCATIONS = [
     loc("10/not-container", ("eissn", "2222-2222", "References")),  # a citation, not the container
     loc("10/dataset", ("eissn", "2222-2222", "IsPartOf"), raw_type="Dataset"),  # genre guard
     loc("10/repository-issn", ("issn", "4444-4444", "IsPartOf")),  # ISSN of a non-journal source
+    loc("10/conference-issn", ("issn", "5555-5555", "IsPartOf")),  # oxjob #2494: a conference series' ISSN attaches
     loc("10/unhyphenated", ("eissn", "22222222", "ispublishedin")),
     loc("10/other-namespaces", ("isbn", "2222-2222", "IsPartOf"), ("url", "2222-2222", "IsPartOf"),
         (None, "2222-2222", "IsPartOf"), ("eissn", None, "IsPartOf"), ("eissn", "2222-2222", None)),
@@ -121,6 +123,11 @@ def test_eissn_and_lissn_attach_like_crossref(candidates):
     assert candidates["10/eissn-only"] == J1
     assert candidates["10/lissn-only"] == J1
     assert candidates["10/unhyphenated"] == J1
+
+
+def test_conference_series_issn_attaches(candidates):
+    # oxjob #2494: proceedings series are typed conference, and their ISSN binds DataCite records as a journal's does
+    assert candidates["10/conference-issn"] == 404
 
 
 def test_print_and_e_issn_of_one_journal_attach(candidates):
