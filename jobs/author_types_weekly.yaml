@@ -1,5 +1,5 @@
 # oxjob #2437: the author-type steps that run outside End 2 End, weekly (Sundays 17:00 UTC, clear of the nightly).
-#   Type_Organization_Seats: organization rows of openalex.works.work_author_types from DataCite creators with a ROR id
+#   Type_Organization_Seats (HELD, see below): organization rows of openalex.works.work_author_types from DataCite creators with a ROR id
 #     (reads all of datacite_items, ~4 min on a 4X-Large). Over its lines it fails before writing; a planned change (the
 #     first fill, ~13.2M seats) runs once with allow_large_change = true. The next End 2 End lays the types on.
 #   Check_Agent_Types: the bar's two judges re-judge a sample of the week's new software-agent seats; fails under 97%.
@@ -16,12 +16,9 @@ resources:
         - name: allow_large_change
           default: "false"
       tasks:
-        - task_key: Type_Organization_Seats
-          timeout_seconds: 5400
-          notebook_task:
-            notebook_path: notebooks/authors/TypeOrganizationSeats
-            source: GIT
-            warehouse_id: 4d37bf76372a2901   # jobs-4xl
+        # Type_Organization_Seats (notebooks/authors/TypeOrganizationSeats, warehouse 4d37bf76372a2901, timeout 5400) is held
+        # out until the ROR organization fill (~13.2M seats) is cleared on its own (21 Nov 2026 19:10 CT): the approved plan
+        # approved named ~250K organization works. Put the task back here to start it.
         - task_key: Check_Agent_Types
           timeout_seconds: 3600
           spark_python_task:
