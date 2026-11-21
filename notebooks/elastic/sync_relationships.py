@@ -116,7 +116,10 @@ spark.createDataFrame(
 if "parent_works" in spark.table("openalex.works.openalex_works").columns:
     counts_sql = """
         SELECT relationship AS slug, COUNT(*) AS works_count
-        FROM (SELECT DISTINCT w.id, p.relationship
+        FROM (SELECT DISTINCT w.id,
+                     -- oxjob #2481: the key is link_type from night 2026-11-30 (relationship before); read either.
+                     coalesce(get_json_object(to_json(p), '$.link_type'),
+                              get_json_object(to_json(p), '$.relationship')) AS relationship
               FROM openalex.works.openalex_works w
               LATERAL VIEW explode(w.parent_works) AS p)
         GROUP BY relationship"""
