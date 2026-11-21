@@ -46,8 +46,9 @@ VOCAB = [
      "The work is declared part of another work in some other way: an article in an issue, a dataset in a "
      "collection, a component of a project."),
     ("review", "Review",
-     "The work reviews another work: an evaluation of that specific work, such as a peer review, preprint review or "
-     "book review (a literature review article is the work type review, not this link)."),
+     "The work reviews another work: an evaluation of that specific work by someone other than its authors, such as "
+     "a peer review, preprint review or book review (a literature review article is the work type review, not this "
+     "link)."),
 ]
 
 # The same link in standard vocabularies (vocabulary, term, url), per value. Keep in step with the help page.
@@ -73,12 +74,16 @@ STANDARD_TERMS = {
     "component": _PART_OF,
     "data-series": _PART_OF + [("DCAT", "inSeries", "https://www.w3.org/ns/dcat#inSeries")],
     "part": _PART_OF,
-    # oxjob #2481: exact equivalents first (crosswalk in that job, work/review_crosswalk.md).
+    # oxjob #2481 (crosswalk of 24 vocabularies: that job's work/review_crosswalk.md): the four exact equivalents first,
+    # then two broader terms. CiTO's reviews types a citation, so a literature review may use it for every paper it
+    # surveys; schema.org's itemReviewed also covers product and service reviews.
     "review": [
-        ("CiTO", "reviews", "http://purl.org/spar/cito/reviews"),
-        ("DataCite", "Reviews", _DATACITE_DOCS + "#reviews"),
         ("Crossref", "isReviewOf", _CROSSREF[2]),
-        ("Wikidata", "review of (P6977)", "https://www.wikidata.org/wiki/Property:P6977"),
+        ("DataCite", "Reviews", _DATACITE_DOCS + "#reviews"),
+        ("Wikidata", "P6977", "https://www.wikidata.org/wiki/Property:P6977"),
+        ("LC Relationship", "reviewof", "http://id.loc.gov/vocabulary/relationship/reviewof"),
+        ("schema.org", "itemReviewed", "https://schema.org/itemReviewed"),
+        ("CiTO", "reviews", "http://purl.org/spar/cito/reviews"),
     ],
 }
 assert set(STANDARD_TERMS) == {v[0] for v in VOCAB}, "every relationship lists its standard terms"
