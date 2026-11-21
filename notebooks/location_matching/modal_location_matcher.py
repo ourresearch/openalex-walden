@@ -212,7 +212,11 @@ def export_rows(table_in, build_id, warehouse):
     while st["status"]["state"] in ("PENDING", "RUNNING"):
         if time.time() - t0 > 1800:
             httpx.post(f"{host}/api/2.0/sql/statements/{sid}/cancel", headers=H, timeout=60); raise TimeoutError("prompt export not done in 30 min")
-        time.sleep(5); st = httpx.get(f"{host}/api/2.0/sql/statements/{sid}", headers=H, timeout=120).json()
+        time.sleep(5)
+        try:
+            st = httpx.get(f"{host}/api/2.0/sql/statements/{sid}", headers=H, timeout=120).json()
+        except httpx.TransportError as e:   # a slow status reply is retried; the 30-min cap above still ends a stuck export
+            print("status retry", repr(e)[:200], flush=True)
     if st["status"]["state"] != "SUCCEEDED": raise RuntimeError(json.dumps(st["status"])[:1000])
     total = int(st["manifest"].get("total_row_count", 0)); n_chunks = int(st["manifest"].get("total_chunk_count", 0))
     print(f"export: {total} rows in {n_chunks} chunks, query {time.time() - t0:.0f}s", flush=True)
@@ -245,7 +249,8 @@ def export_rows(table_in, build_id, warehouse):
     return res
 
 
-@app.function(image=cpu_image, volumes={"/data": dvol}, secrets=[DBX], timeout=6 * 3600, cpu=4, memory=16384)
+@app.function(image=cpu_image, volumes={"/data": dvol}, secrets=[DBX], timeout=6 * 3600, cpu=4, memory=16384,
+              nonpreemptible=True)   # a preempted run_all restarts from the top (19 and 20 Nov 2026)
 def run_all(table_in: str, out_dir: str, build_id: str, warehouse: str):
     print(VERSION_MARK, "run_all", table_in, out_dir, build_id, flush=True)
     t0 = time.time(); dvol.reload()
