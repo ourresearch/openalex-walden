@@ -7,7 +7,7 @@
 # (oxjob #2065), written by notebooks/end2end/CreateWorkParents, review (oxjob #2481, rows of work_links built from
 # work_review_links), and the three pull notices retraction, withdrawal and removal (oxjob #2264, rows of work_links
 # built from work_pull_notice_links), and translation (oxjob #2536, rows of work_links built from
-# work_translation_links). This notebook only describes and counts them; the API's /links serves the links themselves.
+# work_translation_links), and summary (oxjob #2535, rows of work_links built from work_summary_links). This notebook only describes and counts them; the API's /links serves the links themselves.
 # It writes the same records to two indexes: work-relationships-v1 (ids https://openalex.org/relationships/<slug>,
 # served at /relationships) and link-types-v1 (ids https://openalex.org/link-types/<slug>, served at /link-types).
 # /relationships redirects to /link-types after the notice period (oxjob #2481); then the first index can go.
@@ -75,6 +75,13 @@ VOCAB = [
      "The work is a translation of another work: that work's text rendered in another language, published as its own "
      "work (such as an article in an English edition of a Russian journal). A condensed account of its content, in any "
      "language, is a summary; a translated title or abstract inside one record, or a free adaptation, is neither."),
+    # oxjob #2535: a summary of another work is its own work, linked to the work it summarizes (crosswalk of 20
+    # vocabularies: oxjobs #2535 work/summary_crosswalk.md). Defined by what it does, not by length or publication: a
+    # condensed account of the other work's content, in any language, separate from that work's own abstract.
+    ("summary", "Summary",
+     "The work summarizes another work: it gives a condensed account of that work's content, separate from the work's "
+     "own abstract, by its authors or anyone else (an abstracting service's abstract, a digest entry, a research "
+     "highlight, a plain-language summary, an agent's summary)."),
 ]
 
 # The same link in standard vocabularies (vocabulary, term, url, match), per value. Keep in step with the help page.
@@ -192,6 +199,19 @@ STANDARD_TERMS = {
         ("Wikidata", "P629", "https://www.wikidata.org/wiki/Property:P629", "broad"),
         ("Dublin Core", "isVersionOf", "http://purl.org/dc/terms/isVersionOf", "broad"),
     ],
+    # oxjob #2535: the library standards name this link (exact); Crossref and DataCite have no summary relation, so their
+    # generic derivation terms are broader; PubMed's pair covers patient summaries only (narrow).
+    "summary": [
+        ("LC Relationship", "summaryof", "http://id.loc.gov/vocabulary/relationship/summaryof", "exact"),
+        ("RDA", "is summary of", "http://rdaregistry.info/Elements/w/P10179", "exact"),
+        ("FRBR core", "summarizationOf", "http://purl.org/vocab/frbr/core#summarizationOf", "exact"),
+        ("PubMed", "OriginalReportIn", "https://dtd.nlm.nih.gov/ncbi/pubmed/out/pubmed_250101.dtd", "narrow"),
+        ("Crossref", "isDerivedFrom", _CROSSREF[2], "broad"),
+        ("DataCite", "IsDerivedFrom", _DATACITE_DOCS + "#isderivedfrom", "broad"),
+        ("CiTO", "containsAssertionFrom", "http://purl.org/spar/cito/containsAssertionFrom", "broad"),
+        ("schema.org", "isBasedOn", "https://schema.org/isBasedOn", "broad"),
+        ("Wikidata", "P144", "https://www.wikidata.org/wiki/Property:P144", "broad"),
+    ],
 }
 assert set(STANDARD_TERMS) == {v[0] for v in VOCAB}, "every relationship lists its standard terms"
 MATCH_LEVELS = ("exact", "close", "broad", "narrow", "related")
@@ -255,10 +275,15 @@ translation_sql = """
     SELECT 'translation' AS slug, COUNT(DISTINCT origin_work_id) AS works_count
     FROM openalex.works.work_links WHERE relationship = 'translation'"""
 
+# summary (oxjob #2535): the works that summarize another work, from the same links table.
+summary_sql = """
+    SELECT 'summary' AS slug, COUNT(DISTINCT origin_work_id) AS works_count
+    FROM openalex.works.work_links WHERE relationship = 'summary'"""
+
 spark.sql(f"""
 CREATE OR REPLACE TABLE {TABLE} AS
 WITH counts AS ({counts_sql} UNION ALL {citation_sql} UNION ALL {review_sql} UNION ALL {pull_notice_sql}
-                UNION ALL {translation_sql})
+                UNION ALL {translation_sql} UNION ALL {summary_sql})
 SELECT
     CONCAT('https://openalex.org/relationships/', v.slug) AS id,
     v.display_name,
@@ -274,6 +299,7 @@ SELECT
       WHEN 'withdrawal' THEN CAST(NULL AS STRING)
       WHEN 'removal' THEN CAST(NULL AS STRING)
       WHEN 'translation' THEN CAST(NULL AS STRING)
+      WHEN 'summary' THEN CAST(NULL AS STRING)
       ELSE CONCAT('https://api.openalex.org/works?filter=parent_works.relationship:', v.slug)
     END AS works_api_url,
     -- review joined the vocabulary on 21 Nov 2026 (oxjob #2481); the pull notices on 23 Nov (oxjob #2264); the rest on 14 Nov.
@@ -281,6 +307,8 @@ SELECT
          WHEN v.slug IN ('retraction', 'withdrawal', 'removal') THEN TIMESTAMP '2026-11-23 00:00:00'
          -- translation (oxjob #2536): set to the day it ships.
          WHEN v.slug = 'translation' THEN TIMESTAMP '2026-11-23 00:00:00'
+         -- summary (oxjob #2535): live 22 Nov 2026 CT (23 Nov UTC).
+         WHEN v.slug = 'summary' THEN TIMESTAMP '2026-11-23 00:00:00'
          ELSE TIMESTAMP '2026-11-14 00:00:00' END AS created_date,
     CAST(NULL AS TIMESTAMP) AS updated_date
 FROM work_relationship_vocab v
