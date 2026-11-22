@@ -87,7 +87,18 @@ def build_sql():
             f"SELECT work_id, author_sequence, action FROM ({step_select()}) ORDER BY 1, 2")
 
 
+def mint_skips_blocked():
+    """22 Nov (Nick, option 1): a blocked seat is left blank. Step 3's mint must skip match_outcome 'BLOCKED_SAME_WORK'."""
+    cells = ["".join(c["source"]) for c in json.load(open(NOTEBOOK))["cells"]]
+    mint = next(c for c in cells if "CREATE OR REPLACE TABLE openalex.authors.author_matching_mint_seats" in c)
+    step2b = next(c for c in cells if c.startswith("-- oxjob #2186 step C"))
+    assert "AND pa.match_outcome <> 'BLOCKED_SAME_WORK'" in mint, "Step 3 would mint blocked seats"
+    assert "p.match_outcome = 'BLOCKED_SAME_WORK'" in step2b, "Step 2b no longer marks blocked seats"
+    print("PASS  Step 3 mints no seat Step 2b blocked (left blank)")
+
+
 def main():
+    mint_skips_blocked()
     names = ", ".join(lit(n) for n in MUST_PARSE)
     parsed = {r[0] for r in run(f"SELECT raw_author_name FROM openalex.authors.author_names WHERE raw_author_name IN ({names}) "
                                f"AND match_last IS NOT NULL")}
