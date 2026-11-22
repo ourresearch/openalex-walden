@@ -4,8 +4,9 @@
 #
 # "relationships" (link types from the /link-types rename, oxjob #2481) is the vocabulary of work-to-work links:
 # citation (a work's referenced_works, oxjob #1490), the four part-of kinds of works.parent_works[].relationship
-# (oxjob #2065), written by notebooks/end2end/CreateWorkParents, and review (oxjob #2481, rows of work_links built from
-# work_review_links). This notebook only describes and counts them; the API's /links serves the links themselves.
+# (oxjob #2065), written by notebooks/end2end/CreateWorkParents, review (oxjob #2481, rows of work_links built from
+# work_review_links), and the three pull notices retraction, withdrawal and removal (oxjob #2264, rows of work_links
+# built from work_pull_notice_links). This notebook only describes and counts them; the API's /links serves the links themselves.
 # It writes the same records to two indexes: work-relationships-v1 (ids https://openalex.org/relationships/<slug>,
 # served at /relationships) and link-types-v1 (ids https://openalex.org/link-types/<slug>, served at /link-types).
 # /relationships redirects to /link-types after the notice period (oxjob #2481); then the first index can go.
@@ -14,7 +15,10 @@
 # end of it (citation, retraction, review), so it reads the same from either work; the description reads from the work
 # that carries the link ("The work is ..."). Each value lists its standard_terms: the same link in standard
 # vocabularies (Dublin Core, schema.org, DataCite, Crossref, DCAT), so RDF users get their predicate while the API
-# stays in nouns. A standard term can be broader than ours: all four part-of kinds are isPartOf.
+# stays in nouns. A standard term can be broader than ours: all four part-of kinds are isPartOf. Since oxjob #2264
+# (Jason, 22 Nov 2026) each standard term says how close it is in `match`, with SKOS's mapping levels: exact (the same
+# link), close (the same idea said another way: the inverse link, or the notice's own type), broad (theirs also covers
+# more), narrow (theirs covers only part of ours), related (a status or a date, not a link).
 
 # COMMAND ----------
 
@@ -49,44 +53,127 @@ VOCAB = [
      "The work reviews another work: an evaluation of that specific work by someone other than its authors, such as "
      "a peer review, preprint review or book review (a literature review article is the work type review, not this "
      "link)."),
+    # oxjob #2264 (Jason approved 22 Nov 2026): the pull notices. Crossref's update types name them but define none; these
+    # definitions are ours (crosswalk of 15 vocabularies: oxjobs #2264 work/pull_notice_crosswalk.md). When a source does
+    # not say which of the three it is (Retraction Watch, PubMed), the link is a retraction, as those sources call it.
+    ("retraction", "Retraction",
+     "The work is a notice that another work should no longer be relied on. The work it retracts usually stays online, "
+     "marked as retracted."),
+    ("withdrawal", "Withdrawal",
+     "The work is a notice that another work was withdrawn, usually soon after it appeared and for a publishing reason "
+     "such as a duplicate or an editorial error. Its content may be gone."),
+    ("removal", "Removal",
+     "The work is a notice that another work's content was taken down, usually for legal or safety reasons, while its "
+     "record stays."),
 ]
 
-# The same link in standard vocabularies (vocabulary, term, url), per value. Keep in step with the help page.
-_DCTERMS = ("Dublin Core", "isPartOf", "http://purl.org/dc/terms/isPartOf")
-_SCHEMA = ("schema.org", "isPartOf", "https://schema.org/isPartOf")
+# The same link in standard vocabularies (vocabulary, term, url, match), per value. Keep in step with the help page.
+# match is the SKOS mapping level of their term against ours (see the header): exact, close, broad, narrow or related.
+_DCTERMS = ("Dublin Core", "isPartOf", "http://purl.org/dc/terms/isPartOf", "broad")
+_SCHEMA = ("schema.org", "isPartOf", "https://schema.org/isPartOf", "broad")
 _DATACITE_DOCS = "https://datacite-metadata-schema.readthedocs.io/en/4.7/appendices/appendix-1/relationType/"
-_DATACITE = ("DataCite", "IsPartOf", _DATACITE_DOCS + "#ispartof")
+_DATACITE = ("DataCite", "IsPartOf", _DATACITE_DOCS + "#ispartof", "broad")
 _CROSSREF = ("Crossref", "isPartOf",
-             "https://www.crossref.org/documentation/schema-library/markup-guide-metadata-segments/relationships/")
+             "https://www.crossref.org/documentation/schema-library/markup-guide-metadata-segments/relationships/", "broad")
 _PART_OF = [_DCTERMS, _SCHEMA, _DATACITE, _CROSSREF]
+# oxjob #2264: sources for the pull-notice crosswalk.
+_CROSSMARK = "https://www.crossref.org/documentation/crossmark/participating-in-crossmark/"
+_CITO_RETRACTS = ("CiTO", "retracts", "http://purl.org/spar/cito/retracts")
+_RW_GUIDE = "https://retractionwatch.com/retraction-watch-database-user-guide/"
+_RW_REASONS = ("https://retractionwatch.com/retraction-watch-database-user-guide/"
+               "retraction-watch-database-user-guide-appendix-b-reasons/")
+_NLM = "https://www.nlm.nih.gov/bsd/policy/errata.html"
+_WOS = "https://webofscience.help.clarivate.com/en-us/Content/document-types.html"
+_EPMC = "https://europepmc.org/AboutArticleStatusMonitor"
+_ELSEVIER = "https://www.elsevier.com/about/policies-and-standards/article-withdrawal"
+_NISO_CREC = "https://www.niso.org/publications/rp-45-2024-crec"
+_COPE = "https://publicationethics.org/guidance/guideline/retraction-guidelines"
+_WD_P5824 = ("Wikidata", "P5824", "https://www.wikidata.org/wiki/Property:P5824")
+_FABIO = ("FaBiO", "RetractionNotice", "http://purl.org/spar/fabio/RetractionNotice")
+_MESH = ("MeSH", "Retraction Notice", "http://id.nlm.nih.gov/mesh/D016440")
 STANDARD_TERMS = {
     "citation": [
-        ("Dublin Core", "references", "http://purl.org/dc/terms/references"),
-        ("schema.org", "citation", "https://schema.org/citation"),
-        ("DataCite", "References", _DATACITE_DOCS + "#references"),
-        ("DataCite", "Cites", _DATACITE_DOCS + "#cites"),
-        ("Crossref", "references", _CROSSREF[2]),
-        ("CiTO", "cites", "http://purl.org/spar/cito/cites"),
+        ("Dublin Core", "references", "http://purl.org/dc/terms/references", "broad"),
+        ("schema.org", "citation", "https://schema.org/citation", "exact"),
+        ("DataCite", "References", _DATACITE_DOCS + "#references", "exact"),
+        ("DataCite", "Cites", _DATACITE_DOCS + "#cites", "exact"),
+        ("Crossref", "references", _CROSSREF[2], "exact"),
+        ("CiTO", "cites", "http://purl.org/spar/cito/cites", "exact"),
     ],
     # DataCite's IsPublishedIn ("A is published inside B, but is independent of other things published inside B")
     # fits a chapter in its book better than IsPartOf.
-    "volume": [_DCTERMS, _SCHEMA, ("DataCite", "IsPublishedIn", _DATACITE_DOCS + "#ispublishedin"), _CROSSREF],
+    "volume": [_DCTERMS, _SCHEMA, ("DataCite", "IsPublishedIn", _DATACITE_DOCS + "#ispublishedin", "close"), _CROSSREF],
     "component": _PART_OF,
-    "data-series": _PART_OF + [("DCAT", "inSeries", "https://www.w3.org/ns/dcat#inSeries")],
+    "data-series": _PART_OF + [("DCAT", "inSeries", "https://www.w3.org/ns/dcat#inSeries", "exact")],
     "part": _PART_OF,
     # oxjob #2481 (crosswalk of 24 vocabularies: that job's work/review_crosswalk.md): the four exact equivalents first,
     # then two broader terms. CiTO's reviews types a citation, so a literature review may use it for every paper it
     # surveys; schema.org's itemReviewed also covers product and service reviews.
     "review": [
-        ("Crossref", "isReviewOf", _CROSSREF[2]),
-        ("DataCite", "Reviews", _DATACITE_DOCS + "#reviews"),
-        ("Wikidata", "P6977", "https://www.wikidata.org/wiki/Property:P6977"),
-        ("LC Relationship", "reviewof", "http://id.loc.gov/vocabulary/relationship/reviewof"),
-        ("schema.org", "itemReviewed", "https://schema.org/itemReviewed"),
-        ("CiTO", "reviews", "http://purl.org/spar/cito/reviews"),
+        ("Crossref", "isReviewOf", _CROSSREF[2], "exact"),
+        ("DataCite", "Reviews", _DATACITE_DOCS + "#reviews", "exact"),
+        ("Wikidata", "P6977", "https://www.wikidata.org/wiki/Property:P6977", "exact"),
+        ("LC Relationship", "reviewof", "http://id.loc.gov/vocabulary/relationship/reviewof", "exact"),
+        ("schema.org", "itemReviewed", "https://schema.org/itemReviewed", "broad"),
+        ("CiTO", "reviews", "http://purl.org/spar/cito/reviews", "broad"),
+    ],
+    # oxjob #2264: exact and close terms first, then broader, narrower and related ones. Most indexes and ontologies
+    # fold withdrawals and removals into retraction (broad); Crossref alone has all three. Wikidata's P5824 "retracted
+    # by" is the same link read from the retracted work (close). Notice types (MeSH, FaBiO, Web of Science) name the
+    # notice, not the link.
+    "retraction": [
+        ("Crossref", "retraction", _CROSSMARK, "exact"),
+        _CITO_RETRACTS + ("exact",),
+        ("JATS", "retracted-article",
+         "https://jats.nlm.nih.gov/archiving/tag-library/1.4/attribute/related-article-type.html", "exact"),
+        ("NISO CREC", "retraction", _NISO_CREC, "close"),
+        ("COPE", "retraction", _COPE, "close"),
+        ("ICMJE", "retraction",
+         "https://www.icmje.org/recommendations/browse/publishing-and-editorial-issues/corrections-and-version-control.html",
+         "close"),
+        ("Elsevier", "article retraction", _ELSEVIER, "close"),
+        ("Web of Science", "Retraction", _WOS, "close"),
+        _WD_P5824 + ("close",),
+        ("Retraction Watch", "Retraction", _RW_GUIDE, "broad"),
+        ("PubMed", "RetractionOf", _NLM, "broad"),
+        ("Scopus", "Erratum", "https://supportcontent.elsevier.com/Support%20Hub/Scopus/Scopus_ContentCoverage_Guide_WEB.pdf",
+         "broad"),
+        ("Europe PMC", "Retraction of", _EPMC, "broad"),
+        _FABIO + ("broad",),
+        _MESH + ("broad",),
+    ],
+    "withdrawal": [
+        ("Crossref", "withdrawal", _CROSSMARK, "exact"),
+        ("Web of Science", "Item Withdrawal", _WOS, "close"),
+        _CITO_RETRACTS + ("broad",),
+        ("Retraction Watch", "Retraction", _RW_GUIDE, "broad"),
+        ("PubMed", "RetractionOf", _NLM, "broad"),
+        _WD_P5824 + ("broad",),
+        _FABIO + ("broad",),
+        _MESH + ("broad",),
+        ("Elsevier", "article withdrawal", _ELSEVIER, "narrow"),
+        ("Europe PMC", "preprint-withdrawal", _EPMC, "narrow"),
+        ("DataCite", "Withdrawn",
+         "https://datacite-metadata-schema.readthedocs.io/en/4.7/appendices/appendix-1/dateType/#withdrawn", "related"),
+    ],
+    "removal": [
+        ("Crossref", "removal", _CROSSMARK, "exact"),
+        ("NISO CREC", "removal", _NISO_CREC, "close"),
+        ("COPE", "retraction with removal", _COPE, "close"),
+        ("Elsevier", "article removal", _ELSEVIER, "close"),
+        ("Retraction Watch", "Removed", _RW_REASONS, "close"),
+        _CITO_RETRACTS + ("broad",),
+        ("PubMed", "RetractionOf", _NLM, "broad"),
+        _FABIO + ("broad",),
+        _MESH + ("broad",),
+        ("Europe PMC", "preprint-removal", _EPMC, "narrow"),
+        ("DataCite", "tombstone", "https://support.datacite.org/docs/tombstone-pages", "related"),
     ],
 }
 assert set(STANDARD_TERMS) == {v[0] for v in VOCAB}, "every relationship lists its standard terms"
+MATCH_LEVELS = ("exact", "close", "broad", "narrow", "related")
+assert all(len(t) == 4 and t[3] in MATCH_LEVELS for ts in STANDARD_TERMS.values() for t in ts), \
+    "every standard term is (vocabulary, term, url, match) with a SKOS match level"
 
 # COMMAND ----------
 
@@ -107,10 +194,10 @@ print("Hash snapshot complete")
 # Before the first End 2 End that carries the column, openalex_works has no parent_works: counts are 0 until then
 # instead of failing the common-entities job.
 spark.createDataFrame(
-    [(slug, name, desc, [dict(zip(("vocabulary", "term", "url"), t)) for t in STANDARD_TERMS[slug]])
+    [(slug, name, desc, [dict(zip(("vocabulary", "term", "url", "match"), t)) for t in STANDARD_TERMS[slug]])
      for slug, name, desc in VOCAB],
     "slug STRING, display_name STRING, description STRING, "
-    "standard_terms ARRAY<STRUCT<vocabulary: STRING, term: STRING, url: STRING>>",
+    "standard_terms ARRAY<STRUCT<vocabulary: STRING, term: STRING, url: STRING, match: STRING>>",
 ).createOrReplaceTempView("work_relationship_vocab")
 
 if "parent_works" in spark.table("openalex.works.openalex_works").columns:
@@ -133,23 +220,36 @@ review_sql = """
     SELECT 'review' AS slug, COUNT(DISTINCT origin_work_id) AS works_count
     FROM openalex.works.work_links WHERE relationship = 'review'"""
 
+# pull notices (oxjob #2264): the notices of each kind, from the same links table (the works they pull carry the list
+# pull_notice_works).
+pull_notice_sql = """
+    SELECT relationship AS slug, COUNT(DISTINCT origin_work_id) AS works_count
+    FROM openalex.works.work_links WHERE relationship IN ('retraction', 'withdrawal', 'removal')
+    GROUP BY relationship"""
+
 spark.sql(f"""
 CREATE OR REPLACE TABLE {TABLE} AS
-WITH counts AS ({counts_sql} UNION ALL {citation_sql} UNION ALL {review_sql})
+WITH counts AS ({counts_sql} UNION ALL {citation_sql} UNION ALL {review_sql} UNION ALL {pull_notice_sql})
 SELECT
     CONCAT('https://openalex.org/relationships/', v.slug) AS id,
     v.display_name,
     v.description,
     v.standard_terms,
     COALESCE(c.works_count, 0) AS works_count,
-    -- review: no works filter selects the reviews themselves; works reviewed are reviewed_by_count:>0.
+    -- review: no works filter selects the reviews themselves; works reviewed are reviewed_by_count:>0. The pull
+    -- notices likewise: the works they pull are pull_notice_works.link_type:<slug> (oxjob #2264).
     CASE v.slug
       WHEN 'citation' THEN 'https://api.openalex.org/works?filter=has_references:true'
       WHEN 'review' THEN CAST(NULL AS STRING)
+      WHEN 'retraction' THEN CAST(NULL AS STRING)
+      WHEN 'withdrawal' THEN CAST(NULL AS STRING)
+      WHEN 'removal' THEN CAST(NULL AS STRING)
       ELSE CONCAT('https://api.openalex.org/works?filter=parent_works.relationship:', v.slug)
     END AS works_api_url,
-    -- review joined the vocabulary on 21 Nov 2026 (oxjob #2481); the rest on 14 Nov.
-    CASE v.slug WHEN 'review' THEN TIMESTAMP '2026-11-21 00:00:00' ELSE TIMESTAMP '2026-11-14 00:00:00' END AS created_date,
+    -- review joined the vocabulary on 21 Nov 2026 (oxjob #2481); the pull notices on 23 Nov (oxjob #2264); the rest on 14 Nov.
+    CASE WHEN v.slug = 'review' THEN TIMESTAMP '2026-11-21 00:00:00'
+         WHEN v.slug IN ('retraction', 'withdrawal', 'removal') THEN TIMESTAMP '2026-11-23 00:00:00'
+         ELSE TIMESTAMP '2026-11-14 00:00:00' END AS created_date,
     CAST(NULL AS TIMESTAMP) AS updated_date
 FROM work_relationship_vocab v
 LEFT JOIN counts c ON c.slug = v.slug
@@ -194,12 +294,13 @@ ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 INDEX_NAME = "work-relationships-v1"
 LINK_TYPES_INDEX = "link-types-v1"   # oxjob #2481: /link-types
 
-# standard_terms (oxjob #1490): displayed, not searched.
+# standard_terms (oxjob #1490): displayed, not searched. match (oxjob #2264): the SKOS mapping level.
 STANDARD_TERMS_MAPPING = {
     "properties": {
         "vocabulary": {"type": "keyword"},
         "term": {"type": "keyword"},
         "url": {"type": "keyword", "index": False},
+        "match": {"type": "keyword"},
     }
 }
 
@@ -263,7 +364,8 @@ def write_index(client, index_name, rows):
         client.indices.create(index=index_name, body=INDEX_BODY)
         print(f"Created index {index_name} with explicit mapping")
     else:
-        # Fields added after the index was created (standard_terms, oxjob #1490); a no-op once present.
+        # Fields added after the index was created (standard_terms, oxjob #1490; standard_terms.match, oxjob #2264);
+        # a no-op once present.
         client.indices.put_mapping(index=index_name, properties={"standard_terms": STANDARD_TERMS_MAPPING})
     actions = [{"_op_type": "index", "_index": index_name, "_id": r["id"], "_source": r} for r in rows]
     ok, errors = helpers.bulk(client, actions, raise_on_error=False)
@@ -280,7 +382,7 @@ def write_index(client, index_name, rows):
 
 client = Elasticsearch(hosts=[ELASTIC_URL], max_retries=3, request_timeout=180)
 try:
-    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # six rows
+    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # nine rows
     write_index(client, INDEX_NAME, rows)
     write_index(client, LINK_TYPES_INDEX, [as_link_type(r) for r in rows])
 finally:
