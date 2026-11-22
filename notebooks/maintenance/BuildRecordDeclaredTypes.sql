@@ -8,6 +8,7 @@
 --   platform 'diva' (oxjob #2236): DiVA, the shared repository of ~50 Swedish universities (diva-portal.org, diva2:<pid>)
 --   platforms 'ads', 'aps', 'eric', 'osti', 'ntrs', 'inis', 'worldbank' (oxjob #2243): MAG crawls of report servers,
 --   catalogues and meeting-abstract hosts (NASA ADS, APS, ERIC, OSTI, NASA NTRS, INIS, World Bank documents)
+--   platform 'cinii' (oxjob #1160): MAG crawls of CiNii Books catalogue pages whose CiNii note says the item is a thesis
 -- Revert one platform: DELETE FROM openalex.works.record_declared_types WHERE platform = '<platform>' (the next night types
 -- its works back). Revert the mechanism: drop the rdt join and its WHEN in CreateWorksBase first (its LEFT JOIN fails on a
 -- missing table), then this table.
@@ -270,6 +271,47 @@ SELECT o.provenance, o.native_id, o.type, o.platform, o.record_key, o.declared_c
 FROM one o
 -- one row per record across every platform: the End 2 End's LEFT JOIN would otherwise repeat the work
 LEFT ANTI JOIN openalex.works.record_declared_types t ON t.provenance = o.provenance AND t.native_id = o.native_id
+
+-- COMMAND ----------
+
+-- platform 'cinii' (oxjob #1160, PLAN step 3): MAG crawls of CiNii Books catalogue pages (ci.nii.ac.jp/ncid/<NCID>), typed
+-- book or article by the cascade, whose CiNii record notes that the item is a thesis ('Thesis (Ph. D.)--Yale University,
+-- 2006', 'Thesis (doctoral)--Universität Leipzig, 1903', 'Facsim. reprint of the author's thesis (Ph. D.)--...', a UMI copy
+-- of the thesis itself). CiNii Books' OpenSearch note= field search (https://ci.nii.ac.jp/books/opensearch/search, format
+-- json, no appid) listed every NCID whose note reads "thesis (ph. d.)", "thesis (doctoral)", "thesis (ed. d.)", "thesis
+-- (m.s.)", "thesis (m.a.)", "thesis (d. phil.)" or "thesis (habilitation)", each query with -originally -revision -revised
+-- (books made from a thesis): 295,024 NCIDs, harvested 21 Nov 2026 by oxjobs #1160 (cinii_harvest.py), less 5,668 whose
+-- note also says 'based', 'adapted' or 'rev.'. That list is openalex.works.cinii_thesis_ncids (ncid, query_keys: the
+-- phrases that matched). Japanese notes ('博士論文', '学位論文') are left out: a sample read mostly as revised books. A
+-- record gets a row only when every NCID its URLs name is on the list. Bars (CiNii's own record read again): 21 Nov a
+-- random 50, 49 theses (the miss, 'Based on the author's thesis', is now excluded); 22 Nov a fresh random 30 of these rows,
+-- 30 theses. CreateWorksBase reads them through its own 'cinii' line (book or article; never over a type curation).
+-- Revert: DELETE FROM openalex.works.record_declared_types WHERE platform = 'cinii' (the next night types them back).
+DELETE FROM openalex.works.record_declared_types WHERE platform = 'cinii';
+
+-- COMMAND ----------
+
+INSERT INTO openalex.works.record_declared_types
+WITH recs AS (
+  SELECT DISTINCT provenance, native_id,
+         upper(regexp_extract(landing_page_url, '(?i)ci\\.nii\\.ac\\.jp/ncid/([0-9A-Z]+)', 1)) AS ncid
+  FROM openalex.works.locations_mapped
+  WHERE landing_page_url ILIKE '%ci.nii.ac.jp/ncid/%'
+),
+one AS (
+  SELECT r.provenance, r.native_id, min(r.ncid) AS record_key, min(t.query_keys) AS query_keys,
+         count(DISTINCT r.ncid) AS n_ncid, count(DISTINCT t.ncid) AS n_thesis
+  FROM recs r LEFT JOIN openalex.works.cinii_thesis_ncids t ON t.ncid = r.ncid
+  WHERE r.ncid <> ''
+  GROUP BY r.provenance, r.native_id
+)
+SELECT o.provenance, o.native_id, 'dissertation' AS type, 'cinii' AS platform, o.record_key,
+       concat('CiNii Books note: Thesis (', o.query_keys, ')') AS declared_code, 1160 AS oxjob,
+       TIMESTAMP '2026-11-21 17:00:00' AS harvested_at  -- UTC: harvest finished 11:00 CT
+FROM one o
+-- one row per record across every platform: the End 2 End's LEFT JOIN would otherwise repeat the work
+LEFT ANTI JOIN openalex.works.record_declared_types t ON t.provenance = o.provenance AND t.native_id = o.native_id
+WHERE o.n_thesis >= 1 AND o.n_thesis = o.n_ncid
 
 -- COMMAND ----------
 
