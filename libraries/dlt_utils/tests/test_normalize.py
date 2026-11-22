@@ -167,3 +167,12 @@ def test_publisher_specific_open_licences():
     assert normalize_license("https://doi.org/10.1364/OA_License_v2#OPG-OO") is None
     assert normalize_license("https://doi.org/10.1364/OA_License_v2#CCBY") == "cc-by"
     assert normalize_license("https://www.elsevier.com/open-access/userlicense/1.0/") is None
+
+
+def test_open_government_licences():
+    """oxjob #1169: the UK and Canadian Open Government Licences are open licences (like CC BY)."""
+    assert normalize_license("http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/") == "other-oa"
+    assert normalize_license("https://www.nationalarchives.gov.uk/doc/open-government-licence/version/2/") == "other-oa"
+    assert normalize_license("https://open.canada.ca/en/open-government-licence-canada") == "other-oa"
+    assert normalize_license("Open Government Licence v3.0") == "other-oa"
+    assert normalize_license("https://www.nationalarchives.gov.uk/doc/non-commercial-government-licence/version/2/") is None

@@ -246,6 +246,11 @@ def normalize_license(text):
         ("10.1364/oa_license_v2#voroa", "other-oa"),
         ("arxiv.orgperpetual", "other-oa"),
         ("arxiv.orgnonexclusive", "other-oa"),
+        # oxjob #1169: the UK Open Government Licence (nationalarchives.gov.uk/doc/open-government-licence) and the
+        # Open Government Licence - Canada (open.canada.ca/en/open-government-licence-canada) are open licences like
+        # CC BY; Crown-copyright articles and Natural Resources Canada's GEOSCAN reports (10.4095) carry them.
+        ("opengovernmentlicence", "other-oa"),
+        ("opengovernmentlicense", "other-oa"),
         
         # creative Commons licenses
         # Text form ("CC BY-NC-ND 4.0") and URL form
