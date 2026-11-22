@@ -7,7 +7,8 @@ resources:
         Build_Work_Links writes openalex.works.work_links (origin, target, relationship) as a union of tables End 2 End has
         already curated (work_citations' served rows, work_parents, work_review_links' served rows, which the first
         task Build_Review_Links writes, oxjob #2481, work_pull_notice_links' served rows, which Build_Pull_Notice_Links
-        writes, oxjob #2264, and work_translation_links' served rows, which Build_Translation_Links writes, oxjob #2536); Sync_Links_to_Elasticsearch sends the changes to the
+        writes, oxjob #2264, and work_translation_links' served rows, which Build_Translation_Links writes, oxjob #2536, and work_summary_links' served rows, which Build_Summary_Links writes,
+        oxjob #2535); Sync_Links_to_Elasticsearch sends the changes to the
         links index (links-v1), keeping what the index holds in openalex.works.work_links_indexed. Its own job, after End 2 End
         has run, so nothing in the nightly waits on it (Casey, 20 Nov 2026). Revert: pause this job; the index and tables
         can be dropped.
@@ -46,12 +47,20 @@ resources:
             notebook_path: notebooks/end2end/CreateWorkTranslationLinks
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        # oxjob #2535: summary links (a summary to the work it summarizes), unioned below as summary.
+        - task_key: Build_Summary_Links
+          timeout_seconds: 1800
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateWorkSummaryLinks
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
         - task_key: Build_Work_Links
           timeout_seconds: 1800
           depends_on:
             - task_key: Build_Review_Links
             - task_key: Build_Pull_Notice_Links
             - task_key: Build_Translation_Links
+            - task_key: Build_Summary_Links
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorkLinks
             source: GIT
