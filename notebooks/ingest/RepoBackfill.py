@@ -78,6 +78,13 @@ from openalex.dlt.normalize import normalize_title_udf
 dbutils.widgets.text("rebuild", "false", "Full rebuild (overwrite)")
 REBUILD = dbutils.widgets.get("rebuild").strip().lower() in ("true", "1", "yes")
 print(f"RepoBackfill mode: {'REBUILD (overwrite)' if REBUILD else 'MERGE (incremental)'}")
+# oxjob #2516: dry_run=true parses as usual, then writes the parse to DRY_RUN_TABLE and prints what a MERGE would change
+# (per column, licence and is_oa transitions, inserts, deletes) instead of writing repo_works_backfill. Size a parser
+# change's re-stamps this way before a real run: the MERGE's change feed reaches repo_works at the next Repo run.
+dbutils.widgets.text("dry_run", "false", "Dry run: scratch table + diff, no write")
+DRY_RUN = dbutils.widgets.get("dry_run").strip().lower() in ("true", "1", "yes")
+DRY_RUN_TABLE = "openalex.transient.repo_backfill_dryrun"
+assert not (DRY_RUN and REBUILD), "dry_run and rebuild are exclusive"
 
 # Licence fallbacks, same rule as Repo.py (4afa5d56). Keep the two constants below byte-identical with Repo.py.
 # CC0 named as text in dc:rights: the normaliser knows the CC0 URL and the words "public domain"
@@ -893,6 +900,39 @@ if spark.catalog.tableExists(target_table):
         print(f"  MERGE: {_dropped_keys:,} keys are absent from the source and their rows will "
               f"be DELETED. Remaining keys are updated in place, duplicates included -- "
               f"{_tgt_rows - _tgt_keys:,} duplicate rows survive (use REBUILD to clear them).")
+
+if DRY_RUN:
+    parsed_df.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(DRY_RUN_TABLE)
+    _new = spark.table(DRY_RUN_TABLE)
+    # The MERGE's update test, per column, against one target row per key (duplicate target rows all take the source's).
+    _old = spark.table(target_table).dropDuplicates(["native_id"])
+    _cols = [c for c in _new.columns if c != "native_id"]
+    _j = (_new.withColumn("_in_s", lit(True)).alias("s")
+          .join(_old.withColumn("_in_t", lit(True)).alias("t"), "native_id", "full_outer"))
+    _upd = (col("s.updated_date").isNull() | col("t.updated_date").isNull() | (col("s.updated_date") >= col("t.updated_date")))
+    _d = _j.select(
+        "native_id",
+        col("s._in_s").isNull().alias("_no_src"), col("t._in_t").isNull().alias("_no_tgt"),
+        _upd.alias("_newer"),
+        array(*[when(~col(f"s.{c}").eqNullSafe(col(f"t.{c}")), lit(c)) for c in _cols]).alias("_cc"),
+        col("t.license").alias("old_license"), col("s.license").alias("license"),
+        col("t.is_oa").alias("old_is_oa"), col("s.is_oa").alias("is_oa"),
+    ).withColumn("_changed", filter(col("_cc"), lambda x: x.isNotNull())).drop("_cc")
+    _d.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(DRY_RUN_TABLE + "_diff")
+    _d = spark.table(DRY_RUN_TABLE + "_diff")
+    print("rows: source only (insert), target only (delete), would update, unchanged:")
+    _d.select(
+        count_if(col("_no_tgt") & ~col("_no_src")).alias("insert"),
+        count_if(col("_no_src") & ~col("_no_tgt")).alias("delete"),
+        count_if(~col("_no_src") & ~col("_no_tgt") & col("_newer") & (size("_changed") > 0)).alias("update"),
+        count_if(~col("_no_src") & ~col("_no_tgt") & (size("_changed") == 0)).alias("same"),
+    ).show()
+    _u = _d.filter(~col("_no_src") & ~col("_no_tgt") & col("_newer") & (size("_changed") > 0))
+    print("changed columns (update rows):")
+    _u.select(explode("_changed").alias("c")).groupBy("c").count().orderBy(desc("count")).show(40, truncate=False)
+    print("licence and is_oa transitions (update rows):")
+    _u.groupBy("old_license", "license", "old_is_oa", "is_oa").count().orderBy(desc("count")).show(40, truncate=False)
+    dbutils.notebook.exit(f"dry run: {DRY_RUN_TABLE}, {DRY_RUN_TABLE}_diff")
 
 if not spark.catalog.tableExists(target_table):
     (parsed_df.write.format("delta")
