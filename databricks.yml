@@ -139,3 +139,4 @@ include:
   - jobs/pdf_pipeline.yaml
   - jobs/sitemaps.yaml
   - jobs/classify_work_types.yaml
+  - jobs/work_field_changes.yaml

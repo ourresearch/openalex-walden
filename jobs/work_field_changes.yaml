@@ -1,0 +1,42 @@
+# oxjob #2539 step 1 (shadow): which served fields of each work changed at each new updated_date. Runs after each night's
+# publish of openalex.works.openalex_works (table trigger), reads only that table and writes only its own six tables in
+# openalex.works (openalex_works_field_state, _field_changes, _field_change_counts, _field_runs, _metric_state,
+# _metric_changes; notebooks/end2end/TrackWorkFieldChanges says what each holds). Nothing reads them yet: this week times
+# it at full scale and checks its numbers before the nightly changes file and the updated_fields filter (steps 2-3,
+# their shape still to be approved) build on it. Outside the End 2 End on purpose: it can't fail or slow a night.
+# The first run bootstraps (stores hashes, logs nothing). Re-runs on one night change nothing.
+# Revert: delete this file (or pause the trigger here) and drop the six tables.
+resources:
+  jobs:
+    Work_Field_Changes:
+      name: Work Field Changes (shadow, oxjob 2539)
+      description: Per-field change dates of works from the published updated_date (oxjob #2539 step 1, shadow). Triggered by openalex.works.openalex_works.
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+      trigger:
+        pause_status: UNPAUSED
+        table_update:
+          table_names:
+            - openalex.works.openalex_works
+          condition: ANY_UPDATED
+          # Publish_Works, then Optimize_Works_Enriched and predictive optimization commit to the table; start after
+          # it has been quiet for 30 minutes, and at most every 6 hours (a later run on the same night is a no-op).
+          wait_after_last_change_seconds: 1800
+          min_time_between_triggers_seconds: 21600
+      queue:
+        enabled: true
+      tasks:
+        - task_key: track
+          notebook_task:
+            notebook_path: notebooks/end2end/TrackWorkFieldChanges
+            source: GIT
+            base_parameters:
+              works_table: openalex.works.openalex_works
+              target_schema: openalex.works
+            # jobs-4xl-authorships: only the End 2 End's Authorships task (hours earlier) uses it. Replays of 21-22 Nov
+            # took 3.5-5 min a night on a 2XL (the first run, which bootstraps 446M works, about 7).
+            warehouse_id: 206883a966070d92
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
