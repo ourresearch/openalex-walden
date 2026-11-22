@@ -6,10 +6,10 @@
 # MAGIC seeded from the full-corpus retag + the 2026-09-30 catch-up) and no row in the served table (`target`). Then (oxjob #2085)
 # MAGIC works whose text changed since they were tagged: the tagged record's `text_key` (key of the text it was tagged on) differs
 # MAGIC from today's, at most `max_retag` and within `max_works` (`retag = true`; AppendKeywords updates, inserts or deletes their
-# MAGIC served row), the longest-tagged first (oldest `tagged_at`), so no work waits behind a run of newer ones. The key (oxjob
-# MAGIC #2515, the topics queue's `text_key.py`) hashes the normalised title + abstract (letters and digits, lower case, no
-# MAGIC markup, no leading "Abstract" heading), so a cleanup that only tidies the text queues nothing; a record still holding
-# MAGIC #2085's raw key counts as current while its raw text is unchanged. Their new keywords re-stamp the work at the next
+# MAGIC served row), the longest-tagged first (oldest `tagged_at`; newest-first left older works waiting behind every surge). The
+# MAGIC key (oxjob #2515, the topics queue's `text_key.py`) hashes the tagger's input normalised (letters, marks and digits,
+# MAGIC lower case, no markup, no leading "Abstract" heading), so a cleanup that only tidies the text queues nothing; a record
+# MAGIC still holding #2085's raw key counts as current while its raw text is unchanged. Their new keywords re-stamp the work at the next
 # MAGIC End 2 End. A NULL `text_key` is never re-queued; venue is not in the key. A work tagged with no keywords is re-tagged
 # MAGIC only when its text changes. xpac included, as in the corpus run. Fields are the corpus run's: title, abstract cut to
 # MAGIC 6,000 characters, venue = primary location's source name. Shards `pmod(hash(id), n)` with n = ceil(works / shard_works);
@@ -53,7 +53,7 @@ WAIT_H = float(dbutils.widgets.get("wait_e2e_hours"))
 E2E_JOB = int(dbutils.widgets.get("e2e_job_id"))
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
 QUEUE, TAGGED, CAND = f"{P}queue", f"{P}tagged", f"{P}queue_cand"
-ABSTRACT_CUT = 6000   # the tagger's input; text_key (text_key.py) hashes the normalised title + abstract, cut here too
+ABSTRACT_CUT = 6000   # the tagger's input; text_key (text_key.py) hashes it, normalised
 if FORCE_RETAG and not FORCE:
     raise RuntimeError("force_retag re-tags every served work it is given: pass force_ids_table too")
 
@@ -108,7 +108,7 @@ if "text_key" not in {c.name for c in spark.table(TAGGED).schema}:   # oxjob #20
 # new = never tagged; retag = tagged before (oxjob #2085) and its text changed since (the tagged record's key), or forced.
 # FORCE (test / backfill) narrows to these works (column id), keeping the pre-#2085 rule that any work not served may be queued.
 # A record keyed before #2515 holds the raw key (K.raw_key_sql): it is current while either key matches.
-changed = "true" if FORCE_RETAG else "tagged_key IS NOT NULL AND tagged_key <> text_key AND tagged_key <> raw_key"
+changed = "true" if FORCE_RETAG else "tagged_key IS NOT NULL AND tagged_key <> raw_key AND tagged_key <> text_key"
 cand = f"""SELECT * FROM (
     SELECT w.id, w.title, substr(w.abstract, 1, {ABSTRACT_CUT}) AS abstract, w.primary_location.source.display_name AS journal,
            COALESCE(w.is_xpac, false) AS is_xpac, w.created_date, (t.work_id IS NOT NULL OR k.work_id IS NOT NULL) AS retag,
@@ -128,7 +128,7 @@ if DRY:
     dbutils.notebook.exit(f"dry run: {cnt.new:,} untagged, {cnt.changed:,} to tag again")
 # One pass over openalex_works: the newest max_works of each kind, with each kind's full count for the log.
 # New works newest first; re-tags longest-tagged first (oxjob #2515: newest-first starved older works behind every surge)
-order = "ORDER BY CASE WHEN retag THEN tagged_at END, created_date DESC, id DESC"
+order = "ORDER BY CASE WHEN retag THEN tagged_at END NULLS LAST, created_date DESC, id DESC"
 spark.sql(f"""CREATE OR REPLACE TABLE {CAND} COMMENT 'Keywords nightly (oxjob #2085): queue candidates of the last run' AS
 SELECT *, count(*) OVER (PARTITION BY retag) AS n_kind FROM ({cand})
 QUALIFY row_number() OVER (PARTITION BY retag {order}) <= {MAX_WORKS}""")
