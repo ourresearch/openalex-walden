@@ -340,6 +340,8 @@ RIGHTS_RESTRICTED_PATTERN = r"restrictedaccess|closedaccess|embargoedaccess|righ
 # A dc:rights value that restricts access keeps a licence read here off the record: RIGHTS_RESTRICTED_PATTERN plus the
 # COAR closed / restricted / embargoed URIs and "metadata only", tested on the same form (lower case, no spaces/hyphens).
 CC_RIGHTS_BLOCK_PATTERN = RIGHTS_RESTRICTED_PATTERN + r"|coar/access_right/c_(?:14cb|16ec|f1cf)|metadataonly"
+# A prompt to pick a licence names none: "Bitte wählen Sie eine Lizenz aus: (Unsere Empfehlung: CC-BY)" (Bremen).
+CC_PROMPT_RE = re.compile(r"w[äa]hlen sie|empfehlung|please (?:choose|select)|we recommend|recommended licen")
 # "cc_by_og" is not CC BY: DERA's EPrints code for the UK Open Government Licence (its pages say so).
 CC_CODE_RE = re.compile(r"(?<![a-z0-9])cc[\s:-]*by((?:[\s/-]*(?:nc|nd|sa)(?![a-z]))*)(?![a-z])(?!\s*og(?![a-z]))")
 CC_NAMED_BY_RE = re.compile(r"creative[\s-]*commons?[\s:-]*(?:licen[cs]e[\s:-]*)?(?:«\s*)?by((?:[\s/-]*(?:nc|nd|sa)(?![a-z]))*)(?![a-z])")
@@ -382,6 +384,8 @@ def cc_licence_from_text(value):
     if not value:
         return None
     t = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", value).lower().replace("_", " ")).strip()
+    if CC_PROMPT_RE.search(t):
+        return None
     m = CC_CODE_RE.search(t)
     if m:
         return _cc_flavour(set(re.findall(r"nc|nd|sa", m.group(1))))
