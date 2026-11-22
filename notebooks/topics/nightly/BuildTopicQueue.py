@@ -5,9 +5,12 @@
 # MAGIC Runs inside End 2 End (job `Topics`, after `Works_Base`, before `Author_Matching`), so tonight's new works get topics the same
 # MAGIC night. Queue = every work in `openalex_works_base` with a title or an abstract and no row in the served table `target`
 # MAGIC (`work_topics_v2`, which keeps a row for not-classifiable works too), newest first (highest id), at most `max_works`; the rest
-# MAGIC waits for the next night. Then (oxjob #2085) works whose text changed since they were scored: the row's `text_key` (hash of the
-# MAGIC title + abstract[:4000] it was scored on) differs from today's, newest first, at most `max_rescore` and within `max_works`
-# MAGIC (`rescore = true`; MergeTopicsV2 updates their rows). A work whose text changed tonight is re-stamped tonight anyway, so its
+# MAGIC waits for the next night. Then (oxjob #2085) works whose text changed since they were scored: the row's `text_key` (key of the
+# MAGIC text it was scored on) differs from today's, at most `max_rescore` and within `max_works` (`rescore = true`; MergeTopicsV2
+# MAGIC updates their rows), the longest-scored first (oldest `updated_datetime`), so no work waits behind a run of newer ones.
+# MAGIC The key (oxjob #2515, `text_key.py`) hashes the normalised title + abstract (letters and digits, lower case, no markup,
+# MAGIC no leading "Abstract" heading), so a cleanup that only tidies the text queues nothing; a row still holding #2085's raw key
+# MAGIC counts as current while its raw text is unchanged. A work whose text changed tonight is re-stamped tonight anyway, so its
 # MAGIC new topics add no re-stamp. Venue is not in the key (1.3-1.5M venue-only changes a night, mostly source re-matching). Rows with
 # MAGIC a NULL `text_key` are never re-queued. Fields are the corpus pass's: title, abstract cut to 4,000 characters, venue = primary
 # MAGIC location's source name. Shards `pmod(hash(work_id), n)` with n = ceil(works / shard_works).
@@ -21,7 +24,12 @@
 
 import datetime as dt
 import math
+import os
+import sys
 import time
+
+sys.path.insert(0, os.getcwd())
+import text_key as K  # noqa: E402  (oxjob #2515: the one key definition, shared with the keywords queue)
 
 for name, default in [("state_prefix", "openalex.works.work_topics_v2_"), ("target", "openalex.works.work_topics_v2"),
                       ("works_table", "openalex.works.openalex_works_base"), ("max_works", "3000000"), ("shard_works", "25000"),
@@ -39,7 +47,7 @@ MAX_RESCORE = int(dbutils.widgets.get("max_rescore"))
 REUSE_H = float(dbutils.widgets.get("reuse_hours"))
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
 QUEUE, RUNS, CAND = f"{P}queue", f"{P}runs", f"{P}queue_cand"
-ABSTRACT_CUT = 4000   # the scorer's input; text_key (oxjob #2085) hashes exactly the queued title + cut abstract
+ABSTRACT_CUT = 4000   # the scorer's input; text_key (text_key.py) hashes the normalised title + abstract, cut here too
 if FORCE_RESCORE and not FORCE:
     raise RuntimeError("force_rescore re-scores every served work it is given: pass force_ids_table too")
 for t in (P + "x", TARGET, WORKS) + ((FORCE,) if FORCE else ()):
@@ -56,7 +64,7 @@ if not spark.catalog.tableExists(TARGET):
     raise RuntimeError(f"{TARGET} does not exist: create it first (oxjob #1531 PLAN § 2b); refusing to queue the whole corpus")
 spark.sql(f"SELECT 1 FROM {TARGET} LIMIT 1").collect()
 if "text_key" not in {c.name for c in spark.table(TARGET).schema}:   # oxjob #2085; NULL keys are never re-queued
-    spark.sql(f"ALTER TABLE {TARGET} ADD COLUMNS (text_key BIGINT COMMENT 'xxhash64(title, abstract[:4000]) the row was scored on (oxjob #2085)')")
+    spark.sql(f"ALTER TABLE {TARGET} ADD COLUMNS (text_key BIGINT COMMENT 'key of the normalised title + abstract the row was scored on (oxjob #2085, #2515: text_key.py)')")
 
 # Resume an unfinished build (task or job retry) instead of re-queueing under a new build id.
 if spark.catalog.tableExists(QUEUE) and not DRY:
@@ -78,23 +86,26 @@ scorable = "(length(trim(w.title)) > 0 OR length(w.abstract) > 0)"   # = the cor
 # oxjob #2065: a Crossref component (a figure, table or file of an article) has a made-up title, "Figure 2 of <its article's
 # title>": its topics would be its article's again, and the 7.5M of the backfill night would fill the queue for three nights
 scorable += " AND NOT coalesce(w.primary_location.provenance = 'crossref' AND w.primary_location.raw_type = 'component', false)"
-# new = no row yet; rescore = a row scored on other text (oxjob #2085), or forced (every served work in FORCE)
-changed = "true" if FORCE_RESCORE else "served_key IS NOT NULL AND served_key <> text_key"
+# new = no row yet; rescore = a row scored on other text (oxjob #2085), or forced (every served work in FORCE). A row keyed
+# before #2515 holds the raw key (K.raw_key_sql): it is current while either key matches.
+changed = "true" if FORCE_RESCORE else "served_key IS NOT NULL AND served_key <> text_key AND served_key <> raw_key"
 cand = f"""SELECT * FROM (
-  SELECT *, xxhash64(coalesce(title, ''), coalesce(abstract, '')) AS text_key FROM (
-    SELECT w.id AS work_id, w.title, substr(w.abstract, 1, {ABSTRACT_CUT}) AS abstract, w.primary_location.source.display_name AS venue,
-           v.work_id IS NOT NULL AS rescore, v.text_key AS served_key
-    FROM {WORKS} w LEFT JOIN (SELECT work_id, text_key FROM {TARGET}) v ON v.work_id = w.id
-    WHERE {scorable}""" + (f" AND w.id IN (SELECT id FROM {FORCE})" if FORCE else "") + f"""
-  )
+  SELECT w.id AS work_id, w.title, substr(w.abstract, 1, {ABSTRACT_CUT}) AS abstract, w.primary_location.source.display_name AS venue,
+         v.work_id IS NOT NULL AS rescore, v.text_key AS served_key, v.updated_datetime AS scored_at,
+         {K.text_key_sql("w.title", "w.abstract", ABSTRACT_CUT)} AS text_key,
+         {K.raw_key_sql("w.title", "w.abstract", ABSTRACT_CUT)} AS raw_key
+  FROM {WORKS} w LEFT JOIN (SELECT work_id, text_key, updated_datetime FROM {TARGET}) v ON v.work_id = w.id
+  WHERE {scorable}""" + (f" AND w.id IN (SELECT id FROM {FORCE})" if FORCE else "") + f"""
 ) WHERE NOT rescore OR ({changed})"""
+# New works newest first; re-scores longest-scored first (oxjob #2515: newest-first starved older works behind every surge)
+ORDER = "ORDER BY CASE WHEN rescore THEN scored_at END, work_id DESC"
 if DRY:
     cnt = spark.sql(f"SELECT count_if(NOT rescore) AS new, count_if(rescore) AS changed FROM ({cand})").collect()[0]
     dbutils.notebook.exit(f"dry run: {cnt.new:,} unscored, {cnt.changed:,} to re-score")
 # One pass over the base (critical path): the newest max_works of each kind, with each kind's full count for the log.
 spark.sql(f"""CREATE OR REPLACE TABLE {CAND} COMMENT 'Topics nightly (oxjob #2085): queue candidates of the last run' AS
 SELECT *, count(*) OVER (PARTITION BY rescore) AS n_kind FROM ({cand})
-QUALIFY row_number() OVER (PARTITION BY rescore ORDER BY work_id DESC) <= {MAX_WORKS}""")
+QUALIFY row_number() OVER (PARTITION BY rescore {ORDER}) <= {MAX_WORKS}""")
 cnt = spark.sql(f"SELECT COALESCE(max(n_kind) FILTER (WHERE NOT rescore), 0) AS new, COALESCE(max(n_kind) FILTER (WHERE rescore), 0) AS changed FROM {CAND}").collect()[0]
 take_new = min(cnt.new, MAX_WORKS)
 take_re = min(cnt.changed, MAX_RESCORE, MAX_WORKS - take_new)
@@ -114,7 +125,7 @@ COMMENT 'Topics nightly queue (oxjob #1531): scorable works with no row in {TARG
 AS SELECT CAST(pmod(hash(c.work_id), {n_shards}) AS INT) AS shard, c.work_id, c.title, c.abstract, c.venue,
           '{build_id}' AS build_id, current_timestamp() AS queued_at, c.text_key, c.rescore
 FROM {CAND} c
-QUALIFY row_number() OVER (PARTITION BY c.rescore ORDER BY c.work_id DESC) <= CASE WHEN c.rescore THEN {take_re} ELSE {take_new} END
+QUALIFY row_number() OVER (PARTITION BY rescore {ORDER}) <= CASE WHEN c.rescore THEN {take_re} ELSE {take_new} END
 """)
 q = spark.sql(f"""SELECT count(*) AS n, count(DISTINCT work_id) AS ids, count_if(rescore) AS re, count(DISTINCT shard) AS shards,
   min(work_id) AS lo, max(work_id) AS hi FROM {QUEUE}""").collect()[0]

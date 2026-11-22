@@ -4,13 +4,16 @@
 # MAGIC
 # MAGIC Every work in `openalex_works` that has never been tagged: no row in the tagged-ids record (`<state_prefix>tagged`,
 # MAGIC seeded from the full-corpus retag + the 2026-09-30 catch-up) and no row in the served table (`target`). Then (oxjob #2085)
-# MAGIC works whose text changed since they were tagged: the tagged record's `text_key` (hash of the title + abstract[:6000] it was
-# MAGIC tagged on) differs from today's, newest first, at most `max_retag` and within `max_works` (`retag = true`; AppendKeywords
-# MAGIC updates, inserts or deletes their served row). Their new keywords re-stamp the work at the next End 2 End. A NULL
-# MAGIC `text_key` is never re-queued; venue is not in the key. A work tagged with no keywords is re-tagged only when its text
-# MAGIC changes. xpac included, as in the corpus run. Fields are the corpus
-# MAGIC run's: title, abstract cut to 6,000 characters, venue = primary location's source name. Shards `pmod(hash(id), n)`
-# MAGIC with n = ceil(works / shard_works); over `max_works` the newest works go first and the rest wait for the next run.
+# MAGIC works whose text changed since they were tagged: the tagged record's `text_key` (key of the text it was tagged on) differs
+# MAGIC from today's, at most `max_retag` and within `max_works` (`retag = true`; AppendKeywords updates, inserts or deletes their
+# MAGIC served row), the longest-tagged first (oldest `tagged_at`), so no work waits behind a run of newer ones. The key (oxjob
+# MAGIC #2515, the topics queue's `text_key.py`) hashes the normalised title + abstract (letters and digits, lower case, no
+# MAGIC markup, no leading "Abstract" heading), so a cleanup that only tidies the text queues nothing; a record still holding
+# MAGIC #2085's raw key counts as current while its raw text is unchanged. Their new keywords re-stamp the work at the next
+# MAGIC End 2 End. A NULL `text_key` is never re-queued; venue is not in the key. A work tagged with no keywords is re-tagged
+# MAGIC only when its text changes. xpac included, as in the corpus run. Fields are the corpus run's: title, abstract cut to
+# MAGIC 6,000 characters, venue = primary location's source name. Shards `pmod(hash(id), n)` with n = ceil(works / shard_works);
+# MAGIC over `max_works` the newest works go first and the rest wait for the next run.
 # MAGIC
 # MAGIC Stops before any GPU spend if the tagged record is missing or not seeded (`min_tagged_rows`: an empty record would
 # MAGIC re-queue the ~53M works that were tagged and came out empty), or if a rule table / the kid0 UDF is missing.
@@ -21,7 +24,12 @@
 
 import datetime as dt
 import math
+import os
+import sys
 import time
+
+sys.path.insert(0, os.path.join(os.getcwd(), "..", "..", "topics", "nightly"))
+import text_key as K  # noqa: E402  (oxjob #2515: the one key definition, shared with the topics queue)
 
 for name, default in [("state_prefix", "openalex.works.work_keywords_v2_"), ("target", "openalex.works.work_keywords_v2"),
                       ("rules_prefix", "openalex.common.keywords_v2_"), ("synmap", "openalex.common.keywords_v2_synmap"),
@@ -45,7 +53,7 @@ WAIT_H = float(dbutils.widgets.get("wait_e2e_hours"))
 E2E_JOB = int(dbutils.widgets.get("e2e_job_id"))
 DRY = dbutils.widgets.get("dry_run").strip().lower() == "true"
 QUEUE, TAGGED, CAND = f"{P}queue", f"{P}tagged", f"{P}queue_cand"
-ABSTRACT_CUT = 6000   # the tagger's input; text_key (oxjob #2085) hashes exactly the queued title + cut abstract
+ABSTRACT_CUT = 6000   # the tagger's input; text_key (text_key.py) hashes the normalised title + abstract, cut here too
 if FORCE_RETAG and not FORCE:
     raise RuntimeError("force_retag re-tags every served work it is given: pass force_ids_table too")
 
@@ -61,7 +69,7 @@ from databricks.sdk import WorkspaceClient  # noqa: E402
 
 w = WorkspaceClient()
 deadline = time.time() + WAIT_H * 3600
-while True:
+while not DRY:   # a dry run only counts: it reads a consistent Delta snapshot and need not wait
     active = [r for r in w.jobs.list_runs(job_id=E2E_JOB, active_only=True)]
     pending = []
     for r in active:
@@ -93,29 +101,34 @@ for t in [f"{RULES}{x}" for x in ("fold", "purge", "country_kids", "boiler", "te
 assert spark.sql(f"SELECT {KID0}('Machine Learning') AS k").collect()[0].k, f"{KID0} returned nothing"
 log(f"tagged record {TAGGED}: {n_tagged:,} works; rule tables and {KID0} present")
 if "text_key" not in {c.name for c in spark.table(TAGGED).schema}:   # oxjob #2085; NULL keys are never re-queued
-    spark.sql(f"ALTER TABLE {TAGGED} ADD COLUMNS (text_key BIGINT COMMENT 'xxhash64(title, abstract[:6000]) the work was tagged on (oxjob #2085)')")
+    spark.sql(f"ALTER TABLE {TAGGED} ADD COLUMNS (text_key BIGINT COMMENT 'key of the normalised title + abstract the work was tagged on (oxjob #2085, #2515: text_key.py)')")
 
 # COMMAND ----------
 
 # new = never tagged; retag = tagged before (oxjob #2085) and its text changed since (the tagged record's key), or forced.
 # FORCE (test / backfill) narrows to these works (column id), keeping the pre-#2085 rule that any work not served may be queued.
-changed = "true" if FORCE_RETAG else "tagged_key IS NOT NULL AND tagged_key <> text_key"
+# A record keyed before #2515 holds the raw key (K.raw_key_sql): it is current while either key matches.
+changed = "true" if FORCE_RETAG else "tagged_key IS NOT NULL AND tagged_key <> text_key AND tagged_key <> raw_key"
 cand = f"""SELECT * FROM (
-  SELECT *, xxhash64(coalesce(title, ''), coalesce(abstract, '')) AS text_key FROM (
     SELECT w.id, w.title, substr(w.abstract, 1, {ABSTRACT_CUT}) AS abstract, w.primary_location.source.display_name AS journal,
            COALESCE(w.is_xpac, false) AS is_xpac, w.created_date, (t.work_id IS NOT NULL OR k.work_id IS NOT NULL) AS retag,
-           t.text_key AS tagged_key, k.work_id IS NOT NULL AS served
+           t.text_key AS tagged_key, t.tagged_at, k.work_id IS NOT NULL AS served,
+           {K.text_key_sql("w.title", "w.abstract", ABSTRACT_CUT)} AS text_key,
+           {K.raw_key_sql("w.title", "w.abstract", ABSTRACT_CUT)} AS raw_key
     FROM openalex.works.openalex_works w
-    LEFT JOIN (SELECT work_id, text_key FROM {TAGGED}) t ON t.work_id = w.id
+    LEFT JOIN (SELECT work_id, text_key, tagged_at FROM {TAGGED}) t ON t.work_id = w.id
     LEFT JOIN (SELECT work_id FROM {TARGET}) k ON k.work_id = w.id
     -- oxjob #2065: a Crossref component has a made-up title ("Figure 2 of <its article's title>"): its keywords would be its
     -- article's again, and the 7.5M of the backfill night would fill the queue for four nights
     WHERE NOT coalesce(w.primary_location.provenance = 'crossref' AND w.primary_location.raw_type = 'component', false)""" + (f"""
       AND w.id IN (SELECT id FROM {FORCE})""" if FORCE else "") + f"""
-  )
 ) WHERE NOT {'served' if FORCE else 'retag'} OR ({changed})"""
+if DRY:
+    cnt = spark.sql(f"SELECT count_if(NOT retag) AS new, count_if(retag) AS changed FROM ({cand})").collect()[0]
+    dbutils.notebook.exit(f"dry run: {cnt.new:,} untagged, {cnt.changed:,} to tag again")
 # One pass over openalex_works: the newest max_works of each kind, with each kind's full count for the log.
-order = "ORDER BY created_date DESC, id DESC"
+# New works newest first; re-tags longest-tagged first (oxjob #2515: newest-first starved older works behind every surge)
+order = "ORDER BY CASE WHEN retag THEN tagged_at END, created_date DESC, id DESC"
 spark.sql(f"""CREATE OR REPLACE TABLE {CAND} COMMENT 'Keywords nightly (oxjob #2085): queue candidates of the last run' AS
 SELECT *, count(*) OVER (PARTITION BY retag) AS n_kind FROM ({cand})
 QUALIFY row_number() OVER (PARTITION BY retag {order}) <= {MAX_WORKS}""")
