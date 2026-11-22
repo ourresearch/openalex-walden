@@ -12,6 +12,10 @@ resources:
         # into the widget explicitly.
         - name: rebuild
           default: "false"
+        # oxjob #2516: parse, write openalex.transient.repo_backfill_dryrun + _diff and print what a MERGE would change,
+        # without writing repo_works_backfill.
+        - name: dry_run
+          default: "false"
       queue:
         enabled: false
       tasks:
@@ -35,6 +39,7 @@ resources:
               #   a row-level change feed, so repo_parsed_backfill's readChangeFeed stream fails
               #   until refreshed.
               rebuild: "{{job.parameters.rebuild}}"
+              dry_run: "{{job.parameters.dry_run}}"
           job_cluster_key: repo_backfill_cluster
       job_clusters:
         - job_cluster_key: repo_backfill_cluster
