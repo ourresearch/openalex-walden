@@ -3,8 +3,10 @@
 # syncs it to Elasticsearch in one notebook.
 #
 # "contributor-roles" (oxjob #2075) is the vocabulary behind works.authorships[].contributor_roles:
-# CRediT's 14 roles (ANSI/NISO Z39.104-2022, CC BY 4.0). The vocabulary lives in
-# utils/contributor_roles.py (DISPLAY_NAME, DESCRIPTION; slugs from utils/pmc_jats.CREDIT_ROLES).
+# CRediT's 14 roles (ANSI/NISO Z39.104-2022, CC BY 4.0) plus `editor` (D11 round one, 22 Nov 2026). The vocabulary
+# lives in utils/contributor_roles.py (ROLES, DISPLAY_NAME, DESCRIPTION, STANDARD_TERMS). Each record lists its
+# standard_terms: the same role in other vocabularies (Crossref, JATS4R, ORCID; for editor also DataCite, JATS, MARC
+# relators, CSL, schema.org, Wikidata), as /relationships and /author-types do.
 
 # COMMAND ----------
 
@@ -24,7 +26,6 @@ if not os.path.exists(os.path.join(REPO_ROOT, "utils", "contributor_roles.py")):
                 break
 sys.path.insert(0, REPO_ROOT)
 from utils import contributor_roles as cr  # noqa: E402
-from utils.pmc_jats import CREDIT_ROLES  # noqa: E402
 
 TABLE = "openalex.common.contributor_roles_api"
 HASH = "openalex.common.contributor_roles_api_hash"
@@ -32,6 +33,7 @@ HASH_EXPR = """xxhash64(CONCAT_WS('|',
     COALESCE(display_name, ''),
     COALESCE(description, ''),
     COALESCE(TO_JSON(ids), ''),
+    COALESCE(TO_JSON(standard_terms), ''),
     COALESCE(CAST(works_count AS STRING), ''),
     COALESCE(CAST(cited_by_count AS STRING), '')
 ))"""
@@ -52,8 +54,10 @@ print("Hash snapshot complete")
 # core-corpus only (is_xpac IS NOT TRUE), as in sync_study_designs. Until the first End 2 End that
 # carries the field, authorships have no contributor_roles: counts are 0 instead of failing the job.
 vocab = spark.createDataFrame(
-    [(s, cr.DISPLAY_NAME[s], cr.DESCRIPTION[s], cr.credit_url(s)) for s in CREDIT_ROLES],
-    "slug STRING, display_name STRING, description STRING, credit_url STRING",
+    [(s, cr.DISPLAY_NAME[s], cr.DESCRIPTION[s], cr.credit_url(s),
+      [dict(zip(("vocabulary", "term", "url"), t)) for t in cr.STANDARD_TERMS[s]]) for s in cr.ROLES],
+    "slug STRING, display_name STRING, description STRING, credit_url STRING, "
+    "standard_terms ARRAY<STRUCT<vocabulary: STRING, term: STRING, url: STRING>>",
 )
 vocab.createOrReplaceTempView("contributor_role_vocab")
 
@@ -80,6 +84,7 @@ SELECT
     CONCAT('{cr.ID_PREFIX}', v.slug) AS id,
     v.display_name,
     v.description,
+    v.standard_terms,
     named_struct('openalex', CONCAT('{cr.ID_PREFIX}', v.slug), 'credit', v.credit_url) AS ids,
     COALESCE(c.works_count, 0) AS works_count,
     COALESCE(c.cited_by_count, 0) AS cited_by_count,
@@ -122,6 +127,15 @@ log = logging.getLogger(__name__)
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 INDEX_NAME = "contributor-roles-v1"
 
+# standard_terms: displayed, not searched (as author-types-v1 and work-relationships-v1).
+STANDARD_TERMS_MAPPING = {
+    "properties": {
+        "vocabulary": {"type": "keyword"},
+        "term": {"type": "keyword"},
+        "url": {"type": "keyword", "index": False},
+    }
+}
+
 # Created here on first run; shape copied from study-designs-v1, plus the ids object.
 INDEX_BODY = {
     "settings": {
@@ -159,6 +173,7 @@ INDEX_BODY = {
                 },
             },
             "description": {"type": "text", "analyzer": "search_analyzer"},
+            "standard_terms": STANDARD_TERMS_MAPPING,
             "ids": {
                 "properties": {
                     "openalex": {"type": "keyword"},
@@ -179,7 +194,10 @@ try:
     if not client.indices.exists(index=INDEX_NAME):
         client.indices.create(index=INDEX_NAME, body=INDEX_BODY)
         print(f"Created index {INDEX_NAME} with explicit mapping")
-    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # fourteen rows
+    else:
+        # oxjob #2075 D11: standard_terms joined the records after the index was created; adding a field is allowed
+        client.indices.put_mapping(index=INDEX_NAME, properties={"standard_terms": STANDARD_TERMS_MAPPING})
+    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # fifteen rows
     actions = [{"_op_type": "index", "_index": INDEX_NAME, "_id": r["id"], "_source": r} for r in rows]
     ok, errors = helpers.bulk(client, actions, raise_on_error=False)
     if errors:
