@@ -9,7 +9,8 @@ resources:
         task Build_Review_Links writes, oxjob #2481, work_pull_notice_links' served rows, which Build_Pull_Notice_Links
         writes, oxjob #2264, and work_translation_links' served rows, which Build_Translation_Links writes, oxjob #2536, and work_summary_links' served rows, which Build_Summary_Links writes,
         oxjob #2535); Sync_Links_to_Elasticsearch sends the changes to the
-        links index (links-v1), keeping what the index holds in openalex.works.work_links_indexed. Its own job, after End 2 End
+        links index (the `index` parameter; the `links` alias points at it), keeping what the index holds in
+        openalex.works.work_links_indexed (links-v2: work_links_indexed_v2). Its own job, after End 2 End
         has run, so nothing in the nightly waits on it (Casey, 20 Nov 2026). Revert: pause this job; the index and tables
         can be dropped.
       schedule:
@@ -73,6 +74,7 @@ resources:
             notebook_path: notebooks/elastic/sync_links
             base_parameters:
               mode: "nightly"
+              index: "links-v1"
               max_push: "200000000"
               writers: "24"
               day_writers: "6"

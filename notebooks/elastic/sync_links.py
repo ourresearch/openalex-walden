@@ -10,6 +10,9 @@
 # MAGIC indexed, links in it and not in `work_links` are deleted, and after each chunk it takes the links the index
 # MAGIC accepted. A failed or stopped run is re-covered by the next. The first run (an empty state) is the full build.
 # MAGIC
+# MAGIC `index` names the index this run writes. Each index keeps its own state table (`links-v2` ->
+# MAGIC `work_links_indexed_v2`), so a new version is built beside the live one and only the `links` alias moves.
+# MAGIC
 # MAGIC `slice_ppm` limits a run to a hash slice of the links (10000 = 1%), to measure size and speed before a full build.
 # MAGIC Load on search (#1642): `writers` bulk streams at night, `day_writers` 07:00-19:00 CT; every stream but the first
 # MAGIC pauses while data-node p95 CPU is over 85% in 3 of the last 4 minutes (the `sync_work_metrics` rule).
@@ -23,7 +26,7 @@
 # COMMAND ----------
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from elasticsearch import Elasticsearch, helpers
@@ -35,7 +38,9 @@ dbutils.widgets.text("day_writers", "6")           # cap 07:00-19:00 CT
 dbutils.widgets.text("chunk_rows", "50000000")     # changes per checkpointed chunk
 dbutils.widgets.text("bulk_size", "5000")          # actions per bulk request
 dbutils.widgets.text("slice_ppm", "1000000")       # parts per million of links this run covers (10000 = 1%)
-dbutils.widgets.text("stop_at", "")                # CT HH:MM: start no chunk at or after this time
+dbutils.widgets.text("stop_at", "")                # CT HH:MM: start no chunk after the first such time from the start
+dbutils.widgets.text("index", "links-v1")          # the index this run writes; its state table follows its version
+dbutils.widgets.text("index_sort", "target,origin")  # sort of a NEW index (empty = none); an existing index keeps its own
 
 MODE = dbutils.widgets.get("mode")
 DRY_RUN = MODE == "dry_run"
@@ -46,13 +51,15 @@ CHUNK_ROWS = int(dbutils.widgets.get("chunk_rows") or 50_000_000)
 BULK = int(dbutils.widgets.get("bulk_size") or 5000)
 SLICE_PPM = int(dbutils.widgets.get("slice_ppm") or 1_000_000)
 STOP_AT = dbutils.widgets.get("stop_at").strip()
+INDEX = dbutils.widgets.get("index").strip() or "links-v1"
+SORT = [f.strip() for f in dbutils.widgets.get("index_sort").split(",") if f.strip()]
 
 LINKS_TABLE = "openalex.works.work_links"
-STATE_TABLE = "openalex.works.work_links_indexed"
-_scratch = "_dry" if DRY_RUN else ""
+_v = "" if INDEX == "links-v1" else "_" + INDEX.rsplit("-", 1)[-1]   # links-v2 -> _v2
+STATE_TABLE = f"openalex.works.work_links_indexed{_v}"
+_scratch = _v + ("_dry" if DRY_RUN else "")
 DIFF_TABLE = f"openalex.works.work_links_sync_diff{_scratch}"
 FAILED_TABLE = f"openalex.works.work_links_sync_failed{_scratch}"
-INDEX = "links-v1"
 ALIAS = "links"
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
 HOT_P95 = 85
@@ -60,18 +67,25 @@ CT = ZoneInfo("America/Chicago")
 KEY = "origin_work_id, target_work_id, relationship"
 IN_SLICE = f"pmod(xxhash64({KEY}), 1000000) < {SLICE_PPM}"
 t_start = time.time()
-print(f"mode={MODE} cap={CAP} writers={WRITERS} day_writers={DAY_WRITERS} chunk_rows={CHUNK_ROWS:,} "
-      f"slice_ppm={SLICE_PPM} stop_at={STOP_AT or '-'}")
+STOP_DT = None
+if STOP_AT:                                        # 04:30 from a 13:00 start means tomorrow 04:30
+    _now = datetime.now(CT)
+    STOP_DT = _now.replace(hour=int(STOP_AT[:2]), minute=int(STOP_AT[3:5]), second=0, microsecond=0)
+    if STOP_DT <= _now:
+        STOP_DT += timedelta(days=1)
+print(f"mode={MODE} index={INDEX} state={STATE_TABLE} cap={CAP} writers={WRITERS} day_writers={DAY_WRITERS} "
+      f"chunk_rows={CHUNK_ROWS:,} slice_ppm={SLICE_PPM} stop_at={f'{STOP_DT:%a %H:%M} CT' if STOP_DT else '-'}")
 
 # COMMAND ----------
 
-# The index, created on the first run, kept slim: three keyword fields, no text, no analyzers, and synthetic _source
-# (nothing stored twice: Elasticsearch rebuilds each doc from the fields' doc values). Doc values serve counts by
-# relationship and stable cursor paging. Built with no replica and no refresh; once full, set number_of_replicas 1 and
-# refresh_interval 30s by hand.
+# The index, created on its first run, kept slim: three keyword fields, no text, no analyzers. (No synthetic _source:
+# this cluster turns it into stored _source; links-v1 asked for it and got stored, checked 22 Nov 2026.)
+# 20 primary shards, ~190M links each (links-v1 had 10 at ~374M, over Elastic's ~200M-docs-per-shard guidance).
+# Stored in order by target, then origin, so a work's incoming links sit together and sorted lookups stay fast.
+# Built with no replica and no refresh; once full, set number_of_replicas 1 and refresh_interval 30s by hand.
 INDEX_BODY = {
-    "settings": {"index": {"number_of_shards": 10, "number_of_replicas": 0, "refresh_interval": "-1",
-                           "mapping": {"source": {"mode": "synthetic"}}}},
+    "settings": {"index": {"number_of_shards": 20, "number_of_replicas": 0, "refresh_interval": "-1",
+                           **({"sort": {"field": SORT, "order": ["asc"] * len(SORT)}} if SORT else {})}},
     "mappings": {"dynamic": "strict", "properties": {
         "origin": {"type": "keyword"}, "target": {"type": "keyword"}, "relationship": {"type": "keyword"}}},
 }
@@ -87,7 +101,7 @@ if not DRY_RUN:
     try:
         if not client.indices.exists(index=INDEX):
             client.indices.create(index=INDEX, body=INDEX_BODY)
-            print(f"Created {INDEX}")
+            print(f"Created {INDEX}: {INDEX_BODY['settings']}")
         if not client.indices.exists_alias(name=ALIAS):
             client.indices.put_alias(index=INDEX, name=ALIAS)
             print(f"Alias {ALIAS} -> {INDEX}")
@@ -182,8 +196,8 @@ if DRY_RUN:
     stopped, n_chunks = "dry_run: nothing sent", 0
 for h in range(n_chunks):
     now = datetime.now(CT)
-    if STOP_AT and now.strftime("%H:%M") >= STOP_AT:
-        stopped = f"stop_at {STOP_AT} CT reached before chunk {h + 1}/{n_chunks}"
+    if STOP_DT and now >= STOP_DT:
+        stopped = f"stop_at {STOP_DT:%a %H:%M} CT reached before chunk {h + 1}/{n_chunks}"
         break
     writers = min(WRITERS, DAY_WRITERS) if 7 <= now.hour < 19 else WRITERS
     t0 = time.time()
