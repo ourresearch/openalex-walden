@@ -45,7 +45,7 @@ from pyspark.sql.window import Window
 
 from openalex.dlt.oai_ids import read_endpoint_hosts, with_rekeyed_native_id
 
-dbutils.widgets.text("endpoint_ids", "", "comma-separated endpoint ids (folders under repositories/)")
+dbutils.widgets.text("endpoint_ids", "", "comma-separated endpoint ids (folders under repositories/); * = all (repo_items + native_ids_table only)")
 dbutils.widgets.dropdown("mode", "dry_run", ["dry_run", "write"], "dry_run: scratch tables only; write: MERGE into the side table")
 dbutils.widgets.text("out_prefix", "openalex.transient.repo_reparse", "scratch table prefix")
 # oxjob #2266: a change to the parse, not the schema, needs no raw file: repo_items holds the struct the pipeline read.
@@ -57,6 +57,9 @@ dbutils.widgets.text("native_ids_table", "", "optional: re-send only the records
 # repo_parsed's (native_id, datestamp) dedup dropped them).
 dbutils.widgets.dropdown("copy", "earliest", ["earliest", "latest"], "earliest: the copy repo_parsed kept; latest: the newest delivery")
 ENDPOINTS = [e.strip() for e in dbutils.widgets.get("endpoint_ids").split(",") if e.strip()]
+# oxjob #2516: "*" = every endpoint, for a parse fix whose records sit on a thousand endpoints (too many to list in a job
+# parameter). Only with source=repo_items and a native_ids_table, which then alone bounds what is re-sent.
+ALL_ENDPOINTS = ENDPOINTS == ["*"]
 MODE = dbutils.widgets.get("mode")
 OUT = dbutils.widgets.get("out_prefix")
 SOURCE = dbutils.widgets.get("source")
@@ -64,8 +67,9 @@ NATIVE_IDS = dbutils.widgets.get("native_ids_table").strip()
 COPY = dbutils.widgets.get("copy")
 assert COPY in ("earliest", "latest"), COPY
 assert ENDPOINTS, "endpoint_ids is empty"
-assert all(re.fullmatch(r"[A-Za-z0-9_-]+", e) for e in ENDPOINTS), f"bad endpoint id in {ENDPOINTS}"
+assert all(re.fullmatch(r"[A-Za-z0-9_-]+", e) for e in ENDPOINTS) or ALL_ENDPOINTS, f"bad endpoint id in {ENDPOINTS}"
 assert not NATIVE_IDS or re.fullmatch(r"[A-Za-z0-9_]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+", NATIVE_IDS), NATIVE_IDS
+assert not ALL_ENDPOINTS or (SOURCE == "repo_items" and NATIVE_IDS), "endpoint_ids=* needs source=repo_items and a native_ids_table"
 print(f"mode={MODE} source={SOURCE} copy={COPY} endpoints={ENDPOINTS} native_ids_table={NATIVE_IDS or '-'}")
 
 # The Repo pipeline's Spark settings, so the same code behaves the same (jobs/repo_pipeline.yaml; DLT runs ANSI off).
@@ -140,7 +144,7 @@ else:
     # another position than repository_schema, so the struct is rebuilt by field name. It keeps no file path.
     source_df = (
         spark.table("openalex.repo.repo_items")
-        .filter(F.col("repository_id").isin(ENDPOINTS))
+        .transform(lambda d: d if ALL_ENDPOINTS else d.filter(F.col("repository_id").isin(ENDPOINTS)))
         .select(*[_by_name(F.col(f"`{f.name}`"), f.dataType).alias(f.name) for f in STORED_SCHEMA.fields],
                 "repository_id", "ingested_at", F.lit(None).cast("string").alias("file_path"))
     )
@@ -281,7 +285,9 @@ if MODE == "write":
         WHEN NOT MATCHED THEN INSERT *
         {delete_clause}
     """).show(truncate=False)
-    spark.table(TARGET).filter(F.col("repository_id").isin(ENDPOINTS)).groupBy("repository_id").agg(
+    _written = items.select("repository_id").distinct() if ALL_ENDPOINTS else None
+    (spark.table(TARGET).join(F.broadcast(_written), "repository_id", "left_semi") if ALL_ENDPOINTS
+     else spark.table(TARGET).filter(F.col("repository_id").isin(ENDPOINTS))).groupBy("repository_id").agg(
         F.count("*").alias("records"),
         F.count_if(F.size("`ns0:metadata`.`ns1:dc`.`ns4:accessRights`") > 0).alias("with_accessRights"),
     ).show(truncate=False)
