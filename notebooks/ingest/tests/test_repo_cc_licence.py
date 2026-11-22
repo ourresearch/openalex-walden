@@ -52,6 +52,7 @@ CASES = [
     ("cc_public_domain", "public-domain"), ("cc_zero", "public-domain"),
     ("cc_by_og", None),  # DERA: the Open Government Licence
     ("cc_utas", None),
+    ("Bitte wählen Sie eine Lizenz aus: (Unsere Empfehlung: CC-BY)", None),  # a prompt, not a licence
     # codes and abbreviations
     ("CC BY 4.0", "cc-by"), ("CC BY V4.0", "cc-by"), ("CC-BY-SA", "cc-by-sa"), ("cc by-nc-nd 4.0", "cc-by-nc-nd"),
     ("CC::CC BY 4.0", "cc-by"), ("CC BY + CC0", "cc-by"),
