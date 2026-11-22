@@ -520,10 +520,14 @@ print(f"Staged {staged:,} docs into {STAGING}")
 # record (a Crossref/DataCite locations[].doi, rk 0) and every work whose ids['doi'] it is (rk 1;
 # a repo/MAG/PubMed location's doi is that work's ids['doi'] since oxjob #1616). When several
 # works claim a key, the record holder wins, then the lowest work id (Casey, oxjob #1605).
+# oxjob #2509: arXiv's DataCite record is merged into arXiv's one location on a work (an arXiv-sourced location
+# carrying the 10.48550/arxiv DOI), so that location claims the DOI as the record holder (rk 0); another
+# repository's copy carrying it as the work's DOI (#1616) stays rk 1 through ids['doi'].
 EXT_ID_CLAIMS = f"""
 SELECT l.doi AS ext_id, w.id AS work_id, 0 AS rk
 FROM {WORKS_TABLE} w LATERAL VIEW explode(w.locations) x AS l
-WHERE w.id IS NOT NULL AND l.doi IS NOT NULL AND l.provenance IN ('crossref', 'datacite')
+WHERE w.id IS NOT NULL AND l.doi IS NOT NULL AND (l.provenance IN ('crossref', 'datacite')
+  OR (l.source.id = 'https://openalex.org/S4306400194' AND LOWER(l.doi) LIKE 'https://doi.org/10.48550/arxiv.%'))
 UNION ALL
 SELECT CONCAT('https://doi.org/', ids['doi']) AS ext_id, id AS work_id, 1 AS rk
 FROM {WORKS_TABLE} WHERE id IS NOT NULL AND ids['doi'] IS NOT NULL
