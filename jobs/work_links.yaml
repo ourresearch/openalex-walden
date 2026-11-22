@@ -6,8 +6,8 @@ resources:
         Work-to-work links for /links (oxjob #1490; plan: oxjobs working/references-entity/LINKS_TABLE_PLAN.md). Two steps:
         Build_Work_Links writes openalex.works.work_links (origin, target, relationship) as a union of tables End 2 End has
         already curated (work_citations' served rows, work_parents, work_review_links' served rows, which the first
-        task Build_Review_Links writes, oxjob #2481, and work_pull_notice_links' served rows, which Build_Pull_Notice_Links
-        writes, oxjob #2264); Sync_Links_to_Elasticsearch sends the changes to the
+        task Build_Review_Links writes, oxjob #2481, work_pull_notice_links' served rows, which Build_Pull_Notice_Links
+        writes, oxjob #2264, and work_translation_links' served rows, which Build_Translation_Links writes, oxjob #2536); Sync_Links_to_Elasticsearch sends the changes to the
         links index (links-v1), keeping what the index holds in openalex.works.work_links_indexed. Its own job, after End 2 End
         has run, so nothing in the nightly waits on it (Casey, 20 Nov 2026). Revert: pause this job; the index and tables
         can be dropped.
@@ -38,11 +38,20 @@ resources:
             notebook_path: notebooks/end2end/CreateWorkPullNoticeLinks
             source: GIT
             warehouse_id: 4d37bf76372a2901
+        # oxjob #2536: translation links (Crossref / DataCite translation declarations, translation -> original),
+        # unioned below as translation.
+        - task_key: Build_Translation_Links
+          timeout_seconds: 1800
+          notebook_task:
+            notebook_path: notebooks/end2end/CreateWorkTranslationLinks
+            source: GIT
+            warehouse_id: 4d37bf76372a2901
         - task_key: Build_Work_Links
           timeout_seconds: 1800
           depends_on:
             - task_key: Build_Review_Links
             - task_key: Build_Pull_Notice_Links
+            - task_key: Build_Translation_Links
           notebook_task:
             notebook_path: notebooks/end2end/CreateWorkLinks
             source: GIT
