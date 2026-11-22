@@ -127,8 +127,9 @@ if DRY:
     cnt = spark.sql(f"SELECT count_if(NOT retag) AS new, count_if(retag) AS changed FROM ({cand})").collect()[0]
     dbutils.notebook.exit(f"dry run: {cnt.new:,} untagged, {cnt.changed:,} to tag again")
 # One pass over openalex_works: the newest max_works of each kind, with each kind's full count for the log.
-# New works newest first; re-tags longest-tagged first (oxjob #2515: newest-first starved older works behind every surge)
-order = "ORDER BY CASE WHEN retag THEN tagged_at END NULLS LAST, created_date DESC, id DESC"
+# New works newest first; re-tags longest-tagged first (oxjob #2515: newest-first starved older works behind every surge).
+# Ties (the corpus run tagged ~400M works at one timestamp) break on a hash that changes daily, so no work is always last.
+order = "ORDER BY CASE WHEN retag THEN tagged_at END NULLS LAST, CASE WHEN retag THEN xxhash64(id, current_date()) END, created_date DESC, id DESC"
 spark.sql(f"""CREATE OR REPLACE TABLE {CAND} COMMENT 'Keywords nightly (oxjob #2085): queue candidates of the last run' AS
 SELECT *, count(*) OVER (PARTITION BY retag) AS n_kind FROM ({cand})
 QUALIFY row_number() OVER (PARTITION BY retag {order}) <= {MAX_WORKS}""")

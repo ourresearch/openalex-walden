@@ -97,8 +97,9 @@ cand = f"""SELECT * FROM (
   FROM {WORKS} w LEFT JOIN (SELECT work_id, text_key, updated_datetime FROM {TARGET}) v ON v.work_id = w.id
   WHERE {scorable}""" + (f" AND w.id IN (SELECT id FROM {FORCE})" if FORCE else "") + f"""
 ) WHERE NOT rescore OR ({changed})"""
-# New works newest first; re-scores longest-scored first (oxjob #2515: newest-first starved older works behind every surge)
-ORDER = "ORDER BY CASE WHEN rescore THEN scored_at END NULLS LAST, work_id DESC"
+# New works newest first; re-scores longest-scored first (oxjob #2515: newest-first starved older works behind every surge).
+# Ties (a whole scoring run shares one timestamp) break on a hash that changes daily, so no work is always last.
+ORDER = "ORDER BY CASE WHEN rescore THEN scored_at END NULLS LAST, CASE WHEN rescore THEN xxhash64(work_id, current_date()) END, work_id DESC"
 if DRY:
     cnt = spark.sql(f"SELECT count_if(NOT rescore) AS new, count_if(rescore) AS changed FROM ({cand})").collect()[0]
     dbutils.notebook.exit(f"dry run: {cnt.new:,} unscored, {cnt.changed:,} to re-score")
