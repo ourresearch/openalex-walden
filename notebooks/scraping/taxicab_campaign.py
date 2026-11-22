@@ -652,6 +652,10 @@ def tick(c):
         failure = broad_failure(c, s, wv.wave)
         if failure:
             requeue_failed_wave(c, wv.wave)
+            # oxjob #1646 (22 Nov 2026): judge what the wave did land. Unjudged, a host whose pilot quota this
+            # wave's stored rows filled stays pilot1/pilot2 with quota 0, and no later wave ever takes it
+            # (15 hosts, 156K URLs on xpac-full-1646-rest-a after the 21 Nov key failure).
+            judge_hosts(c, s, wv.wave)
             q(f"""UPDATE {DB}.campaign_waves SET status = 'failed', ended_at = current_timestamp(), landed = {landed_n},
                   note = {sq(failure)} WHERE campaign = {camp} AND wave = {wv.wave}""")
             set_status(c, "paused", failure)
