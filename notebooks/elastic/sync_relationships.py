@@ -68,12 +68,13 @@ VOCAB = [
      "record stays."),
     # oxjob #2536 (crosswalk of 26 vocabularies: that job's work/translation_crosswalk.md). Same shape as summary
     # (oxjob #2535): a work made from another work, linked from it. The line between them (Jason, 22 Nov 2026: a
-    # translation is "a summary at compression equals 0 and language equals some other language"; FRBR, Z39.14): full
-    # length in another language is a translation, anything shorter a summary, in any language.
+    # translation is "a summary at compression equals 0 and language equals some other language"; FRBR, Z39.14): the
+    # text rendered in another language is a translation; a condensed account of its content, in any language, is a
+    # summary; an abridged edition of the same text is the same work (FRBR).
     ("translation", "Translation",
-     "The work is a translation of another work: that work's full text in another language, published as its own work "
-     "(such as an article in an English edition of a Russian journal). A shorter version in another language is a "
-     "summary; a translated title or abstract inside one record, or a free adaptation, is neither."),
+     "The work is a translation of another work: that work's text rendered in another language, published as its own "
+     "work (such as an article in an English edition of a Russian journal). A condensed account of its content, in any "
+     "language, is a summary; a translated title or abstract inside one record, or a free adaptation, is neither."),
 ]
 
 # The same link in standard vocabularies (vocabulary, term, url, match), per value. Keep in step with the help page.
