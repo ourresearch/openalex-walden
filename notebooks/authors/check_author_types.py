@@ -51,7 +51,7 @@ CHECKS_DDL = """CREATE TABLE IF NOT EXISTS openalex.works.author_type_checks (
   prompt_version STRING,
   passed         BOOLEAN
 )
-COMMENT 'oxjob #2437: weekly re-judging of newly typed software-agent seats by the bar''s judges (check_author_types).'"""
+COMMENT 'oxjob #2437: weekly re-judging of newly typed software-agent seats by the judges of the bar (check_author_types).'"""
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
 COST_IF_UNREPORTED = 0.01  # dollars per call, for the spend caps when OpenRouter reports no cost (bar v3: $0.003-0.007)

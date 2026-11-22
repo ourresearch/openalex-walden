@@ -75,7 +75,7 @@ CONF_DDL = """CREATE TABLE IF NOT EXISTS openalex.works.work_author_type_confirm
   prompt_version  STRING,
   confirmed_at    TIMESTAMP
 )
-COMMENT 'oxjob #2437: the model confirmer''s answer per card (card_hash = the card text, model and prompt version), kept across nights: a card is asked once, a changed card again.'
+COMMENT 'oxjob #2437: the answer of the model confirmer per card (card_hash = the card text, model and prompt version), kept across nights: a card is asked once, a changed card again.'
 CLUSTER BY (card_hash)"""
 TARGET_DDL = """CREATE TABLE IF NOT EXISTS openalex.works.work_author_types (
   work_id         BIGINT,
@@ -267,7 +267,7 @@ def main():
 
     # Tonight's software-agent rows: proposed seats whose card's answer is software_agent.
     spark.sql(f"""CREATE OR REPLACE TABLE {STAGING}
-        COMMENT 'oxjob #2437: tonight''s confirmed software-agent seats, before the guarded write into work_author_types. Rebuilt by confirm_author_types each run.'
+        COMMENT 'oxjob #2437: the confirmed software-agent seats of the current run, before the guarded write into work_author_types. Rebuilt by confirm_author_types each run.'
         AS
         SELECT t.work_id, t.author_sequence, t.raw_author_name, 'software-agent' AS type, t.rule,
                CONCAT(t.rule_version, '+confirm-', SUBSTRING_INDEX(c.model, '/', -1)) AS rule_version, t.evidence
