@@ -5,7 +5,9 @@ resources:
       email_notifications:
         on_failure:
           - casey@ourresearch.org
-      max_concurrent_runs: 5
+      # oxjob #1646 (22 Nov 2026): 5 -> 7 so the xpac full run's PDF batches run beside its page campaigns
+      # and other jobs' campaigns still find a slot; each run is its own single-node cluster. Revert: back to 5.
+      max_concurrent_runs: 7
       queue:
         enabled: false
       tasks:
