@@ -19,7 +19,8 @@
 # MAGIC 4. `reader` - Modal: the fine-tuned 2B reader scores each prompt's candidates.
 # MAGIC 5. `decide` - one decision per text (link >= 0.97, or >= 0.9191 with first author + volume + page; type tie-break; then the
 # MAGIC    edition rule, #2566: an unlinked text links to the record of the work it names when we hold no record of the cited
-# MAGIC    edition: title and first author printed, year not, no record of that title in a printed year), links
+# MAGIC    edition: title and first author printed, year not, no candidate of that title in a printed year, and the matcher's
+# MAGIC    own score at least 0.5 for a book, chapter, dataset or software record, 0.8 otherwise), links
 # MAGIC    into `openalex.works.reference_matcher_links` under run `<mode>-<night>`, then the new texts' vectors are added
 # MAGIC    (they are now seen). Live only: the links are applied to `work_references` (as `parse_referenced_works` applies a
 # MAGIC    run) and the run is registered in `reference_matcher_runs`, so later nights keep them on re-filed lists.
