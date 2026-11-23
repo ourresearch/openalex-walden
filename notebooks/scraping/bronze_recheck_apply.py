@@ -20,12 +20,13 @@ dbutils.widgets.text("pass_id", "2026-10", "Pass id")
 dbutils.widgets.text("max_rows", "1000000", "Refuse to flip more pdf_works rows than this in one run")
 dbutils.widgets.text("removed_table", "openalex.pdf.pdf_removed", "Closures table (PDF.py reads it); tests point elsewhere")
 dbutils.widgets.text("dry_run", "true", "true = count only, write nothing")
+dbutils.widgets.text("source", "", "pdf_removed source tag (empty = the quarterly pass's own, from pass_id)")
 
 pass_id = dbutils.widgets.get("pass_id").strip()
 max_rows = int(dbutils.widgets.get("max_rows"))
 removed_table = dbutils.widgets.get("removed_table").strip()
 dry_run = dbutils.widgets.get("dry_run").strip().lower() == "true"
-SOURCE = f"oxjob #1290 bronze re-check {pass_id}"  # same string as bronze_recheck_score
+SOURCE = dbutils.widgets.get("source").strip() or f"oxjob #1290 bronze re-check {pass_id}"  # same as bronze_recheck_score
 
 # COMMAND ----------
 

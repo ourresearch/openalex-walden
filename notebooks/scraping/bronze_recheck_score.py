@@ -35,6 +35,7 @@ dbutils.widgets.text("max_bodies", "200000", "Max HTML bodies read from R2 per r
 dbutils.widgets.text("threads", "32", "R2 reader threads")
 dbutils.widgets.text("removed_table", "openalex.pdf.pdf_removed", "Closures table (PDF.py reads it); tests point elsewhere")
 dbutils.widgets.text("dry_run", "true", "true = print verdicts only, write nothing")
+dbutils.widgets.text("source", "", "pdf_removed source tag (empty = the quarterly pass's own, from pass_id)")
 
 pass_id = dbutils.widgets.get("pass_id").strip()
 batch_table = dbutils.widgets.get("batch_table").strip()
@@ -47,7 +48,9 @@ removed_table = dbutils.widgets.get("removed_table").strip()
 dry_run = dbutils.widgets.get("dry_run").strip().lower() == "true"
 
 RULE_VERSION = "2026-10-25"
-SOURCE = f"oxjob #1290 bronze re-check {pass_id}"
+# Each pass closes under one source tag: the revert deletes by it. Passes outside the quarterly re-check
+# (oxjob #2557, works that also hold a repository copy) set their own, and the same one in bronze_recheck_apply.
+SOURCE = dbutils.widgets.get("source").strip() or f"oxjob #1290 bronze re-check {pass_id}"
 
 # COMMAND ----------
 

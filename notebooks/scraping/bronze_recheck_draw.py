@@ -32,6 +32,12 @@
 # MAGIC quarter's check (skipped); HTML fetched within `fresh_evidence_days` is scored as it stands (stratum
 # MAGIC `html_fresh`, no fetch). Wiley and IOP sit out: the harvester gets files there that readers can't
 # MAGIC (#1291).
+# MAGIC
+# MAGIC **`cohort`.** `single_copy` (default) is the cohort above. `with_repository_copy` is the other half of
+# MAGIC bronze (oxjob #2557): the best OA copy is a journal's publisher PDF with no licence and the work also
+# MAGIC holds an open repository copy (PMC, a university repository). Same register and verdicts; closing the
+# MAGIC publisher PDF turns these works green on the repository copy instead of closed. Give such a pass its
+# MAGIC own `pass_id` and `source_table`, and its own `source` and `gate_table` in the score and apply notebooks.
 
 # COMMAND ----------
 
@@ -45,6 +51,7 @@ dbutils.widgets.text("groups", "oup,cambridge,springer,sciencedirect,tandf,natur
 dbutils.widgets.text("refetch_after_days", "90", "Re-fetch a URL last served as a PDF this many days ago")
 dbutils.widgets.text("fresh_evidence_days", "14", "Stored HTML this recent is scored without a fetch")
 dbutils.widgets.text("dry_run", "true", "true = print counts only, write nothing")
+dbutils.widgets.text("cohort", "single_copy", "single_copy | with_repository_copy")
 
 pass_id = dbutils.widgets.get("pass_id").strip()
 batch_table = dbutils.widgets.get("batch_table").strip()
@@ -53,6 +60,30 @@ groups = [g.strip() for g in dbutils.widgets.get("groups").split(",") if g.strip
 refetch_after_days = int(dbutils.widgets.get("refetch_after_days"))
 fresh_evidence_days = int(dbutils.widgets.get("fresh_evidence_days"))
 dry_run = dbutils.widgets.get("dry_run").strip().lower() == "true"
+cohort_name = dbutils.widgets.get("cohort").strip()
+
+REPO_PROVENANCE = "('repo', 'pmc', 'repo_backfill')"
+COHORT_SQL = {
+    # The work's only OA location is the publisher PDF (#1105's cohort).
+    "single_copy": """
+  SELECT id AS work_id, lower(regexp_replace(doi, '^https?://(dx\\.)?doi\\.org/', '')) AS doi, loc.pdf_url,
+         lower(regexp_extract(loc.pdf_url, '^https?://([^/:]+)', 1)) AS host
+  FROM (SELECT id, doi, oa_locs[0] AS loc, size(oa_locs) AS n_oa
+        FROM (SELECT id, doi, filter(locations, l -> l.is_oa) AS oa_locs FROM openalex.works.openalex_works
+              WHERE open_access.oa_status = 'bronze' AND doi IS NOT NULL))
+  WHERE n_oa = 1 AND loc.pdf_url IS NOT NULL AND loc.license IS NULL AND loc.source.type = 'journal'
+    AND loc.pdf_url LIKE 'http%'""",
+    # The best OA location is the publisher PDF and an open repository copy also exists (oxjob #2557).
+    "with_repository_copy": f"""
+  SELECT id AS work_id, lower(regexp_replace(doi, '^https?://(dx\\.)?doi\\.org/', '')) AS doi, loc.pdf_url,
+         lower(regexp_extract(loc.pdf_url, '^https?://([^/:]+)', 1)) AS host
+  FROM (SELECT id, doi, best_oa_location AS loc, locations FROM openalex.works.openalex_works
+        WHERE open_access.oa_status = 'bronze' AND doi IS NOT NULL)
+  WHERE loc.pdf_url IS NOT NULL AND loc.license IS NULL AND loc.source.type = 'journal'
+    AND loc.pdf_url LIKE 'http%' AND NOT loc.provenance IN {REPO_PROVENANCE}
+    AND exists(locations, l -> l.is_oa AND l.provenance IN {REPO_PROVENANCE})""",
+}
+assert cohort_name in COHORT_SQL, f"cohort must be one of {list(COHORT_SQL)}"
 
 # COMMAND ----------
 
@@ -84,14 +115,7 @@ PRIORITY = {"html_old": 40, "never": 30, "err": 20, "http404": 15, "pdf_old": 10
 
 spark.sql(f"""
 CREATE OR REPLACE TEMP VIEW recheck_draw AS
-WITH cohort AS (
-  SELECT id AS work_id, lower(regexp_replace(doi, '^https?://(dx\\.)?doi\\.org/', '')) AS doi, loc.pdf_url,
-         lower(regexp_extract(loc.pdf_url, '^https?://([^/:]+)', 1)) AS host
-  FROM (SELECT id, doi, oa_locs[0] AS loc, size(oa_locs) AS n_oa
-        FROM (SELECT id, doi, filter(locations, l -> l.is_oa) AS oa_locs FROM openalex.works.openalex_works
-              WHERE open_access.oa_status = 'bronze' AND doi IS NOT NULL))
-  WHERE n_oa = 1 AND loc.pdf_url IS NOT NULL AND loc.license IS NULL AND loc.source.type = 'journal'
-    AND loc.pdf_url LIKE 'http%'
+WITH cohort AS ({COHORT_SQL[cohort_name]}
 ),
 grouped AS (SELECT *, {GROUP_SQL} AS grp FROM cohort),
 inscope AS (
