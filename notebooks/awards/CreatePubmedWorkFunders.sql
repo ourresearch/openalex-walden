@@ -174,8 +174,10 @@ WITH spelled AS (
   SELECT c.funder_id, award_id AS funder_award_id, count(*) mentions
   FROM pwf_candidate c LATERAL VIEW EXPLODE(award_ids) AS award_id
   GROUP BY 1, 2),
+-- other sources' rows: the production table even on a scratch run (a view cannot name its table by variable; this notebook
+-- never writes those rows, and a scratch raw_table is a clone of them)
 other_rows AS (
-  SELECT r.funder_id, r.funder_award_id FROM IDENTIFIER(pwf_raw) r
+  SELECT r.funder_id, r.funder_award_id FROM openalex.awards.openalex_awards_raw r
   WHERE r.provenance <> 'pubmed_work_funders' AND r.funder_award_id IS NOT NULL
     AND (r.funder_id IN (SELECT funder_id FROM spelled) OR r.funder_id IN (4320332161, 4320337611, 4320337356, 4320337376,
       4320337472, 4320337358, 4320337593, 4320337375, 4320337355, 4320337362, 4320337363, 4320337364, 4320337365, 4320337357,

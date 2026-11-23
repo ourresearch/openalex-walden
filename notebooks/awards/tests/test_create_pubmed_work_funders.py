@@ -122,7 +122,7 @@ def test_shells_only_for_grants_no_award_carries():
     shells = squash(code(cell('CREATE OR REPLACE TEMPORARY VIEW pwf_shells')))
     assert 'FROM pwf_shell_spellings' in shells and 'pwf_candidate' not in shells
     spellings = squash(code(cell('CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings')))
-    assert "FROM IDENTIFIER(pwf_raw) r WHERE r.provenance <> 'pubmed_work_funders'" in spellings
+    assert f"FROM {RAW} r WHERE r.provenance <> 'pubmed_work_funders'" in spellings
     assert "LEFT ANTI JOIN (SELECT DISTINCT funder_id, gkey FROM keys WHERE side = 'other') o ON o.funder_id = l.funder_id AND o.gkey = l.gkey" in spellings
     assert "LEFT ANTI JOIN (SELECT DISTINCT nkey FROM keys WHERE side = 'other' AND nkey IS NOT NULL) n ON n.nkey = l.nkey" in spellings
     assert 'PARTITION BY funder_id, gkey ORDER BY mentions DESC' in spellings
