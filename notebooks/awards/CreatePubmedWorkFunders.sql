@@ -171,7 +171,8 @@ FROM flattened GROUP BY work_id, funder_id
 -- NIH institute + serial = Nightly's sharp key for the NIH parent (AwardNormKey.sql, funder 4320332161: the paper-side
 -- form, else the registry form): 'AM-19920-4' -> AM019920, 'BNS 13464' -> NS013464, '5R01CA011051-14' -> CA011051;
 -- else a 4-digit serial, which that key does not read but pre-1980 papers often print: 'EY0597' -> EY000597, the same
--- grant as 'ey00597' (1,943 of the leg's new NIH shells twinned an existing award this way, oxjob #2544).
+-- grant as 'ey00597' (1,943 of the leg's new NIH shells twinned an existing award this way, oxjob #2544). The text is
+-- repaired first (column n), so '2-T32-AMO7055' and '2G08-LM0-4419' read as AM007055 and LM004419.
 CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings AS
 WITH spelled AS (
   SELECT c.funder_id, award_id AS funder_award_id, count(*) mentions
@@ -205,8 +206,13 @@ keys AS (
       4320337355, 4320337362, 4320337363, 4320337364, 4320337365, 4320337357, 4320337361, 4320337354, 4320337346, 4320337359,
       4320337353, 4320337337, 4320337330, 4320337352, 4320337347, 4320337534, 4320337372, 4320337351, 4320337374, 4320337350,
       4320337338, 4320337348) fam,
-          regexp_replace(regexp_replace(regexp_replace(upper(trim(funder_award_id)),
-            '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') n
+          -- Nightly's normalization, then three repairs of how old papers mangle an NIH serial: ' - ' -> '-' and '(' '.' -> ' '
+          -- ('AM - 22036', 'NICHD(10570)', 'GM19.536'); O after the institute code -> 0 ('AMO7055'); a space or dash after
+          -- the serial's first 1-3 digits dropped ('LM0-4419', 'HL 305-72-01'; a year suffix such as '-08' follows 4+ digits)
+          regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+            regexp_replace(regexp_replace(regexp_replace(upper(trim(funder_award_id)),
+            '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' '),
+            ' ?- ?', '-'), '[(.]', ' '), '  +', ' '), '(?<=[A-Z]{2})O(?=[0-9])', '0'), '(?<=[A-Z]{2}[ -]?[0-9]{1,3})[ -](?=[0-9])', '') n
         FROM keyed)),
 fresh AS (
   SELECT l.* FROM keys l

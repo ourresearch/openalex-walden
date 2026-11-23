@@ -151,10 +151,15 @@ def test_nih_key_is_nightlys_nih_parent_key():
     assert f"WHEN funder_id = 4320332161 THEN (CASE WHEN NULLIF(regexp_extract(_n, {deposited}, 1), '') IS NOT NULL" in norm_key
     assert f"regexp_extract(n, {deposited}, 1) <> ''" in spellings and f"nullif(regexp_extract(n, {registry}, 1), '')" in spellings
     assert spellings.index(deposited) < spellings.index(registry) < spellings.index(r"'(?<![A-Z])([A-Z]{2}) ?-?(\\d{4})(?!\\d)'")
-    assert "upper(trim(funder_award_id))" in spellings and "'  +', ' ') n" in spellings
+    assert "upper(trim(funder_award_id))" in spellings
+    assert "' ?- ?', '-'), '[(.]', ' '), '  +', ' '), '(?<=[A-Z]{2})O(?=[0-9])', '0'), '(?<=[A-Z]{2}[ -]?[0-9]{1,3})[ -](?=[0-9])', '') n" in spellings
 
     def nkey(s):
         n = re.sub('  +', ' ', s.strip().upper())
+        n = re.sub('  +', ' ', re.sub(r'[(.]', ' ', re.sub(r' ?- ?', '-', n)))
+        n = re.sub(r'(?<=[A-Z]{2}[ -][0-9])[ -](?=[0-9])|(?<=[A-Z]{2}[ -][0-9]{2})[ -](?=[0-9])|(?<=[A-Z]{2}[ -][0-9]{3})[ -](?=[0-9])'
+                   r'|(?<=[A-Z]{2}[0-9])[ -](?=[0-9])|(?<=[A-Z]{2}[0-9]{2})[ -](?=[0-9])|(?<=[A-Z]{2}[0-9]{3})[ -](?=[0-9])', '',
+                   re.sub(r'(?<=[A-Z]{2})O(?=[0-9])', '0', n))   # Python lookbehind is fixed-width: the SQL's one pattern, spelled out
         m = re.search(r'([A-Z]{2}) ?-?(\d{5,6})(?!\d)', n)
         if m:
             return m.group(1) + m.group(2).rjust(6, '0')
@@ -168,7 +173,9 @@ def test_nih_key_is_nightlys_nih_parent_key():
              '1-KO-4 HD-00634': 'HD000634', 'AM-19920-4': 'AM019920', 'NIAMDD AM 18370': 'AM018370', 'BNS 13464': 'NS013464',
              'L.L.GM-27256': 'GM027256', '5k04am00504-2': 'AM000504', 'am 26481-phy': 'AM026481', 'EY0597': 'EY000597',
              'ey00597': 'EY000597', 'GCRC RR 0065': 'RR000065', '5R01 AI 1450-08': 'AI001450', 'R01EY6645-02': 'EY006645',
-             'BNS 1234': None, 'unknown': None, '12345': None}
+             'BNS 1234': None, '2-T32-AMO7055': 'AM007055', '2G08-LM0-4419': 'LM004419', '1 RO1 AM - 22036': 'AM022036',
+             'NICHD(10570)': 'HD010570', 'HL 305-72-01': 'HL030572', 'RR-00-287-12': 'RR000287', '5 ROI GM19.536-08': 'GM019536',
+             'CA0-07175': 'CA007175', '5R01 AI 1450-08': 'AI001450', 'unknown': None, '12345': None}
     assert {s: nkey(s) for s in cases} == cases
 
 
