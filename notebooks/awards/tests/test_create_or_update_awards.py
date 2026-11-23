@@ -82,7 +82,7 @@ def test_one_pass_shape():
     assert SQL.count('DESCRIBE HISTORY IDENTIFIER(:raw_table)') == 2
     assert SQL.count('CREATE OR REPLACE TEMP VIEW ') == 2 + NCHUNK   # awards_sources, awards_baseline (EXECUTE IMMEDIATE), a candidate per chunk
     assert SQL.count('DECLARE OR REPLACE VARIABLE ') == 7
-    assert SQL.count('VERSION AS OF ') == 1
+    assert SQL.count('VERSION AS OF ') == 2   # the raw baseline, and kaken's frozen key table (version 0)
     order = ['SET VAR awards_objects =', 'SET VAR awards_version =', 'EXECUTE IMMEDIATE awards_sql',
              'CREATE OR REPLACE TEMP VIEW awards_candidate_1', 'SET VAR awards_results =', 'SET VAR awards_to_merge =',
              'SELECT to_json(r) AS result', 'Awards target advanced during validation', 'MERGE INTO ',
@@ -187,7 +187,7 @@ def test_production_source_prefixes():
         's3://openalex-ingest/awards/wellcome/*.parquet',
         's3://openalex-ingest/awards/european_commission/*.parquet',
         's3://openalex-ingest/awards/gates/*.parquet',
-        's3://openalex-ingest/awards/kaken/*.parquet',
+        's3://openalex-ingest/awards/kaken_api/*.parquet',
     ]
     assert 'dev-gr1009' not in SQL and 'dev-gr1009' not in (AWARDS / 'sources.csv').read_text()
 
@@ -212,3 +212,15 @@ def test_fct_leaves_the_hand_run_job():
     job = yaml.safe_load((ROOT / 'jobs/create_funder_sourced_awards.yaml').read_text())
     tasks = job['resources']['jobs']['Create_Funder_Sourced_Awards']['tasks']
     assert not [t for t in tasks if t['task_key'] == 'FCT_Awards' or {'task_key': 'FCT_Awards'} in t.get('depends_on', [])]
+
+
+def test_kaken_api_and_coinvestigators():
+    """KAKEN reads the API fetcher's prefix; its co-investigators (members_json, KAKEN's role codes) become investigators."""
+    group = branch_of('kaken')
+    assert "read_files('s3://openalex-ingest/awards/kaken_api/*.parquet'" in group
+    assert "WHERE mem.role IN ('co_investigator_buntan', 'co_investigator_renkei') AND mem.family_name IS NOT NULL" in group
+    # awards the scrape keyed by the tail of KAKEN's number keep that key: id and funder_award_id both read it
+    assert "LEFT JOIN kaken_scrape_keys sk ON sk.record_id = g.project_id" in group
+    assert "FROM openalex.awards.kaken_scrape_keys VERSION AS OF 0" in group   # frozen: future fetches keep the same keys
+    assert "COALESCE(sk.award_key, g.project_id) as funder_award_id" in group and "LOWER(g.project_id)" not in group
+    assert not (ROOT / 'scripts/local/kaken_to_s3.py').exists() and not (ROOT / 'scripts/local/kaken_api_to_s3.py').exists()

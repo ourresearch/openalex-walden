@@ -776,7 +776,7 @@ SELECT 'gates_foundation' AS source, max_by(_metadata.file_path, struct(_metadat
  FROM read_files('s3://openalex-ingest/awards/gates/*.parquet', format => 'parquet')
 UNION ALL
 SELECT 'kaken' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
- FROM read_files('s3://openalex-ingest/awards/kaken/*.parquet', format => 'parquet')
+ FROM read_files('s3://openalex-ingest/awards/kaken_api/*.parquet', format => 'parquet')
 UNION ALL
 SELECT 'nwopen' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
  FROM read_files('s3://openalex-ingest/awards/nwopen/*.parquet', format => 'parquet')
@@ -1522,12 +1522,13 @@ incoming AS (
 )
 SELECT * FROM incoming)
 UNION ALL
--- Legacy mapping from CreateKAKENAwards.ipynb, origin c3db0a32.
+-- Legacy mapping from CreateKAKENAwards.ipynb, origin c3db0a32. Reads openalex-ingest kaken_awards.py (the KAKEN API, monthly)
+-- from s3://openalex-ingest/awards/kaken_api/ since 2026-11; the 2026-07-08 page scrape stays at awards/kaken/, unread.
 -- _change is runner metadata, never a raw column. Compare all 22 other columns null-safely.
 -- kaken: priority 10, monthly fetch cadence (descriptive).
 SELECT 'kaken' AS _source, * FROM (
 WITH kaken_input AS (
-    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/kaken/*.parquet', format => 'parquet'))
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/kaken_api/*.parquet', format => 'parquet'))
     WHERE _file_path = try_element_at(session.awards_objects, 'kaken')
 ),
 -- Get JSPS funder from OpenAlex
@@ -1559,10 +1560,60 @@ kaken_romaji AS (
     GROUP BY pi_nrid
 ),
 
+-- KAKEN's API lists every member of a grant (members_json, from openalex-ingest kaken_awards.py), in KAKEN's order.
+-- Co-investigators (role co_investigator_buntan, Kenkyu-buntansha; co_investigator_renkei, Renkei-kenkyusha) become investigators,
+-- in that order. Left out: the principal investigator (the lead slot holds them), research collaborators and every other role
+-- (not grant holders), a member with no family name, and a second listing of the same researcher number. A member printed in
+-- kanji takes kaken_romaji's name for their number, as the lead does. A grant with no co-investigator keeps investigators NULL.
+kaken_coinvestigators AS (
+    SELECT project_id, transform(array_sort(collect_list(struct(pos, person)), (a, b) -> a.pos - b.pos), x -> x.person) AS investigators
+    FROM (
+        SELECT k.project_id, k.pos, struct(
+                CASE WHEN r.romaji IS NOT NULL THEN r.romaji.given_name ELSE k.given_name END as given_name,
+                CASE WHEN r.romaji IS NOT NULL THEN r.romaji.family_name ELSE k.family_name END as family_name,
+                CAST(NULL AS STRING) as orcid,
+                CAST(NULL AS DATE) as role_start,
+                struct(
+                    k.affiliation as name,
+                    'Japan' as country,
+                    CASE WHEN k.nrid IS NOT NULL
+                         THEN array(struct(CONCAT('https://nrid.nii.ac.jp/nrid/', k.nrid) as id, 'nrid' as type, 'kaken' as asserted_by))
+                         ELSE CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) END as ids
+                ) as affiliation
+            ) AS person
+        FROM (
+            SELECT g.project_id, g.pi_nrid, x.pos, mem.role, mem.family_name, mem.given_name, mem.affiliation,
+                -- NRID = '1000' + the researcher number zero-padded to 9 digits (as pi_nrid)
+                CASE WHEN mem.researcher_number RLIKE '^[0-9]{1,9}$' THEN concat('1000', lpad(mem.researcher_number, 9, '0')) END AS nrid,
+                row_number() OVER (PARTITION BY g.project_id, coalesce(mem.researcher_number, concat('pos', x.pos)) ORDER BY x.pos) AS nth
+            FROM kaken_input g
+            LATERAL VIEW posexplode(from_json(g.members_json,
+                'ARRAY<STRUCT<role:STRING, family_name:STRING, given_name:STRING, researcher_number:STRING, affiliation:STRING>>')) x AS pos, mem
+            -- filtered before nth is numbered, so an unnamed or other-role listing of a number never hides the co-investigator's own
+            WHERE mem.role IN ('co_investigator_buntan', 'co_investigator_renkei') AND mem.family_name IS NOT NULL
+        ) k
+        LEFT JOIN kaken_romaji r
+          ON r.pi_nrid = k.nrid
+         AND concat(k.family_name, coalesce(k.given_name, '')) RLIKE '[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}]'
+        WHERE k.nth = 1 AND NOT coalesce(k.nrid = k.pi_nrid, false)
+    )
+    GROUP BY project_id
+),
+
+-- Award keys of the 2026-07-08 page scrape. It keyed pre-1982 projects by the tail of KAKEN's number ('302014' for
+-- 'X00022----302014'), and KAKEN reuses a tail across years and categories; the API gives the full number. The 86,532 awards we
+-- already served under a tail keep it as funder_award_id, so each stays the same award (same id, same links) and is refreshed
+-- from the API. openalex.awards.kaken_scrape_keys is that list, frozen (version 0; made once on 2026-11-16 from the scrape's
+-- landing pages, which name the full number): record_id = KAKEN's number, award_key = the key we serve. A tail that is itself a
+-- project number on KAKEN is not in it and belongs to that project. Every other project is keyed by KAKEN's full number.
+kaken_scrape_keys AS (
+    SELECT record_id, award_key FROM openalex.awards.kaken_scrape_keys VERSION AS OF 0
+),
+
 awards_transformed AS (
     SELECT
         -- Generate unique ID using xxhash64 of funder_id:project_id
-        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.project_id)))) % 9000000000 as id,
+        abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(COALESCE(sk.award_key, g.project_id))))) % 9000000000 as id,
 
         -- Display name = project title
         g.title as display_name,
@@ -1572,7 +1623,8 @@ awards_transformed AS (
 
         -- Funder info
         f.funder_id,
-        g.project_id as funder_award_id,
+        -- the scrape's key where we already serve the project under it (kaken_scrape_keys), else KAKEN's number
+        COALESCE(sk.award_key, g.project_id) as funder_award_id,
 
         -- Amount in JPY
         g.amount as amount,
@@ -1643,7 +1695,7 @@ awards_transformed AS (
             ELSE NULL
         END as lead_investigator,
 
-        -- Co-lead and other investigators (not available in scraped data)
+        -- KAKEN has no co-lead role
         CAST(NULL AS STRUCT<
             given_name:STRING,
             family_name:STRING,
@@ -1652,7 +1704,8 @@ awards_transformed AS (
             affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
         >) as co_lead_investigator,
 
-        CAST(NULL AS ARRAY<STRUCT<
+        -- KAKEN's co-investigators (kaken_coinvestigators)
+        CAST(c.investigators AS ARRAY<STRUCT<
             given_name:STRING,
             family_name:STRING,
             orcid:STRING,
@@ -1667,7 +1720,7 @@ awards_transformed AS (
         CAST(NULL AS STRING) as doi,
 
         -- Works API URL
-        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(g.project_id)))) % 9000000000) as works_api_url,
+        concat('https://api.openalex.org/works?filter=awards.id:G', abs(xxhash64(CONCAT(f.funder_id, ':', LOWER(COALESCE(sk.award_key, g.project_id))))) % 9000000000) as works_api_url,
 
         -- Timestamps
         session.awards_timestamp as created_date,
@@ -1678,6 +1731,8 @@ awards_transformed AS (
     LEFT JOIN kaken_romaji r
       ON r.pi_nrid = g.pi_nrid
      AND concat(g.pi_family_name, coalesce(g.pi_given_name, '')) RLIKE '[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}]'
+    LEFT JOIN kaken_coinvestigators c ON c.project_id = g.project_id
+    LEFT JOIN kaken_scrape_keys sk ON sk.record_id = g.project_id
     WHERE g.project_id IS NOT NULL
       AND TRIM(g.project_id) != ''
 ),
