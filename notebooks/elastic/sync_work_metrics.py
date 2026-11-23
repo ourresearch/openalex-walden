@@ -13,10 +13,18 @@
 # MAGIC whose null-ness or top-1/10% flag differs. `updated_date` is never touched: 0 re-stamps. The same lines are in
 # MAGIC `notebooks/lakebase/BuildLakebaseWorkMetrics` (single-work lookups); change both together.
 # MAGIC
-# MAGIC **Each update also carries `fulltext` and `abstract`** (oxjob #2492): the works index keeps them searchable but out
-# MAGIC of the stored `_source` (`_source.excludes`), and a partial update re-indexes the doc from what is stored, so an
-# MAGIC update without them would drop both from search. `abstract` is cleaned exactly as `sync_works` cleans it (same
-# MAGIC wheel, same 32,000-character cap). A field added to the excludes must be added to `TEXT_FIELDS` too.
+# MAGIC **Why each update also carries `fulltext` and `abstract`** (oxjob #2492, Casey 23 Nov 2026): from works-v42 the
+# MAGIC index keeps both searchable but does not store them (`_source.excludes`, ~3.3 TB with replica). Elasticsearch
+# MAGIC cannot change one field of a document in place: a partial `_update` reads the stored `_source`, merges the sent
+# MAGIC fields and re-indexes the whole document from that. Fields that are not stored are not in what it re-indexes, so
+# MAGIC an update of only the three metrics would silently drop that work from full-text and abstract search. Every update
+# MAGIC therefore re-sends both fields from Delta. `abstract` is cleaned exactly as `sync_works` cleans the searched field
+# MAGIC (same wheel, same 32,000-character cap: oxjob 191.1). A field added to the index's excludes must be added to
+# MAGIC `TEXT_FIELDS` here, and no other job may send partial updates to works without the same fields.
+# MAGIC
+# MAGIC The text for a night's push (~25M works: ~5.4M full texts ~214 GB, ~21.8M abstracts ~24 GB, 23 Nov) is fetched by
+# MAGIC ONE SQL-warehouse statement into `es_work_metrics_send`, partitioned by chunk (~5 min; the same read on this
+# MAGIC 1-worker cluster took ~46 min), so each chunk reads only its own rows and nothing is shuffled here.
 # MAGIC
 # MAGIC **What the index holds** is kept in `openalex.works.es_work_metrics_served` (one row per work: the values and the
 # MAGIC `updated_date` the index has). Each run compares it with Delta in one pass:
@@ -56,6 +64,8 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.sql import StatementState
 from elasticsearch import Elasticsearch, helpers
 from pyspark.sql import functions as F
 
@@ -70,6 +80,7 @@ dbutils.widgets.text("chunk_rows", "5000000")      # works per checkpointed chun
 dbutils.widgets.text("bulk_size", "1000")          # update actions per bulk request
 dbutils.widgets.text("stop_at", "")                # CT HH:MM: start no chunk at or after this time
 dbutils.widgets.text("reseed_version", "")         # after a rebuild: openalex_works version the new index loaded
+dbutils.widgets.text("warehouse_id", "3996dc0a9b183ce3")  # builds the send table (the push's text) in one statement
 
 MODE = dbutils.widgets.get("mode")
 DRY_RUN = MODE == "dry_run"
@@ -80,18 +91,20 @@ CHUNK_ROWS = int(dbutils.widgets.get("chunk_rows") or 5_000_000)
 BULK = int(dbutils.widgets.get("bulk_size") or 1000)
 STOP_AT = dbutils.widgets.get("stop_at").strip()
 RESEED_VERSION = dbutils.widgets.get("reseed_version").strip()
+WAREHOUSE_ID = dbutils.widgets.get("warehouse_id").strip()
 
 WORKS_TABLE = "openalex.works.openalex_works"
 SERVED_TABLE = "openalex.works.es_work_metrics_served"
 _scratch = "_dry" if DRY_RUN else ""
 DIFF_TABLE = f"openalex.works.es_work_metrics_diff{_scratch}"      # this run's comparison (overwritten each run)
 PUSH_TABLE = f"openalex.works.es_work_metrics_push{_scratch}"      # this run's push (overwritten each run)
+SEND_TABLE = f"openalex.works.es_work_metrics_send{_scratch}"      # the push + its text, partitioned by chunk
 FAILED_TABLE = f"openalex.works.es_work_metrics_failed{_scratch}"  # rejected ids, appended per chunk, cleared each run
 FAILED_SCHEMA = "id BIGINT, error STRING, run_started_at TIMESTAMP"
 RUNS_TABLE = "openalex.works.es_work_metrics_runs"                # one row per chunk and one per run
 ELASTIC_INDEX = "works"
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
-TEXT_FIELDS = ("fulltext", "abstract")   # the works index's _source.excludes (IndexRebuild source_excludes, oxjob #2492)
+TEXT_FIELDS = ("fulltext", "abstract")   # = the works index's _source.excludes (IndexRebuild source_excludes, #2492)
 ABSTRACT_MAX = 32000                     # sync_works' sanitize_string cap
 
 FWCI_REL, CNP_ABS = 0.01, 0.01
@@ -202,16 +215,11 @@ def cap_filter(rows_sql, key_sql, cap):
 past = counts.get("push", 0)
 push_rows = f"SELECT * FROM {DIFF_TABLE} WHERE action = 'push'"
 keep = cap_filter(push_rows, PUSH_KEY, CAP) if CAP and past > CAP else "true"
-push = spark.sql(f"""
+spark.sql(f"""
+    CREATE OR REPLACE TABLE {PUSH_TABLE} AS
     SELECT id, is_xpac, fwci, citation_normalized_percentile, cited_by_percentile_year, score, band
     FROM ({push_rows}) WHERE {keep}
-""").localCheckpoint()
-# The pushed works' text: one scan of openalex_works against the broadcast push ids (no shuffle of the 3 TB of text),
-# then the cleaner on those rows only.
-text = spark.table(WORKS_TABLE).select("id", *TEXT_FIELDS).join(F.broadcast(push.select("id")), "id") \
-    .withColumn("abstract", udf_clean_abstract_text(F.col("abstract"))) \
-    .withColumn("abstract", F.when(F.col("abstract").isNotNull(), F.substring("abstract", 1, ABSTRACT_MAX)))
-push.join(text, "id", "left").write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(PUSH_TABLE)
+""")
 if keep != "true":
     print(f"Capped at about {CAP:,} ({keep}); the rest wait for the next run")
 bands = spark.sql(f"SELECT band, count(*) AS n FROM {PUSH_TABLE} GROUP BY band ORDER BY band").collect()
@@ -221,6 +229,42 @@ for b in bands:
     k = -(-b.n // CHUNK_ROWS)
     chunks += [(b.band, h, k) for h in range(k)]
 print(f"Past the lines: {past:,}; push {n_push:,} in {len(chunks)} chunks; by band {[(b.band, b.n) for b in bands]}")
+
+
+def warehouse_sql(statement):
+    """One statement on the SQL warehouse, as this job's principal; waits for it to finish."""
+    w = WorkspaceClient()
+    r = w.statement_execution.execute_statement(warehouse_id=WAREHOUSE_ID, statement=statement, wait_timeout="50s")
+    while r.status.state in (StatementState.PENDING, StatementState.RUNNING):
+        time.sleep(15)
+        r = w.statement_execution.get_statement(r.statement_id)
+    if r.status.state != StatementState.SUCCEEDED:
+        raise RuntimeError(f"warehouse SQL {r.status.state}: {r.status.error.message if r.status.error else ''}")
+
+
+def chunk_key(band_col, id_col):
+    """`band/h`, the same split as the chunk loop's `band = b AND pmod(xxhash64(id), k) = h`."""
+    ks = " ".join(f"WHEN {b} THEN {k}" for b, k in sorted({(b, k) for b, _, k in chunks}))
+    return (f"concat(CAST({band_col} AS STRING), '/', "
+            f"CAST(pmod(xxhash64({id_col}), CASE {band_col} {ks} END) AS STRING))")
+
+
+# The push with its text (TEXT_FIELDS, see the header), one partition per chunk.
+if chunks:
+    t0 = time.time()
+    warehouse_sql(f"""
+        CREATE OR REPLACE TABLE {SEND_TABLE} PARTITIONED BY (chunk) AS
+        SELECT p.id, p.fwci, p.citation_normalized_percentile, p.cited_by_percentile_year,
+               {", ".join(f"w.{f}" for f in TEXT_FIELDS)}, {chunk_key("p.band", "p.id")} AS chunk
+        FROM {PUSH_TABLE} p LEFT JOIN (SELECT id, {", ".join(TEXT_FIELDS)} FROM {WORKS_TABLE}) w ON w.id = p.id
+    """)
+    print(f"{SEND_TABLE}: {n_push:,} rows with their text in {(time.time() - t0) / 60:.1f} min (warehouse)")
+    # The warehouse and this cluster must split the push into the same chunks, or works would go unsent.
+    want = {r.chunk: r.n for r in spark.sql(f"SELECT {chunk_key('band', 'id')} AS chunk, count(*) AS n FROM {PUSH_TABLE} "
+                                            "GROUP BY 1").collect()}
+    got = {r.chunk: r.n for r in spark.sql(f"SELECT chunk, count(*) AS n FROM {SEND_TABLE} GROUP BY 1").collect()}
+    if want != got or set(want) != {f"{b}/{h}" for b, h, _ in chunks}:
+        raise RuntimeError(f"{SEND_TABLE} chunks differ from the push: push {want}, send table {got}")
 
 # COMMAND ----------
 
@@ -323,7 +367,12 @@ for i, (band, h, k) in enumerate(chunks):
     writers = min(WRITERS, DAY_WRITERS) if 7 <= now_ct().hour < 19 else WRITERS
     t0 = time.time()
     chunk_sql = f"SELECT * FROM {PUSH_TABLE} WHERE band = {band} AND pmod(xxhash64(id), {k}) = {h}"
-    out = spark.sql(chunk_sql).repartition(writers).rdd.mapPartitionsWithIndex(send).collect()  # counts + rejected ids
+    # Sent from this chunk's partition of SEND_TABLE (the same works as chunk_sql, with their text); the abstract cleaned
+    # as sync_works cleans it. coalesce, not repartition: no shuffle of the text.
+    send_rows = spark.table(SEND_TABLE).where(F.col("chunk") == f"{band}/{h}") \
+        .withColumn("abstract", udf_clean_abstract_text(F.col("abstract"))) \
+        .withColumn("abstract", F.when(F.col("abstract").isNotNull(), F.substring("abstract", 1, ABSTRACT_MAX)))
+    out = send_rows.coalesce(writers).rdd.mapPartitionsWithIndex(send).collect()  # counts + rejected ids
     c = [o for o in out if o[0] == "counts"]
     ok, missing, nfail, paused = (sum(o[j] for o in c) for j in (1, 2, 3, 4))
     sent = ok + missing + nfail
