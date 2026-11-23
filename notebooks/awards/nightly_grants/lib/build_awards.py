@@ -259,7 +259,7 @@ def plan(c):
     # lookup join a single two-table equi-join on the full (funder_id, award_key, is_direct) key. Rule: a join predicate must never
     # reference two different earlier relations; materialize the pair instead.
     c.artifact('bound_observations',f"""SELECT b.observation_key,b.stable_id,b.staging_id,b.source_funder_id,b.award_key,b.namespace,
-      b.source_record_id,b.is_direct,b.priority,b.family,e.funder_id{(','+nih_fold.norm_funder(c,'e')+' lookup_funder_id') if getattr(c,'nih',False) else ''}
+      b.source_record_id,b.is_direct,b.priority,b.family,e.funder_id{(','+nih_fold.norm_funder(c,'e')+' lookup_funder_id') if nih_fold.on(c) else ''}
       FROM (SELECT observation_key,stable_id,staging_id,source_funder_id,award_key,namespace,source_record_id,is_direct,priority,family
               FROM {r}bindings) b JOIN {r}ownership_plan e USING(stable_id){nih_fold.lookup_join(c,'b')}""")
     c.zero('BOUND_OBSERVATIONS_COMPLETE',f'SELECT b.observation_key FROM {r}bindings b LEFT ANTI JOIN {r}bound_observations o USING(observation_key)')
@@ -267,7 +267,7 @@ def plan(c):
       b.source_record_id,b.is_direct,b.priority,b.family,b.funder_id,{generic_sql('b.award_key')} nk,
       CASE WHEN n.sharp_eligible AND (b.is_direct OR NOT n.is_weak) THEN n.sharp_key END sk
       FROM {r}bound_observations b
-      JOIN {r}normalization_lookup n ON n.funder_id <=> b.{'lookup_funder_id' if getattr(c,'nih',False) else 'funder_id'} AND n.award_key <=> b.award_key AND n.is_direct=b.is_direct""")
+      JOIN {r}normalization_lookup n ON n.funder_id <=> b.{'lookup_funder_id' if nih_fold.on(c) else 'funder_id'} AND n.award_key <=> b.award_key AND n.is_direct=b.is_direct""")
     c.artifact('shell_targets',f"""WITH direct AS (SELECT DISTINCT stable_id,funder_id,nk,sk FROM {nih_fold.unpinned(c,'resolved_observations')} WHERE is_direct),
       shells AS (SELECT * FROM {nih_fold.unpinned(c,'resolved_observations')} WHERE NOT is_direct),
       generic AS (SELECT s.observation_key,count(DISTINCT d.stable_id) n,min(d.stable_id) target_id FROM shells s
@@ -328,7 +328,7 @@ def plan(c):
         # target: independently ACTIVE, bound, with a direct observation, same canonical funder (both sides must be present in the plan)
         c.zero('MIGRATION_TARGET_ACTIVE',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}entities_allocated e ON e.stable_id=m.target_id AND e.status='ACTIVE'")
         c.zero('MIGRATION_TARGET_BOUND',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}bindings b ON b.stable_id=m.target_id")
-        c.zero('MIGRATION_TARGET_DIRECT',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}resolved_observations b ON b.stable_id=m.target_id AND b.is_direct WHERE m.evidence_class NOT IN {tuple_sql(nih_fold.with_class(c,(SHELL_CLASS,PUBLIC_SHELL_CLASS)))}")
+        c.zero('MIGRATION_TARGET_DIRECT',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}resolved_observations b ON b.stable_id=m.target_id AND b.is_direct WHERE m.evidence_class NOT IN {tuple_sql(nih_fold.with_class(c,(SHELL_CLASS,PUBLIC_SHELL_CLASS),shell_target=True))}")
         # shell-class proof: loser is a SHELL, target is served today (pinned awards relation) and is not retired by the rule in this release.
         c.zero('MIGRATION_SHELL_TARGET_SERVED',f"""SELECT m.* FROM {mm} m LEFT JOIN awards_v a ON a.id=m.target_id LEFT JOIN {r}ownership_plan o ON o.stable_id=m.loser_id
           WHERE m.evidence_class={literal(SHELL_CLASS)} AND NOT COALESCE(a.id IS NOT NULL AND o.entity_kind='SHELL',false)""")
@@ -348,7 +348,7 @@ def plan(c):
     c.zero('RETIREMENT_UNIQUE',f'SELECT old_id FROM {r}retirements GROUP BY old_id HAVING count(DISTINCT canonical_id)<>1')
     c.zero('RETIREMENT_SAME_FUNDER',f'SELECT t.* FROM {r}retirements t JOIN {r}ownership_plan a ON a.stable_id=t.old_id JOIN {r}ownership_plan b ON b.stable_id=t.canonical_id WHERE {nih_fold.exempt_where(c,"a.funder_id IS NULL OR a.funder_id<>b.funder_id",nih_fold.same_funder_exempt(c,"t"))}')
     # op24: a manifest pair of the shell class is the one sanctioned retirement into a non-direct (served) target.
-    shell_exempt=(f" LEFT ANTI JOIN {r}retirements_manifest s ON s.old_id=t.old_id AND s.canonical_id=t.canonical_id AND s.evidence_class IN {tuple_sql(nih_fold.with_class(c,('SHELL_TO_SERVED_SHELL_SAME_NUMBER',PUBLIC_SHELL_CLASS)))}"
+    shell_exempt=(f" LEFT ANTI JOIN {r}retirements_manifest s ON s.old_id=t.old_id AND s.canonical_id=t.canonical_id AND s.evidence_class IN {tuple_sql(nih_fold.with_class(c,('SHELL_TO_SERVED_SHELL_SAME_NUMBER',PUBLIC_SHELL_CLASS),shell_target=True))}"
                   if c.has_extra('migration_manifest') else '')
     c.zero('RETIREMENT_DIRECT_TARGET',f"SELECT t.* FROM {r}retirements t LEFT ANTI JOIN {r}resolved_observations b ON b.stable_id=t.canonical_id AND b.is_direct"+shell_exempt)
     c.artifact('bindings_final',f"SELECT b.* EXCEPT(stable_id),b.stable_id original_terminal_id,coalesce(t.canonical_id,b.stable_id) stable_id FROM {r}bindings b LEFT JOIN {r}retirements t ON t.old_id=b.stable_id")
