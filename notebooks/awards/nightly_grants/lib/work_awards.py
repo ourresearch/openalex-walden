@@ -5,7 +5,7 @@ record", Kyle 2026-08-03); awards_al = keys of COLLAPSED shells (award_id_aliase
 Release 1 reproduces it on its ACTIVE candidates (links only; identity, keys, redirects, allocations untouched): own keys first, the
 pinned legacy aliases + release aliases third, and a SHELL whose key legacy only knew through an alias (a collapsed shell, minted here as
 its own entity) last — so papers keep linking to the family's newest-year record while the shell stays an ACTIVE public entity."""
-DEPOSITED = "('crossref_work_funders','crossref_work.grants','crossref_work','europepmc_work_funders','datacite_work_funders')"   # legacy is_registry = provenance NOT IN
+DEPOSITED = "('crossref_work_funders','crossref_work.grants','crossref_work','europepmc_work_funders','datacite_work_funders','pubmed_work_funders')"   # legacy is_registry = provenance NOT IN
 import list_legs
 import nih_fold
 from stable_award_ids import generic_sql
@@ -18,6 +18,7 @@ LEGS = [('work_funder','paper_id','award_ids',True,1,False,False),
         ('anr_work_funders','work_id','award_ids',True,3,False,False),
         ('datacite_work_funders','work_id','award_ids',True,4,True,False),
         ('europepmc_work_funders','work_id','award_ids',True,4,True,False),
+        ('pubmed_work_funders','work_id','award_ids',True,4,True,False),   # PubMed's own GrantList, paper-side like Europe PMC (oxjob #2544)
         ('kaken_work_funders','work_id','award_ids',True,3,False,False),
         ('fwf_work_funders','work_id','award_ids',True,3,False,False),   # FWF's own output lists (oxjob #1765)
         ('relink','work_id','target_award_id',False,4,True,True),

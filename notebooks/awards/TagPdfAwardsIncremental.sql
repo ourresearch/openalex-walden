@@ -445,7 +445,7 @@ candidate_awards AS (
     oa.funder_award_id,
     -- TRUE when any award with this number comes from a funder's own grant feed, not from paper metadata (the list
     -- is DEPOSITED in nightly_grants/lib/work_awards.py). Per number, so two awards sharing a number carry the same flag.
-    bool_or(NOT COALESCE(oa.provenance IN ('crossref_work_funders','crossref_work.grants','crossref_work','europepmc_work_funders','datacite_work_funders'), false))
+    bool_or(NOT COALESCE(oa.provenance IN ('crossref_work_funders','crossref_work.grants','crossref_work','europepmc_work_funders','datacite_work_funders','pubmed_work_funders'), false))
       OVER (PARTITION BY oa.funder_id, oa.funder_award_id) AS from_funder_feed,
     -- Word-boundary regex match. \b prevents short/truncated award IDs
     -- from matching inside longer alphanumeric runs in PDF text
