@@ -53,7 +53,6 @@
     "fwf_work_funders": "openalex.awards.fwf_work_funders",
     "pubmed_work_funders": "openalex.awards.pubmed_work_funders",
     "relink": "openalex.awards.award_relink_map",
-    "kaken_projects": "openalex.awards.kaken_projects_raw",
     "affiliation_lookup": "openalex.institutions.affiliation_strings_lookup",
     "institutions_api": "openalex.institutions.institutions_api",
     "previous_api": "openalex.awards.awards_api",

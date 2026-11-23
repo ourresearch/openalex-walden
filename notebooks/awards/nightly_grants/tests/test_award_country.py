@@ -239,7 +239,6 @@ class Fixture:
             amount_usd DOUBLE, amount_usd_basis VARCHAR, recipient_countries VARCHAR[], recipient_regions VARCHAR[], recipient_countries_full VARCHAR[],
             recipient_regions_full VARCHAR[], recipients VARCHAR[], recipients_full VARCHAR[], keywords VARCHAR[],
             sustainable_development_goals VARCHAR[])""")  # funding-flows columns (oxjob #1570) the payload selects
-        con.execute("CREATE TABLE kaken_projects_v (project_id VARCHAR, institution VARCHAR)")
         con.execute("CREATE TABLE affiliation_lookup_v (raw_affiliation_string VARCHAR, institution_ids_override BIGINT[], model_response STRUCT(id VARCHAR, score DOUBLE)[])")
         con.execute("CREATE TABLE answers (raw_affiliation_string VARCHAR, institution_ids BIGINT[])")
         con.execute("CREATE TABLE institutions_api_v (id BIGINT, display_name VARCHAR, ror VARCHAR, country_code VARCHAR, type VARCHAR, lineage VARCHAR[])")
@@ -461,18 +460,19 @@ def test_excluded_sources_and_the_kaken_route():
     f = Fixture()
     f.legacy("Harvard University", scored=[(52, 0.9)])
     f.legacy("Kyoto somewhere", scored=[(52, 0.2), (10, 0.05)])
-    f.con.execute("INSERT INTO kaken_projects_v VALUES ('k1', 'Kyoto somewhere'), ('k2', 'Kyoto somewhere'), ('k3', 'Harvard University')")
     rwjf = f.award("rwjf_grants_explorer", lead=("Harvard University", "MA"))
     kaken = f.award("kaken", lead=("Kyoto somewhere", "Japan"), funder_award_id="k1")      # the lead's name is the host institution
-    kaken_no_pi = f.award("kaken", lead=None, funder_award_id="k2")                         # no PI: the scrape's institution
+    kaken_no_country = f.award("kaken", lead=("Kyoto somewhere", None), funder_award_id="k2")
+    kaken_no_pi = f.award("kaken", lead=None, funder_award_id="k3")                         # no PI: no institution (the scrape is not read)
     kaken_coinv = f.award("kaken", investigators=[("Harvard University", None)], funder_award_id="k9")
-    kaken_nameless_lead = f.award("kaken", lead=(None, "Japan"), funder_award_id="k3")       # the scrape's name, the lead's country
+    kaken_nameless_lead = f.award("kaken", lead=(None, "Japan"), funder_award_id="k4")
     got = f.run()
     assert got[rwjf] == []                              # still excluded from matching
     assert got[kaken] == []                             # threshold 0.1 lets 52 through; Japan contradicts US
-    assert got[kaken_no_pi] == [52]
+    assert got[kaken_no_country] == [52]                # the same name with no recorded country: read at threshold 0.1
+    assert got[kaken_no_pi] == []
     assert got[kaken_coinv] == []                       # KAKEN co-investigators' strings are not read
-    assert got[kaken_nameless_lead] == []               # Harvard (US) under a lead recorded in Japan
+    assert got[kaken_nameless_lead] == []
 
 
 # ---------- the funder's own ids, and Han names with no recorded country (oxjob #2032) ----------

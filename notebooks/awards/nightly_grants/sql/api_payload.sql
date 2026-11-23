@@ -79,11 +79,10 @@ people AS (
   FROM grant_addresses g
   CROSS JOIN country_map cm
 ),
--- Each affiliation name on the award with the country code recorded next to it. A KAKEN award with no lead name takes its host
--- institution from the 07-08 page scrape (kaken_projects_v) with the lead's recorded country; where there is a lead name, the
--- scrape's string is that name (equal on all 707,489 on 2026-11-06). The scrape holds no blank or placeholder name (0 of 204,785
--- on 2026-11-06). walden-kaken-nightly retires the scrape and this branch. A Chinese or Japanese name with no recorded country from a funder in China, Japan or Taiwan carries the
--- funder's country for one check (guarded).
+-- Each affiliation name on the award with the country code recorded next to it. A KAKEN award's name is its lead's, the host
+-- institution (sources/kaken.sql), read from the award row since the KAKEN API feed (2026-11), which gives nearly every award a
+-- lead. A KAKEN award with no lead name has none. A Chinese or Japanese name with no recorded country from a funder in China,
+-- Japan or Taiwan carries the funder's country for one check (guarded).
 all_strings AS (
   SELECT DISTINCT
     s.award_id,
@@ -96,12 +95,6 @@ all_strings AS (
     CASE WHEN s.provenance IN ('nih_exporter', 'nsf_award_search', 'kaken') THEN 0.1 ELSE 0.3 END AS thresh
   FROM (
     SELECT award_id, provenance, funder_id, name AS raw, spelled, record_country FROM people WHERE name IS NOT NULL
-    UNION ALL
-    SELECT oa.id, oa.provenance, oa.funder_id, kpr.institution, CAST(NULL AS STRING), lead.record_country
-    FROM {AWARDS} oa
-    JOIN kaken_projects_v kpr ON oa.funder_award_id = kpr.project_id
-    LEFT JOIN people lead ON lead.award_id = oa.id AND lead.is_lead
-    WHERE oa.provenance = 'kaken' AND oa.lead_investigator.affiliation.name IS NULL AND kpr.institution IS NOT NULL
   ) s
   LEFT JOIN funders_v f ON f.funder_id = s.funder_id
 ),
@@ -250,8 +243,8 @@ institution_awarded_per_award AS (
 ),
 -- Each person's institutions (oxjob #1847, Casey 11-09): investigators[].institutions, as works' authorships[].institutions, from the
 -- same matched, country-guarded names and RORs institution_awarded reads, kept per affiliation as printed (two people printing the
--- same affiliation get the same institutions). The affiliation itself stays as printed, like works' raw_affiliation_strings. A
--- KAKEN lead with no name of its own (the page-scrape branch) and the feeds grant_addresses does not read get none.
+-- same affiliation get the same institutions). The affiliation itself stays as printed, like works' raw_affiliation_strings. The
+-- feeds grant_addresses does not read get none.
 affiliation_institution_ids AS (
   SELECT pa.award_id, pa.aff_json, g.institution_id
   FROM (SELECT DISTINCT award_id, TO_JSON(aff) AS aff_json, name, record_country FROM people WHERE name IS NOT NULL) pa
