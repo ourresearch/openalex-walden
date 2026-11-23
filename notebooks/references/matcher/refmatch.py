@@ -406,6 +406,9 @@ def reader_rows_bucket(X, P, fe):
 # When any candidate whose title is printed carries a printed year (we hold the cited edition), the rule leaves it alone.
 
 EDITION_SKIP = {"book-review", "paratext", "erratum", "retraction", "peer-review", "libguides"}
+# the matcher's own score must reach this (gold v2, 23 Nov: below it the rule's links were 58-93% right)
+BOOKISH = {"book", "book-chapter", "reference-entry", "dataset", "software"}
+EDITION_FLOOR = {True: 0.5, False: 0.8}
 EDITORS = re.compile(r"\(\s*(?:eds?|hrsg|coords?|orgs?|dirs?|comps?|toim|red|hg)\b|\beds\.|\bed(?:ited|\.)? by\b|\bhrsg\.", re.I)
 IN_WORD = re.compile(r"(?:^|(?<=[\s.,;:'\"’”)]))(?:in|en|em|dans|teoksessa|im|i(?=:))(?::\s*|\s+)", re.I)
 REVIEW = re.compile(r"\b(?:review of|reviewed by|book review|reseña de|rezension|compte rendu|recensione)\b", re.I)
@@ -417,16 +420,32 @@ def title_key(t):
     return re.sub(r"[^a-z0-9]", "", fold(t))[:40]
 
 
-def title_norm(t):
+def title_norm(t, article=False):
     w = re.findall(r"[a-z0-9]+", fold(t))
-    return "".join(w[1:] if len(w) > 1 and w[0] in ARTICLES else w)
+    return "".join(w[1:] if not article and len(w) > 1 and w[0] in ARTICLES else w)
 
 
-def same_title(a, b):
-    """One title opens the other (letters/digits, a leading article dropped), over at least 20 of them."""
-    a, b = title_norm(a), title_norm(b)
-    n = min(len(a), len(b), 40)
-    return n >= 20 and a[:n] == b[:n]
+def same_title(a, b, least=12):
+    """One title opens the other (letters/digits, with or without a leading article), over at least `least` of them."""
+    for art in (False, True):
+        x, y = title_norm(a, art), title_norm(b, art)
+        n = min(len(x), len(y), 40)
+        if n >= least and x[:n] == y[:n]:
+            return True
+    return False
+
+
+def edition_held(text, pick_title, records):
+    """records: dicts with title, year, fa (first author's name), any record in OpenAlex. True when one of them is the
+    cited edition: its title opens like the pick's, its year is printed and so is its first author's surname."""
+    text = first_ref(text)
+    ys, tk = years_in(text), set(toks(text))
+    for w in records:
+        if w["year"] in ys and same_title(pick_title, w["title"]):
+            sn = surname_keys(w.get("fa") or "")
+            if not sn or any(k in tk for k in sn if len(k) > 1):
+                return True
+    return False
 
 
 def volume_cut(text):
@@ -476,7 +495,8 @@ def edition_pick(text, cands):
     if any((len(k) >= 20 and k in nt) or (c["fa_in"] == 1 and c.get("t_in", 0) >= 0.8) for k, c in dated):
         return None
     ok = [(len(k), -min(abs(int(c["year"]) - y) for y in ys), c["s"], c) for k, c in keyed
-          if len(k) >= 20 and c["fa_in"] == 1 and not (chapter and type_family(c["type"]) == "book")
+          if len(k) >= 20 and c["fa_in"] == 1 and c["s"] >= EDITION_FLOOR[c["type"] in BOOKISH]
+          and not (chapter and type_family(c["type"]) == "book")
           and not (not chapter and type_family(c["type"]) == "chapter")
           and not any(same_title(c["title"], d["title"]) for _, d in dated)
           and printed_as_title(k, len(re.sub(r"[^a-z0-9]", "", fold(c["title"]))) <= 40, ft, nt, pos)]
