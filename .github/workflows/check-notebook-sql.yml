@@ -13,6 +13,8 @@ on:
       - 'scripts/gen_awards_sql.py'
       - 'scripts/check_works_enriched_publish.py'
       - 'scripts/check_warehouse_notebooks_sql_only.py'
+      - 'scripts/check_notebook_sql_functions.py'
+      - 'scripts/notebook_sql_functions.txt'
       - 'jobs/**'
       - '.github/workflows/check-notebook-sql.yml'
   pull_request:
@@ -22,6 +24,8 @@ on:
       - 'scripts/gen_awards_sql.py'
       - 'scripts/check_works_enriched_publish.py'
       - 'scripts/check_warehouse_notebooks_sql_only.py'
+      - 'scripts/check_notebook_sql_functions.py'
+      - 'scripts/notebook_sql_functions.txt'
       - 'jobs/**'
 
 permissions:
@@ -46,3 +50,7 @@ jobs:
         run: |
           python3 scripts/check_warehouse_notebooks_sql_only.py --self-test
           python3 scripts/check_warehouse_notebooks_sql_only.py
+      - name: Every function notebook SQL calls exists in Databricks (oxjob #2342; night 11-21 lost its run to Postgres' strpos)
+        run: |
+          python3 scripts/check_notebook_sql_functions.py --self-test
+          python3 scripts/check_notebook_sql_functions.py notebooks jobs
