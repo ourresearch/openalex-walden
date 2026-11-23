@@ -7,9 +7,13 @@ resources:
           - casey@ourresearch.org
       # oxjob #1646 (22 Nov 2026): 5 -> 7 so the xpac full run's PDF batches run beside its page campaigns
       # and other jobs' campaigns still find a slot; each run is its own single-node cluster. Revert: back to 5.
-      max_concurrent_runs: 7
+      # oxjob #1646 (23 Nov 2026): 7 -> 8, and queueing on. With all slots full Databricks skipped a campaign
+      # wave's run; TaxiCab Campaign scored it as a wave that fetched nothing, and a second skip marks those
+      # URLs skipped for good. Queued, the run waits for a slot (the guard reads QUEUED as fetching).
+      # Revert: 7 and enabled: false.
+      max_concurrent_runs: 8
       queue:
-        enabled: false
+        enabled: true
       tasks:
         - task_key: run_taxicab_rescrape
           notebook_task:
