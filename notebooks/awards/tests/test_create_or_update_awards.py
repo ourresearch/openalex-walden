@@ -168,7 +168,7 @@ def test_mapping_must_start_with_with(tmp_path):
 def test_prod_job():
     job = yaml.safe_load((ROOT / 'jobs/create_or_update_awards.yaml').read_text())['resources']['jobs']['Create_Or_Update_Awards']
     assert job['name'] == 'Awards'
-    assert job['schedule'] == {'quartz_cron_expression': '0 30 0 * * ?', 'timezone_id': 'UTC', 'pause_status': 'UNPAUSED'}
+    assert job['schedule'] == {'quartz_cron_expression': '0 30 21 * * ?', 'timezone_id': 'UTC', 'pause_status': 'UNPAUSED'}
     task = job['tasks'][0]['notebook_task']
     assert task['notebook_path'] == 'notebooks/awards/CreateOrUpdateAwards'
     assert task['base_parameters'] == {'raw_table': 'openalex.awards.openalex_awards_raw', 'stage': 'prod'}

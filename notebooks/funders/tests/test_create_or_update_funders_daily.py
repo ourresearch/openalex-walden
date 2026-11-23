@@ -87,7 +87,7 @@ def test_cell0_guard_unchanged():
 
 def test_daily_yaml_is_production_unpaused():
     job = yaml.safe_load((ROOT / 'jobs/create_or_update_funders.yaml').read_text())['resources']['jobs']['Create_Or_Update_Funders']
-    assert job['schedule'] == {'quartz_cron_expression': '0 45 21 * * ?', 'timezone_id': 'UTC', 'pause_status': 'UNPAUSED'}
+    assert job['schedule'] == {'quartz_cron_expression': '0 45 18 * * ?', 'timezone_id': 'UTC', 'pause_status': 'UNPAUSED'}
     task = job['tasks'][0]['notebook_task']
     assert task['notebook_path'] == 'notebooks/funders/CreateOrUpdateFunders'
     p = task['base_parameters']

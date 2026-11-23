@@ -68,7 +68,7 @@ def test_nightly_reads_the_leg_and_a_task_of_the_union_job_builds_it():
     config = json.loads((ROOT / 'notebooks/awards/nightly_grants/config.prod.json').read_text())
     assert config['inputs']['fwf_work_funders'] == LEG
     job = (ROOT / 'jobs/funder_reported_work_funders.yaml').read_text()
-    assert 'quartz_cron_expression: 0 30 2 * * ?' in job   # 02:30 UTC, before Nightly Grants (03:00)
+    assert 'quartz_cron_expression: 0 30 23 * * ?' in job   # 23:30 UTC, before Nightly Grants (00:00)
     task = job.split('- task_key: create_fwf_work_funders', 1)[1].split('git_source:', 1)[0]
     assert 'notebook_path: notebooks/awards/CreateFWFWorkAwards' in task
     assert 'depends_on:' not in task and 'create_fwf_work_funders' not in code(job.replace('#', '--')).split(
