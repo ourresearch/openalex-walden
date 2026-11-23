@@ -13,7 +13,8 @@
 #
 # Job parameters are pushed down to every task's same-named widget and beat base_parameters, so they are named
 # after the widgets that should receive them: source_version (sync_works and IndexRebuild), old_index / new_index /
-# alias (IndexRebuild). Never add a job parameter called mode, dry_run, target_index or id_range.
+# alias / source_excludes / drop_subfields (IndexRebuild). Never add a job parameter called mode, dry_run, target_index
+# or id_range.
 resources:
   jobs:
     Index_Rebuild_Works:
@@ -44,6 +45,10 @@ resources:
           default: works-v35
         - name: alias
           default: works
+        - name: source_excludes  # oxjob #2492: works-v42 on = "fulltext,abstract"
+          default: ""
+        - name: drop_subfields  # oxjob #2492: "authorships.raw_author_name.autocomplete,authorships_full.raw_author_name.autocomplete"
+          default: ""
       job_clusters:
         - job_cluster_key: load
           new_cluster:
