@@ -3,10 +3,11 @@
 # syncs it to Elasticsearch in one notebook.
 #
 # "contributor-roles" (oxjob #2075) is the vocabulary behind works.authorships[].contributor_roles:
-# CRediT's 14 roles (ANSI/NISO Z39.104-2022, CC BY 4.0) plus `editor` (D11 round one, 22 Nov 2026). The vocabulary
-# lives in utils/contributor_roles.py (ROLES, DISPLAY_NAME, DESCRIPTION, STANDARD_TERMS). Each record lists its
-# standard_terms: the same role in other vocabularies (Crossref, JATS4R, ORCID; for editor also DataCite, JATS, MARC
-# relators, CSL, schema.org, Wikidata), as /relationships and /author-types do.
+# CRediT's 14 roles (ANSI/NISO Z39.104-2022, CC BY 4.0) plus `editor` (D11 round one, 22 Nov 2026) and `translator`
+# (oxjob #2512, 22 Nov 2026). The vocabulary lives in utils/contributor_roles.py (ROLES, DISPLAY_NAME, DESCRIPTION,
+# STANDARD_TERMS). Each record lists its standard_terms: the same role in other vocabularies (Crossref, JATS4R, ORCID;
+# for editor and translator also DataCite, JATS, MARC relators, CSL, schema.org, Wikidata), as /relationships and
+# /author-types do.
 
 # COMMAND ----------
 
@@ -197,7 +198,7 @@ try:
     else:
         # oxjob #2075 D11: standard_terms joined the records after the index was created; adding a field is allowed
         client.indices.put_mapping(index=INDEX_NAME, properties={"standard_terms": STANDARD_TERMS_MAPPING})
-    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # fifteen rows
+    rows = [r.asDict(True) for r in spark.table(TABLE).collect()]   # sixteen rows
     actions = [{"_op_type": "index", "_index": INDEX_NAME, "_id": r["id"], "_source": r} for r in rows]
     ok, errors = helpers.bulk(client, actions, raise_on_error=False)
     if errors:

@@ -1,4 +1,4 @@
-"""The contributor roles vocabulary: CRediT's 14 roles, plus `editor`, as OpenAlex entities (oxjob #2075).
+"""The contributor roles vocabulary: CRediT's 14 roles, plus `editor` and `translator`, as OpenAlex entities (oxjob #2075).
 
 Each role is an entity at https://openalex.org/contributor-roles/<slug>. For CRediT's roles the slug is the last part of
 CRediT's own role URL (https://credit.niso.org/contributor-roles/<slug>/); display_name is CRediT's term and description
@@ -11,6 +11,10 @@ catalogues record editors apart from authors. It is not CRediT's writing-review-
 draft). It comes from Crossref's editor list on books whose record lists no authors (CreateWorksBase's
 crossref_book_contributors). An empty contributor_roles means unspecified, never "author".
 
+`translator` (oxjob #2512, Jason 22 Nov 2026) is the person who translated the work, as Crossref, DataCite, JATS and
+library catalogues record translators apart from authors. It comes from Crossref's translator list on any work
+(CreateWorksBase's crossref_translators): a translator the byline doesn't show gets a seat after the authors.
+
 STANDARD_TERMS gives each role's equivalents in other vocabularies ([{vocabulary, term, url}], the shape /relationships
 and /author-types use); `ids.credit` stays the identity of a CRediT role.
 
@@ -21,8 +25,8 @@ from utils.pmc_jats import CREDIT_ROLES
 
 ID_PREFIX = "https://openalex.org/contributor-roles/"
 
-# Every role the entity serves: CRediT's 14, then the roles other standards define (oxjob #2075 D11).
-ROLES = list(CREDIT_ROLES) + ["editor"]
+# Every role the entity serves: CRediT's 14, then the roles other standards define (oxjob #2075 D11, #2512).
+ROLES = list(CREDIT_ROLES) + ["editor", "translator"]
 
 DISPLAY_NAME = {
     "conceptualization": "Conceptualization",
@@ -40,6 +44,7 @@ DISPLAY_NAME = {
     "writing-original-draft": "Writing – original draft",
     "writing-review-editing": "Writing – review & editing",
     "editor": "Editor",
+    "translator": "Translator",
 }
 
 DESCRIPTION = {
@@ -73,6 +78,9 @@ DESCRIPTION = {
     "editor": "Edited the work: chose, arranged or revised what it contains, as the editor of an edited book or a "
               "proceedings volume. Publishers and catalogues list editors apart from authors. Not CRediT's "
               "Writing – review & editing, which is reviewing or revising a draft.",
+    "translator": "Translated the work into the language it is published in. Publishers and catalogues list "
+                  "translators apart from authors. Not CRediT's Writing – original draft, which counts substantive "
+                  "translation as part of writing the first draft.",
 }
 
 CROSSREF_CONTRIBUTORS = "https://www.crossref.org/documentation/schema-library/markup-guide-metadata-segments/contributors/"
@@ -97,11 +105,21 @@ STANDARD_TERMS = {
         ("schema.org", "editor", "https://schema.org/editor"),
         ("Wikidata", "P98", "https://www.wikidata.org/wiki/Property:P98"),
     ],
+    "translator": [
+        ("Crossref", "translator", CROSSREF_CONTRIBUTORS),
+        ("DataCite", "Translator",
+         "https://datacite-metadata-schema.readthedocs.io/en/4.7/appendices/appendix-1/contributorType/#translator"),
+        ("JATS", "translator", "https://jats.nlm.nih.gov/publishing/tag-library/1.4/attribute/contrib-type.html"),
+        ("MARC relators", "trl", "http://id.loc.gov/vocabulary/relators/trl"),
+        ("CSL", "translator", "https://docs.citationstyles.org/en/stable/specification.html#name-variables"),
+        ("schema.org", "translator", "https://schema.org/translator"),
+        ("Wikidata", "P655", "https://www.wikidata.org/wiki/Property:P655"),
+    ],
 }
 
 assert set(DISPLAY_NAME) == set(DESCRIPTION) == set(STANDARD_TERMS) == set(ROLES), "contributor roles vocabulary out of step"
 
 
 def credit_url(slug):
-    """CRediT's URL for one of its roles; None for a role CRediT doesn't define (editor)."""
+    """CRediT's URL for one of its roles; None for a role CRediT doesn't define (editor, translator)."""
     return f"https://credit.niso.org/contributor-roles/{slug}/" if slug in CREDIT_ROLES else None
