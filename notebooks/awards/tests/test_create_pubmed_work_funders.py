@@ -116,6 +116,50 @@ def test_shells_are_minted_as_europe_pmc_mints_them():
     assert erc(mine) == erc(epmc_view)
 
 
+def test_shells_only_for_grants_no_award_carries():
+    """A shell for a grant that is already an award takes its paper links in Nightly's election and twins it (check run,
+    oxjob #2544): shells come only from pwf_shell_spellings, which drops spellings another source already carries."""
+    shells = squash(code(cell('CREATE OR REPLACE TEMPORARY VIEW pwf_shells')))
+    assert 'FROM pwf_shell_spellings' in shells and 'pwf_candidate' not in shells
+    spellings = squash(code(cell('CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings')))
+    assert "FROM IDENTIFIER(pwf_raw) r WHERE r.provenance <> 'pubmed_work_funders'" in spellings
+    assert "LEFT ANTI JOIN (SELECT DISTINCT funder_id, gkey FROM keys WHERE side = 'other') o ON o.funder_id = l.funder_id AND o.gkey = l.gkey" in spellings
+    assert "LEFT ANTI JOIN (SELECT DISTINCT nkey FROM keys WHERE side = 'other' AND nkey IS NOT NULL) n ON n.nkey = l.nkey" in spellings
+    assert 'PARTITION BY funder_id, gkey ORDER BY mentions DESC' in spellings
+    assert 'PARTITION BY nkey ORDER BY mentions DESC' in spellings
+
+
+def test_shell_keys_match_nightly():
+    import sys
+    sys.path.insert(0, str(ROOT / 'notebooks/awards/nightly_grants/lib'))
+    import nih_fold
+    from stable_award_ids import generic_sql
+    spellings = squash(code(cell('CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings')))
+    assert squash(generic_sql('funder_award_id')) + ' gkey' in spellings
+    families = re.findall(r'IN \((4320332161(?:, \d+)+)\)', spellings)
+    assert len(families) == 2 and all(tuple(int(x) for x in f.split(', ')) == nih_fold.NIH_FAMILY for f in families)
+
+
+def test_nih_key_reads_paper_and_registry_spellings():
+    """The institute + serial expression, transcribed to Python regexes (SQL regexp_extract = first match)."""
+    spellings = code(cell('CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings'))
+    assert "regexp_extract(an, '([A-Z]{2}[0-9]{6})', 1)" in spellings
+    assert "an RLIKE '^([0-9]?[A-Z][0-9A-Z]{2})?[A-Z]{2}[0-9]{4,5}$'" in spellings
+
+    def nkey(s):
+        an = re.sub(r'[^A-Za-z0-9]', '', s).upper()
+        m = re.search(r'([A-Z]{2}[0-9]{6})', an)
+        if m:
+            return m.group(1)
+        if re.search(r'^([0-9]?[A-Z][0-9A-Z]{2})?[A-Z]{2}[0-9]{4,5}$', an):
+            return re.search(r'([A-Z]{2})[0-9]{4,5}$', an).group(1) + re.search(r'([0-9]{4,5})$', an).group(1).rjust(6, '0')
+        return None
+    cases = {'5p60am022125-08': 'AM022125', 'AM 22125.': 'AM022125', 'AM-22125': 'AM022125', 'CA 11051': 'CA011051',
+             '5R01CA011051-14': 'CA011051', 'R01 DK026190': 'DK026190', 'HL-06825': 'HL006825', '1-KO-4 HD-00634': 'HD000634',
+             'F32 NS06386': 'NS006386', 'AM1 1794': 'AM011794', 'P01-HL-19242': 'HL019242', 'unknown': None, '12345': None}
+    assert {s: nkey(s) for s in cases} == cases
+
+
 def test_resolver_follows_europe_pmc_branch_order():
     """The SQL CASE takes CreateEuropePmcWorkFunders.resolve()'s acronym branches in the same order and fallbacks."""
     py = [m for m in re.findall(r'if st\.endswith\("([^"]+)"\)(?: and spec)?:\s+return (spec or acr\.get\("(\w+)"\)|spec)', EPMC)]

@@ -22,8 +22,10 @@
 -- MAGIC 1. `openalex.awards.pubmed_work_funders (work_id, funder_id, award_ids)`: read by Nightly Grants (leg `pubmed_work_funders`,
 -- MAGIC    priority 4, deposited, like Europe PMC) and by the additive `funder_reported_work_funders` union (funder-only rows too).
 -- MAGIC 2. Award shells in `openalex.awards.openalex_awards_raw`, provenance `pubmed_work_funders`, priority 0 (paper-side, never
--- MAGIC    registry), minted exactly as the Europe PMC leg mints them (same id hash, #690 guard, ERC call-code guard), so Nightly's
--- MAGIC    keys (award_norm_key, the NIH institute + serial fold) group them with every other spelling of the same grant.
+-- MAGIC    registry), only for grants no award carries yet and one spelling per grant (cell `pwf_shell_spellings` says why: a
+-- MAGIC    shell for an existing grant takes that award's paper links and is served as its twin), minted as the Europe PMC
+-- MAGIC    leg mints them (same id hash, #690 guard, ERC call-code guard). Every other number reaches its existing award
+-- MAGIC    through Nightly's key match, or NIH's project record through ProduceNihPubmedRelinks.
 -- MAGIC
 -- MAGIC Both are written by MERGE: unchanged rows are left alone, so a night with no PubMed change writes no new table version.
 -- MAGIC Gates run before either write (shrink guard, growth ceiling, live funders); a stopped run writes nothing.
@@ -153,14 +155,65 @@ FROM flattened GROUP BY work_id, funder_id
 
 -- COMMAND ----------
 
+-- Which grant numbers get a shell: only grants no award carries yet, one spelling each. Nightly Grants links a paper's
+-- number to ONE award per (funder, generic key), preferring an award's own spellings to those it reaches only through an
+-- alias, so a new shell for a grant that is already an award takes that award's links and is served as its twin. The
+-- check run that minted every spelling (oxjob #2544) moved 588 works off NIH's registry record for AM 22125 onto a new
+-- 'AM 22125.' shell, and 20,642 of its 91,102 new awards shared a key with an existing one. A spelling is minted when:
+--   1. no award row of another source has the same funder and generic key (Nightly's stable_award_ids.generic_sql): the
+--      work's number reaches that award through Nightly's own key match;
+--   2. for an NIH funder (nih_fold.NIH_FAMILY), no award row of another source in that family has the same institute +
+--      serial: NIH ExPORTER files projects under the NIH parent while papers name the institute, so an institute shell
+--      would twin the project across funders; ProduceNihPubmedRelinks links PubMed's NIH grants to project records;
+--   3. it is the grant's one spelling in this leg: per (funder, generic key), then per NIH institute + serial, the spelling
+--      most PubMed records use. A work citing another spelling of it gets no link to it rather than a twin.
+-- NIH institute + serial: the 6-digit form where the text has one ('5R01CA011051-14' -> CA011051), else a 4-5 digit serial
+-- at the end after an optional activity code ('CA 11051', 'HL-06825', '1-KO-4 HD-00634' -> CA011051, HL006825, HD000634).
+CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings AS
+WITH spelled AS (
+  SELECT c.funder_id, award_id AS funder_award_id, count(*) mentions
+  FROM pwf_candidate c LATERAL VIEW EXPLODE(award_ids) AS award_id
+  GROUP BY 1, 2),
+other_rows AS (
+  SELECT r.funder_id, r.funder_award_id FROM IDENTIFIER(pwf_raw) r
+  WHERE r.provenance <> 'pubmed_work_funders' AND r.funder_award_id IS NOT NULL
+    AND (r.funder_id IN (SELECT funder_id FROM spelled) OR r.funder_id IN (4320332161, 4320337611, 4320337356, 4320337376,
+      4320337472, 4320337358, 4320337593, 4320337375, 4320337355, 4320337362, 4320337363, 4320337364, 4320337365, 4320337357,
+      4320337361, 4320337354, 4320337346, 4320337359, 4320337353, 4320337337, 4320337330, 4320337352, 4320337347, 4320337534,
+      4320337372, 4320337351, 4320337374, 4320337350, 4320337338, 4320337348))),
+keyed AS (
+  SELECT 'leg' side, funder_id, funder_award_id, mentions FROM spelled
+  UNION ALL SELECT 'other', funder_id, funder_award_id, 0 FROM other_rows),
+keys AS (
+  SELECT side, funder_id, funder_award_id, mentions,
+    CASE WHEN length(regexp_replace(lower(funder_award_id), '[^a-z0-9]', '')) >= 4
+         THEN regexp_replace(lower(funder_award_id), '[^a-z0-9]', '') ELSE lower(trim(funder_award_id)) END gkey,
+    CASE WHEN funder_id IN (4320332161, 4320337611, 4320337356, 4320337376, 4320337472, 4320337358, 4320337593, 4320337375,
+      4320337355, 4320337362, 4320337363, 4320337364, 4320337365, 4320337357, 4320337361, 4320337354, 4320337346, 4320337359,
+      4320337353, 4320337337, 4320337330, 4320337352, 4320337347, 4320337534, 4320337372, 4320337351, 4320337374, 4320337350,
+      4320337338, 4320337348)
+    THEN coalesce(nullif(regexp_extract(an, '([A-Z]{2}[0-9]{6})', 1), ''),
+      CASE WHEN an RLIKE '^([0-9]?[A-Z][0-9A-Z]{2})?[A-Z]{2}[0-9]{4,5}$'
+           THEN concat(regexp_extract(an, '([A-Z]{2})[0-9]{4,5}$', 1), lpad(regexp_extract(an, '([0-9]{4,5})$', 1), 6, '0')) END) END nkey
+  FROM (SELECT *, upper(regexp_replace(funder_award_id, '[^A-Za-z0-9]', '')) an FROM keyed)),
+fresh AS (
+  SELECT l.* FROM keys l
+  LEFT ANTI JOIN (SELECT DISTINCT funder_id, gkey FROM keys WHERE side = 'other') o ON o.funder_id = l.funder_id AND o.gkey = l.gkey
+  LEFT ANTI JOIN (SELECT DISTINCT nkey FROM keys WHERE side = 'other' AND nkey IS NOT NULL) n ON n.nkey = l.nkey
+  WHERE l.side = 'leg'),
+one_per_key AS (
+  SELECT * FROM fresh QUALIFY row_number() OVER (PARTITION BY funder_id, gkey ORDER BY mentions DESC, funder_award_id) = 1)
+SELECT funder_id, funder_award_id FROM one_per_key
+QUALIFY nkey IS NULL OR row_number() OVER (PARTITION BY nkey ORDER BY mentions DESC, funder_id, funder_award_id) = 1
+
+-- COMMAND ----------
+
 -- Candidate award shells, CreateEuropePmcWorkFunders step 5 with this leg's provenance (same id hash, same #690 guard,
--- same ERC call-code guard). Priority 0 is added at the write: a paper-side shell, never a registry record.
+-- same ERC call-code guard), for the spellings above. Priority 0 is added at the write: a paper-side shell, never a registry record.
 CREATE OR REPLACE TEMPORARY VIEW pwf_shells AS
 WITH exploded AS (
-  SELECT DISTINCT c.funder_id, LOWER(award_id) AS normalized_award_id, award_id AS funder_award_id
-  FROM pwf_candidate c
-  LATERAL VIEW EXPLODE(award_ids) AS award_id
-  WHERE SIZE(award_ids) > 0
+  SELECT DISTINCT funder_id, LOWER(funder_award_id) AS normalized_award_id, funder_award_id
+  FROM pwf_shell_spellings
 ),
 guarded AS (
   SELECT e.funder_id, e.normalized_award_id, e.funder_award_id
