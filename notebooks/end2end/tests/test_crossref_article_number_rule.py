@@ -84,9 +84,14 @@ def test_main_statement_fills_only_an_empty_page():
     main = next(i for i, c in enumerate(all_cells) if 'openalex.works.openalex_works_base CLUSTER BY' in c)
     assert build < main  # the table is rebuilt before the main statement reads it
     src = all_cells[main]
-    assert '      COALESCE(s.first_page, IF(s.last_page IS NULL, crn.article_number, NULL)) AS first_page, -- oxjob #1098' in src
+    # step 4 (walden 6dd6491c) put the repository citation's pages after the article number; the number still comes first
+    assert ('      COALESCE(s.first_page, IF(s.last_page IS NULL, COALESCE(crn.article_number, s.repo_cited_pages.first_page), NULL))'
+            ' AS first_page, -- oxjob #1098') in src
+    assert ('      COALESCE(s.last_page, IF(s.first_page IS NULL AND crn.article_number IS NULL, s.repo_cited_pages.last_page, NULL))'
+            ' AS last_page) AS biblio,') in src
     assert f'    LEFT JOIN {TABLE} crn ON crn.work_id = s.id' in src
-    assert src.count('crn.') == 2  # read only by biblio.first_page (and the join)
+    code = '\n'.join(l for l in src.split('\n') if not l.lstrip().startswith('--'))
+    assert code.count('crn.') == 3  # read only by biblio.first_page and last_page (and the join)
 
 
 if __name__ == '__main__':
