@@ -12,6 +12,24 @@ jsps_funder AS (
     WHERE funder_id = 4320334764  -- Japan Society for the Promotion of Science
 ),
 
+-- KAKEN's English pages print some principal investigators in kanji. The same researcher number (pi_nrid) carries
+-- KAKEN's own romaji name on the researcher's other grants in this file, so those rows take it: the most frequent
+-- romaji spelling for the number, then the latest start date, then a fixed tie-break on the spelling. Rows already
+-- in Latin script, and kanji rows whose number has no romaji grant, are unchanged.
+kaken_romaji AS (
+    SELECT pi_nrid,
+        max_by(named_struct('family_name', f, 'given_name', g),
+               named_struct('n', n, 'last_start', last_start, 'f', f, 'g', coalesce(g, ''), 'g_set', g IS NOT NULL)) AS romaji
+    FROM (
+        SELECT pi_nrid, pi_family_name AS f, pi_given_name AS g, count(*) AS n, max(coalesce(start_date, '')) AS last_start
+        FROM kaken_input
+        WHERE pi_nrid IS NOT NULL AND pi_family_name IS NOT NULL
+          AND NOT concat(pi_family_name, coalesce(pi_given_name, '')) RLIKE '[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}]'
+        GROUP BY pi_nrid, pi_family_name, pi_given_name
+    )
+    GROUP BY pi_nrid
+),
+
 awards_transformed AS (
     SELECT
         -- Generate unique ID using xxhash64 of funder_id:project_id
@@ -72,8 +90,9 @@ awards_transformed AS (
         CASE
             WHEN g.pi_family_name IS NOT NULL THEN
                 struct(
-                    g.pi_given_name as given_name,
-                    g.pi_family_name as family_name,
+                    -- romaji from the same researcher number when KAKEN printed this grant's name in kanji (kaken_romaji)
+                    CASE WHEN r.romaji IS NOT NULL THEN r.romaji.given_name ELSE g.pi_given_name END as given_name,
+                    CASE WHEN r.romaji IS NOT NULL THEN r.romaji.family_name ELSE g.pi_family_name END as family_name,
                     -- NRID is not an ORCID, so we leave orcid NULL
                     CAST(NULL AS STRING) as orcid,
                     CAST(NULL AS DATE) as role_start,
@@ -127,6 +146,9 @@ awards_transformed AS (
 
     FROM kaken_input g
     CROSS JOIN jsps_funder f
+    LEFT JOIN kaken_romaji r
+      ON r.pi_nrid = g.pi_nrid
+     AND concat(g.pi_family_name, coalesce(g.pi_given_name, '')) RLIKE '[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}]'
     WHERE g.project_id IS NOT NULL
       AND TRIM(g.project_id) != ''
 )
