@@ -71,7 +71,8 @@ def test_nightly_reads_the_leg_and_a_task_of_the_union_job_builds_it():
     assert 'quartz_cron_expression: 0 30 2 * * ?' in job   # 02:30 UTC, before Nightly Grants (03:00)
     task = job.split('- task_key: create_fwf_work_funders', 1)[1].split('git_source:', 1)[0]
     assert 'notebook_path: notebooks/awards/CreateFWFWorkAwards' in task
-    assert 'depends_on:' not in code(job.replace('#', '--'))   # neither task can stop the other
+    assert 'depends_on:' not in task and 'create_fwf_work_funders' not in code(job.replace('#', '--')).split(
+        '- task_key: create_fwf_work_funders', 1)[0].split('depends_on:', 1)[-1]   # FWF and the union never wait on each other
     assert 'on_failure:' in task and 'timeout_seconds: 3600' in task
     assert 'fwf' not in (ROOT / 'databricks.yml').read_text().lower()
     # deletions must drop: the additive union (MERGE ... WHEN NOT MATCHED) never reads this leg

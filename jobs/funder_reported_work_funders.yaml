@@ -14,6 +14,8 @@ resources:
         Also runs create_fwf_work_funders (oxjob #1765), independent of the union task:
         FWF's output lists -> openalex.awards.fwf_work_funders, a Nightly Grants leg that
         drops the links FWF removes.
+        And create_pubmed_work_funders (oxjob #2544), before the union, which reads it:
+        PubMed's own GrantList -> openalex.awards.pubmed_work_funders + award shells.
       schedule:
         # 02:30 UTC — after DataCite_Work_Funders (02:00 UTC, the only input to this union
         # with a live nightly feed; it commits in ~45 s, measured 2026-08-24), before
@@ -29,10 +31,32 @@ resources:
         pause_status: UNPAUSED
       tasks:
         - task_key: create_funder_reported_work_funders
+          # Waits for create_pubmed_work_funders, which re-resolves funders merged since its last run (the union's GATE 2
+          # refuses merge losers). run_if ALL_DONE: a failure there never stops this union; it reads yesterday's table.
+          depends_on:
+            - task_key: create_pubmed_work_funders
+          run_if: ALL_DONE
           notebook_task:
             notebook_path: notebooks/awards/CreateFunderReportedWorkFunders
             source: GIT
             warehouse_id: 3996dc0a9b183ce3
+        # PubMed's own GrantList -> openalex.awards.pubmed_work_funders (a Nightly Grants leg, also in the union above) and
+        # its award shells in openalex_awards_raw (oxjob #2544). Scope: records published before before_year, US Public
+        # Health Service agencies. A night with no PubMed change writes nothing (MERGE leaves unchanged rows alone).
+        - task_key: create_pubmed_work_funders
+          notebook_task:
+            notebook_path: notebooks/awards/CreatePubmedWorkFunders
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+            base_parameters:
+              leg_table: openalex.awards.pubmed_work_funders
+              raw_table: openalex.awards.openalex_awards_raw
+              before_year: "2000"
+              first_fill_max: "1500000"
+          timeout_seconds: 3600
+          # openalex_awards_raw has other writers; a concurrent commit conflict is retried once
+          max_retries: 1
+          min_retry_interval_millis: 120000
         # FWF's output lists -> openalex.awards.fwf_work_funders, a Nightly Grants leg (oxjob #1765). Independent of the
         # task above (no depends_on: either can fail without stopping the other). Not in that task's union, which never
         # drops a pair: FWF deletions must drop. Daily, but a run whose FWF object is the one the last finished run read
