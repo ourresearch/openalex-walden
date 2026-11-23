@@ -106,7 +106,11 @@ Matching strategies:
 
 ## Super Locations: How Fields Get Merged
 
-See `CreateSuperLocations.ipynb`. Only crossref and repo records get landing page/PDF integration. DataCite, PubMed, and MAG do not.
+See `CreateSuperLocations.ipynb`. Crossref and repo records get the full landing page/PDF integration below. DataCite
+records take part of it (by DOI, like Crossref): the DOI's PDF link, stored PDF and GROBID file (oxjob #1646), the
+reference list when the record lists none (PDF, else page; oxjob #2531), and the page's affiliations and corresponding
+author when the record has none (oxjob #2274 fixes 5-6). Not the page's licence or abstract (#1646's bar: 132 and 50 of
+200 right). PubMed and MAG take only #2274's page fill.
 
 ### Crossref DOIs — Field Priority
 | Field | Priority Order |
