@@ -70,6 +70,7 @@ include:
   - jobs/repo_reparse.yaml
   - jobs/work_references_refresh.yaml
   - jobs/taxicab_crossref.yaml
+  - jobs/taxicab_datacite.yaml  # oxjob #2531
   - jobs/taxicab_repos.yaml
   - jobs/taxicab_landing_page_pdfs.yaml
   - jobs/taxicab_rescrape.yaml

@@ -1,0 +1,61 @@
+resources:
+  jobs:
+    TaxiCab_DataCite:
+      name: TaxiCab DataCite
+      email_notifications:
+        on_failure:
+          - casey@ourresearch.org
+      schedule:
+        quartz_cron_expression: 41 0 1/4 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      queue:
+        enabled: false
+      tasks:
+        - task_key: run_taxicab
+          notebook_task:
+            notebook_path: notebooks/scraping/taxicab
+            source: GIT
+            base_parameters:
+              # oxjob #2531: new DataCite DOIs of paper types; those created before 22 Nov went through a campaign
+              lookback_days: "30"
+              url_limit: "100000"
+              source_filter: "datacite_only"
+              datacite_created_after: "2026-11-22"
+          timeout_seconds: 14400
+          job_cluster_key: Taxicab_job_cluster
+      job_clusters:
+        - job_cluster_key: Taxicab_job_cluster
+          new_cluster:
+            cluster_name: ""
+            spark_version: 16.4.x-scala2.13
+            spark_conf:
+              spark.master: local[*, 4]
+              spark.databricks.cluster.profile: singleNode
+            aws_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK
+              zone_id: us-east-1f
+              spot_bid_price_percent: 100
+            node_type_id: m5d.4xlarge
+            driver_node_type_id: m5d.4xlarge
+            custom_tags:
+              ResourceClass: SingleNode
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: STANDARD
+            num_workers: 0
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      parameters:
+        - name: lookback_days
+          default: "30"
+        - name: url_limit
+          default: "100000"
+        - name: source_filter
+          default: "datacite_only"
+        - name: datacite_created_after
+          default: "2026-11-22"
