@@ -41,6 +41,7 @@ PENDING = [
     (12, 3, "Junhong Li", 9000000012, "name"),           # #1893's classic: Jun Li holds the profile; full given names conflict
     (13, 2, "Chris Smith", 9000000013, "name"),          # nickname of the holder's given name (4+ letters shared): pass
     (14, 1, "Wendy Prin-Conti", 9000000014, "name"),     # the profile's other seat is an address, not a person: pass
+    (16, 1758, "Schune, Philippe", 9000000016, "vector"),  # holder printed 'Schune, Ph.': an abbreviation, same person (23 Nov)
     (15, 5, "Universidad Ricardo Palma. Lima, Perú", 9000000015, "name"),  # the seat itself is an address (first shadow
                                                          #   night, 21 Nov): never blocked, so no address-named profile is minted
 ]
@@ -50,10 +51,10 @@ SERVED = [
     (8, 0, 9000000008, "Kulyk, Iryna V."), (9, 0, 9000000009, "Jing Chen"), (10, 13, 9000000010, "Il Han Kim"),
     (6, 2, None, "Zhe Zhang"),   # a batch seat as served (unbound): never a holder
     (12, 1, 9000000012, "Jun Li"), (13, 0, 9000000013, "Christopher Smith"),
-    (14, 0, 9000000014, "Université Sorbonne Nouvelle - Paris 3 (Francia)"), (15, 4, 9000000015, "Doris Gala A."),
+    (14, 0, 9000000014, "Université Sorbonne Nouvelle - Paris 3 (Francia)"), (15, 4, 9000000015, "Doris Gala A."), (16, 1757, 9000000016, "Schune, Ph."),
 ]
 EXPECT = {(1, 2): "blocked", (6, 5): "blocked", (10, 14): "blocked", (12, 3): "blocked"}   # every other seat: no row
-MUST_PARSE = ["CHEN Baozhang", "CHEN Jing", "Zhe Zhang", "Zhenyang Zhang", "Do Hoon Lim", "Il Han Kim", "Junhong Li", "Jun Li"]
+MUST_PARSE = ["Schune, Philippe", "Schune, Ph.", "CHEN Baozhang", "CHEN Jing", "Zhe Zhang", "Zhenyang Zhang", "Do Hoon Lim", "Il Han Kim", "Junhong Li", "Jun Li"]
 
 
 def step_select():
