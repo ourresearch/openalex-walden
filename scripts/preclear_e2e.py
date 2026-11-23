@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pre-clear one Walden End 2 End run for a planned change: name how far it may move each check.
 
-Writes one row per flag to `openalex.works.e2e_overrides`, bound to one run: the window opens at the run's 05:00 UTC
+Writes one row per flag to `openalex.works.e2e_overrides`, bound to one run: the window opens at the run's 03:00 UTC
 start and closes 18 h later (the run plus a same-morning repair). Every capped gate in `walden_end2end` reads the row
 through one function, `openalex.works.e2e_cap(flag, metric)` / `e2e_gate(...)` (notebooks/end2end/e2e_gate.sql).
 
@@ -89,8 +89,8 @@ for _names in list(LOSS_METRICS.values()):
         LOSS_METRICS.setdefault(_m, [_m])
 WORKS_LOSS_LINE = 2_000_000          # Guardrails Checks 3-8
 STAMPS_LINE = 7_500_000              # Guardrails Check 1
-NIGHTLY_UTC_HOUR = 5          # walden_end2end schedule: 0 0 5 * * ? UTC
-WINDOW_AFTER_START_H = 18     # a full run is ~7 h; 18 h also covers a morning repair run, and ends before the next nightly
+NIGHTLY_UTC_HOUR = 3          # walden_end2end schedule: 0 0 3 * * ? UTC (05:00 until 23 Nov 2026, oxjob #2473)
+WINDOW_AFTER_START_H = 18     # a full run is ~12-14 h; 18 h also covers a morning repair run, and ends before the next nightly
 DEFAULT_WAREHOUSE = "69a583ace3bdc8d0"
 
 
@@ -117,7 +117,7 @@ def sql(statement, warehouse):
 
 
 def run_start(night, current_run):
-    """05:00 UTC start of the run this row is for: --current-run = the run that started most recently (a repair);
+    """03:00 UTC start of the run this row is for: --current-run = the run that started most recently (a repair);
     --night = the run that follows that CT evening; otherwise the next run."""
     now = datetime.now(timezone.utc)
     today = now.replace(hour=NIGHTLY_UTC_HOUR, minute=0, second=0, microsecond=0)
@@ -185,11 +185,11 @@ def main():
     ap.add_argument("--reason", help="what change, how many works, oxjob id")
     ap.add_argument("--by", help="who gave the yes")
     ap.add_argument("--job", help="the oxjob the change belongs to (default: the first #id in --reason)")
-    ap.add_argument("--night", help="CT evening date (YYYY-MM-DD) the run belongs to; default = the next 05:00 UTC")
+    ap.add_argument("--night", help="CT evening date (YYYY-MM-DD) the run belongs to; default = the next 03:00 UTC")
     ap.add_argument("--later-night", action="store_true",
                     help="allow any write (a new row or a raise) to a run after the next one (18 and 22 Nov 2026: lanes meant "
                          "the next run and filed or raised a later one: --night is the CT evening date, not the UTC run date)")
-    ap.add_argument("--current-run", action="store_true", help="the run that started at the last 05:00 UTC (a repair)")
+    ap.add_argument("--current-run", action="store_true", help="the run that started at the last 03:00 UTC (a repair)")
     ap.add_argument("--max-changed", type=count, help="guardrails_override: works this run may stamp (Check 1); default the 7.5M line")
     ap.add_argument("--add", type=count,
                     help="guardrails_override: add N stamps to the row's cap in the UPDATE itself (no stale base); a new row "
@@ -316,7 +316,7 @@ def main():
         has = f"already has a row ({int(later[0][0]):,})" if later and later[0][0] is not None else "has no row yet"
         sys.exit(f"refused: --night {a.night} is the run starting {start:%Y-%m-%d %H:%M} UTC, but the NEXT run starts "
                  f"{nxt:%Y-%m-%d %H:%M} UTC (--night {ev}); that later run {has}. --night takes the CT EVENING date, "
-                 f"not the 05:00 UTC run date. For the next run use --night {ev} (add --raise if it has a row: --list). "
+                 f"not the 03:00 UTC run date. For the next run use --night {ev} (add --raise if it has a row: --list). "
                  f"To file or raise the later run on purpose, add --later-night.")
     # A planned night's row closes 18 h after its start (the run and a morning repair). A --current-run row (a repair of
     # the run in progress, possibly late in the day) stays open until the next run starts, never into it.

@@ -1,6 +1,6 @@
 # OpenAlex Walden
 
-## Guardrails pre-flight: never let the 05:00 UTC run be the first to see a bulk change
+## Guardrails pre-flight: never let the 03:00 UTC run be the first to see a bulk change
 
 **Guardrails contain bugs; they never set the size or pace of our work (Jason, 2026-09-26).** The 7.5M line
 exists to catch the unexpected (a bug that re-stamps 200M works), not to budget intended changes. Never split
@@ -33,7 +33,7 @@ doesn't name fails Guardrails as before. A merge of N works can drop each "works
 losers that carry X. The night has ONE row per flag: later changes raise it with `--raise` and the night's totals.
 Every capped gate reads the row through `openalex.works.e2e_cap()` / `e2e_gate()` (`notebooks/end2end/e2e_gate.sql`).
 Do not start a second manual End 2 End in the evening:
-it collides with the 05:00 UTC schedule, and pausing the schedule does not survive a bundle deploy.
+it collides with the 03:00 UTC schedule, and pausing the schedule does not survive a bundle deploy.
 **Every manual End 2 End run, full or selected tasks, sets the `reason` job parameter** to
 `'<oxjob>: <why>, <who>'` (UI: "Run now with different parameters"; CLI: `databricks jobs run-now --json
 '{"job_id": 616701029470182, "job_parameters": {"reason": "1170: test location curations, rohan"}}'`). Databricks

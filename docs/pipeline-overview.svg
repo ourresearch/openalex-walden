@@ -18,7 +18,7 @@
 
   <!-- TITLE -->
   <text x="530" y="32" text-anchor="middle" font-size="19" font-weight="bold" fill="#E2E8F0">Walden End-to-End Pipeline</text>
-  <text x="530" y="51" text-anchor="middle" font-size="11" fill="#64748B">Runs nightly at 05:00 UTC · Databricks · openalex-walden</text>
+  <text x="530" y="51" text-anchor="middle" font-size="11" fill="#64748B">Runs nightly at 03:00 UTC · Databricks · openalex-walden</text>
 
   <!-- ═══════════════════════════════════════════════
        SECTION 1 — INGEST

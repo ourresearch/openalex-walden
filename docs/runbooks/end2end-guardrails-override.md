@@ -71,16 +71,16 @@ several rows: the smallest cap). The job parameter `"true"` (a manual run) still
 On/off switches with no size (`keep_replicas`, `hash_rebaseline`, the locations and Wunpaywall
 flags) keep `e2e_override_active(flag, param)`. BuildLakebaseWorksDocs' two "upstream looks
 broken" floors open only on the parameter. `scripts/preclear_e2e.py` binds each row to one run:
-the window opens at that run's 05:00 UTC start and closes 18 h later (the run and a same-morning
+the window opens at that run's 03:00 UTC start and closes 18 h later (the run and a same-morning
 repair), so a row filed in the afternoon can't touch a repair of the night before. Guardrails
 prints each open row and what it names, and records per metric the `threshold` it judged against
 and the `preclear` rows that set it; `note = 'preclear'` when a named cap passed a check over its
 line.
 
-Evening sequence (all times UTC; nightly = 05:00 UTC = 00:00 CDT):
+Evening sequence (all times UTC; nightly = 03:00 UTC = 21:00 CST / 22:00 CDT, since 24 Nov 2026, oxjob #2473):
 
 1. **Land the change upstream** if it lives in a separate job (Authors, 63282467302934, ~25 min;
-   scheduled 12:36 UTC, which is *after* the nightly reads it, so hand-run it now):
+   scheduled 12:00 UTC, which is *after* the nightly reads it, so hand-run it now):
    ```
    databricks jobs run-now 63282467302934 --no-wait --output json
    ```
@@ -100,12 +100,12 @@ Evening sequence (all times UTC; nightly = 05:00 UTC = 00:00 CDT):
    scripts/preclear_e2e.py --cancel --all                              # close every open window, every night
    # any of them with --dry-run prints the SQL instead
    ```
-   Default target is the next 05:00 UTC; `--night 2026-09-24` (the CT evening date) targets a
+   Default target is the next 03:00 UTC; `--night 2026-09-24` (the CT evening date) targets a
    later one. Only the flag class that will fire; `guardrails_override` never authorises a mass
    delete or an oversized feed.
-5. Go to bed. Task timeline from a 05:00 start: Works_Base ~07:05, Authorships ~07:10,
-   Guardrails ~09:50, ES sync from ~09:55 (3 to 4 h for more than 50M docs), Full_Snapshot
-   ~10:00 to ~11:30, Lakebase ~10:00 to ~11:30.
+5. Go to bed. Task timeline from a 03:00 start (Nov 2026 runs): Works_Base ~06:45-08:05,
+   Authorships ~10:15-11:50, Guardrails ~11:10-12:20, works ES sync to ~14:25, Full_Snapshot
+   ~11:35 to ~13:50.
 
 ## 3. Morning checks
 
@@ -124,7 +124,7 @@ Spot-check one changed record through a list filter or Elasticsearch, not a sing
 (`/works/{id}` is Lakebase-first and lagged the run's stamp by hours on 2026-09-23), and post
 the outcome in the same #dev thread. The next scheduled nightly should show a normal count.
 
-## 3b. Fallback: manual run with the parameter (only when it must publish before 05:00 UTC)
+## 3b. Fallback: manual run with the parameter (only when it must publish before 03:00 UTC)
 
 Worked example: 2026-09-22, oxjob #1297 author served names, 52.35M works. Override run
 495961030777985 started 04:12 UTC, green at 11:04 UTC. The job id goes inside the JSON
@@ -142,12 +142,12 @@ with `"value": "true"`. Then deal with the schedule:
   Seen 2026-09-22: paused 18:35 CT, silently unpaused by an unrelated push at 22:32 CT, the
   scheduled run fired at 00:00 CT.
 - `max_concurrent_runs: 1` does **not** skip the schedule because the job has `queue: enabled`.
-  The queued run's five `*_Ingest_DLT` tasks start at 05:00 anyway and collide with the manual
+  The queued run's five `*_Ingest_DLT` tasks start at 03:00 anyway and collide with the manual
   run's pipelines. Seen 2026-09-23: they timed out once at 06:00 UTC, the retries succeeded when
   the manual run ended, and the scheduled run went green at 13:22 UTC with a normal Guardrails
   count. Cost: a late public snapshot and one failure email to Casey. Seen 2026-09-22 (worse
   case): four hourly retries burned, run failed at ~11:20 UTC with everything UPSTREAM_FAILED.
-- To avoid the collision: cancel the queued PERIODIC run right after 05:00 UTC
+- To avoid the collision: cancel the queued PERIODIC run right after 03:00 UTC
   (`databricks jobs list-runs --job-id 616701029470182 --active-only`, then
   `databricks jobs cancel-run <run_id>`; Jason's call), or commit `pause_status: PAUSED` to the
   yaml for the night and revert it in the morning. Otherwise pre-announce the red run in #dev.
