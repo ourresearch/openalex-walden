@@ -10,16 +10,12 @@
 --   3. The lead's ORCID, and the project team as investigators (SciPROJ order, PI and repeats left out by the fetcher).
 -- The two switches below are the one-line on/off for the team. Research-unit members (refs UID, UIDB, UIDP, PEST, LA: a unit's strategic
 -- funding lists every researcher in the unit, ~403k people on 2,115 awards) stay off until Rohan decides.
--- Freshness: the fetcher runs weekly and names its object YYYY-MM-DD.parquet. If the pinned object is more than 10 days old the source
--- maps no rows, its row floor skips it and the Awards run fails at the end naming fct, after every other source is written.
+-- Freshness: none here. An object with no newer one after it is read again and matches raw, so nothing is written; a damaged new
+-- object is held by the Awards job's content gate (gen_awards_sql.py), and the previous rows stay served.
 WITH
 fct_switches AS (
     SELECT true AS serve_project_team,
            false AS serve_unit_members
-),
-fct_fresh AS (
-    SELECT coalesce(datediff(to_date(session.awards_timestamp),
-        try_to_date(regexp_extract(try_element_at(session.awards_objects, 'fct'), '([0-9]{4}-[0-9]{2}-[0-9]{2})[.]parquet$', 1), 'yyyy-MM-dd')) <= 10, true) AS fresh
 ),
 fndr AS (
     SELECT k.funder_key, k.label, CAST(f.funder_id AS BIGINT) as funder_id, f.display_name, f.ror_id, f.doi
@@ -34,9 +30,7 @@ filtered AS (
         filter(from_json(g.team_json, 'ARRAY<STRUCT<person_id:STRING, name:STRING, given:STRING, family:STRING, orcid:STRING, ciencia_id:STRING>>'),
                p -> p.family IS NOT NULL) AS team
     FROM fct_input g
-    CROSS JOIN fct_fresh fr
-    WHERE fr.fresh
-      AND g.funder_award_id IS NOT NULL
+    WHERE g.funder_award_id IS NOT NULL
       AND NOT (COALESCE(g.funder_key, 'fct') = 'ec' AND COALESCE(g.scheme, '') NOT IN ('FP1', 'FP2', 'FP3', 'FP4', 'FP5', 'FP6'))
 ),
 awards_transformed AS (

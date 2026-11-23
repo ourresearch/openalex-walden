@@ -187,7 +187,7 @@ def test_production_source_prefixes():
         's3://openalex-ingest/awards/wellcome/*.parquet',
         's3://openalex-ingest/awards/european_commission/*.parquet',
         's3://openalex-ingest/awards/gates/*.parquet',
-        's3://openalex-ingest/awards/kaken_api/*.parquet',
+        's3://openalex-ingest/awards/kaken_api/2026-11-17.parquet',   # held at the object K2 gated until its first green night
     ]
     assert 'dev-gr1009' not in SQL and 'dev-gr1009' not in (AWARDS / 'sources.csv').read_text()
 
@@ -202,11 +202,11 @@ def test_arc_lead_strips_the_same_titles_as_the_team():
 def test_fct_leaves_the_hand_run_job():
     """fct: read by the Awards job from openalex-ingest's prefix; its notebook, hand-run task and laptop loader are gone."""
     group = branch_of('fct')
-    assert "read_files('s3://openalex-ingest/awards/fct_sciproj/*.parquet'" in group
+    assert "read_files('s3://openalex-ingest/awards/fct_sciproj/" in group   # the prefix, or (held on purpose) one object in it
     assert 'openalex_awards_raw' not in group and 'existing_ec' not in group   # a fixed EC rule, no live-raw read
     assert "NOT IN ('FP1', 'FP2', 'FP3', 'FP4', 'FP5', 'FP6')" in group
     assert 'SELECT true AS serve_project_team' in group and 'false AS serve_unit_members' in group   # the one-line switches
-    assert "try_element_at(session.awards_objects, 'fct')" in group and "'yyyy-MM-dd')) <= 10, true) AS fresh" in group   # freshness
+    assert 'fct_fresh' not in group and 'AS fresh' not in group   # no freshness rule: an old object reads again; the content gate holds a damaged one
     assert "'(?i)^((prof|professor|professora|doutor|doutora|dr|dra|eng|engª|mestre|lic)" in group   # names card 5
     assert not (AWARDS / 'CreateFCTAwards.ipynb').exists() and not (ROOT / 'scripts/local/fct_to_s3.py').exists()
     job = yaml.safe_load((ROOT / 'jobs/create_funder_sourced_awards.yaml').read_text())
@@ -217,7 +217,7 @@ def test_fct_leaves_the_hand_run_job():
 def test_kaken_api_and_coinvestigators():
     """KAKEN reads the API fetcher's prefix; its co-investigators (members_json, KAKEN's role codes) become investigators."""
     group = branch_of('kaken')
-    assert "read_files('s3://openalex-ingest/awards/kaken_api/*.parquet'" in group
+    assert "read_files('s3://openalex-ingest/awards/kaken_api/" in group   # the prefix, or (held) one object in it
     assert "WHERE mem.role IN ('co_investigator_buntan', 'co_investigator_renkei') AND mem.family_name IS NOT NULL" in group
     # awards the scrape keyed by the tail of KAKEN's number keep that key: id and funder_award_id both read it
     assert "LEFT JOIN kaken_scrape_keys sk ON sk.record_id = g.project_id" in group

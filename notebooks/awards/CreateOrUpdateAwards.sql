@@ -31,7 +31,7 @@ DECLARE OR REPLACE VARIABLE awards_objects MAP<STRING, STRING>;
 
 DECLARE OR REPLACE VARIABLE awards_results ARRAY<STRUCT<source: STRING, object: STRING, baseline_version: BIGINT,
  rows_in: BIGINT, rows_prev: BIGINT, new: BIGINT, changed: BIGINT, unchanged: BIGINT, retained: BIGINT,
- duplicate_keys: BIGINT, invalid_rows: BIGINT, state: STRING>> DEFAULT array();
+ duplicate_keys: BIGINT, invalid_rows: BIGINT, state: STRING, reason: STRING>> DEFAULT array();
 
 -- COMMAND ----------
 
@@ -45,7 +45,7 @@ CREATE OR REPLACE TEMP VIEW awards_sources AS SELECT * FROM VALUES
  (2, 'wellcome_trust', 22, 98, array(4320311904L), 'monthly', 1),
  (3, 'cordis', 27, 98, array(4320320300L, 4320338438L, 4320338448L), 'manual', 1),
  (4, 'gates_foundation', 4, 98, array(4320306137L), 'manual', 1),
- (5, 'kaken', 10, 98, array(4320334764L), 'monthly', 1),
+ (5, 'kaken', 10, 98, array(4320334764L), 'frozen', 1),
  (6, 'aacr_funded_research', 560, 98, array(4320306091L), 'frozen', 1),
  (7, 'aar_rome_prize_fellows', 172, 98, array(4320320895L), 'frozen', 1),
  (8, 'aas_arise_grantees', 134, 98, array(4320327323L), 'frozen', 1),
@@ -398,7 +398,7 @@ CREATE OR REPLACE TEMP VIEW awards_sources AS SELECT * FROM VALUES
  (355, 'wwtf_project_database', 530, 98, array(4320321003L), 'frozen', 4),
  (356, 'zhejiang_nsf', 403, 98, array(4320338464L), 'frozen', 4),
  (357, 'zonmw_projects_jsonapi', 92, 98, array(4320321007L), 'frozen', 4),
- (358, 'fct', 385, 98, array(4320334779L, 4320324421L, 4320320300L, 4320335322L), 'weekly', 4),
+ (358, 'fct', 385, 98, array(4320334779L, 4320324421L, 4320320300L, 4320335322L), 'frozen', 4),
  (359, 'fwf_open_api', 51, 98, array(4320321181L), 'weekly', 4),
  (360, 'bhf_europepmc_grist', 575, 98, array(4320319992L), 'frozen', 4)
 AS t(ord, source, source_priority, row_floor_pct, funder_ids, fetch_cadence, chunk);
@@ -409,6 +409,7 @@ AS t(ord, source, source_priority, row_floor_pct, funder_ids, fetch_cadence, chu
 -- max modification time, then path, so exactly one file even on a timestamp tie.
 SET VAR awards_objects = (SELECT map_from_entries(collect_list(struct(source, object))) FROM (
 SELECT * FROM VALUES
+ ('kaken', 's3://openalex-ingest/awards/kaken_api/2026-11-17.parquet'),
  ('aacr_funded_research', 's3://openalex-ingest/awards/aacr/aacr_projects.parquet'),
  ('aar_rome_prize_fellows', 's3://openalex-ingest/awards/aar_rome_prize/aar_rome_prize_fellows.parquet'),
  ('aas_arise_grantees', 's3://openalex-ingest/awards/aas_arise/aas_arise_grantees.parquet'),
@@ -760,6 +761,7 @@ SELECT * FROM VALUES
  ('wwtf_project_database', 's3://openalex-ingest/awards/wwtf/wwtf_projects.parquet'),
  ('zhejiang_nsf', 's3://openalex-ingest/awards/zhejiang_nsf/zhejiang_nsf_projects.parquet'),
  ('zonmw_projects_jsonapi', 's3://openalex-ingest/awards/zonmw/zonmw_projects.parquet'),
+ ('fct', 's3://openalex-ingest/awards/fct_sciproj/2026-11-06.parquet'),
  ('bhf_europepmc_grist', 's3://openalex-ingest/awards/bhf/bhf_grist_projects.parquet')
 AS t(source, object)
 UNION ALL
@@ -775,14 +777,8 @@ UNION ALL
 SELECT 'gates_foundation' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
  FROM read_files('s3://openalex-ingest/awards/gates/*.parquet', format => 'parquet')
 UNION ALL
-SELECT 'kaken' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
- FROM read_files('s3://openalex-ingest/awards/kaken_api/*.parquet', format => 'parquet')
-UNION ALL
 SELECT 'nwopen' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
  FROM read_files('s3://openalex-ingest/awards/nwopen/*.parquet', format => 'parquet')
-UNION ALL
-SELECT 'fct' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
- FROM read_files('s3://openalex-ingest/awards/fct_sciproj/*.parquet', format => 'parquet')
 UNION ALL
 SELECT 'fwf_open_api' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
  FROM read_files('s3://openalex-ingest/awards/fwf_open_api/*.parquet', format => 'parquet')
@@ -1525,10 +1521,10 @@ UNION ALL
 -- Legacy mapping from CreateKAKENAwards.ipynb, origin c3db0a32. Reads openalex-ingest kaken_awards.py (the KAKEN API, monthly)
 -- from s3://openalex-ingest/awards/kaken_api/ since 2026-11; the 2026-07-08 page scrape stays at awards/kaken/, unread.
 -- _change is runner metadata, never a raw column. Compare all 22 other columns null-safely.
--- kaken: priority 10, monthly fetch cadence (descriptive).
+-- kaken: priority 10, frozen fetch cadence (descriptive).
 SELECT 'kaken' AS _source, * FROM (
 WITH kaken_input AS (
-    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/kaken_api/*.parquet', format => 'parquet'))
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/kaken_api/2026-11-17.parquet', format => 'parquet'))
     WHERE _file_path = try_element_at(session.awards_objects, 'kaken')
 ),
 -- Get JSPS funder from OpenAlex
@@ -11958,7 +11954,32 @@ compared AS (
         AND (rtrim(i.landing_page_url) <=> rtrim(b.landing_page_url))
         AND (rtrim(i.doi) <=> rtrim(b.doi))
         AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
-        AND (i.priority <=> b.priority) AS _unchanged
+        AND (i.priority <=> b.priority) AS _unchanged,
+        CASE WHEN b.funder_id IS NULL THEN NULL ELSE array(
+         CAST((nullif(trim(i.lead_investigator.family_name), '') IS NOT NULL AND nullif(trim(b.lead_investigator.family_name), '') IS NOT NULL
+         AND NOT (rtrim(i.lead_investigator.family_name) <=> rtrim(b.lead_investigator.family_name))) AS INT),
+         CAST((nullif(trim(i.lead_investigator.affiliation.name), '') IS NOT NULL AND nullif(trim(b.lead_investigator.affiliation.name), '') IS NOT NULL
+         AND NOT (rtrim(i.lead_investigator.affiliation.name) <=> rtrim(b.lead_investigator.affiliation.name))) AS INT),
+         CAST(nullif(trim(b.display_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.display_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.description), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.description), '') IS NOT NULL AS INT),
+         CAST(b.amount IS NOT NULL AS INT) - CAST(i.amount IS NOT NULL AS INT),
+         CAST(nullif(trim(b.currency), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.currency), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.funding_type), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.funding_type), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.funder_scheme), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.funder_scheme), '') IS NOT NULL AS INT),
+         CAST(b.start_date IS NOT NULL AS INT) - CAST(i.start_date IS NOT NULL AS INT),
+         CAST(b.end_date IS NOT NULL AS INT) - CAST(i.end_date IS NOT NULL AS INT),
+         CAST(b.start_year IS NOT NULL AS INT) - CAST(i.start_year IS NOT NULL AS INT),
+         CAST(b.end_year IS NOT NULL AS INT) - CAST(i.end_year IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.family_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.family_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.given_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.given_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.orcid), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.orcid), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.affiliation.name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.affiliation.name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.affiliation.country), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.affiliation.country), '') IS NOT NULL AS INT),
+         CAST(coalesce(size(b.lead_investigator.affiliation.ids) > 0, false) AS INT) - CAST(coalesce(size(i.lead_investigator.affiliation.ids) > 0, false) AS INT),
+         CAST(nullif(trim(b.co_lead_investigator.family_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.co_lead_investigator.family_name), '') IS NOT NULL AS INT),
+         CAST(coalesce(size(b.investigators) > 0, false) AS INT) - CAST(coalesce(size(i.investigators) > 0, false) AS INT),
+         CAST(nullif(trim(b.landing_page_url), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.landing_page_url), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.doi), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.doi), '') IS NOT NULL AS INT)) END AS _gate
     FROM awards_incoming i LEFT JOIN baseline b
       ON b.provenance = i._source AND b.priority = i.priority
      AND i.funder_id <=> b.funder_id
@@ -11990,7 +12011,8 @@ SELECT
     CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date,
     CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date ELSE updated_date END AS updated_date,
     CASE WHEN _exists AND _unchanged THEN baseline_row.priority ELSE priority END AS priority,
-    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change
+    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change,
+    _gate
 FROM compared;
 
 -- COMMAND ----------
@@ -12004,28 +12026,77 @@ k AS (
  SELECT _source, funder_id, lower(funder_award_id) award_key, count(*) n,
  count_if(_change = 'new') new, count_if(_change = 'changed') changed, count_if(_change = 'unchanged') unchanged,
  count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
- OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows
+ OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows,
+ sum(_gate[0]) lead_changed, sum(_gate[1]) institution_changed, sum(_gate[2]) lost_title, sum(_gate[3]) lost_description, sum(_gate[4]) lost_amount, sum(_gate[5]) lost_currency, sum(_gate[6]) lost_funding_type, sum(_gate[7]) lost_scheme, sum(_gate[8]) lost_start_date, sum(_gate[9]) lost_end_date, sum(_gate[10]) lost_start_year, sum(_gate[11]) lost_end_year, sum(_gate[12]) lost_lead, sum(_gate[13]) lost_lead_given_name, sum(_gate[14]) lost_lead_orcid, sum(_gate[15]) lost_institution, sum(_gate[16]) lost_institution_country, sum(_gate[17]) lost_institution_ids, sum(_gate[18]) lost_co_lead, sum(_gate[19]) lost_investigators, sum(_gate[20]) lost_landing_page_url, sum(_gate[21]) lost_doi
  FROM awards_candidate_1 JOIN s ON s.source = _source GROUP BY _source, funder_id, lower(funder_award_id)
 ),
 c AS (SELECT _source, sum(n) rows_in, sum(new) new, sum(changed) changed, sum(unchanged) unchanged,
- sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in FROM k GROUP BY _source),
+ sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in,
+ sum(lead_changed) lead_changed, sum(institution_changed) institution_changed, sum(lost_title) lost_title, sum(lost_description) lost_description, sum(lost_amount) lost_amount, sum(lost_currency) lost_currency, sum(lost_funding_type) lost_funding_type, sum(lost_scheme) lost_scheme, sum(lost_start_date) lost_start_date, sum(lost_end_date) lost_end_date, sum(lost_start_year) lost_start_year, sum(lost_end_year) lost_end_year, sum(lost_lead) lost_lead, sum(lost_lead_given_name) lost_lead_given_name, sum(lost_lead_orcid) lost_lead_orcid, sum(lost_institution) lost_institution, sum(lost_institution_country) lost_institution_country, sum(lost_institution_ids) lost_institution_ids, sum(lost_co_lead) lost_co_lead, sum(lost_investigators) lost_investigators, sum(lost_landing_page_url) lost_landing_page_url, sum(lost_doi) lost_doi FROM k GROUP BY _source),
 prev AS (SELECT provenance, count(*) rows_prev FROM bl GROUP BY provenance),
-retained AS (SELECT b.provenance, count(*) retained FROM bl b LEFT ANTI JOIN k
- ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key GROUP BY b.provenance),
+gone AS (SELECT b.provenance, b.funder_id, lower(b.funder_award_id) award_key FROM bl b LEFT ANTI JOIN k
+ ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key),
+retained AS (SELECT provenance, count(*) retained FROM gone GROUP BY provenance),
+-- a funder change: a key gone from the file whose award id the file now has under another funder
+moved AS (SELECT g.provenance, count(DISTINCT g.funder_id, g.award_key) moved FROM gone g
+ JOIN k ON k._source = g.provenance AND k.award_key = g.award_key AND k.new > 0 GROUP BY g.provenance),
 dup_prev AS (SELECT provenance, count(*) n FROM (SELECT provenance, funder_id, lower(funder_award_id) FROM bl GROUP BY ALL HAVING count(*) > 1) GROUP BY provenance),
 m AS (
- SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct,
+ SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct, s.fetch_cadence <> 'frozen' gated,
  coalesce(c.rows_in, 0) rows_in, coalesce(p.rows_prev, 0) rows_prev, coalesce(c.new, 0) new, coalesce(c.changed, 0) changed,
  coalesce(c.unchanged, 0) unchanged, coalesce(r.retained, 0) retained, coalesce(c.dup_in, 0) + coalesce(dp.n, 0) duplicate_keys,
- coalesce(c.invalid_rows, 0) invalid_rows
+ coalesce(c.invalid_rows, 0) invalid_rows, coalesce(c.changed, 0) + coalesce(c.unchanged, 0) matched, coalesce(mv.moved, 0) moved,
+ coalesce(c.lead_changed, 0) lead_changed, coalesce(c.institution_changed, 0) institution_changed, coalesce(c.lost_title, 0) lost_title, coalesce(c.lost_description, 0) lost_description, coalesce(c.lost_amount, 0) lost_amount, coalesce(c.lost_currency, 0) lost_currency, coalesce(c.lost_funding_type, 0) lost_funding_type, coalesce(c.lost_scheme, 0) lost_scheme, coalesce(c.lost_start_date, 0) lost_start_date, coalesce(c.lost_end_date, 0) lost_end_date, coalesce(c.lost_start_year, 0) lost_start_year, coalesce(c.lost_end_year, 0) lost_end_year, coalesce(c.lost_lead, 0) lost_lead, coalesce(c.lost_lead_given_name, 0) lost_lead_given_name, coalesce(c.lost_lead_orcid, 0) lost_lead_orcid, coalesce(c.lost_institution, 0) lost_institution, coalesce(c.lost_institution_country, 0) lost_institution_country, coalesce(c.lost_institution_ids, 0) lost_institution_ids, coalesce(c.lost_co_lead, 0) lost_co_lead, coalesce(c.lost_investigators, 0) lost_investigators, coalesce(c.lost_landing_page_url, 0) lost_landing_page_url, coalesce(c.lost_doi, 0) lost_doi
  FROM s LEFT JOIN c ON c._source = s.source LEFT JOIN prev p ON p.provenance = s.source
  LEFT JOIN retained r ON r.provenance = s.source LEFT JOIN dup_prev dp ON dp.provenance = s.source
+ LEFT JOIN moved mv ON mv.provenance = s.source
+),
+-- The content gate, for a source that reads the newest object of its prefix (not frozen) and has rows in raw: the file is
+-- held when a field's fill on the rows it shares with raw drops more than 5 points, or when leads or institutions
+-- change on more than 2% of them, or awards move funder on more than 2% of raw's rows.
+g AS (
+ SELECT m.*, concat_ws('; ',
+ IF(gated AND rows_prev > 0 AND lead_changed * 100 > matched * 2, format_string('leads changed on %.1f%% of rows', 100 * try_divide(lead_changed, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND institution_changed * 100 > matched * 2, format_string('institutions changed on %.1f%% of rows', 100 * try_divide(institution_changed, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND moved * 100 > rows_prev * 2, format_string('funder changed on %.1f%% of rows', 100 * try_divide(moved, rows_prev)), NULL),
+ IF(gated AND rows_prev > 0 AND matched * 100 < rows_prev * row_floor_pct, format_string('only %d of %d rows in raw are in the file', matched, rows_prev), NULL),
+ IF(gated AND rows_prev > 0 AND lost_title * 100 > matched * 5, format_string('title fill -%.1f points', 100 * try_divide(lost_title, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_description * 100 > matched * 5, format_string('description fill -%.1f points', 100 * try_divide(lost_description, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_amount * 100 > matched * 5, format_string('amount fill -%.1f points', 100 * try_divide(lost_amount, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_currency * 100 > matched * 5, format_string('currency fill -%.1f points', 100 * try_divide(lost_currency, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_funding_type * 100 > matched * 5, format_string('funding_type fill -%.1f points', 100 * try_divide(lost_funding_type, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_scheme * 100 > matched * 5, format_string('scheme fill -%.1f points', 100 * try_divide(lost_scheme, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_start_date * 100 > matched * 5, format_string('start_date fill -%.1f points', 100 * try_divide(lost_start_date, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_end_date * 100 > matched * 5, format_string('end_date fill -%.1f points', 100 * try_divide(lost_end_date, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_start_year * 100 > matched * 5, format_string('start_year fill -%.1f points', 100 * try_divide(lost_start_year, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_end_year * 100 > matched * 5, format_string('end_year fill -%.1f points', 100 * try_divide(lost_end_year, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead * 100 > matched * 5, format_string('lead fill -%.1f points', 100 * try_divide(lost_lead, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead_given_name * 100 > matched * 5, format_string('lead_given_name fill -%.1f points', 100 * try_divide(lost_lead_given_name, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead_orcid * 100 > matched * 5, format_string('lead_orcid fill -%.1f points', 100 * try_divide(lost_lead_orcid, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution * 100 > matched * 5, format_string('institution fill -%.1f points', 100 * try_divide(lost_institution, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution_country * 100 > matched * 5, format_string('institution_country fill -%.1f points', 100 * try_divide(lost_institution_country, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution_ids * 100 > matched * 5, format_string('institution_ids fill -%.1f points', 100 * try_divide(lost_institution_ids, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_co_lead * 100 > matched * 5, format_string('co_lead fill -%.1f points', 100 * try_divide(lost_co_lead, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_investigators * 100 > matched * 5, format_string('investigators fill -%.1f points', 100 * try_divide(lost_investigators, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_landing_page_url * 100 > matched * 5, format_string('landing_page_url fill -%.1f points', 100 * try_divide(lost_landing_page_url, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_doi * 100 > matched * 5, format_string('doi fill -%.1f points', 100 * try_divide(lost_doi, matched)), NULL)) gate_reason
+ FROM m
+),
+v AS (
+ SELECT g.*, concat_ws('; ',
+ IF(rows_in * 100 < rows_prev * row_floor_pct, format_string('%d rows < %d%% of %d', rows_in, row_floor_pct, rows_prev), NULL),
+ IF(duplicate_keys > 0, format_string('%d duplicate keys', duplicate_keys), NULL),
+ IF(invalid_rows > 0, format_string('%d invalid rows', invalid_rows), NULL),
+ IF(object IS NULL, 'no object', NULL),
+ nullif(gate_reason, '')) reason
+ FROM g
 )
 SELECT transform(array_sort(collect_list(named_struct('ord', ord, 'r', named_struct('source', source, 'object', object, 'baseline_version', session.awards_version,
  'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
  'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
- 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL THEN 'skipped' ELSE 'written' END)))), x -> x.r)
-FROM m));
+ 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL OR gate_reason <> '' THEN 'skipped' ELSE 'written' END,
+ 'reason', nullif(reason, ''))))), x -> x.r)
+FROM v));
 
 -- COMMAND ----------
 
@@ -22879,7 +22950,32 @@ compared AS (
         AND (rtrim(i.landing_page_url) <=> rtrim(b.landing_page_url))
         AND (rtrim(i.doi) <=> rtrim(b.doi))
         AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
-        AND (i.priority <=> b.priority) AS _unchanged
+        AND (i.priority <=> b.priority) AS _unchanged,
+        CASE WHEN b.funder_id IS NULL THEN NULL ELSE array(
+         CAST((nullif(trim(i.lead_investigator.family_name), '') IS NOT NULL AND nullif(trim(b.lead_investigator.family_name), '') IS NOT NULL
+         AND NOT (rtrim(i.lead_investigator.family_name) <=> rtrim(b.lead_investigator.family_name))) AS INT),
+         CAST((nullif(trim(i.lead_investigator.affiliation.name), '') IS NOT NULL AND nullif(trim(b.lead_investigator.affiliation.name), '') IS NOT NULL
+         AND NOT (rtrim(i.lead_investigator.affiliation.name) <=> rtrim(b.lead_investigator.affiliation.name))) AS INT),
+         CAST(nullif(trim(b.display_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.display_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.description), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.description), '') IS NOT NULL AS INT),
+         CAST(b.amount IS NOT NULL AS INT) - CAST(i.amount IS NOT NULL AS INT),
+         CAST(nullif(trim(b.currency), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.currency), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.funding_type), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.funding_type), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.funder_scheme), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.funder_scheme), '') IS NOT NULL AS INT),
+         CAST(b.start_date IS NOT NULL AS INT) - CAST(i.start_date IS NOT NULL AS INT),
+         CAST(b.end_date IS NOT NULL AS INT) - CAST(i.end_date IS NOT NULL AS INT),
+         CAST(b.start_year IS NOT NULL AS INT) - CAST(i.start_year IS NOT NULL AS INT),
+         CAST(b.end_year IS NOT NULL AS INT) - CAST(i.end_year IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.family_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.family_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.given_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.given_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.orcid), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.orcid), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.affiliation.name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.affiliation.name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.affiliation.country), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.affiliation.country), '') IS NOT NULL AS INT),
+         CAST(coalesce(size(b.lead_investigator.affiliation.ids) > 0, false) AS INT) - CAST(coalesce(size(i.lead_investigator.affiliation.ids) > 0, false) AS INT),
+         CAST(nullif(trim(b.co_lead_investigator.family_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.co_lead_investigator.family_name), '') IS NOT NULL AS INT),
+         CAST(coalesce(size(b.investigators) > 0, false) AS INT) - CAST(coalesce(size(i.investigators) > 0, false) AS INT),
+         CAST(nullif(trim(b.landing_page_url), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.landing_page_url), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.doi), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.doi), '') IS NOT NULL AS INT)) END AS _gate
     FROM awards_incoming i LEFT JOIN baseline b
       ON b.provenance = i._source AND b.priority = i.priority
      AND i.funder_id <=> b.funder_id
@@ -22911,7 +23007,8 @@ SELECT
     CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date,
     CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date ELSE updated_date END AS updated_date,
     CASE WHEN _exists AND _unchanged THEN baseline_row.priority ELSE priority END AS priority,
-    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change
+    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change,
+    _gate
 FROM compared;
 
 -- COMMAND ----------
@@ -22925,28 +23022,77 @@ k AS (
  SELECT _source, funder_id, lower(funder_award_id) award_key, count(*) n,
  count_if(_change = 'new') new, count_if(_change = 'changed') changed, count_if(_change = 'unchanged') unchanged,
  count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
- OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows
+ OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows,
+ sum(_gate[0]) lead_changed, sum(_gate[1]) institution_changed, sum(_gate[2]) lost_title, sum(_gate[3]) lost_description, sum(_gate[4]) lost_amount, sum(_gate[5]) lost_currency, sum(_gate[6]) lost_funding_type, sum(_gate[7]) lost_scheme, sum(_gate[8]) lost_start_date, sum(_gate[9]) lost_end_date, sum(_gate[10]) lost_start_year, sum(_gate[11]) lost_end_year, sum(_gate[12]) lost_lead, sum(_gate[13]) lost_lead_given_name, sum(_gate[14]) lost_lead_orcid, sum(_gate[15]) lost_institution, sum(_gate[16]) lost_institution_country, sum(_gate[17]) lost_institution_ids, sum(_gate[18]) lost_co_lead, sum(_gate[19]) lost_investigators, sum(_gate[20]) lost_landing_page_url, sum(_gate[21]) lost_doi
  FROM awards_candidate_2 JOIN s ON s.source = _source GROUP BY _source, funder_id, lower(funder_award_id)
 ),
 c AS (SELECT _source, sum(n) rows_in, sum(new) new, sum(changed) changed, sum(unchanged) unchanged,
- sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in FROM k GROUP BY _source),
+ sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in,
+ sum(lead_changed) lead_changed, sum(institution_changed) institution_changed, sum(lost_title) lost_title, sum(lost_description) lost_description, sum(lost_amount) lost_amount, sum(lost_currency) lost_currency, sum(lost_funding_type) lost_funding_type, sum(lost_scheme) lost_scheme, sum(lost_start_date) lost_start_date, sum(lost_end_date) lost_end_date, sum(lost_start_year) lost_start_year, sum(lost_end_year) lost_end_year, sum(lost_lead) lost_lead, sum(lost_lead_given_name) lost_lead_given_name, sum(lost_lead_orcid) lost_lead_orcid, sum(lost_institution) lost_institution, sum(lost_institution_country) lost_institution_country, sum(lost_institution_ids) lost_institution_ids, sum(lost_co_lead) lost_co_lead, sum(lost_investigators) lost_investigators, sum(lost_landing_page_url) lost_landing_page_url, sum(lost_doi) lost_doi FROM k GROUP BY _source),
 prev AS (SELECT provenance, count(*) rows_prev FROM bl GROUP BY provenance),
-retained AS (SELECT b.provenance, count(*) retained FROM bl b LEFT ANTI JOIN k
- ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key GROUP BY b.provenance),
+gone AS (SELECT b.provenance, b.funder_id, lower(b.funder_award_id) award_key FROM bl b LEFT ANTI JOIN k
+ ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key),
+retained AS (SELECT provenance, count(*) retained FROM gone GROUP BY provenance),
+-- a funder change: a key gone from the file whose award id the file now has under another funder
+moved AS (SELECT g.provenance, count(DISTINCT g.funder_id, g.award_key) moved FROM gone g
+ JOIN k ON k._source = g.provenance AND k.award_key = g.award_key AND k.new > 0 GROUP BY g.provenance),
 dup_prev AS (SELECT provenance, count(*) n FROM (SELECT provenance, funder_id, lower(funder_award_id) FROM bl GROUP BY ALL HAVING count(*) > 1) GROUP BY provenance),
 m AS (
- SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct,
+ SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct, s.fetch_cadence <> 'frozen' gated,
  coalesce(c.rows_in, 0) rows_in, coalesce(p.rows_prev, 0) rows_prev, coalesce(c.new, 0) new, coalesce(c.changed, 0) changed,
  coalesce(c.unchanged, 0) unchanged, coalesce(r.retained, 0) retained, coalesce(c.dup_in, 0) + coalesce(dp.n, 0) duplicate_keys,
- coalesce(c.invalid_rows, 0) invalid_rows
+ coalesce(c.invalid_rows, 0) invalid_rows, coalesce(c.changed, 0) + coalesce(c.unchanged, 0) matched, coalesce(mv.moved, 0) moved,
+ coalesce(c.lead_changed, 0) lead_changed, coalesce(c.institution_changed, 0) institution_changed, coalesce(c.lost_title, 0) lost_title, coalesce(c.lost_description, 0) lost_description, coalesce(c.lost_amount, 0) lost_amount, coalesce(c.lost_currency, 0) lost_currency, coalesce(c.lost_funding_type, 0) lost_funding_type, coalesce(c.lost_scheme, 0) lost_scheme, coalesce(c.lost_start_date, 0) lost_start_date, coalesce(c.lost_end_date, 0) lost_end_date, coalesce(c.lost_start_year, 0) lost_start_year, coalesce(c.lost_end_year, 0) lost_end_year, coalesce(c.lost_lead, 0) lost_lead, coalesce(c.lost_lead_given_name, 0) lost_lead_given_name, coalesce(c.lost_lead_orcid, 0) lost_lead_orcid, coalesce(c.lost_institution, 0) lost_institution, coalesce(c.lost_institution_country, 0) lost_institution_country, coalesce(c.lost_institution_ids, 0) lost_institution_ids, coalesce(c.lost_co_lead, 0) lost_co_lead, coalesce(c.lost_investigators, 0) lost_investigators, coalesce(c.lost_landing_page_url, 0) lost_landing_page_url, coalesce(c.lost_doi, 0) lost_doi
  FROM s LEFT JOIN c ON c._source = s.source LEFT JOIN prev p ON p.provenance = s.source
  LEFT JOIN retained r ON r.provenance = s.source LEFT JOIN dup_prev dp ON dp.provenance = s.source
+ LEFT JOIN moved mv ON mv.provenance = s.source
+),
+-- The content gate, for a source that reads the newest object of its prefix (not frozen) and has rows in raw: the file is
+-- held when a field's fill on the rows it shares with raw drops more than 5 points, or when leads or institutions
+-- change on more than 2% of them, or awards move funder on more than 2% of raw's rows.
+g AS (
+ SELECT m.*, concat_ws('; ',
+ IF(gated AND rows_prev > 0 AND lead_changed * 100 > matched * 2, format_string('leads changed on %.1f%% of rows', 100 * try_divide(lead_changed, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND institution_changed * 100 > matched * 2, format_string('institutions changed on %.1f%% of rows', 100 * try_divide(institution_changed, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND moved * 100 > rows_prev * 2, format_string('funder changed on %.1f%% of rows', 100 * try_divide(moved, rows_prev)), NULL),
+ IF(gated AND rows_prev > 0 AND matched * 100 < rows_prev * row_floor_pct, format_string('only %d of %d rows in raw are in the file', matched, rows_prev), NULL),
+ IF(gated AND rows_prev > 0 AND lost_title * 100 > matched * 5, format_string('title fill -%.1f points', 100 * try_divide(lost_title, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_description * 100 > matched * 5, format_string('description fill -%.1f points', 100 * try_divide(lost_description, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_amount * 100 > matched * 5, format_string('amount fill -%.1f points', 100 * try_divide(lost_amount, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_currency * 100 > matched * 5, format_string('currency fill -%.1f points', 100 * try_divide(lost_currency, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_funding_type * 100 > matched * 5, format_string('funding_type fill -%.1f points', 100 * try_divide(lost_funding_type, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_scheme * 100 > matched * 5, format_string('scheme fill -%.1f points', 100 * try_divide(lost_scheme, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_start_date * 100 > matched * 5, format_string('start_date fill -%.1f points', 100 * try_divide(lost_start_date, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_end_date * 100 > matched * 5, format_string('end_date fill -%.1f points', 100 * try_divide(lost_end_date, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_start_year * 100 > matched * 5, format_string('start_year fill -%.1f points', 100 * try_divide(lost_start_year, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_end_year * 100 > matched * 5, format_string('end_year fill -%.1f points', 100 * try_divide(lost_end_year, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead * 100 > matched * 5, format_string('lead fill -%.1f points', 100 * try_divide(lost_lead, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead_given_name * 100 > matched * 5, format_string('lead_given_name fill -%.1f points', 100 * try_divide(lost_lead_given_name, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead_orcid * 100 > matched * 5, format_string('lead_orcid fill -%.1f points', 100 * try_divide(lost_lead_orcid, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution * 100 > matched * 5, format_string('institution fill -%.1f points', 100 * try_divide(lost_institution, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution_country * 100 > matched * 5, format_string('institution_country fill -%.1f points', 100 * try_divide(lost_institution_country, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution_ids * 100 > matched * 5, format_string('institution_ids fill -%.1f points', 100 * try_divide(lost_institution_ids, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_co_lead * 100 > matched * 5, format_string('co_lead fill -%.1f points', 100 * try_divide(lost_co_lead, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_investigators * 100 > matched * 5, format_string('investigators fill -%.1f points', 100 * try_divide(lost_investigators, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_landing_page_url * 100 > matched * 5, format_string('landing_page_url fill -%.1f points', 100 * try_divide(lost_landing_page_url, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_doi * 100 > matched * 5, format_string('doi fill -%.1f points', 100 * try_divide(lost_doi, matched)), NULL)) gate_reason
+ FROM m
+),
+v AS (
+ SELECT g.*, concat_ws('; ',
+ IF(rows_in * 100 < rows_prev * row_floor_pct, format_string('%d rows < %d%% of %d', rows_in, row_floor_pct, rows_prev), NULL),
+ IF(duplicate_keys > 0, format_string('%d duplicate keys', duplicate_keys), NULL),
+ IF(invalid_rows > 0, format_string('%d invalid rows', invalid_rows), NULL),
+ IF(object IS NULL, 'no object', NULL),
+ nullif(gate_reason, '')) reason
+ FROM g
 )
 SELECT transform(array_sort(collect_list(named_struct('ord', ord, 'r', named_struct('source', source, 'object', object, 'baseline_version', session.awards_version,
  'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
  'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
- 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL THEN 'skipped' ELSE 'written' END)))), x -> x.r)
-FROM m));
+ 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL OR gate_reason <> '' THEN 'skipped' ELSE 'written' END,
+ 'reason', nullif(reason, ''))))), x -> x.r)
+FROM v));
 
 -- COMMAND ----------
 
@@ -34083,7 +34229,32 @@ compared AS (
         AND (rtrim(i.landing_page_url) <=> rtrim(b.landing_page_url))
         AND (rtrim(i.doi) <=> rtrim(b.doi))
         AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
-        AND (i.priority <=> b.priority) AS _unchanged
+        AND (i.priority <=> b.priority) AS _unchanged,
+        CASE WHEN b.funder_id IS NULL THEN NULL ELSE array(
+         CAST((nullif(trim(i.lead_investigator.family_name), '') IS NOT NULL AND nullif(trim(b.lead_investigator.family_name), '') IS NOT NULL
+         AND NOT (rtrim(i.lead_investigator.family_name) <=> rtrim(b.lead_investigator.family_name))) AS INT),
+         CAST((nullif(trim(i.lead_investigator.affiliation.name), '') IS NOT NULL AND nullif(trim(b.lead_investigator.affiliation.name), '') IS NOT NULL
+         AND NOT (rtrim(i.lead_investigator.affiliation.name) <=> rtrim(b.lead_investigator.affiliation.name))) AS INT),
+         CAST(nullif(trim(b.display_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.display_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.description), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.description), '') IS NOT NULL AS INT),
+         CAST(b.amount IS NOT NULL AS INT) - CAST(i.amount IS NOT NULL AS INT),
+         CAST(nullif(trim(b.currency), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.currency), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.funding_type), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.funding_type), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.funder_scheme), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.funder_scheme), '') IS NOT NULL AS INT),
+         CAST(b.start_date IS NOT NULL AS INT) - CAST(i.start_date IS NOT NULL AS INT),
+         CAST(b.end_date IS NOT NULL AS INT) - CAST(i.end_date IS NOT NULL AS INT),
+         CAST(b.start_year IS NOT NULL AS INT) - CAST(i.start_year IS NOT NULL AS INT),
+         CAST(b.end_year IS NOT NULL AS INT) - CAST(i.end_year IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.family_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.family_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.given_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.given_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.orcid), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.orcid), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.affiliation.name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.affiliation.name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.affiliation.country), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.affiliation.country), '') IS NOT NULL AS INT),
+         CAST(coalesce(size(b.lead_investigator.affiliation.ids) > 0, false) AS INT) - CAST(coalesce(size(i.lead_investigator.affiliation.ids) > 0, false) AS INT),
+         CAST(nullif(trim(b.co_lead_investigator.family_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.co_lead_investigator.family_name), '') IS NOT NULL AS INT),
+         CAST(coalesce(size(b.investigators) > 0, false) AS INT) - CAST(coalesce(size(i.investigators) > 0, false) AS INT),
+         CAST(nullif(trim(b.landing_page_url), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.landing_page_url), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.doi), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.doi), '') IS NOT NULL AS INT)) END AS _gate
     FROM awards_incoming i LEFT JOIN baseline b
       ON b.provenance = i._source AND b.priority = i.priority
      AND i.funder_id <=> b.funder_id
@@ -34115,7 +34286,8 @@ SELECT
     CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date,
     CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date ELSE updated_date END AS updated_date,
     CASE WHEN _exists AND _unchanged THEN baseline_row.priority ELSE priority END AS priority,
-    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change
+    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change,
+    _gate
 FROM compared;
 
 -- COMMAND ----------
@@ -34129,28 +34301,77 @@ k AS (
  SELECT _source, funder_id, lower(funder_award_id) award_key, count(*) n,
  count_if(_change = 'new') new, count_if(_change = 'changed') changed, count_if(_change = 'unchanged') unchanged,
  count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
- OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows
+ OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows,
+ sum(_gate[0]) lead_changed, sum(_gate[1]) institution_changed, sum(_gate[2]) lost_title, sum(_gate[3]) lost_description, sum(_gate[4]) lost_amount, sum(_gate[5]) lost_currency, sum(_gate[6]) lost_funding_type, sum(_gate[7]) lost_scheme, sum(_gate[8]) lost_start_date, sum(_gate[9]) lost_end_date, sum(_gate[10]) lost_start_year, sum(_gate[11]) lost_end_year, sum(_gate[12]) lost_lead, sum(_gate[13]) lost_lead_given_name, sum(_gate[14]) lost_lead_orcid, sum(_gate[15]) lost_institution, sum(_gate[16]) lost_institution_country, sum(_gate[17]) lost_institution_ids, sum(_gate[18]) lost_co_lead, sum(_gate[19]) lost_investigators, sum(_gate[20]) lost_landing_page_url, sum(_gate[21]) lost_doi
  FROM awards_candidate_3 JOIN s ON s.source = _source GROUP BY _source, funder_id, lower(funder_award_id)
 ),
 c AS (SELECT _source, sum(n) rows_in, sum(new) new, sum(changed) changed, sum(unchanged) unchanged,
- sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in FROM k GROUP BY _source),
+ sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in,
+ sum(lead_changed) lead_changed, sum(institution_changed) institution_changed, sum(lost_title) lost_title, sum(lost_description) lost_description, sum(lost_amount) lost_amount, sum(lost_currency) lost_currency, sum(lost_funding_type) lost_funding_type, sum(lost_scheme) lost_scheme, sum(lost_start_date) lost_start_date, sum(lost_end_date) lost_end_date, sum(lost_start_year) lost_start_year, sum(lost_end_year) lost_end_year, sum(lost_lead) lost_lead, sum(lost_lead_given_name) lost_lead_given_name, sum(lost_lead_orcid) lost_lead_orcid, sum(lost_institution) lost_institution, sum(lost_institution_country) lost_institution_country, sum(lost_institution_ids) lost_institution_ids, sum(lost_co_lead) lost_co_lead, sum(lost_investigators) lost_investigators, sum(lost_landing_page_url) lost_landing_page_url, sum(lost_doi) lost_doi FROM k GROUP BY _source),
 prev AS (SELECT provenance, count(*) rows_prev FROM bl GROUP BY provenance),
-retained AS (SELECT b.provenance, count(*) retained FROM bl b LEFT ANTI JOIN k
- ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key GROUP BY b.provenance),
+gone AS (SELECT b.provenance, b.funder_id, lower(b.funder_award_id) award_key FROM bl b LEFT ANTI JOIN k
+ ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key),
+retained AS (SELECT provenance, count(*) retained FROM gone GROUP BY provenance),
+-- a funder change: a key gone from the file whose award id the file now has under another funder
+moved AS (SELECT g.provenance, count(DISTINCT g.funder_id, g.award_key) moved FROM gone g
+ JOIN k ON k._source = g.provenance AND k.award_key = g.award_key AND k.new > 0 GROUP BY g.provenance),
 dup_prev AS (SELECT provenance, count(*) n FROM (SELECT provenance, funder_id, lower(funder_award_id) FROM bl GROUP BY ALL HAVING count(*) > 1) GROUP BY provenance),
 m AS (
- SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct,
+ SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct, s.fetch_cadence <> 'frozen' gated,
  coalesce(c.rows_in, 0) rows_in, coalesce(p.rows_prev, 0) rows_prev, coalesce(c.new, 0) new, coalesce(c.changed, 0) changed,
  coalesce(c.unchanged, 0) unchanged, coalesce(r.retained, 0) retained, coalesce(c.dup_in, 0) + coalesce(dp.n, 0) duplicate_keys,
- coalesce(c.invalid_rows, 0) invalid_rows
+ coalesce(c.invalid_rows, 0) invalid_rows, coalesce(c.changed, 0) + coalesce(c.unchanged, 0) matched, coalesce(mv.moved, 0) moved,
+ coalesce(c.lead_changed, 0) lead_changed, coalesce(c.institution_changed, 0) institution_changed, coalesce(c.lost_title, 0) lost_title, coalesce(c.lost_description, 0) lost_description, coalesce(c.lost_amount, 0) lost_amount, coalesce(c.lost_currency, 0) lost_currency, coalesce(c.lost_funding_type, 0) lost_funding_type, coalesce(c.lost_scheme, 0) lost_scheme, coalesce(c.lost_start_date, 0) lost_start_date, coalesce(c.lost_end_date, 0) lost_end_date, coalesce(c.lost_start_year, 0) lost_start_year, coalesce(c.lost_end_year, 0) lost_end_year, coalesce(c.lost_lead, 0) lost_lead, coalesce(c.lost_lead_given_name, 0) lost_lead_given_name, coalesce(c.lost_lead_orcid, 0) lost_lead_orcid, coalesce(c.lost_institution, 0) lost_institution, coalesce(c.lost_institution_country, 0) lost_institution_country, coalesce(c.lost_institution_ids, 0) lost_institution_ids, coalesce(c.lost_co_lead, 0) lost_co_lead, coalesce(c.lost_investigators, 0) lost_investigators, coalesce(c.lost_landing_page_url, 0) lost_landing_page_url, coalesce(c.lost_doi, 0) lost_doi
  FROM s LEFT JOIN c ON c._source = s.source LEFT JOIN prev p ON p.provenance = s.source
  LEFT JOIN retained r ON r.provenance = s.source LEFT JOIN dup_prev dp ON dp.provenance = s.source
+ LEFT JOIN moved mv ON mv.provenance = s.source
+),
+-- The content gate, for a source that reads the newest object of its prefix (not frozen) and has rows in raw: the file is
+-- held when a field's fill on the rows it shares with raw drops more than 5 points, or when leads or institutions
+-- change on more than 2% of them, or awards move funder on more than 2% of raw's rows.
+g AS (
+ SELECT m.*, concat_ws('; ',
+ IF(gated AND rows_prev > 0 AND lead_changed * 100 > matched * 2, format_string('leads changed on %.1f%% of rows', 100 * try_divide(lead_changed, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND institution_changed * 100 > matched * 2, format_string('institutions changed on %.1f%% of rows', 100 * try_divide(institution_changed, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND moved * 100 > rows_prev * 2, format_string('funder changed on %.1f%% of rows', 100 * try_divide(moved, rows_prev)), NULL),
+ IF(gated AND rows_prev > 0 AND matched * 100 < rows_prev * row_floor_pct, format_string('only %d of %d rows in raw are in the file', matched, rows_prev), NULL),
+ IF(gated AND rows_prev > 0 AND lost_title * 100 > matched * 5, format_string('title fill -%.1f points', 100 * try_divide(lost_title, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_description * 100 > matched * 5, format_string('description fill -%.1f points', 100 * try_divide(lost_description, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_amount * 100 > matched * 5, format_string('amount fill -%.1f points', 100 * try_divide(lost_amount, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_currency * 100 > matched * 5, format_string('currency fill -%.1f points', 100 * try_divide(lost_currency, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_funding_type * 100 > matched * 5, format_string('funding_type fill -%.1f points', 100 * try_divide(lost_funding_type, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_scheme * 100 > matched * 5, format_string('scheme fill -%.1f points', 100 * try_divide(lost_scheme, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_start_date * 100 > matched * 5, format_string('start_date fill -%.1f points', 100 * try_divide(lost_start_date, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_end_date * 100 > matched * 5, format_string('end_date fill -%.1f points', 100 * try_divide(lost_end_date, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_start_year * 100 > matched * 5, format_string('start_year fill -%.1f points', 100 * try_divide(lost_start_year, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_end_year * 100 > matched * 5, format_string('end_year fill -%.1f points', 100 * try_divide(lost_end_year, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead * 100 > matched * 5, format_string('lead fill -%.1f points', 100 * try_divide(lost_lead, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead_given_name * 100 > matched * 5, format_string('lead_given_name fill -%.1f points', 100 * try_divide(lost_lead_given_name, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead_orcid * 100 > matched * 5, format_string('lead_orcid fill -%.1f points', 100 * try_divide(lost_lead_orcid, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution * 100 > matched * 5, format_string('institution fill -%.1f points', 100 * try_divide(lost_institution, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution_country * 100 > matched * 5, format_string('institution_country fill -%.1f points', 100 * try_divide(lost_institution_country, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution_ids * 100 > matched * 5, format_string('institution_ids fill -%.1f points', 100 * try_divide(lost_institution_ids, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_co_lead * 100 > matched * 5, format_string('co_lead fill -%.1f points', 100 * try_divide(lost_co_lead, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_investigators * 100 > matched * 5, format_string('investigators fill -%.1f points', 100 * try_divide(lost_investigators, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_landing_page_url * 100 > matched * 5, format_string('landing_page_url fill -%.1f points', 100 * try_divide(lost_landing_page_url, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_doi * 100 > matched * 5, format_string('doi fill -%.1f points', 100 * try_divide(lost_doi, matched)), NULL)) gate_reason
+ FROM m
+),
+v AS (
+ SELECT g.*, concat_ws('; ',
+ IF(rows_in * 100 < rows_prev * row_floor_pct, format_string('%d rows < %d%% of %d', rows_in, row_floor_pct, rows_prev), NULL),
+ IF(duplicate_keys > 0, format_string('%d duplicate keys', duplicate_keys), NULL),
+ IF(invalid_rows > 0, format_string('%d invalid rows', invalid_rows), NULL),
+ IF(object IS NULL, 'no object', NULL),
+ nullif(gate_reason, '')) reason
+ FROM g
 )
 SELECT transform(array_sort(collect_list(named_struct('ord', ord, 'r', named_struct('source', source, 'object', object, 'baseline_version', session.awards_version,
  'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
  'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
- 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL THEN 'skipped' ELSE 'written' END)))), x -> x.r)
-FROM m));
+ 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL OR gate_reason <> '' THEN 'skipped' ELSE 'written' END,
+ 'reason', nullif(reason, ''))))), x -> x.r)
+FROM v));
 
 -- COMMAND ----------
 
@@ -40579,21 +40800,17 @@ UNION ALL
 --   3. The lead's ORCID, and the project team as investigators (SciPROJ order, PI and repeats left out by the fetcher).
 -- The two switches below are the one-line on/off for the team. Research-unit members (refs UID, UIDB, UIDP, PEST, LA: a unit's strategic
 -- funding lists every researcher in the unit, ~403k people on 2,115 awards) stay off until Rohan decides.
--- Freshness: the fetcher runs weekly and names its object YYYY-MM-DD.parquet. If the pinned object is more than 10 days old the source
--- maps no rows, its row floor skips it and the Awards run fails at the end naming fct, after every other source is written.
--- fct: priority 385, weekly fetch cadence (descriptive).
+-- Freshness: none here. An object with no newer one after it is read again and matches raw, so nothing is written; a damaged new
+-- object is held by the Awards job's content gate (gen_awards_sql.py), and the previous rows stay served.
+-- fct: priority 385, frozen fetch cadence (descriptive).
 SELECT 'fct' AS _source, * FROM (
 WITH fct_input AS (
-    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/fct_sciproj/*.parquet', format => 'parquet'))
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/fct_sciproj/2026-11-06.parquet', format => 'parquet'))
     WHERE _file_path = try_element_at(session.awards_objects, 'fct')
 ),
 fct_switches AS (
     SELECT true AS serve_project_team,
            false AS serve_unit_members
-),
-fct_fresh AS (
-    SELECT coalesce(datediff(to_date(session.awards_timestamp),
-        try_to_date(regexp_extract(try_element_at(session.awards_objects, 'fct'), '([0-9]{4}-[0-9]{2}-[0-9]{2})[.]parquet$', 1), 'yyyy-MM-dd')) <= 10, true) AS fresh
 ),
 fndr AS (
     SELECT k.funder_key, k.label, CAST(f.funder_id AS BIGINT) as funder_id, f.display_name, f.ror_id, f.doi
@@ -40608,9 +40825,7 @@ filtered AS (
         filter(from_json(g.team_json, 'ARRAY<STRUCT<person_id:STRING, name:STRING, given:STRING, family:STRING, orcid:STRING, ciencia_id:STRING>>'),
                p -> p.family IS NOT NULL) AS team
     FROM fct_input g
-    CROSS JOIN fct_fresh fr
-    WHERE fr.fresh
-      AND g.funder_award_id IS NOT NULL
+    WHERE g.funder_award_id IS NOT NULL
       AND NOT (COALESCE(g.funder_key, 'fct') = 'ec' AND COALESCE(g.scheme, '') NOT IN ('FP1', 'FP2', 'FP3', 'FP4', 'FP5', 'FP6'))
 ),
 awards_transformed AS (
@@ -40986,7 +41201,32 @@ compared AS (
         AND (rtrim(i.landing_page_url) <=> rtrim(b.landing_page_url))
         AND (rtrim(i.doi) <=> rtrim(b.doi))
         AND (rtrim(i.works_api_url) <=> rtrim(b.works_api_url))
-        AND (i.priority <=> b.priority) AS _unchanged
+        AND (i.priority <=> b.priority) AS _unchanged,
+        CASE WHEN b.funder_id IS NULL THEN NULL ELSE array(
+         CAST((nullif(trim(i.lead_investigator.family_name), '') IS NOT NULL AND nullif(trim(b.lead_investigator.family_name), '') IS NOT NULL
+         AND NOT (rtrim(i.lead_investigator.family_name) <=> rtrim(b.lead_investigator.family_name))) AS INT),
+         CAST((nullif(trim(i.lead_investigator.affiliation.name), '') IS NOT NULL AND nullif(trim(b.lead_investigator.affiliation.name), '') IS NOT NULL
+         AND NOT (rtrim(i.lead_investigator.affiliation.name) <=> rtrim(b.lead_investigator.affiliation.name))) AS INT),
+         CAST(nullif(trim(b.display_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.display_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.description), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.description), '') IS NOT NULL AS INT),
+         CAST(b.amount IS NOT NULL AS INT) - CAST(i.amount IS NOT NULL AS INT),
+         CAST(nullif(trim(b.currency), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.currency), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.funding_type), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.funding_type), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.funder_scheme), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.funder_scheme), '') IS NOT NULL AS INT),
+         CAST(b.start_date IS NOT NULL AS INT) - CAST(i.start_date IS NOT NULL AS INT),
+         CAST(b.end_date IS NOT NULL AS INT) - CAST(i.end_date IS NOT NULL AS INT),
+         CAST(b.start_year IS NOT NULL AS INT) - CAST(i.start_year IS NOT NULL AS INT),
+         CAST(b.end_year IS NOT NULL AS INT) - CAST(i.end_year IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.family_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.family_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.given_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.given_name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.orcid), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.orcid), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.affiliation.name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.affiliation.name), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.lead_investigator.affiliation.country), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.lead_investigator.affiliation.country), '') IS NOT NULL AS INT),
+         CAST(coalesce(size(b.lead_investigator.affiliation.ids) > 0, false) AS INT) - CAST(coalesce(size(i.lead_investigator.affiliation.ids) > 0, false) AS INT),
+         CAST(nullif(trim(b.co_lead_investigator.family_name), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.co_lead_investigator.family_name), '') IS NOT NULL AS INT),
+         CAST(coalesce(size(b.investigators) > 0, false) AS INT) - CAST(coalesce(size(i.investigators) > 0, false) AS INT),
+         CAST(nullif(trim(b.landing_page_url), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.landing_page_url), '') IS NOT NULL AS INT),
+         CAST(nullif(trim(b.doi), '') IS NOT NULL AS INT) - CAST(nullif(trim(i.doi), '') IS NOT NULL AS INT)) END AS _gate
     FROM awards_incoming i LEFT JOIN baseline b
       ON b.provenance = i._source AND b.priority = i.priority
      AND i.funder_id <=> b.funder_id
@@ -41018,7 +41258,8 @@ SELECT
     CASE WHEN _exists THEN baseline_row.created_date ELSE created_date END AS created_date,
     CASE WHEN _exists AND _unchanged THEN baseline_row.updated_date ELSE updated_date END AS updated_date,
     CASE WHEN _exists AND _unchanged THEN baseline_row.priority ELSE priority END AS priority,
-    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change
+    CASE WHEN NOT _exists THEN 'new' WHEN _unchanged THEN 'unchanged' ELSE 'changed' END AS _change,
+    _gate
 FROM compared;
 
 -- COMMAND ----------
@@ -41032,28 +41273,77 @@ k AS (
  SELECT _source, funder_id, lower(funder_award_id) award_key, count(*) n,
  count_if(_change = 'new') new, count_if(_change = 'changed') changed, count_if(_change = 'unchanged') unchanged,
  count_if(funder_id IS NULL OR funder_award_id IS NULL OR trim(funder_award_id) = ''
- OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows
+ OR NOT (provenance <=> _source) OR NOT (priority <=> s.source_priority) OR NOT array_contains(s.funder_ids, funder_id)) invalid_rows,
+ sum(_gate[0]) lead_changed, sum(_gate[1]) institution_changed, sum(_gate[2]) lost_title, sum(_gate[3]) lost_description, sum(_gate[4]) lost_amount, sum(_gate[5]) lost_currency, sum(_gate[6]) lost_funding_type, sum(_gate[7]) lost_scheme, sum(_gate[8]) lost_start_date, sum(_gate[9]) lost_end_date, sum(_gate[10]) lost_start_year, sum(_gate[11]) lost_end_year, sum(_gate[12]) lost_lead, sum(_gate[13]) lost_lead_given_name, sum(_gate[14]) lost_lead_orcid, sum(_gate[15]) lost_institution, sum(_gate[16]) lost_institution_country, sum(_gate[17]) lost_institution_ids, sum(_gate[18]) lost_co_lead, sum(_gate[19]) lost_investigators, sum(_gate[20]) lost_landing_page_url, sum(_gate[21]) lost_doi
  FROM awards_candidate_4 JOIN s ON s.source = _source GROUP BY _source, funder_id, lower(funder_award_id)
 ),
 c AS (SELECT _source, sum(n) rows_in, sum(new) new, sum(changed) changed, sum(unchanged) unchanged,
- sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in FROM k GROUP BY _source),
+ sum(invalid_rows) invalid_rows, count_if(n > 1) dup_in,
+ sum(lead_changed) lead_changed, sum(institution_changed) institution_changed, sum(lost_title) lost_title, sum(lost_description) lost_description, sum(lost_amount) lost_amount, sum(lost_currency) lost_currency, sum(lost_funding_type) lost_funding_type, sum(lost_scheme) lost_scheme, sum(lost_start_date) lost_start_date, sum(lost_end_date) lost_end_date, sum(lost_start_year) lost_start_year, sum(lost_end_year) lost_end_year, sum(lost_lead) lost_lead, sum(lost_lead_given_name) lost_lead_given_name, sum(lost_lead_orcid) lost_lead_orcid, sum(lost_institution) lost_institution, sum(lost_institution_country) lost_institution_country, sum(lost_institution_ids) lost_institution_ids, sum(lost_co_lead) lost_co_lead, sum(lost_investigators) lost_investigators, sum(lost_landing_page_url) lost_landing_page_url, sum(lost_doi) lost_doi FROM k GROUP BY _source),
 prev AS (SELECT provenance, count(*) rows_prev FROM bl GROUP BY provenance),
-retained AS (SELECT b.provenance, count(*) retained FROM bl b LEFT ANTI JOIN k
- ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key GROUP BY b.provenance),
+gone AS (SELECT b.provenance, b.funder_id, lower(b.funder_award_id) award_key FROM bl b LEFT ANTI JOIN k
+ ON k._source = b.provenance AND b.funder_id = k.funder_id AND lower(b.funder_award_id) = k.award_key),
+retained AS (SELECT provenance, count(*) retained FROM gone GROUP BY provenance),
+-- a funder change: a key gone from the file whose award id the file now has under another funder
+moved AS (SELECT g.provenance, count(DISTINCT g.funder_id, g.award_key) moved FROM gone g
+ JOIN k ON k._source = g.provenance AND k.award_key = g.award_key AND k.new > 0 GROUP BY g.provenance),
 dup_prev AS (SELECT provenance, count(*) n FROM (SELECT provenance, funder_id, lower(funder_award_id) FROM bl GROUP BY ALL HAVING count(*) > 1) GROUP BY provenance),
 m AS (
- SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct,
+ SELECT s.ord, s.source, try_element_at(session.awards_objects, s.source) object, s.row_floor_pct, s.fetch_cadence <> 'frozen' gated,
  coalesce(c.rows_in, 0) rows_in, coalesce(p.rows_prev, 0) rows_prev, coalesce(c.new, 0) new, coalesce(c.changed, 0) changed,
  coalesce(c.unchanged, 0) unchanged, coalesce(r.retained, 0) retained, coalesce(c.dup_in, 0) + coalesce(dp.n, 0) duplicate_keys,
- coalesce(c.invalid_rows, 0) invalid_rows
+ coalesce(c.invalid_rows, 0) invalid_rows, coalesce(c.changed, 0) + coalesce(c.unchanged, 0) matched, coalesce(mv.moved, 0) moved,
+ coalesce(c.lead_changed, 0) lead_changed, coalesce(c.institution_changed, 0) institution_changed, coalesce(c.lost_title, 0) lost_title, coalesce(c.lost_description, 0) lost_description, coalesce(c.lost_amount, 0) lost_amount, coalesce(c.lost_currency, 0) lost_currency, coalesce(c.lost_funding_type, 0) lost_funding_type, coalesce(c.lost_scheme, 0) lost_scheme, coalesce(c.lost_start_date, 0) lost_start_date, coalesce(c.lost_end_date, 0) lost_end_date, coalesce(c.lost_start_year, 0) lost_start_year, coalesce(c.lost_end_year, 0) lost_end_year, coalesce(c.lost_lead, 0) lost_lead, coalesce(c.lost_lead_given_name, 0) lost_lead_given_name, coalesce(c.lost_lead_orcid, 0) lost_lead_orcid, coalesce(c.lost_institution, 0) lost_institution, coalesce(c.lost_institution_country, 0) lost_institution_country, coalesce(c.lost_institution_ids, 0) lost_institution_ids, coalesce(c.lost_co_lead, 0) lost_co_lead, coalesce(c.lost_investigators, 0) lost_investigators, coalesce(c.lost_landing_page_url, 0) lost_landing_page_url, coalesce(c.lost_doi, 0) lost_doi
  FROM s LEFT JOIN c ON c._source = s.source LEFT JOIN prev p ON p.provenance = s.source
  LEFT JOIN retained r ON r.provenance = s.source LEFT JOIN dup_prev dp ON dp.provenance = s.source
+ LEFT JOIN moved mv ON mv.provenance = s.source
+),
+-- The content gate, for a source that reads the newest object of its prefix (not frozen) and has rows in raw: the file is
+-- held when a field's fill on the rows it shares with raw drops more than 5 points, or when leads or institutions
+-- change on more than 2% of them, or awards move funder on more than 2% of raw's rows.
+g AS (
+ SELECT m.*, concat_ws('; ',
+ IF(gated AND rows_prev > 0 AND lead_changed * 100 > matched * 2, format_string('leads changed on %.1f%% of rows', 100 * try_divide(lead_changed, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND institution_changed * 100 > matched * 2, format_string('institutions changed on %.1f%% of rows', 100 * try_divide(institution_changed, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND moved * 100 > rows_prev * 2, format_string('funder changed on %.1f%% of rows', 100 * try_divide(moved, rows_prev)), NULL),
+ IF(gated AND rows_prev > 0 AND matched * 100 < rows_prev * row_floor_pct, format_string('only %d of %d rows in raw are in the file', matched, rows_prev), NULL),
+ IF(gated AND rows_prev > 0 AND lost_title * 100 > matched * 5, format_string('title fill -%.1f points', 100 * try_divide(lost_title, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_description * 100 > matched * 5, format_string('description fill -%.1f points', 100 * try_divide(lost_description, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_amount * 100 > matched * 5, format_string('amount fill -%.1f points', 100 * try_divide(lost_amount, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_currency * 100 > matched * 5, format_string('currency fill -%.1f points', 100 * try_divide(lost_currency, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_funding_type * 100 > matched * 5, format_string('funding_type fill -%.1f points', 100 * try_divide(lost_funding_type, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_scheme * 100 > matched * 5, format_string('scheme fill -%.1f points', 100 * try_divide(lost_scheme, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_start_date * 100 > matched * 5, format_string('start_date fill -%.1f points', 100 * try_divide(lost_start_date, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_end_date * 100 > matched * 5, format_string('end_date fill -%.1f points', 100 * try_divide(lost_end_date, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_start_year * 100 > matched * 5, format_string('start_year fill -%.1f points', 100 * try_divide(lost_start_year, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_end_year * 100 > matched * 5, format_string('end_year fill -%.1f points', 100 * try_divide(lost_end_year, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead * 100 > matched * 5, format_string('lead fill -%.1f points', 100 * try_divide(lost_lead, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead_given_name * 100 > matched * 5, format_string('lead_given_name fill -%.1f points', 100 * try_divide(lost_lead_given_name, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_lead_orcid * 100 > matched * 5, format_string('lead_orcid fill -%.1f points', 100 * try_divide(lost_lead_orcid, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution * 100 > matched * 5, format_string('institution fill -%.1f points', 100 * try_divide(lost_institution, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution_country * 100 > matched * 5, format_string('institution_country fill -%.1f points', 100 * try_divide(lost_institution_country, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_institution_ids * 100 > matched * 5, format_string('institution_ids fill -%.1f points', 100 * try_divide(lost_institution_ids, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_co_lead * 100 > matched * 5, format_string('co_lead fill -%.1f points', 100 * try_divide(lost_co_lead, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_investigators * 100 > matched * 5, format_string('investigators fill -%.1f points', 100 * try_divide(lost_investigators, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_landing_page_url * 100 > matched * 5, format_string('landing_page_url fill -%.1f points', 100 * try_divide(lost_landing_page_url, matched)), NULL),
+ IF(gated AND rows_prev > 0 AND lost_doi * 100 > matched * 5, format_string('doi fill -%.1f points', 100 * try_divide(lost_doi, matched)), NULL)) gate_reason
+ FROM m
+),
+v AS (
+ SELECT g.*, concat_ws('; ',
+ IF(rows_in * 100 < rows_prev * row_floor_pct, format_string('%d rows < %d%% of %d', rows_in, row_floor_pct, rows_prev), NULL),
+ IF(duplicate_keys > 0, format_string('%d duplicate keys', duplicate_keys), NULL),
+ IF(invalid_rows > 0, format_string('%d invalid rows', invalid_rows), NULL),
+ IF(object IS NULL, 'no object', NULL),
+ nullif(gate_reason, '')) reason
+ FROM g
 )
 SELECT transform(array_sort(collect_list(named_struct('ord', ord, 'r', named_struct('source', source, 'object', object, 'baseline_version', session.awards_version,
  'rows_in', rows_in, 'rows_prev', rows_prev, 'new', new, 'changed', changed, 'unchanged', unchanged,
  'retained', retained, 'duplicate_keys', duplicate_keys, 'invalid_rows', invalid_rows,
- 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL THEN 'skipped' ELSE 'written' END)))), x -> x.r)
-FROM m));
+ 'state', CASE WHEN rows_in * 100 < rows_prev * row_floor_pct OR duplicate_keys > 0 OR invalid_rows > 0 OR object IS NULL OR gate_reason <> '' THEN 'skipped' ELSE 'written' END,
+ 'reason', nullif(reason, ''))))), x -> x.r)
+FROM v));
 
 -- COMMAND ----------
 
@@ -41109,5 +41399,5 @@ VALUES (c.id, c.display_name, c.description, c.funder_id, c.funder_award_id, c.a
 -- COMMAND ----------
 
 SELECT CASE WHEN exists(session.awards_results, r -> r.state = 'skipped')
- THEN raise_error('Skipped sources: ' || concat_ws(', ', transform(filter(session.awards_results, r -> r.state = 'skipped'), r -> r.source)))
+ THEN raise_error('Skipped sources: ' || concat_ws(', ', transform(filter(session.awards_results, r -> r.state = 'skipped'), r -> r.source || ' (' || r.reason || ')')))
  ELSE 'All 360 sources written' END AS result;
