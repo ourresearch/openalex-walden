@@ -170,16 +170,30 @@ def not_in_family(c, class_col, funder_col):
 def pin_ownership(c):
     """Right after ownership_plan. Survivors (targets of the whole NIH list, applied or pending) take the funder the list gives them
     (evidence_json project_funder_id: the institute of the project's code, oxjob #1875) or, when it gives none, keep their current funder.
-    EU survivors (registry records) give none: they keep their own funder, so the copies' observations that bind to them through the
-    redirect (ERC parent, H2020 FP ...) never move the record off its registry funder."""
+    EU survivors (registry records) give none: they take the canonical funder of their own registry observation tonight (erc/cordis,
+    direct), else their recorded funder made canonical. So the copies' observations that bind to them through the redirect (ERC
+    parent, H2020 FP ...) never move the record off its registry funder, and a registry refiling the grant still moves it."""
     c.nih = active(c); c.eu = eu_active(c)
     if not on(c):
         return
     r = c.r; cls = class_is(c, "m.evidence_class")
-    fam = ",m.evidence_class family_class" if c.eu else ""
+    pin = "coalesce(CAST(get_json_object(m.evidence_json,'$.project_funder_id') AS BIGINT),e.funder_id)"
+    fam = joins = ""
+    if c.eu:
+        registries = "(" + ",".join(literal(x) for x in EU_REGISTRIES) + ")"
+        c.artifact("eu_registry_funder", f"""SELECT b.stable_id,min(f.canonical_funder_id) funder_id,count(DISTINCT f.canonical_funder_id) funders
+          FROM {r}bindings b JOIN (SELECT DISTINCT target_id FROM migration_manifest_v WHERE evidence_class={literal(EU_CLASS)}) t
+            ON t.target_id=b.stable_id JOIN {r}funder_canon f ON f.funder_id=b.source_funder_id
+          WHERE b.is_direct AND b.payload.provenance IN {registries} GROUP BY b.stable_id""")
+        # a survivor is exempt from ENTITY_FUNDER_AMBIGUOUS (its copies' funders are expected); its registry rows still name one funder
+        c.zero("EU_SURVIVOR_REGISTRY_ONE_FUNDER", f"SELECT * FROM {r}eu_registry_funder WHERE funders<>1")
+        pin = f"CASE WHEN m.evidence_class={literal(EU_CLASS)} THEN coalesce(rf.funder_id,fc.canonical_funder_id,e.funder_id) ELSE {pin} END"
+        fam = ",m.evidence_class family_class"
+        joins = (f" LEFT JOIN {r}eu_registry_funder rf ON rf.stable_id=m.target_id"
+                 f" LEFT JOIN {r}funder_canon fc ON fc.funder_id=e.funder_id")
     c.artifact("nih_survivors", f"""SELECT DISTINCT m.target_id stable_id,
-        coalesce(CAST(get_json_object(m.evidence_json,'$.project_funder_id') AS BIGINT),e.funder_id) pinned_funder_id{fam}
-      FROM migration_manifest_v m JOIN {r}entities_before e ON e.stable_id=m.target_id WHERE {cls}""")
+        {pin} pinned_funder_id{fam}
+      FROM migration_manifest_v m JOIN {r}entities_before e ON e.stable_id=m.target_id{joins} WHERE {cls}""")
     c.zero("NIH_SURVIVOR_ONE_FUNDER", f"SELECT stable_id FROM {r}nih_survivors GROUP BY stable_id HAVING count(*)<>1")
     c.zero("NIH_SURVIVOR_KNOWN", f"SELECT m.* FROM migration_manifest_v m LEFT ANTI JOIN {r}nih_survivors s ON s.stable_id=m.target_id WHERE {cls}")
     c.zero("NIH_SURVIVOR_FUNDER_IN_FAMILY", f"SELECT * FROM {r}nih_survivors WHERE pinned_funder_id IS NULL OR {not_in_family(c, 'family_class', 'pinned_funder_id')}")
@@ -313,14 +327,18 @@ def _eu_filter(c, mm):
       LOSER_IS_TARGET, LOSER_RULE_RETIRING, LOSER_RULE_TARGET, TARGET_RETIRING  no chain with tonight's other retirements, and a
                           loser the shell rule retires elsewhere stays with the rule (the generic gates would stop the run);
       NOT_BOUND, NOT_ACTIVE  both ends bound tonight and ACTIVE.
-    A list that disagrees with itself (a malformed row, two numbers or registries for one target) stops the run; EU_HELD_FUSE stops
-    it if more than max(100, 1%) of pending EU pairs fail. Returns the pending relation with held EU pairs removed."""
+    A list that disagrees with itself (a malformed row, two numbers or registries for one target, applied rows included) stops the
+    run; EU_HELD_FUSE stops it if more than max(100, 1% of every listed EU pair) fail tonight (the whole list, not the pending rest,
+    so a few hundred pairs still held after their batch applied never trip it the next night). A target that is another manifest
+    row's loser is already a stop (MIGRATION_ACYCLIC reads the whole manifest). Returns the pending relation with held EU pairs removed."""
     r, reg_prefix = c.r, c.p; cls = literal(EU_CLASS); fam = EU_FAMILY_SQL
     registries = "(" + ",".join(literal(x) for x in EU_REGISTRIES) + ")"
     c.artifact("eu_pairs", f"""SELECT m.loser_id,m.target_id,get_json_object(m.evidence_json,'$.number') number,
         get_json_object(m.evidence_json,'$.registry') registry FROM {mm} m WHERE m.evidence_class={cls}""")
-    c.zero("EU_LISTED_SHAPE", f"SELECT * FROM {r}eu_pairs WHERE NOT COALESCE(number RLIKE '{EU_NUMBER}' AND registry IN {registries},false)")
-    c.zero("EU_ONE_NUMBER_PER_TARGET", f"""SELECT target_id FROM {r}eu_pairs GROUP BY target_id
+    c.artifact("eu_listed", f"""SELECT loser_id,target_id,get_json_object(evidence_json,'$.number') number,
+        get_json_object(evidence_json,'$.registry') registry FROM migration_manifest_v WHERE evidence_class={cls}""")
+    c.zero("EU_LISTED_SHAPE", f"SELECT * FROM {r}eu_listed WHERE NOT COALESCE(number RLIKE '{EU_NUMBER}' AND registry IN {registries},false)")
+    c.zero("EU_ONE_NUMBER_PER_TARGET", f"""SELECT target_id FROM {r}eu_listed GROUP BY target_id
       HAVING count(DISTINCT number)<>1 OR count(DISTINCT registry)<>1""")
     c.artifact("eu_pair_numbers", f"""SELECT p.*,lo.funder_award_id loser_number,ta.funder_award_id target_number,
         lo.funder_id loser_funder_id,ta.funder_id target_funder_id,ta.provenance target_provenance,
@@ -355,10 +373,11 @@ def _eu_filter(c, mm):
           LEFT JOIN {r}eu_bound bt ON bt.stable_id=p.target_id WHERE bl.stable_id IS NULL OR bt.stable_id IS NULL
         UNION ALL SELECT p.loser_id,'NOT_ACTIVE' FROM {r}eu_pairs p LEFT JOIN {r}entities_allocated l ON l.stable_id=p.loser_id
           LEFT JOIN {r}entities_allocated t ON t.stable_id=p.target_id WHERE NOT COALESCE(l.status='ACTIVE' AND t.status='ACTIVE',false))""")
-    pairs = c.count("eu_pending_pairs", r + "eu_pairs"); c.count("eu_held", f"(SELECT DISTINCT loser_id FROM {r}eu_held) x")
+    c.count("eu_pending_pairs", r + "eu_pairs"); c.count("eu_held", f"(SELECT DISTINCT loser_id FROM {r}eu_held) x")
     for row in c.sql(f"SELECT reason,count(DISTINCT loser_id) n FROM {r}eu_held GROUP BY 1").collect():
         c.counts["eu_held_" + row.reason.lower()] = int(row.n)
-    c.zero("EU_HELD_FUSE", f"SELECT count(DISTINCT loser_id) n FROM {r}eu_held HAVING n>greatest(100,0.01*{pairs})")
+    listed = c.count("eu_listed_pairs", r + "eu_listed")
+    c.zero("EU_HELD_FUSE", f"SELECT count(DISTINCT loser_id) n FROM {r}eu_held HAVING n>greatest(100,0.01*{listed})")
     return c.artifact("migration_proven_eu", f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}eu_held h ON h.loser_id=m.loser_id")
 
 
@@ -406,15 +425,23 @@ def project(c):
 
 
 def _eu_published(c):
-    """EU survivors keep the registry's row. Published under their pinned (registry) funder, else a stop; the rows that are not an
-    erc/cordis row with an EU grant number are counted (eu_survivors_not_registry_row: 0 expected, read after each batch night)."""
-    r = c.r
-    c.artifact("eu_survivors", f"SELECT stable_id,pinned_funder_id FROM {r}nih_survivors WHERE family_class={literal(EU_CLASS)}")
+    """EU survivors keep the registry's row on every night after their fold. Published under their pinned (registry) funder, else a
+    stop. Published as the listed registry's row with the listed number: a survivor missing tonight or showing another row (its
+    registry feed dropped the grant and a copy's observation won the election, or another source's direct row outranked it) is
+    listed in eu_survivors_off_registry; EU_SURVIVOR_ROW_FUSE stops the run above max(100, 1%) of survivors, so a feed outage can't
+    quietly turn registry grants into paper-side copies, while one withdrawn grant never stops a night."""
+    r = c.r; cls = literal(EU_CLASS)
+    c.artifact("eu_survivors", f"""SELECT s.stable_id,s.pinned_funder_id,l.number,l.registry FROM {r}nih_survivors s
+      JOIN (SELECT DISTINCT target_id,number,registry FROM {r}eu_listed) l ON l.target_id=s.stable_id WHERE s.family_class={cls}""")
     c.zero("EU_SURVIVOR_FUNDER_PUBLISHED", f"""SELECT a.id,a.funder_id,s.pinned_funder_id FROM {r}awards_candidate a
       JOIN {r}eu_survivors s ON s.stable_id=a.id WHERE NOT (a.funder_id <=> s.pinned_funder_id)""")
+    survivors = c.count("eu_survivors_listed", r + "eu_survivors")
     c.count("eu_survivors_published", f"(SELECT a.id FROM {r}awards_candidate a JOIN {r}eu_survivors s ON s.stable_id=a.id) x")
-    c.count("eu_survivors_not_registry_row", f"""(SELECT a.id FROM {r}awards_candidate a JOIN {r}eu_survivors s ON s.stable_id=a.id
-      WHERE NOT COALESCE(a.provenance IN ('erc','cordis') AND trim(a.funder_award_id) RLIKE '{EU_NUMBER}',false)) x""")
+    c.artifact("eu_survivors_off_registry", f"""SELECT s.stable_id,s.number,s.registry,a.id published_id,a.provenance,a.funder_award_id
+      FROM {r}eu_survivors s LEFT JOIN {r}awards_candidate a ON a.id=s.stable_id
+      WHERE NOT COALESCE(a.provenance=s.registry AND trim(a.funder_award_id)=s.number,false)""")
+    c.count("eu_survivors_off_registry", r + "eu_survivors_off_registry")
+    c.zero("EU_SURVIVOR_ROW_FUSE", f"SELECT count(*) n FROM {r}eu_survivors_off_registry HAVING n>greatest(100,0.01*{survivors})")
     # the frozen family against tonight's funders table: a new EU programme funder is outside the fold until EU_FAMILY lists it
     # (counted, never a stop: such a pair is only held, NOT_IN_FAMILY)
     named = f"SELECT funder_id FROM funders_v WHERE coalesce(display_name,'') RLIKE '{EU_FAMILY_RLIKE}'"
@@ -496,6 +523,19 @@ def _link_conservation(c, cls, a, gate):
       JOIN (SELECT loser_id id,target_id FROM {r}{a}applied UNION SELECT target_id,target_id FROM {r}{a}applied) x ON x.id=wm.stable_id
       EXCEPT SELECT * FROM ({list_legs.removed_pairs_sql(c)})""")   # a pinned SUPPRESS row is an explained removal
     c.zero(gate + "MAPPED_LINKS_PRESERVED", f"SELECT m.* FROM {r}{a}missing_mapped m LEFT SEMI JOIN {r}{a}supported s ON s.work_id=m.work_id AND s.award_id=m.award_id")
+    if cls == EU_CLASS:
+        # the survivor's own links stay too (registry_twin's REGISTRY_TWIN_TARGET_LINKS_PRESERVED contract): a target link missing
+        # tonight is explained only when no producer makes it any more or a pinned SUPPRESS row removes it
+        c.artifact(a + "missing_target", f"""SELECT b.* FROM {r}{a}links_before b JOIN (SELECT DISTINCT target_id FROM {r}{a}applied) m
+          ON b.award_id={g.format('m.target_id')} EXCEPT SELECT work_id,award_id FROM {r}{a}candidate_edges""")
+        c.artifact(a + "target_producers", f"""SELECT wm.work_id,{g.format('wm.stable_id')} award_id FROM {r}work_matches wm
+            JOIN (SELECT DISTINCT target_id FROM {r}{a}applied) t ON t.target_id=wm.stable_id
+          UNION ALL SELECT x.work_id,x.award_id FROM ({list_legs.added_pairs_sql(c)}) x JOIN {r}{a}award_ids i ON i.award_id=x.award_id
+          UNION ALL SELECT mv.work_id,{g.format('mv.stable_id')} FROM {r}work_links_moved mv
+            JOIN (SELECT DISTINCT target_id FROM {r}{a}applied) t ON t.target_id=mv.stable_id WHERE mv.work_id<>mv.original_work_id""")
+        c.zero(gate + "TARGET_LINKS_PRESERVED", f"""SELECT e.* FROM {r}{a}missing_target e LEFT SEMI JOIN {r}{a}target_producers p
+          ON p.work_id=e.work_id AND p.award_id=e.award_id
+          LEFT ANTI JOIN ({list_legs.removed_pairs_sql(c)}) s ON s.work_id=e.work_id AND s.award_id=e.award_id""")
     c.counts[a + "explained_removals"] = int(c.sql(f"""SELECT count(*) n FROM {r}{a}missing_mapped m
       LEFT ANTI JOIN {r}{a}supported s ON s.work_id=m.work_id AND s.award_id=m.award_id""").collect()[0].n)
     row = c.sql(f"""WITH marks AS (

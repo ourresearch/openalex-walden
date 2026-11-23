@@ -127,12 +127,43 @@ def test_with_eu_pairs_every_hook_is_on():
     # proof right after the NIH filter's slot; the later gates read the proven set
     assert names.index("migration_proven") < names.index("eu_pairs") < names.index("eu_held") < names.index("migration_proven_eu")
     assert "migration_proven_eu" in q["MIGRATION_TARGET_ACTIVE"] and "migration_proven_eu" in q["MIGRATION_CONFLICT_WITH_RULE"]
-    for gate in ("EU_LISTED_SHAPE", "EU_ONE_NUMBER_PER_TARGET", "EU_HELD_FUSE", "EU_SURVIVOR_FUNDER_PUBLISHED", "FAMILY_SURVIVOR_FUNDER_AS_LISTED"):
+    for gate in ("EU_LISTED_SHAPE", "EU_ONE_NUMBER_PER_TARGET", "EU_HELD_FUSE", "EU_SURVIVOR_FUNDER_PUBLISHED", "FAMILY_SURVIVOR_FUNDER_AS_LISTED",
+                 "EU_SURVIVOR_REGISTRY_ONE_FUNDER", "EU_SURVIVOR_ROW_FUSE"):
         assert gate in c.checks, gate
     # no NIH projection on an EU-only night
     assert "awards_candidate_before_nih" not in q and "nih_choice" not in q
-    for n in ("eu_survivors_published", "eu_survivors_not_registry_row", "eu_family_drift", "eu_pending_pairs"):
+    for n in ("eu_survivors_published", "eu_survivors_off_registry", "eu_family_drift", "eu_pending_pairs", "eu_listed_pairs"):
         assert n in c.counts, n
+
+
+def test_eu_pin_is_the_registry_observations_funder():
+    """An EU survivor takes the canonical funder of its own direct erc/cordis observation, else its recorded funder made canonical;
+    an NIH survivor still takes the list's institute."""
+    q = dict(eu_build((NIH, EU)).statements)
+    rf = q["eu_registry_funder"]
+    assert "b.is_direct AND b.payload.provenance IN ('erc','cordis')" in rf and "f.canonical_funder_id" in rf
+    s = q["nih_survivors"]
+    assert f"CASE WHEN m.evidence_class='{EU}' THEN coalesce(rf.funder_id,fc.canonical_funder_id,e.funder_id)" in s
+    assert "ELSE coalesce(CAST(get_json_object(m.evidence_json,'$.project_funder_id') AS BIGINT),e.funder_id) END pinned_funder_id" in s
+    assert "eu_registry_funder rf ON rf.stable_id=m.target_id" in s and "funder_canon fc ON fc.funder_id=e.funder_id" in s
+    assert "funders<>1" in q["EU_SURVIVOR_REGISTRY_ONE_FUNDER"]
+
+
+def test_list_checks_and_fuse_read_the_whole_eu_list():
+    """Applied rows count: the identity check covers them, and the fuse's denominator is every listed EU pair, so pairs still held
+    after their batch applied (pending shrinks to them) never trip the fuse on the next night."""
+    q = dict(eu_build().statements)
+    assert "FROM migration_manifest_v WHERE evidence_class='EU_GRANT_FAMILY_FOLD'" in q["eu_listed"]
+    assert "eu_listed GROUP BY target_id" in q["EU_ONE_NUMBER_PER_TARGET"] and "eu_listed WHERE" in q["EU_LISTED_SHAPE"]
+    assert "ngr_s_migration_proven m" in q["eu_pairs"] and "migration_manifest_v" not in q["eu_pairs"]   # the proof: pending only
+
+
+def test_published_row_is_the_listed_registry_row():
+    q = dict(eu_build().statements)
+    off = q["eu_survivors_off_registry"]
+    assert "LEFT JOIN dev.lab.ngr_s_awards_candidate a" in off                       # a missing survivor counts as off
+    assert "a.provenance=s.registry AND trim(a.funder_award_id)=s.number" in off     # the listed registry and number, not any
+    assert "greatest(100,0.01*0)" in q["EU_SURVIVOR_ROW_FUSE"]
 
 
 @pytest.mark.parametrize("reason", nih_fold.EU_HELD_REASONS)
@@ -175,11 +206,14 @@ def test_link_conservation_per_class():
     nih_fold.link_conservation(c)
     q = dict(c.statements)
     assert f"evidence_class='{EU}'" in q["eu_applied"] and "nih_applied" not in q
-    assert "EU_NO_LOSER_LINKS" in c.checks and "EU_MAPPED_LINKS_PRESERVED" in c.checks
+    assert "EU_NO_LOSER_LINKS" in c.checks and "EU_MAPPED_LINKS_PRESERVED" in c.checks and "EU_TARGET_LINKS_PRESERVED" in c.checks
     assert "work_survivors" in q["eu_links_before"]
+    # the survivor's own links: missing tonight only if no producer makes them any more (registry_twin's contract)
+    assert "EXCEPT SELECT work_id,award_id FROM dev.lab.ngr_s_eu_candidate_edges" in q["eu_missing_target"]
+    assert "work_matches wm" in q["eu_target_producers"] and "work_links_moved mv" in q["eu_target_producers"]
     both = C(); both.nih = True; both.eu = True
     nih_fold.link_conservation(both)
-    assert {"NIH_NO_LOSER_LINKS", "EU_NO_LOSER_LINKS"} <= both.checks.keys()
+    assert {"NIH_NO_LOSER_LINKS", "EU_NO_LOSER_LINKS"} <= both.checks.keys() and "NIH_TARGET_LINKS_PRESERVED" not in both.checks
 
 
 def test_eu_family_is_the_call_code_guards_family():
