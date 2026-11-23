@@ -11,7 +11,10 @@ resources:
       # wave's run; TaxiCab Campaign scored it as a wave that fetched nothing, and a second skip marks those
       # URLs skipped for good. Queued, the run waits for a slot (the guard reads QUEUED as fetching).
       # Revert: 7 and enabled: false.
-      max_concurrent_runs: 8
+      # oxjob #1646 (23 Nov 2026, 10:30 CT): 8 -> 10. #2381's paced FCCN campaigns hold up to 2 slots for days
+      # (site_per_hour waves run for hours); 10 keeps room for the xpac run's PDF campaigns and everyone else's.
+      # Revert: 8.
+      max_concurrent_runs: 10
       queue:
         enabled: true
       tasks:
