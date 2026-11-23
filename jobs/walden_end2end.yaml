@@ -235,13 +235,19 @@ resources:
         # reads it, and a failure fails End 2 End (Casey 2026-11-16). A normal night ~1-1.5 h; a repository parse wave scales up
         # (52.4M new texts, 19 Nov: ~4.3 h). Back to shadow: mode shadow here and drop the Works_Enriched dependency.
         - task_key: Match_References
-          timeout_seconds: 18000
+          # oxjob #2434, run of 24 Nov 03:00 UTC only: 2.18M repository reference lists (~57M new texts) ride on top of the
+          # night's own, so the tripwire, cost cap, Modal call limit and timeouts are raised and the night is matched in full (Casey 2026-11-18).
+          # Back to 18000 and the job defaults (60M, $200, 150 min) after that run.
+          timeout_seconds: 43200
           depends_on:
             - task_key: parse_referenced_works
           run_job_task:
             job_id: ${resources.jobs.Match_References.id}
             job_parameters:
               mode: live
+              max_texts: "150000000"
+              max_usd: "400"
+              max_minutes: "300"
         # oxjob #2314: one citations table (each citation once, with the inputs that hold it), built after the lists are filed
         # and tonight's merge map exists; Works_Enriched sets every work's referenced_works from it. A failure stops the
         # night before Works_Enriched, like any upstream step.
