@@ -4,7 +4,7 @@
 # COMMAND ----------
 
 from datetime import datetime, timedelta
-from pyspark.sql import functions as F
+from pyspark.sql import Row, functions as F
 from elasticsearch import Elasticsearch, helpers
 import logging
 
@@ -342,11 +342,11 @@ df = df.repartition(2048)
 
 results_rdd = df.rdd.mapPartitions(lambda p: send_partition_to_elastic(p, WRITE_INDEX))
 # ONE action only: a second action would recompute the RDD and re-send every partition.
-totals = spark.createDataFrame(results_rdd, "indexed_count LONG, error_count LONG").agg(
-    F.count("*").alias("partitions"),
-    F.sum("indexed_count").alias("indexed"),
-    F.sum("error_count").alias("errors"),
-).collect()[0]
+# collect() straight off the sending RDD, never a DataFrame agg (oxjob #2560): an agg made the sending stage a shuffle
+# stage whose finished outputs live on the worker that ran them, so a worker leaving mid-sync (es_sync_boost stepping
+# writers down) re-sent every partition it had finished. A collected partition stays done whichever worker leaves.
+counts = results_rdd.collect()
+totals = Row(partitions=len(counts), indexed=sum(c[0] for c in counts), errors=sum(c[1] for c in counts))
 print(f"Processed {totals.partitions} partitions; indexed {totals.indexed or 0:,} docs, "
       f"{totals.errors or 0} doc errors")
 
