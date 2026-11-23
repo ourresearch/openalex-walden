@@ -557,6 +557,11 @@ def launch_wave(c, s, plan):
               "lookback_days": "3", "doi_host_key": "prefix"}
     if c["zyte_key"]:
         params["zyte_key"] = c["zyte_key"]
+    # oxjob #2381: a per-site pace (fetch starts per site per hour, both lanes) for a campaign whose sites ban a burst;
+    # hdl.handle.net links skip max_per_host, so without it one site's handle links go out at the paced lane's 20K/h.
+    # Only a campaign that names it in its settings passes it; every other campaign runs as before.
+    if int(s.get("site_per_hour") or 0) > 0:
+        params["site_per_hour"] = str(int(s["site_per_hour"]))
     try:
         run = w.jobs.run_now(job_id=RESCRAPE_JOB_ID, job_parameters=params)
     except Exception as e:   # e.g. TaxiCab Rescrape already at max_concurrent_runs: undo, try next tick

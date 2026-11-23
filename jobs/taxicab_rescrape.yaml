@@ -29,6 +29,8 @@ resources:
               doi_host_key: "host"
               # oxjob #1790: TaxiCab Campaign sets a campaign's own Zyte API key name
               zyte_key: ""
+              # oxjob #2381: per-site pace, fetch starts per site per hour (0 = off); a campaign sets it in its settings
+              site_per_hour: "0"
           job_cluster_key: Taxicab_Rescrape_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_Rescrape_job_cluster
@@ -72,3 +74,5 @@ resources:
           default: "host"
         - name: zyte_key
           default: ""
+        - name: site_per_hour
+          default: "0"
