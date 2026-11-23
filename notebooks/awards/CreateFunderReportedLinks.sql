@@ -54,6 +54,7 @@ CREATE OR REPLACE TEMP VIEW link_sources AS SELECT * FROM VALUES
   ('nwopen', 'doi,title', 'title_or_author'),
   ('fwf_open_api', 'doi,pmid', 'title_or_author'),
   ('anr_opendata', 'doi,work', 'none'),
+  ('kaken', 'doi,work', 'none'),
   ('hakai_publications', 'doi', 'none')
 AS t(source, tiers, check);
 
@@ -112,6 +113,31 @@ FROM openalex.awards.hal_anr_work_links;
 
 -- COMMAND ----------
 
+-- KAKEN: products_json lists each project's research products (the KAKEN API fetch). Only the DOI is read: no rule compares
+-- the rest. Until the version-DOI fallback, the 8 Jul links are kept (their scrape is gone) except on a paper with no DOI now.
+CREATE OR REPLACE TEMP VIEW kaken_listed AS
+WITH objects AS (
+  SELECT project_id, products_json, _metadata FROM read_files('s3://openalex-ingest/awards/kaken_api/*.parquet', format => 'parquet')
+),
+products AS (
+  SELECT project_id, _metadata.file_path AS object, posexplode(from_json(products_json, 'array<map<string,string>>')) AS (i, p)
+  FROM objects
+  WHERE _metadata.file_path = (SELECT max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) FROM objects)
+)
+SELECT project_id AS award_id, CAST(NULL AS BIGINT) AS funder_id, CAST(i AS STRING) AS output_key, p['doi'] AS doi,
+  CAST(NULL AS STRING) AS pmid, CAST(NULL AS BIGINT) AS work_id, CAST(NULL AS STRING) AS title, CAST(NULL AS INT) AS year,
+  CAST(NULL AS STRING) AS volume, CAST(NULL AS STRING) AS first_page, CAST(NULL AS STRING) AS output_type,
+  CAST(NULL AS ARRAY<STRING>) AS surnames, object
+FROM products
+UNION ALL
+SELECT award_id, CAST(NULL AS BIGINT), concat('W', k.work_id), CAST(NULL AS STRING), CAST(NULL AS STRING), k.work_id, CAST(NULL AS STRING),
+  CAST(NULL AS INT), CAST(NULL AS STRING), CAST(NULL AS STRING), CAST(NULL AS STRING), CAST(NULL AS ARRAY<STRING>),
+  'openalex.awards.kaken_work_funders'
+FROM openalex.awards.kaken_work_funders k LATERAL VIEW explode(k.award_ids) t AS award_id
+WHERE NOT EXISTS (SELECT 1 FROM openalex.works.openalex_works w WHERE w.id = k.work_id AND w.doi IS NULL);
+
+-- COMMAND ----------
+
 -- Hakai: the DOIs on its own publications list (hakai_outputs_to_s3.py). It names no grants, only the funder.
 CREATE OR REPLACE TEMP VIEW hakai_publications_listed AS
 SELECT CAST(NULL AS STRING) AS award_id, CAST(funder_id AS BIGINT) AS funder_id, doi AS output_key, doi, CAST(NULL AS STRING) AS pmid,
@@ -125,6 +151,7 @@ CREATE OR REPLACE TEMP VIEW link_listed AS
 SELECT 'nwopen' AS source, * FROM nwopen_listed
 UNION ALL SELECT 'fwf_open_api', * FROM fwf_open_api_listed
 UNION ALL SELECT 'anr_opendata', * FROM anr_opendata_listed
+UNION ALL SELECT 'kaken', * FROM kaken_listed
 UNION ALL SELECT 'hakai_publications', * FROM hakai_publications_listed;
 
 -- COMMAND ----------
