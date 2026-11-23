@@ -160,15 +160,17 @@ FROM flattened GROUP BY work_id, funder_id
 -- alias, so a new shell for a grant that is already an award takes that award's links and is served as its twin. The
 -- check run that minted every spelling (oxjob #2544) moved 588 works off NIH's registry record for AM 22125 onto a new
 -- 'AM 22125.' shell, and 20,642 of its 91,102 new awards shared a key with an existing one. A spelling is minted when:
---   1. no award row of another source has the same funder and generic key (Nightly's stable_award_ids.generic_sql): the
---      work's number reaches that award through Nightly's own key match;
+--   1. no award row of another source has the same generic key (Nightly's stable_award_ids.generic_sql) under the same
+--      funder, or under any NIH funder for an NIH funder's number: the work's number reaches that award through Nightly's
+--      own key match;
 --   2. for an NIH funder (nih_fold.NIH_FAMILY), no award row of another source in that family has the same institute +
 --      serial: NIH ExPORTER files projects under the NIH parent while papers name the institute, so an institute shell
 --      would twin the project across funders; ProduceNihPubmedRelinks links PubMed's NIH grants to project records;
---   3. it is the grant's one spelling in this leg: per (funder, generic key), then per NIH institute + serial, the spelling
---      most PubMed records use. A work citing another spelling of it gets no link to it rather than a twin.
--- NIH institute + serial: the 6-digit form where the text has one ('5R01CA011051-14' -> CA011051), else a 4-5 digit serial
--- at the end after an optional activity code ('CA 11051', 'HL-06825', '1-KO-4 HD-00634' -> CA011051, HL006825, HD000634).
+--   3. it is the grant's one spelling in this leg: per generic key (per funder; one NIH-wide key), then per NIH institute +
+--      serial, the spelling most PubMed records use. A work citing another spelling of it gets no link to it, never a twin.
+-- NIH institute + serial = Nightly's sharp key for the NIH parent (AwardNormKey.sql, funder 4320332161: the paper-side
+-- form, else the registry form): 'AM-19920-4' -> AM019920, 'BNS 13464' -> NS013464, '5R01CA011051-14' -> CA011051.
+-- A second check run with a looser key of its own still made 611 NIH twins (oxjob #2544).
 CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings AS
 WITH spelled AS (
   SELECT c.funder_id, award_id AS funder_award_id, count(*) mentions
@@ -187,24 +189,30 @@ keyed AS (
   SELECT 'leg' side, funder_id, funder_award_id, mentions FROM spelled
   UNION ALL SELECT 'other', funder_id, funder_award_id, 0 FROM other_rows),
 keys AS (
-  SELECT side, funder_id, funder_award_id, mentions,
+  SELECT side, funder_id, funder_award_id, mentions, fam,
     CASE WHEN length(regexp_replace(lower(funder_award_id), '[^a-z0-9]', '')) >= 4
          THEN regexp_replace(lower(funder_award_id), '[^a-z0-9]', '') ELSE lower(trim(funder_award_id)) END gkey,
-    CASE WHEN funder_id IN (4320332161, 4320337611, 4320337356, 4320337376, 4320337472, 4320337358, 4320337593, 4320337375,
+    CASE WHEN fam THEN coalesce(
+      CASE WHEN regexp_extract(n, '([A-Z]{2}) ?-?(\\d{5,6})(?!\\d)', 1) <> ''
+           THEN concat(regexp_extract(n, '([A-Z]{2}) ?-?(\\d{5,6})(?!\\d)', 1),
+                       lpad(regexp_extract(n, '([A-Z]{2}) ?-?(\\d{5,6})(?!\\d)', 2), 6, '0')) END,
+      nullif(regexp_extract(n, '([A-Z]{2}\\d{6})', 1), '')) END nkey
+  FROM (SELECT *, funder_id IN (4320332161, 4320337611, 4320337356, 4320337376, 4320337472, 4320337358, 4320337593, 4320337375,
       4320337355, 4320337362, 4320337363, 4320337364, 4320337365, 4320337357, 4320337361, 4320337354, 4320337346, 4320337359,
       4320337353, 4320337337, 4320337330, 4320337352, 4320337347, 4320337534, 4320337372, 4320337351, 4320337374, 4320337350,
-      4320337338, 4320337348)
-    THEN coalesce(nullif(regexp_extract(an, '([A-Z]{2}[0-9]{6})', 1), ''),
-      CASE WHEN an RLIKE '^([0-9]?[A-Z][0-9A-Z]{2})?[A-Z]{2}[0-9]{4,5}$'
-           THEN concat(regexp_extract(an, '([A-Z]{2})[0-9]{4,5}$', 1), lpad(regexp_extract(an, '([0-9]{4,5})$', 1), 6, '0')) END) END nkey
-  FROM (SELECT *, upper(regexp_replace(funder_award_id, '[^A-Za-z0-9]', '')) an FROM keyed)),
+      4320337338, 4320337348) fam,
+          regexp_replace(regexp_replace(regexp_replace(upper(trim(funder_award_id)),
+            '[\\u2010-\\u2015\\u2212\\uFE58\\uFE63\\uFF0D]', '-'), '[\\u00A0\\u1680\\u2000-\\u200B\\u202F\\u205F\\u3000]', ' '), '  +', ' ') n
+        FROM keyed)),
 fresh AS (
   SELECT l.* FROM keys l
   LEFT ANTI JOIN (SELECT DISTINCT funder_id, gkey FROM keys WHERE side = 'other') o ON o.funder_id = l.funder_id AND o.gkey = l.gkey
+  LEFT ANTI JOIN (SELECT DISTINCT gkey FROM keys WHERE side = 'other' AND fam) f ON l.fam AND f.gkey = l.gkey
   LEFT ANTI JOIN (SELECT DISTINCT nkey FROM keys WHERE side = 'other' AND nkey IS NOT NULL) n ON n.nkey = l.nkey
   WHERE l.side = 'leg'),
 one_per_key AS (
-  SELECT * FROM fresh QUALIFY row_number() OVER (PARTITION BY funder_id, gkey ORDER BY mentions DESC, funder_award_id) = 1)
+  SELECT * FROM fresh QUALIFY row_number() OVER (PARTITION BY CASE WHEN fam THEN 0 ELSE funder_id END, gkey
+    ORDER BY mentions DESC, funder_id, funder_award_id) = 1)
 SELECT funder_id, funder_award_id FROM one_per_key
 QUALIFY nkey IS NULL OR row_number() OVER (PARTITION BY nkey ORDER BY mentions DESC, funder_id, funder_award_id) = 1
 

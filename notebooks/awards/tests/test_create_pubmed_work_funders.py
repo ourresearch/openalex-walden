@@ -124,8 +124,9 @@ def test_shells_only_for_grants_no_award_carries():
     spellings = squash(code(cell('CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings')))
     assert f"FROM {RAW} r WHERE r.provenance <> 'pubmed_work_funders'" in spellings
     assert "LEFT ANTI JOIN (SELECT DISTINCT funder_id, gkey FROM keys WHERE side = 'other') o ON o.funder_id = l.funder_id AND o.gkey = l.gkey" in spellings
+    assert "LEFT ANTI JOIN (SELECT DISTINCT gkey FROM keys WHERE side = 'other' AND fam) f ON l.fam AND f.gkey = l.gkey" in spellings
     assert "LEFT ANTI JOIN (SELECT DISTINCT nkey FROM keys WHERE side = 'other' AND nkey IS NOT NULL) n ON n.nkey = l.nkey" in spellings
-    assert 'PARTITION BY funder_id, gkey ORDER BY mentions DESC' in spellings
+    assert 'PARTITION BY CASE WHEN fam THEN 0 ELSE funder_id END, gkey ORDER BY mentions DESC' in spellings
     assert 'PARTITION BY nkey ORDER BY mentions DESC' in spellings
 
 
@@ -140,23 +141,28 @@ def test_shell_keys_match_nightly():
     assert len(families) == 2 and all(tuple(int(x) for x in f.split(', ')) == nih_fold.NIH_FAMILY for f in families)
 
 
-def test_nih_key_reads_paper_and_registry_spellings():
-    """The institute + serial expression, transcribed to Python regexes (SQL regexp_extract = first match)."""
+def test_nih_key_is_nightlys_nih_parent_key():
+    """The institute + serial is Nightly's sharp key for the NIH parent (AwardNormKey.sql, funder 4320332161): its paper-side
+    regex, else its registry regex, on the same upper-cased, dash- and space-normalized text."""
     spellings = code(cell('CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings'))
-    assert "regexp_extract(an, '([A-Z]{2}[0-9]{6})', 1)" in spellings
-    assert "an RLIKE '^([0-9]?[A-Z][0-9A-Z]{2})?[A-Z]{2}[0-9]{4,5}$'" in spellings
+    norm_key = (ROOT / 'notebooks/awards/AwardNormKey.sql').read_text()
+    deposited, registry = r"'([A-Z]{2}) ?-?(\\d{5,6})(?!\\d)'", r"'([A-Z]{2}\\d{6})'"
+    assert f"WHEN funder_id = 4320332161 THEN (NULLIF(regexp_extract(_n, {registry}, 1), ''))" in norm_key
+    assert f"WHEN funder_id = 4320332161 THEN (CASE WHEN NULLIF(regexp_extract(_n, {deposited}, 1), '') IS NOT NULL" in norm_key
+    assert f"regexp_extract(n, {deposited}, 1) <> ''" in spellings and f"nullif(regexp_extract(n, {registry}, 1), '')" in spellings
+    assert "upper(trim(funder_award_id))" in spellings and "'  +', ' ') n" in spellings
 
     def nkey(s):
-        an = re.sub(r'[^A-Za-z0-9]', '', s).upper()
-        m = re.search(r'([A-Z]{2}[0-9]{6})', an)
+        n = re.sub('  +', ' ', s.strip().upper())
+        m = re.search(r'([A-Z]{2}) ?-?(\d{5,6})(?!\d)', n)
         if m:
-            return m.group(1)
-        if re.search(r'^([0-9]?[A-Z][0-9A-Z]{2})?[A-Z]{2}[0-9]{4,5}$', an):
-            return re.search(r'([A-Z]{2})[0-9]{4,5}$', an).group(1) + re.search(r'([0-9]{4,5})$', an).group(1).rjust(6, '0')
-        return None
+            return m.group(1) + m.group(2).rjust(6, '0')
+        m = re.search(r'([A-Z]{2}\d{6})', n)
+        return m.group(1) if m else None
     cases = {'5p60am022125-08': 'AM022125', 'AM 22125.': 'AM022125', 'AM-22125': 'AM022125', 'CA 11051': 'CA011051',
-             '5R01CA011051-14': 'CA011051', 'R01 DK026190': 'DK026190', 'HL-06825': 'HL006825', '1-KO-4 HD-00634': 'HD000634',
-             'F32 NS06386': 'NS006386', 'AM1 1794': 'AM011794', 'P01-HL-19242': 'HL019242', 'unknown': None, '12345': None}
+             '5R01CA011051-14': 'CA011051', '5R01CA01105114': 'CA011051', 'R01 DK026190': 'DK026190', 'HL-06825': 'HL006825',
+             '1-KO-4 HD-00634': 'HD000634', 'AM-19920-4': 'AM019920', 'NIAMDD AM 18370': 'AM018370', 'BNS 13464': 'NS013464',
+             'L.L.GM-27256': 'GM027256', '5k04am00504-2': 'AM000504', 'am 26481-phy': 'AM026481', 'unknown': None, '12345': None}
     assert {s: nkey(s) for s in cases} == cases
 
 
