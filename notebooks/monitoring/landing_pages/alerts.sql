@@ -1,7 +1,8 @@
 -- Scoreboard alarms for fetch days [{start}, {end}) (oxjob #1789). Rewrites exactly those days, atomically.
 -- One statement, no trailing semicolon: the notebook runs the file as is. Every threshold is in `params`.
 --
--- First attempts only: the retry lane (live since 18 Oct 2026) and re-fetch campaigns fail by design.
+-- First attempts only: the retry lane (live since 18 Oct 2026) and re-fetch campaigns fail by design, and a campaign's
+-- own first fetches (attempt 'campaign' since 23 Nov 2026) follow the records it chose, not the publisher's health.
 -- Per host x id_namespace (doi = publisher landing pages, pmh = repository records; mixing them made
 -- cambridge.org trip on 12 Sep 2026 when repository links to non-article pages arrived) x kind:
 --   page = landing pages (doi: the doi.org URL; pmh: every record URL); rules useful_rate_drop, many_hosts_drop.

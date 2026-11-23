@@ -13,7 +13,7 @@ COMMENT 'oxjob #1789: DOI prefix -> dominant resolved host. Filled by notebooks/
 CREATE TABLE IF NOT EXISTS openalex.monitoring.landing_page_funnel (
   fetch_date DATE COMMENT 'UTC day of taxicab_results.processed_date',
   host STRING COMMENT 'openalex.monitoring.landing_page_host(url, resolved_url, native_id_namespace, native_id)',
-  attempt STRING COMMENT 'first = no earlier taxicab_results row for this exact url; repeat = retry lane or re-fetch campaign',
+  attempt STRING COMMENT 'first = no earlier taxicab_results row for this exact url, not made by a TaxiCab campaign; campaign = the same, made by a campaign (taxicab.campaign_results); repeat = retry lane or re-fetch',
   id_namespace STRING COMMENT 'taxicab_results.native_id_namespace: doi (publisher landing pages) or pmh (repository records)',
   fetches BIGINT COMMENT 'taxicab_results rows',
   stored BIGINT COMMENT 'status 200 and not soft-blocked',

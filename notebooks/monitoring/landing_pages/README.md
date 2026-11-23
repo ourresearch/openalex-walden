@@ -17,7 +17,7 @@ Need a fold changed? Change `host_key.sql` here, never a private mapping in a la
 
 | table | grain | written by |
 |---|---|---|
-| `landing_page_funnel` | fetch_date x host x attempt (first / repeat) x id_namespace (doi / pmh); `link_*` = the link share | `funnel.sql`, nightly |
+| `landing_page_funnel` | fetch_date x host x attempt (first / campaign / repeat) x id_namespace (doi / pmh); `link_*` = the link share | `funnel.sql`, nightly |
 | `landing_page_alerts` | alert_date x host x id_namespace x rule | `alerts.sql`, nightly |
 | `landing_page_host_state` | snapshot_date x host: Crossref works' landing-page age, fresh-and-useful, fields the page adds over Crossref | `host_state.sql`, nightly (as of yesterday) |
 | `landing_page_doi_prefixes` | DOI prefix -> dominant host | `doi_prefixes.sql`, by hand |
@@ -25,7 +25,8 @@ Need a fold changed? Change `host_key.sql` here, never a private mapping in a la
 | `landing_page_alert_acks` | host x id_namespace x failure class, with owner job and end date | `alert_acks.sql`, by hand (`ddl`) |
 
 Useful = stored PDF, or stored HTML where Parseland found authors or an abstract. Judge lanes on `attempt = 'first'`:
-retry-lane and re-fetch rows fail by design. Zyte cost is an estimate: fetches x billed requests per fetch x the
+retry-lane and re-fetch rows fail by design, and a campaign's first fetches (`campaign`, from `taxicab.campaign_results`)
+follow the records it chose, not the publisher's health (its guard reads `first` and `campaign` together). Zyte cost is an estimate: fetches x billed requests per fetch x the
 domain's price (refresh monthly from the Zyte dashboard's stats; recipe and the 3 Nov 2026 reading in #1789 EXPLORE § 1).
 
 ## Alarms

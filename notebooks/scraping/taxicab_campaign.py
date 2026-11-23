@@ -426,12 +426,12 @@ def judge_hosts(c, s, wv):
     expected = ("CASE WHEN outcome = 'answer' OR (outcome = 'stored' AND content_type = 'pdf') THEN 1.0 "
                 "WHEN outcome = 'stored' THEN coalesce(r_html, 1.0) ELSE 0.0 END")
     stats = q(f"""
-      WITH f AS (   -- the scoreboard funnel (#1789), first attempts
+      WITH f AS (   -- the scoreboard funnel (#1789), first attempts: organic ('first') and campaigns' own ('campaign')
         SELECT host,
           sum(CASE WHEN fetch_date >= date_sub(current_date(), 7) THEN fail_soft_block + fail_403 + fail_429 END)
             / sum(CASE WHEN fetch_date >= date_sub(current_date(), 7) THEN fetches END) AS b7,
           CASE WHEN sum(stored_html) >= 100 THEN (sum(useful) - sum(stored_pdf)) / sum(stored_html) END AS r_html
-        FROM {FUNNEL} WHERE attempt = 'first' AND fetch_date >= date_sub(current_date(), 30)
+        FROM {FUNNEL} WHERE attempt IN ('first', 'campaign') AND fetch_date >= date_sub(current_date(), 30)
           AND host IN (SELECT DISTINCT host FROM {DB}.campaign_results WHERE campaign = {camp} AND wave = {wv})
         GROUP BY host),
       res AS (SELECT r.*, r.wave = {wv} AS this_wave, f.b7, f.r_html

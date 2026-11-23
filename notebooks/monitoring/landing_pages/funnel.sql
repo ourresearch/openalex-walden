@@ -34,6 +34,15 @@ prior AS (
   WHERE processed_date < TIMESTAMP'{end}' AND url IN (SELECT url FROM win)
   GROUP BY url
 ),
+-- campaign = a first fetch made by a TaxiCab campaign (campaign_results rows carry the same url and processed_date as
+-- their taxicab_results row). A campaign over never-fetched URLs counted as first attempts, so the thin or dead pages
+-- of the records it chose read as a publisher regression (#1646's xpac run, 21-22 Nov 2026: old repository links
+-- redirecting to home pages, conference front matter, catalogue records). The campaign's own guard judges it.
+-- first + campaign = the old "first"; the guard (notebooks/scraping/taxicab_campaign.py) reads both.
+camp AS (
+  SELECT DISTINCT url, processed_date FROM openalex.taxicab.campaign_results
+  WHERE processed_date >= TIMESTAMP'{start}' AND processed_date < TIMESTAMP'{end}'
+),
 pp AS (
   SELECT taxicab_id,
     max(CASE WHEN had_error THEN 1 ELSE 0 END) err,
@@ -65,7 +74,7 @@ price AS (
 ),
 j AS (
   SELECT w.fetch_date, w.host, w.id_namespace,
-    CASE WHEN w.processed_date > p.first_seen THEN 'repeat' ELSE 'first' END attempt,
+    CASE WHEN w.processed_date > p.first_seen THEN 'repeat' WHEN c.url IS NOT NULL THEN 'campaign' ELSE 'first' END attempt,
     w.stored, w.lk,
     w.stored AND w.ct = 'pdf' stored_pdf,
     w.stored AND w.ct = 'html' stored_html,
@@ -81,6 +90,7 @@ j AS (
     coalesce(pk.usd_per_million_requests, pd.usd_per_million_requests) usd_m
   FROM win w
   LEFT JOIN prior p USING (url)
+  LEFT JOIN camp c ON c.url = w.url AND c.processed_date = w.processed_date
   LEFT JOIN pp ON pp.taxicab_id = w.taxicab_id
   LEFT JOIN mt ON mt.taxicab_id = w.taxicab_id
   LEFT JOIN price pk ON pk.price_key = w.price_key AND w.fetch_date >= pk.valid_from AND w.fetch_date < pk.valid_to
