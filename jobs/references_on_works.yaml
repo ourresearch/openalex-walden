@@ -5,11 +5,14 @@ resources:
       description: |
         Each work's reference list for GET /works/{id}/references (oxjob #2347; schema: oxjobs
         working/references-on-works/SCHEMA.md). Build_References_On_Works writes openalex.works.references_on_works (one row
-        per work: raw_reference_string, raw_doi, raw_pmid, work_id per line) from tables End 2 End has already curated
+        per work: raw_reference_string, raw_doi, work_id per line) from tables End 2 End has already curated
         (work_references, work_reference_lists_current, work_citations), and fails if any work's linked ids differ from its
-        served citations. Its own job after End 2 End, so nothing in the nightly waits on it (Casey, 20 Nov 2026); folded
-        into the pipeline once proven. Nothing reads the table yet. Revert: pause or delete this job and drop
-        openalex.works.references_on_works and openalex.works._references_on_works_lines.
+        served citations. Build_Lakebase_Work_References MERGEs the changed lists into lakebase_work_references_{0,1};
+        Sync_Lakebase_Work_References starts their Lakebase refresh (openalex-lookups), which the API reads. Its own job
+        after End 2 End, so nothing in the nightly waits on it (Casey, 20 Nov 2026); folded into the pipeline once proven.
+        Revert: pause or delete this job, drop the synced tables openalex.lakebase.lakebase_work_references_{0,1}, then
+        openalex.works.lakebase_work_references_{0,1}, _lakebase_work_references_changes, references_on_works and
+        _references_on_works_lines.
       schedule:
         # 15:00 UTC: End 2 End's citations and lists are done by then (Publish_Works usually by 10:00 UTC).
         quartz_cron_expression: 0 0 15 * * ?
@@ -28,6 +31,28 @@ resources:
             notebook_path: notebooks/end2end/CreateReferencesOnWorks
             source: GIT
             warehouse_id: 3996dc0a9b183ce3  # jobs-xl: the build fills shared-2xl ~60% (wh-fit OK), so 4xl would idle
+        - task_key: Build_Lakebase_Work_References
+          depends_on:
+            - task_key: Build_References_On_Works
+          timeout_seconds: 3600
+          notebook_task:
+            notebook_path: notebooks/lakebase/BuildLakebaseWorkReferences
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
+        - task_key: Sync_Lakebase_Work_References
+          depends_on:
+            - task_key: Build_Lakebase_Work_References
+          timeout_seconds: 1200
+          notebook_task:
+            notebook_path: notebooks/lakebase/TriggerLakebaseSync
+            base_parameters:
+              synced_tables: "openalex.lakebase.lakebase_work_references_0,openalex.lakebase.lakebase_work_references_1"
+            source: GIT
+          environment_key: Default
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub
