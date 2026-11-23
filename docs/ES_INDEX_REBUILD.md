@@ -132,6 +132,12 @@ means the swap takes effect for the API the instant the `_aliases` call lands.
 `IndexRebuild create_index` (dry run first, then `dry_run=false`). Check: `GET <new>/_mapping` equals the saved
 file; `GET _cat/shards/<new>` shows every primary STARTED and spread 1–2 per node.
 
+The mapping is the old index's, plus only what `source_excludes` and `drop_subfields` ask for (oxjob #2492). Works
+from works-v42: `source_excludes=fulltext,abstract` keeps both searchable but out of the stored `_source` (3.3 TB with
+replica), so **any partial `_update` to works must carry both fields** (`sync_work_metrics` does: `TEXT_FIELDS`), or
+the update re-indexes the doc without them and the work drops out of full-text search. A rebuild from Delta is
+unaffected; an in-cluster `_reindex` from an index with excludes would lose them.
+
 ### Step 3: calibrate (about 1 hour)
 Load one slice (works: one id range of about 1/64 of the table, about 7.4M documents) into the new index at 64
 writers for 15 minutes, then 128, then 256. At each level record: documents per second (`GET <new>/_stats/indexing`
