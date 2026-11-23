@@ -83,10 +83,11 @@ CASES = [
      [seat("Quach, Huu Trung", A + "1"), seat("Mac, Thi Luu", A + "2"),
       seat("Quách, Hữu Trung", A + "1"), seat("Mạc, Thị Lựu", A + "2")],
      ["Quach, Huu Trung", "Mac, Thi Luu"], {}),
-    ("one name differs by more than accents: not a repeated list, unchanged (oxjob #1155)", True,
+    # rule A leaves it (Mạc, Thị Lan is no copy); since oxjob #2186 rule B folds the accent-only repeat of seat 0
+    ("one name differs by more than accents: not a repeated list for A; B folds the accent-only repeat (oxjob #1155, #2186)", True,
      [seat("Quach, Huu Trung", A + "1"), seat("Mac, Thi Luu", A + "2"),
       seat("Quách, Hữu Trung", A + "1"), seat("Mạc, Thị Lan", A + "3")],
-     ["Quach, Huu Trung", "Mac, Thi Luu", "Quách, Hữu Trung", "Mạc, Thị Lan"], {"unchanged": True}),
+     ["Quach, Huu Trung", "Mac, Thi Luu", "Mạc, Thị Lan"], {}),
     ("no repeats: unchanged", True,
      [seat("A. Smith", A + "1"), seat("B. Jones", A + "2")], ["A. Smith", "B. Jones"], {"unchanged": True}),
     ("single author: unchanged", False, [seat("A. Smith", A + "1")], ["A. Smith"], {"unchanged": True}),
@@ -113,7 +114,7 @@ def authorship_sql(s, i, n):
     aff_sql = f"ARRAY({affs})" if s["ras"] else "CAST(ARRAY() AS ARRAY<STRUCT<institution_ids: ARRAY<STRING>, raw_affiliation_string: STRING>>)"
     return (f"NAMED_STRUCT('affiliations', {aff_sql}, "
             f"'author', NAMED_STRUCT('id', {lit(s['aid'])}, 'display_name', {lit(s['name'])}, 'orcid', {lit(s['orcid'])}, "
-            f"'observed_orcids', CAST(ARRAY() AS ARRAY<STRING>)), "
+            f"'observed_orcids', CAST(ARRAY() AS ARRAY<STRING>), 'type', CAST(NULL AS STRING)), "  # oxjob #2437: author.type
             f"'raw_orcid', {lit(s['orcid'])}, 'author_position', '{pos}', 'author_order_number', {i}, "
             f"'countries', {arr(['XX'] if s['inst'] else [])}, 'institutions', {inst_sql}, "
             f"'is_corresponding', {'TRUE' if s['corr'] else 'FALSE'}, 'raw_affiliation_strings', {arr(s['ras'])}, "

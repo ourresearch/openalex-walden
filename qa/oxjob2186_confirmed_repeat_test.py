@@ -30,7 +30,8 @@ def cells():
 def fold_sql():
     """The fold expression of 5b-E (main statement), for one name `x`; checked identical in the confirming-sources cell."""
     main = next(c for c in cells() if "dedupe_gate AS (" in c)
-    m = re.search(r"TRANSFORM\(kept_keys, x -> (.*)\) END AS ck", main)
+    # oxjob #2342 wrapped the column in IF(SPARK_PARTITION_ID() >= 0, ..., NULL)
+    m = re.search(r"TRANSFORM\(kept_keys, x -> (.*)\) END(?:, NULL\))? AS ck", main)
     expr = m.group(1)
     assert "coalesce(x.name, '')" in expr
     side = next(c for c in cells() if "CREATE OR REPLACE TABLE openalex.works.work_byline_confirming_sources" in c)
