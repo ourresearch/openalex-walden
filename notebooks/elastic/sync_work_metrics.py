@@ -8,10 +8,15 @@
 # MAGIC last re-stamped or the index rebuilt, while the snapshot has today's (7 Nov 2026: 10.8% of works off by > 1% one
 # MAGIC night after a rebuild).
 # MAGIC
-# MAGIC This notebook sends only those three fields, as partial `_update`s, for works whose served value is off by more than:
+# MAGIC This notebook sends those three fields, as partial `_update`s, for works whose served value is off by more than:
 # MAGIC fwci 1% (relative), `citation_normalized_percentile.value` 0.01, `cited_by_percentile_year` min or max 2 points, or
 # MAGIC whose null-ness or top-1/10% flag differs. `updated_date` is never touched: 0 re-stamps. The same lines are in
 # MAGIC `notebooks/lakebase/BuildLakebaseWorkMetrics` (single-work lookups); change both together.
+# MAGIC
+# MAGIC **Each update also carries `fulltext` and `abstract`** (oxjob #2492): the works index keeps them searchable but out
+# MAGIC of the stored `_source` (`_source.excludes`), and a partial update re-indexes the doc from what is stored, so an
+# MAGIC update without them would drop both from search. `abstract` is cleaned exactly as `sync_works` cleans it (same
+# MAGIC wheel, same 32,000-character cap). A field added to the excludes must be added to `TEXT_FIELDS` too.
 # MAGIC
 # MAGIC **What the index holds** is kept in `openalex.works.es_work_metrics_served` (one row per work: the values and the
 # MAGIC `updated_date` the index has). Each run compares it with Delta in one pass:
@@ -42,6 +47,7 @@
 # COMMAND ----------
 
 # MAGIC %pip install elasticsearch==8.19.0
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.43-py3-none-any.whl
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -51,6 +57,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from elasticsearch import Elasticsearch, helpers
+from pyspark.sql import functions as F
+
+# The same cleaner and cap sync_works applies to the searched `abstract` (oxjob 191.1); same wheel version as sync_works.
+from openalex.dlt.transform import udf_clean_abstract_text
 
 dbutils.widgets.dropdown("mode", "nightly", ["nightly", "dry_run"])
 dbutils.widgets.text("max_push", "10000000")       # cap per run; the rest wait (non-xpac first, largest first)
@@ -81,6 +91,8 @@ FAILED_SCHEMA = "id BIGINT, error STRING, run_started_at TIMESTAMP"
 RUNS_TABLE = "openalex.works.es_work_metrics_runs"                # one row per chunk and one per run
 ELASTIC_INDEX = "works"
 ELASTIC_URL = dbutils.secrets.get(scope="elastic", key="elastic_url")
+TEXT_FIELDS = ("fulltext", "abstract")   # the works index's _source.excludes (IndexRebuild source_excludes, oxjob #2492)
+ABSTRACT_MAX = 32000                     # sync_works' sanitize_string cap
 
 FWCI_REL, CNP_ABS = 0.01, 0.01
 PCT_POINTS = 1.5  # min or max moved 2+ points (integers: a 1-point move scores 0.67, 2 points 1.33)
@@ -190,11 +202,16 @@ def cap_filter(rows_sql, key_sql, cap):
 past = counts.get("push", 0)
 push_rows = f"SELECT * FROM {DIFF_TABLE} WHERE action = 'push'"
 keep = cap_filter(push_rows, PUSH_KEY, CAP) if CAP and past > CAP else "true"
-spark.sql(f"""
-    CREATE OR REPLACE TABLE {PUSH_TABLE} AS
+push = spark.sql(f"""
     SELECT id, is_xpac, fwci, citation_normalized_percentile, cited_by_percentile_year, score, band
     FROM ({push_rows}) WHERE {keep}
-""")
+""").localCheckpoint()
+# The pushed works' text: one scan of openalex_works against the broadcast push ids (no shuffle of the 3 TB of text),
+# then the cleaner on those rows only.
+text = spark.table(WORKS_TABLE).select("id", *TEXT_FIELDS).join(F.broadcast(push.select("id")), "id") \
+    .withColumn("abstract", udf_clean_abstract_text(F.col("abstract"))) \
+    .withColumn("abstract", F.when(F.col("abstract").isNotNull(), F.substring("abstract", 1, ABSTRACT_MAX)))
+push.join(text, "id", "left").write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(PUSH_TABLE)
 if keep != "true":
     print(f"Capped at about {CAP:,} ({keep}); the rest wait for the next run")
 bands = spark.sql(f"SELECT band, count(*) AS n FROM {PUSH_TABLE} GROUP BY band ORDER BY band").collect()
@@ -207,7 +224,7 @@ print(f"Past the lines: {past:,}; push {n_push:,} in {len(chunks)} chunks; by ba
 
 # COMMAND ----------
 
-# Partial updates, chunk by chunk. Only these three fields; never an upsert (a missing doc stays missing:
+# Partial updates, chunk by chunk. These three fields plus TEXT_FIELDS; never an upsert (a missing doc stays missing:
 # sync_works owns docs). Stream 0 always runs; the others pause while ES data nodes are hot.
 def es_client():
     return Elasticsearch(hosts=[ELASTIC_URL], request_timeout=180, max_retries=5, retry_on_timeout=True,
@@ -253,6 +270,7 @@ def send(idx, rows):
                     "fwci": r.fwci,
                     "citation_normalized_percentile": None if cnp is None else cnp.asDict(),
                     "cited_by_percentile_year": None if py is None else py.asDict(),
+                    **{f: r[f] for f in TEXT_FIELDS},
                 },
             }
 
