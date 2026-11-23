@@ -150,6 +150,7 @@ def test_nih_key_is_nightlys_nih_parent_key():
     assert f"WHEN funder_id = 4320332161 THEN (NULLIF(regexp_extract(_n, {registry}, 1), ''))" in norm_key
     assert f"WHEN funder_id = 4320332161 THEN (CASE WHEN NULLIF(regexp_extract(_n, {deposited}, 1), '') IS NOT NULL" in norm_key
     assert f"regexp_extract(n, {deposited}, 1) <> ''" in spellings and f"nullif(regexp_extract(n, {registry}, 1), '')" in spellings
+    assert spellings.index(deposited) < spellings.index(registry) < spellings.index(r"'(?<![A-Z])([A-Z]{2}) ?-?(\\d{4})(?!\\d)'")
     assert "upper(trim(funder_award_id))" in spellings and "'  +', ' ') n" in spellings
 
     def nkey(s):
@@ -158,11 +159,16 @@ def test_nih_key_is_nightlys_nih_parent_key():
         if m:
             return m.group(1) + m.group(2).rjust(6, '0')
         m = re.search(r'([A-Z]{2}\d{6})', n)
-        return m.group(1) if m else None
+        if m:
+            return m.group(1)
+        m = re.search(r'(?<![A-Z])([A-Z]{2}) ?-?(\d{4})(?!\d)', n)   # 4-digit serial, after Nightly's two forms
+        return m.group(1) + m.group(2).rjust(6, '0') if m else None
     cases = {'5p60am022125-08': 'AM022125', 'AM 22125.': 'AM022125', 'AM-22125': 'AM022125', 'CA 11051': 'CA011051',
              '5R01CA011051-14': 'CA011051', '5R01CA01105114': 'CA011051', 'R01 DK026190': 'DK026190', 'HL-06825': 'HL006825',
              '1-KO-4 HD-00634': 'HD000634', 'AM-19920-4': 'AM019920', 'NIAMDD AM 18370': 'AM018370', 'BNS 13464': 'NS013464',
-             'L.L.GM-27256': 'GM027256', '5k04am00504-2': 'AM000504', 'am 26481-phy': 'AM026481', 'unknown': None, '12345': None}
+             'L.L.GM-27256': 'GM027256', '5k04am00504-2': 'AM000504', 'am 26481-phy': 'AM026481', 'EY0597': 'EY000597',
+             'ey00597': 'EY000597', 'GCRC RR 0065': 'RR000065', '5R01 AI 1450-08': 'AI001450', 'R01EY6645-02': 'EY006645',
+             'BNS 1234': None, 'unknown': None, '12345': None}
     assert {s: nkey(s) for s in cases} == cases
 
 

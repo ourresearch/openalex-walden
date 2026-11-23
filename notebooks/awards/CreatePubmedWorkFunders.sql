@@ -169,8 +169,9 @@ FROM flattened GROUP BY work_id, funder_id
 --   3. it is the grant's one spelling in this leg: per generic key (per funder; one NIH-wide key), then per NIH institute +
 --      serial, the spelling most PubMed records use. A work citing another spelling of it gets no link to it, never a twin.
 -- NIH institute + serial = Nightly's sharp key for the NIH parent (AwardNormKey.sql, funder 4320332161: the paper-side
--- form, else the registry form): 'AM-19920-4' -> AM019920, 'BNS 13464' -> NS013464, '5R01CA011051-14' -> CA011051.
--- A second check run with a looser key of its own still made 611 NIH twins (oxjob #2544).
+-- form, else the registry form): 'AM-19920-4' -> AM019920, 'BNS 13464' -> NS013464, '5R01CA011051-14' -> CA011051;
+-- else a 4-digit serial, which that key does not read but pre-1980 papers often print: 'EY0597' -> EY000597, the same
+-- grant as 'ey00597' (1,943 of the leg's new NIH shells twinned an existing award this way, oxjob #2544).
 CREATE OR REPLACE TEMPORARY VIEW pwf_shell_spellings AS
 WITH spelled AS (
   SELECT c.funder_id, award_id AS funder_award_id, count(*) mentions
@@ -196,7 +197,10 @@ keys AS (
       CASE WHEN regexp_extract(n, '([A-Z]{2}) ?-?(\\d{5,6})(?!\\d)', 1) <> ''
            THEN concat(regexp_extract(n, '([A-Z]{2}) ?-?(\\d{5,6})(?!\\d)', 1),
                        lpad(regexp_extract(n, '([A-Z]{2}) ?-?(\\d{5,6})(?!\\d)', 2), 6, '0')) END,
-      nullif(regexp_extract(n, '([A-Z]{2}\\d{6})', 1), '')) END nkey
+      nullif(regexp_extract(n, '([A-Z]{2}\\d{6})', 1), ''),
+      CASE WHEN regexp_extract(n, '(?<![A-Z])([A-Z]{2}) ?-?(\\d{4})(?!\\d)', 1) <> ''
+           THEN concat(regexp_extract(n, '(?<![A-Z])([A-Z]{2}) ?-?(\\d{4})(?!\\d)', 1),
+                       lpad(regexp_extract(n, '(?<![A-Z])([A-Z]{2}) ?-?(\\d{4})(?!\\d)', 2), 6, '0')) END) END nkey
   FROM (SELECT *, funder_id IN (4320332161, 4320337611, 4320337356, 4320337376, 4320337472, 4320337358, 4320337593, 4320337375,
       4320337355, 4320337362, 4320337363, 4320337364, 4320337365, 4320337357, 4320337361, 4320337354, 4320337346, 4320337359,
       4320337353, 4320337337, 4320337330, 4320337352, 4320337347, 4320337534, 4320337372, 4320337351, 4320337374, 4320337350,
