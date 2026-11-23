@@ -7,9 +7,9 @@ resources:
       name: Fulltext Contributor Roles
       description: CRediT roles read from full-text contribution statements into openalex.works.fulltext_contributor_roles (oxjob #2450); see notebooks/ingest/FulltextContributorRoles.
       schedule:
-        # before the 05:00 UTC End 2 End, which reads the table in CreateWorksEnriched; picks up the full text the
+        # before the 03:00 UTC End 2 End, which reads the table in CreateWorksEnriched; picks up the full text the
         # previous night's CreateWorkFulltext added
-        quartz_cron_expression: 0 0 3 * * ?
+        quartz_cron_expression: 0 0 1 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       max_concurrent_runs: 1

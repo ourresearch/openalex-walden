@@ -8,7 +8,7 @@ resources:
           - casey@ourresearch.org
       max_concurrent_runs: 1
       schedule:
-        quartz_cron_expression: "0 0 4 * * ?"
+        quartz_cron_expression: "0 0 2 * * ?"
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:

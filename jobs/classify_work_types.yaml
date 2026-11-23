@@ -8,7 +8,7 @@
 #   Score_Queue   ScoreWorkTypeQueue: the queue on Modal (app openalex-worktypes-nightly, the v6c scorer, <= 8 H100s) ->
 #                 parquet in the Volume -> checked -> openalex.works.work_type_scores, each text once
 # Two tables: the queue (transient) and the scores. Scratch is parquet in the Volume, removed after each load.
-# Timing: daily 16:00 UTC (End 2 End starts 05:00 UTC and lands 11:00-13:30). ~120K texts a night: ~25-35 min, mostly the
+# Timing: daily 16:00 UTC (End 2 End starts 03:00 UTC and lands ~11:30-12:30). ~120K texts a night: ~25-35 min, mostly the
 # input fingerprint of every live work; Modal ~5 min, ~$0.7. The backfill is this job run by hand per chunk (RUN-GOLINE1.md).
 resources:
   jobs:

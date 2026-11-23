@@ -3,7 +3,7 @@ resources:
     ANR_Work_Funders:
       name: ANR Work Funders
       schedule:
-        quartz_cron_expression: 0 30 1 * * ?
+        quartz_cron_expression: 0 30 22 * * ?
         timezone_id: UTC
         # PAUSED by design (mirrors NWO_Work_Funders): run ON-DEMAND, not on a schedule.
         # The upstream ANR linkage file (anr_work_links_to_s3.py + anr_work_links_raw) is a

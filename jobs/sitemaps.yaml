@@ -18,7 +18,7 @@ resources:
         (change_signals=false); source=state re-publishes the published record set as is. Writes only
         openalex.sitemaps.* and the R2 bucket.
       schedule:
-        # 20:00 UTC: after Walden End 2 End's publish path (05:00 UTC start; ES sync done by ~17:30 on most
+        # 20:00 UTC: after Walden End 2 End's publish path (03:00 UTC start; ES sync done by ~15:30 on most
         # days). The notebook refuses to run if today's works ES sync hasn't started.
         quartz_cron_expression: 0 0 20 * * ?
         timezone_id: UTC

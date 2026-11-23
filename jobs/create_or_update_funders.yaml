@@ -9,7 +9,7 @@ resources:
       description: Production funder registry; existing fields and DOIs preserved.
       tags: {stage: prod, lane: funders}
       schedule:
-        quartz_cron_expression: "0 45 21 * * ?"
+        quartz_cron_expression: "0 45 18 * * ?"
         timezone_id: UTC
         pause_status: UNPAUSED   # accepted forward state; YAML owns activation across later deploys
       email_notifications:

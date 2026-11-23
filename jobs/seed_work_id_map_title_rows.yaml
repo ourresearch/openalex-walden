@@ -12,7 +12,7 @@ resources:
         MANUAL TRIGGER ONLY.
           mode=stage    missing bindings into target_table, with each key's distinct-id count
           mode=dry_run  what execute would insert; include_blocked_keys=no leaves out pairs that push a key past n_ids 3
-          mode=execute  confirm=yes, outside 04:00-08:00 UTC; runs once per target
+          mode=execute  confirm=yes, outside 02:00-09:00 UTC; runs once per target
           mode=verify   the morning after: live re-census (expect ~0 missing)
       max_concurrent_runs: 1
       parameters:

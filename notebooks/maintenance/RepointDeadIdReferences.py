@@ -21,7 +21,7 @@
 # MAGIC - `stage`    build the edges from `audit_table` (dead ids) × `repair_target` (anchors) × `work_references`;
 # MAGIC              assign waves of `wave_size` citing works (a citing work never straddles waves).
 # MAGIC - `dry_run`  per-wave edges / citing works / anchors; top anchors by citations gained; samples.
-# MAGIC - `execute`  `confirm = yes`, `wave = N`, outside 04:00-08:00 UTC and never while End 2 End is running:
+# MAGIC - `execute`  `confirm = yes`, `wave = N`, outside 02:00-09:00 UTC and never while End 2 End is running:
 # MAGIC              freeze `<target>_wave<N>_audit` (before-image), one MERGE, stamp `executed_at`. Once per wave.
 # MAGIC              Undo = MERGE the audit's `old_cited_work_id` back.
 # MAGIC - `verify`   executed edges still on a dead id (expect 0); anchors whose count rose; the example DOI.
@@ -151,8 +151,8 @@ if MODE in ("dry_run", "execute"):
 
 if MODE == "execute":
     hour = datetime.datetime.utcnow().hour
-    if 4 <= hour < 8:
-        raise Exception("End 2 End rebuilds works 05:00-07:00 UTC; run execute outside 04:00-08:00 UTC")
+    if 2 <= hour < 9:
+        raise Exception("End 2 End rebuilds works ~04:30-07:30 UTC; run execute outside 02:00-09:00 UTC")
     active = end2end_active()
     if active:
         raise Exception(f"Walden End 2 End is running (runs {active}); wait for it to finish")

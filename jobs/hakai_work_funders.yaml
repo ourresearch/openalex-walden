@@ -3,7 +3,7 @@ resources:
     Hakai_Work_Funders:
       name: Hakai Work Funders
       schedule:
-        quartz_cron_expression: 0 30 1 * * ?
+        quartz_cron_expression: 0 30 22 * * ?
         timezone_id: UTC
         # PAUSED by design (OUTPUT-LIST pattern, §11): run ON-DEMAND, not on a schedule.
         # Hakai's published list (hakai.org/publications) is static and re-scraped rarely,

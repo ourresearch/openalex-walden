@@ -23,7 +23,7 @@
 # MAGIC 2018 article into); moving the notice off would hand the notice's id to the article.
 # MAGIC
 # MAGIC - `stage`    build `target_table` (one row per record) and print the plan; refuses a target with executed rows.
-# MAGIC - `execute`  dry run; `confirm = yes`, outside 04:00-08:00 UTC: freeze `<target>_audit` and `<target>_map_audit`, then
+# MAGIC - `execute`  dry run; `confirm = yes`, outside 02:00-09:00 UTC: freeze `<target>_audit` and `<target>_map_audit`, then
 # MAGIC              delete the pins, delete the article work's map rows keyed by a moving DOI (or by a moving PMID on a row with
 # MAGIC              no DOI), and blank a moving PMID on its other rows.
 # MAGIC - `verify`   the morning after: every record re-pinned, none back on the article's work.
@@ -71,8 +71,8 @@ def one(sql):
 
 
 def outside_nightly_window():
-    if 4 <= datetime.datetime.utcnow().hour < 8:
-        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run outside 04:00-08:00 UTC")
+    if 2 <= datetime.datetime.utcnow().hour < 9:
+        raise Exception("MapWorkIds writes the registries ~04:30-07:30 UTC; run outside 02:00-09:00 UTC")
 
 # COMMAND ----------
 

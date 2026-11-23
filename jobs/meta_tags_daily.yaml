@@ -8,7 +8,7 @@ resources:
           - casey@ourresearch.org
           - rohan@openalex.org
       schedule:
-        quartz_cron_expression: 0 0 3 * * ?
+        quartz_cron_expression: 0 0 1 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:

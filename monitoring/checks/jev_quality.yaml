@@ -68,7 +68,7 @@ sections:
         page: true
         failure_modes: >
           design is ~31K (3K/3K/2K/3K/20K); e_auth alone is 20K, so ~11K means pending_author_assignments
-          was missing (the task ran outside the 22:30-05:00 UTC window) and ~0 means the notebook did not
+          was missing (the task ran outside the 22:30-03:00 UTC window) and ~0 means the notebook did not
           reach its metric cells (typesafe secret, Jev outage, cost-guard abort)
       - id: stratum_present
         title: each stratum judged at least 100 items

@@ -23,7 +23,7 @@
 # MAGIC              digit titles (`max_keys = 0` = no cap); assign waves of `wave_size` keys, smallest
 # MAGIC              works first; write `<target>_cited_review` (every cited work in scope).
 # MAGIC - `dry_run`  what `execute` would do for `wave`: pins, alias rows, expected new works, cited works.
-# MAGIC - `execute`  `confirm = yes` only, outside 04:00-08:00 UTC: freeze `<target>_wave<N>_audit`,
+# MAGIC - `execute`  `confirm = yes` only, outside 02:00-09:00 UTC: freeze `<target>_wave<N>_audit`,
 # MAGIC              then the two DELETEs. Undo: 60-day Delta retention on both registries + the audit table.
 # MAGIC - `verify`   the morning after: every audited anchor re-pinned, none back on its old work,
 # MAGIC              fan-in of the new works, keys now on > 1 id.
@@ -213,8 +213,8 @@ if MODE in ("dry_run", "execute"):
 
 if MODE == "execute":
     hour = datetime.datetime.utcnow().hour
-    if 4 <= hour < 8:
-        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run execute outside 04:00-08:00 UTC")
+    if 2 <= hour < 9:
+        raise Exception("MapWorkIds writes the registries ~04:30-07:30 UTC; run execute outside 02:00-09:00 UTC")
     if not CONFIRM:
         dbutils.notebook.exit("dry run only: pass confirm=yes to execute")
     if spark.catalog.tableExists(AUDIT):
@@ -295,8 +295,8 @@ if MODE == "verify":
 
 if MODE == "revert_cited":
     hour = datetime.datetime.utcnow().hour
-    if 4 <= hour < 8:
-        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run outside 04:00-08:00 UTC")
+    if 2 <= hour < 9:
+        raise Exception("MapWorkIds writes the registries ~04:30-07:30 UTC; run outside 02:00-09:00 UTC")
 
     scope = f"""
       SELECT x.provenance, x.native_id_namespace, x.native_id, x.old_work_id, x.new_key,
@@ -363,7 +363,7 @@ if MODE == "revert_cited":
 # MAGIC (`cited_work_id` is set once and never re-resolved).
 # MAGIC
 # MAGIC `wave_e`      freeze `<target>_wave_e_audit` (anchors + their ids from `locations_w_types`), then
-# MAGIC               DELETE pins, title aliases and id map rows. `confirm = yes`, outside 04:00-08:00 UTC.
+# MAGIC               DELETE pins, title aliases and id map rows. `confirm = yes`, outside 02:00-09:00 UTC.
 # MAGIC `repoint_citations`  the morning after: re-point `work_references.cited_work_id` by DOI to wherever
 # MAGIC               that DOI now resolves. Monotone — a row moves only when the DOI resolves elsewhere.
 
@@ -377,8 +377,8 @@ if MODE in ("wave_e", "repoint_citations"):
 
 if MODE == "wave_e":
     hour = datetime.datetime.utcnow().hour
-    if 4 <= hour < 8:
-        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run outside 04:00-08:00 UTC")
+    if 2 <= hour < 9:
+        raise Exception("MapWorkIds writes the registries ~04:30-07:30 UTC; run outside 02:00-09:00 UTC")
 
     scope = f"""
       SELECT x.provenance, x.native_id_namespace, x.native_id, x.old_work_id, x.new_key, x.title_part,
@@ -521,7 +521,7 @@ if MODE == "repoint_citations":
 # MAGIC tier cannot pull them back: the old work keeps a record of the same class (`title_doi_conflict`).
 # MAGIC
 # MAGIC `doi_split_stage`   build `target_table`; refuses to overwrite a target that has executed rows.
-# MAGIC `doi_split`         dry run; `confirm = yes`, outside 04:00-08:00 UTC: freeze `<target>_audit`, then the DELETEs.
+# MAGIC `doi_split`         dry run; `confirm = yes`, outside 02:00-09:00 UTC: freeze `<target>_audit`, then the DELETEs.
 # MAGIC                     Refuses when a moving DOI has inbound `work_references` edges (no repoint here).
 # MAGIC `doi_split_verify`  the morning after.
 # MAGIC
@@ -684,8 +684,8 @@ if MODE == "doi_split":
         raise Exception("moving DOIs carry citations: pass allow_cited=yes and run doi_split_repoint_citations the morning after")
     if not CONFIRM:
         dbutils.notebook.exit("dry run only: pass confirm=yes to split")
-    if 4 <= datetime.datetime.utcnow().hour < 8:
-        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run outside 04:00-08:00 UTC")
+    if 2 <= datetime.datetime.utcnow().hour < 9:
+        raise Exception("MapWorkIds writes the registries ~04:30-07:30 UTC; run outside 02:00-09:00 UTC")
     if spark.catalog.tableExists(SPLIT_AUDIT):
         raise Exception(f"{SPLIT_AUDIT} exists: this split already ran (or clean it up first)")
 

@@ -11,7 +11,7 @@ resources:
         on_failure:
           - casey@ourresearch.org
       schedule:
-        # 22:00 UTC. end2end starts at 05:00 UTC and runs ~5-13h (clusters around
+        # 22:00 UTC. end2end starts at 03:00 UTC and runs ~5-13h (clusters around
         # 16:00-17:30 lately), so 22:00 leaves a buffer for the live works table to
         # finish the day's rebuild before we snapshot its metrics. NOTE: this is a
         # fixed-clock standalone schedule, NOT gated on end2end — on rare overrun

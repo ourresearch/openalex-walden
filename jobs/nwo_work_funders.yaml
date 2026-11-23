@@ -3,7 +3,7 @@ resources:
     NWO_Work_Funders:
       name: NWO Work Funders
       schedule:
-        quartz_cron_expression: 0 30 1 * * ?
+        quartz_cron_expression: 0 30 22 * * ?
         timezone_id: UTC
         # PAUSED by design (oxjobs #244): run ON-DEMAND. The notebook reads the newest NWOpen object
         # (openalex-ingest nwo_awards.py, weekly), so run it after that fetch and that day's Awards

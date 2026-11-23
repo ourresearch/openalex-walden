@@ -21,7 +21,7 @@ resources:
         (works_study_design_queue / _tagger / _errors / _progress /
         works_study_design); nothing feeds CreateWorksEnriched or ES yet.
       schedule:
-        # 19:00 UTC: after Walden End 2 End (05:00 UTC start, usually done by ~17:30)
+        # 19:00 UTC: after Walden End 2 End (03:00 UTC start, usually done by ~15:30)
         # so the day's new works are in openalex_works; before Works Daily Metrics
         # (22:00) and Authorship Daily Metrics (22:30).
         quartz_cron_expression: 0 0 19 * * ?

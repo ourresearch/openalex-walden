@@ -13,9 +13,9 @@ resources:
         # 2026-07-07: end2end owns the 05:00 refresh (its Sources_Snapshot task runs the
         # same notebook at the top of every run, so works always build against registry
         # state as of run start). This job keeps the table fresh for ad-hoc viewers the
-        # rest of the day — intra-day slots chosen to never overlap the ~05:00 in-DAG
+        # rest of the day — intra-day slots chosen to never overlap the ~03:00 in-DAG
         # refresh (concurrent CREATE OR REPLACE on the same table conflicts).
-        quartz_cron_expression: 0 0 11,17,23 * * ?
+        quartz_cron_expression: 0 0 13,17,23 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:

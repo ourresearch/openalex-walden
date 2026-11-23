@@ -17,7 +17,7 @@ resources:
           - rohan@openalex.org
         no_alert_for_skipped_runs: true
       schedule:
-        quartz_cron_expression: "0 0 1 * * ?"
+        quartz_cron_expression: "0 0 22 * * ?"
         timezone_id: UTC
         pause_status: UNPAUSED   # Nightly Grants reads the table (config.prod.json extra_inputs.investigator_authors)
       timeout_seconds: 7200

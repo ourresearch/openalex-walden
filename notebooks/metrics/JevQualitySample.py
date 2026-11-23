@@ -6,7 +6,7 @@
 # MAGIC `jev-1.13.0`) with a capped Opus 5 tail on the highest-confidence flags.
 # MAGIC Runs as a task of the Authorship Daily Metrics job in the 22:30 UTC window
 # MAGIC (the authorship stratum reads the ephemeral `pending_author_assignments`
-# MAGIC that the next end2end replaces at 05:00 UTC).
+# MAGIC that the next end2end replaces at 03:00 UTC).
 # MAGIC
 # MAGIC **Observation-only**: writes `openalex.monitoring.jev_quality_items` (per-run
 # MAGIC scratch), `jev_quality_sample` (tall, one row per judged item),

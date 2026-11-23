@@ -3,7 +3,7 @@ resources:
     ArXiv_PDF_Sweep:
       name: arXiv PDF Sweep
       # oxjob #1987: every arXiv record gets its PDF, whatever TaxiCab's windows missed. Daily at 22:00 UTC, so its PDFs
-      # are inside the 00:30 UTC Parse PDFs run's 3-day window and reach the 05:00 UTC End 2 End the same night.
+      # are inside the 00:30 UTC Parse PDFs run's 3-day window and reach the 03:00 UTC End 2 End the same night.
       max_concurrent_runs: 1
       email_notifications:
         on_failure:

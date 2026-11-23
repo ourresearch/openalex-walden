@@ -20,9 +20,9 @@ resources:
         on_failure:
           - casey@ourresearch.org
       schedule:
-        # 22:30 UTC — after end2end (05:00 UTC start, usually done by ~17:30)
+        # 22:30 UTC — after end2end (03:00 UTC start, usually done by ~15:30)
         # and offset from Works Daily Metrics (22:00) so both aren't spinning
-        # clusters at once. Must run BEFORE the next end2end (05:00) replaces
+        # clusters at once. Must run BEFORE the next end2end (03:00) replaces
         # the ephemeral run-state tables this job snapshots. Metrics writes
         # are idempotent per snapshot_date; change events are append-only.
         quartz_cron_expression: 0 30 22 * * ?

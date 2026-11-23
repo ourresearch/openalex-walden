@@ -15,7 +15,7 @@ resources:
         MANUAL TRIGGER ONLY.
           mode=stage             build the class, apply holds, assign waves per key (uncited first); writes <target>_cited_review
           mode=dry_run wave=N    losers/keys/winners, pins + map rows to delete, samples
-          mode=execute wave=N    confirm=yes, outside 04:00-08:00 UTC, never while End 2 End runs; <target>_wave<N>_audit; once per wave
+          mode=execute wave=N    confirm=yes, outside 02:00-09:00 UTC, never while End 2 End runs; <target>_wave<N>_audit; once per wave
           mode=verify wave=N     the morning after: audited pins re-pinned on the winner; losers unpinned + ledgered
           mode=repoint_citations wave=N confirm=yes   after verify: <target>_wave<N>_refs_audit, then UPDATE work_references
           class_mode=feed_twin   oxjob #1427: an OJS feed record and its Crossref twin on two works; feed_scope_sql = the endpoints in scope

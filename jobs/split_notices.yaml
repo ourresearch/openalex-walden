@@ -10,7 +10,7 @@ resources:
 
         MANUAL TRIGGER ONLY.
           mode=stage    build target_table (one row per record) and print the plan
-          mode=execute  dry run; confirm=yes, outside 04:00-08:00 UTC: audit tables, then the deletes
+          mode=execute  dry run; confirm=yes, outside 02:00-09:00 UTC: audit tables, then the deletes
           mode=verify   the morning after: every record re-pinned, none back on the article's work
           mode=repoint_citations  the morning after: work_references edges follow the moved DOI / PMID (confirm=yes)
       max_concurrent_runs: 1

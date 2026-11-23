@@ -13,7 +13,7 @@ resources:
           - casey@ourresearch.org
       # Once a day (was every 8 h; oxjob #1698): 00:30 UTC, inside GROBID's warm window
       # (ECS scheduled scaling: 40 tasks from 00:10 UTC, back to 1 at 04:00 UTC), and
-      # done before the 05:00 UTC End 2 End refreshes PDFWork. Every consumer is daily.
+      # done before the 03:00 UTC End 2 End refreshes PDFWork. Every consumer is daily.
       schedule:
         quartz_cron_expression: "0 30 0 * * ?"
         timezone_id: UTC

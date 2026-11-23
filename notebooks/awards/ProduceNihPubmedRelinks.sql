@@ -31,9 +31,9 @@ SET TIME ZONE 'UTC'
 
 -- COMMAND ----------
 
--- Production runs only start in 01:00-02:30 UTC (the job is scheduled 01:30; Nightly Grants binds its inputs at 03:00 UTC).
-SELECT CASE WHEN nihp_map = 'openalex.awards.award_relink_map' AND NOT (hour(current_timestamp()) = 1 OR (hour(current_timestamp()) = 2 AND minute(current_timestamp()) < 30))
-  THEN raise_error('OUTSIDE_WINDOW: production runs start 01:00-02:30 UTC only; nothing written') ELSE 'window ok' END run_window
+-- Production runs only start in 22:00-23:30 UTC (the job is scheduled 22:30; Nightly Grants binds its inputs at 00:00 UTC; 3 h earlier since 23 Nov 2026, oxjob #2473).
+SELECT CASE WHEN nihp_map = 'openalex.awards.award_relink_map' AND NOT (hour(current_timestamp()) = 22 OR (hour(current_timestamp()) = 23 AND minute(current_timestamp()) < 30))
+  THEN raise_error('OUTSIDE_WINDOW: production runs start 22:00-23:30 UTC only; nothing written') ELSE 'window ok' END run_window
 
 -- COMMAND ----------
 
@@ -350,10 +350,10 @@ FROM (
 -- COMMAND ----------
 
 -- The one write: insert-only, keyed on (work_id, target_funder_id, target_award_id). Skipped when there is nothing to add (no empty commit).
--- Right before writing: the Nightly has not started and (production) it is still before 02:40 UTC; else stop with nothing written.
+-- Right before writing: the Nightly has not started and (production) it is still before 23:40 UTC; else stop with nothing written.
 BEGIN
   IF nihp_ready <=> 'READY' AND size(nihp_rows) > 0 AND (EXISTS (SELECT 1 FROM openalex.awards.award_nightly_runs WHERE finished_at IS NULL)
-      OR (nihp_map = 'openalex.awards.award_relink_map' AND NOT (hour(current_timestamp()) = 1 OR (hour(current_timestamp()) = 2 AND minute(current_timestamp()) < 40)))) THEN
+      OR (nihp_map = 'openalex.awards.award_relink_map' AND NOT (hour(current_timestamp()) = 22 OR (hour(current_timestamp()) = 23 AND minute(current_timestamp()) < 40)))) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LATE_OR_NIGHTLY_STARTED: nothing written';
   END IF;
   IF nihp_ready <=> 'READY' AND size(nihp_rows) > 0 THEN

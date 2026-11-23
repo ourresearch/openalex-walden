@@ -3,7 +3,7 @@ resources:
     Crossref_Work_Funders:
       name: Crossref Work Funders
       schedule:
-        quartz_cron_expression: 0 0 2 * * ?
+        quartz_cron_expression: 0 0 23 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:

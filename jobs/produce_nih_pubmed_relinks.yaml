@@ -1,7 +1,7 @@
 # NIH PubMed relinks: PubMed GrantList -> NIH core project rows for the registry-mode relink leg of Nightly Grants.
 # One SQL notebook, one target (openalex.awards.award_relink_map, insert-only MERGE, election 'nih_pubmed_nightly').
-# 01:30 UTC = 18:30 PDT / 17:30 PST, before Nightly Grants binds its inputs (03:00 UTC). The notebook refuses to start outside 01:00-02:30 UTC
-# and to write after 02:40 UTC or once a Nightly run has started; no queueing. It fails closed (no write) if last night's Nightly is incomplete, the NIH fold is not fully bound,
+# 22:30 UTC = 14:30 PST / 15:30 PDT, before Nightly Grants binds its inputs (00:00 UTC). The notebook refuses to start outside 22:00-23:30 UTC
+# and to write after 23:40 UTC or once a Nightly run has started; no queueing. It fails closed (no write) if last night's Nightly is incomplete, the NIH fold is not fully bound,
 # any guard fails, or more than max_rows rows would be added.
 # UNPAUSED since 2026-10-16 (Rohan, ccadb78a). pause_status below is what every bundle deploy applies; a UI pause is reset by it.
 resources:
@@ -11,7 +11,7 @@ resources:
       description: Nightly incremental PubMed GrantList -> NIH project rows for award_relink_map (insert-only).
       tags: {lane: awards}
       schedule:
-        quartz_cron_expression: "0 30 1 * * ?"
+        quartz_cron_expression: "0 30 22 * * ?"
         timezone_id: UTC
         pause_status: UNPAUSED
       email_notifications:
@@ -40,4 +40,4 @@ resources:
         git_provider: gitHub
         git_branch: main
       queue:
-        enabled: false   # a late (queued) start has no valid window; the notebook also refuses starts outside 01:00-02:30 UTC
+        enabled: false   # a late (queued) start has no valid window; the notebook also refuses starts outside 22:00-23:30 UTC

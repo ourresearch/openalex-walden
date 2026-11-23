@@ -8,7 +8,7 @@ resources:
       description: CRediT roles from Crossref's raw files into openalex.crossref.crossref_contributor_roles (oxjob #2075); see notebooks/ingest/CrossrefContributorRoles.
       schedule:
         # after the day's Crossref pulls land (~02:40 UTC)
-        quartz_cron_expression: 0 30 3 * * ?
+        quartz_cron_expression: 0 15 2 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       max_concurrent_runs: 1

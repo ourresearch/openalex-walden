@@ -26,7 +26,7 @@
 # MAGIC - `stage`    census of live anchors vs the map: `ok` / `insert` / `repair` / `skip_multi_anchor`
 # MAGIC              (a DOI pinned to 2+ works within the chosen provenances is never touched).
 # MAGIC - `dry_run`  what `execute` would do: rows to insert, map rows to delete and what they carry.
-# MAGIC - `execute`  `confirm = yes` only, outside 04:00-08:00 UTC: freeze `<target>_audit` (the map rows
+# MAGIC - `execute`  `confirm = yes` only, outside 02:00-09:00 UTC: freeze `<target>_audit` (the map rows
 # MAGIC              deleted), then the three statements. Refuses to run twice. Undo: the audit table +
 # MAGIC              60-day Delta retention on the map.
 # MAGIC - `verify`   the morning after: re-census live; expect `insert` and `repair` at ~0 (anchors that
@@ -195,8 +195,8 @@ if MODE in ("dry_run", "execute"):
 
 if MODE == "execute":
     hour = datetime.datetime.utcnow().hour
-    if 4 <= hour < 8:
-        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run execute outside 04:00-08:00 UTC")
+    if 2 <= hour < 9:
+        raise Exception("MapWorkIds writes the registries ~04:30-07:30 UTC; run execute outside 02:00-09:00 UTC")
     if not CONFIRM:
         dbutils.notebook.exit("dry run only: pass confirm=yes to execute")
     if spark.catalog.tableExists(AUDIT):

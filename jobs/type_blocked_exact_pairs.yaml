@@ -20,7 +20,7 @@ resources:
       timeout_seconds: 3600
       max_concurrent_runs: 1
       schedule:
-        # 22:45 UTC: End 2 End starts 05:00 UTC and is usually done by ~17:30
+        # 22:45 UTC: End 2 End starts 03:00 UTC and is usually done by ~15:30
         quartz_cron_expression: 0 45 22 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED

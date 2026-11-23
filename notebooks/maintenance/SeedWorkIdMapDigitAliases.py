@@ -21,7 +21,7 @@
 # MAGIC Modes: `stage` computes into the stage table (timing trial with `limit`); `insert` appends
 # MAGIC the admitted stage rows to `work_id_map` (idempotent, anti-joined on key + id); `verify` runs
 # MAGIC the fork probe; `prune` is the post-refresh cleanup and is dry-run unless `confirm = yes`.
-# MAGIC Run `insert` outside the 05:00-07:00 UTC MapWorkIds window. Design: #880 PLAN § Problem 1.
+# MAGIC Run `insert` outside the 02:00-09:00 UTC MapWorkIds window. Design: #880 PLAN § Problem 1.
 
 # COMMAND ----------
 

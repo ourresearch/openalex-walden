@@ -7,7 +7,7 @@ resources:
     PubMed_Books:
       name: PubMed Books
       schedule:
-        quartz_cron_expression: 0 0 3 * * ?
+        quartz_cron_expression: 0 0 1 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       email_notifications:

@@ -33,7 +33,7 @@
 # MAGIC Modes (all keyed on `target_table`, one row per loser):
 # MAGIC - `stage`     build the class from `locations_mapped` + `openalex_works`, apply holds, assign waves.
 # MAGIC - `dry_run`   `wave = N`: losers, keys, winners, pins + map rows to delete, cited losers; samples.
-# MAGIC - `execute`   `confirm = yes`, `wave = N`, outside 04:00-08:00 UTC, never while End 2 End runs: freeze
+# MAGIC - `execute`   `confirm = yes`, `wave = N`, outside 02:00-09:00 UTC, never while End 2 End runs: freeze
 # MAGIC               `<target>_wave<N>_audit` (the pins and map rows deleted, in full), the two DELETEs, stamp.
 # MAGIC               Location curations naming a loser are repointed to the winner (`<target>_wave<N>_curations`).
 # MAGIC               Undo: re-INSERT the audit rows (pins + map rows) — the nightly has not run yet.
@@ -1351,8 +1351,8 @@ if MODE in ("dry_run", "execute"):
 
 if MODE == "execute":
     hour = datetime.datetime.utcnow().hour
-    if 4 <= hour < 8:
-        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run execute outside 04:00-08:00 UTC")
+    if 2 <= hour < 9:
+        raise Exception("MapWorkIds writes the registries ~04:30-07:30 UTC; run execute outside 02:00-09:00 UTC")
     active = end2end_active()
     if active:
         raise Exception(f"Walden End 2 End is running (runs {active}); wait for it to finish")
@@ -1499,8 +1499,8 @@ if MODE == "reexecute_resurrected":
     # MapWorkIds redirect existed): audit + delete their pins and map rows once more so the nightly re-resolves
     # them through the redirect onto the winner. `wave` selects the wave; `confirm = yes` executes.
     hour = datetime.datetime.utcnow().hour
-    if 4 <= hour < 8:
-        raise Exception("run outside 04:00-08:00 UTC")
+    if 2 <= hour < 9:
+        raise Exception("run outside 02:00-09:00 UTC")
     active = end2end_active()
     if active:
         raise Exception(f"Walden End 2 End is running (runs {active}); wait for it to finish")

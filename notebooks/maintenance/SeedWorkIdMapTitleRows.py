@@ -28,7 +28,7 @@
 # MAGIC - `stage`    the missing bindings (registry × latest `locations_w_types` row, anti-joined to the map)
 # MAGIC              with the key's current distinct-id count.
 # MAGIC - `dry_run`  what `execute` would insert, how many keys cross the guard, samples with titles.
-# MAGIC - `execute`  `confirm = yes` only, outside 04:00-08:00 UTC; refuses to run twice on a target.
+# MAGIC - `execute`  `confirm = yes` only, outside 02:00-09:00 UTC; refuses to run twice on a target.
 # MAGIC - `verify`   the morning after: live re-census; expect the missing count at ~0 (anchors that
 # MAGIC              arrived after the stage are the residue).
 
@@ -181,8 +181,8 @@ if MODE in ("dry_run", "execute"):
 
 if MODE == "execute":
     hour = datetime.datetime.utcnow().hour
-    if 4 <= hour < 8:
-        raise Exception("MapWorkIds writes the registries 05:00-07:00 UTC; run execute outside 04:00-08:00 UTC")
+    if 2 <= hour < 9:
+        raise Exception("MapWorkIds writes the registries ~04:30-07:30 UTC; run execute outside 02:00-09:00 UTC")
     if not CONFIRM:
         dbutils.notebook.exit("dry run only: pass confirm=yes to execute")
     if one(f"SELECT COUNT(*) AS n FROM {TARGET} WHERE executed_at IS NOT NULL")["n"] > 0:

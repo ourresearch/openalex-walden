@@ -14,7 +14,7 @@ resources:
         MANUAL TRIGGER ONLY.
           mode=stage    census of live anchors vs the map into target_table
           mode=dry_run  what execute would do; repairs whose displaced id is cited >= hold_cited_over are held
-          mode=execute  confirm=yes, outside 04:00-08:00 UTC; freezes <target>_audit first; runs once per target
+          mode=execute  confirm=yes, outside 02:00-09:00 UTC; freezes <target>_audit first; runs once per target
           mode=verify   the morning after: live re-census, example DOIs
       max_concurrent_runs: 1
       parameters:

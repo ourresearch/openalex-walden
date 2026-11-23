@@ -1,6 +1,6 @@
 # Staleness alarm for the Unpaywall API (api.unpaywall.org reads Lakebase project unpaywall-api since 2026-10-05).
 # Fails, and emails, when a Lakebase synced table is not ONLINE, serves a Delta version whose next data commit is > 24 h old,
-# or the DOI source table had no data commit for 48 h. Read-only. Runs 4x a day (the nightly refresh starts 05:00 UTC).
+# or the DOI source table had no data commit for 48 h. Read-only. Runs 4x a day (the nightly refresh starts 03:00 UTC).
 resources:
   jobs:
     Unpaywall_Lakebase_Stale_Check:

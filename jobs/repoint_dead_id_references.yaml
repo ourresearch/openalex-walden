@@ -11,7 +11,7 @@ resources:
         MANUAL TRIGGER ONLY.
           mode=stage    edges from the repair audit (dead ids) x repair target (anchors) x work_references; waves of wave_size citing works
           mode=dry_run  per-wave counts, top anchors, samples
-          mode=execute  confirm=yes wave=N, outside 04:00-08:00 UTC, never while End 2 End runs; freezes <target>_wave<N>_audit; once per wave
+          mode=execute  confirm=yes wave=N, outside 02:00-09:00 UTC, never while End 2 End runs; freezes <target>_wave<N>_audit; once per wave
           mode=verify   executed edges still on a dead id (expect 0); the example DOI
       max_concurrent_runs: 1
       parameters:

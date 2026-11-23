@@ -11,7 +11,7 @@ resources:
         on_failure:
           - kyle@ourresearch.org
       schedule:
-        # monthly, 09:00 UTC on the 2nd: well after the 05:00 UTC End 2 End
+        # monthly, 09:00 UTC on the 2nd: well after the 03:00 UTC End 2 End
         quartz_cron_expression: 0 0 9 2 * ?
         timezone_id: UTC
         pause_status: UNPAUSED

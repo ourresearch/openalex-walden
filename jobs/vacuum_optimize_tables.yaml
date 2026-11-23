@@ -3,7 +3,7 @@ resources:
     Vacuum_Optimize_Tables:
       name: Vacuum Optimize Tables
       schedule:
-        quartz_cron_expression: 0 0 6 ? * SUN
+        quartz_cron_expression: 0 0 1 ? * SUN
         timezone_id: UTC
         pause_status: UNPAUSED
       email_notifications:

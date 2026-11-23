@@ -111,7 +111,7 @@ DEFAULTS = {
     "calibrated_margin": 1.1,        # on top of a key's measured Zyte ratio: mix drift between readings
     "zyte_total_cap_usd": 9000,
     "steady_usd_per_day": 100,       # non-campaign Zyte use; observed $51-80/day in Oct 2026
-    "quiet_hours_utc": [3, 4, 5],    # no new waves while new-content runs peak (04:00 UTC) and End 2 End starts (05:00)
+    "quiet_hours_utc": [2, 3, 4],    # no new waves while new-content runs peak (04:00 UTC) and End 2 End starts (03:00)
 }
 
 w = WorkspaceClient()

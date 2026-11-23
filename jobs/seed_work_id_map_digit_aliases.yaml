@@ -11,7 +11,7 @@ resources:
         <= max_keys_per_work new keys under that old key; a work holding many new keys is a
         mega-work and gets no alias so the sweep can split it.
 
-        MANUAL TRIGGER ONLY. Run `insert` outside 05:00-07:00 UTC (MapWorkIds writes the table).
+        MANUAL TRIGGER ONLY. Run `insert` outside 02:00-09:00 UTC (MapWorkIds writes the table).
           mode=stage    compute into the stage table (limit=N old keys for a timing trial)
           mode=stage_stored  after a source refresh: pair each pinned row's STORED key with its
                         work where the map lacks the pair but holds the digit-stripped form;

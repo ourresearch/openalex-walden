@@ -11,7 +11,7 @@ resources:
         (word for word, and near copies: label peer-review-nearcopy-v1:<rule>); only adds, never updates or deletes. Stops before writing above 20,000 new rows (a normal week is
         ~1K). Dry run: job parameter dry_run=true. Revert one run: the notebook's first cell.
       schedule:
-        # Sunday 18:00 UTC: after the nightly End 2 End publishes (~15:30 UTC), before the next one (05:00 UTC).
+        # Sunday 18:00 UTC: after the nightly End 2 End publishes (~13:30 UTC), before the next one (03:00 UTC).
         quartz_cron_expression: 0 0 18 ? * SUN
         timezone_id: UTC
         pause_status: UNPAUSED

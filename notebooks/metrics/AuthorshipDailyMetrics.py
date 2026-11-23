@@ -37,7 +37,7 @@
 # MAGIC service principal owns both), so runtime regressions land in the same
 # MAGIC tall table as the quality metrics.
 # MAGIC
-# MAGIC **Timing**: runs standalone at 22:30 UTC, after end2end (05:00 start) has
+# MAGIC **Timing**: runs standalone at 22:30 UTC, after end2end (03:00 start) has
 # MAGIC finished, so the run-state tables MatchAuthors/UpdateWorkAuthors
 # MAGIC `CREATE OR REPLACE` each run (`pending_author_assignments`,
 # MAGIC `author_matching_new_author_queue`, `work_authors_string_drift`) still hold

@@ -3,7 +3,7 @@ resources:
     Sync_Common_Entities_to_Elasticsearch:
       name: Sync Common Entities to Elasticsearch
       schedule:
-        quartz_cron_expression: 0 0 6 ? * *
+        quartz_cron_expression: 0 0 2 ? * *
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:

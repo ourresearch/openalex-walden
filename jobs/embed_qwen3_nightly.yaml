@@ -27,7 +27,7 @@ resources:
         without a vector (documents bare, no instruction prefix), then runs the Qwen3 ES sync in
         incremental mode over rows embedded in the last sync_lookback_days.
         ~300K new works/day ≈ a few minutes of embedding, ≈$1/day endpoint + the sync job cluster
-        (~20 min). Scheduled 15:00 UTC: Walden End 2 End starts 05:00 UTC and lands 11:00–13:30 UTC,
+        (~20 min). Scheduled 15:00 UTC: Walden End 2 End starts 03:00 UTC and lands ~11:30–12:30 UTC,
         so the night's new works are in openalex_works by then. Must not overlap the bulk
         runner or a full sync (job "Sync Vector Index to Elasticsearch (Qwen3, oxjob #1275)").
       max_concurrent_runs: 1

@@ -11,7 +11,7 @@ resources:
         flags where no other source flags one, affiliations for authors no other source gives one.
         The first backfill (~8M versions) is the same job run by hand with a large max_minutes.
       schedule:
-        # after the bucket's 01:00 UTC inventory, before Walden End 2 End (05:00 UTC)
+        # after the bucket's 01:00 UTC inventory, before Walden End 2 End (03:00 UTC)
         quartz_cron_expression: 0 0 2 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
