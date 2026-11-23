@@ -97,3 +97,40 @@ client = Elasticsearch(
 )
 #if client.indices.exists(index=ELASTIC_INDEX):
 client.indices.refresh(index=CONFIG["index_name"])
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Drop the docs of merged publishers (oxjob #2299)
+# MAGIC
+# MAGIC The loop above only indexes publishers_api rows, and publishers_api leaves merged publishers out, so a merged
+# MAGIC publisher kept serving its last doc (old name, old roles, old counts) until someone deleted it by hand. This cell
+# MAGIC deletes the doc of every publisher whose row in openalex.publishers.publishers carries a merge_into_id and that
+# MAGIC is not in publishers_api; live publishers are never touched. More than MAX_MERGED_DROPS docs to delete in one run
+# MAGIC stops the cell instead: that many new merges in a day is a bug to look at, not a cleanup.
+
+# COMMAND ----------
+
+MAX_MERGED_DROPS = 500
+merged_ids = [f"https://openalex.org/P{r.id}" for r in spark.sql(f"""
+    SELECT p.id FROM openalex.publishers.publishers p
+    LEFT ANTI JOIN {CONFIG['table_name']} a ON a.id = p.id
+    WHERE p.merge_into_id IS NOT NULL
+""").collect()]
+present = []
+for i in range(0, len(merged_ids), 500):
+    resp = client.mget(index=CONFIG["index_name"], ids=merged_ids[i:i + 500], _source=False)
+    present += [d["_id"] for d in resp["docs"] if d.get("found")]
+print(f"Merged publishers: {len(merged_ids)}; their docs still in {CONFIG['index_name']}: {len(present)}")
+if len(present) > MAX_MERGED_DROPS:
+    raise Exception(f"{len(present)} merged-publisher docs to delete (over {MAX_MERGED_DROPS}); none deleted. First: {present[:10]}")
+if present:
+    deleted, errors = helpers.bulk(
+        client,
+        ({"_op_type": "delete", "_index": CONFIG["index_name"], "_id": doc_id} for doc_id in present),
+        raise_on_error=False,
+    )
+    print(f"Deleted {deleted} merged-publisher docs: {present[:50]}")
+    if errors:
+        raise Exception(f"Merged-publisher doc deletes failed: {errors[:5]}")
+    client.indices.refresh(index=CONFIG["index_name"])
