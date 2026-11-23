@@ -15,7 +15,7 @@
 # MAGIC | mode | does | writes when dry_run=false |
 # MAGIC |---|---|---|
 # MAGIC | `plan` | parameter sheet: old index size and tombstones, cluster disk, projected size and peak disk, pinned Delta version V, its commit time T, count at V; the load chunks' id ranges at V (published as task values `range_k`) | nothing |
-# MAGIC | `create_index` | new index body = old index's LIVE mapping verbatim + its settings minus internal keys + build overrides (0 replicas, refresh -1, total_shards_per_node); saves the body to a Volume; reports what the matching templates would add (simulated) and refuses template aliases or extra fields; after the PUT the mapping must equal the old one | PUT new index |
+# MAGIC | `create_index` | new index body = old index's LIVE mapping verbatim (plus only `source_excludes` / `drop_subfields` when set) + its settings minus internal keys + build overrides (0 replicas, refresh -1, total_shards_per_node); saves the body to a Volume; reports what the matching templates would add (simulated) and refuses template aliases or extra fields; after the PUT the mapping must equal the planned one | PUT new index |
 # MAGIC | `watchdog` | runs beside the load chunks; cancels the job run when a data node's search queue or cluster disk breaks the stop rules; logs the indexing rate | cancel the run |
 # MAGIC | `close_load` | refresh; count within `close_tolerance` (default 10) of the source at V; `_mget` of random source ids | refresh new index |
 # MAGIC | `add_replicas` | raises recovery speed (transient), sets replicas, waits for green, restores the recorded recovery settings | cluster settings, new index settings |
@@ -75,6 +75,11 @@ dbutils.widgets.text("keyword_sample", "20")
 dbutils.widgets.text("count_tolerance", "1000")              # verify: |new count - source count now|
 dbutils.widgets.text("delta_mismatch_pct", "1")              # verify: FAIL if more than this % of sampled docs differ from Delta at V
 dbutils.widgets.text("close_tolerance", "10")                # close_load: |new count - source count at V|
+# create_index: the only changes to the copied live mapping (oxjob #2492). source_excludes: fields indexed but kept out of
+# the stored _source (works: fulltext,abstract; any partial _update must then carry them, see sync_work_metrics).
+# drop_subfields: dotted sub-field paths to leave out (works: authorships.raw_author_name.autocomplete).
+dbutils.widgets.text("source_excludes", "")
+dbutils.widgets.text("drop_subfields", "")
 
 MODE = dbutils.widgets.get("mode").strip()
 OLD = dbutils.widgets.get("old_index").strip()
@@ -106,6 +111,8 @@ KEYWORD_SAMPLE = int(dbutils.widgets.get("keyword_sample"))
 COUNT_TOLERANCE = int(dbutils.widgets.get("count_tolerance"))
 DELTA_MISMATCH_PCT = float(dbutils.widgets.get("delta_mismatch_pct"))
 CLOSE_TOLERANCE = int(dbutils.widgets.get("close_tolerance"))
+SOURCE_EXCLUDES = [f.strip() for f in dbutils.widgets.get("source_excludes").split(",") if f.strip()]
+DROP_SUBFIELDS = [f.strip() for f in dbutils.widgets.get("drop_subfields").split(",") if f.strip()]
 
 NAME_RE = r"[a-z0-9][a-z0-9._-]*"
 if MODE not in MODES:
@@ -341,6 +348,26 @@ def mapping_drift(template_mappings, live_mappings):
     }
 
 
+def planned_mapping(live, source_excludes, drop_subfields):
+    """The old index's live mapping plus the asked-for changes; anything that doesn't resolve is an error."""
+    m = json.loads(json.dumps(live))
+    if source_excludes:
+        m["_source"] = {"excludes": list(source_excludes)}
+    for path in drop_subfields:
+        *parts, sub = path.split(".")
+        node = {"properties": m.get("properties", {})}
+        for p in parts:
+            node = (node.get("properties") or {}).get(p)
+            if node is None:
+                raise ValueError(f"drop_subfields {path!r}: no field {'.'.join(parts)!r} in the mapping")
+        if sub not in (node.get("fields") or {}):
+            raise ValueError(f"drop_subfields {path!r}: {'.'.join(parts)!r} has no sub-field {sub!r}")
+        del node["fields"][sub]
+        if not node["fields"]:
+            del node["fields"]
+    return m
+
+
 def flat_template_settings(tsettings, prefix=""):
     out = {}
     for k, v in (tsettings or {}).items():
@@ -431,9 +458,12 @@ elif MODE == "create_index":
         log(f"source pinned at version {v} ({op}, {t} UTC); the load chunks read {src(v)}")
     old_settings = flat_settings(c, OLD)
     old_mapping = get_mapping(c, OLD)
+    new_mapping_planned = planned_mapping(old_mapping, SOURCE_EXCLUDES, DROP_SUBFIELDS)
+    if SOURCE_EXCLUDES or DROP_SUBFIELDS:
+        log(f"mapping changes vs {OLD}: _source.excludes {SOURCE_EXCLUDES or '-'}; sub-fields dropped {DROP_SUBFIELDS or '-'}")
     nodes = data_nodes(c)
     settings, dropped, overrides = build_settings(old_settings, len(nodes))
-    body = {"settings": settings, "mappings": old_mapping}
+    body = {"settings": settings, "mappings": new_mapping_planned}
     show("Copied from the old index", {k: v for k, v in settings.items() if k not in overrides})
     show("Dropped (internal to the old index, or replaced by an override)", dropped)
     show("Build overrides", {k: f"{old_settings.get(k, '(unset)')} -> {v}" for k, v in overrides.items()})
@@ -443,7 +473,7 @@ elif MODE == "create_index":
     sim = c.indices.simulate_index_template(name=NEW)
     tmpl = sim.get("template") or {}
     sim_aliases = tmpl.get("aliases") or {}
-    drift = mapping_drift(tmpl.get("mappings") or {}, old_mapping)
+    drift = mapping_drift(tmpl.get("mappings") or {}, new_mapping_planned)
     tsettings = flat_template_settings((tmpl.get("settings") or {}).get("index", {}))
     settings_gap = {k: v for k, v in tsettings.items() if k not in settings}
     settings_overridden = {k: {"template": v, "body": settings[k]} for k, v in tsettings.items()
@@ -471,9 +501,9 @@ elif MODE == "create_index":
 
     if exists(c, NEW):
         new_mapping = get_mapping(c, NEW)
-        same = json.dumps(new_mapping, sort_keys=True) == json.dumps(old_mapping, sort_keys=True)
+        same = json.dumps(new_mapping, sort_keys=True) == json.dumps(new_mapping_planned, sort_keys=True)
         ns = flat_settings(c, NEW)
-        log(f"{NEW} exists (if_exists=reuse): mapping {'equals' if same else 'DIFFERS FROM'} {OLD}'s; "
+        log(f"{NEW} exists (if_exists=reuse): mapping {'equals' if same else 'DIFFERS FROM'} the planned one; "
             f"shards {ns.get('index.number_of_shards')}, replicas {ns.get('index.number_of_replicas')}, "
             f"refresh {ns.get('index.refresh_interval')}")
         if not same or ns.get("index.number_of_shards") != old_settings["index.number_of_shards"]:
@@ -481,17 +511,17 @@ elif MODE == "create_index":
     elif DRY:
         log(f"DRY: would PUT {NEW} with the body above (saved to the Volume); nothing created")
     else:
-        c.options(request_timeout=300).indices.create(index=NEW, settings=settings, mappings=old_mapping)
+        c.options(request_timeout=300).indices.create(index=NEW, settings=settings, mappings=new_mapping_planned)
         log(f"created {NEW}")
         deadline = time.time() + 600
         while health(c, NEW) != "green" and time.time() < deadline:
             time.sleep(10)
         log(f"{NEW} health {health(c, NEW)}")
         new_mapping = get_mapping(c, NEW)
-        if json.dumps(new_mapping, sort_keys=True) != json.dumps(old_mapping, sort_keys=True):
+        if json.dumps(new_mapping, sort_keys=True) != json.dumps(new_mapping_planned, sort_keys=True):
             save("created_mapping.json", new_mapping)
-            raise RuntimeError(f"{NEW}'s mapping differs from {OLD}'s after creation (saved); do not load it")
-        log(f"{NEW} mapping equals {OLD}'s (empty diff)")
+            raise RuntimeError(f"{NEW}'s mapping differs from the planned one after creation (saved); do not load it")
+        log(f"{NEW} mapping equals the planned one ({OLD}'s plus the changes above)")
         per_node = {}
         for s in c.cat.shards(index=NEW, format="json", h="node,prirep,state"):
             per_node[s["node"]] = per_node.get(s["node"], 0) + 1
