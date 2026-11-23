@@ -179,6 +179,21 @@ def checkout_fence(a):
     checkout.fence([a.job], "guardrail pre-clear", (a.reason or "")[:160], text=a.reason or "", prefix="NOT WRITTEN")
 
 
+def outside_review_gate(a):
+    """A production data change gets an outside-model review before its first launch (oxjob #2443). On a machine with
+    the review gate (~/plexus/scripts/review_gate.py), refuse a new pre-clear from an agent session that ran no outside
+    review, unless --review-note says where it was reviewed or why none is needed. Anywhere else it does nothing."""
+    here = os.path.expanduser("~/plexus/scripts")
+    if not os.path.exists(os.path.join(here, "review_gate.py")):
+        return
+    sys.path.insert(0, here)
+    import review_gate
+    job = a.job or next(iter(re.findall(r"#(\d+)", a.reason or "")), None)
+    refusal = review_gate.gate("preclear", job, a.review_note)
+    if refusal:
+        sys.exit(refusal)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--flags", default="guardrails_override", help="comma-separated; default guardrails_override")
@@ -207,10 +222,14 @@ def main():
                     help="close the open rows of ONE run (--night or --current-run; only --flags if given); --all for every run")
     ap.add_argument("--all", dest="all_", action="store_true", help="with --cancel: close every open window, every night, every flag")
     ap.add_argument("--dry-run", action="store_true", help="print the SQL writes instead of running them")
+    ap.add_argument("--review-note", help="the change's outside review ran in another session, or it needs none (a "
+                                          "later wave inside the reviewed scope): say which (oxjob #2443)")
     ap.add_argument("--warehouse", default=None)
     a = ap.parse_args()
     if not (a.list or a.dry_run):
         checkout_fence(a)
+    if not (a.list or a.dry_run or a.cancel or a.lower or a.current_run):
+        outside_review_gate(a)
     wh = a.warehouse or os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID") or DEFAULT_WAREHOUSE
 
     def write(statement):
