@@ -24,7 +24,9 @@ resources:
               # fetched (13,728 one 17 Oct deposit of 10.70413, 2,247 De Gruyter 10.1515).
               lookback_days: "30"
               url_limit: "500000"
-              source_filter: "crossref_only"
+              # oxjob #2531: new DataCite DOIs of paper types too; those created before 22 Nov go through a campaign
+              source_filter: "crossref_only,datacite_only"
+              datacite_created_after: "2026-11-22"
           job_cluster_key: Taxicab_job_cluster
       job_clusters:
         - job_cluster_key: Taxicab_job_cluster
@@ -57,4 +59,6 @@ resources:
         - name: url_limit
           default: "500000"
         - name: source_filter
-          default: "crossref_only"
+          default: "crossref_only,datacite_only"
+        - name: datacite_created_after
+          default: "2026-11-22"
