@@ -17,7 +17,9 @@
 # MAGIC 3. `candidates` - candidate pairs with the works' fields, clue features and the checklist score (refmatch.py), reader
 # MAGIC    prompts for the unsure band. First re-runs #2000's review bench through refmatch.py: any difference fails the stage.
 # MAGIC 4. `reader` - Modal: the fine-tuned 2B reader scores each prompt's candidates.
-# MAGIC 5. `decide` - one decision per text (link >= 0.97, or >= 0.9191 with first author + volume + page; type tie-break), links
+# MAGIC 5. `decide` - one decision per text (link >= 0.97, or >= 0.9191 with first author + volume + page; type tie-break; then the
+# MAGIC    edition rule, #2566: an unlinked text links to the record of the work it names when we hold no record of the cited
+# MAGIC    edition: title and first author printed, year not, no record of that title in a printed year), links
 # MAGIC    into `openalex.works.reference_matcher_links` under run `<mode>-<night>`, then the new texts' vectors are added
 # MAGIC    (they are now seen). Live only: the links are applied to `work_references` (as `parse_referenced_works` applies a
 # MAGIC    run) and the run is registered in `reference_matcher_runs`, so later nights keep them on re-filed lists.
@@ -432,24 +434,29 @@ def stage_decide():
     Pb = (spark.table(f"{P}pairs").select("qi", "cand_canon", "type", "title", "au", "year", "venue", "rtext", "ord")
           .withColumn("qi", F.col("qi").cast("long")).withColumn("b", F.pmod(F.col("qi"), F.lit(NB))))
     (Xr.groupBy("b").cogroup(Pb.groupBy("b"))
-     .applyInPandas(decide_fn, "qi long, cand long, s double, in_band boolean, checklist_p double, reader_p double, link boolean, switched boolean")
+     .applyInPandas(decide_fn, "qi long, cand long, s double, in_band boolean, checklist_p double, reader_p double, link boolean, "
+                               "switched boolean, rule string, cand_year double")
      .write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{P}decisions"))
-    d = spark.sql(f"SELECT count(*) texts, count_if(link) linked, count_if(in_band) band, count_if(switched) switched FROM {P}decisions").first()
-    info = {"decided_texts": d.texts, "linked_texts": d.linked, "band_texts": d.band, "switched": d.switched}
+    d = spark.sql(f"""SELECT count(*) texts, count_if(link) linked, count_if(in_band) band, count_if(switched) switched,
+        count_if(rule = 'edition') edition FROM {P}decisions""").first()
+    info = {"decided_texts": d.texts, "linked_texts": d.linked, "band_texts": d.band, "switched": d.switched, "edition_texts": d.edition}
 
-    # the night's links: rows of new texts get their text's decision (never the citing work itself); rows of seen texts their text's earlier link
+    # the night's links: rows of new texts get their text's decision (never the citing work itself; an edition-rule link never
+    # to a record dated after the citing work's year + 1); rows of seen texts their text's earlier link
     spark.sql(f"DELETE FROM {LINKS} WHERE run_id = '{RUN_ID}'")
     spark.sql(f"""INSERT INTO {LINKS}
 SELECT r.citing_work_id, r.native_id, r.ref_ind, r.text_hash, d.cand, d.s, d.in_band,
-  CASE WHEN d.s >= {RM.LINE_HI} THEN 'score' ELSE 'author_volume_page' END, '{RUN_ID}', current_timestamp()
+  CASE WHEN d.rule = 'edition' THEN 'edition' WHEN d.s >= {RM.LINE_HI} THEN 'score' ELSE 'author_volume_page' END, '{RUN_ID}', current_timestamp()
 FROM {P}rows r JOIN {P}q q ON q.text_hash = r.text_hash AND q.text = r.text JOIN {P}decisions d ON d.qi = r.text_hash
-WHERE d.link AND d.cand <> r.citing_work_id
+LEFT JOIN (SELECT id, publication_year FROM openalex.works.openalex_works) cw ON d.rule = 'edition' AND cw.id = r.citing_work_id
+WHERE d.link AND d.cand <> r.citing_work_id AND (d.rule <> 'edition' OR d.cand_year <= coalesce(cw.publication_year, 9999) + 1)
 UNION ALL
 SELECT citing_work_id, native_id, ref_ind, text_hash, cited_work_id, score, in_band, 'same_text', '{RUN_ID}', current_timestamp()
 FROM {P}reuse""")
-    c = spark.sql(f"""SELECT count(*) links, count_if(linked_by = 'same_text') same_text, count(DISTINCT citing_work_id) citing,
+    c = spark.sql(f"""SELECT count(*) links, count_if(linked_by = 'same_text') same_text, count_if(linked_by = 'edition') edition,
+        count(DISTINCT citing_work_id) citing,
         count(DISTINCT cited_work_id) cited FROM {LINKS} WHERE run_id = '{RUN_ID}'""").first()
-    info.update(links=c.links, same_text_links=c.same_text, citing_works=c.citing, cited_works=c.cited)
+    info.update(links=c.links, same_text_links=c.same_text, edition_links=c.edition, citing_works=c.citing, cited_works=c.cited)
 
     if TEST:
         return info

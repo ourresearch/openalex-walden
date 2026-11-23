@@ -399,11 +399,124 @@ def reader_rows_bucket(X, P, fe):
     return pd.DataFrame(out, columns=["qi", "seed_id", "prefix", "seats"])
 
 
-DECIDE_COLS = ("qi", "cand", "s", "in_band", "checklist_p", "reader_p", "link", "switched")
+# ---------- the edition rule (oxjob #2566; Casey 23 Nov) ----------
+# A reference the score left unlinked links to the record of the work it names when we hold no record of the edition or
+# version it cites: the record's title is printed in it as a title (its first 40 letters/digits, at least 20, starting where
+# a title starts and, if that is the whole title, ending where one ends), so is its first author, and its year is not printed.
+# When any candidate whose title is printed carries a printed year (we hold the cited edition), the rule leaves it alone.
+
+EDITION_SKIP = {"book-review", "paratext", "erratum", "retraction", "peer-review", "libguides"}
+EDITORS = re.compile(r"\(\s*(?:eds?|hrsg|coords?|orgs?|dirs?|comps?|toim|red|hg)\b|\beds\.|\bed(?:ited|\.)? by\b|\bhrsg\.", re.I)
+IN_WORD = re.compile(r"(?:^|(?<=[\s.,;:'\"’”)]))(?:in|en|em|dans|teoksessa|im|i(?=:))(?::\s*|\s+)", re.I)
+REVIEW = re.compile(r"\b(?:review of|reviewed by|book review|reseña de|rezension|compte rendu|recensione)\b", re.I)
+ARTICLES = set("the a an le la les l el los las lo il der die das o os as".split())
+EDGE = set(".,;:)([]/\"'“”‘’«»–—-?!")
 
 
-def decide_bucket(X, P, comb, fe, line_hi=LINE_HI):
-    """Checklist features + reader scores (column rp) -> one decision per reference, then the type tie-break."""
+def title_key(t):
+    return re.sub(r"[^a-z0-9]", "", fold(t))[:40]
+
+
+def title_norm(t):
+    w = re.findall(r"[a-z0-9]+", fold(t))
+    return "".join(w[1:] if len(w) > 1 and w[0] in ARTICLES else w)
+
+
+def same_title(a, b):
+    """One title opens the other (letters/digits, a leading article dropped), over at least 20 of them."""
+    a, b = title_norm(a), title_norm(b)
+    n = min(len(a), len(b), 40)
+    return n >= 20 and a[:n] == b[:n]
+
+
+def volume_cut(text):
+    """Where the volume a chapter is printed in starts: the last 'In' before the editors ('in Smith, J. (eds.)'), or None."""
+    e = EDITORS.search(text, 10)
+    cuts = [m.start() for m in IN_WORD.finditer(text, 10, e.start())] if e else []
+    return cuts[-1] if cuts else None
+
+
+def printed_as_title(k, whole, ft, nt, pos):
+    """k (a title key) occurs in nt (ft's letters/digits; pos maps nt -> ft) where a title starts: after punctuation, a
+    digit or the start, skipping a leading article; and, when k is the whole title, ends where a title ends."""
+    i = nt.find(k)
+    while i >= 0:
+        before = ft[:pos[i]].rstrip()
+        w = re.search(r"([a-z]+)$", before)
+        if w and w.group(1) in ARTICLES:
+            before = before[:w.start()].rstrip()
+        after = ft[pos[i + len(k) - 1] + 1:].lstrip()
+        if (not before or before[-1] in EDGE or before[-1].isdigit()) and (not whole or not after or after[0] in EDGE):
+            return True
+        i = nt.find(k, i + 1)
+    return False
+
+
+def edition_pick(text, cands):
+    """cands: dicts with cand, title, year, type, fa_in, t_in, s. The record to link (longest printed title, then the year
+    nearest a printed year, then score), or None. Held (the rule stands down): a candidate with a printed year whose title is
+    printed, or whose first author is printed with 80%+ of its title words, or whose title opens like the pick's. A chapter's
+    title must be printed before its volume ('In: ... (eds.)'); a chapter or entry record links only a reference printed as
+    a chapter (else it is often an excerpt or a reprint); a review of a book is not a reference to the book."""
+    text = first_ref(text)
+    ys = years_in(text)
+    if not ys or REVIEW.search(text):
+        return None
+    cut = volume_cut(text)
+    chapter = cited_form(text) == "chapter" or cut is not None
+    if cut is not None:
+        text = text[:cut]
+    ft = fold(text)
+    pos = [i for i, ch in enumerate(ft) if ch.isascii() and ch.isalnum()]
+    nt = "".join(ft[i] for i in pos)
+    live = [c for c in cands if c["year"] is not None and c["year"] == c["year"] and c["type"] not in EDITION_SKIP
+            and not is_container(c["type"], c["title"])]
+    keyed = [(title_key(c["title"]), c) for c in live]
+    dated = [(k, c) for k, c in keyed if int(c["year"]) in ys]
+    if any((len(k) >= 20 and k in nt) or (c["fa_in"] == 1 and c.get("t_in", 0) >= 0.8) for k, c in dated):
+        return None
+    ok = [(len(k), -min(abs(int(c["year"]) - y) for y in ys), c["s"], c) for k, c in keyed
+          if len(k) >= 20 and c["fa_in"] == 1 and not (chapter and type_family(c["type"]) == "book")
+          and not (not chapter and type_family(c["type"]) == "chapter")
+          and not any(same_title(c["title"], d["title"]) for _, d in dated)
+          and printed_as_title(k, len(re.sub(r"[^a-z0-9]", "", fold(c["title"]))) <= 40, ft, nt, pos)]
+    return max(ok, key=lambda t: t[:3])[3] if ok else None
+
+
+def edition_links(d, X, P, texts):
+    """d: decide_bucket's decisions. Unlinked references the edition rule links get link, cand, s, rule = 'edition'."""
+    d = d.copy()
+    d["rule"] = ""
+    d["cand_year"] = np.nan
+    todo = set(d.qi[~d.link])
+    if not todo:
+        return d
+    sc = X[X.qi.isin(todo)][["qi", "cand", "fa_in", "t_in", "p", "p2"]]
+    info = P[P.qi.isin(todo)].drop_duplicates(["qi", "cand_canon"])[["qi", "cand_canon", "title", "year", "type"]]
+    C = sc.merge(info.rename(columns={"cand_canon": "cand"}), on=["qi", "cand"])
+    band = dict(zip(d.qi, d.in_band))
+    picks = {}
+    for q, g in C.groupby("qi"):
+        cands = [{"cand": int(r.cand), "title": r.title, "year": None if pd.isna(r.year) else int(r.year), "type": r.type,
+                  "fa_in": r.fa_in, "t_in": r.t_in, "s": r.p2 if band.get(q) else r.p} for r in g.itertuples()]
+        c = edition_pick(texts.get(q), cands)
+        if c is not None:
+            picks[q] = c
+    m = d.qi.isin(list(picks))
+    d.loc[m, "cand"] = [picks[q]["cand"] for q in d.qi[m]]
+    d.loc[m, "s"] = [float(picks[q]["s"]) for q in d.qi[m]]
+    d.loc[m, "cand_year"] = [float(picks[q]["year"]) for q in d.qi[m]]
+    d.loc[m, "link"] = True
+    d.loc[m, "rule"] = "edition"
+    return d
+
+
+DECIDE_COLS = ("qi", "cand", "s", "in_band", "checklist_p", "reader_p", "link", "switched", "rule", "cand_year")
+
+
+def decide_bucket(X, P, comb, fe, line_hi=LINE_HI, edition=True):
+    """Checklist features + reader scores (column rp) -> one decision per reference, the type tie-break, then the edition
+    rule on references still unlinked."""
     feats, LO, HI, THR = fe["feats"], fe["LO"], fe["HI"], fe["THR"]
     if X.empty:
         return pd.DataFrame({c: [] for c in DECIDE_COLS})
@@ -433,6 +546,10 @@ def decide_bucket(X, P, comb, fe, line_hi=LINE_HI):
     texts = dict(zip(P.qi, P.rtext))
     sc = {(q, c): s_ for q, c, s_ in zip(X.qi, X.cand, X.p2)}
     d = tie_break(d, P[P.title.notna()], texts, sc)
+    if edition:
+        d = edition_links(d, X, P[P.title.notna()], texts)
+    else:
+        d["rule"], d["cand_year"] = "", np.nan
     d["reader_p"] = d.reader_p.astype("float64")
     return d[list(DECIDE_COLS)]
 
@@ -483,7 +600,7 @@ def check_bench(train_dir, chk, comb, fe):
     scores = pd.read_parquet(f"{train_dir}/bench_reader.parquet")
     Xr = X.merge(scores.rename(columns={"p": "rp"})[["qi", "cand", "rp"]], on=["qi", "cand"], how="left")
     got = decide_bucket(Xr, bp[["qi", "cand_canon", "type", "title", "au", "year", "venue", "rtext", "ord"]].copy(), comb, fe,
-                        line_hi=fe["THR"]).set_index("qi")
+                        line_hi=fe["THR"], edition=False).set_index("qi")
     loc = pd.read_parquet(f"{train_dir}/bench_decisions.parquet").set_index("qi")
     j = loc.join(got, rsuffix="_s", how="outer")
     same = int(((j.link == j.link_s) & (~j.link | (j.cand == j.cand_s))).sum())
