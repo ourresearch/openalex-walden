@@ -87,7 +87,17 @@ if n == 0:
     spark.sql(f"CREATE OR REPLACE TABLE {T}qwen (seed_id BIGINT, cid BIGINT, p DOUBLE, adapter STRING, over_cap BOOLEAN)")
     finish("no records above 0.01: nothing for Qwen")
 if est > MAX_USD:
-    raise RuntimeError(f"Qwen estimate ${est:.2f} over max_usd {MAX_USD}: raise max_usd on purpose to score this night")
+    # A night's own cap (oxjob #1642): a pre-clear row for the night may name max_loss location_matcher_qwen_usd
+    # (scripts/preclear_e2e.py --max-loss location_matcher_qwen_usd=N), read through the same e2e_cap every End 2 End gate
+    # uses. Unlike the job parameter, it reaches a repaired run (a Run Job child keeps the parameters it started with) and
+    # no bundle deploy resets it (24 Nov 2026: a hand-raised max_usd was reset by a deploy and the run stopped here).
+    cap = spark.sql("SELECT openalex.works.e2e_cap('guardrails_override', 'location_matcher_qwen_usd') AS c").first()["c"]
+    if cap is not None and cap["cap"] is not None and est <= cap["cap"]:
+        log(f"estimate ${est:.2f} over max_usd {MAX_USD}, within the night's pre-clear cap ${cap['cap']} ({cap['preclear']})")
+        MAX_USD = float(cap["cap"])
+if est > MAX_USD:
+    raise RuntimeError(f"Qwen estimate ${est:.2f} over max_usd {MAX_USD}: raise max_usd on purpose to score this night "
+                       f"(or pre-clear it: preclear_e2e.py --max-loss location_matcher_qwen_usd=N)")
 
 # COMMAND ----------
 
