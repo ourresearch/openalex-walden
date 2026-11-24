@@ -27,7 +27,8 @@
 -- MAGIC    leg mints them (same id hash, #690 guard, ERC call-code guard). Every other number reaches its existing award
 -- MAGIC    through Nightly's key match, or NIH's project record through ProduceNihPubmedRelinks.
 -- MAGIC
--- MAGIC Both are written by MERGE: unchanged rows are left alone, so a night with no PubMed change writes no new table version.
+-- MAGIC Both are written by MERGE: unchanged rows are left alone, so a night with no PubMed change rewrites no rows (Delta still
+-- MAGIC records an empty MERGE version).
 -- MAGIC Gates run before either write (shrink guard, growth ceiling, live funders); a stopped run writes nothing.
 -- MAGIC
 -- MAGIC **Undo:** drop the leg (git revert); then `DELETE FROM openalex.awards.funder_reported_work_funders WHERE provenance =
