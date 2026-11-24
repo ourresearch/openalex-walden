@@ -62,7 +62,7 @@ STRICT_SQL = "regexp_extract({n},'^[1-9]?([A-Z][A-Z0-9]{{2}}[A-Z]{{2}}[0-9]{{6}}
 LOOSE_SQL = ("CASE WHEN regexp_replace({n},'[^A-Z0-9]','') RLIKE '^[1-9]?[A-Z][A-Z0-9]{{2}}[A-Z]{{2}}[0-9]{{1,6}}$' THEN concat("
              "regexp_extract(regexp_replace({n},'[^A-Z0-9]',''),'^[1-9]?([A-Z][A-Z0-9]{{2}}[A-Z]{{2}})[0-9]+$',1),"
              "lpad(regexp_extract(regexp_replace({n},'[^A-Z0-9]',''),'([0-9]+)$',1),6,'0')) END")
-AMOUNT_POLICIES = ("null", "sum", "elected")        # Q2; default null until Kyle rules
+AMOUNT_POLICIES = ("null", "sum", "elected")        # Q2; default null; prod picks via config nih_fold.amount (Rohan 11-16: sum)
 TITLE_POLICIES = ("chosen_year", "elected")         # Q5; default chosen_year (latest non-subproject, non-supplement year)
 
 
@@ -457,16 +457,27 @@ def _nih_project(c):
       FROM migration_manifest_v WHERE evidence_class={literal(NIH_CLASS)}""")
     # every observation now bound to a survivor (its own + the retired years'), with the fields the projection uses
     c.artifact("nih_obs", f"""SELECT b.stable_id,b.observation_key,b.is_direct,b.priority,upper(regexp_replace(b.payload.funder_award_id,'\\\\s','')) number,
-        b.payload.display_name,b.payload.description,b.payload.lead_investigator,b.payload.co_lead_investigator,b.payload.investigators,
+        b.payload.provenance,b.payload.display_name,b.payload.description,b.payload.lead_investigator,b.payload.co_lead_investigator,b.payload.investigators,
         b.payload.start_date,b.payload.end_date,b.payload.amount,b.payload.currency,b.payload.updated_date
       FROM {r}bindings_final b JOIN {r}nih_choice n USING(stable_id)""")
     c.artifact("nih_title_row", f"""SELECT o.* FROM {r}nih_obs o JOIN {r}nih_choice n USING(stable_id) WHERE o.number=n.title_from
       QUALIFY row_number() OVER (PARTITION BY o.stable_id ORDER BY o.is_direct DESC,o.priority DESC,o.updated_date DESC NULLS LAST,o.observation_key)=1""")
-    c.artifact("nih_span", f"""SELECT stable_id,min(start_date) start_date,max(end_date) end_date,
-        sum(CASE WHEN is_direct THEN amount END) amount_sum,count(DISTINCT currency) currencies FROM {r}nih_obs GROUP BY stable_id""")
+    # sum: the bound ExPORTER fiscal-year rows, one per number; supplements and amendments are their own awards and count; no other
+    # source adds to it; a sum of zero or less is no amount (as HHS TAGGS). CreateNIHAwards writes one raw row per number, under one
+    # funder, and a re-ingest keeps its observation key, so the one-per-number pick drops nothing today: nih_amount_twin_years
+    # counts what it drops if a producer ever binds a number twice.
+    c.artifact("nih_year_cost", f"""SELECT observation_key,amount,currency FROM {r}nih_obs WHERE is_direct AND provenance='nih_exporter'
+      QUALIFY row_number() OVER (PARTITION BY stable_id,number ORDER BY priority DESC,updated_date DESC NULLS LAST,observation_key)=1""")
+    c.artifact("nih_span", f"""SELECT o.stable_id,min(o.start_date) start_date,max(o.end_date) end_date,sum(y.amount) amount_sum,
+        count(DISTINCT y.currency) currencies,count_if(y.observation_key IS NOT NULL AND y.amount IS NULL) years_without_cost
+      FROM {r}nih_obs o LEFT JOIN {r}nih_year_cost y USING(observation_key) GROUP BY o.stable_id""")
     c.count("nih_title_from_missing", f"(SELECT n.stable_id FROM {r}nih_choice n LEFT ANTI JOIN {r}nih_title_row t USING(stable_id) WHERE n.title_from IS NOT NULL) x")
+    c.count("nih_amount_twin_years", f"""(SELECT o.observation_key FROM {r}nih_obs o LEFT ANTI JOIN {r}nih_year_cost y USING(observation_key)
+      WHERE o.is_direct AND o.provenance='nih_exporter') x""")
+    # projects whose sum misses a bound year that has no cost (ExPORTER's FY1985-1999 project files carry none)
+    c.count("nih_amount_partial", f"(SELECT stable_id FROM {r}nih_span WHERE amount_sum>0 AND years_without_cost>0) x")
     title = s["title"] == "chosen_year"
-    amount = {"null": "CAST(NULL AS DOUBLE)", "sum": "CASE WHEN sp.currencies<=1 THEN sp.amount_sum END", "elected": "a.amount"}[s["amount"]]
+    amount = {"null": "CAST(NULL AS DOUBLE)", "sum": "CASE WHEN sp.currencies<=1 AND sp.amount_sum>0 THEN sp.amount_sum END", "elected": "a.amount"}[s["amount"]]
     pick = lambda col: f"CASE WHEN n.stable_id IS NOT NULL AND t.stable_id IS NOT NULL THEN t.{col} ELSE a.{col} END" if title else f"a.{col}"
     c.artifact("awards_candidate_before_nih", f"SELECT * FROM {r}awards_candidate")
     over = {
@@ -489,6 +500,13 @@ def _nih_project(c):
     c.zero("NIH_SURVIVOR_FUNDER_PUBLISHED", f"""SELECT a.id,a.funder_id,s.pinned_funder_id FROM {r}awards_candidate a JOIN {r}nih_survivors s ON s.stable_id=a.id
       WHERE NOT (a.funder_id <=> s.pinned_funder_id)""")
     c.count("nih_projects_published", f"(SELECT a.id FROM {r}awards_candidate a JOIN {r}nih_choice n ON n.stable_id=a.id) x")
+    # ExPORTER records of a folded project still served as their own award (not on the reviewed list, held tonight, or arrived after
+    # it): their money is on their own record, not in the project's sum
+    c.count("nih_amount_years_outside", f"""(SELECT DISTINCT a.id FROM {r}awards_candidate a
+      JOIN (SELECT DISTINCT upper(get_json_object(evidence_json,'$.core')) core FROM migration_manifest_v WHERE evidence_class={literal(NIH_CLASS)}) m
+        ON {STRICT_SQL.format(n='upper(a.funder_award_id)')}=m.core
+      LEFT ANTI JOIN {r}nih_choice s ON s.stable_id=a.id
+      WHERE a.provenance='nih_exporter' AND a.funder_id IN {FAMILY_SQL}) x""")
 
 
 # ---------- work_awards: link conservation on the night family pairs retire (same contract as uk_lineage.link_conservation) ----------

@@ -45,7 +45,7 @@ def fixture():
       []::STRUCT(code VARCHAR,vocabulary VARCHAR,display_name VARCHAR,share DOUBLE)[] recipient_regions_full,
       concat('R01AA',i) funder_award_id,'Title' display_name,NULL::VARCHAR description,NULL::VARCHAR lead_investigator,
       NULL::VARCHAR co_lead_investigator,NULL::VARCHAR investigators,DATE '2020-01-01' start_date,DATE '2021-01-01' end_date,
-      2020 start_year,2021 end_year,4320332161::BIGINT funder_id,TIMESTAMP '2026-10-01' updated_date
+      2020 start_year,2021 end_year,4320332161::BIGINT funder_id,TIMESTAMP '2026-10-01' updated_date,'nih_exporter' provenance
       FROM range(1,1001) t(i)""")
     c.sql("""CREATE TABLE resolve_candidate AS SELECT id owner_id,
       CASE WHEN id>980 THEN id-980 ELSE id END stable_id,'ACTIVE' status FROM previous_api_v""")
@@ -122,6 +122,89 @@ def test_bootstrap_fold_requires_rows_and_rechecks_independent_scalar_baseline()
     c.sql("UPDATE funding_flows_baseline_v SET research_scope=NULL WHERE id BETWEEN 100 AND 140")
     with pytest.raises(RuntimeError,match='RESEARCH_TRUE_DROP_BOOTSTRAP'):
         fp.gate(c,'research','RESEARCH_TRUE_DROP','research_true',980,.01)
+
+
+NIAID = 4320337355
+OBS = [  # survivor, observation, direct, priority, number, provenance, amount, updated
+    # project 10: three fiscal years, a supplement and a de-obligation, each counted once
+    (10, 'y02', True, 3, '5R01AI000010-02', 'nih_exporter', 100000.0, '2026-11-01'),
+    (10, 'y03', True, 3, '5R01AI000010-03', 'nih_exporter', 200000.0, '2026-11-01'),
+    (10, 'y03_again', True, 3, '5R01AI000010-03', 'nih_exporter', 200000.0, '2026-10-01'),   # the same year bound twice: once
+    (10, 's1', True, 3, '3R01AI000010-03S1', 'nih_exporter', 50000.0, '2026-11-01'),         # a supplement is its own award
+    (10, 'y04', True, 3, '5R01AI000010-04', 'nih_exporter', -10000.0, '2026-11-01'),         # a de-obligation reduces it
+    (10, 'cr', True, 1, 'R01AI000010', 'crossref_work', 777.0, '2026-11-01'),                # another source never adds
+    (10, 'paper', False, 0, 'R01AI000010', 'crossref_work_funders', 555.0, '2026-11-01'),    # nor does a paper's mention
+    # project 20: FY1998 has no published cost -> the sum of the known years, counted as partial; two years with the same
+    # (flat) budget are two awards, not one
+    (20, 'p98', True, 3, '5R01CA000020-01', 'nih_exporter', None, '2026-11-01'),
+    (20, 'p99', True, 3, '5R01CA000020-02', 'nih_exporter', 300000.0, '2026-11-01'),
+    (20, 'p00', True, 3, '5R01CA000020-03', 'nih_exporter', 300000.0, '2026-11-01'),
+    # project 30: no year with a cost -> no amount, never 0
+    (30, 'n1', True, 3, '5R01NS000030-01', 'nih_exporter', None, '2026-11-01'),
+    # project 40: years summing to zero -> no amount
+    (40, 'z1', True, 3, '5R01HL000040-01', 'nih_exporter', 5.0, '2026-11-01'),
+    (40, 'z2', True, 3, '5R01HL000040-02', 'nih_exporter', -5.0, '2026-11-01'),
+    # 50 is no project survivor (a one-year record): its own amount stands
+    (50, 'one', True, 3, '1R13AI000050-01', 'nih_exporter', 6000.0, '2026-11-01'),
+    # 60 is a year of project 10 still served as its own record (not on the list, held, or arrived later): untouched, counted
+    (60, 'y05', True, 3, '5R01AI000010-05', 'nih_exporter', 70000.0, '2026-11-01'),
+]
+
+
+def sum_fixture(policy):
+    c = DB(); c.config['nih_fold'] = {'amount': policy}
+    values = ','.join(f"({s},'{k}',{str(d).lower()},{p},'{n}','{pv}',{'NULL' if a is None else a},TIMESTAMP '{u}')" for s, k, d, p, n, pv, a, u in OBS)
+    c.sql(f"""CREATE TABLE obs AS SELECT * REPLACE (amount::DOUBLE AS amount)
+      FROM (VALUES {values}) t(stable_id,observation_key,is_direct,priority,number,provenance,amount,updated)""")
+    c.sql("""CREATE TABLE bindings_final AS SELECT stable_id,observation_key,is_direct,priority,{'funder_award_id':number,'provenance':provenance,
+      'display_name':'Title','description':NULL::VARCHAR,'lead_investigator':NULL::VARCHAR,'co_lead_investigator':NULL::VARCHAR,
+      'investigators':NULL::VARCHAR,'start_date':DATE '2010-07-01','end_date':DATE '2015-06-30','amount':amount,'currency':'USD',
+      'updated_date':updated} payload FROM obs""")
+    c.sql("""CREATE TABLE migration_manifest_v AS SELECT s target_id,'NIH_PROJECT_YEAR_FOLD' evidence_class,
+      to_json({'core':p,'primary_award_id':p,'title_from':t,'project_funder_id':4320337355}) evidence_json FROM (VALUES
+      (10,'R01AI000010','5R01AI000010-03'),(20,'R01CA000020','5R01CA000020-02'),(30,'R01NS000030','5R01NS000030-01'),
+      (40,'R01HL000040','5R01HL000040-02')) t(s,p,t)""")
+    c.sql(f"CREATE TABLE nih_survivors AS SELECT target_id stable_id,{NIAID}::BIGINT pinned_funder_id FROM migration_manifest_v")
+    # the elected document of each record: a survivor shows its newest year's own cost before the projection
+    c.sql(f"""CREATE TABLE awards_candidate AS SELECT stable_id id,max_by(number,number) funder_award_id,'Title' display_name,
+      NULL::VARCHAR description,NULL::VARCHAR lead_investigator,NULL::VARCHAR co_lead_investigator,NULL::VARCHAR investigators,
+      DATE '2014-07-01' start_date,DATE '2015-06-30' end_date,2014 start_year,2015 end_year,max_by(amount,number) amount,'USD' currency,
+      CASE WHEN stable_id IN (50,60) THEN 4320332161 ELSE {NIAID} END::BIGINT funder_id,'nih_exporter' provenance
+      FROM obs WHERE provenance='nih_exporter' GROUP BY stable_id""")
+    return c
+
+
+def projected_usd(c):
+    nih_fold.project(c)
+    c.sql('CREATE TABLE awards_candidate_before_usd AS SELECT * FROM awards_candidate')
+    c.sql('CREATE TABLE rates_daily_filled(currency VARCHAR,rate_date DATE,usd_per_unit DOUBLE)')
+    c.sql('CREATE TABLE exchange_rates_annual_v(currency VARCHAR,rate_year INT,usd_per_unit DOUBLE)')
+    capture = FakeC(extra=['exchange_rates','exchange_rates_annual']); capture.r = ''
+    award_usd.run(capture)
+    c.artifact('awards_candidate', [q for name,q in capture.artifacts if name=='awards_candidate'][-1])
+    return {r.id: (r.funder_award_id, r.amount, r.amount_usd) for r in c.sql('SELECT * FROM awards_candidate').collect()}
+
+
+def test_sum_policy_gives_each_project_its_exporter_years_once():
+    c = sum_fixture('sum')
+    got = projected_usd(c)
+    assert got == {
+        10: ('R01AI000010', 340000.0, 340000.0),   # 100k + 200k + supplement 50k - 10k; the twin year, Crossref and paper add nothing
+        20: ('R01CA000020', 600000.0, 600000.0),   # partial (FY1998 has no cost); two flat-budget years both count
+        30: ('R01NS000030', None, None),           # no cost at all: no amount
+        40: ('R01HL000040', None, None),           # sums to zero: no amount
+        50: ('1R13AI000050-01', 6000.0, 6000.0),   # not a survivor: untouched
+        60: ('5R01AI000010-05', 70000.0, 70000.0), # a year outside project 10's sum: untouched
+    }, got
+    assert c.counts['nih_amount_partial'] == 1
+    assert c.counts['nih_amount_twin_years'] == 1      # y03_again: the pick keeps one row per number and counts the other
+    assert c.counts['nih_amount_years_outside'] == 1   # 60, not 50 (another project) and not the survivors themselves
+    assert c.checks['NIH_PROJECTION_SAME_ROWS'] and c.checks['NIH_SURVIVOR_FUNDER_PUBLISHED']
+
+
+def test_null_policy_still_blanks_every_project_and_nothing_else():
+    got = projected_usd(sum_fixture('null'))
+    assert {k: v[1] for k, v in got.items()} == {10: None, 20: None, 30: None, 40: None, 50: 6000.0, 60: 70000.0}
 
 
 def test_held_pair_does_not_reduce_population_and_elected_amount_stays_convertible():

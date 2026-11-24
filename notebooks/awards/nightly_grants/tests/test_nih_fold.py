@@ -163,10 +163,23 @@ def projection(**settings):
 
 def test_amount_switch():
     assert "THEN CAST(NULL AS DOUBLE) ELSE a.amount END amount" in projection()          # default: null until Kyle rules
-    assert "sp.amount_sum" in projection(amount="sum")
+    assert "THEN CASE WHEN sp.currencies<=1 AND sp.amount_sum>0 THEN sp.amount_sum END ELSE a.amount END amount" in projection(amount="sum")
     assert "THEN a.amount ELSE a.amount END amount" in projection(amount="elected")
     with pytest.raises(RuntimeError, match="NIH_FOLD_SETTINGS"):
         projection(amount="max")
+
+
+def test_sum_reads_each_exporter_year_once():
+    """Rohan 11-16 (Q2 sum): the project's ExPORTER fiscal-year rows only, one per number; years with no cost are counted."""
+    c = RecordingC(extra=("migration_manifest",), nih=True, config={"nih_fold": {"amount": "sum"}}); c.nih = True
+    nih_fold.project(c)
+    q = dict(c.statements)
+    assert "WHERE is_direct AND provenance='nih_exporter'" in q["nih_year_cost"]
+    assert "PARTITION BY stable_id,number ORDER BY priority DESC,updated_date DESC NULLS LAST,observation_key)=1" in q["nih_year_cost"]
+    assert "LEFT JOIN dev.lab.ngr_s_nih_year_cost y USING(observation_key)" in q["nih_span"] and "sum(y.amount) amount_sum" in q["nih_span"]
+    assert "b.payload.provenance" in q["nih_obs"]
+    # counts, not gates: partial sums, rows the one-per-number pick drops, ExPORTER years still served outside their project's sum
+    assert {"nih_amount_partial", "nih_amount_twin_years", "nih_amount_years_outside"} <= set(c.counts)
 
 
 def test_title_switch_and_number_always_primary():
