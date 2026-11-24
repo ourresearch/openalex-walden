@@ -62,7 +62,8 @@ STRICT_SQL = "regexp_extract({n},'^[1-9]?([A-Z][A-Z0-9]{{2}}[A-Z]{{2}}[0-9]{{6}}
 LOOSE_SQL = ("CASE WHEN regexp_replace({n},'[^A-Z0-9]','') RLIKE '^[1-9]?[A-Z][A-Z0-9]{{2}}[A-Z]{{2}}[0-9]{{1,6}}$' THEN concat("
              "regexp_extract(regexp_replace({n},'[^A-Z0-9]',''),'^[1-9]?([A-Z][A-Z0-9]{{2}}[A-Z]{{2}})[0-9]+$',1),"
              "lpad(regexp_extract(regexp_replace({n},'[^A-Z0-9]',''),'([0-9]+)$',1),6,'0')) END")
-AMOUNT_POLICIES = ("null", "sum", "elected")        # Q2; default null; prod picks via config nih_fold.amount (Rohan 11-16: sum)
+AMOUNT_POLICIES = ("null", "sum", "elected")        # Q2; default null; prod picks via config nih_fold.amount (Rohan 11-16: sum;
+                                                    # 11-19: a sum only when every bound year has a cost, option B)
 TITLE_POLICIES = ("chosen_year", "elected")         # Q5; default chosen_year (latest non-subproject, non-supplement year)
 
 
@@ -463,7 +464,9 @@ def _nih_project(c):
     c.artifact("nih_title_row", f"""SELECT o.* FROM {r}nih_obs o JOIN {r}nih_choice n USING(stable_id) WHERE o.number=n.title_from
       QUALIFY row_number() OVER (PARTITION BY o.stable_id ORDER BY o.is_direct DESC,o.priority DESC,o.updated_date DESC NULLS LAST,o.observation_key)=1""")
     # sum: the bound ExPORTER fiscal-year rows, one per number; supplements and amendments are their own awards and count; no other
-    # source adds to it; a sum of zero or less is no amount (as HHS TAGGS). CreateNIHAwards writes one raw row per number, under one
+    # source adds to it; a sum of zero or less is no amount (as HHS TAGGS); a project with any bound year that has no cost gets no
+    # amount (Rohan 11-19, option B, complete totals only: ExPORTER's FY1985-1999 files and intramural years before FY2007 carry
+    # no cost, and a short total would look complete). CreateNIHAwards writes one raw row per number, under one
     # funder, and a re-ingest keeps its observation key, so the one-per-number pick drops nothing today: nih_amount_twin_years
     # counts what it drops if a producer ever binds a number twice.
     c.artifact("nih_year_cost", f"""SELECT observation_key,amount,currency FROM {r}nih_obs WHERE is_direct AND provenance='nih_exporter'
@@ -474,10 +477,11 @@ def _nih_project(c):
     c.count("nih_title_from_missing", f"(SELECT n.stable_id FROM {r}nih_choice n LEFT ANTI JOIN {r}nih_title_row t USING(stable_id) WHERE n.title_from IS NOT NULL) x")
     c.count("nih_amount_twin_years", f"""(SELECT o.observation_key FROM {r}nih_obs o LEFT ANTI JOIN {r}nih_year_cost y USING(observation_key)
       WHERE o.is_direct AND o.provenance='nih_exporter') x""")
-    # projects whose sum misses a bound year that has no cost (ExPORTER's FY1985-1999 project files carry none)
+    # projects whose sum misses a bound year that has no cost (ExPORTER's FY1985-1999 project files carry none): under sum they get no
+    # amount, so this counts the totals option B withholds
     c.count("nih_amount_partial", f"(SELECT stable_id FROM {r}nih_span WHERE amount_sum>0 AND years_without_cost>0) x")
     title = s["title"] == "chosen_year"
-    amount = {"null": "CAST(NULL AS DOUBLE)", "sum": "CASE WHEN sp.currencies<=1 AND sp.amount_sum>0 THEN sp.amount_sum END", "elected": "a.amount"}[s["amount"]]
+    amount = {"null": "CAST(NULL AS DOUBLE)", "sum": "CASE WHEN sp.currencies<=1 AND sp.amount_sum>0 AND sp.years_without_cost=0 THEN sp.amount_sum END", "elected": "a.amount"}[s["amount"]]
     pick = lambda col: f"CASE WHEN n.stable_id IS NOT NULL AND t.stable_id IS NOT NULL THEN t.{col} ELSE a.{col} END" if title else f"a.{col}"
     c.artifact("awards_candidate_before_nih", f"SELECT * FROM {r}awards_candidate")
     over = {
