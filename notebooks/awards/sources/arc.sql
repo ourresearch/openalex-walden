@@ -1,5 +1,12 @@
--- Mapping from CreateARCAwards.ipynb (origin e22fdf7f): its awards-table SELECT over arc_input (was the
--- staging table read from s3://openalex-ingest/awards/arc/arc_projects.parquet); created_date and updated_date are the run timestamp.
+-- ARC (Australian Research Council), from openalex-ingest arc_awards.py: the newest monthly object under
+-- s3://openalex-ingest/awards/arc_rgs/ (RGS list + one detail record per grant). Replaces the January laptop file
+-- (scripts/local/arc_to_s3.py, s3://openalex-ingest/awards/arc/arc_projects.parquet), whose 20 columns the object keeps.
+-- Keys are unchanged (id and funder_award_id from the grant code), so the arc p20 rows update in place.
+-- People (feeds-a, 11-05): lead_investigator and investigators come from ARC's detail record: given and family name as
+-- separate fields (the title is its own field, so no title parsing), ORCID, role order with the lead first. investigators
+-- carries everyone but the lead, in ARC's order (as the 11-06 co-investigators change served them from the list string).
+-- A grant whose detail record is missing falls back to the list string, parsed as main + arc-coinv + names-c do.
+-- created_date and updated_date are the run timestamp.
 WITH
 arc_funder AS (
     SELECT
@@ -11,46 +18,61 @@ arc_funder AS (
     WHERE funder_id = 4320334704  -- Australian Research Council
 ),
 
--- The lead: first word given, last word family, after the titles arc_team strips (names card 5: Em/Prof, A/Pr, 'Prof Dr').
-pi_parsed AS (
+-- THE SWITCH (one line). true: people from ARC's detail records (names, ORCIDs, every investigator). false: the people
+-- served before this change, parsed from the list strings (lead + co-investigators, no ORCID).
+arc_people_switch AS (SELECT true AS from_detail),
+
+-- RGS also lists grants another agency funds and ARC administers (11-05: Office of National Intelligence 39, Department of
+-- Defence 9, all served under ARC today). Set arc_only to true to stop adding new ones (rows already in raw are retained).
+arc_scope AS (SELECT false AS arc_only),
+
+arc_parsed AS (
     SELECT
-        *,
+        g.*,
+        -- the list string's lead, names-c title list (Em/Prof, A/Pr, stacked titles); 'Family, Given' or 'Given ... Family'
         CASE
-            WHEN lead_investigator IS NULL OR TRIM(lead_investigator) = '' THEN NULL
-            WHEN lead_investigator LIKE '%,%' THEN 
-                TRIM(SUBSTRING_INDEX(lead_investigator, ',', -1))
-            ELSE
-                TRIM(SPLIT(
-                    TRIM(REGEXP_REPLACE(lead_investigator, '^((Dr|Prof|Professor|Associate Professor|A/Prof|A/Pr|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Em/Prof|E/Prof|E/Pr|Adj/Prof|Adjunct Professor|Hon)\\.?\\s+)+', '')),
-                    ' '
-                )[0])
+            WHEN g.lead_investigator IS NULL OR TRIM(g.lead_investigator) = '' THEN NULL
+            WHEN g.lead_investigator LIKE '%,%' THEN TRIM(SUBSTRING_INDEX(g.lead_investigator, ',', -1))
+            ELSE TRIM(SPLIT(TRIM(REGEXP_REPLACE(g.lead_investigator, '^((Dr|Prof|Professor|Associate Professor|A/Prof|A/Pr|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Em/Prof|E/Prof|E/Pr|Adj/Prof|Adjunct Professor|Hon)\\.?\\s+)+', '')), ' ')[0])
         END as pi_given_name,
         CASE
-            WHEN lead_investigator IS NULL OR TRIM(lead_investigator) = '' THEN NULL
-            WHEN lead_investigator LIKE '%,%' THEN 
-                TRIM(SUBSTRING_INDEX(lead_investigator, ',', 1))
-            ELSE
-                TRIM(ELEMENT_AT(
-                    SPLIT(
-                        TRIM(REGEXP_REPLACE(lead_investigator, '^((Dr|Prof|Professor|Associate Professor|A/Prof|A/Pr|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Em/Prof|E/Prof|E/Pr|Adj/Prof|Adjunct Professor|Hon)\\.?\\s+)+', '')),
-                        ' '
-                    ),
-                    -1
-                ))
-        END as pi_family_name
-    FROM arc_input
+            WHEN g.lead_investigator IS NULL OR TRIM(g.lead_investigator) = '' THEN NULL
+            WHEN g.lead_investigator LIKE '%,%' THEN TRIM(SUBSTRING_INDEX(g.lead_investigator, ',', 1))
+            ELSE TRIM(ELEMENT_AT(SPLIT(TRIM(REGEXP_REPLACE(g.lead_investigator, '^((Dr|Prof|Professor|Associate Professor|A/Prof|A/Pr|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Em/Prof|E/Prof|E/Pr|Adj/Prof|Adjunct Professor|Hon)\\.?\\s+)+', '')), ' '), -1))
+        END as pi_family_name,
+        -- the list string's team (arc-coinv): the lead, then ARC's semicolon list ('\\x3B': the generator allows no semicolon)
+        transform(concat(array(g.lead_investigator), split(g.investigators, '\\x3B')), x -> named_struct('name', trim(x),
+            'words', filter(split(regexp_replace(trim(x), '^((Dr|Prof|Professor|Associate Professor|A/Prof|A/Pr|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Em/Prof|E/Prof|E/Pr|Adj/Prof|Adjunct Professor|Hon)\\.?\\s+)+', ''), ' '), t -> t <> ''))) as team,
+        -- the detail record's people: the lead is first (the fetcher moves it there)
+        s.from_detail AND coalesce(g.detail_status = 'ok' AND size(g.people) > 0, false) as use_detail,
+        transform(g.people, p -> struct(
+            nullif(trim(p.given_name), '') as given_name,
+            nullif(trim(p.family_name), '') as family_name,
+            CASE WHEN regexp_extract(upper(p.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])$', 1) <> ''
+                 THEN concat('https://orcid.org/', regexp_extract(upper(p.orcid), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])$', 1)) END as orcid
+        )) as detail_people
+    FROM arc_input g
+    CROSS JOIN arc_people_switch s
+    CROSS JOIN arc_scope sc
+    WHERE NOT sc.arc_only OR coalesce(g.grant_funder, 'Australian Research Council') = 'Australian Research Council'
 ),
 
--- Co-investigators (grant-coverage 11-03). ARC's investigators column names everyone on the grant, the lead included, as one
--- semicolon-separated string ('Prof A', 'Dr B'), not in role order: 12,260 of 34,471 grants list the lead after someone else
--- (arc_projects.parquet, measured 11-03). team = the lead, then ARC's list in ARC's order, each name as words with the
--- names-cleanup Card 5 titles stripped (Em/Prof, A/Pr, stacked titles). '\\x3B' is the semicolon: the generator allows none in code.
--- co_investigators = everyone after the lead, in ARC's order: 83,299 people on 23,031 grants. A person listed twice, or the lead
--- listed again, appears once, at their first place (7 grants). First word given, last word family, as for the lead. This file
--- gives no ORCID, role or institution per person, so those stay NULL.
 arc_team AS (
     SELECT
         *,
+        -- detail: everyone after the lead, a name listed twice (or the lead again) once, at its first place
+        transform(
+            filter(detail_people, (p, i) -> i > 0 AND (p.given_name IS NOT NULL OR p.family_name IS NOT NULL)
+                AND NOT exists(slice(detail_people, 1, i), q -> coalesce(lower(concat_ws(' ', q.given_name, q.family_name)) = lower(concat_ws(' ', p.given_name, p.family_name)), false))),
+            p -> struct(
+                p.given_name as given_name,
+                p.family_name as family_name,
+                p.orcid as orcid,
+                CAST(NULL AS DATE) as role_start,
+                CAST(NULL AS STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>) as affiliation
+            )
+        ) as detail_co_investigators,
+        -- list string (arc-coinv): everyone after the lead, first word given, last word family, no ORCID
         transform(
             filter(team, (p, i) -> i > 0 AND size(p.words) > 0
                 AND NOT exists(slice(team, 1, i), q -> coalesce(lower(array_join(q.words, ' ')) = lower(array_join(p.words, ' ')), false))),
@@ -61,14 +83,8 @@ arc_team AS (
                 CAST(NULL AS DATE) as role_start,
                 CAST(NULL AS STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>) as affiliation
             )
-        ) as co_investigators
-    FROM (
-        SELECT
-            *,
-            transform(concat(array(lead_investigator), split(investigators, '\\x3B')), x -> named_struct('name', trim(x),
-                'words', filter(split(regexp_replace(trim(x), '^((Dr|Prof|Professor|Associate Professor|A/Prof|A/Pr|Asst Prof|Assoc Prof|Mr|Ms|Mrs|Miss|Emeritus Professor|Emeritus Prof|Em/Prof|E/Prof|E/Pr|Adj/Prof|Adjunct Professor|Hon)\\.?\\s+)+', ''), ' '), t -> t <> ''))) as team
-        FROM pi_parsed
-    )
+        ) as string_co_investigators
+    FROM arc_parsed
 ),
 
 awards_transformed AS (
@@ -113,16 +129,29 @@ awards_transformed AS (
 
         'arc' as provenance,
 
-        CASE 
-            WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL 
-            THEN TO_DATE(CONCAT(g.start_year, '-01-01')) 
-            ELSE NULL 
+        -- ARC's funding commencement year, as before (the detail record's project-start-date stays in the S3 file)
+        CASE
+            WHEN TRY_CAST(g.start_year AS INT) IS NOT NULL
+            THEN TO_DATE(CONCAT(g.start_year, '-01-01'))
+            ELSE NULL
         END as start_date,
         TRY_TO_DATE(g.end_date, 'yyyy-MM-dd') as end_date,
         TRY_CAST(g.start_year AS INT) as start_year,
         YEAR(TRY_TO_DATE(g.end_date, 'yyyy-MM-dd')) as end_year,
 
         CASE
+            WHEN g.use_detail THEN
+                struct(
+                    g.detail_people[0].given_name as given_name,
+                    g.detail_people[0].family_name as family_name,
+                    g.detail_people[0].orcid as orcid,
+                    CAST(NULL AS DATE) as role_start,
+                    struct(
+                        g.grantee as name,
+                        'Australia' as country,
+                        CAST(NULL AS ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>) as ids
+                    ) as affiliation
+                )
             WHEN g.lead_investigator IS NOT NULL AND TRIM(g.lead_investigator) != '' THEN
                 struct(
                     g.pi_given_name as given_name,
@@ -146,8 +175,11 @@ awards_transformed AS (
             affiliation:STRUCT<name:STRING, country:STRING, ids:ARRAY<STRUCT<id:STRING, type:STRING, asserted_by:STRING>>>
         >) as co_lead_investigator,
 
-        -- NULL, not [], when the lead is the only person (11,440 grants), so those rows don't change.
-        CASE WHEN size(g.co_investigators) > 0 THEN g.co_investigators END as investigators,
+        -- NULL, not [], when the lead is the only person
+        CASE
+            WHEN g.use_detail THEN CASE WHEN size(g.detail_co_investigators) > 0 THEN g.detail_co_investigators END
+            WHEN size(g.string_co_investigators) > 0 THEN g.string_co_investigators
+        END as investigators,
 
         CONCAT('https://dataportal.arc.gov.au/RGS/Web/Grants/', g.code) as landing_page_url,
 

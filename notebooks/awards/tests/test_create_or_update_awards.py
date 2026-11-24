@@ -195,7 +195,7 @@ def test_production_source_prefixes():
 def test_arc_lead_strips_the_same_titles_as_the_team():
     """arc: the lead's given and family names are read with the team's title list (names card 5: Em/Prof, A/Pr, stacked titles);
     the lead's own shorter list left 'Em/Prof' or 'Dr' (of 'Prof Dr') as the given name on 1,948 grants."""
-    titles = re.findall(r"regexp_replace\((?:lead_investigator|trim\(x\)), '([^']*)'", branch_of('arc'), re.I)
+    titles = re.findall(r"regexp_replace\((?:(?:g\.)?lead_investigator|trim\(x\)), '([^']*)'", branch_of('arc'), re.I)
     assert len(titles) == 3 and len(set(titles)) == 1 and 'Em/Prof' in titles[0] and titles[0].endswith(')+')
 
 

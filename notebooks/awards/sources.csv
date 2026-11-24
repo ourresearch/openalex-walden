@@ -30,7 +30,7 @@ apvv,367,F4320323251,s3://openalex-ingest/awards/apvv/apvv_grants.parquet,frozen
 aragon_boa_research_groups,522,F4320326208,s3://openalex-ingest/awards/aragon_research_groups/aragon_research_groups_projects.parquet,frozen,98
 aramis_seri,533,F4320335238,s3://openalex-ingest/awards/aramis_seri/aramis_seri_projects.parquet,frozen,98
 arcadia_360giving,148,F4320313262,s3://openalex-ingest/awards/arcadia/arcadia_grants.parquet,frozen,98
-arc,20,F4320334704,s3://openalex-ingest/awards/arc/arc_projects.parquet,frozen,98
+arc,20,F4320334704,s3://openalex-ingest/awards/arc_rgs/2026-11-09.parquet,frozen,98
 aris_ecris,423,F4320322554,s3://openalex-ingest/awards/aris_ecris/aris_ecris_projects.parquet,frozen,98
 arnold_ventures_algolia,41,F4320315359,s3://openalex-ingest/awards/arnold_ventures/arnold_ventures_projects.parquet,frozen,98
 arthritis_foundation_announcements,538,F4320306237,s3://openalex-ingest/awards/arthritis_foundation/arthritis_foundation_projects.parquet,frozen,98
