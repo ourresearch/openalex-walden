@@ -18,7 +18,7 @@ resources:
         on_failure:
           - casey@ourresearch.org
         no_alert_for_skipped_runs: true
-      timeout_seconds: 43200  # oxjob #2434, run of 24 Nov 03:00 UTC only; back to 18000 after it
+      timeout_seconds: 18000
       max_concurrent_runs: 1
       parameters:
         - name: mode
@@ -38,9 +38,6 @@ resources:
         - name: max_usd
           # a Modal stage fails when its estimate is over this (a normal night: a few dollars each; 27.6M texts: ~$30-70)
           default: "200"
-        - name: max_minutes
-          # a Modal call fails when it runs longer than this (22 Nov's 45M texts: search ~45 min, reader ~41 min)
-          default: "150"
         - name: test_texts
           default: ""
         - name: scope_table
