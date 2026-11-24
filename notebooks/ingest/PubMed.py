@@ -245,6 +245,32 @@ def page_range_sql(page):
 
 PUBMED_PAGES_SQL = page_range_sql("MedlineCitation.Article.Pagination.MedlinePgn")
 
+
+# oxjob #2590: NLM's translated titles. For an article not in English, MEDLINE's ArticleTitle is NLM's English
+# translation in square brackets with a closing period ('[Pneumothorax in AIDS].') and VernacularTitle is the article's
+# own title (romanised for Cyrillic and other non-Latin scripts): 4.79M records, 3.97M works showed the brackets. The
+# brackets are NLM's editing marks, not part of any title, so the display title drops them and the period after them
+# ('Pneumothorax in AIDS'), only when the first '[' pairs with the last ']' ('[3H]Spiperone binding ... [proceedings].'
+# keeps its brackets: 1,763 records). '[Not Available].' and '[In Process Citation].' are NLM's placeholders for a title
+# it did not translate: the VernacularTitle is then the only title the article has and is shown (22,712 records);
+# without one the placeholder stays as stored. The matching key does not move: normalized_title (and so merge_key) is
+# still built from the ArticleTitle as stored (#807's rule). The VernacularTitle reaches works as an alternate title
+# (CreateWorksEnriched, openalex.works.pubmed_vernacular_titles). Pure SQL, so the same text backfills pubmed_works.
+# Tests: notebooks/ingest/tests/test_pubmed_nlm_title.py.
+_NLM_TRANSLATED_TITLE = r"^\\[([^\\[\\]]*(\\[[^\\[\\]]*\\][^\\[\\]]*)*)\\]\\.?$"
+_NLM_TITLE_PLACEHOLDERS = ("not available", "in process citation", "in process", "title not available")
+
+
+def nlm_title_sql(article_title, vernacular_title):
+    """SQL for a MEDLINE record's display title from SQL expressions of its ArticleTitle and VernacularTitle."""
+    inner = f"trim(regexp_extract(trim({article_title}), '{_NLM_TRANSLATED_TITLE}', 1))"
+    placeholder = f"trim(TRAILING '.' FROM lower({inner})) IN ({', '.join(repr(x) for x in _NLM_TITLE_PLACEHOLDERS)})"
+    return (f"CASE WHEN {placeholder} THEN coalesce(nullif(trim({vernacular_title}), ''), {article_title}) "
+            f"ELSE coalesce(nullif({inner}, ''), {article_title}) END")
+
+
+PUBMED_TITLE_SQL = nlm_title_sql("MedlineCitation.Article.ArticleTitle", "MedlineCitation.Article.VernacularTitle")
+
 # COMMAND ----------
 
 # Parsed Table
@@ -277,8 +303,9 @@ def pubmed_parsed():
       {
             "native_id": extract_id_by_type("pubmed"),
             "native_id_namespace": F.lit("pmid"),
-            "title": F.substring(F.col("MedlineCitation.Article.ArticleTitle"), 0, MAX_TITLE_LENGTH),
-            "normalized_title": normalize_title_udf(F.col("title")),
+            # oxjob #2590: NLM's [bracketed] translation shows without its brackets; the key keeps the stored ArticleTitle
+            "title": F.expr(f"substr({PUBMED_TITLE_SQL}, 1, {MAX_TITLE_LENGTH})"),
+            "normalized_title": normalize_title_udf(F.substring(F.col("MedlineCitation.Article.ArticleTitle"), 0, MAX_TITLE_LENGTH)),
             "authors": F.transform(
                 F.col("MedlineCitation.Article.AuthorList.Author"),
                 lambda auth: F.struct(
