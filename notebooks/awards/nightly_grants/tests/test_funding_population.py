@@ -207,6 +207,13 @@ def test_null_policy_still_blanks_every_project_and_nothing_else():
     assert {k: v[1] for k, v in got.items()} == {10: None, 20: None, 30: None, 40: None, 50: 6000.0, 60: 70000.0}
 
 
+def test_prod_config_sums_nih_project_amounts():
+    import json
+    c = DB(); c.config = json.loads((ROOT / 'config.prod.json').read_text())
+    assert c.config['nih_fold'] == {'amount': 'sum'}             # Rohan 11-16 (Q2); the code default stays null
+    assert nih_fold.settings(c)['amount'] == 'sum'
+
+
 def test_held_pair_does_not_reduce_population_and_elected_amount_stays_convertible():
     c = fixture(); c.config['nih_fold']={'amount':'elected'}
     c.sql('UPDATE resolve_candidate SET stable_id=owner_id WHERE owner_id=981')

@@ -73,6 +73,9 @@
   "legacy_lock": "openalex.awards.award_registry_lock",
   "require_databricks_run_id": true,
   "gone_fuse": 5000,
+  "nih_fold": {
+    "amount": "sum"
+  },
   "extra_inputs": {
     "award_relations_raw": "openalex.awards.award_relations_raw",
     "migration_manifest": "openalex.awards.award_migration_manifest",
