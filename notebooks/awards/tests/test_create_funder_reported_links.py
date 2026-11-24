@@ -17,6 +17,8 @@ SQL = (ROOT / 'notebooks/awards/CreateFunderReportedLinks.sql').read_text()
 CELLS = SQL.split('-- COMMAND ----------')
 PIN = 'max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path))'
 MATCHES, LINKS = 'openalex.awards.funder_reported_link_matches', 'openalex.awards.funder_reported_links'
+REFMATCH = 'openalex.awards.funder_reported_refmatch_picks'
+MERGED = 'openalex.works.merged_work_ids'   # a refmatch pick merged away moves to its survivor   # the reference matcher's decisions (MatchListedOutputs.py)
 SOURCES = ('nwopen', 'fwf_open_api', 'anr_opendata', 'kaken', 'hakai_publications')
 OBJECTS = {  # the object each mapping reads: a prefix's newest *.parquet, or one object
     'nwopen': 's3://openalex-ingest/awards/nwopen/*.parquet',
@@ -82,16 +84,18 @@ def test_one_matching_path_with_no_per_source_code():
 
 def test_tables_read_and_written():
     tables = set(re.findall(r'\bopenalex\.\w+\.\w+', code(SQL)))
-    assert tables == {MATCHES, LINKS, HAL, KAKEN_OLD, 'openalex.awards.openalex_awards_raw', 'openalex.works.openalex_works',
-                      'openalex.works.location_work_match_keys'}, tables
+    assert tables == {MATCHES, LINKS, REFMATCH, HAL, KAKEN_OLD, 'openalex.awards.openalex_awards_raw', 'openalex.works.openalex_works',
+                      'openalex.works.location_work_match_keys', MERGED}, tables
     assert HAL in cell('CREATE OR REPLACE TEMP VIEW anr_opendata_listed')
     assert KAKEN_OLD in cell('CREATE OR REPLACE TEMP VIEW kaken_listed')
     writes = re.findall(r'\b(CREATE TABLE IF NOT EXISTS|CREATE OR REPLACE TABLE|INSERT INTO|MERGE INTO|DELETE FROM|UPDATE)\s+(\w+\.\w+\.\w+)',
                         code(SQL))
     # the matches table holds what each source lists (read once), then those outputs with their candidates; one write to the links
-    assert writes == [('CREATE TABLE IF NOT EXISTS', LINKS), ('CREATE OR REPLACE TABLE', MATCHES), ('CREATE OR REPLACE TABLE', MATCHES),
-                      ('MERGE INTO', LINKS)], writes
+    assert writes == [('CREATE TABLE IF NOT EXISTS', LINKS), ('CREATE TABLE IF NOT EXISTS', REFMATCH), ('CREATE OR REPLACE TABLE', MATCHES),
+                      ('CREATE OR REPLACE TABLE', MATCHES), ('MERGE INTO', LINKS)], writes
     assert SQL.index(f'CREATE TABLE IF NOT EXISTS {LINKS}') < SQL.index('LINKS_REGEX_MODE')   # its readers always have their input
+    assert SQL.index(f'CREATE TABLE IF NOT EXISTS {REFMATCH}') < SQL.index('LINKS_REGEX_MODE')
+    assert code(SQL).count(REFMATCH) == 2   # created if missing, then read once (refmatch_picks); only the matcher writes it
     # one read for every source's candidates, and KAKEN's 8 Jul links dropped on a paper with no DOI now
     assert code(cell('CREATE OR REPLACE TABLE ' + MATCHES + ' USING delta AS\nWITH')).count('openalex.works.openalex_works') == 1
     assert code(cell('CREATE OR REPLACE TEMP VIEW kaken_listed')).count('openalex.works.openalex_works') == 1
@@ -109,6 +113,34 @@ def test_gates_are_frozen_before_the_one_merge_and_the_run_fails_after_it():
         assert rule in gates, rule
     merge = squash(code(cell(f'MERGE INTO {LINKS}')))
     assert "WHEN NOT MATCHED BY SOURCE AND NOT exists(session.link_results, r -> r.source = t.source AND r.state <> 'written') THEN DELETE" in merge
+
+
+def test_refmatch_is_a_last_tier_that_needs_the_title_guard():
+    sources = re.findall(r"\('(\w+)', '([a-z,]+)', '(\w+)'\)", cell('CREATE OR REPLACE TEMP VIEW link_sources'))
+    tiers = {s: t.split(',') for s, t, _ in sources}
+    assert tiers['fwf_open_api'] == ['doi', 'pmid', 'refmatch']   # FWF first (23 Nov grade); NWO after its own grade
+    assert all(t[-1] == 'refmatch' for t in tiers.values() if 'refmatch' in t)   # never ahead of an identifier
+    step2 = squash(code(cell('CREATE OR REPLACE TABLE ' + MATCHES + ' USING delta AS\nWITH')))
+    assert ('refmatch_picks AS ( SELECT p.source, p.listed_key, p.guard_key, coalesce(m.winner_work_id, p.work_id) AS work_id, p.score '
+            'FROM (SELECT * FROM ' + REFMATCH + ' WHERE linked QUALIFY row_number() OVER (PARTITION BY source, listed_key ORDER BY '
+            'decided_at DESC) = 1) p LEFT JOIN (SELECT loser_work_id, max(winner_work_id) AS winner_work_id FROM ' + MERGED
+            + ' GROUP BY 1) m ON m.loser_work_id = p.work_id )') in step2
+    # a pick is keyed by the output as listed (title and surnames; FWF renumbers its output ids), and accepted only when the
+    # work's title is the listed one (the guard)
+    assert 'JOIN refmatch_picks p ON p.source = l.source AND p.listed_key = listed_key(l.title, l.surnames)' in step2
+    key = squash(code(cell('CREATE OR REPLACE TEMPORARY FUNCTION listed_key')))
+    assert key == ("CREATE OR REPLACE TEMPORARY FUNCTION listed_key(title STRING, surnames ARRAY<STRING>) RETURNS STRING RETURN "
+                   "concat_ws('|', match_text(title), match_text(array_join(array_sort(array_distinct(transform(coalesce(surnames, array()), "
+                   "x -> lower(x)))), ' ')));")
+    assert 'coalesce(d.title_key = p.guard_key, false) AS refmatch_title_equal' in step2
+    assert ("x.work_id IS NOT NULL AND x.funder_id IS NOT NULL AND CASE WHEN x.tier = 'refmatch' THEN x.refmatch_title_equal "
+            "AND NOT coalesce(array_contains(r.held_work_types, x.work_type) AND x.output_type IN ('article', 'book', 'thesis'), false) "
+            "ELSE x.check = 'none' OR coalesce(CASE x.tier") in step2   # the title tier's held records; never NULL
+    assert ("AND NOT (array_contains(r.held_work_types, x.work_type) AND coalesce(x.output_type IN ('article', 'book', 'thesis'), "
+            "false))") in step2   # the title tier's own rule, unchanged
+    # FWF marks its publications, the only outputs the matcher decides
+    fwf = squash(code(cell('CREATE OR REPLACE TEMP VIEW fwf_open_api_listed AS')))
+    assert "CASE WHEN o.category = 'publications' THEN CASE o.type WHEN 'Journal Article' THEN 'article' WHEN 'Preprint' THEN 'article'" in fwf
 
 
 def test_match_text_is_location_work_match_keys_nt():
@@ -146,12 +178,12 @@ def spark():
     dc = pytest.importorskip('databricks.connect')
     s = dc.DatabricksSession.builder.profile(os.environ['DATABRICKS_CONFIG_PROFILE']).serverless(True).getOrCreate()
     yield s
-    for t in (T_MATCHES, T_LINKS):
+    for t in (T_MATCHES, T_LINKS, T_REFMATCH):
         s.sql(f'DROP TABLE IF EXISTS {t}')
 
 
 SCHEMA = os.environ.get('LINKS_TEST_SCHEMA', 'scratch')
-T_MATCHES, T_LINKS = f'{SCHEMA}.frl_test_matches', f'{SCHEMA}.frl_test_links'
+T_MATCHES, T_LINKS, T_REFMATCH = f'{SCHEMA}.frl_test_matches', f'{SCHEMA}.frl_test_links', f'{SCHEMA}.frl_test_refmatch'
 NWO_F, FWF_F, ANR_F, KAKEN_F, HAKAI_F = 4320321800, 4320321181, 4320320883, 4320334764, 4320334031
 T = lambda k: f'{k} of the colloidal glass transition in long range systems'
 ART, BOOK, PATENT, OTHER = 'Wetenschappelijk artikel', 'Boek', 'Octrooi', 'Overige Output'
@@ -163,8 +195,8 @@ def nwo(ptype, title, year, authors, url=None, volume=None, start=None):
     return p
 
 
-def fwf(oid, title, doi=None, pmid=None, surnames=('Heid',)):
-    return dict(output_id=oid, category='publications', type='Journal Article', doi=doi, pmid=pmid, title=title, surnames=list(surnames))
+def fwf(oid, title, doi=None, pmid=None, surnames=('Heid',), category='publications', type='Journal Article'):
+    return dict(output_id=oid, category=category, type=type, doi=doi, pmid=pmid, title=title, surnames=list(surnames))
 
 
 NWO = {'P1': [nwo(ART, T('A study'), 2020, ['Linden'], url='https://doi.org/10.1000/ ABC.1'),                    # 0 DOI, salvaged
@@ -185,7 +217,19 @@ FWF = {'F1': [fwf('o-1', T('Charge transfer'), doi='10.1000/f.1'),              
               fwf('o-2', 'Ein deutscher Titel', pmid='333'),                             # PMID, other title, author on it
               fwf('o-3', 'Ein Konsortium', doi='10.1000/big.7'),                         # 101 authors: the title decides
               fwf('o-4', 'Anderer Titel', doi='10.1000/tm.8', surnames=('Thomas',)),     # a given name on the work, not a last name
-              fwf('o-5', T('Diffusion'), doi='10.1000/b.5', pmid='555')]}                # the DOI's work is another item: PMID not tried
+              fwf('o-5', T('Diffusion'), doi='10.1000/b.5', pmid='555'),                 # the DOI's work is another item: PMID not tried
+              fwf('o-6', T('Glass relaxation')),                                         # refmatch: the latest pick, the work's title is it
+              fwf('o-7', T('Aging dynamics')),                                           # refmatch: the pick's title is another one
+              fwf('o-8', T('Yielding')),                                                 # decided under an older title: not used
+              fwf('o-9', T('Charge transfer'), doi='10.1000/f.1'),                       # a DOI and a pick: the DOI decides
+              fwf('o-10', T('Nucleation') + '; In: A handbook of soft matter', type='Book Chapter'),   # a chapter: "; In:" cut
+              fwf('o-11', T('Creep')),                                                   # in the reader's band, not linked: not used
+              fwf('o-12', T('Glass relaxation'), category='science communication', type='A talk or presentation'),  # not a publication
+              fwf('o-13', T('Glass relaxation')),                                        # o-6 renumbered: the same pick
+              fwf('o-14', T('Gelation'), surnames=('Other',)),                          # a pick for another author list: not used
+              fwf('o-15', T('Femtoscopy'), type='Preprint'),                             # a paper listed, the pick is a dataset: held
+              fwf('o-16', T('Shear banding'), type='Conference Proceeding Abstract'),   # an abstract listed, an abstract record: kept
+              fwf('o-17', T('Sol-gel transition'), surnames=('HEID',))]}                # the pick merged away: its survivor; case-blind key
 ANR = ([('10.2000/a.1', ['ANR-2', 'ANR-1']),                # two grants: award_ids sorted
         ('10.2000/shared', ['ANR-1']),                      # a DOI two works hold: both linked
         ('10.2000/c.3', ['ANR-X']),                         # not an award in raw: not linked
@@ -222,6 +266,15 @@ WORKS = [  # id, doi, pmid, type, title, year, volume, first page, author names
     (107, '10.1000/tm.8', None, 'article', 'Something else', 2021, None, None, ['Thomas Schmidt']),
     (105, '10.1000/b.5', None, 'article', 'A different paper on that DOI', 2021, None, None, ['Q. Other']),
     (155, None, '555', 'article', T('Diffusion'), 2021, None, None, ['Elisa Heid']),
+    (160, None, None, 'article', T('Glass relaxation'), 2021, None, None, ['Elisa Heid']),
+    (165, None, None, 'preprint', T('Glass relaxation'), 2020, None, None, ['Elisa Heid']),
+    (161, None, None, 'article', T('Aging dynamics in gels'), 2021, None, None, ['Elisa Heid']),
+    (162, None, None, 'article', T('Yielding old'), 2021, None, None, ['Elisa Heid']),
+    (163, None, None, 'book-chapter', T('Nucleation'), 2021, None, None, ['Elisa Heid']),
+    (164, None, None, 'article', T('Creep'), 2021, None, None, ['Elisa Heid']),
+    (166, None, None, 'dataset', T('Femtoscopy'), 2021, None, None, ['Elisa Heid']),
+    (167, None, None, 'conference-abstract', T('Shear banding'), 2021, None, None, ['Elisa Heid']),
+    (169, None, None, 'article', T('Sol-gel transition'), 2021, None, None, ['Elisa Heid']),   # 199 was merged into it
     (201, '10.2000/a.1', None, 'article', 'ANR paper', 2015, None, None, ['A. B']),
     (202, '10.2000/shared', None, 'article', 'Shared one', 2015, None, None, ['A. B']),
     (203, '10.2000/shared', None, 'article', 'Shared two', 2015, None, None, ['A. B']),
@@ -240,7 +293,8 @@ RAW = ([('P1', 'nwopen', NWO_F), ('F1', 'fwf_open_api', FWF_F), ('ANR-1', 'anr_o
 LINKED = {  # source -> {(work_id, funder_id): award_ids}
     'nwopen': {(1, NWO_F): ['P1'], (3, NWO_F): ['P1'], (5, NWO_F): ['P1'], (7, NWO_F): ['P1'], (21, NWO_F): ['P1'], (66, NWO_F): ['P1'],
                (12, NWO_F): ['P1']},
-    'fwf_open_api': {(101, FWF_F): ['F1'], (104, FWF_F): ['F1']},
+    'fwf_open_api': {(101, FWF_F): ['F1'], (104, FWF_F): ['F1'], (160, FWF_F): ['F1'], (163, FWF_F): ['F1'], (167, FWF_F): ['F1'],
+                     (169, FWF_F): ['F1']},
     'anr_opendata': {(201, ANR_F): ['ANR-1', 'ANR-2'], (202, ANR_F): ['ANR-1'], (203, ANR_F): ['ANR-1'], (205, ANR_F): ['ANR-1'],
                      (99999, ANR_F): ['ANR-2'], (206, ANR_F): ['ANR-1'], (207, ANR_F): ['ANR-2']},
     'kaken': {(301, KAKEN_F): ['K1'], (302, KAKEN_F): ['K1'], (304, KAKEN_F): ['K1']},
@@ -250,6 +304,27 @@ LINKED = {  # source -> {(work_id, funder_id): award_ids}
 
 def nt(title):
     return ' '.join(re.sub(r'[^a-z0-9]+', ' ', title.lower()).split())
+
+
+def pick(oid, title, work, linked=True, guard=None, at='2026-12-01 03:00:00', surnames=('Heid',)):
+    # one decision of MatchListedOutputs: (source, listed_key, output_key, title_key, guard_key, ..., work_id, ..., linked, ...)
+    import datetime
+    listed = nt(title) + '|' + nt(' '.join(sorted({x.lower() for x in surnames})))
+    return ('fwf_open_api', listed, oid, nt(title), nt(guard or title), 'a text', 1, work, 0.99, 0.99, not linked, linked, 2,
+            'linked' if linked else 'band', datetime.datetime.fromisoformat(at), 'r1')
+
+
+REFMATCH_ROWS = [pick('o-6', T('Glass relaxation'), 165, at='2026-11-30 03:00:00'),   # an older pick of the same title
+                 pick('o-6', T('Glass relaxation'), 160),
+                 pick('o-7', T('Aging dynamics'), 161),
+                 pick('o-8', T('Yielding old'), 162),
+                 pick('o-9', T('Charge transfer'), 160),
+                 pick('o-10', T('Nucleation') + '; In: A handbook of soft matter', 163, guard=T('Nucleation')),
+                 pick('o-11', T('Creep'), 164, linked=False),
+                 pick('o-14', T('Gelation'), 160),   # decided for the surnames ['Heid']; o-14 lists ['Other']
+                 pick('o-15', T('Femtoscopy'), 166),
+                 pick('o-16', T('Shear banding'), 167),
+                 pick('o-17', T('Sol-gel transition'), 199)]   # decided as 'Heid' on work 199, since merged into 169
 
 
 def views(spark, raw=RAW):
@@ -274,6 +349,7 @@ def views(spark, raw=RAW):
                           'hal_id string, provenance string, created_at timestamp').createOrReplaceTempView('t_hal')
     spark.createDataFrame(raw, 'funder_award_id string, provenance string, funder_id bigint').createOrReplaceTempView('t_raw')
     spark.createDataFrame([(w[0], w[5], nt(w[4])) for w in WORKS], 'id bigint, yr int, nt string').createOrReplaceTempView('t_keys')
+    spark.createDataFrame([(199, 169)], 'loser_work_id bigint, winner_work_id bigint').createOrReplaceTempView('t_merged')
     spark.createDataFrame(
         [(i, d and f'https://doi.org/{d}', {'pmid': f'https://pubmed.ncbi.nlm.nih.gov/{p}'} if p else {}, ty, t, y, (v, fp),
           [((a,),) for a in names]) for i, d, p, ty, t, y, v, fp, names in WORKS],
@@ -286,7 +362,8 @@ def sub(sql, drop_source=None):
     names = {OBJECTS[s]: v for s, v in zip(SOURCES, ('t_nwopen', 't_fwf', 't_anr', 't_kaken', 't_hakai'))}
     sql = re.sub(r"read_files\('([^']+)'[^)]*\)", lambda m: names[m.group(1)], sql)
     for table, name in ((HAL, 't_hal'), (KAKEN_OLD, 't_kaken_old'), ('openalex.awards.openalex_awards_raw', 't_raw'), ('openalex.works.openalex_works', 't_works'),
-                        ('openalex.works.location_work_match_keys', 't_keys'), (MATCHES, T_MATCHES), (LINKS, T_LINKS)):
+                        ('openalex.works.location_work_match_keys', 't_keys'), (MATCHES, T_MATCHES), (LINKS, T_LINKS),
+                        (REFMATCH, T_REFMATCH), (MERGED, 't_merged')):
         sql = sql.replace(table, name)
     if drop_source:
         sql = re.sub(r",\n  \('%s',[^\n]*\)" % drop_source, '', sql)
@@ -300,10 +377,13 @@ def run_notebook(spark, drop_source=None):
             spark.sql(statement).collect()
 
 
-def fresh(spark, links=()):
-    for t in (T_MATCHES, T_LINKS):
+def fresh(spark, links=(), refmatch=REFMATCH_ROWS):
+    for t in (T_MATCHES, T_LINKS, T_REFMATCH):
         spark.sql(f'DROP TABLE IF EXISTS {t}')
     spark.sql(f'CREATE TABLE {T_LINKS} (source STRING, work_id BIGINT, funder_id BIGINT, award_ids ARRAY<STRING>) USING delta')
+    spark.createDataFrame(list(refmatch), 'source string, listed_key string, output_key string, title_key string, guard_key string, text string, '
+                          'text_hash bigint, work_id bigint, score double, checklist_p double, in_band boolean, linked boolean, '
+                          'n_candidates int, status string, decided_at timestamp, run_id string').write.saveAsTable(T_REFMATCH)
     if links:
         spark.createDataFrame(links, 'source string, work_id bigint, funder_id bigint, award_ids array<string>').write.mode('append').saveAsTable(T_LINKS)
 
@@ -352,7 +432,24 @@ def test_each_tier_and_check_on_fixture_rows_and_a_rerun_writes_nothing(spark):
         ('F1', 'o-3', 106): ('doi', ['cleaned', 'salvaged'], False),   # 101 authors: an author in common is not enough
         ('F1', 'o-4', 107): ('doi', ['cleaned', 'salvaged'], False),   # "Thomas" is a given name on the work
         ('F1', 'o-5', 105): ('doi', ['cleaned', 'salvaged'], False),   # the PMID's same-title work is never tried
+        ('F1', 'o-6', 160): ('refmatch', ['refmatch'], True),      # the latest pick of that title (165 was the older one)
+        ('F1', 'o-7', 161): ('refmatch', ['refmatch'], False),     # the guard: the work's title is not the listed one
+        ('F1', 'o-8', None): (None, None, False),                  # the pick was for an older title
+        ('F1', 'o-9', 101): ('doi', ['cleaned', 'salvaged'], True),   # the DOI decides: the pick is never tried
+        ('F1', 'o-10', 163): ('refmatch', ['refmatch'], True),     # the chapter's title with "; In: <book>" cut is the work's
+        ('F1', 'o-11', None): (None, None, False),                 # not linked by the matcher: no candidate
+        ('F1', 'o-12', 160): ('refmatch', ['refmatch'], True),     # o-6's listed title and surnames: the tier reads the pick (the
+                                                                   # matcher decides publications only, so a talk is never its own)
+        ('F1', 'o-13', 160): ('refmatch', ['refmatch'], True),     # another id, the same output as listed: the same pick
+        ('F1', 'o-14', None): (None, None, False),                 # the pick was made for another author list
+        ('F1', 'o-15', 166): ('refmatch', ['refmatch'], False),    # FWF lists a preprint (an article), the record is a dataset
+        ('F1', 'o-16', 167): ('refmatch', ['refmatch'], True),     # FWF lists an abstract: an abstract record may be it
+        ('F1', 'o-17', 169): ('refmatch', ['refmatch'], True),     # listed as 'HEID' now; the pick 199 lives on as 169
     }
+    types = {r.output_key: r.output_type for r in spark.sql(f"SELECT DISTINCT output_key, output_type FROM {T_MATCHES} WHERE source = 'fwf_open_api'").collect()}
+    assert (types['o-1'], types['o-10'], types['o-12']) == ('article', 'publication', None)   # a talk is not a publication
+    titles = {r.output_key: r.title for r in spark.sql(f"SELECT DISTINCT output_key, title FROM {T_MATCHES} WHERE source = 'fwf_open_api'").collect()}
+    assert titles['o-10'] == T('Nucleation') + '; In: A handbook of soft matter'   # the title as listed, for the matcher
     anr = matches(spark, 'anr_opendata')
     assert anr[('ANR-X', '10.2000/c.3', 204)] == ('doi', ['cleaned', 'salvaged'], False)   # not an anr_opendata award
     assert sum(1 for k in anr if k[2] is None) == 120   # listed papers OpenAlex does not have: kept as unresolved rows
@@ -393,6 +490,6 @@ def test_a_dropped_link_is_deleted_and_a_source_removed_from_the_config_loses_it
                  + [('anr_opendata', 207, ANR_F, ['ANR-2'])])
     run_notebook(spark)                                # ANR no longer lists 999, and lists two grants on 201
     assert links(spark) == LINKED
-    assert last_merge(spark) == {'numTargetRowsInserted': 14, 'numTargetRowsUpdated': 1, 'numTargetRowsDeleted': 1}
+    assert last_merge(spark) == {'numTargetRowsInserted': 18, 'numTargetRowsUpdated': 1, 'numTargetRowsDeleted': 1}
     run_notebook(spark, drop_source='hakai_publications')
     assert links(spark) == {s: v for s, v in LINKED.items() if s != 'hakai_publications'}

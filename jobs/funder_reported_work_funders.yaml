@@ -40,6 +40,22 @@ resources:
           # openalex_awards_raw has other writers; a concurrent commit conflict is retried once
           max_retries: 1
           min_retry_interval_millis: 120000
+        # Casey's reference matcher for the listed publications no identifier names: decides each new one once into
+        # openalex.awards.funder_reported_refmatch_picks, which tomorrow's create_funder_reported_links reads as the refmatch tier.
+        # After the links task (it reads today's unresolved outputs); a failure writes nothing and stops nothing. Serverless,
+        # with the scikit-learn that refits Casey's models exactly (as the Match References job).
+        - task_key: match_listed_outputs
+          depends_on:
+            - task_key: create_funder_reported_links
+          run_if: ALL_DONE
+          notebook_task:
+            notebook_path: notebooks/awards/MatchListedOutputs
+            source: GIT
+          environment_key: Matcher
+          timeout_seconds: 3600
+          email_notifications:
+            on_failure:
+              - rohan@openalex.org
         # Every funder's own output list -> openalex.awards.funder_reported_links, one row per (source, work, funder).
         - task_key: create_funder_reported_links
           notebook_task:
@@ -68,3 +84,10 @@ resources:
         git_branch: main
       queue:
         enabled: true
+      environments:
+        - environment_key: Matcher
+          spec:
+            environment_version: "4"
+            dependencies:
+              # refmatch.py refits its checklist and combiner from #2000's training rows; 1.8.0 reproduces them exactly
+              - scikit-learn==1.8.0

@@ -1,0 +1,324 @@
+{
+"pairs": [
+{
+"qi": -9172247499183957668,
+"cand": 6940735340,
+"title": "Canonical functions: a proof via topological dynamics",
+"year": 2021.0,
+"type": "article",
+"has_doi": "true",
+"au": [
+"Michael Pinsker",
+"Manuel Bodirsky"
+],
+"n_au": 2,
+"venue": "Libraries and Cultural Resources (University of Calgary)",
+"vol": null,
+"iss": null,
+"fp": null,
+"lp": null,
+"work_title_key": "canonical functions a proof via topological dynamics",
+"score": 0.9092963129876627
+},
+{
+"qi": -9172247499183957668,
+"cand": 6884637798,
+"title": "Canonical functions: a proof via topological dynamics",
+"year": 2021.0,
+"type": "article",
+"has_doi": "true",
+"au": [
+"Michael Pinsker",
+"Manuel Bodirsky"
+],
+"n_au": 2,
+"venue": "Libraries and Cultural Resources (University of Calgary)",
+"vol": null,
+"iss": null,
+"fp": null,
+"lp": null,
+"work_title_key": "canonical functions a proof via topological dynamics",
+"score": 0.9092963129876627
+},
+{
+"qi": -9219280215471469921,
+"cand": 2235144595,
+"title": "Inverse problems of combined photoacoustic and optical coherence tomography",
+"year": 2016.0,
+"type": "article",
+"has_doi": "true",
+"au": [
+"Peter Elbau",
+"Leonidas Mindrinos",
+"Otmar Scherzer"
+],
+"n_au": 3,
+"venue": "Mathematical Methods in the Applied Sciences",
+"vol": "40",
+"iss": "3",
+"fp": "505",
+"lp": "522",
+"work_title_key": "inverse problems of combined photoacoustic and optical coherence tomography",
+"score": 0.9176059928503905
+},
+{
+"qi": -9209815006439371257,
+"cand": 4220654438,
+"title": "The Mediterranean Ridge 25 years after ODP Leg 160 drilling: New discoveries on mud volcanism and fluid-rock interactions in the Olimpi mud volcano field",
+"year": 2022.0,
+"type": "conference-abstract",
+"has_doi": "true",
+"au": [
+"Nele Behrendt",
+"W. Menapace",
+"Gerhard Bohrmann",
+"Achim Kopf"
+],
+"n_au": 4,
+"venue": "EGU General Assembly Conference Abstracts",
+"vol": null,
+"iss": null,
+"fp": null,
+"lp": null,
+"work_title_key": "the mediterranean ridge 25 years after odp leg 160 drilling new discoveries on mud volcanism and fluid rock interactions in the olimpi mud volcano field",
+"score": 0.9607263485896841
+},
+{
+"qi": -9172247499183957668,
+"cand": 3186474464,
+"title": "Canonical functions: a proof via topological dynamics",
+"year": 2021.0,
+"type": "article",
+"has_doi": "true",
+"au": [
+"Michael Pinsker",
+"Manuel Bodirsky"
+],
+"n_au": 2,
+"venue": "Contributions to Discrete Mathematics",
+"vol": "16",
+"iss": "2",
+"fp": "36",
+"lp": "45",
+"work_title_key": "canonical functions a proof via topological dynamics",
+"score": 0.9007718723965064
+},
+{
+"qi": -9212351730601293249,
+"cand": 1975053768,
+"title": "Electromagnetic baryon form factors in the Poincaré-covariant Faddeev approach",
+"year": 2015.0,
+"type": "article",
+"has_doi": "true",
+"au": [
+"Reinhard Alkofer",
+"Gernot Eichmann",
+"Hèlios Sanchis-Alepuz",
+"Richard Williams"
+],
+"n_au": 4,
+"venue": "Hyperfine Interactions",
+"vol": "234",
+"iss": "1-3",
+"fp": "149",
+"lp": "154",
+"work_title_key": "electromagnetic baryon form factors in the poincare covariant faddeev approach",
+"score": 0.8884812979278831
+},
+{
+"qi": -9223071186234532489,
+"cand": 6901871846,
+"title": "Additional file 6 of Disulfide bond engineering of AppA phytase for increased thermostability requires co-expression of protein disulfide isomerase in Pichia pastoris",
+"year": 2021.0,
+"type": "supplementary-materials",
+"has_doi": "true",
+"au": [
+"Laura Navone",
+"Vogl, Thomas",
+"Pawarisa Luangthongkam",
+"Blinco, Jo-Anne",
+"Carlos H. Luna‐Flores"
+],
+"n_au": 9,
+"venue": "Figshare",
+"vol": null,
+"iss": null,
+"fp": null,
+"lp": null,
+"work_title_key": "additional file 6 of disulfide bond engineering of appa phytase for increased thermostability requires co expression of protein disulfide isomerase in pichia pastoris",
+"score": 0.9778786485256576
+},
+{
+"qi": -9222032801519787937,
+"cand": 4287180100,
+"title": "Curvature-Dimension Conditions for Symmetric Quantum Markov Semigroups",
+"year": 2022.0,
+"type": "article",
+"has_doi": "true",
+"au": [
+"Melchior Wirth",
+"Haonan Zhang"
+],
+"n_au": 2,
+"venue": "Annales Henri Poincaré",
+"vol": "24",
+"iss": "3",
+"fp": "717",
+"lp": "750",
+"work_title_key": "curvature dimension conditions for symmetric quantum markov semigroups",
+"score": 0.9137437193141835
+},
+{
+"qi": -9222243007969986278,
+"cand": 7096575968,
+"title": "A Dynamic Pattern Calculus with Hedge Variables",
+"year": null,
+"type": "article",
+"has_doi": "false",
+"au": [
+"Sandra Alves",
+"Besik Dundua",
+"Mário Florido",
+"Temur Kutsia"
+],
+"n_au": 4,
+"venue": null,
+"vol": null,
+"iss": null,
+"fp": null,
+"lp": null,
+"work_title_key": "a dynamic pattern calculus with hedge variables",
+"score": 0.7977911880900627
+}
+],
+"texts": [
+{
+"source": "fwf_open_api",
+"listed_key": "curvature variation based adaptive sampling for delaunay triangulations of riemannian manifolds|dal h kourimska wintraecken",
+"output_key": "output-27936",
+"title_key": "curvature variation based adaptive sampling for delaunay triangulations of riemannian manifolds",
+"guard_key": "curvature variation based adaptive sampling for delaunay triangulations of riemannian manifolds",
+"text": "Dal, Kourimska, Wintraecken. Curvature variation based adaptive sampling for Delaunay triangulations of Riemannian manifolds",
+"qi": 7384850095437067556,
+"raw": "Dal, Kourimska, Wintraecken. Curvature variation based adaptive sampling for Delaunay triangulations of Riemannian manifolds"
+},
+{
+"source": "fwf_open_api",
+"listed_key": "a dynamic pattern calculus with hedge variables|al alves kutsia",
+"output_key": "output-122860",
+"title_key": "a dynamic pattern calculus with hedge variables",
+"guard_key": "a dynamic pattern calculus with hedge variables",
+"text": "Alves, Kutsia, Al. A Dynamic Pattern Calculus with Hedge Variables",
+"qi": -9222243007969986278,
+"raw": "Alves, Kutsia, Al. A Dynamic Pattern Calculus with Hedge Variables"
+},
+{
+"source": "fwf_open_api",
+"listed_key": "the mediterranean ridge 25 years after odp leg 160 drilling new discoveries on mud volcanism and fluid rock interactions in the olimpi mud volcano field|behrendt bohrmann kopf menapace",
+"output_key": "output-28057",
+"title_key": "the mediterranean ridge 25 years after odp leg 160 drilling new discoveries on mud volcanism and fluid rock interactions in the olimpi mud volcano field",
+"guard_key": "the mediterranean ridge 25 years after odp leg 160 drilling new discoveries on mud volcanism and fluid rock interactions in the olimpi mud volcano field",
+"text": "Behrendt, Menapace, Bohrmann et al. The Mediterranean Ridge 25 years after ODP Leg 160 drilling: New discoveries on mud volcanism and fluid-rock interactions in the Olimpi mud volcano field",
+"qi": -9209815006439371257,
+"raw": "Behrendt, Menapace, Bohrmann et al. The Mediterranean Ridge 25 years after ODP Leg 160 drilling: New discoveries on mud volcanism and fluid-rock interactions in the Olimpi mud volcano field"
+},
+{
+"source": "fwf_open_api",
+"listed_key": "curvature dimension conditions for symmetric quantum markov semigroups|wirth zhang",
+"output_key": "output-32584",
+"title_key": "curvature dimension conditions for symmetric quantum markov semigroups",
+"guard_key": "curvature dimension conditions for symmetric quantum markov semigroups",
+"text": "Wirth, Zhang. Curvature-dimension conditions for symmetric quantum Markov semigroups",
+"qi": -9222032801519787937,
+"raw": "Wirth, Zhang. Curvature-dimension conditions for symmetric quantum Markov semigroups"
+},
+{
+"source": "fwf_open_api",
+"listed_key": "electromagnetic baryon form factors in the poincare covariant faddeev approach|alkofer eichmann sanchis alepuz williams",
+"output_key": "output-83778",
+"title_key": "electromagnetic baryon form factors in the poincare covariant faddeev approach",
+"guard_key": "electromagnetic baryon form factors in the poincare covariant faddeev approach",
+"text": "Alkofer, Eichmann, Sanchis-Alepuz et al. Electromagnetic baryon form factors in the Poincare-covariant Faddeev approach",
+"qi": -9212351730601293249,
+"raw": "Alkofer, Eichmann, Sanchis-Alepuz et al. Electromagnetic baryon form factors in the Poincare-covariant Faddeev approach"
+},
+{
+"source": "fwf_open_api",
+"listed_key": "canonical functions a proof via topological dynamics|bodirsky pinsker",
+"output_key": "output-69780",
+"title_key": "canonical functions a proof via topological dynamics",
+"guard_key": "canonical functions a proof via topological dynamics",
+"text": "Bodirsky, Pinsker. Canonical Functions: a proof via topological dynamics",
+"qi": -9172247499183957668,
+"raw": "Bodirsky, Pinsker. Canonical Functions: a proof via topological dynamics"
+},
+{
+"source": "fwf_open_api",
+"listed_key": "additional file 6 of disulfide bond engineering of appa phytase for increased thermostability requires co expression of protein disulfide isomerase in pichia pastoris|blinco chen luangthongkam luna flores mahler navone speight vogl von hellens",
+"output_key": "output-38866",
+"title_key": "additional file 6 of disulfide bond engineering of appa phytase for increased thermostability requires co expression of protein disulfide isomerase in pichia pastoris",
+"guard_key": "additional file 6 of disulfide bond engineering of appa phytase for increased thermostability requires co expression of protein disulfide isomerase in pichia pastoris",
+"text": "Navone, Vogl, Luangthongkam et al. Additional file 6 of Disulfide bond engineering of AppA phytase for increased thermostability requires co-expression of protein disulfide isomerase in Pichia pastoris",
+"qi": -9223071186234532489,
+"raw": "Navone, Vogl, Luangthongkam et al. Additional file 6 of Disulfide bond engineering of AppA phytase for increased thermostability requires co-expression of protein disulfide isomerase in Pichia pastoris"
+},
+{
+"source": "fwf_open_api",
+"listed_key": "inverse problems of combined photoacoustic and optical coherence tomography|elbau mindrinos scherzer",
+"output_key": "output-69951",
+"title_key": "inverse problems of combined photoacoustic and optical coherence tomography",
+"guard_key": "inverse problems of combined photoacoustic and optical coherence tomography",
+"text": "Elbau, Mindrinos, Scherzer. Inverse Problems of Combined Photoacoustic and Optical Coherence Tomography",
+"qi": -9219280215471469921,
+"raw": "Elbau, Mindrinos, Scherzer. Inverse Problems of Combined Photoacoustic and Optical Coherence Tomography"
+}
+],
+"decided": {
+"-9223071186234532489": [
+6901871846,
+false,
+true
+],
+"-9222243007969986278": [
+7096575968,
+false,
+false
+],
+"-9222032801519787937": [
+4287180100,
+true,
+false
+],
+"-9219280215471469921": [
+2235144595,
+true,
+false
+],
+"-9212351730601293249": [
+1975053768,
+false,
+false
+],
+"-9209815006439371257": [
+4220654438,
+false,
+true
+],
+"-9172247499183957668": [
+6884637798,
+true,
+false
+]
+},
+"statuses": {
+"curvature variation based adaptive sampling for delaunay triangulations of riemannian manifolds|dal h kourimska wintraecken": "no_candidates",
+"a dynamic pattern calculus with hedge variables|al alves kutsia": "not_linked",
+"the mediterranean ridge 25 years after odp leg 160 drilling new discoveries on mud volcanism and fluid rock interactions in the olimpi mud volcano field|behrendt bohrmann kopf menapace": "band",
+"curvature dimension conditions for symmetric quantum markov semigroups|wirth zhang": "linked",
+"electromagnetic baryon form factors in the poincare covariant faddeev approach|alkofer eichmann sanchis alepuz williams": "not_linked",
+"canonical functions a proof via topological dynamics|bodirsky pinsker": "linked",
+"additional file 6 of disulfide bond engineering of appa phytase for increased thermostability requires co expression of protein disulfide isomerase in pichia pastoris|blinco chen luangthongkam luna flores mahler navone speight vogl von hellens": "band",
+"inverse problems of combined photoacoustic and optical coherence tomography|elbau mindrinos scherzer": "linked"
+},
+"about": "Recorded on the 23 Nov 2026 dev run (ref-matcher-1123) over FWF object 2026-11-23: scored pairs of 8 listed outputs (linked with one and with several candidates, two in the unsure band, two not linked, one with no same-title work) and the decisions refmatch.py made from them. Re-recorded 23 Nov 21:55 with ties ranked by work id (the independent review, S3)."
+}

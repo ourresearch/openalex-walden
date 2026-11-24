@@ -19,6 +19,14 @@
 -- MAGIC book or thesis, and the year, volume or first page agrees. A link naming a grant is kept only when the grant is an award
 -- MAGIC in `openalex_awards_raw` under provenance = source, and takes that award's `funder_id`.
 -- MAGIC
+-- MAGIC **`refmatch`** (last, for publications no identifier names): Casey's reference matcher (`notebooks/references/matcher`)
+-- MAGIC decides each such output once, in the task `match_listed_outputs` after this one (`MatchListedOutputs.py`), and keeps
+-- MAGIC its pick in `openalex.awards.funder_reported_refmatch_picks`, keyed by the output as listed (`listed_key`: title and surnames;
+-- MAGIC FWF renumbers its output ids between fetches). The tier takes that linked pick, and accepts it only when the work's
+-- MAGIC own title is the listed title (normalized, "; In: <book>" cut) and, as a title link, it is not a dataset-like or
+-- MAGIC abstract record while the funder lists an article, book or thesis: the
+-- MAGIC title guard of the 23 Nov FWF grade (205 of 209 right). A decision made today is read by tomorrow's run.
+-- MAGIC
 -- MAGIC **Gates, per source, before the links change:** it lists outputs and at least 99% of its grant ids are awards in raw;
 -- MAGIC its links are at least 95% and (when it holds any) at most 125% of the links it holds now. A source that fails keeps its
 -- MAGIC links, the others are written by one MERGE (deletions mirrored; a source dropped from `link_sources` loses its links),
@@ -30,6 +38,15 @@
 
 -- The links table exists before anything can fail: its readers always have their input.
 CREATE TABLE IF NOT EXISTS openalex.awards.funder_reported_links (source STRING, work_id BIGINT, funder_id BIGINT, award_ids ARRAY<STRING>) USING delta;
+
+-- COMMAND ----------
+
+-- The reference matcher's decisions (MatchListedOutputs.py writes them), one row per source and listed output it decided,
+-- keyed by what the funder lists (listed_key: title and surnames), not its output id, which FWF renumbers between fetches.
+-- The refmatch tier reads them, so the table exists before anything reads it.
+CREATE TABLE IF NOT EXISTS openalex.awards.funder_reported_refmatch_picks (source STRING, listed_key STRING, output_key STRING,
+  title_key STRING, guard_key STRING, text STRING, text_hash BIGINT, work_id BIGINT, score DOUBLE, checklist_p DOUBLE,
+  in_band BOOLEAN, linked BOOLEAN, n_candidates INT, status STRING, decided_at TIMESTAMP, run_id STRING) USING delta;
 
 -- COMMAND ----------
 
@@ -47,12 +64,21 @@ CREATE OR REPLACE TEMPORARY FUNCTION match_text(s STRING) RETURNS STRING RETURN
 
 -- COMMAND ----------
 
+-- A listed output as the funder lists it: its title, and its surnames lower-cased, sorted, then normalized (a SQL function
+-- cannot call match_text inside a lambda). The reference matcher keys its
+-- decisions on it (MatchListedOutputs.py reads this definition), so a renumbered output keeps its decision.
+CREATE OR REPLACE TEMPORARY FUNCTION listed_key(title STRING, surnames ARRAY<STRING>) RETURNS STRING RETURN
+  concat_ws('|', match_text(title), match_text(array_join(array_sort(array_distinct(transform(coalesce(surnames, array()),
+    x -> lower(x)))), ' ')));
+
+-- COMMAND ----------
+
 -- One row per source. source: the provenance of its awards in openalex_awards_raw (sources.csv), or of its file when it
--- lists no grants. tiers: identifiers tried, in order. check: title_or_author, the work must look like the listed output;
--- none, the funder's identifiers are trusted.
+-- lists no grants. tiers: identifiers tried, in order (refmatch: the reference matcher, for publications nothing else
+-- names). check: title_or_author, the work must look like the listed output; none, the funder's identifiers are trusted.
 CREATE OR REPLACE TEMP VIEW link_sources AS SELECT * FROM VALUES
   ('nwopen', 'doi,title', 'title_or_author'),
-  ('fwf_open_api', 'doi,pmid', 'title_or_author'),
+  ('fwf_open_api', 'doi,pmid,refmatch', 'title_or_author'),
   ('anr_opendata', 'doi,work', 'none'),
   ('kaken', 'doi,work', 'none'),
   ('hakai_publications', 'doi', 'none')
@@ -80,6 +106,7 @@ WHERE coalesce(p['type'], '') NOT IN ('Octrooi', 'Contract');
 -- COMMAND ----------
 
 -- FWF: outputs lists each project's outputs (Open API) with the authors' surnames. Older objects have no outputs column.
+-- output_type: set for publications only (talks, prizes, data and the like stay NULL); a preprint counts as an article.
 CREATE OR REPLACE TEMP VIEW fwf_open_api_listed AS
 WITH objects AS (
   SELECT code, outputs, _metadata FROM read_files('s3://openalex-ingest/awards/fwf_open_api/*.parquet', format => 'parquet', mergeSchema => true)
@@ -91,7 +118,10 @@ outputs AS (
 )
 SELECT code AS award_id, CAST(NULL AS BIGINT) AS funder_id, o.output_id AS output_key, o.doi, o.pmid, CAST(NULL AS BIGINT) AS work_id,
   o.title, CAST(NULL AS INT) AS year,
-  CAST(NULL AS STRING) AS volume, CAST(NULL AS STRING) AS first_page, CAST(NULL AS STRING) AS output_type, o.surnames, object
+  CAST(NULL AS STRING) AS volume, CAST(NULL AS STRING) AS first_page,
+  CASE WHEN o.category = 'publications' THEN CASE o.type WHEN 'Journal Article' THEN 'article' WHEN 'Preprint' THEN 'article' WHEN 'Book' THEN 'book'
+    WHEN 'PhD Thesis' THEN 'thesis' WHEN 'Postdoctoral Thesis' THEN 'thesis' WHEN 'Master Thesis' THEN 'thesis'
+    ELSE 'publication' END END AS output_type, o.surnames, object
 FROM outputs;
 
 -- COMMAND ----------
@@ -158,7 +188,7 @@ UNION ALL SELECT 'hakai_publications', * FROM hakai_publications_listed;
 
 -- 1. What each configured source lists, read once.
 CREATE OR REPLACE TABLE openalex.awards.funder_reported_link_matches USING delta AS
-SELECT l.source, l.award_id, l.output_key, l.funder_id, l.doi, l.pmid, l.work_id, match_text(l.title) AS title_key, l.year,
+SELECT l.source, l.award_id, l.output_key, l.funder_id, l.doi, l.pmid, l.work_id, l.title, match_text(l.title) AS title_key, l.year,
   nullif(regexp_extract(l.volume, '(\\d+)', 1), '') AS volume, nullif(regexp_extract(l.first_page, '(\\d+)', 1), '') AS first_page,
   l.output_type, l.surnames, l.object
 FROM link_listed l LEFT SEMI JOIN link_sources s ON s.source = l.source;
@@ -180,6 +210,15 @@ listed AS (
 title_listed AS (
   SELECT l.* FROM listed l CROSS JOIN rules r WHERE array_contains(l.tiers, 'title') AND length(l.title_key) >= r.min_title_chars
 ),
+refmatch_picks AS (
+  -- the matcher's linked pick for each output as listed (the latest, if it decided it twice); a pick merged into another
+  -- work since moves to the survivor, which must still pass the title guard
+  SELECT p.source, p.listed_key, p.guard_key, coalesce(m.winner_work_id, p.work_id) AS work_id, p.score
+  FROM (SELECT * FROM openalex.awards.funder_reported_refmatch_picks WHERE linked
+        QUALIFY row_number() OVER (PARTITION BY source, listed_key ORDER BY decided_at DESC) = 1) p
+  LEFT JOIN (SELECT loser_work_id, max(winner_work_id) AS winner_work_id FROM openalex.works.merged_work_ids GROUP BY 1) m
+    ON m.loser_work_id = p.work_id
+),
 title_works AS (
   -- works with a listed title (location_work_match_keys.nt), unless more than max_same_title_works share it
   SELECT k.id, k.yr, k.nt
@@ -189,7 +228,7 @@ title_works AS (
 listed_ids AS (
   -- each output's identifiers for its tiers. A DOI only when the value holds one: salvaged by regex, and also without URL
   -- leftovers (some works hold the salvaged spelling: '+' and '%28' are DOI characters). Work: the work id the list names.
-  -- Title: the works with that title a year apart at most.
+  -- Title: the works with that title a year apart at most. Refmatch: the matcher's pick for the output as it is listed now.
   SELECT source, award_id, output_key, check, tiers, x.tier, x.id, array_sort(collect_set(x.spelling)) AS matched_by
   FROM listed LATERAL VIEW explode(array(
     named_struct('tier', 'doi', 'spelling', 'salvaged', 'id', concat('https://doi.org/', doi_salvaged)),
@@ -203,6 +242,10 @@ listed_ids AS (
   SELECT l.source, l.award_id, l.output_key, l.check, l.tiers, 'title', CAST(k.id AS STRING), array('title')
   FROM title_listed l JOIN title_works k ON k.nt = l.title_key CROSS JOIN rules r
   WHERE abs(k.yr - l.year) <= r.max_year_gap
+  UNION ALL
+  SELECT l.source, l.award_id, l.output_key, l.check, l.tiers, 'refmatch', CAST(p.work_id AS STRING), array('refmatch')
+  FROM listed l JOIN refmatch_picks p ON p.source = l.source AND p.listed_key = listed_key(l.title, l.surnames)
+  WHERE array_contains(l.tiers, 'refmatch')
 ),
 works AS (
   -- openalex_works, read once: the works an identifier or title points at, under each key they can be found by
@@ -213,10 +256,11 @@ works AS (
         FROM openalex.works.openalex_works
         WHERE lower(doi) IN (SELECT id FROM listed_ids WHERE tier = 'doi')
            OR regexp_extract(ids['pmid'], '(\\d+)$', 1) IN (SELECT id FROM listed_ids WHERE tier = 'pmid')
-           OR id IN (SELECT CAST(id AS BIGINT) FROM listed_ids WHERE tier IN ('title', 'work'))) w
+           OR id IN (SELECT CAST(id AS BIGINT) FROM listed_ids WHERE tier IN ('title', 'work', 'refmatch'))) w
   CROSS JOIN rules r
   LATERAL VIEW explode(array(named_struct('tier', 'doi', 'id', lower(w.doi)), named_struct('tier', 'pmid', 'id', w.pmid),
-    named_struct('tier', 'title', 'id', CAST(w.id AS STRING)), named_struct('tier', 'work', 'id', CAST(w.id AS STRING)))) t AS k
+    named_struct('tier', 'title', 'id', CAST(w.id AS STRING)), named_struct('tier', 'work', 'id', CAST(w.id AS STRING)),
+    named_struct('tier', 'refmatch', 'id', CAST(w.id AS STRING)))) t AS k
 ),
 candidates AS (
   -- a work the list names is a candidate even when it is merged away (Nightly moves the link to the survivor)
@@ -261,16 +305,19 @@ decided AS (
   QUALIFY rank() OVER (PARTITION BY c.source, c.award_id, c.output_key ORDER BY array_position(c.tiers, c.tier)) = 1
 ),
 judged AS (
-  SELECT l.source, l.award_id, l.output_key, l.check, l.funder_id AS listed_funder_id, l.doi, l.pmid, l.title_key, l.year, l.volume,
+  SELECT l.source, l.award_id, l.output_key, l.check, l.funder_id AS listed_funder_id, l.doi, l.pmid, l.title, l.title_key, l.year, l.volume,
     l.first_page, l.output_type, l.surnames, l.object, d.work_id, d.tier, d.matched_by, d.type AS work_type,
     levenshtein(substr(d.title_key, 1, 200), substr(l.title_key, 1, 200))
       / greatest(length(substr(d.title_key, 1, 200)), length(substr(l.title_key, 1, 200)), 1) AS title_distance,
     coalesce(d.title_key = l.title_key, false) AS title_equal,
     a.work_id IS NOT NULL AS author_on_work,
-    coalesce(d.year = l.year OR d.volume = l.volume OR d.first_page = l.first_page, false) AS year_or_numbers_agree
+    coalesce(d.year = l.year OR d.volume = l.volume OR d.first_page = l.first_page, false) AS year_or_numbers_agree,
+    p.score AS refmatch_score, coalesce(d.title_key = p.guard_key, false) AS refmatch_title_equal
   FROM listed l
   LEFT JOIN decided d ON d.source = l.source AND d.award_id <=> l.award_id AND d.output_key = l.output_key
   LEFT JOIN author_matches a ON a.source = d.source AND a.award_id <=> d.award_id AND a.output_key = d.output_key AND a.work_id = d.work_id
+  LEFT JOIN refmatch_picks p ON d.tier = 'refmatch' AND p.source = d.source AND p.listed_key = listed_key(l.title, l.surnames)
+    AND p.work_id = d.work_id
 ),
 awards AS (
   SELECT DISTINCT provenance AS source, funder_award_id AS award_id, funder_id
@@ -282,13 +329,17 @@ linked AS (
   SELECT j.*, IF(j.award_id IS NULL, j.listed_funder_id, a.funder_id) AS funder_id
   FROM judged j LEFT JOIN awards a ON a.source = j.source AND a.award_id = j.award_id
 )
-SELECT x.source, x.award_id, x.output_key, x.funder_id, x.doi, x.pmid, x.title_key, x.year, x.volume, x.first_page, x.output_type,
-  x.surnames, x.object, x.work_id, x.tier, x.matched_by, x.work_type, x.title_distance, x.title_equal, x.author_on_work,
-  x.year_or_numbers_agree,
-  x.work_id IS NOT NULL AND x.funder_id IS NOT NULL AND (x.check = 'none' OR coalesce(CASE x.tier
+SELECT x.source, x.award_id, x.output_key, x.funder_id, x.doi, x.pmid, x.title, x.title_key, x.year, x.volume, x.first_page,
+  x.output_type, x.surnames, x.object, x.work_id, x.tier, x.matched_by, x.work_type, x.title_distance, x.title_equal,
+  x.author_on_work, x.year_or_numbers_agree, x.refmatch_score, x.refmatch_title_equal,
+  -- a refmatch pick needs the title guard, whatever the source's check, and is held back like a title link when it is a
+  -- dataset-like or abstract record while the funder lists an article, book or thesis
+  x.work_id IS NOT NULL AND x.funder_id IS NOT NULL AND CASE WHEN x.tier = 'refmatch' THEN x.refmatch_title_equal
+      AND NOT coalesce(array_contains(r.held_work_types, x.work_type) AND x.output_type IN ('article', 'book', 'thesis'), false)
+    ELSE x.check = 'none' OR coalesce(CASE x.tier
     WHEN 'title' THEN x.title_equal AND x.author_on_work AND x.year_or_numbers_agree
       AND NOT (array_contains(r.held_work_types, x.work_type) AND coalesce(x.output_type IN ('article', 'book', 'thesis'), false))
-    ELSE x.title_distance <= r.max_title_distance OR x.author_on_work END, false)) AS accepted
+    ELSE x.title_distance <= r.max_title_distance OR x.author_on_work END, false) END AS accepted
 FROM linked x CROSS JOIN rules r;
 
 -- COMMAND ----------
