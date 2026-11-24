@@ -327,7 +327,7 @@ tourettes,336,F4320312907,s3://openalex-ingest/awards/tourettes/tourettes_grants
 treilles_prix_jeune_chercheur,178,F4320327761,s3://openalex-ingest/awards/treilles/treilles_young_researcher.parquet,frozen,98
 trygfonden_donations_api,122,F4320324424,s3://openalex-ingest/awards/trygfonden/trygfonden_donations.parquet,frozen,98
 tsc_alliance,321,F4320306781,s3://openalex-ingest/awards/tsc_alliance/tsc_alliance_grants.parquet,frozen,98
-trdizin_tubitak_projects,200,F4320322626,s3://openalex-ingest/awards/tubitak/tubitak_trdizin_projects.parquet,frozen,98
+trdizin_tubitak_projects,200,F4320322626,s3://openalex-ingest/awards/tubitak_trdizin/2026-11-18.parquet,frozen,98
 twas_awards,72,F4320321078,s3://openalex-ingest/awards/twas_awards/twas_awards.parquet,frozen,98
 twcf_project_database,477,F4320327239,s3://openalex-ingest/awards/twcf/twcf_projects.parquet,frozen,98
 ucop_grants,106,F4320333677,s3://openalex-ingest/awards/ucop/ucop_awards.parquet,frozen,98

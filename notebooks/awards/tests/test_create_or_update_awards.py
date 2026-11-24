@@ -224,3 +224,11 @@ def test_kaken_api_and_coinvestigators():
     assert "FROM openalex.awards.kaken_scrape_keys VERSION AS OF 0" in group   # frozen: future fetches keep the same keys
     assert "COALESCE(sk.award_key, g.project_id) as funder_award_id" in group and "LOWER(g.project_id)" not in group
     assert not (ROOT / 'scripts/local/kaken_to_s3.py').exists() and not (ROOT / 'scripts/local/kaken_api_to_s3.py').exists()
+
+
+def test_tubitak_monthly_fetcher():
+    """trdizin_tubitak_projects: the frozen laptop object gives way to openalex-ingest's monthly prefix (held at the object its
+    gate passed for its first night, the pin rule); the mapping is unchanged."""
+    group = branch_of('trdizin_tubitak_projects')
+    assert "read_files('s3://openalex-ingest/awards/tubitak_trdizin/" in group
+    assert not (ROOT / 'scripts/local/tubitak_to_s3.py').exists()

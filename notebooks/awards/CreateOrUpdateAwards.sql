@@ -732,7 +732,7 @@ SELECT * FROM VALUES
  ('treilles_prix_jeune_chercheur', 's3://openalex-ingest/awards/treilles/treilles_young_researcher.parquet'),
  ('trygfonden_donations_api', 's3://openalex-ingest/awards/trygfonden/trygfonden_donations.parquet'),
  ('tsc_alliance', 's3://openalex-ingest/awards/tsc_alliance/tsc_alliance_grants.parquet'),
- ('trdizin_tubitak_projects', 's3://openalex-ingest/awards/tubitak/tubitak_trdizin_projects.parquet'),
+ ('trdizin_tubitak_projects', 's3://openalex-ingest/awards/tubitak_trdizin/2026-11-18.parquet'),
  ('twas_awards', 's3://openalex-ingest/awards/twas_awards/twas_awards.parquet'),
  ('twcf_project_database', 's3://openalex-ingest/awards/twcf/twcf_projects.parquet'),
  ('ucop_grants', 's3://openalex-ingest/awards/ucop/ucop_awards.parquet'),
@@ -37493,7 +37493,7 @@ UNION ALL
 -- trdizin_tubitak_projects: priority 200, frozen fetch cadence (descriptive).
 SELECT 'trdizin_tubitak_projects' AS _source, * FROM (
 WITH trdizin_tubitak_projects_input AS (
-    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/tubitak/tubitak_trdizin_projects.parquet', format => 'parquet'))
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/tubitak_trdizin/2026-11-18.parquet', format => 'parquet'))
     WHERE _file_path = try_element_at(session.awards_objects, 'trdizin_tubitak_projects')
 ),
 tubitak_funder AS (
