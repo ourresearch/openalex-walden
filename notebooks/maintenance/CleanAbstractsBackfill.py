@@ -244,8 +244,8 @@ if spark.catalog.tableExists(ACCENTS_TABLE):
 # MAGIC page flattened (title, authors, menus, citation, cited-by lists) with the work's real abstract inside, that
 # MAGIC abstract alone (text + inverted index built with the same cleaner as the ingest path). It replaces this overlay's
 # MAGIC row for those works; a rebuild above TRUNCATEs the overlay, so this step MERGEs them back every run (idempotent,
-# MAGIC one row per work). No work is in both this table and the accent restores. Revert of #2575's extracts: its job
-# MAGIC README's revert (restore the prior overlay rows kept in the table), then TRUNCATE the table.
+# MAGIC one row per work). No work is in both this table and the accent restores. Rows #2575's revert marks
+# MAGIC 'reverted:...' are skipped; the revert (oxjobs #2575 work/revert.sql) restores the prior overlay rows kept here.
 
 # COMMAND ----------
 
@@ -253,13 +253,15 @@ EXTRACTS_TABLE = "openalex.abstracts.backfill_page_text_extracts"
 if spark.catalog.tableExists(EXTRACTS_TABLE):
     spark.sql(f"""
         MERGE INTO {TARGET_TABLE} t
-        USING (SELECT work_id, abstract, abstract_inverted_index FROM {EXTRACTS_TABLE}) a
+        USING (SELECT work_id, abstract, abstract_inverted_index FROM {EXTRACTS_TABLE}
+               WHERE label_version NOT LIKE 'reverted:%') a
         ON t.work_id = a.work_id
         WHEN MATCHED THEN UPDATE SET t.abstract = a.abstract, t.abstract_inverted_index = a.abstract_inverted_index
         WHEN NOT MATCHED THEN INSERT (work_id, abstract, abstract_inverted_index)
           VALUES (a.work_id, a.abstract, a.abstract_inverted_index)
     """)
-    print(f"re-applied {spark.table(EXTRACTS_TABLE).count():,} landing-page abstracts from {EXTRACTS_TABLE}")
+    n_extracts = spark.table(EXTRACTS_TABLE).where("label_version NOT LIKE 'reverted:%'").count()
+    print(f"re-applied {n_extracts:,} landing-page abstracts from {EXTRACTS_TABLE}")
 
 # COMMAND ----------
 

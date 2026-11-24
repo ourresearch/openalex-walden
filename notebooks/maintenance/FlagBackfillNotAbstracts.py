@@ -60,19 +60,18 @@
 # MAGIC   every other clause unchanged). Revert that part: put the LIKE line back.
 # MAGIC - **Project MUSE excerpts** (oxjob #2575, 24 Nov 2026): MUSE shows "In lieu of an abstract, here is a brief excerpt
 # MAGIC   of the content" (the first ~4,000 characters of the body, or the whole of a short piece) for articles and reviews
-# MAGIC   without an abstract, and the backfill stored that block. Same rule as #2162 (Jason, 11 Nov 2026: a page-marked
-# MAGIC   opening is removed unless a model reads it as describing the work), so #2575 added its removals to
+# MAGIC   without an abstract, and the backfill stored that block. Same rule as #2162 (11 Nov 2026: a page-marked opening
+# MAGIC   is removed unless a model reads it as describing the work), so #2575 added its removals to
 # MAGIC   `PAGE_OPENING_TABLE` (label_version 'oxjob2575-muse-v1'); the page_marked_opening branch below copies them. Revert
 # MAGIC   that part: `DELETE FROM PAGE_OPENING_TABLE WHERE label_version LIKE 'oxjob2575%'` and the rows here whose
 # MAGIC   filter_commit is that label.
 # MAGIC - **Literatum / Atypon landing-page text** (oxjob #2575, 24 Nov 2026): a work whose backfill text is a whole Atypon
 # MAGIC   landing page flattened ("No Access ... More articles by this author ... Expand All Advertisement PDF downloadLoading
 # MAGIC   ...": Journal of Urology, Hanser, Annals, SEG, ASHA, World Bank, Wiley and others) holding no abstract of the work, or
-# MAGIC   only the work's body text (Annals' "Excerpt" openings included), a letter's text or a "no abstract available"
-# MAGIC   note, is flagged with reason `page_chrome`.
+# MAGIC   only a "no abstract available" note, is flagged with reason `page_chrome`.
 # MAGIC   The work_ids are #2575's list `PAGE_TEXT_TABLE` (built once by #2575 `work/build_writes.py`: a segmenter finds the
-# MAGIC   content after the page's share bar, and a reader using #2162's card v2 decides it; bar: Opus 5.5 on fresh random
-# MAGIC   draws, #2575 README § Bars); this notebook copies them so a rebuild keeps them. Pages that hold a real abstract are
+# MAGIC   content after the page's share bar; only pages with no prose anywhere but shared boilerplate are listed; bar: Opus
+# MAGIC   5.5 on fresh random draws, #2575 README § Bars); this notebook copies them so a rebuild keeps them. Pages that hold a real abstract are
 # MAGIC   not flagged: #2575 put the abstract alone into the #807 overlay instead (`openalex.abstracts.backfill_page_text_extracts`,
 # MAGIC   re-applied by CleanAbstractsBackfill). Revert that part: drop the branch below.
 # MAGIC - **Revert:** remove the anti-join from CreateWorksBase (one line), or `TRUNCATE` this table. Never
