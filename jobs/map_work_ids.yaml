@@ -61,9 +61,9 @@ resources:
           # the warehouse the Modal app exports the prompts through (DEV-WH, X-Large serverless)
           default: 3996dc0a9b183ce3
         - name: max_usd
-          # score_qwen fails the run when its Modal estimate is over this (Casey 2026-10-30: 60 -> 100 after a 705K-record night
-          # estimated $65.27; a normal night is $5-14)
-          default: "100"
+          # score_qwen fails the run when its Modal estimate is over this: a guard against a runaway night, not a budget
+          # (Casey 2026-11-24, oxjob #2198: 100 -> 500, his spend line; real nights cost $9-37 on 21-24 Nov)
+          default: "500"
         - name: max_minutes
           default: "240"
         - name: shard_records

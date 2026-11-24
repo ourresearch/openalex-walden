@@ -29,7 +29,7 @@ from pyspark.sql import Window, functions as F
 
 for name, default in [("volume_dir", "/Volumes/openalex/works/data/location_work_match"),
                       ("endpoint", "https://wordslikethis--location-work-matcher-api.modal.run"), ("secret_scope", "modal"),
-                      ("secret_key", "location_matcher_token"), ("warehouse_id", "3996dc0a9b183ce3"), ("max_usd", "60"),
+                      ("secret_key", "location_matcher_token"), ("warehouse_id", "3996dc0a9b183ce3"), ("max_usd", "500"),
                       ("max_minutes", "240"), ("shard_records", "4000"), ("run_id", "manual"), ("V", "")]:
     dbutils.widgets.text(name, default)
 VOL = dbutils.widgets.get("volume_dir").strip().rstrip("/")
@@ -81,7 +81,7 @@ rows = (spark.table(f"{T}qwen_pairs").groupBy("seed_id")
 rows.write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(f"{T}qwen_rows")
 n = spark.table(f"{T}qwen_rows").count()
 n_pairs = spark.table(f"{T}qwen_pairs").count()
-est = n * 0.23 * (4.54 + 8 * 0.0473 + 96 * 0.008) / 3600 + 1.5   # 0.23 GPU-s / record on HF (10-15 / 10-24 shadow), plus model loads
+est = n * 0.10 * (4.54 + 8 * 0.0473 + 96 * 0.008) / 3600 + 1.5   # 0.10 GPU-s / record: Modal measured 0.08-0.10 on 21-24 Nov, plus model loads
 log(f"{n:,} records ({n_pairs:,} pairs) for Qwen; estimate ${est:.2f} (max_usd {MAX_USD})")
 if n == 0:
     spark.sql(f"CREATE OR REPLACE TABLE {T}qwen (seed_id BIGINT, cid BIGINT, p DOUBLE, adapter STRING, over_cap BOOLEAN)")
