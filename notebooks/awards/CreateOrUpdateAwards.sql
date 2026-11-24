@@ -45,7 +45,7 @@ CREATE OR REPLACE TEMP VIEW awards_sources AS SELECT * FROM VALUES
  (2, 'wellcome_trust', 22, 98, array(4320311904L), 'monthly', 1),
  (3, 'cordis', 27, 98, array(4320320300L, 4320338438L, 4320338448L), 'manual', 1),
  (4, 'gates_foundation', 4, 98, array(4320306137L), 'manual', 1),
- (5, 'kaken', 10, 98, array(4320334764L), 'frozen', 1),
+ (5, 'kaken', 10, 98, array(4320334764L), 'monthly', 1),
  (6, 'aacr_funded_research', 560, 98, array(4320306091L), 'frozen', 1),
  (7, 'aar_rome_prize_fellows', 172, 98, array(4320320895L), 'frozen', 1),
  (8, 'aas_arise_grantees', 134, 98, array(4320327323L), 'frozen', 1),
@@ -409,7 +409,6 @@ AS t(ord, source, source_priority, row_floor_pct, funder_ids, fetch_cadence, chu
 -- max modification time, then path, so exactly one file even on a timestamp tie.
 SET VAR awards_objects = (SELECT map_from_entries(collect_list(struct(source, object))) FROM (
 SELECT * FROM VALUES
- ('kaken', 's3://openalex-ingest/awards/kaken_api/2026-11-17.parquet'),
  ('aacr_funded_research', 's3://openalex-ingest/awards/aacr/aacr_projects.parquet'),
  ('aar_rome_prize_fellows', 's3://openalex-ingest/awards/aar_rome_prize/aar_rome_prize_fellows.parquet'),
  ('aas_arise_grantees', 's3://openalex-ingest/awards/aas_arise/aas_arise_grantees.parquet'),
@@ -776,6 +775,9 @@ SELECT 'cordis' AS source, max_by(_metadata.file_path, struct(_metadata.file_mod
 UNION ALL
 SELECT 'gates_foundation' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
  FROM read_files('s3://openalex-ingest/awards/gates/*.parquet', format => 'parquet')
+UNION ALL
+SELECT 'kaken' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
+ FROM read_files('s3://openalex-ingest/awards/kaken_api/*.parquet', format => 'parquet')
 UNION ALL
 SELECT 'nwopen' AS source, max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) AS object
  FROM read_files('s3://openalex-ingest/awards/nwopen/*.parquet', format => 'parquet')
@@ -1521,10 +1523,10 @@ UNION ALL
 -- Legacy mapping from CreateKAKENAwards.ipynb, origin c3db0a32. Reads openalex-ingest kaken_awards.py (the KAKEN API, monthly)
 -- from s3://openalex-ingest/awards/kaken_api/ since 2026-11; the 2026-07-08 page scrape stays at awards/kaken/, unread.
 -- _change is runner metadata, never a raw column. Compare all 22 other columns null-safely.
--- kaken: priority 10, frozen fetch cadence (descriptive).
+-- kaken: priority 10, monthly fetch cadence (descriptive).
 SELECT 'kaken' AS _source, * FROM (
 WITH kaken_input AS (
-    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/kaken_api/2026-11-17.parquet', format => 'parquet'))
+    SELECT * EXCEPT (_file_path) FROM (SELECT *, _metadata.file_path AS _file_path FROM read_files('s3://openalex-ingest/awards/kaken_api/*.parquet', format => 'parquet'))
     WHERE _file_path = try_element_at(session.awards_objects, 'kaken')
 ),
 -- Get JSPS funder from OpenAlex

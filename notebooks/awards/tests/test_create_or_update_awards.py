@@ -187,7 +187,7 @@ def test_production_source_prefixes():
         's3://openalex-ingest/awards/wellcome/*.parquet',
         's3://openalex-ingest/awards/european_commission/*.parquet',
         's3://openalex-ingest/awards/gates/*.parquet',
-        's3://openalex-ingest/awards/kaken_api/2026-11-17.parquet',   # held at the object K2 gated until its first green night
+        's3://openalex-ingest/awards/kaken_api/*.parquet',
     ]
     assert 'dev-gr1009' not in SQL and 'dev-gr1009' not in (AWARDS / 'sources.csv').read_text()
 

@@ -3,7 +3,7 @@ nsf_award_search,3,F4320306076,s3://openalex-ingest/awards/nsf/,weekly,98
 wellcome_trust,22,F4320311904,s3://openalex-ingest/awards/wellcome/,monthly,98
 cordis,27,F4320320300|F4320338438|F4320338448,s3://openalex-ingest/awards/european_commission/,manual,98
 gates_foundation,4,F4320306137,s3://openalex-ingest/awards/gates/,manual,98
-kaken,10,F4320334764,s3://openalex-ingest/awards/kaken_api/2026-11-17.parquet,frozen,98
+kaken,10,F4320334764,s3://openalex-ingest/awards/kaken_api/,monthly,98
 aacr_funded_research,560,F4320306091,s3://openalex-ingest/awards/aacr/aacr_projects.parquet,frozen,98
 aar_rome_prize_fellows,172,F4320320895,s3://openalex-ingest/awards/aar_rome_prize/aar_rome_prize_fellows.parquet,frozen,98
 aas_arise_grantees,134,F4320327323,s3://openalex-ingest/awards/aas_arise/aas_arise_grantees.parquet,frozen,98
