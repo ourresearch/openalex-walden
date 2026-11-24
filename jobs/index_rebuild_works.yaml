@@ -45,7 +45,7 @@ resources:
           default: works-v35
         - name: alias
           default: works
-        - name: source_excludes  # oxjob #2492: works-v42 on = "fulltext,abstract"
+        - name: source_excludes  # oxjob #2492: keep "" for works until sync_work_metrics carries the fields (docs/ES_INDEX_REBUILD.md Step 2)
           default: ""
         - name: drop_subfields  # oxjob #2492: "authorships.raw_author_name.autocomplete,authorships_full.raw_author_name.autocomplete"
           default: ""

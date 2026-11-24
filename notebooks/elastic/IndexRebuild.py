@@ -76,7 +76,8 @@ dbutils.widgets.text("count_tolerance", "1000")              # verify: |new coun
 dbutils.widgets.text("delta_mismatch_pct", "1")              # verify: FAIL if more than this % of sampled docs differ from Delta at V
 dbutils.widgets.text("close_tolerance", "10")                # close_load: |new count - source count at V|
 # create_index: the only changes to the copied live mapping (oxjob #2492). source_excludes: fields indexed but kept out of
-# the stored _source (works: fulltext,abstract; any partial _update must then carry them, see sync_work_metrics).
+# the stored _source. Any partial _update must then carry those fields; sync_work_metrics doesn't (on hold, #2492,
+# docs/ES_INDEX_REBUILD.md Step 2), so leave it empty for works.
 # drop_subfields: dotted sub-field paths to leave out (works: authorships.raw_author_name.autocomplete).
 dbutils.widgets.text("source_excludes", "")
 dbutils.widgets.text("drop_subfields", "")
