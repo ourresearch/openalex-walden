@@ -154,6 +154,77 @@ def pubmed_exploded():
 
 # COMMAND ----------
 
+# oxjob #1052: an AbstractText with a child element (inline <i>, <b>, <u>, <sub>, <sup>; MathML; stray JATS) lost every
+# word before its last child. pubmed_items reads AbstractText as a struct, and the XML reader's _VALUE keeps only the
+# text after the last child element ('Mn<sub>3</sub>O<sub>4</sub> end.' -> 'end.'). On 24 Nov 2026 that cut 3.9M of
+# the 29.7M PMIDs with an abstract, and 31% of the records in that week's update files have such a child.
+# pubmed_items' schema can't change in place (CreateWorksBase reads its AbstractText struct, and a type change needs a
+# full refresh of the bronze table and every stream after it), so this second reader of the same files reads <Abstract>
+# as a STRING, which the XML reader returns as its raw inner XML with the AbstractText labels, and keeps the records
+# whose abstract has a child element. pubmed_parsed builds their abstract from it; the markup stays in for
+# clean_abstract_text (enrich), which closes up inline tags and spaces structural ones, as it does for Crossref's JATS.
+# Every other record keeps the struct path, unchanged.
+# The files already in the bucket were read once, by SQL, into PUBMED_ABSTRACT_MARKUP_HISTORY (every pubmed26n* file:
+# the 2026 baseline and its updates, which hold the latest version of every live record); the stream reads only files
+# modified after PUBMED_ABSTRACT_MARKUP_SINCE, so its first run is as small as a daily one and fits the End 2 End's
+# PubMed task (one hour). That table is a plain table outside this pipeline, so a full refresh keeps it. Rebuild:
+# oxjob #1052 work/backfill/01_markup_raw.sql.
+PUBMED_ABSTRACT_MARKUP_HISTORY = "openalex.pubmed.pubmed_abstract_markup_history"
+PUBMED_ABSTRACT_MARKUP_SINCE = "2026-11-24 00:00:00.000000 UTC+0"
+PUBMED_ABSTRACT_MARKUP_SCHEMA = ("MedlineCitation STRUCT<PMID: STRUCT<_VALUE: STRING>, "
+                                 "DateRevised: STRUCT<Year: STRING, Month: STRING, Day: STRING>, "
+                                 "Article: STRUCT<Abstract: STRING>>")
+# A tag-shaped run inside <Abstract> other than AbstractText and CopyrightInformation. The reader returns text decoded,
+# so a '<' in the text comes back as '<' ('p<0.001' isn't tag-shaped); a rare tag-shaped one ('a<b and c>') only sends
+# its record down the markup path, which builds the same text as the struct path for a record without children.
+PUBMED_ABSTRACT_CHILD_RE = r"<(?!/?(AbstractText|CopyrightInformation)[\s>/])/?[A-Za-z][A-Za-z0-9:._-]*(\s[^<>]*)?/?>"
+
+
+def pubmed_markup_abstract_sql(markup):
+    """SQL: the abstract from <Abstract>'s raw inner XML, the struct path's rule on whole texts: each AbstractText body,
+    'Label: ' in front (else 'NlmCategory: ' unless UNASSIGNED), joined by a space; empty bodies skipped. Pure SQL, so
+    the same text backfills pubmed_works (#1052 work/backfill)."""
+    body = r"'(?s)<AbstractText((?:\\s[^>]*)?)>(.*?)</AbstractText>'"
+    label = r"""regexp_extract(a, '\\sLabel="([^"]*)"', 1)"""
+    category = r"""regexp_extract(a, '\\sNlmCategory="([^"]*)"', 1)"""
+    return (f"nullif(concat_ws(' ', zip_with("
+            f"regexp_extract_all({markup}, {body}, 1), regexp_extract_all({markup}, {body}, 2), "
+            f"(a, t) -> CASE WHEN nullif(trim(t), '') IS NULL THEN NULL "
+            f"WHEN coalesce({label}, '') != '' THEN concat({label}, ': ', trim(t)) "
+            f"WHEN coalesce({category}, '') NOT IN ('', 'UNASSIGNED') THEN concat({category}, ': ', trim(t)) "
+            f"ELSE trim(t) END)), '')")
+
+
+@dlt.table(
+  name="pubmed_abstract_markup",
+  comment="oxjob #1052: <Abstract> as raw inner XML for PubMed records whose AbstractText has a child element, one row per (pmid, revised_date), from files modified after PUBMED_ABSTRACT_MARKUP_SINCE (earlier files: pubmed_abstract_markup_history); pubmed_parsed builds their abstract from it",
+  table_properties={'quality': 'bronze'},
+  cluster_by=["pmid"]
+)
+def pubmed_abstract_markup():
+  return (spark.readStream
+      .format("cloudFiles")
+      .option("cloudFiles.format", "xml")
+      .option("rowTag", "PubmedArticle")
+      .option("maxFilesPerTrigger", "10")
+      .option("modifiedAfter", PUBMED_ABSTRACT_MARKUP_SINCE)
+      .option("ignoreCorruptFiles", "true")
+      .option("mode", "PERMISSIVE")
+      .option("cloudFiles.useManagedFileEvents", "true")
+      .schema(PUBMED_ABSTRACT_MARKUP_SCHEMA)
+      .load("s3a://openalex-ingest/pubmed/")
+      .select(
+          F.col("MedlineCitation.PMID._VALUE").alias("pmid"),
+          F.to_date(F.concat_ws("-", F.col("MedlineCitation.DateRevised.Year"), F.col("MedlineCitation.DateRevised.Month"),
+                                F.col("MedlineCitation.DateRevised.Day"))).alias("revised_date"),
+          F.col("MedlineCitation.Article.Abstract").alias("abstract_markup"),
+      )
+      .where(F.col("abstract_markup").rlike(PUBMED_ABSTRACT_CHILD_RE))
+      .dropDuplicates(["pmid", "revised_date"])
+  )
+
+# COMMAND ----------
+
 MAX_TITLE_LENGTH = 5000
 MAX_ABSTRACT_LENGTH = 10000
 MAX_AUTHOR_NAME_LENGTH = 500
@@ -299,7 +370,20 @@ def pubmed_parsed():
           F.concat_ws("-", F.col(year_col), F.col(month_col), F.col(day_col))
       )
 
-  return (dlt.read_stream("pubmed_exploded").withColumns(
+  # oxjob #1052: a record whose AbstractText has a child element takes its abstract from its version's raw markup
+  # (PMID + DateRevised): the stream's table first, else the history table. Stream-static joins: DLT refreshes
+  # pubmed_abstract_markup before this table. Each side is unique on the key, so neither join adds rows.
+  # shortcut: every micro-batch shuffles the whole history table (~10M rows); fine at one or two update files a day.
+  exploded = dlt.read_stream("pubmed_exploded").withColumn("_markup_pmid", F.col("pmid").cast("string"))
+  for i, markup in enumerate([dlt.read("pubmed_abstract_markup"), spark.read.table(PUBMED_ABSTRACT_MARKUP_HISTORY)]):
+      exploded = exploded.join(
+          markup.select(F.col("pmid").alias("_markup_pmid"), F.col("revised_date"),
+                        F.col("abstract_markup").alias(f"_abstract_markup_{i}")),
+          on=["_markup_pmid", "revised_date"], how="left")
+  exploded = (exploded.withColumn("abstract_markup", F.coalesce("_abstract_markup_0", "_abstract_markup_1"))
+              .drop("_markup_pmid", "_abstract_markup_0", "_abstract_markup_1"))
+
+  return (exploded.withColumns(
       {
             "native_id": extract_id_by_type("pubmed"),
             "native_id_namespace": F.lit("pmid"),
@@ -458,8 +542,11 @@ def pubmed_parsed():
                 ),
                 F.lit(False),
             ),
+            # oxjob #1052: the struct's _VALUE is only the text after the last child element, so a record with one
+            # builds its abstract from the raw markup instead (pubmed_markup_abstract_sql, above pubmed_abstract_markup)
             "abstract": F.substring(
-                F.expr(
+                F.when(F.col("abstract_markup").isNotNull(), F.expr(pubmed_markup_abstract_sql("abstract_markup")))
+                .otherwise(F.expr(
                     "nullif(concat_ws(' ', transform(MedlineCitation.Article.Abstract.AbstractText, "
                     "x -> CASE "
                     "WHEN x._Label IS NOT NULL AND x._Label != '' "
@@ -467,7 +554,7 @@ def pubmed_parsed():
                     "WHEN x._NlmCategory IS NOT NULL AND x._NlmCategory != '' AND x._NlmCategory != 'UNASSIGNED' "
                     "  THEN concat(x._NlmCategory, ': ', x._VALUE) "
                     "ELSE x._VALUE END)), '')"
-                ),
+                )),
                 0, MAX_ABSTRACT_LENGTH,
             ),
             "source_name": F.col("MedlineCitation.Article.Journal.Title"),
