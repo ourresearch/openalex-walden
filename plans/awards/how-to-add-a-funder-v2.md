@@ -1761,12 +1761,12 @@ text-mined funding acknowledgements. NWO is the canonical example (oxjobs #244):
 API returns a `products` array per project. Do this **after** the award entities exist (the
 linkage reuses them — it does **not** create awards).
 
-**The shape:** a standalone job whose notebook resolves each reported product → an OpenAlex
-work, writes a junction `openalex.awards.{funder}_work_funders (work_id, funder_id,
-award_ids[])`, and a leg in `WorkAwards.ipynb` joins that junction to the **existing** award
-entities. Mirror `crossref_work_funders` / `nwo_work_funders`. **This is a linkage job, not an
-award-entity job — keep it out of `CreateFunderSourcedAwards`** (that's award entities); it
-lives in its own job like `Crossref Work Funders` does.
+**The shape:** add a row and a mapping view in `notebooks/awards/CreateFunderReportedLinks.sql`,
+a task of the daily `Funder Reported Work Funders` job. The notebook matches every source's
+listed outputs to works, keeps the links whose grant is an award in `openalex_awards_raw`, gates
+each source and writes `openalex.awards.funder_reported_links (source, work_id, funder_id,
+award_ids[])`, which Nightly Grants reads as one leg. No new notebook, table, job or leg.
+**This is linkage, not award entities — keep it out of `CreateFunderSourcedAwards`.**
 
 ### 10.1 Confirm the products are captured — two source shapes
 The linkages arrive one of two ways:
@@ -1775,7 +1775,7 @@ The linkages arrive one of two ways:
   If your Step-1 script dropped them, add them — don't re-fetch from the funder API in this job.
 - **(b) A standalone file the funder sends you (ANR).** Increasingly a funder emails a separate
   bulk file (ANR sent a 268,910-row CSV keyed by DOI: `doi; anr_grants; …`). This needs its own
-  tiny `{funder}_work_links_to_s3.py` + staging table (`{funder}_work_links_raw`), parallel to —
+  tiny `{funder}_work_links_to_s3.py` that lands it on S3, parallel to —
   not part of — the grant ingest. Normalize there: one row per output, the grant id(s) as an
   `ARRAY<STRING>` (funders pack **multiple grants per output**, e.g. ANR delimits with `|` —
   explode to one `(output, grant)` pair each), and keep the funder's own fields for reference.
@@ -1784,82 +1784,48 @@ The linkages arrive one of two ways:
   partner-suffix variants like `ANR-10-CAMP-0151-02` that won't exact-match the project code —
   cheap to ignore if they're a rounding error, which they were).
 
-### 10.2 Build `Create{Funder}WorkAwards` (examples: `CreateNWOWorkAwards.ipynb` for nested-in-feed; `CreateANRWorkFunders.ipynb` for a standalone funder-sent file + pre-resolved-id case)
-Writes the junction. Two precision-ordered work-resolution paths (a third optional):
-- **Path 1 — DOI.** Reported identifiers are usually dirty (whitespace inside the DOI, leading
-  junk). Salvage with `regexp_extract`/`regexp_replace`, rebuild the canonical
-  `https://doi.org/…` form, join `openalex.works.openalex_works.doi`. High yield, ~96% match.
-- **Path 2 — URL → unique work location.** For non-DOI URLs, match against
-  `openalex.works.locations_mapped.urls[].url` and accept **only when the URL maps to exactly one
-  work** (`best_doi`). High precision, low recall.
-- **Path 3 (optional) — citation match.** Title + year, disambiguated by a funder-country
-  author (`exists(authorships, a -> array_contains(a.countries, '<CC>'))`, e.g. `'NL'` for
-  NWO). Precision-risky; build + measure in the notebook (title joins time out interactively).
+### 10.2 Add a row and a mapping view in `CreateFunderReportedLinks.sql`
+Copy an existing source's row and view: NWO's for outputs nested in the grant feed, ANR's for a
+file the funder sends. The **row** names the source (its provenance in `sources.csv`), the
+identifier tiers to try in order (`doi`, `pmid`, `work`, `title`) and the check
+(`title_or_author`, or `none` for a file of clean identifiers). The **view** reads the newest
+object and only renames and unpacks it into the shared columns; the matching, the checks and the
+gates are shared.
 
-**If the funder ships its own resolved OpenAlex work ids (ANR included an `ID Open Alex short`
-column), do NOT trust them — re-resolve from the DOI.** OpenAlex ids drift with merges: on a 3K
+**If the funder ships its own resolved OpenAlex work ids next to DOIs (ANR included an `ID Open Alex short`
+column), do NOT map them — the notebook resolves from the DOI.** The `work` tier is for a list that
+has no identifier but the work id (HAL's ANR links). OpenAlex ids drift with merges: on a 3K
 ANR sample ~1.4% of the funder's W-ids pointed to a different work than the DOI did, and the
 W-id *never* resolved a work the DOI didn't. The DOI is canonical and strictly equal-or-better.
-Keep the funder's id as a reference column only. (ANR's DOIs resolved at ~99.8%.)
+(ANR's DOIs resolved at ~99.8%.)
 
-Resolve the **award** by the funder's project/grant id → `(funder_id, funder_award_id)` on the
-already-ingested entity. Output one row per `(work_id, funder_id)` with `ARRAY_DISTINCT` of
-award ids.
+A link is kept only when its grant id is an award in `openalex_awards_raw` under the row's
+`source`, and it takes that award's `funder_id`, so the file's grant id must be the string stored
+as `funder_award_id` (§10.1). A source under 99% award coverage (a stale raw, a changed id
+format) is stopped and keeps its links as they were.
 
-> 🛑 **GOTCHA THAT COST THE MOST TIME ON ANR — the staging `{funder}_awards` table can be STALE,
-> and it fails *silently*.** The junction joins the funder's **staging** table (`nwo_awards`,
-> `anr_awards`, …), NOT `openalex_awards_raw`/`openalex_awards`. These can disagree: ANR's
-> deployed `anr_awards` held only 13,450 rows while the S3 parquet *and* `openalex_awards_raw`
-> held the full 34,435 — so a fresh-looking pipeline matched only **34%** of the linkage grants
-> and would have dropped two-thirds of the edges with no error. **Before building the junction,
-> assert the staging table is current:**
-> ```sql
-> SELECT (SELECT COUNT(*) FROM openalex.awards.{funder}_awards)                          AS staging,
->        (SELECT COUNT(*) FROM parquet.`s3a://openalex-ingest/awards/{funder}/{file}.parquet`) AS parquet;
-> ```
-> If they differ, **re-run `Create{Funder}Awards` first** (it's `CREATE OR REPLACE` from the
-> parquet — no re-fetch needed). Better yet, validate the actual grant-overlap of your linkage
-> file against the staging table *before* writing any notebook (sample the linkage grant ids and
-> check membership via the SQL statement API) — a low join rate here is almost always a stale
-> staging table or a grant-id format mismatch, not a real coverage ceiling.
-
-⚠️ **Two SQL gotchas that bit #244:**
+⚠️ **Two SQL gotchas that bit #244**, for the mapping view:
 - **Double-escape regex backslashes** (`'\\s'`, `'\\.'`). The job cluster runs legacy
   `escapedStringLiterals` mode — single-escape (`'\s'`) silently collapses (`'\s'`→`'s'`) and
   *shrinks the result with no error* (warehouse runs the opposite mode, so it masks the bug).
 - **No `JOIN` directly after `LATERAL VIEW`** — Spark `PARSE_SYNTAX_ERROR`. Explode in a
   subquery, then join.
 
-### 10.3 Add a leg to `WorkAwards.ipynb`
-Mirror the `nwo_work_funder_awards` CTE: explode the junction's `award_ids`, join
-`openalex.awards.openalex_awards` on `(funder_id, funder_award_id)`, emit `(work_id, award)`,
-and UNION it into `combined_awards` at **priority 3** (funder-reported — same tier as GTR/NWO,
-beats crossref text-mined p4). Confirm the funder's awards are present in `openalex_awards`
-with matching keys before trusting the join.
+### 10.3 Nothing to add to Nightly Grants
+Nightly reads `funder_reported_links` as one leg at **priority 3** (funder-reported — same tier as
+GTR, beats crossref text-mined p4). Confirm the funder's awards are in `openalex_awards_raw`
+under the row's `source`.
 
-> ⚠️ **`WorkAwards.ipynb` is a single shared file that every funder's linkage edits.** If your
-> working copy is on an unmerged feature branch (e.g. another funder's in-flight `*_work_funders`
-> work), its `WorkAwards.ipynb` already carries CTEs that aren't on `main` yet — push it as-is and
-> you ship that funder's linkage early. Apply your leg to a **clean `origin/main` checkout** (a
-> throwaway `git worktree add <dir> origin/main` is cleanest) and push a diff that adds **only your
-> funder's** CTEs + UNION line. Verify with `git diff` before committing. (ANR was applied this way
-> to avoid dragging unmerged EuropePMC CTEs onto `main`.)
-
-### 10.4 Standalone DAB job
-Create `jobs/{funder}_work_funders.yaml` mirroring [jobs/nwo_work_funders.yaml](../../jobs/nwo_work_funders.yaml)
-(`source: GIT`, `notebook_task`, `warehouse_id`) and add it to the `include:` list in
-`databricks.yml`. If the funder's source is infrequently re-ingested, set
-`schedule.pause_status: PAUSED` and run it **on-demand** (don't burn a daily rebuild on static
-data). **Deploy ordering:** the junction table must exist before the `WorkAwards` leg
-references it — push `Create{Funder}WorkAwards` + run it first, *then* push the `WorkAwards`
-change, or the next `RefreshWorkAwards` run fails table-not-found.
+### 10.4 No new job
+The notebook is a task of `Funder Reported Work Funders` (daily 02:30 UTC, before Nightly), so a
+new row runs every day from the next run on.
 
 ### 10.5 Run, verify, make live
 ```bash
-databricks bundle run {Funder}_Work_Funders --profile dbc-ce570f73-0362   # builds the junction
-databricks bundle run RefreshWorkAwards    --profile dbc-ce570f73-0362   # folds it into work_awards
+databricks bundle run Funder_Reported_Work_Funders --profile dbc-ce570f73-0362   # builds the links
 ```
-**Pass signal:** junction rows > 0 with unique `(work_id, funder_id)` keys; and
+The next Nightly Grants run folds them into `work_awards`.
+**Pass signal:** the source has rows in `funder_reported_links`; and
 ```sql
 SELECT COUNT(*) FROM openalex.awards.work_awards
 WHERE award.funder_id = 'https://openalex.org/F{funder_id}';
@@ -1877,8 +1843,8 @@ the next e2e.
 resolvable DOI/URL (NWO landed ~76% of projects on a stale capture). Report the coverage you
 got and move on; a re-ingest of fresher funder data is usually a better lever than fuzzy matching.
 
-**→ Tracker:** note the funder has funder-reported linkages (junction + WorkAwards leg + job),
-distinct from its award-entity "Complete" status.
+**→ Tracker:** note the funder has funder-reported linkages (a source row in
+`CreateFunderReportedLinks.sql`), distinct from its award-entity "Complete" status.
 
 ---
 
@@ -1934,17 +1900,9 @@ ingest-method ladder above. Land at
 before `to_parquet` and install the Windows UTF-8 shim, same as §1.2.
 
 ### 11.2 Resolve each output → OpenAlex work_id
-Reuse §10.2's precision-ordered paths (same work-resolution problem):
-- **Path 1 — DOI.** Clean (`regexp_extract`/`regexp_replace`), rebuild canonical
-  `https://doi.org/…`, join `openalex.works.openalex_works.doi`. Highest yield.
-- **Path 2 — URL → unique work location.** Match `openalex.works.locations_mapped.urls[].url`,
-  accept only when it maps to exactly one work.
-- **Path 3 (optional) — citation match.** Title + year, disambiguated by a
-  funder-country author. Precision-risky; measure before trusting.
-
-Same two SQL gotchas as §10.2: **double-escape regex backslashes** (`'\\s'`, `'\\.'`) for
-the job cluster's `escapedStringLiterals` mode, and **no `JOIN` directly after `LATERAL
-VIEW`** (explode in a subquery first).
+Add a row and a mapping view in `CreateFunderReportedLinks.sql` (§10.2); copy Hakai's. The list
+names no grants, so the view gives the `funder_id` itself (bare numeric, no `F` prefix) and the
+links carry an empty `award_ids`. A list of clean DOIs needs only the `doi` tier.
 
 **QA — measure precision/recall against the funder's own list.** The Tula/Hakai analysis
 example ([plans/awards/examples/tula-hakai-funder-impact](examples/tula-hakai-funder-impact/README.md))
@@ -1953,15 +1911,14 @@ already implements candidate-pull (`01_pull_candidates.py`), LLM verification
 (`13_precision_recall.py`). Use it as the verification harness for this step. **Coverage
 is never 100% — don't gate on a round number;** report what you landed and move on.
 
-### 11.3 Build the junction `openalex.awards.{funder}_work_funders`
-Schema `(work_id BIGINT, funder_id BIGINT, provenance STRING)` — one row per
-`(work_id, funder_id)`. `funder_id` is the bare numeric id (no `F` prefix), to match
-`openalex.funders.funders.funder_id`. Mirror `crossref_work_funders` but with no `award_ids`
-column. Keep `provenance` (e.g. `'hakai_publications'`) for auditing.
+### 11.3 Add the source to the union
+Nightly gets nothing from links with no grants; they reach `work.funders` through the union
+`CreateFunderReportedWorkFunders`. Add the source and the provenance it is stored under (e.g.
+`'hakai_publications'`) to the VALUES list of its `funder_reported_links` branch.
 
 ### 11.4 One-time infra: add a `from_funder_reported` leg to "Merge funders"
 This is the only shared-file change, and it's needed **once** — after it lands, every
-future OUTPUT-LIST funder is just "add rows to a junction." In
+future OUTPUT-LIST funder is just a source row (§11.2–11.3). In
 `notebooks/end2end/CreateWorksEnriched.ipynb`, "Merge funders" cell, add a leg mirroring
 `from_crossref` and UNION it into `unioned`:
 ```sql
@@ -1971,27 +1928,22 @@ from_funder_reported AS (
     CONCAT("https://openalex.org/F", fr.funder_id) AS funder_id,
     f.ror_id       AS ror,
     f.display_name AS display_name
-  FROM openalex.awards.funder_reported_work_funders fr   -- UNION ALL of per-funder junctions
+  FROM openalex.awards.funder_reported_work_funders fr   -- the union, CreateFunderReportedWorkFunders
   JOIN openalex.funders.funders f ON f.funder_id = fr.funder_id
 )
 ```
-Prefer a single shared `funder_reported_work_funders` table (a thin view that
-`UNION ALL`s the per-funder `{funder}_work_funders` junctions) so the leg never needs
+The single shared `funder_reported_work_funders` table means the leg never needs
 editing again. The existing dedup by `(work_id, funder_id)` collapses any overlap with
 crossref/text-mined edges — this is purely additive and **cannot remove** a wrong funder.
 
-### 11.5 Standalone PAUSED DAB job
-Create `jobs/{funder}_work_funders.yaml` mirroring
-[jobs/nwo_work_funders.yaml](../../jobs/nwo_work_funders.yaml) (`source: GIT`,
-`notebook_task`, `warehouse_id`), add it to `include:` in `databricks.yml`, and set
-`schedule.pause_status: PAUSED` — the source is static, so run it on-demand, not on a
-daily rebuild.
+### 11.5 No new job
+Same as §10.4: both notebooks are tasks of `Funder Reported Work Funders`.
 
 ### 11.6 Run, verify, make live
 ```bash
-databricks bundle run {Funder}_Work_Funders --profile dbc-ce570f73-0362   # builds the junction
+databricks bundle run Funder_Reported_Work_Funders --profile dbc-ce570f73-0362   # builds the links and the union
 ```
-Verify junction rows > 0 with unique `(work_id, funder_id)`. The edges reach
+Verify the source has rows in `funder_reported_links`. The edges reach
 `work.funders` only on the next **`CreateWorksEnriched`** run (in `walden_end2end`), which
 then syncs works→ES. ⚠️ Same caveat as §10.5: the `/awards` sync does **not** update
 works — `work.funders` is rebuilt by `CreateWorksEnriched`, then works→ES. Confirm a
@@ -1999,7 +1951,7 @@ known work afterward:
 ```bash
 curl -s 'https://api.openalex.org/works?filter=funder.id:F{funder_id}&per_page=1' | jq '.meta.count'
 ```
-**Pass if** non-zero and in the same ballpark as the junction's distinct work count.
+**Pass if** non-zero and in the same ballpark as the source's distinct work count in `funder_reported_links`.
 
 **→ Tracker:** track OUTPUT-LIST funders with an `OUTPUT-LIST` tag and the landed work
 count (e.g. `OUTPUT-LIST | 312 works → work.funders, provenance hakai_publications`).

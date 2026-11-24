@@ -95,7 +95,8 @@ def test_union_reads_the_leg_after_it_is_rebuilt():
     union = (ROOT / 'notebooks/awards/CreateFunderReportedWorkFunders.ipynb').read_text()
     assert f"UNION SELECT work_id, funder_id, '{PROVENANCE}'    FROM {LEG}" in union
     tasks = job()
-    assert tasks['create_funder_reported_work_funders']['depends_on'] == [{'task_key': 'create_pubmed_work_funders'}]
+    assert tasks['create_funder_reported_work_funders']['depends_on'] == [   # and the links it reads for ANR and Hakai (#2014)
+        {'task_key': 'create_pubmed_work_funders'}, {'task_key': 'create_funder_reported_links'}]
     assert tasks['create_funder_reported_work_funders']['run_if'] == 'ALL_DONE'   # a failure here never stops the union
     assert 'depends_on' not in tasks['create_pubmed_work_funders']
 

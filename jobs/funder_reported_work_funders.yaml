@@ -3,25 +3,18 @@ resources:
     Funder_Reported_Work_Funders:
       name: Funder Reported Work Funders
       description: |
-        oxjob #739 (Casey-approved 2026-08-10; originally assigned to Kyle) — nightly
-        additive rebuild of the shared openalex.awards.funder_reported_work_funders
-        union (the from_funder_reported leg CreateWorksEnriched reads). Unions
-        hakai_work_funders, europepmc_work_funders, datacite_work_funders,
-        kaken_work_funders, anr_work_funders via MERGE ... WHEN NOT MATCHED THEN INSERT
-        (additive only; never drops a previously served pair). Split out of
-        CreateHakaiWorkFunders so this table can stay fresh nightly without also
-        forcing Hakai_Work_Funders's PAUSED-by-design on-demand scrape steps to run.
-        Also runs create_fwf_work_funders (oxjob #1765), independent of the union task:
-        FWF's output lists -> openalex.awards.fwf_work_funders, a Nightly Grants leg that
-        drops the links FWF removes.
-        And create_pubmed_work_funders (oxjob #2544), before the union, which reads it:
-        PubMed's own GrantList -> openalex.awards.pubmed_work_funders + award shells.
+        Three tasks, daily. create_funder_reported_links: funders' own output lists (NWO, FWF, ANR,
+        Hakai, KAKEN) -> openalex.awards.funder_reported_links, a Nightly Grants leg that follows each
+        source, deletions included. create_pubmed_work_funders (oxjob #2544): PubMed's own GrantList ->
+        openalex.awards.pubmed_work_funders (a Nightly Grants leg) and its award shells.
+        create_funder_reported_work_funders (oxjob #739, Casey-approved 2026-08-10): the additive union
+        openalex.awards.funder_reported_work_funders that CreateWorksEnriched reads for work.funders, from
+        Europe PMC, DataCite, kaken_work_funders, PubMed and the ANR and Hakai links (MERGE ... WHEN NOT
+        MATCHED THEN INSERT; never drops a previously served pair).
       schedule:
-        # 02:30 UTC — after DataCite_Work_Funders (02:00 UTC, the only input to this union
-        # with a live nightly feed; it commits in ~45 s, measured 2026-08-24), before
-        # Walden_End_2_End (03:00 UTC, which runs CreateWorksEnriched and needs this table fresh). Hakai/EuropePMC/KAKEN/ANR stay
-        # on-demand OUTPUT-LIST sources; this job re-unions them every run regardless, so
-        # a manual refresh of any one is picked up the same night for free.
+        # 23:30 UTC — after DataCite_Work_Funders (23:00 UTC, the union's one input with its own nightly
+        # job; it commits in ~45 s, measured 2026-08-24), before Nightly Grants (00:00 UTC, which reads the
+        # links) and Walden_End_2_End (03:00 UTC, which runs CreateWorksEnriched and needs the union fresh).
         quartz_cron_expression: 0 30 23 * * ?
         timezone_id: UTC
         # UNPAUSED 2026-08-31 (owner's go): attended first runs landed 08-28 (both
@@ -30,17 +23,7 @@ resources:
         # Audit + verification: grants-work/routing-audit-20260831 (local).
         pause_status: UNPAUSED
       tasks:
-        - task_key: create_funder_reported_work_funders
-          # Waits for create_pubmed_work_funders, which re-resolves funders merged since its last run (the union's GATE 2
-          # refuses merge losers). run_if ALL_DONE: a failure there never stops this union; it reads yesterday's table.
-          depends_on:
-            - task_key: create_pubmed_work_funders
-          run_if: ALL_DONE
-          notebook_task:
-            notebook_path: notebooks/awards/CreateFunderReportedWorkFunders
-            source: GIT
-            warehouse_id: 3996dc0a9b183ce3
-        # PubMed's own GrantList -> openalex.awards.pubmed_work_funders (a Nightly Grants leg, also in the union above) and
+        # PubMed's own GrantList -> openalex.awards.pubmed_work_funders (a Nightly Grants leg, also in the union below) and
         # its award shells in openalex_awards_raw (oxjob #2544). Scope: records published before before_year, US Public
         # Health Service agencies. A night with no PubMed change writes nothing (MERGE leaves unchanged rows alone).
         - task_key: create_pubmed_work_funders
@@ -57,19 +40,6 @@ resources:
           # openalex_awards_raw has other writers; a concurrent commit conflict is retried once
           max_retries: 1
           min_retry_interval_millis: 120000
-        # FWF's output lists -> openalex.awards.fwf_work_funders, a Nightly Grants leg (oxjob #1765). Independent of the
-        # task above (no depends_on: either can fail without stopping the other). Not in that task's union, which never
-        # drops a pair: FWF deletions must drop. Daily, but a run whose FWF object is the one the last finished run read
-        # writes nothing (seconds); the weekly fetch writes a new object on Mondays.
-        - task_key: create_fwf_work_funders
-          notebook_task:
-            notebook_path: notebooks/awards/CreateFWFWorkAwards
-            source: GIT
-            warehouse_id: 3996dc0a9b183ce3
-          timeout_seconds: 3600
-          email_notifications:
-            on_failure:
-              - rohan@openalex.org
         # Every funder's own output list -> openalex.awards.funder_reported_links, one row per (source, work, funder).
         - task_key: create_funder_reported_links
           notebook_task:
@@ -80,6 +50,18 @@ resources:
           email_notifications:
             on_failure:
               - rohan@openalex.org
+        # Reads the links the task above wrote, and PubMed's leg (create_pubmed_work_funders re-resolves funders merged
+        # since its last run; the union's GATE 2 refuses merge losers). ALL_DONE: if either fails, its table is as it was
+        # and the union still adds the other sources' pairs.
+        - task_key: create_funder_reported_work_funders
+          depends_on:
+            - task_key: create_pubmed_work_funders
+            - task_key: create_funder_reported_links
+          run_if: ALL_DONE
+          notebook_task:
+            notebook_path: notebooks/awards/CreateFunderReportedWorkFunders
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3
       git_source:
         git_url: https://github.com/ourresearch/openalex-walden.git
         git_provider: gitHub

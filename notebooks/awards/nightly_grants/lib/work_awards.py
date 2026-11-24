@@ -14,13 +14,11 @@ from stable_award_ids import generic_sql
 LEGS = [('work_funder','paper_id','award_ids',True,1,False,False),
         ('grobid','paper_id','funder_award_id',False,2,False,False),
         ('crossref_work_funders','work_id','award_ids',True,4,True,False),
-        ('nwo_work_funders','work_id','award_ids',True,3,False,False),
-        ('anr_work_funders','work_id','award_ids',True,3,False,False),
+        ('funder_reported_links','work_id','award_ids',True,3,False,False),   # funders' own output lists (CreateFunderReportedLinks.sql)
         ('datacite_work_funders','work_id','award_ids',True,4,True,False),
         ('europepmc_work_funders','work_id','award_ids',True,4,True,False),
         ('pubmed_work_funders','work_id','award_ids',True,4,True,False),   # PubMed's own GrantList, paper-side like Europe PMC (oxjob #2544)
         ('kaken_work_funders','work_id','award_ids',True,3,False,False),
-        ('fwf_work_funders','work_id','award_ids',True,3,False,False),   # FWF's own output lists (oxjob #1765)
         ('relink','work_id','target_award_id',False,4,True,True),
         (list_legs.NUMBER_LEG,'work_id','number',False,4,True,True)]   # number-kind ADD lists (list_legs.py), registry mode like relink
 

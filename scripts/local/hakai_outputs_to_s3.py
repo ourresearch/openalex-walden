@@ -2,7 +2,7 @@
 
 Scrapes the Hakai Institute's own published list of funded publications
 (https://hakai.org/publications) and writes one row per funder-asserted DOI to a
-parquet that the CreateHakaiWorkFunders notebook resolves into work.funders.
+parquet that notebooks/awards/CreateFunderReportedLinks.sql resolves into work.funders.
 
 This is NOT the Tula analysis corpus (that is search-discovered + LLM-verified, for
 impact studies). Per §11's eligibility gate, the OUTPUT-LIST source must be the funder's

@@ -8,8 +8,8 @@ entities, from data.gouv.fr). THIS script ingests ANR's *funder-reported
 grant->publication linkages* -- a bulk file ANR sends us directly, mapping
 each of their grants to the DOIs of the publications it funded.
 
-This is the same trusted "funder-reported work linkage" model we built for
-NWO (CreateNWOWorkAwards.ipynb): the funder asserts the grant->work edge from
+This is the same trusted "funder-reported work linkage" model as NWO's (both
+read by CreateFunderReportedLinks.sql): the funder asserts the grant->work edge from
 researchers' own end-of-project reporting, and we trust it even when none of
 our own pipelines (Crossref/text-mining/DataCite) independently derive it.
 
