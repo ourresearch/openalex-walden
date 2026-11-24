@@ -36,8 +36,9 @@ resources:
           # are matched in full: the GPUs scale with the night (Casey 2026-11-18)
           default: "60000000"
         - name: max_usd
-          # a Modal stage fails when its estimate is over this (a normal night: a few dollars each; 27.6M texts: ~$30-70)
-          default: "200"
+          # a Modal stage fails when its estimate is over this: a bug tripwire, not a budget (a normal night: a few dollars
+          # each; 74.6M texts on 24 Nov needed a one-run $400). Casey 2026-11-24: 200 -> 500, his spend line, as Map_Work_Ids
+          default: "500"
         - name: test_texts
           default: ""
         - name: scope_table

@@ -56,7 +56,7 @@ cloudpickle.register_pickle_by_value(RM)   # the workers get refmatch's code wit
 for name, default in [("stage", "prepare"), ("mode", "shadow"), ("night", ""), ("job_run_id", "manual"), ("catchup_from_version", ""),
                       ("max_texts", "60000000"), ("volume_dir", "/Volumes/openalex/works/data/reference_matcher"),
                       ("endpoint", "https://wordslikethis--reference-matcher-api.us-east.modal.run"), ("secret_scope", "modal"),
-                      ("secret_key", "location_matcher_token"), ("warehouse_id", "3996dc0a9b183ce3"), ("max_usd", "200"),
+                      ("secret_key", "location_matcher_token"), ("warehouse_id", "3996dc0a9b183ce3"), ("max_usd", "500"),
                       ("max_minutes", "150"), ("shard_prompts", "20000"), ("scope_table", ""), ("test_texts", "")]:
     dbutils.widgets.text(name, default)
 W = {k: dbutils.widgets.get(k).strip() for k in ("stage", "mode", "night", "job_run_id", "catchup_from_version", "max_texts", "volume_dir",
