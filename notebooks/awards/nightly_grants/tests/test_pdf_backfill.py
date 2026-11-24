@@ -104,7 +104,7 @@ def test_first_night_seeds_the_ledger_except_seed_as_due():
     pdf_backfill.run(c)
     seed = next(s for s in statements(spark) if s.startswith("INSERT INTO dev.lab.ngr_award_nightly_pdf_backfill"))
     assert "'SEEDED'" in seed and "WHERE funder_id NOT IN (11,22)" in seed
-    assert "FROM a.b.raw VERSION AS OF 7 WHERE priority>=3" in " ".join(statements(spark))
+    assert "FROM a.b.raw VERSION AS OF 7 x WHERE x.priority>=3" in " ".join(statements(spark))   # award_source_rank.is_loader_sql
 
 
 def test_due_funders_are_matched_written_under_the_cap_and_recorded():

@@ -7,7 +7,7 @@ parsed earlier never get matched against it. Kyle closed that gap by hand after 
 must not sit in front of the night. The matches it writes are read by the next night's link build, the same night the manual
 step's matches would be read.
 
-Which funders: a funder is due when its PUBLISHED direct grant sources (raw provenances with priority >= 3, as the last
+Which funders: a funder is due when its PUBLISHED direct grant sources (raw rows a grant loader wrote: award_source_rank.is_loader_sql, as the last
 successful run read them) include a source not yet recorded for it in the ledger. A brand-new funder counts the same way: its
 first published direct source makes it due. Grants are matched only after they're published, exactly like the manual step.
 Ledger: ONE table, {registry}award_nightly_pdf_backfill, one row per funder:
@@ -28,6 +28,7 @@ any error holds the funders being processed and is reported in counts.
 """
 import json
 
+import award_source_rank   # the one rank table: which raw rows a grant loader wrote (is_loader_sql)
 from work_awards import DEPOSITED
 
 LEDGER_COLUMNS = ("funder_id BIGINT, sources ARRAY<STRING>, first_seen_run STRING, backfill_run STRING, pairs_found BIGINT, "
@@ -66,8 +67,8 @@ def due_funders(c, s, raw):
         if "TABLE_OR_VIEW_NOT_FOUND" not in str(exc):
             raise
         c.write(f"CREATE TABLE {L} ({LEDGER_COLUMNS})")
-    c.artifact("pdfbf_sources", f"""SELECT funder_id,sort_array(collect_set(provenance)) sources FROM {raw}
-      WHERE priority>=3 AND funder_id IS NOT NULL GROUP BY funder_id""")
+    c.artifact("pdfbf_sources", f"""SELECT funder_id,sort_array(collect_set(provenance)) sources FROM {raw} x
+      WHERE {award_source_rank.is_loader_sql('x')} AND funder_id IS NOT NULL GROUP BY funder_id""")
     if not c.sql(f"SELECT 1 FROM {L} LIMIT 1").collect():
         # seed_as_due: funders whose backfill had not been run by hand when the ledger was created (they start due)
         due_ids = ",".join(str(int(x)) for x in s.get("seed_as_due", [])) or "NULL"

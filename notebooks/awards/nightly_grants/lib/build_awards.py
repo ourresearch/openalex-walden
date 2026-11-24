@@ -7,6 +7,7 @@ PUBLIC_DOI_CLASS='PUBLIC_DOI_EQUALS_TARGET_DOI'
 # 10-01: a public paper-only grant (shell) retired into a public shell twin of the same funder whose number differs only in
 # punctuation/case (e.g. 'HL-079457' vs 'HL079457'). Both are public, so the loser is allowed to be public.
 PUBLIC_SHELL_CLASS='PUBLIC_SHELL_SAME_NUMBER'
+import award_source_rank   # 11-19: the one rank table for grant sources (rank 1 = highest)
 import registry_twin   # 11-10: funder-feed records twinned by the funder's Crossref deposits (registry_twin.py)
 PUBLIC_TWIN_CLASSES=(PUBLIC_DOI_CLASS,PUBLIC_SHELL_CLASS,'PUBLIC_GTR_LINEAGE_TWIN',registry_twin.REGISTRY_TWIN_CLASS)
 import uk_lineage
@@ -74,18 +75,17 @@ def prepare(c):
     for ns,prov,producer,record in [('crossref_grant','crossref_work','crossref', 'cr'),('datacite_award','datacite','datacite','dc')]:
         ndoi=norm_doi_sql('x.doi')
         c.zero(ns+'_PRODUCER_LINEAGE',f"SELECT x.* FROM {producer}_v x LEFT ANTI JOIN {r}{record}_records s ON {ndoi}=s.record_doi")
-        c.zero(ns+'_RAW_LINEAGE',f"SELECT x.* FROM raw_v x LEFT ANTI JOIN {producer}_v y ON x.id=y.id AND x.funder_id <=> y.funder_id AND lower(x.funder_award_id) <=> lower(y.funder_award_id) AND {ndoi}={norm_doi_sql('y.doi')} WHERE x.provenance='{prov}' AND x.priority=1")
+        c.zero(ns+'_RAW_LINEAGE',f"SELECT x.* FROM raw_v x LEFT ANTI JOIN {producer}_v y ON x.id=y.id AND x.funder_id <=> y.funder_id AND lower(x.funder_award_id) <=> lower(y.funder_award_id) AND {ndoi}={norm_doi_sql('y.doi')} WHERE x.provenance='{prov}' AND {award_source_rank.is_grant_doi_sql('x')}")
     rawdoi=norm_doi_sql('x.doi')
+    owner_joins,not_own=award_source_rank.owner_join_sql('x') if c.has_extra('source_owners') else ('',None)
     c.artifact('raw_observations',f"""WITH classified AS (
-      SELECT x.*,
-        CASE WHEN x.provenance='crossref_work' AND x.priority=1 THEN 'crossref_grant'
-             WHEN x.provenance='datacite' AND x.priority=1 THEN 'datacite_award' END namespace,
-        CASE WHEN x.priority=1 AND x.provenance IN ('crossref_work','datacite') THEN {rawdoi} END source_record_id,
-        struct(x.*) payload FROM raw_v x)
+      SELECT x.*,{award_source_rank.rank_sql('x',not_own)} source_rank,{award_source_rank.namespace_sql('x')} namespace,
+        CASE WHEN {award_source_rank.is_grant_doi_sql('x')} THEN {rawdoi} END source_record_id,
+        struct(x.*) payload FROM raw_v x{owner_joins})
       SELECT to_json(named_struct('adapter','raw','staging_id',id,'funder_id',funder_id,
         'award_key',lower(funder_award_id),'namespace',namespace,'native_id',source_record_id),map('ignoreNullFields','false')) observation_key,
         id staging_id,funder_id source_funder_id,lower(funder_award_id) award_key,namespace,source_record_id,
-        (namespace IS NOT NULL OR priority>=3) is_direct,priority,payload,
+        source_rank<{award_source_rank.LOWEST} is_direct,priority,source_rank,payload,
         coalesce(namespace,'raw') family FROM classified""")
     raw_schema=c.spark.table('raw_v').schema.simpleString()
     # FROM_JSON fills absent GTR metadata with typed nulls. No fabricated payload.
@@ -95,14 +95,14 @@ def prepare(c):
         'award_key',lower(funder_award_id)),map('ignoreNullFields','false')) observation_key,
       abs(xxhash64(id)) % 9000000000 staging_id,funder_id source_funder_id,
       lower(funder_award_id) award_key,'gtr' namespace,cast(id AS STRING) source_record_id,
-      true is_direct,-1 priority,
+      true is_direct,-1 priority,3 source_rank,
       from_json(to_json(named_struct('id',abs(xxhash64(id)) % 9000000000,
         'funder_id',funder_id,'funder_award_id',funder_award_id,'funder',funder,
         'provenance','gtr_legacy','created_date',created_date)),{literal(raw_schema)}) payload,
       'gtr' family FROM gtr_v WHERE work_id IS NOT NULL""")
     c.artifact('observations',f"""SELECT * FROM (
       SELECT * FROM {r}raw_observations UNION ALL SELECT * FROM {r}gtr_observations)
-      QUALIFY row_number() OVER (PARTITION BY observation_key ORDER BY is_direct DESC,priority DESC,
+      QUALIFY row_number() OVER (PARTITION BY observation_key ORDER BY {award_source_rank.order_sql()},
         payload.updated_date DESC NULLS LAST,to_json(payload))=1""")
     c.zero('INVALID_OBSERVATION',f"SELECT * FROM {r}observations WHERE staging_id IS NULL OR is_direct IS NULL OR (namespace IS NOT NULL AND source_record_id IS NULL)")
     c.zero('MISSING_FUNDER',f'SELECT o.* FROM {r}observations o LEFT ANTI JOIN {r}funder_canon f ON f.funder_id=o.source_funder_id WHERE o.source_funder_id IS NOT NULL')
@@ -259,12 +259,12 @@ def plan(c):
     # lookup join a single two-table equi-join on the full (funder_id, award_key, is_direct) key. Rule: a join predicate must never
     # reference two different earlier relations; materialize the pair instead.
     c.artifact('bound_observations',f"""SELECT b.observation_key,b.stable_id,b.staging_id,b.source_funder_id,b.award_key,b.namespace,
-      b.source_record_id,b.is_direct,b.priority,b.family,e.funder_id{(','+nih_fold.norm_funder(c,'e')+' lookup_funder_id') if nih_fold.on(c) else ''}
-      FROM (SELECT observation_key,stable_id,staging_id,source_funder_id,award_key,namespace,source_record_id,is_direct,priority,family
+      b.source_record_id,b.is_direct,b.priority,b.source_rank,b.family,e.funder_id{(','+nih_fold.norm_funder(c,'e')+' lookup_funder_id') if nih_fold.on(c) else ''}
+      FROM (SELECT observation_key,stable_id,staging_id,source_funder_id,award_key,namespace,source_record_id,is_direct,priority,source_rank,family
               FROM {r}bindings) b JOIN {r}ownership_plan e USING(stable_id){nih_fold.lookup_join(c,'b')}""")
     c.zero('BOUND_OBSERVATIONS_COMPLETE',f'SELECT b.observation_key FROM {r}bindings b LEFT ANTI JOIN {r}bound_observations o USING(observation_key)')
     c.artifact('resolved_observations',f"""SELECT b.observation_key,b.stable_id,b.staging_id,b.source_funder_id,b.award_key,b.namespace,
-      b.source_record_id,b.is_direct,b.priority,b.family,b.funder_id,{generic_sql('b.award_key')} nk,
+      b.source_record_id,b.is_direct,b.priority,b.source_rank,b.family,b.funder_id,{generic_sql('b.award_key')} nk,
       CASE WHEN n.sharp_eligible AND (b.is_direct OR NOT n.is_weak) THEN n.sharp_key END sk
       FROM {r}bound_observations b
       JOIN {r}normalization_lookup n ON n.funder_id <=> b.{'lookup_funder_id' if nih_fold.on(c) else 'funder_id'} AND n.award_key <=> b.award_key AND n.is_direct=b.is_direct""")
@@ -337,12 +337,13 @@ def plan(c):
           WHERE {nih_fold.exempt_where(c,'a.stable_id IS NULL OR b.stable_id IS NULL OR a.funder_id IS NULL OR NOT (a.funder_id <=> b.funder_id)',nih_fold.pair_same_funder_exempt(c,'m'))}""")
         c.zero('MIGRATION_CONFLICT_WITH_RULE',f"SELECT m.* FROM {mm} m JOIN {r}retirements_rule t ON t.old_id=m.loser_id WHERE t.canonical_id<>m.target_id")
         c.artifact('retirements_manifest',f"SELECT DISTINCT loser_id old_id,target_id canonical_id,evidence_class FROM {mm}")
-        # provenance kept separately; the operational set is deduplicated on (old_id, canonical_id)
-        c.artifact('retirement_sources',f"SELECT old_id,canonical_id,'RULE' source FROM {r}retirements_rule UNION ALL SELECT old_id,canonical_id,'MANIFEST' FROM {r}retirements_manifest")
-        c.artifact('retirements',f"SELECT DISTINCT old_id,canonical_id FROM {r}retirement_sources")
-    else:
-        c.artifact('retirement_sources',f"SELECT old_id,canonical_id,'RULE' source FROM {r}retirements_rule")
-        c.artifact('retirements',f"SELECT DISTINCT old_id,canonical_id FROM {r}retirement_sources")
+    # 11-23: a grant-DOI grant that is a funder's own grant under another number (same funder, same DOI) retires into it (registry_twin.py)
+    twins=registry_twin.doi_twins(c,c.has_extra('migration_manifest'))
+    # provenance kept separately; the operational set is deduplicated on (old_id, canonical_id)
+    c.artifact('retirement_sources',f"SELECT old_id,canonical_id,'RULE' source FROM {r}retirements_rule"
+               +(f" UNION ALL SELECT old_id,canonical_id,'MANIFEST' FROM {r}retirements_manifest" if c.has_extra('migration_manifest') else '')
+               +f" UNION ALL SELECT old_id,canonical_id,{literal(registry_twin.DOI_TWIN_SOURCE)} FROM {twins}")
+    c.artifact('retirements',f"SELECT DISTINCT old_id,canonical_id FROM {r}retirement_sources")
     # composition: no retirement may target another retiring entity (bindings_final applies exactly one hop)
     c.zero('RETIREMENT_CHAIN',f'SELECT r.* FROM {r}retirements r JOIN {r}retirements t ON t.old_id=r.canonical_id')
     c.zero('RETIREMENT_UNIQUE',f'SELECT old_id FROM {r}retirements GROUP BY old_id HAVING count(DISTINCT canonical_id)<>1')
@@ -446,7 +447,7 @@ def merge_doi_metadata(c):
       JOIN {r}resolve_candidate x ON x.owner_id=p.target_id WHERE x.status='ACTIVE'""")
     c.artifact('merge_doi_payload',f"""SELECT d.loser_id,d.target_id,b.payload.start_date,b.payload.end_date,b.payload.description
       FROM {r}merge_doi_donors d JOIN {r}bindings b ON b.namespace=d.namespace AND b.source_record_id=d.source_record_id
-      QUALIFY row_number() OVER(PARTITION BY d.target_id ORDER BY b.is_direct DESC,b.priority DESC,b.payload.updated_date DESC NULLS LAST,b.observation_key,d.loser_id)=1""")
+      QUALIFY row_number() OVER(PARTITION BY d.target_id ORDER BY {award_source_rank.order_sql('b')},b.payload.updated_date DESC NULLS LAST,b.observation_key,d.loser_id)=1""")
     c.artifact('merge_doi_start_conflicts',f"""SELECT d.*,m.payload.start_year target_start_year FROM {r}merge_doi_payload d
       JOIN {r}award_metadata m ON m.stable_id=d.target_id WHERE m.payload.start_date IS NULL AND d.start_date IS NOT NULL
         AND m.payload.start_year IS NOT NULL AND year(d.start_date)<>m.payload.start_year""")
@@ -469,12 +470,13 @@ def project(c):
     c.artifact('award_metadata_election',f"""SELECT o.observation_key,o.stable_id FROM {r}resolved_observations o
       JOIN (SELECT observation_key,payload.updated_date updated_date FROM {r}bindings) u USING(observation_key)
       LEFT ANTI JOIN {r}retirements t ON t.old_id=o.stable_id
-      QUALIFY row_number() OVER(PARTITION BY o.stable_id ORDER BY o.is_direct DESC,o.priority DESC,u.updated_date DESC NULLS LAST,o.observation_key)=1""")
+      QUALIFY row_number() OVER(PARTITION BY o.stable_id ORDER BY {award_source_rank.order_sql('o')},u.updated_date DESC NULLS LAST,o.observation_key)=1""")
     c.zero('METADATA_ELECTION_UNIQUE',f'SELECT stable_id FROM {r}award_metadata_election GROUP BY stable_id HAVING count(*)<>1')
     c.artifact('award_metadata',f"""SELECT o.*,b.payload FROM {r}resolved_observations o JOIN {r}award_metadata_election w USING(observation_key,stable_id)
       JOIN {r}bindings b USING(observation_key)""")
     c.zero('RETIRED_LOSER_ELECTED',f'SELECT a.stable_id FROM {r}award_metadata a JOIN {r}retirements t ON t.old_id=a.stable_id')  # op14 (Q5 risk 3)
-    metadata=registry_twin.fill(c,merge_doi_metadata(c))   # registry twins: the Crossref DOI and lead ORCID onto the feed row
+    metadata=registry_twin.keep_grant_doi(c,merge_doi_metadata(c))   # 11-23: the served grant keeps its registered DOI (oxjob #2486)
+    metadata=registry_twin.fill(c,metadata)   # registry twins: the Crossref lead ORCID onto the feed row
     c.artifact('embedded_links',"SELECT w.id work_id,try_cast(regexp_replace(a.id,'^https://openalex[.]org/G','') AS BIGINT) old_id FROM works_v w LATERAL VIEW explode(w.awards) x AS a")
     resolve_embedded_links(c)
     c.artifact('award_aggregates',f"""SELECT l.stable_id,

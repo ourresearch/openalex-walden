@@ -14,6 +14,7 @@ from pathlib import Path
 
 from stable_award_ids import compact, ident, literal, sha, short
 from capture_support import verify_body
+import award_source_rank   # the one rank table: which raw rows are records of a grant (ranks 1-3)
 
 # Which history operations change no rows is written once, in openalex.works.is_maintenance_op (oxjob #1997; this list named
 # "COMPUTE STATISTICS", which Databricks never writes, and missed "COMPUTE STATS" and "SET TBLPROPERTIES": oxjob #1875).
@@ -246,7 +247,7 @@ class Nightly:
           SELECT source_funder_id,current_id canonical_funder_id,depth FROM p WHERE next_id IS NULL LIMIT ALL"""))
         self.view("normalization", self.artifact("normalization", f"""WITH obs AS (
             SELECT id staging_id,funder_id,lower(funder_award_id) award_key,funder_award_id award_raw,
-              (priority>=3 OR (priority=1 AND provenance IN ('crossref_work','datacite'))) direct,true from_raw,false from_gtr FROM raw_v
+              {award_source_rank.is_direct_sql('x')} direct,true from_raw,false from_gtr FROM raw_v x
             UNION ALL SELECT ABS(XXHASH64(id)) % 9000000000,funder_id,lower(funder_award_id),funder_award_id,true,false,true FROM gtr_v),
           t AS (SELECT staging_id,funder_id,award_key,bool_or(direct) is_direct,min(award_raw) award_sample,count(*) n_obs,
               bool_or(from_raw) has_raw,bool_or(from_gtr) has_gtr FROM obs GROUP BY staging_id,funder_id,award_key),
@@ -291,10 +292,11 @@ class Nightly:
         # "affiliation_answers" = the affiliation matcher's answers, read before the legacy lookup (create_api.py);
         # "award_recipients_raw" (award_recipients.py), "exchange_rates" / "exchange_rates_annual" (award_usd.py): oxjob #1570;
         # "investigator_authors" + "investigator_profiles" (award_investigators.py): the author on each investigator, oxjob #1847
+        # "source_owners" (provenance, funder_id): the own-funder rule of award_source_rank.py (a loader row for another funder is rank 3)
         for view, relation in self.config.get("extra_inputs", {}).items():
             self.require(view in ("migration_manifest", "award_relations_raw", "award_recipients_raw", "award_classifications_raw",
                                   "exchange_rates", "exchange_rates_annual", "funding_flows_baseline", "affiliation_answers",
-                                  "investigator_authors", "investigator_profiles"), "UNKNOWN_EXTRA_INPUT: " + view)
+                                  "investigator_authors", "investigator_profiles", "source_owners"), "UNKNOWN_EXTRA_INPUT: " + view)
             self.bind(view, relation)
         # yesterday's public state: ids in the live awards table are ACTIVE; everything else as the registry says
         self.sql(f"""SELECT e.stable_id,CASE WHEN a.id IS NOT NULL THEN 'ACTIVE' WHEN e.status='ACTIVE' THEN 'UNPUBLISHED' ELSE e.status END status,e.redirect_to

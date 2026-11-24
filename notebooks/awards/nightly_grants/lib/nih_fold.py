@@ -458,12 +458,12 @@ def _nih_project(c):
         upper(get_json_object(evidence_json,'$.title_from')) title_from
       FROM migration_manifest_v WHERE evidence_class={literal(NIH_CLASS)}""")
     # every observation now bound to a survivor (its own + the retired years'), with the fields the projection uses
-    c.artifact("nih_obs", f"""SELECT b.stable_id,b.observation_key,b.is_direct,b.priority,upper(regexp_replace(b.payload.funder_award_id,'\\\\s','')) number,
+    c.artifact("nih_obs", f"""SELECT b.stable_id,b.observation_key,b.is_direct,b.priority,b.source_rank,upper(regexp_replace(b.payload.funder_award_id,'\\\\s','')) number,
         b.payload.provenance,b.payload.display_name,b.payload.description,b.payload.lead_investigator,b.payload.co_lead_investigator,b.payload.investigators,
         b.payload.start_date,b.payload.end_date,b.payload.amount,b.payload.currency,b.payload.updated_date
       FROM {r}bindings_final b JOIN {r}nih_choice n USING(stable_id)""")
     c.artifact("nih_title_row", f"""SELECT o.* FROM {r}nih_obs o JOIN {r}nih_choice n USING(stable_id) WHERE o.number=n.title_from
-      QUALIFY row_number() OVER (PARTITION BY o.stable_id ORDER BY o.is_direct DESC,o.priority DESC,o.updated_date DESC NULLS LAST,o.observation_key)=1""")
+      QUALIFY row_number() OVER (PARTITION BY o.stable_id ORDER BY o.source_rank,o.priority DESC,o.updated_date DESC NULLS LAST,o.observation_key)=1""")
     # sum: the bound ExPORTER fiscal-year rows, one per number; supplements and amendments are their own awards and count; no other
     # source adds to it; a sum of zero or less is no amount (as HHS TAGGS); a project with any bound year that has no cost gets no
     # amount (Rohan 11-19, option B, complete totals only: ExPORTER's FY1985-1999 files and intramural years before FY2007 carry

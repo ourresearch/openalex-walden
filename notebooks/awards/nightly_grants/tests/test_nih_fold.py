@@ -48,7 +48,9 @@ class RecordingC:
         self.outputs = {"awards": "dev.lab.out_awards", "aliases": "dev.lab.out_aliases", "work_awards": "dev.lab.out_work_awards", "api": "dev.lab.out_api"}
         self.m = {"inputs": {}}
         self.nih = False                  # set by nih_fold.pin_ownership in plan(), as in the real runtime
-        schema = types.SimpleNamespace(simpleString=lambda: "struct<id:bigint>", json=lambda: "{}", fields=[])
+        payload = types.SimpleNamespace(dataType=types.SimpleNamespace(fieldNames=lambda: ["id", "doi"]))
+        schema = type("Schema", (), {"simpleString": lambda s: "struct<id:bigint>", "json": lambda s: "{}", "fields": [],
+                                     "__getitem__": lambda s, k: payload})()   # schema['payload'] (registry_twin.keep_grant_doi)
         self.spark = types.SimpleNamespace(table=lambda name: types.SimpleNamespace(schema=schema, columns=[]),
                                            sql=lambda s, *a: Frame())
 
@@ -69,7 +71,7 @@ class RecordingC:
         if "evidence_class='NIH_PROJECT_YEAR_FOLD' LIMIT 1" in statement:
             return Frame([types.SimpleNamespace(x=1)] if self.nih_listed else [])
         if "WITH marks AS" in statement:
-            return Frame([{"pairs": 0, "moved": 0, "deduplicated": 0}])
+            return Frame([{"pairs": 0, "moved": 0, "deduplicated": 0, "final_links": 0}])
         if "count(*) n" in statement:
             return Frame([types.SimpleNamespace(n=0)])
         return Frame()
@@ -96,6 +98,19 @@ def load(name, path):
     sys.modules[name] = mod; spec.loader.exec_module(mod); return mod
 
 
+# Four tiers (#2486, #2487) changes these statements on purpose: the rank-ordered observations and elections, the DOI twins and the
+# kept DOI; test_award_source_rank pins them. awards_candidate reads the DOI-kept metadata; every other part of it still matches.
+FOUR_TIER_STATEMENTS = {"raw_observations", "gtr_observations", "observations", "bound_observations", "resolved_observations",
+                        "crossref_grant_RAW_LINEAGE", "datacite_award_RAW_LINEAGE", "award_metadata_election", "merge_doi_payload",
+                        "nih_obs", "nih_title_row", "retirement_sources", "dt_sides", "dt_candidates", "dt_held", "dt_pairs",
+                        "DOI_TWIN_FUSE", "doi_keep_donors", "doi_keep_wanted", "doi_keep", "award_metadata_doi_kept"}
+
+
+def four_tier_free(statements):
+    return [(n, s.replace("award_metadata_doi_kept", "award_metadata_filled")) for n, s in statements
+            if n not in FOUR_TIER_STATEMENTS and not (n == "sql" and re.search(r"_(dt_held|doi_keep)\b", s))]
+
+
 def render(module_path, **kw):
     mod = load("ba_" + module_path.parent.parent.name, module_path)
     c = RecordingC(**kw)
@@ -110,7 +125,7 @@ def test_without_nih_pairs_build_is_byte_identical(extra):
     new = render(ROOT / "lib" / "build_awards.py", extra=extra)
     # the probe is the only statement the fold adds without NIH pairs; drop it on both sides (once the fold is on main, HEAD has it too)
     def strip(c): return [s for s in c.statements if "NIH_PROJECT_YEAR_FOLD' LIMIT 1" not in s[1]]
-    assert strip(new) == strip(old)
+    assert four_tier_free(strip(new)) == four_tier_free(strip(old))
 
 
 def test_with_nih_pairs_every_hook_is_on():

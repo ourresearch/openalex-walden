@@ -52,7 +52,7 @@ def fixture():
     c.sql("""CREATE TABLE migration_manifest_v AS SELECT id+980 loser_id,id target_id,'NIH_PROJECT_YEAR_FOLD' evidence_class,
       to_json({'primary_award_id':funder_award_id,'title_from':funder_award_id}) evidence_json FROM previous_api_v WHERE id<=20""")
     c.sql("""CREATE TABLE nih_survivors AS SELECT target_id stable_id,4320332161::BIGINT pinned_funder_id FROM migration_manifest_v""")
-    c.sql("""CREATE TABLE bindings_final AS SELECT r.stable_id,cast(p.id AS VARCHAR) observation_key,true is_direct,10 priority,p payload
+    c.sql("""CREATE TABLE bindings_final AS SELECT r.stable_id,cast(p.id AS VARCHAR) observation_key,true is_direct,10 priority,1 source_rank,p payload
       FROM previous_api_v p JOIN resolve_candidate r ON r.owner_id=p.id""")
     c.sql("""CREATE TABLE awards_candidate AS SELECT * EXCLUDE(amount_usd,amount_usd_basis,research_scope,recipients_full,
       recipient_countries_full,recipient_regions_full) FROM previous_api_v WHERE id<=980""")
@@ -166,7 +166,7 @@ def sum_fixture(policy):
     values = ','.join(f"({s},'{k}',{str(d).lower()},{p},'{n}','{pv}',{'NULL' if a is None else a},TIMESTAMP '{u}')" for s, k, d, p, n, pv, a, u in OBS)
     c.sql(f"""CREATE TABLE obs AS SELECT * REPLACE (amount::DOUBLE AS amount)
       FROM (VALUES {values}) t(stable_id,observation_key,is_direct,priority,number,provenance,amount,updated)""")
-    c.sql("""CREATE TABLE bindings_final AS SELECT stable_id,observation_key,is_direct,priority,{'funder_award_id':number,'provenance':provenance,
+    c.sql("""CREATE TABLE bindings_final AS SELECT stable_id,observation_key,is_direct,priority,CASE WHEN is_direct THEN 1 ELSE 4 END source_rank,{'funder_award_id':number,'provenance':provenance,
       'display_name':'Title','description':NULL::VARCHAR,'lead_investigator':NULL::VARCHAR,'co_lead_investigator':NULL::VARCHAR,
       'investigators':NULL::VARCHAR,'start_date':CASE stable_id WHEN 90 THEN DATE '1981-04-01' WHEN 95 THEN NULL::DATE ELSE DATE '2010-07-01' END,'end_date':DATE '2015-06-30','amount':amount,'currency':'USD',
       'updated_date':updated} payload FROM obs""")

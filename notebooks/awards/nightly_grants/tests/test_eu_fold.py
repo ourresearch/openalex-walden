@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 sys.path.insert(0, str(ROOT / "tests"))
 
 import nih_fold
-from test_nih_fold import RecordingC, Frame, load
+from test_nih_fold import RecordingC, Frame, load, four_tier_free
 
 EU = "EU_GRANT_FAMILY_FOLD"
 NIH = "NIH_PROJECT_YEAR_FOLD"
@@ -77,6 +77,10 @@ def _probe_free(c):
     return [s for s in c.statements if "' LIMIT 1" not in s[1] or "evidence_class=" not in s[1]]
 
 
+def _four_tier_free(c):
+    return four_tier_free(_probe_free(c))   # four tiers' own statements: test_nih_fold.FOUR_TIER_STATEMENTS
+
+
 def _head_fold():
     spec = importlib.util.spec_from_file_location("nih_fold_head", HEAD / "nih_fold.py")
     m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -90,9 +94,9 @@ def test_without_eu_pairs_build_renders_as_head(listed, extra):
     old = _render(HEAD / "build_awards.py", _head_fold(), listed, extra)
     new = _render(ROOT / "lib" / "build_awards.py", nih_fold, listed, extra)
     # #2326 (NIH project amounts) owns the sum's year-cost statements; test_funding_population and test_nih_fold pin them
-    own = lambda c: [s for s in _probe_free(c) if s[0] not in NIH_AMOUNT_STATEMENTS]
+    own = lambda c: [s for s in _four_tier_free(c) if s[0] not in NIH_AMOUNT_STATEMENTS]
     assert own(new) == own(old)
-    assert new.checks.keys() == old.checks.keys()
+    assert new.checks.keys() - {"DOI_TWIN_FUSE"} == old.checks.keys() - {"DOI_TWIN_FUSE"}   # four tiers' one new check
 
 
 @needs_head
