@@ -359,3 +359,5 @@ zonmw_projects_jsonapi,92,F4320321007,s3://openalex-ingest/awards/zonmw/zonmw_pr
 fct,385,F4320334779|F4320324421|F4320320300|F4320335322,s3://openalex-ingest/awards/fct_sciproj/2026-11-06.parquet,frozen,98
 fwf_open_api,51,F4320321181,s3://openalex-ingest/awards/fwf_open_api/,weekly,98
 bhf_europepmc_grist,575,F4320319992,s3://openalex-ingest/awards/bhf/bhf_grist_projects.parquet,frozen,98
+grb_nstc_projects,202,F2461203286,s3://openalex-ingest/awards/grb_nstc/2026-11-18.parquet,frozen,98
+grb_most_projects,210,F4320322795,s3://openalex-ingest/awards/taiwan_most_grb/taiwan_most_grb_projects.parquet,frozen,98

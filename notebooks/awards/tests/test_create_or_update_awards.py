@@ -179,9 +179,16 @@ def test_prod_job():
     assert 'new_cluster' not in job['tasks'][0] and 'existing_cluster_id' not in job['tasks'][0]
 
 
+# A mapping may read one saved object of its own besides its input (declared here): grb_nstc_projects keeps the abstracts
+# of the laptop export, which GRB's open files do not carry.
+SIDE_OBJECTS = {'s3://openalex-ingest/awards/nstc_grb/nstc_grb_projects.parquet'}
+
+
 def test_production_source_prefixes():
-    prefixes = re.findall(r"FROM read_files\('([^']+)'", CANDIDATE)
+    prefixes = re.findall(r"_input AS \(\n    SELECT \* EXCEPT \(_file_path\) FROM \(SELECT \*, _metadata.file_path AS _file_path FROM read_files\('([^']+)'", CANDIDATE)
     assert prefixes == [r['s3_path'] + '*.parquet' if r['s3_path'].endswith('/') else r['s3_path'] for r in ROWS]
+    others = re.findall(r"FROM read_files\('([^']+)'", CANDIDATE)
+    assert sorted(set(others) - set(prefixes)) == sorted(SIDE_OBJECTS) and len(others) == len(prefixes) + len(SIDE_OBJECTS)
     assert prefixes[:5] == [
         's3://openalex-ingest/awards/nsf/*.parquet',
         's3://openalex-ingest/awards/wellcome/*.parquet',
