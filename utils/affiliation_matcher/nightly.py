@@ -327,6 +327,48 @@ def candidates(ix, ranks):
     return [i for i in pool(ranks) if i in ix.inst]
 
 
+# Same-name universities in different countries that the chooser keeps together on a string naming only the shared
+# name (oxjob #1803). Smaller namesake id -> (bigger namesake id, the smaller one's own location words). When both are
+# chosen, the smaller stays only if the string carries one of its location words; otherwise the bigger one alone is kept
+# (the job's rule for these pairs: a namesake only on its own location evidence). A listed word anywhere in the string
+# keeps both, which is the answer before this rule, so a word list errs toward more words, never fewer. Each pair was
+# checked against hand-read strings first; add a pair the same way, never by rule. Words are matched on the string and
+# on its folded copy (accents dropped, punctuation to spaces: "Tōkyō" -> "tokyo", "Phnom-Penh" -> "phnom penh").
+NAMESAKE_PAIRS = {
+    # Korea University (Kodaira, Tokyo) vs Korea University (Seoul). 朝鮮大学校 is the Tokyo school's own name; not the
+    # Korean 조선대학교, which is also Chosun University (Gwangju).
+    4210161052: (197347611, re.compile(
+        r"kodaira|ogawa|tokyo|tokio|japan|nippon|nihon|\bjpn\b|\bac jp\b|朝鮮大学校|日本|東京|小平|도쿄|일본", re.I)),
+    # Western University (Phnom Penh) vs Western University (London, Ontario)
+    4210116551: (125749732, re.compile(
+        r"cambodia|cambodge|kampuchea|phnom\s*penh|\bedu kh\b|\bcom kh\b|កម្ពុជា|ភ្នំពេញ", re.I)),
+    # Western University (Kanchanaburi; campuses near Bangkok) vs Western University (London, Ontario)
+    4405277831: (125749732, re.compile(
+        r"thailand|\bthai\b|kanchanaburi|watchara\s*pho?l|watcharaphon|hua[iy]\s*krachao|pathum\s*thani|lam\s*luk\s*ka|"
+        r"bangkok|buri\s*ram|\bac th\b|ไทย|กาญจนบุรี|ปทุมธานี|วัชรพล|เวสเทิร์น", re.I)),
+}
+NAMESAKE_TAG = "namesake1"  # appended to matcher_version (every row) and to decider (rows where a namesake was dropped)
+
+
+def _folded(s):
+    from .retrieve import fold
+    return re.sub(r"[\W_]+", " ", fold(s).lower())
+
+
+def one_namesake(s, ids):
+    """oxjob #1803: drop the smaller of a listed same-name pair (NAMESAKE_PAIRS) when the chooser kept both and the
+    string carries none of the smaller one's location words. Other ids pass through unchanged, in their order."""
+    ids = list(ids)
+    chosen = {int(i) for i in ids}
+    pairs = [(small, words) for small, (big, words) in NAMESAKE_PAIRS.items() if small in chosen and big in chosen]
+    if not pairs:
+        return ids
+    s = s or ""
+    f = _folded(s)
+    drop = {small for small, words in pairs if not (words.search(s) or words.search(f))}
+    return [i for i in ids if int(i) not in drop]
+
+
 def decide_many(dec, items):
     """Decider.decide over many strings with one predict_proba call (identical output, one tree walk per chunk).
     items: [(s, js, ranks)] -> [(ids, probs)]."""

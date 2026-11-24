@@ -191,7 +191,7 @@ if DECIDER_MODE == "student":
     student = st.load(f"{ART}/student_me5b_full", base_dir=f"{ART}/base_multilingual-e5-base")
     log(f"student loaded on {student[2]}")
 chooser_sha = hashlib.sha256(open(f"{ART}/{JEV_CHOOSER}.json", "rb").read() + open(f"{ART}/{FIRST}.json", "rb").read()).hexdigest()[:10]
-MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "") + ("/livecounts" if CARDS_MODE == "live" and dbutils.widgets.get("live_works_counts").strip().lower() == "live" else "") + ("/legacyvotes" if VOTE_IDS == "legacy" else "")
+MATCHER_VERSION = f"v1/{DECIDER_MODE}/{chooser_sha}/{CARDS_MODE}" + (f"/{time.strftime('%Y-%m-%d')}" if CARDS_MODE == "live" else "") + ("/livecounts" if CARDS_MODE == "live" and dbutils.widgets.get("live_works_counts").strip().lower() == "live" else "") + ("/legacyvotes" if VOTE_IDS == "legacy" else "") + f"/{nm.NAMESAKE_TAG}"
 log(f"index: {len(ix.inst):,} institutions, {len(ix.variants):,} name variants; matcher_version {MATCHER_VERSION}")
 
 names = nm.names_for_dense(ix)
@@ -250,7 +250,7 @@ log(f"lexical workers: {n_proc}")
 
 jev_used_s = 0.0
 totals = {"strings": 0, "jev": 0, "student": 0, "no_jev": 0, "empty_pool": 0, "es_failed": 0, "no_swept_candidate": 0,
-          "jev_out_of_credit": 0}
+          "jev_out_of_credit": 0, "namesake_dropped": 0}
 
 for c0 in range(0, len(strings), CHUNK):
     if (time.time() - T0) / 60 >= MAX_MINUTES:
@@ -329,8 +329,15 @@ for c0 in range(0, len(strings), CHUNK):
             log(f"  !!! JEV OUT OF CREDIT ({jev_client.out_of_credit}): {len(unsure) - done_k:,} unsure strings keep "
                 f"their first-pass answer. Top up at console.typesafe.ai.")
 
-    rows = [(S[k], [int(i) for i in sorted(out[k][0])], [], {int(i): float(p) for i, p in out[k][1].items()},
-             out[k][2], "sweep" if SWEEP is not None else "nightly", MATCHER_VERSION) for k in range(len(S))]
+    # one_namesake (oxjob #1803): of a listed same-name pair (Korea University Seoul / Tokyo, ...) the smaller one stays
+    # only on its own location words. A row that lost one says so in decider ("<decider>+namesake1"); scores keep every
+    # candidate's p.
+    kept = [nm.one_namesake(S[k], out[k][0]) for k in range(len(S))]
+    totals["namesake_dropped"] += sum(len(out[k][0]) - len(kept[k]) for k in range(len(S)))
+    rows = [(S[k], [int(i) for i in sorted(kept[k])], [],
+             {int(i): float(p) for i, p in out[k][1].items()},
+             out[k][2] + ("+" + nm.NAMESAKE_TAG if len(kept[k]) < len(out[k][0]) else ""),
+             "sweep" if SWEEP is not None else "nightly", MATCHER_VERSION) for k in range(len(S))]
     rows += [(x, [], [], {}, "no_swept_candidate", "sweep", MATCHER_VERSION) for x in skipped]
     for k in range(len(S)):
         totals[out[k][2]] += 1
