@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 import award_country
 import award_investigators
+import org_id_rors
 from test_award_country import PAYLOAD, FakeC, Fixture
 
 
@@ -67,7 +68,7 @@ class People(Fixture):
                    "author_orcid,grant_orcid)")
         sql = (PAYLOAD.replace("{AWARDS}", "awards").replace("{ANSWERS}", "answers")
                .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT))
-               .replace("{INVESTIGATOR_LINKS}", rel))
+               .replace("{INVESTIGATOR_LINKS}", rel).replace("{ORG_ID_RORS}", f"({org_id_rors.EMPTY})"))
         return self.sqlglot.transpile(sql, read="spark", write="duckdb")[0]
 
     def people(self, links=()):
@@ -158,7 +159,7 @@ def test_each_person_gets_the_institutions_its_own_affiliation_matched_country_g
     skipped = f.award("gateway_to_research", lead=("Emory University", "UNITED STATES"))   # a feed grant_addresses does not read
     sql = (PAYLOAD.replace("{AWARDS}", "awards").replace("{ANSWERS}", "answers")
            .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT))
-           .replace("{INVESTIGATOR_LINKS}", award_investigators.EMPTY_LINKS))
+           .replace("{INVESTIGATOR_LINKS}", award_investigators.EMPTY_LINKS).replace("{ORG_ID_RORS}", f"({org_id_rors.EMPTY})"))
     sql = f.sqlglot.transpile(sql, read="spark", write="duckdb")[0]
     rows = {i: (lead, co, inv, aw) for i, lead, co, inv, aw in
             f.con.execute(f"SELECT id, lead_investigator, co_lead_investigator, investigators, institution_awarded FROM ({sql})").fetchall()}

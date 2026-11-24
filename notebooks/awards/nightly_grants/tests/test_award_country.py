@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 import award_country
 import award_investigators
 import create_api
+import org_id_rors
 
 PAYLOAD = (ROOT / "sql/api_payload.sql").read_text()
 
@@ -132,12 +133,14 @@ class FakeC:
         import json
         boot = json.loads((ROOT / "config.prod.json").read_text())["bootstrap_counts"]
         self.config = dict(package_root=str(ROOT), bootstrap_counts={k: 0 for k in boot}, **(config or {}))
-        self.artifacts, self.checks, self.counts = [], {}, {}
+        self.artifacts, self.checks, self.counts, self.versions = [], {}, {}, {}
 
     def guard(self): pass
     def require(self, cond, name):
         if not cond: raise RuntimeError(name)
     def has_extra(self, name): return name in self.extra
+    def bind(self, view, relation):
+        self.bound = getattr(self, "bound", []) + [(view, relation)]; self.versions[view] = dict(relation=relation, version=7)
     def sql(self, statement, params=None): return Frame()
     def artifact(self, name, query, params=None):
         self.artifacts.append((name, query)); return self.r + name
@@ -153,7 +156,7 @@ def payload_query(**kw):
 
 def test_payload_has_no_placeholder_left_and_carries_the_lookup():
     c, q = payload_query()
-    for placeholder in ("{AWARDS}", "{ANSWERS}", "{COUNTRY_LOOKUP}", "{INVESTIGATOR_LINKS}"):
+    for placeholder in ("{AWARDS}", "{ANSWERS}", "{COUNTRY_LOOKUP}", "{INVESTIGATOR_LINKS}", "{ORG_ID_RORS}"):
         assert placeholder in PAYLOAD and placeholder not in q
     assert "FROM dev.lab.ngr_s_awards_candidate oa" in q and "('uk','*','GB','high')" in q
 
@@ -212,8 +215,10 @@ INSTITUTIONS = {            # id: (display_name, country_code)
     96: ("University of Hong Kong", "HK"), 97: ("National Central University", "TW"), 98: ("Chuo University", "JP"),
     85: ("Lincoln University", "US"), 99: ("Washington University in St. Louis", "US"),
     100: ("The University of Texas Health Science Center at Houston", "US"),
+    110: ("Centre National de la Recherche Scientifique", "FR"), 111: ("Institut Néel", "FR"),
+    112: ("Université Grenoble Alpes", "FR"), 113: ("Université Libre de Bruxelles", "BE"),
 }
-RORS = {94, 95, 90}          # institutions with a ROR in the fixture: https://ror.org/0<id, 6 digits>00
+RORS = {94, 95, 90, 110, 111, 112, 113}   # institutions with a ROR in the fixture: https://ror.org/0<id, 6 digits>00
 FUNDERS = {1: "TW", 2: "AU", 3: None, 4: "US", 5: "JP"}   # 1 Taiwan MOST, 2 NHMRC, 3 an international funder, 4 NIH, 5 Japan MHLW
 
 
@@ -245,6 +250,8 @@ class Fixture:
         for i, (name, country) in INSTITUTIONS.items():
             ror = f"https://ror.org/0{i:06d}00" if i in RORS else None
             con.execute("INSERT INTO institutions_api_v VALUES (?, ?, ?, ?, 'education', [])", [i, name, ror, country])
+        con.execute("CREATE TABLE org_id_rors (id_type VARCHAR, org_id VARCHAR, ror VARCHAR, mapping_type VARCHAR)")
+        self.org_id_rors = "org_id_rors"
         con.execute("CREATE TABLE funders_v (funder_id BIGINT, country_code VARCHAR)")
         con.executemany("INSERT INTO funders_v VALUES (?, ?)", list(FUNDERS.items()))
         self.next_id = 0
@@ -265,10 +272,15 @@ class Fixture:
     def answer(self, name, ids):
         self.con.execute("INSERT INTO answers VALUES (?, ?)", [name, list(ids)])
 
+    def rnsr(self, code, institution_ids, mapping_type):
+        for i in institution_ids:
+            self.con.execute("INSERT INTO org_id_rors VALUES ('rnsr', ?, ?, ?)", [code, f"https://ror.org/0{i:06d}00", mapping_type])
+
     def run(self):
         sql = (PAYLOAD.replace("{AWARDS}", "awards").replace("{ANSWERS}", "answers")
                .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT))
-               .replace("{INVESTIGATOR_LINKS}", award_investigators.EMPTY_LINKS))
+               .replace("{INVESTIGATOR_LINKS}", award_investigators.EMPTY_LINKS)
+               .replace("{ORG_ID_RORS}", self.org_id_rors))
         sql = self.sqlglot.transpile(sql, read="spark", write="duckdb")[0]
         rows = self.con.execute(f"SELECT id, institution_awarded FROM ({sql})").fetchall()
         return {i: sorted(int(x["id"].rsplit("I", 1)[1]) for x in awarded) for i, awarded in rows}
@@ -570,3 +582,57 @@ def test_grant_addresses_are_the_names_read():
 
 def test_the_ten_skipped_feeds_are_listed_once():
     assert PAYLOAD.count("'argentina_mincyt', 'openaire_fwf', 'researchfi', 'nobelprize_api'") == 1
+
+
+# ---------- a French lab code through scanR's pinned mapping (oxjob #123.5) ----------
+def test_payload_reads_the_lab_code_mapping_only_when_configured():
+    _, q = payload_query()
+    assert "dev.lab.ngr_s_org_id_rors_empty m ON m.id_type = 'rnsr'" in q
+    c = FakeC(config={"org_id_rors": "openalex.awards.org_id_rors"})
+    org_id_rors.bind(c)                                   # bind_inputs, at run start
+    create_api.run(c)
+    q = next(q for n, q in c.artifacts if n == "api_payload")
+    assert "JOIN org_id_rors_v m ON m.id_type = 'rnsr'" in q
+    assert c.bound == [("org_id_rors", "openalex.awards.org_id_rors")]          # bound once, by bind_inputs, not by the payload
+    assert {"ORG_ID_RORS_SHAPE", "ORG_ID_RORS_UNIQUE", "ORG_ID_RORS_ONE_TYPE_PER_CODE", "ORG_ID_RORS_TOO_FEW"} <= set(c.checks)
+    assert "n < 8500" in c.checks["ORG_ID_RORS_TOO_FEW"]
+
+
+def test_payload_refuses_a_configured_mapping_that_was_not_bound_at_run_start():
+    with pytest.raises(RuntimeError, match="ORG_ID_RORS_NOT_BOUND"):
+        payload_query(config={"org_id_rors": "openalex.awards.org_id_rors"})
+
+
+def test_bind_inputs_binds_the_mapping_at_run_start():
+    src = (ROOT / "lib/nightly_runtime.py").read_text()
+    body = src.split("def bind_inputs(self):", 1)[1].split("\n    def ", 1)[0]
+    assert body.index("org_id_rors.bind(self)") < body.index("self.derive_inputs()")
+
+
+def test_prod_config_names_the_mapping_table():
+    import json
+    assert json.loads((ROOT / "config.prod.json").read_text())["org_id_rors"] == "openalex.awards.org_id_rors"
+
+
+def test_an_rnsr_lab_code_adds_the_labs_rors_next_to_the_name_match():
+    f = Fixture()
+    f.answer("CNRS délégation Alpes", [110])
+    f.rnsr("200717524X", [111], "self")                    # the lab has its own ROR
+    f.rnsr("199511665F", [110, 112], "institution")        # a lab with none: its supervising institutions
+    own = f.award("anr_opendata", lead=("CNRS délégation Alpes", "France", [("200717524X", "rnsr")]))
+    parents = f.award("anr_opendata", lead=("Laboratoire sans ROR", "France", [(" 199511665f ", "RNSR")]))
+    unknown = f.award("anr_opendata", lead=("CNRS délégation Alpes", "France", [("200000000Z", "rnsr")]))
+    not_rnsr = f.award("anr_opendata", lead=("CNRS délégation Alpes", "France", [("200717524X", "grid")]))
+    got = f.run()
+    assert got[own] == [110, 111]        # the managing body by its name, the lab by its code: neither overrules the other
+    assert got[parents] == [110, 112]    # nothing answers the name; the code still places the grant
+    assert got[unknown] == [110] and got[not_rnsr] == [110]
+
+
+def test_an_rnsr_ror_in_another_country_is_dropped_by_the_country_guard():
+    f = Fixture()
+    f.rnsr("201000001A", [113], "self")
+    wrong_country = f.award("anr_opendata", lead=("Laboratoire", "France", [("201000001A", "rnsr")]))
+    no_country = f.award("anr_opendata", lead=("Laboratoire", None, [("201000001A", "rnsr")]))
+    got = f.run()
+    assert got[wrong_country] == [] and got[no_country] == [113]

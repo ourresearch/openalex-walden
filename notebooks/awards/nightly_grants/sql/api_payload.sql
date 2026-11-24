@@ -101,6 +101,10 @@ all_strings AS (
 -- The funder's own id for the organisation: a ROR in the person's affiliation.ids (NHMRC, FCT, GACR, DataCite ...) names the
 -- institution with no matching (oxjob #2032). It is checked by the country guard like a matched name. Only a ROR id counts:
 -- https://ror.org/0xxxxxxxx, the same with http or no scheme, or the bare id.
+-- A French lab code (RNSR, which ANR records on its grants) counts through scanR's pinned mapping ({ORG_ID_RORS}, lib/org_id_rors.py,
+-- oxjob #123.5): the lab's own ROR, or for a lab with none its supervising institutions' RORs. They join the name's match, as a
+-- funder's ROR does; neither overrules the other (ANR's text usually names the managing body, CNRS or Inserm, and the code the lab
+-- inside it: both were right in 28 of 30 grants read on 23 Nov).
 funder_rors AS (
   SELECT DISTINCT r.award_id, r.provenance, r.record_country, r.aff_json, i.id AS institution_id
   FROM (
@@ -109,6 +113,15 @@ funder_rors AS (
     FROM people p
     LATERAL VIEW EXPLODE(p.aff.ids) ids AS x
     WHERE UPPER(x.type) = 'ROR'
+    UNION ALL
+    SELECT q.award_id, q.provenance, q.record_country, q.aff_json, REGEXP_EXTRACT(m.ror, '([0-9a-z]{9})$', 1)
+    FROM (
+      SELECT p.award_id, p.provenance, p.record_country, TO_JSON(p.aff) AS aff_json, UPPER(TRIM(x.id)) AS rnsr
+      FROM people p
+      LATERAL VIEW EXPLODE(p.aff.ids) ids AS x
+      WHERE UPPER(x.type) = 'RNSR'
+    ) q
+    JOIN {ORG_ID_RORS} m ON m.id_type = 'rnsr' AND m.org_id = q.rnsr
   ) r
   JOIN institutions_api_v i ON i.ror = CONCAT('https://ror.org/', r.ror_key)
 ),

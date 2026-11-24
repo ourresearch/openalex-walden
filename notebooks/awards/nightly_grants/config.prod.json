@@ -92,6 +92,7 @@
     "suppress": []
   },
   "list_bindings": "openalex.awards.award_list_bindings",
+  "org_id_rors": "openalex.awards.org_id_rors",
   "relations_drop_fuse": 0.01,
   "recipients_drop_fuse": 0.01,
   "usd_drop_fuse": 0.01,

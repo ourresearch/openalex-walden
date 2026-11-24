@@ -7,6 +7,7 @@ from test_award_country import Fixture, PAYLOAD, ROOT
 from test_award_flows import BASE
 import award_country
 import award_investigators
+import org_id_rors
 import create_api
 import nightly_runtime
 import sync_awards
@@ -31,7 +32,7 @@ def test_payload_serves_keywords_and_sdgs_as_given_and_empty_when_none():
     f.con.execute("UPDATE awards SET keywords = ['kw'], sustainable_development_goals = ['sdg3'] WHERE id = ?", [tagged])
     sql = f.sqlglot.transpile(PAYLOAD.replace("{AWARDS}", "awards").replace("{ANSWERS}", "answers")
                               .replace("{COUNTRY_LOOKUP}", award_country.lookup_relation_sql(ROOT))
-                              .replace("{INVESTIGATOR_LINKS}", award_investigators.EMPTY_LINKS), read="spark", write="duckdb")[0]
+                              .replace("{INVESTIGATOR_LINKS}", award_investigators.EMPTY_LINKS).replace("{ORG_ID_RORS}", f"({org_id_rors.EMPTY})"), read="spark", write="duckdb")[0]
     rows = {i: (k, s) for i, k, s in f.con.execute(f"SELECT id, keywords, sustainable_development_goals FROM ({sql})").fetchall()}
     assert rows[tagged] == (["kw"], ["sdg3"])
     assert rows[bare] == ([], [])

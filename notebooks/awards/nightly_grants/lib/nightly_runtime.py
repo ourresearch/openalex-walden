@@ -218,6 +218,8 @@ class Nightly:
             self.bind(view, relation)
         import list_legs                                      # pinned ADD / SUPPRESS lists (config "list_legs"); before derive: feeds a leg
         list_legs.bind(self)
+        import org_id_rors                                    # pinned RNSR lab code -> ROR (config "org_id_rors"), oxjob #123.5
+        org_id_rors.bind(self)
         self.derive_inputs()
 
     def identity_file(self, name):

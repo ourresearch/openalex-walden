@@ -4,6 +4,7 @@ from stable_award_ids import ident
 import award_country
 import award_investigators
 import award_research_scope
+import org_id_rors
 
 EMPTY_ANSWERS='SELECT CAST(NULL AS STRING) raw_affiliation_string,CAST(NULL AS ARRAY<BIGINT>) institution_ids WHERE false'
 LINK_COLUMNS=('parent_awards_full','sub_awards_full')                          # sub-award links (award_relations.py, 10-01)
@@ -76,6 +77,7 @@ def run(c):
     template=template.replace('{AWARDS}',r+'awards_candidate').replace('{ANSWERS}',answers_relation(c))
     template=template.replace('{COUNTRY_LOOKUP}',award_country.lookup_relation_sql(c.config['package_root']))   # country/award_country_lookup.csv, validated
     template=template.replace('{INVESTIGATOR_LINKS}',award_investigators.links_relation(c))   # oxjob #1847: author on each investigator (optional input)
+    template=template.replace('{ORG_ID_RORS}',org_id_rors.relation(c))   # oxjob #123.5: RNSR lab code -> ROR (optional config key)
     c.artifact('api_payload',f'SELECT a.*,:rid release_id FROM ({template}) a')
     award_research_scope.run(c,'api_payload')          # research flag reads the matched institutions (Kyle's 10-08 rule): after the payload
     prev='previous_api_v'   # yesterday's published awards_api, bound at run start (was the release's api_final pin)
