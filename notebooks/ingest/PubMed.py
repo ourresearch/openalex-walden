@@ -184,7 +184,7 @@ def pubmed_markup_abstract_sql(markup):
     """SQL: the abstract from <Abstract>'s raw inner XML, the struct path's rule on whole texts: each AbstractText body,
     'Label: ' in front (else 'NlmCategory: ' unless UNASSIGNED), joined by a space; empty bodies skipped. Pure SQL, so
     the same text backfills pubmed_works (#1052 work/backfill)."""
-    body = r"'(?s)<AbstractText((?:\\s[^>]*)?)>(.*?)</AbstractText>'"
+    body = r"'(?s)<AbstractText((?:\\s[^>]*)?)(?<!/)>(.*?)</AbstractText>'"  # (?<!/): <AbstractText .../> is empty
     label = r"""regexp_extract(a, '\\sLabel="([^"]*)"', 1)"""
     category = r"""regexp_extract(a, '\\sNlmCategory="([^"]*)"', 1)"""
     return (f"nullif(concat_ws(' ', zip_with("

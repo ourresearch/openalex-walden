@@ -45,6 +45,7 @@ CASES = [
     ('<AbstractText>p<0.001 and <i>x</i></AbstractText>', 'p<0.001 and <i>x</i>'),  # decoded '<' in the text stays
     ('<AbstractText Label="AIMS">line one\n<i>two</i>\nthree</AbstractText>', 'AIMS: line one\n<i>two</i>\nthree'),
     ('<AbstractText>  <i>Whole abstract in italics.</i>  </AbstractText>', '<i>Whole abstract in italics.</i>'),
+    ('<AbstractText Label="BACKGROUND"/><AbstractText Label="RESULTS">r<i>x</i></AbstractText>', 'RESULTS: r<i>x</i>'),
 ]
 
 # (<Abstract> inner XML, takes the markup path?)
