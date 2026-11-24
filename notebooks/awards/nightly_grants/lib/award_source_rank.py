@@ -37,12 +37,16 @@ AGGREGATORS = (
     ("prefix", "openaire_", "OpenAIRE copy of a funder's grants"),
     ("prefix", "dimensions_", "Dimensions copy of a funder's grants"),
 )
+# A source that is one funder's own data and another funder's copy: (how to match the provenance, text, funder_id, why).
+COPIES_FOR_FUNDER = (
+    ("exact", "gateway_to_research", 4320335087,
+     "Innovate UK's grants: GtR holds a copy, Innovate UK's own list (innovate_uk) wins (Rohan 23 Nov: 32,283 grants)"),
+)
 # Not decided (19 Nov), left at rank 1 until Rohan or Kyle says otherwise; the dev run measures what moving each to rank 3 changes:
 UNDECIDED = (
     ("suffix", "_europepmc_grist", "a funder's grant list held by Europe PMC (BHF, Diabetes UK, India Alliance)"),
     ("suffix", "_360giving", "a 360Giving file the funder publishes itself"),
     ("exact", "agaur_raisc_socrata", "the RAISC portal"),
-    ("exact", "gateway_to_research", "Gateway to Research, which also holds Innovate UK's grants (Innovate UK's own list: innovate_uk)"),
 )
 
 
@@ -85,6 +89,8 @@ def rank(provenance, legacy_priority, funder_id=None, owners=None):
         return 4
     if any(_is(provenance or "", kind, text) for kind, text, _ in AGGREGATORS):
         return 3
+    if any(_is(provenance or "", kind, text) and funder_id == fid for kind, text, fid, _ in COPIES_FOR_FUNDER):
+        return 3
     if owners and provenance in owners and funder_id not in owners[provenance]:
         return 3
     return 1
@@ -111,7 +117,13 @@ def rank_sql(x="x", not_own=None):
     # a row with no number has no rank (NULL): its observation then fails INVALID_OBSERVATION (is_direct NULL), as on main
     return (f"CASE WHEN {_old(x)} IS NULL THEN NULL WHEN {is_grant_doi_sql(x)} THEN 2"
             f" WHEN NOT {is_loader_sql(x)} THEN 4"
-            f" WHEN {matches_sql(_prov(x), AGGREGATORS)} THEN 3{own} ELSE 1 END")
+            f" WHEN {matches_sql(_prov(x), AGGREGATORS)} OR {copies_sql(x)} THEN 3{own} ELSE 1 END")
+
+
+def copies_sql(x="x"):
+    """True for a row of a COPIES_FOR_FUNDER source written for that funder."""
+    return "(" + " OR ".join(f"({_is_sql(_prov(x), kind, text)} AND {x}.funder_id={int(fid)})"
+                             for kind, text, fid, _ in COPIES_FOR_FUNDER) + ")"
 
 
 def owner_join_sql(x="x", owners="source_owners_v"):

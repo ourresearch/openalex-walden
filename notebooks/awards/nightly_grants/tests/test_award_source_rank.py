@@ -18,6 +18,7 @@ duckdb = pytest.importorskip("duckdb")
 CASES = [
     ("nih_exporter", 3, 1, 1), ("nwopen", 11, 20, 1), ("fwf_open_api", 51, 30, 1), ("ucop_grants", 106, 40, 1),
     ("bhf_europepmc_grist", 575, 50, 1),                        # not decided: stays rank 1
+    ("gateway_to_research", 30, 4320335087, 3), ("gateway_to_research", 30, 4320306142, 1),   # a copy for Innovate UK, own data for a council
     ("crossref_work", 1, 30, 2), ("datacite", 1, 40, 2),
     ("usaspending", 26, 1, 3), ("usaspending_subaward", 703, 1, 3), ("usaspending_cdc", 55, 1, 3), ("iati_fcdo", 600, 1, 3),
     ("idrc_iati", 37, 1, 3), ("hhs_taggs", 417, 1, 3), ("openaire_fwf", 29, 30, 3),
@@ -117,9 +118,20 @@ def test_a_row_without_a_number_has_no_rank():
 
 
 def test_undecided_sources_are_rank_one_and_named():
-    for prov in ("bhf_europepmc_grist", "guys_st_thomas_360giving", "agaur_raisc_socrata", "gateway_to_research"):
+    for prov in ("bhf_europepmc_grist", "guys_st_thomas_360giving", "agaur_raisc_socrata"):
         assert R.rank(prov, 100) == 1 and any(R._is(prov, k, x) for k, x, _ in R.UNDECIDED), prov
     assert not any(R._is("innovate_uk", k, x) for k, x, _ in R.UNDECIDED)
+
+
+def test_gateway_to_research_is_a_copy_only_for_innovate_uk():
+    """Rohan 23 Nov: where Innovate UK's own list holds a grant, it wins over Gateway to Research's copy. GtR stays the research
+    councils' own data, and still serves an Innovate UK grant that Innovate UK's list doesn't hold."""
+    IUK = 4320335087
+    c = con([(1, "gateway_to_research", 30, IUK, "10001", None, "2026-11-01"), (2, "innovate_uk", 3, IUK, "10001", None, "2020-01-01"),
+             (3, "gateway_to_research", 30, IUK, "10002", None, None),
+             (4, "gateway_to_research", 30, 4320306142, "EP/X1", None, None), (5, "innovate_uk", 3, 4320306142, "EP/X1", None, None)])
+    assert elect(c) == [(4320306142, "ep/x1", "gateway_to_research"), (IUK, "10001", "innovate_uk"), (IUK, "10002", "gateway_to_research")]
+    assert R.rank("gateway_to_research", 30, IUK) == 3 and R.rank("gateway_to_research", 30, 4320306142) == 1
 
 
 class Row(dict):
