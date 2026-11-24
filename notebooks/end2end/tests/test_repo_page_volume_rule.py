@@ -223,6 +223,53 @@ def test_shared_rule_in_cell():
     assert 'WHERE l.work_id IS NOT NULL AND (c.rn = 1 OR c.shared)' in CELL
 
 
+def work_value(records):
+    """The cell's (volume, issue) for one work. records maps each repository record to the (vol, iss) of its newest
+    pages: every page stamped with the record's newest fetched_at counts (Meta Tags Daily gives all pages of a run the
+    run's time). A work takes a volume only when all those pages that state one (not a year) agree; a record's issue is
+    the one its pages that state an issue agree on, and the work's issue needs every record to give the same one."""
+    rows = []
+    for pages in records.values():
+        kept = [(volume(v), issue(i)) for v, i in pages if volume(v)]
+        if kept:
+            issues = {i for _, i in kept if i}
+            rows.append(({v for v, _ in kept}, issues.pop() if len(issues) == 1 else None))
+    vols = set().union(*(v for v, _ in rows)) if rows else set()
+    if len(vols) != 1:
+        return None
+    issues = {i for _, i in rows}
+    return vols.pop(), (issues.pop() if len(issues) == 1 and None not in issues else None)
+
+
+def test_tied_pages_all_count():
+    # 24 Nov 2026: ROW_NUMBER took one of a record's same-time pages at random, so ~3,000 works' values changed nightly
+    assert 'RANK() OVER (PARTITION BY p.pmh_id ORDER BY p.fetched_at DESC) AS rn' in CELL
+    assert 'RANK() OVER (PARTITION BY work_id, pmh_id ORDER BY fetched_at DESC) AS rn' in CELL
+    assert 'ROW_NUMBER()' not in CELL
+    assert 'COLLECT_SET(vol) AS vols, IF(SIZE(COLLECT_SET(iss)) = 1, GET(COLLECT_SET(iss), 0), NULL) AS iss' in CELL
+    assert 'GROUP BY work_id, pmh_id' in CELL
+    assert 'HAVING SIZE(ARRAY_DISTINCT(FLATTEN(COLLECT_LIST(r.vols)))) = 1' in CELL
+
+
+def test_tied_pages_rule():
+    # W7162995272: PubMed Central's page states issue 1, the record's other page of the same run states none
+    assert work_value({'oai:pubmedcentral.nih.gov:13524915': [('16', '1'), ('16', None)]}) == ('16', '1')
+    # W7174593: a bepress copy's page carries only bepress_citation_volume (no citation_volume) beside the journal's page
+    assert work_value({'oai:openscholarship.wustl.edu:law_lawreview-4106': [('25', None), (None, None)]}) == ('25', None)
+    # W4321256 (Pure): a year in place of the volume is left aside
+    assert work_value({'oai:pure.eur.nl:openaire_cris_publications/fc59d040': [('2013', None), ('12', None)]}) == ('12', None)
+    # two pages of one run that disagree on the volume: no volume
+    assert work_value({'oai:repositorio.uan.edu.co:123456789/7372': [('10', None), ('22', None)]}) is None
+    # ... nor when the disagreeing page belongs to another record of the work
+    assert work_value({'a': [('7', '2')], 'b': [('8', '2')]}) is None
+    # pages that disagree on the issue: the volume stays, no issue
+    assert work_value({'r': [('25', '2'), ('25', '3')]}) == ('25', None)
+    # one record gives no issue: no issue for the work (unchanged rule across records)
+    assert work_value({'a': [('7', '2')], 'b': [('7', None)]}) == ('7', None)
+    assert work_value({'a': [('7', '2')], 'b': [('7', '02')]}) == ('7', '2')
+    assert work_value({'a': [(None, '2')]}) is None
+
+
 def test_no_dollar_in_sql():
     # oxjob #1932: a job run blanks $1 / $name in notebook SQL
     assert '$' not in CELL
