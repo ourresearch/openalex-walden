@@ -38,7 +38,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.43-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.45-py3-none-any.whl
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -83,7 +83,9 @@ GATE_MOJIBAKE = (
 )
 # oxjob #2059: a leading "Abstract" heading, any case (the cleaner decides which ones go)
 GATE_HEADING = r"^\s*(?i:a ?bstract)"
-GATE = f"({GATE_ENTITY})|({GATE_TAG})|({GATE_MOJIBAKE})|({GATE_HEADING})"
+# oxjob #2570: a line break before closing punctuation or after an opening bracket (the cleaner decides)
+GATE_WRAP = r"\n[\s\p{Z}\x{85}\x{1C}-\x{1F}]*[,:;.?!)\]]|[(\[][\s\p{Z}\x{85}\x{1C}-\x{1F}]*\n"
+GATE = f"({GATE_ENTITY})|({GATE_TAG})|({GATE_MOJIBAKE})|({GATE_HEADING})|({GATE_WRAP})"
 
 print(f"source  : {SOURCE_TABLE}")
 print(f"stage   : {STAGE_TABLE}")

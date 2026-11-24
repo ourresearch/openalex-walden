@@ -314,6 +314,67 @@ def test_abstract_heading_strip_idempotent():
         assert tc.strip_abstract_heading(once) == once, s
 
 
+# --- Deposit line breaks before punctuation (oxjob #2570) ---------------------- #
+
+def test_line_break_before_punctuation_dropped():
+    # Crossref deposits, 23 Nov 2026
+    for s, want in [
+        ("<i>Nāpōwawā‘enakaulua</i>\n                    : A Close Quasar Pair at Cosmic Dawn",
+         "Nāpōwawā‘enakaulua: A Close Quasar Pair at Cosmic Dawn"),                           # W7214765603
+        ("<i>lordif</i>\n          : An R Package for Detecting Differential Item Functioning",
+         "lordif: An R Package for Detecting Differential Item Functioning"),                 # W2149457559
+        ("common carp, <i>Cyprinus carpio</i>\n          , to transportation",
+         "common carp, Cyprinus carpio, to transportation"),                                  # 10.1111/are.15564
+        ("<i>CHES-1-like</i>\r\n  , the ortholog", "CHES-1-like, the ortholog"),
+        ("Ruling <i>The Void</i>\n ; a decade on", "Ruling The Void; a decade on"),
+        ("Do they <i>work</i>\n   ? Evidence", "Do they work? Evidence"),
+        ("Professor Arthur Holmes</i>\n  . W. B. Harland", "Professor Arthur Holmes. W. B. Harland"),
+        ("ends at <sup>2</sup>\n  ] here", "ends at 2] here"),
+    ]:
+        assert tc.clean_title(s) == want, (s, tc.clean_title(s))
+
+
+def test_line_break_inside_brackets_dropped():
+    for s, want in [
+        ("Pepper (\n  <i>Capsicum annuum</i>\n  )", "Pepper (Capsicum annuum)"),                 # W2338700571
+        ("Karanja Oil (\n<i>Pongamia pinnata</i>\n)", "Karanja Oil (Pongamia pinnata)"),
+        ("Benzo[\n  <i>a</i>\n  ]Phenazinum", "Benzo[a]Phenazinum"),                            # W4211042059
+        ("rice (\n  <i>Oryza sativa</i>\n  L.)", "rice (Oryza sativa L.)"),
+    ]:
+        assert tc.clean_title(s) == want, (s, tc.clean_title(s))
+
+
+def test_spaces_without_a_line_break_stay():
+    for s in ["Titre : sous-titre", "Pourquoi ? Parce que", "Karanja Oil ( Pongamia pinnata )",
+              "H 2 O 2 and B 12", "p < 0.001 ( n = 5 )"]:
+        assert tc.clean_title(s) == s, s
+    # a line break before a word, or before an opening bracket, is an ordinary space
+    assert tc.clean_title("<i>E. coli</i>\n   growth (\n<i>in vitro</i>\n)") == "E. coli growth (in vitro)"
+    assert tc.clean_title("first line\n  (second)") == "first line (second)"
+
+
+def test_spaced_ellipsis_after_line_break_kept():
+    # SSRN teasers (W2263093376): "market.\n. . ." must not become "market.. . ."
+    assert tc.clean_title("into the market.\n . . . The paper") == "into the market. . . . The paper"
+    assert tc.clean_title("words\n...more") == "words...more"
+
+
+def test_drop_wrap_whitespace_idempotent():
+    for s in ["<i>x</i>\n  , y", "(\n<i>a</i>\n)", "a.\n . . .", "plain"]:
+        once = tc.clean_title(s)
+        assert tc.clean_title(once) == once, s
+    assert tc.drop_wrap_whitespace(None) is None
+    assert tc.drop_wrap_whitespace("") == ""
+
+
+def test_drop_wrap_whitespace_stays_fast_on_long_whitespace():
+    import time
+    for s in ["a" + "\n" * 20000 + "b", "a" + " \n" * 20000 + "b", "a" + " " * 20000 + "b"]:
+        t = time.time()
+        tc.clean_title(s)
+        assert time.time() - t < 2, len(s)
+
+
 def test_none_and_nonstr_passthrough():
     assert tc.clean_title(None) is None
     assert tc.clean_title("") == ""

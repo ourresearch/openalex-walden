@@ -1,5 +1,5 @@
 from .normalize import *
-from .text_clean import clean_text, clean_title, strip_abstract_heading
+from .text_clean import clean_text, clean_title, drop_wrap_whitespace, strip_abstract_heading
 
 def clean_abstract_text(abstract_string_input):
     # Shared cleaner: the searched `abstract`/`fulltext` ES fields and the
@@ -17,7 +17,7 @@ def clean_abstract_text(abstract_string_input):
     # abstract path — once here, once inside f_generate_inverted_index) and strips tags
     # LAST so entity-encoded markup is neutralized (inert). The residual JATS/<p> regex
     # below is now redundant with strip_tags but kept as belt-and-suspenders.
-    abstract_s = clean_text(abstract_string_input)
+    abstract_s = drop_wrap_whitespace(clean_text(abstract_string_input))  # oxjob #2570
 
     abstract_s = re.sub(
         r"\n|\t|<jats:[^>]*?>|</jats:[^>]*?>|<p>|</p>",

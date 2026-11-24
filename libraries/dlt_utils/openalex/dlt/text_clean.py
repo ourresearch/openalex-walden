@@ -569,11 +569,43 @@ def strip_abstract_heading(s):
     return _ABSTRACT_HEADING_RE.sub("", s, count=1)
 
 
+# oxjob #2570: a pretty-printed deposit starts a new indented line after an inline tag
+# ("<i>Cyprinus carpio</i>\n      , to"), and collapsing that whitespace to one space served "carpio , to".
+# Whitespace holding a line break goes before closing punctuation (not a "." that starts a spaced ellipsis
+# ". . .") and after an opening bracket. A space without a line break stays (French "Titre : sous-titre").
+# Same output as r"[ \t\r\f\v]*\n\s*(?=[,:;?!)\]]|\.(?!\s\.))" then r"(?<=[(\[])[ \t\r\f\v]*\n\s*" -> "", in one
+# linear pass over whole whitespace runs (those two backtrack quadratically on a long run).
+_WRAP_RUN_RE = re.compile(r"(?<!\s)\s*\n\s*")
+_SPACED_DOT_RE = re.compile(r"\s\.")
+_LINE_SPACE = " \t\r\f\v"
+
+
+def _wrap_run(m):
+    s, run, end = m.string, m.group(0), m.end()
+    nxt = s[end:end + 1]
+    if nxt and (nxt in ",:;?!)]" or (nxt == "." and not _SPACED_DOT_RE.match(s, end + 1))):
+        j = run.index("\n")
+        while j > 0 and run[j - 1] in _LINE_SPACE:
+            j -= 1
+        return run[:j]
+    if m.start() > 0 and s[m.start() - 1] in "([" and run.lstrip(_LINE_SPACE).startswith("\n"):
+        return ""
+    return run
+
+
+def drop_wrap_whitespace(s):
+    """Drop the deposit's line-break whitespace before closing punctuation and after an opening bracket.
+    Run after tags are stripped and before whitespace collapses."""
+    if not s or "\n" not in s:
+        return s
+    return _WRAP_RUN_RE.sub(_wrap_run, s)
+
+
 def clean_title(title):
     """Clean a display title: mojibake + entities + strip-all-tags, then collapse whitespace.
     Preserves case and accents (it's display text, not the matching key). None/non-str pass
     through unchanged. Applied AFTER merge_key derivation so the matching key is unaffected."""
     if not title or not isinstance(title, str):
         return title
-    cleaned = " ".join(clean_text(title).split()).strip()
+    cleaned = " ".join(drop_wrap_whitespace(clean_text(title)).split()).strip()
     return cleaned if cleaned else title

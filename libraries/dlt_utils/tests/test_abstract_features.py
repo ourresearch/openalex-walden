@@ -8,10 +8,11 @@ import ast
 import os
 import re
 
-from openalex.dlt.text_clean import clean_text, strip_abstract_heading
+from openalex.dlt.text_clean import clean_text, drop_wrap_whitespace, strip_abstract_heading
 
 _SRC = open(os.path.join(os.path.dirname(__file__), "..", "openalex", "dlt", "transform.py")).read()
-_ns = {"clean_text": clean_text, "strip_abstract_heading": strip_abstract_heading, "re": re}
+_ns = {"clean_text": clean_text, "drop_wrap_whitespace": drop_wrap_whitespace,
+       "strip_abstract_heading": strip_abstract_heading, "re": re}
 for _node in ast.parse(_SRC).body:
     if isinstance(_node, ast.FunctionDef) and _node.name in (
             "clean_abstract_text", "_inverted_index_from_cleaned", "f_generate_inverted_index"):
@@ -69,3 +70,25 @@ def test_text_and_index_agree_after_heading_strip():
         assert clean_abstract_text(cleaned) == cleaned, raw
         assert f_generate_inverted_index(raw) == _inverted_index_from_cleaned(cleaned), raw
         assert '"Abstract"' not in f_generate_inverted_index(raw) and '"ABSTRACT"' not in f_generate_inverted_index(raw)
+
+
+# oxjob #2570: raw Crossref JATS, pretty-printed after an inline tag (W7214765603, 10.1177/10781552241281936).
+AAS = ("<jats:p>We present the discovery and first characterization of\n                    <jats:italic>"
+       "Nāpōwawā‘enakaulua</jats:italic>\n                    , the most compact known quasar pair</jats:p>")
+SAGE = ("<jats:p>a panel for <jats:italic>DPYD</jats:italic>\n , <jats:italic>TPMT</jats:italic>\n , "
+        "<jats:italic>NUDT15</jats:italic>\n , and <jats:italic>UGT1A1</jats:italic>\n variants (\n"
+        "<jats:italic>n</jats:italic> = 12\n ).</jats:p>")
+
+
+def test_line_break_before_punctuation_dropped_in_abstracts():
+    assert clean_abstract_text(AAS) == ("We present the discovery and first characterization of Nāpōwawā‘enakaulua, "
+                                        "the most compact known quasar pair")
+    assert clean_abstract_text(SAGE) == "a panel for DPYD, TPMT, NUDT15, and UGT1A1 variants (n = 12)."
+
+
+def test_text_and_index_agree_after_line_break_drop():
+    for raw in (AAS, SAGE):
+        cleaned = clean_abstract_text(raw)
+        assert clean_abstract_text(cleaned) == cleaned, raw
+        assert f_generate_inverted_index(raw) == _inverted_index_from_cleaned(cleaned), raw
+        assert '"Nāpōwawā‘enakaulua,"' in f_generate_inverted_index(AAS)
