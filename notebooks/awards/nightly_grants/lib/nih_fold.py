@@ -64,6 +64,7 @@ LOOSE_SQL = ("CASE WHEN regexp_replace({n},'[^A-Z0-9]','') RLIKE '^[1-9]?[A-Z][A
              "lpad(regexp_extract(regexp_replace({n},'[^A-Z0-9]',''),'([0-9]+)$',1),6,'0')) END")
 AMOUNT_POLICIES = ("null", "sum", "elected")        # Q2; default null; prod picks via config nih_fold.amount (Rohan 11-16: sum;
                                                     # 11-19: a sum only when every bound year has a cost, option B)
+FY1985_START = "DATE'1984-10-01'"                  # NIH's first published fiscal year (ExPORTER and RePORTER) begins here
 TITLE_POLICIES = ("chosen_year", "elected")         # Q5; default chosen_year (latest non-subproject, non-supplement year)
 
 
@@ -480,8 +481,12 @@ def _nih_project(c):
     # projects whose sum misses a bound year that has no cost (ExPORTER's FY1985-1999 project files carry none): under sum they get no
     # amount, so this counts the totals option B withholds
     c.count("nih_amount_partial", f"(SELECT stable_id FROM {r}nih_span WHERE amount_sum>0 AND years_without_cost>0) x")
+    # NIH publishes no cost before FY1985 (ExPORTER and RePORTER both start there), so a project that began before 1 Oct 1984 has
+    # funded years no source shows: no sum either. A project with no start date is not held back. Counts the totals withheld.
+    c.count("nih_amount_before_fy1985", f"""(SELECT stable_id FROM {r}nih_span WHERE amount_sum>0 AND years_without_cost=0
+      AND start_date<{FY1985_START}) x""")
     title = s["title"] == "chosen_year"
-    amount = {"null": "CAST(NULL AS DOUBLE)", "sum": "CASE WHEN sp.currencies<=1 AND sp.amount_sum>0 AND sp.years_without_cost=0 THEN sp.amount_sum END", "elected": "a.amount"}[s["amount"]]
+    amount = {"null": "CAST(NULL AS DOUBLE)", "sum": f"CASE WHEN sp.currencies<=1 AND sp.amount_sum>0 AND sp.years_without_cost=0 AND coalesce(sp.start_date,{FY1985_START})>={FY1985_START} THEN sp.amount_sum END", "elected": "a.amount"}[s["amount"]]
     pick = lambda col: f"CASE WHEN n.stable_id IS NOT NULL AND t.stable_id IS NOT NULL THEN t.{col} ELSE a.{col} END" if title else f"a.{col}"
     c.artifact("awards_candidate_before_nih", f"SELECT * FROM {r}awards_candidate")
     over = {

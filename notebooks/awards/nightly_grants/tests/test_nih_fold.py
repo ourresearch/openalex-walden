@@ -163,8 +163,9 @@ def projection(**settings):
 
 def test_amount_switch():
     assert "THEN CAST(NULL AS DOUBLE) ELSE a.amount END amount" in projection()          # default: null until Kyle rules
-    assert ("THEN CASE WHEN sp.currencies<=1 AND sp.amount_sum>0 AND sp.years_without_cost=0 THEN sp.amount_sum END ELSE a.amount END amount"
-            in projection(amount="sum"))                                               # Rohan 11-19: complete totals only
+    assert ("THEN CASE WHEN sp.currencies<=1 AND sp.amount_sum>0 AND sp.years_without_cost=0 "
+            "AND coalesce(sp.start_date,DATE'1984-10-01')>=DATE'1984-10-01' THEN sp.amount_sum END ELSE a.amount END amount"
+            in projection(amount="sum"))       # Rohan 11-19: complete totals only; no project that began before FY1985
     assert "THEN a.amount ELSE a.amount END amount" in projection(amount="elected")
     with pytest.raises(RuntimeError, match="NIH_FOLD_SETTINGS"):
         projection(amount="max")
@@ -181,7 +182,7 @@ def test_sum_reads_each_exporter_year_once():
     assert "count_if(y.observation_key IS NOT NULL AND y.amount IS NULL) years_without_cost" in q["nih_span"]
     assert "b.payload.provenance" in q["nih_obs"]
     # counts, not gates: partial sums, rows the one-per-number pick drops, ExPORTER years still served outside their project's sum
-    assert {"nih_amount_partial", "nih_amount_twin_years", "nih_amount_years_outside"} <= set(c.counts)
+    assert {"nih_amount_partial", "nih_amount_twin_years", "nih_amount_years_outside", "nih_amount_before_fy1985"} <= set(c.counts)
 
 
 def test_title_switch_and_number_always_primary():

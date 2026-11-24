@@ -144,6 +144,11 @@ OBS = [  # survivor, observation, direct, priority, number, provenance, amount, 
     # project 80: every year has a cost -> the sum; two years with the same (flat) budget are two awards, not one
     (80, 'f1', True, 3, '5R01DK000080-01', 'nih_exporter', 300000.0, '2026-11-01'),
     (80, 'f2', True, 3, '5R01DK000080-02', 'nih_exporter', 300000.0, '2026-11-01'),
+    # project 90: began in April 1981 (before FY1985, NIH's first published year); every year we hold has a cost -> still no amount
+    (90, 'e85', True, 3, '5P01HL000090-05', 'nih_exporter', 400000.0, '2026-11-01'),
+    (90, 'e86', True, 3, '5P01HL000090-06', 'nih_exporter', 420000.0, '2026-11-01'),
+    # project 95: intramural, no start date on any record, every year (FY2007 on) has a cost -> the sum (no start date is not "before")
+    (95, 'z07', True, 3, 'ZIAAI000095-01', 'nih_exporter', 90000.0, '2026-11-01'),
     # project 30: no year with a cost -> no amount, never 0
     (30, 'n1', True, 3, '5R01NS000030-01', 'nih_exporter', None, '2026-11-01'),
     # project 40: years summing to zero -> no amount
@@ -163,12 +168,13 @@ def sum_fixture(policy):
       FROM (VALUES {values}) t(stable_id,observation_key,is_direct,priority,number,provenance,amount,updated)""")
     c.sql("""CREATE TABLE bindings_final AS SELECT stable_id,observation_key,is_direct,priority,{'funder_award_id':number,'provenance':provenance,
       'display_name':'Title','description':NULL::VARCHAR,'lead_investigator':NULL::VARCHAR,'co_lead_investigator':NULL::VARCHAR,
-      'investigators':NULL::VARCHAR,'start_date':DATE '2010-07-01','end_date':DATE '2015-06-30','amount':amount,'currency':'USD',
+      'investigators':NULL::VARCHAR,'start_date':CASE stable_id WHEN 90 THEN DATE '1981-04-01' WHEN 95 THEN NULL::DATE ELSE DATE '2010-07-01' END,'end_date':DATE '2015-06-30','amount':amount,'currency':'USD',
       'updated_date':updated} payload FROM obs""")
     c.sql("""CREATE TABLE migration_manifest_v AS SELECT s target_id,'NIH_PROJECT_YEAR_FOLD' evidence_class,
       to_json({'core':p,'primary_award_id':p,'title_from':t,'project_funder_id':4320337355}) evidence_json FROM (VALUES
       (10,'R01AI000010','5R01AI000010-03'),(20,'R01CA000020','5R01CA000020-02'),(30,'R01NS000030','5R01NS000030-01'),
-      (40,'R01HL000040','5R01HL000040-02'),(70,'Z01AI000070','Z01AI000070-13'),(80,'R01DK000080','5R01DK000080-02')) t(s,p,t)""")
+      (40,'R01HL000040','5R01HL000040-02'),(70,'Z01AI000070','Z01AI000070-13'),(80,'R01DK000080','5R01DK000080-02'),
+      (90,'P01HL000090','5P01HL000090-06'),(95,'ZIAAI000095','ZIAAI000095-01')) t(s,p,t)""")
     c.sql(f"CREATE TABLE nih_survivors AS SELECT target_id stable_id,{NIAID}::BIGINT pinned_funder_id FROM migration_manifest_v")
     # the elected document of each record: a survivor shows its newest year's own cost before the projection
     c.sql(f"""CREATE TABLE awards_candidate AS SELECT stable_id id,max_by(number,number) funder_award_id,'Title' display_name,
@@ -198,12 +204,15 @@ def test_sum_policy_gives_each_project_its_exporter_years_once():
         20: ('R01CA000020', None, None),           # partial (FY1998 has no cost): no amount, complete totals only
         70: ('Z01AI000070', None, None),           # intramural, FY2006 has no cost: no amount
         80: ('R01DK000080', 600000.0, 600000.0),   # complete; two flat-budget years both count
+        90: ('P01HL000090', None, None),           # began before FY1985: years before NIH's first published one, no amount
+        95: ('ZIAAI000095', 90000.0, 90000.0),     # no start date: not held back
         30: ('R01NS000030', None, None),           # no cost at all: no amount
         40: ('R01HL000040', None, None),           # sums to zero: no amount
         50: ('1R13AI000050-01', 6000.0, 6000.0),   # not a survivor: untouched
         60: ('5R01AI000010-05', 70000.0, 70000.0), # a year outside project 10's sum: untouched
     }, got
     assert c.counts['nih_amount_partial'] == 2         # 20 and 70: the totals option B withholds
+    assert c.counts['nih_amount_before_fy1985'] == 1   # 90: complete for what NIH publishes, but it began before FY1985
     assert c.counts['nih_amount_twin_years'] == 1      # y03_again: the pick keeps one row per number and counts the other
     assert c.counts['nih_amount_years_outside'] == 1   # 60, not 50 (another project) and not the survivors themselves
     assert c.checks['NIH_PROJECTION_SAME_ROWS'] and c.checks['NIH_SURVIVOR_FUNDER_PUBLISHED']
@@ -225,7 +234,8 @@ def test_sum_policy_gives_a_total_only_when_every_bound_year_has_a_cost():
 
 def test_null_policy_still_blanks_every_project_and_nothing_else():
     got = projected_usd(sum_fixture('null'))
-    assert {k: v[1] for k, v in got.items()} == {10: None, 20: None, 30: None, 40: None, 50: 6000.0, 60: 70000.0, 70: None, 80: None}
+    assert {k: v[1] for k, v in got.items()} == {10: None, 20: None, 30: None, 40: None, 50: 6000.0, 60: 70000.0, 70: None, 80: None,
+                                                 90: None, 95: None}
 
 
 def test_prod_config_sums_nih_project_amounts():
