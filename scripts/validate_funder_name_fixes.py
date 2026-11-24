@@ -160,14 +160,16 @@ def validate():
     assert "coalesce(e.resolution_path='FundRef DOI' AND e.name_funder_id<>e.funder_id,false) identity_disagreement" in dc
     assert "e.resolution_path NOT IN ('ROR','FundRef DOI') AND p.funder_id IS NULL THEN 'name_policy'" in dc
     cr_evidence = next(s for s in cr_cells if 'CREATE OR REPLACE TABLE openalex.awards.crossref_work_funder_evidence' in s)
-    # Kyle's Crossref rule 1: crossref_trap_funders.csv (129 hard, 21 shared-name, 1 added) is mirrored exactly in the distrusted-links view.
+    # Kyle's Crossref rule 1: crossref_trap_funders.csv (129 hard, 21 shared-name, 1 added) is mirrored exactly in the distrusted-links view,
+    # keyed on OpenAlex funder ids (re-keyed from Crossref registry IDs 23 Nov 2026, oxjob #2373).
     traps = list(csv.DictReader((FUNDER_DIR / 'crossref_trap_funders.csv').open(newline='')))
-    assert list(traps[0]) == ['trap_funder_id', 'twin_funder_ids', 'twin_countries', 'class']
-    assert len(traps) == 151 and len({r['trap_funder_id'] for r in traps}) == 151
+    assert list(traps[0]) == ['distrusted_funder_id', 'twin_funder_ids', 'twin_countries', 'class']
+    assert len(traps) == 151 and len({r['distrusted_funder_id'] for r in traps}) == 151
     assert [r['class'] for r in traps].count('hard') == 129 and [r['class'] for r in traps].count('shared') == 21 and [r['class'] for r in traps].count('added') == 1
     assert all(re.fullmatch(r'[0-9]+(\|[0-9]+)*', r['twin_funder_ids']) and re.fullmatch(r'[A-Z]{2}(\|[A-Z]{2})*', r['twin_countries']) for r in traps)
     trap_view = next(s for s in cr_cells if 'CREATE OR REPLACE TEMP VIEW crossref_distrusted_links' in s)
-    assert re.findall(r"\('([0-9]+)','([A-Z|]+)'\)", trap_view) == [(r['trap_funder_id'], r['twin_countries']) for r in traps], 'SQL trap mirror differs from crossref_trap_funders.csv'
+    assert re.findall(r"\(([0-9]+),'([A-Z|]+)'\)", trap_view) == [(r['distrusted_funder_id'], r['twin_countries']) for r in traps], 'SQL trap mirror differs from crossref_trap_funders.csv'
+    assert 'f.funder_id=t.distrusted_funder_id' in trap_view and 'crossref_id' not in trap_view
     assert 'FROM openalex.awards.crossref_work_funder_evidence e' in trap_view and 'openalex_dev.' not in trap_view and '10.13039' not in trap_view
     trap_merge = next(s for s in cr_cells if 'USING crossref_distrusted_links d' in s)
     assert cr_cells.index(trap_view) == cr_cells.index(cr_evidence) + 1 and cr_cells.index(trap_merge) == cr_cells.index(trap_view) + 1
