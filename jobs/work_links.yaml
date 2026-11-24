@@ -74,7 +74,7 @@ resources:
             notebook_path: notebooks/elastic/sync_links
             base_parameters:
               mode: "nightly"
-              index: "links-v1"
+              index: "links-v2"
               max_push: "200000000"
               writers: "24"
               day_writers: "6"
