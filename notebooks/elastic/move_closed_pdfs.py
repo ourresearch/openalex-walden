@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 import boto3
 import requests
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 dbutils.widgets.text("dry_run", "false", "dry run: count only, change nothing")
 dbutils.widgets.text("max_files", "300000", "stop before changing anything if more files than this would move")
@@ -188,6 +188,12 @@ def copy_checked(src, dst, key, storage_class):
         except ClientError:
             print(f"{key}: in neither {src} nor {dst}")
             return None
+        except BotoCoreError as e2:
+            print(f"{dst}/{key}: {e2}")
+            return None
+    except BotoCoreError as e:  # a dropped R2 connection (oxjob #2434): the file stays pending, retried next run
+        print(f"{src}/{key}: {e}")
+        return None
 
 
 def move(rows, kind_of, back):
@@ -199,7 +205,7 @@ def move(rows, kind_of, back):
             return None
         try:
             s3.delete_object(Bucket=src, Key=r["key"])
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             print(f"delete {src}/{r['key']}: {e}")
             return None
         return r["key"], got
