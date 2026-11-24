@@ -25,8 +25,8 @@ def public_shell_filter(c,mm):
     """PUBLIC_SHELL_SAME_NUMBER, re-proved every night on the pending pairs: loser and target are both shells (no direct
     observation, SHELL in the plan), both served today, same canonical funder, and every observation of either carries ONE
     normalized number (letters+digits, lowercase) with >= 4 characters, a digit, and not weak for that funder; the target is
-    not itself retiring by the rule. Inputs move daily (a feed can turn a shell into a funder record), so a pair that fails is
-    HELD: not retired tonight, counted, re-proved next night. PUBLIC_SHELL_HELD_FUSE stops the run if more than
+    not one the rule proposes to retire (held by the date guard or not). Inputs move daily (a feed can turn a shell into a
+    funder record), so a pair that fails is HELD: not retired tonight, counted, re-proved next night. PUBLIC_SHELL_HELD_FUSE stops the run if more than
     max(100, 1%) of the pending pairs fail (a bad list, not drift). Returns the pending relation with held pairs removed."""
     r=c.r; cls=literal(PUBLIC_SHELL_CLASS)
     c.artifact('public_shell_pairs',f"SELECT loser_id,target_id FROM {mm} WHERE evidence_class={cls}")
@@ -45,12 +45,47 @@ def public_shell_filter(c,mm):
           WHERE NOT COALESCE(n.keys=1 AND length(n.nk)>=4 AND n.nk RLIKE '[0-9]' AND NOT n.any_weak,false)
         UNION ALL SELECT m.loser_id,'FUNDER' FROM {r}public_shell_pairs m LEFT JOIN {nih_fold.plan_for_matching(c)} a ON a.stable_id=m.loser_id
           LEFT JOIN {nih_fold.plan_for_matching(c)} b ON b.stable_id=m.target_id WHERE a.funder_id IS NULL OR NOT(a.funder_id<=>b.funder_id)
-        UNION ALL SELECT m.loser_id,'TARGET_RETIRING' FROM {r}public_shell_pairs m JOIN {r}retirements_rule t ON t.old_id=m.target_id)""")
+        UNION ALL SELECT m.loser_id,'TARGET_RETIRING' FROM {r}public_shell_pairs m JOIN {r}retirements_rule_proposed t ON t.old_id=m.target_id)""")   # held or not
     held=c.count('public_shell_held',r+'public_shell_held'); pairs=c.count('public_shell_pairs',r+'public_shell_pairs')
     for row in c.sql(f"SELECT reason,count(DISTINCT loser_id) n FROM {r}public_shell_held GROUP BY 1").collect():
         c.counts['public_shell_held_'+row.reason.lower()]=int(row.n)
     c.zero('PUBLIC_SHELL_HELD_FUSE',f"SELECT count(DISTINCT loser_id) n FROM {r}public_shell_held HAVING n>greatest(100,0.01*{pairs})")
     return c.artifact('migration_proven',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}public_shell_held h ON h.loser_id=m.loser_id")
+
+
+DATE_HOLD_MIN_YEARS=5   # a typo or recycled number is many years off the grant; a feed's instalment or renewal start, a few
+DATE_HOLD_REASON='PREDATES_GRANT'
+
+
+def date_guard(c,proposed):
+    """Holds a rule retirement when the papers mostly predate the target record: a typo or recycled number that keys to a newer
+    grant (MOP192552 on papers from 2012 keys to a 2024 CIHR award). Decided per target record and normalized number, because
+    papers link by (funder, normalized number): held when more than half of the dated papers came out DATE_HOLD_MIN_YEARS or more
+    before the record's earliest start year. Held = not retired tonight, proposed again next night. No dated paper or no start
+    year: retires as before. Returns the relation every later step reads as retirements_rule."""
+    r=c.r; run_year='year(CAST(:ts AS TIMESTAMP))'
+    c.artifact('retirement_date_units',f"""SELECT DISTINCT p.old_id,p.canonical_id,o.funder_id,o.nk FROM {proposed} p
+      JOIN {nih_fold.unpinned(c,'resolved_observations')} o ON o.stable_id=p.old_id WHERE o.nk IS NOT NULL""")
+    c.artifact('retirement_date_papers',f"""SELECT DISTINCT u.canonical_id,u.funder_id,u.nk,w.work_id,
+        CASE WHEN y.publication_year BETWEEN 1900 AND {run_year}+1 THEN y.publication_year END publication_year
+      FROM (SELECT DISTINCT canonical_id,funder_id,nk FROM {r}retirement_date_units) u
+      JOIN (SELECT w.work_id,f.canonical_funder_id funder_id,{generic_sql('w.award_key')} nk FROM work_observations_in_v w
+        JOIN {r}funder_canon f ON f.funder_id=w.source_funder_id
+        WHERE w.work_id IS NOT NULL AND f.canonical_funder_id IN (SELECT funder_id FROM {r}retirement_date_units)) w ON w.funder_id=u.funder_id AND w.nk=u.nk
+      JOIN works_v y ON y.id=w.work_id""")   # inner: a work without a row has no year either way
+    c.artifact('retirement_date_held',f"""WITH start AS (SELECT b.stable_id canonical_id,min(b.payload.start_year) start_year FROM {r}bindings b
+        WHERE b.is_direct AND b.payload.start_year BETWEEN 1900 AND {run_year}+1
+          AND b.stable_id IN (SELECT canonical_id FROM {r}retirement_date_units) GROUP BY b.stable_id),
+      unit AS (SELECT p.canonical_id,p.funder_id,p.nk,s.start_year,
+          count(DISTINCT CASE WHEN p.publication_year IS NOT NULL THEN p.work_id END) dated_papers,
+          count(DISTINCT CASE WHEN p.publication_year<=s.start_year-{DATE_HOLD_MIN_YEARS} THEN p.work_id END) earlier_papers
+        FROM {r}retirement_date_papers p JOIN start s ON s.canonical_id=p.canonical_id GROUP BY p.canonical_id,p.funder_id,p.nk,s.start_year)
+      SELECT u.old_id,{literal(DATE_HOLD_REASON)} reason,max(n.start_year) start_year,max(n.dated_papers) dated_papers,max(n.earlier_papers) earlier_papers
+      FROM {r}retirement_date_units u JOIN unit n ON n.canonical_id=u.canonical_id AND n.funder_id=u.funder_id AND n.nk=u.nk
+      WHERE 2*n.earlier_papers>n.dated_papers GROUP BY u.old_id""")
+    c.count('retirements_rule_proposed',proposed)
+    c.count('retirement_held_'+DATE_HOLD_REASON.lower(),r+'retirement_date_held')
+    return c.artifact('retirements_rule',f"SELECT p.old_id,p.canonical_id FROM {proposed} p LEFT ANTI JOIN {r}retirement_date_held h ON h.old_id=p.old_id")
 
 
 def prepare(c):
@@ -278,11 +313,12 @@ def plan(c):
         CASE WHEN coalesce(g.n,0)=1 THEN g.target_id WHEN coalesce(g.n,0)=0 AND coalesce(h.n,0)=1 THEN h.target_id END proposed_target,
         coalesce(g.n,0) generic_targets,coalesce(h.n,0) sharp_targets
       FROM shells s LEFT JOIN generic g USING(observation_key) LEFT JOIN sharp h USING(observation_key)""")
-    c.artifact('retirements_rule',f"""SELECT s.shell_id old_id,min(s.proposed_target) canonical_id
+    c.artifact('retirements_rule_proposed',f"""SELECT s.shell_id old_id,min(s.proposed_target) canonical_id
       FROM {r}shell_targets s JOIN {r}entities_allocated e ON e.stable_id=s.shell_id
       LEFT ANTI JOIN {r}resolved_observations d ON d.stable_id=s.shell_id AND d.is_direct
       WHERE e.entity_kind='SHELL' AND e.status<>'REDIRECTED'
       GROUP BY s.shell_id HAVING count(*)=count(s.proposed_target) AND count(DISTINCT s.proposed_target)=1 AND min(s.proposed_target)<>s.shell_id""")
+    date_guard(c,r+'retirements_rule_proposed')   # a shell whose papers mostly predate the record's start is held, not retired
     # op14: manifest-driven retirements (migration release). A frozen, pinned manifest of proven-duplicate pairs is applied through
     # the SAME retirement path (journaled REDIRECTED transitions; keys never rebound; losers must be ACTIVE entities that were never
     # public, i.e. allocated >= 9e9). Rule retirements and manifest retirements are unioned into `retirements`.
@@ -335,7 +371,7 @@ def plan(c):
         c.zero('MIGRATION_SHELL_TARGET_RETIRED',f"SELECT m.* FROM {mm} m JOIN {r}retirements_rule t ON t.old_id=m.target_id WHERE m.evidence_class={literal(SHELL_CLASS)}")
         c.zero('MIGRATION_SAME_FUNDER',f"""SELECT m.* FROM {mm} m LEFT JOIN {r}ownership_plan a ON a.stable_id=m.loser_id LEFT JOIN {r}ownership_plan b ON b.stable_id=m.target_id
           WHERE {nih_fold.exempt_where(c,'a.stable_id IS NULL OR b.stable_id IS NULL OR a.funder_id IS NULL OR NOT (a.funder_id <=> b.funder_id)',nih_fold.pair_same_funder_exempt(c,'m'))}""")
-        c.zero('MIGRATION_CONFLICT_WITH_RULE',f"SELECT m.* FROM {mm} m JOIN {r}retirements_rule t ON t.old_id=m.loser_id WHERE t.canonical_id<>m.target_id")
+        c.zero('MIGRATION_CONFLICT_WITH_RULE',f"SELECT m.* FROM {mm} m JOIN {r}retirements_rule_proposed t ON t.old_id=m.loser_id WHERE t.canonical_id<>m.target_id")   # proposals: a held shell still conflicts
         c.artifact('retirements_manifest',f"SELECT DISTINCT loser_id old_id,target_id canonical_id,evidence_class FROM {mm}")
     # 11-23: a grant-DOI grant that is a funder's own grant under another number (same funder, same DOI) retires into it (registry_twin.py)
     twins=registry_twin.doi_twins(c,c.has_extra('migration_manifest'))

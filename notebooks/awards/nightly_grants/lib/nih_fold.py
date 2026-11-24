@@ -368,7 +368,7 @@ def _eu_filter(c, mm):
         UNION ALL SELECT stable_id,'LOSER_DIRECT' FROM {r}eu_direct
         UNION ALL SELECT p.loser_id,'LOSER_NATIVE' FROM {r}eu_pairs p JOIN {reg_prefix}award_keys k ON k.stable_id=p.loser_id AND k.key_type='NATIVE'
         UNION ALL SELECT p.loser_id,'LOSER_IS_TARGET' FROM {r}eu_pairs p JOIN {r}migration_pending x ON x.target_id=p.loser_id
-        UNION ALL SELECT p.loser_id,'LOSER_RULE_RETIRING' FROM {r}eu_pairs p JOIN {r}retirements_rule t ON t.old_id=p.loser_id
+        UNION ALL SELECT p.loser_id,'LOSER_RULE_RETIRING' FROM {r}eu_pairs p JOIN {r}retirements_rule_proposed t ON t.old_id=p.loser_id
         UNION ALL SELECT p.loser_id,'LOSER_RULE_TARGET' FROM {r}eu_pairs p JOIN {r}retirements_rule t ON t.canonical_id=p.loser_id
         UNION ALL SELECT p.loser_id,'TARGET_RETIRING' FROM {r}eu_pairs p JOIN {r}retirements_rule t ON t.old_id=p.target_id
         UNION ALL SELECT p.loser_id,'NOT_BOUND' FROM {r}eu_pairs p LEFT JOIN {r}eu_bound bl ON bl.stable_id=p.loser_id

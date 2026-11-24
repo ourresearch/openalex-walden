@@ -71,6 +71,10 @@ def _render(build_path, fold, listed=(), extra=("migration_manifest",)):
 
 
 NIH_AMOUNT_STATEMENTS = {"nih_obs", "nih_year_cost", "nih_span"}
+# #2014's date guard owns the shell rule's retirement statements (proposals, the guard's three steps, the guarded rule, and the
+# two manifest checks that read the proposals); test_retirement_dates.py pins each of them
+DATE_GUARD_STATEMENTS = {"retirements_rule_proposed", "retirement_date_units", "retirement_date_papers", "retirement_date_held",
+                         "retirements_rule", "MIGRATION_CONFLICT_WITH_RULE", "public_shell_held"}
 
 
 def _probe_free(c):
@@ -94,7 +98,7 @@ def test_without_eu_pairs_build_renders_as_head(listed, extra):
     old = _render(HEAD / "build_awards.py", _head_fold(), listed, extra)
     new = _render(ROOT / "lib" / "build_awards.py", nih_fold, listed, extra)
     # #2326 (NIH project amounts) owns the sum's year-cost statements; test_funding_population and test_nih_fold pin them
-    own = lambda c: [s for s in _four_tier_free(c) if s[0] not in NIH_AMOUNT_STATEMENTS]
+    own = lambda c: [s for s in _four_tier_free(c) if s[0] not in NIH_AMOUNT_STATEMENTS | DATE_GUARD_STATEMENTS]
     assert own(new) == own(old)
     assert new.checks.keys() - {"DOI_TWIN_FUSE"} == old.checks.keys() - {"DOI_TWIN_FUSE"}   # four tiers' one new check
 
@@ -187,7 +191,7 @@ def test_held_reasons_read_the_right_relations():
     assert "trim(loser_number)=number AND trim(target_number)=number" in held
     assert "target_provenance=registry" in held
     assert "n.owners=1 AND n.owner_id=p.target_id" in held
-    assert "retirements_rule t ON t.old_id=p.loser_id" in held and "retirements_rule t ON t.canonical_id=p.loser_id" in held
+    assert "retirements_rule_proposed t ON t.old_id=p.loser_id" in held and "retirements_rule t ON t.canonical_id=p.loser_id" in held
     assert "migration_pending x ON x.target_id=p.loser_id" in held
     assert "key_type='NATIVE'" in held
     # uniqueness counts direct erc/cordis observations under an EU funder, provenance read narrow from bindings
