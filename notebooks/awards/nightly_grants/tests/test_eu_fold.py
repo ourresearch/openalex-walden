@@ -70,6 +70,9 @@ def _render(build_path, fold, listed=(), extra=("migration_manifest",)):
     return c
 
 
+NIH_AMOUNT_STATEMENTS = {"nih_obs", "nih_year_cost", "nih_span"}
+
+
 def _probe_free(c):
     return [s for s in c.statements if "' LIMIT 1" not in s[1] or "evidence_class=" not in s[1]]
 
@@ -86,7 +89,9 @@ def test_without_eu_pairs_build_renders_as_head(listed, extra):
     """No EU pair listed: every statement of the build, NIH pairs or not, is the one main renders today (the probes aside)."""
     old = _render(HEAD / "build_awards.py", _head_fold(), listed, extra)
     new = _render(ROOT / "lib" / "build_awards.py", nih_fold, listed, extra)
-    assert _probe_free(new) == _probe_free(old)
+    # #2326 (NIH project amounts) owns the sum's year-cost statements; test_funding_population and test_nih_fold pin them
+    own = lambda c: [s for s in _probe_free(c) if s[0] not in NIH_AMOUNT_STATEMENTS]
+    assert own(new) == own(old)
     assert new.checks.keys() == old.checks.keys()
 
 
