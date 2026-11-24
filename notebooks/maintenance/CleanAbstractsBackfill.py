@@ -238,6 +238,32 @@ if spark.catalog.tableExists(ACCENTS_TABLE):
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Step 2c — re-apply the abstracts cut out of landing-page text (oxjob #2575)
+# MAGIC
+# MAGIC `openalex.abstracts.backfill_page_text_extracts` holds, for legacy texts that are a whole Literatum / Atypon landing
+# MAGIC page flattened (title, authors, menus, citation, cited-by lists) with the work's real abstract inside, that
+# MAGIC abstract alone (text + inverted index built with the same cleaner as the ingest path). It replaces this overlay's
+# MAGIC row for those works; a rebuild above TRUNCATEs the overlay, so this step MERGEs them back every run (idempotent,
+# MAGIC one row per work). No work is in both this table and the accent restores. Revert of #2575's extracts: its job
+# MAGIC README's revert (restore the prior overlay rows kept in the table), then TRUNCATE the table.
+
+# COMMAND ----------
+
+EXTRACTS_TABLE = "openalex.abstracts.backfill_page_text_extracts"
+if spark.catalog.tableExists(EXTRACTS_TABLE):
+    spark.sql(f"""
+        MERGE INTO {TARGET_TABLE} t
+        USING (SELECT work_id, abstract, abstract_inverted_index FROM {EXTRACTS_TABLE}) a
+        ON t.work_id = a.work_id
+        WHEN MATCHED THEN UPDATE SET t.abstract = a.abstract, t.abstract_inverted_index = a.abstract_inverted_index
+        WHEN NOT MATCHED THEN INSERT (work_id, abstract, abstract_inverted_index)
+          VALUES (a.work_id, a.abstract, a.abstract_inverted_index)
+    """)
+    print(f"re-applied {spark.table(EXTRACTS_TABLE).count():,} landing-page abstracts from {EXTRACTS_TABLE}")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Step 3 — verify
 
 # COMMAND ----------

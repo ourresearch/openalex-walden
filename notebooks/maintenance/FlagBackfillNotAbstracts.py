@@ -58,6 +58,23 @@
 # MAGIC   Rule acs-chrome-v2 (oxjob #1051, 15 Nov 2026): the leading "ADVERTISEMENT " is optional, so Chemical &
 # MAGIC   Engineering News pages and other ACS pages that start "RETURN TO ISSUE" match too (v1 missed all of them;
 # MAGIC   every other clause unchanged). Revert that part: put the LIKE line back.
+# MAGIC - **Project MUSE excerpts** (oxjob #2575, 24 Nov 2026): MUSE shows "In lieu of an abstract, here is a brief excerpt
+# MAGIC   of the content" (the first ~4,000 characters of the body, or the whole of a short piece) for articles and reviews
+# MAGIC   without an abstract, and the backfill stored that block. Same rule as #2162 (Jason, 11 Nov 2026: a page-marked
+# MAGIC   opening is removed unless a model reads it as describing the work), so #2575 added its removals to
+# MAGIC   `PAGE_OPENING_TABLE` (label_version 'oxjob2575-muse-v1'); the page_marked_opening branch below copies them. Revert
+# MAGIC   that part: `DELETE FROM PAGE_OPENING_TABLE WHERE label_version LIKE 'oxjob2575%'` and the rows here whose
+# MAGIC   filter_commit is that label.
+# MAGIC - **Literatum / Atypon landing-page text** (oxjob #2575, 24 Nov 2026): a work whose backfill text is a whole Atypon
+# MAGIC   landing page flattened ("No Access ... More articles by this author ... Expand All Advertisement PDF downloadLoading
+# MAGIC   ...": Journal of Urology, Hanser, Annals, SEG, ASHA, World Bank, Wiley and others) holding no abstract of the work, or
+# MAGIC   only the work's body text (Annals' "Excerpt" openings included), a letter's text or a "no abstract available"
+# MAGIC   note, is flagged with reason `page_chrome`.
+# MAGIC   The work_ids are #2575's list `PAGE_TEXT_TABLE` (built once by #2575 `work/build_writes.py`: a segmenter finds the
+# MAGIC   content after the page's share bar, and a reader using #2162's card v2 decides it; bar: Opus 5.5 on fresh random
+# MAGIC   draws, #2575 README § Bars); this notebook copies them so a rebuild keeps them. Pages that hold a real abstract are
+# MAGIC   not flagged: #2575 put the abstract alone into the #807 overlay instead (`openalex.abstracts.backfill_page_text_extracts`,
+# MAGIC   re-applied by CleanAbstractsBackfill). Revert that part: drop the branch below.
 # MAGIC - **Revert:** remove the anti-join from CreateWorksBase (one line), or `TRUNCATE` this table. Never
 # MAGIC   DROP it while CreateWorksBase reads it: a missing table fails the nightly.
 # MAGIC
@@ -87,7 +104,8 @@ SHORT_TABLE = "openalex.abstracts.not_abstract_short_texts"  # oxjob #1800: judg
 PEER_REVIEW_TABLE = "openalex.abstracts.peer_review_borrowed_backfill"  # oxjob #1790: reviews showing the article's abstract
 PDF_BACKFILL_TABLE = "openalex.abstracts.not_abstract_pdf_backfill"  # oxjob #1800: backfill copies of flagged PDF texts
 DIFFERENT_ITEM_TABLE = "openalex.abstracts.different_item_backfill"  # oxjob #1790: works showing another item's abstract
-PAGE_OPENING_TABLE = "openalex.abstracts.page_marked_opening_backfill"  # oxjob #2162: openings the page marks
+PAGE_OPENING_TABLE = "openalex.abstracts.page_marked_opening_backfill"  # oxjob #2162 (+ #2575 MUSE / Annals): openings the page marks
+PAGE_TEXT_TABLE = "openalex.abstracts.page_text_backfill"  # oxjob #2575: Literatum landing-page text with no abstract
 # oxjob #1800 (6 Nov 2026): rule dspace-v1, a SQL predicate on a text column. Keep byte-identical with
 # FlagLocationNotAbstracts.
 DEPOSIT_NOTICE_COMMIT = "dspace-v1: DSpace deposit notice (#1800, 6 Nov 2026)"
@@ -277,9 +295,24 @@ LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = e.work_id
 LEFT ANTI JOIN DIFFERENT_ITEM_TABLE di ON di.work_id = e.work_id
 LEFT ANTI JOIN PAGE_OPENING_TABLE po ON po.work_id = e.work_id
 WHERE ACS_CHROME_SQL
+UNION ALL
+-- Literatum landing-page text (see the header). One row per work: skip works another branch flags.
+SELECT pt.work_id, 'page_chrome' AS reason, pt.text_len, pt.label_version AS filter_commit, current_timestamp() AS built_at
+FROM PAGE_TEXT_TABLE pt
+LEFT ANTI JOIN flagged_backfill f ON f.work_id = pt.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.text = trim(e.abstract)) s ON s.work_id = pt.work_id
+LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = pt.work_id
+LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = pt.work_id
+LEFT ANTI JOIN DIFFERENT_ITEM_TABLE di ON di.work_id = pt.work_id
+LEFT ANTI JOIN PAGE_OPENING_TABLE po ON po.work_id = pt.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e WHERE ACS_CHROME_SQL) acs ON acs.work_id = pt.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM (SELECT bf.work_id, CASE WHEN r.work_id IS NOT NULL THEN r.abstract ELSE bf.abstract END AS abstract
+                FROM SOURCE_TABLE bf LEFT JOIN REPAIR_TABLE r ON bf.work_id = r.work_id) e
+                WHERE e.abstract IS NOT NULL AND DEPOSIT_NOTICE_SQL) dn ON dn.work_id = pt.work_id
 """.replace("TARGET_TABLE", TARGET_TABLE).replace("FILTER_COMMIT", FILTER_COMMIT).replace("SHORT_TABLE", SHORT_TABLE)
    .replace("PEER_REVIEW_TABLE", PEER_REVIEW_TABLE).replace("PDF_BACKFILL_TABLE", PDF_BACKFILL_TABLE)
    .replace("DIFFERENT_ITEM_TABLE", DIFFERENT_ITEM_TABLE).replace("PAGE_OPENING_TABLE", PAGE_OPENING_TABLE)
+   .replace("PAGE_TEXT_TABLE", PAGE_TEXT_TABLE)
    .replace("SOURCE_TABLE", SOURCE_TABLE)
    .replace("REPAIR_TABLE", REPAIR_TABLE).replace("DEPOSIT_NOTICE_COMMIT", DEPOSIT_NOTICE_COMMIT)
    .replace("DEPOSIT_NOTICE_SQL", DEPOSIT_NOTICE.replace("COL", "e.abstract"))
