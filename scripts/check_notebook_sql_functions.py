@@ -60,6 +60,18 @@ WORD = re.compile(r"([A-Za-z_]\w*)\s*$")
 
 def code_only(text):
     """text with strings, comments, backtick names and $$ bodies blanked to spaces (newlines kept)."""
+    return _scan(text)[0]
+
+
+def open_quote(text):
+    """True when the SQL ends inside a quoted string: one quote never closes, so Databricks can't parse it. 24 Nov 2026:
+    "(each record's newest pages, ...)" inside a table's single-quoted COMMENT (#1098, 6f26fc47) ended the string at the
+    apostrophe; the check then read the cell's regex strings as code and reported 4 functions Databricks lacks, which
+    read as a checker false positive for 8 hours while Works_Base was set to fail on the next run (#1642)."""
+    return _scan(text)[1] == "str"
+
+
+def _scan(text):
     out, i, n = [], 0, len(text)
     state, quote = "code", ""
     while i < n:
@@ -102,7 +114,7 @@ def code_only(text):
                 state = "code"
         out.append("\n" if c == "\n" else " ")
         i += 1
-    return "".join(out)
+    return "".join(out), state
 
 
 def calls(sql, known=frozenset()):
@@ -162,6 +174,11 @@ def check(roots, repo_roots=("notebooks", "jobs")):
                     problems.append(f"{p}: could not read ({e})")
                     continue
                 for label, sql in cells:
+                    if open_quote(sql):   # its function hits would be the string's contents read as code
+                        problems.append(f"{p}: {label if label != 'file' else 'file'}: a quote never closes (an apostrophe "
+                                        f"inside a '...' string, like 'each record's'? write it '' or rephrase): "
+                                        f"Databricks can't parse this SQL")
+                        continue
                     for (ln, name), k in Counter(calls(sql, known)).items():
                         where = f"{label} line {ln}" if label != "file" else f"line {ln}"
                         problems.append(f"{p}: {where}: {name}(  ({k}x)")
@@ -225,7 +242,15 @@ def self_test():
         if got != want:
             failed += 1
             print(f"self-test FAIL: want {want} got {got}: {sql!r}")
-    print(f"self-test: {len(cases) - failed}/{len(cases)} passed")
+    quotes = {"CREATE TABLE t COMMENT 'each record's newest pages' AS SELECT 1": True,   # night 11-25 (#1098)
+              "CREATE TABLE t COMMENT 'each record''s newest pages' AS SELECT 1": False,
+              "SELECT 'a' AS x -- it's a comment\n/* don't */ FROM t": False,
+              "SELECT \"it's\", 'b\\'c' FROM t": False}
+    for sql, want in quotes.items():
+        if open_quote(sql) != want:
+            failed += 1
+            print(f"self-test FAIL: open_quote want {want}: {sql!r}")
+    print(f"self-test: {len(cases) + len(quotes) - failed}/{len(cases) + len(quotes)} passed")
     return not failed
 
 
@@ -239,8 +264,8 @@ if __name__ == "__main__":
     for p in probs:
         print(p)
     if probs:
-        print(f"\n{len(probs)} call(s) in notebook SQL name a function Databricks doesn't have (Postgres' strpos is instr "
-              f"here). If it is a new Databricks built-in, run this script with --refresh; if it's ours, create it in a "
-              f"notebook or qualify it (oxjob #2342).")
+        print(f"\n{len(probs)} problem(s) in notebook SQL: a quote that never closes, or a call naming a function Databricks "
+              f"doesn't have (Postgres' strpos is instr here). For a function: if it is a new Databricks built-in, run this "
+              f"script with --refresh; if it's ours, create it in a notebook or qualify it (oxjob #2342).")
         sys.exit(1)
     print("notebook SQL: every function called exists")
