@@ -310,6 +310,71 @@ def is_valid_author(author):
 
     return ~(has_institution_in_given_family | has_institution_in_name_only)
 
+# oxjob #2183: name-only contributors (no given/family) that are affiliation or address lines, in any language.
+# Publishers deposit affiliations as Crossref organisation contributors ("name" only); the English keyword list above
+# missed ~97% of them (~500K seats on ~310K works, e.g. W4214559618: "中国科学院地理科学与资源研究所,...,北京100101").
+# Applied ON TOP of is_valid_author (a contributor is kept only if both keep it), and only to name-only entries:
+# widening the given/family branch dropped real people (Vietnamese "Trường", surnames Pusat/Balai/Hospedales).
+# Words that are also surnames (AMBIGUOUS_LATIN) drop only a string that is not shaped like a person's name
+# ("Jacqueline R. Center", "S. Centro" stay); CJK/Hangul words need 5+ characters (person names are 2-4).
+# Tested read-only on crossref_parsed 13 and 25 Nov 2026: 507,575 drops on 311,981 records, 0 people in 450 Opus-judged
+# drops (oxjob #2183 evidence/FILTER_DRAFT.md, evidence/SHIP.md). Revert: use is_valid_author alone in `authors`.
+AFF_STRONG_LATIN = (
+    r"(?i)("
+    r"Universit|Universidad|Universidade|Universiteit|Universitet|Univerzit|Uniwersytet|Üniversite|"
+    r"Institut|Instytut|Enstitü|Laborator|Laboratoire|Faculty|Facult|Fakult|Fakültesi|Department|Departament|"
+    r"Département|Departemen|Hochschule|Klinikum|Krankenhaus|Politecnic|Politechnika|Polytechn|Politeknik|"
+    r"Consortium|Association|Collaboration|Committee|Council|Organization|Organisation|Ministry|Ministerio|"
+    r"Ministère|Kementerian|Akademi|Academia|Hôpital|Hospitais|Sekolah Tinggi|Program Studi|"
+    r"Jurusan|Wydział|Katedra|Bölümü|Egyetem|Polyclinic|Đại học|Học viện|Viện Nghiên cứu|Viện Khoa học|"
+    r"Pusat Penelitian|Pusat Studi|Balai Besar|Balai Penelitian|Lembaga Ilmu|Lembaga Penelitian"
+    r")"
+    r"|"
+    r"\b(Inc|LLC|Ltd|Corp|Corporation|GmbH|Ospedale|Ústav|Fakulta|Unidad|Hastanesi|Viện|Szpital|Sveučilište|"
+    r"Division of)\b"
+    r"|"
+    r"\b(Univ|Dept)\."
+)
+AFF_AMBIGUOUS_LATIN = (
+    r"(?i)\b(Center|Centre|Centro|Centrum|Hospital|College|School|Escola|Academy|Clinic|Klinik|Klinika|Museum|"
+    r"Library|Foundation|Company|Medical|Research)\b"
+)
+AFF_NON_LATIN = (
+    r"(大学|大學|学院|學院|研究所|研究院|研究中心|实验室|實驗室|医院|醫院|科学院|科學院|有限公司|股份|"
+    r"管理局|气象局|研究室|学校|学部|株式会社|대학교|대학원|연구소|연구원|병원|학과|센터|대학|"
+    r"มหาวิทยาลัย|คณะ|สถาบัน|โรงพยาบาล|جامعة|كلية|معهد|مستشفى|دانشگاه|دانشکده|پژوهشگاه|"
+    r"Πανεπιστήμιο|Τμήμα|אוניברסיטת|विश्वविद्यालय|संस्थान)"
+)
+AFF_CYRILLIC = (
+    r"(?iU)(университет|інститут|институт|кафедр|лаборатор|академи|факультет|больниц|филиал|"
+    r"\bцентр(а|е|у|ом)?\b)"
+)
+AFF_AMB_WORDS = r"(?i:Center|Centre|Centro|Centrum|Hospital|College|School|Escola|Academy|Clinic|Klinik|Klinika|Museum|Library|Foundation|Company|Medical|Research)"
+AFF_PERSON_SHAPED = r"^\s*((?!" + AFF_AMB_WORDS + r"\b)\p{Lu}[\p{L}\x27\-]*\.?\s+){0,3}\p{Lu}[\p{L}\x27\-]*\s*$"
+AFF_POSTCODE = r"[0-9]{4,6}"
+AFF_CHAIN = r"[,;，；、]"
+
+
+def is_not_affiliation_line(author):
+    """oxjob #2183: False for a name-only contributor that is an affiliation or address line (see the patterns above)."""
+    given = F.coalesce(author["given"], F.lit(""))
+    family = F.coalesce(author["family"], F.lit(""))
+    name = F.coalesce(author["name"], F.lit(""))
+    name_only = (F.trim(given) == "") & (F.trim(family) == "")
+    strong = (name.rlike(AFF_STRONG_LATIN) | name.rlike(AFF_CYRILLIC)
+              | (name.rlike(AFF_NON_LATIN) & (F.length(name) >= 5)))
+    address = name.rlike(AFF_POSTCODE) & name.rlike(AFF_CHAIN) & (F.length(name) >= 12)
+    ambiguous = name.rlike(AFF_AMBIGUOUS_LATIN) & ~name.rlike(AFF_PERSON_SHAPED)
+    return ~(name_only & (strong | address | ambiguous))
+
+
+def filter_valid_authors(authors):
+    """Contributors both filters keep; a work whose every contributor the #2183 rule drops keeps is_valid_author's
+    result instead (an organisation as sole creator: IMF departments, court decisions, institutes issuing reports;
+    16,333 works would otherwise lose all authors)."""
+    both = F.filter(authors, lambda a: is_valid_author(a) & is_not_affiliation_line(a))
+    return F.when(F.size(both) > 0, both).otherwise(F.filter(authors, is_valid_author))
+
 # COMMAND ----------
 
 # COMMAND ----------
@@ -501,7 +566,7 @@ def crossref_parsed():
             ).otherwise(
                 # Other publishers: filter out affiliation-as-author entries, then transform
                 F.transform(
-                    F.filter(F.col("author"), is_valid_author),
+                    filter_valid_authors(F.col("author")),  # oxjob #2183
                     create_author_struct
                 )
             )
