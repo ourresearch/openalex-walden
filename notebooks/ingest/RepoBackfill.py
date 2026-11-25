@@ -832,6 +832,26 @@ parsed_df = parsed_df.withColumn("abstract", coalesce(col("abstract"), col("_abs
 # oxjob #2516: the CC licence read from every dc:rights value (cc_licence_from_rights_udf above) fills in after the dedupe
 # too, for the same reason; is_oa was decided before it from the pick. Revert: drop these lines and _cc_licence above.
 parsed_df = parsed_df.withColumn("license", coalesce(col("_cc_licence"), col("license"))).drop("_cc_licence")
+# oxjob #2396: api_raw holds each record as a JSON string literal: a line break in the XML is the two characters "\n"
+# (also "\t", "\r") and a real backslash is "\\". cleaned_xml above decodes only \" (the regexes below need the escaped
+# form: their `.` does not cross a line break), so ~1.27M served abstracts and ~20K titles read "clusteranalyse.\nResultaten",
+# search indexed 'nresultaten', and LaTeX read "$\\Omega$". The title and abstract are decoded here, after the dedupe, so
+# the content-hash tiebreak (which copy of a record wins, #1800's lesson) and the policy filters see exactly what they saw
+# before; normalized_title follows its title. One pass in effect: a real backslash is parked on U+E000 (0 of 621,979
+# sampled api_raw rows hold it) before the escapes are decoded, so "\\nu" stays "\nu". Same expression as the sizing SQL
+# in oxjob #2396 (work/sizing.sql). Revert: delete these lines.
+JSON_ESCAPES_DECODED_SQL = ("replace(replace(replace(replace(replace({c}, concat(chr(92), chr(92)), chr(57344)), "
+                            "concat(chr(92), 'n'), chr(10)), concat(chr(92), 'r'), chr(13)), concat(chr(92), 't'), chr(9)), "
+                            "chr(57344), chr(92))")
+# The UDF sees NULL on unchanged rows (cheap), so only decoded titles are normalized again.
+_title_changed = ~col("_title_decoded").eqNullSafe(col("title"))
+parsed_df = parsed_df \
+    .withColumn("_title_decoded", expr(JSON_ESCAPES_DECODED_SQL.format(c="title"))) \
+    .withColumn("normalized_title",
+        when(_title_changed, normalize_title_udf(when(_title_changed, col("_title_decoded"))))
+        .otherwise(col("normalized_title"))) \
+    .withColumn("title", col("_title_decoded")).drop("_title_decoded") \
+    .withColumn("abstract", expr(JSON_ESCAPES_DECODED_SQL.format(c="abstract")))
 
 # oxjob #881: MERGE that also DELETES (Casey, 2026-08-26).
 #
