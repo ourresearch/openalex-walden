@@ -181,7 +181,8 @@ def test_prod_job():
 
 # A mapping may read one saved object of its own besides its input (declared here): grb_nstc_projects keeps the abstracts
 # of the laptop export, which GRB's open files do not carry.
-SIDE_OBJECTS = {'s3://openalex-ingest/awards/nstc_grb/nstc_grb_projects.parquet'}
+SIDE_OBJECTS = {'s3://openalex-ingest/awards/nstc_grb/nstc_grb_projects.parquet',
+                's3://openalex-ingest/awards/nih/nih_reporter_costs.parquet'}   # nih_exporter: RePORTER's FY1985-1999 costs (#2326)
 
 
 def test_production_source_prefixes():

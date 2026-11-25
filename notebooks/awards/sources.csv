@@ -361,3 +361,4 @@ fwf_open_api,51,F4320321181,s3://openalex-ingest/awards/fwf_open_api/,weekly,98
 bhf_europepmc_grist,575,F4320319992,s3://openalex-ingest/awards/bhf/bhf_grist_projects.parquet,frozen,98
 grb_nstc_projects,202,F2461203286,s3://openalex-ingest/awards/grb_nstc/2026-11-18.parquet,frozen,98
 grb_most_projects,210,F4320322795,s3://openalex-ingest/awards/taiwan_most_grb/taiwan_most_grb_projects.parquet,frozen,98
+nih_exporter,3,F4320332161|F4320332162|F4320332163|F4320332164|F4320332175|F4320332177|F4320306127|F4320337382|F4320337419|F4320332207|F4320332208|F4320332334,s3://openalex-ingest/awards/nih_reporter/2026-11-18.parquet,frozen,98

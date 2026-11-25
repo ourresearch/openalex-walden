@@ -1,8 +1,9 @@
 """NIH RePORTER costs for ExPORTER's FY1985-1999 years (oxjob #2326, option C).
 
-scripts/local/nih_reporter_costs_to_s3.py fetches RePORTER's cost for every FY1985-1999 ExPORTER application that has none;
-CreateNIHAwards Step 1b loads the file and Step 2 uses it only where ExPORTER's own cost is blank. The notebook tests run the
-notebook's own join and amount expressions in DuckDB (via sqlglot); the script tests use a fake RePORTER session.
+scripts/local/nih_reporter_costs_to_s3.py fetches RePORTER's cost for every FY1985-1999 ExPORTER application that has none.
+The Awards job's nih_exporter mapping (notebooks/awards/sources/nih_exporter.sql), which replaced CreateNIHAwards and carries
+the same rule, reads that file and uses it only where ExPORTER's own cost is blank. The mapping tests run its own join and
+amount expressions in DuckDB (via sqlglot); the script tests use a fake RePORTER session.
 """
 import importlib.util
 import json
@@ -12,11 +13,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-NB = json.loads((ROOT / 'notebooks/awards/CreateNIHAwards.ipynb').read_text())
-CELLS = [c['source'] if isinstance(c['source'], str) else ''.join(c['source']) for c in NB['cells']]
-STEP2 = next(c for c in CELLS if 'CREATE OR REPLACE TABLE openalex.awards.nih_awards' in c)
-STEP1B = next(c for c in CELLS if 'CREATE OR REPLACE TABLE openalex.awards.nih_reporter_costs_raw' in c)
-INSERT = next(c for c in CELLS if 'INSERT INTO openalex.awards.openalex_awards_raw' in c)
+MAP = (ROOT / 'notebooks/awards/sources/nih_exporter.sql').read_text()
 
 
 def squash(s):
@@ -28,47 +25,44 @@ def between(text, start, end):
     return text[i:text.index(end, i)]
 
 
-# ---------------------------------------------------------------- notebook contract
+# ---------------------------------------------------------------- mapping contract
 
-def test_step1b_loads_the_reporter_file_before_step2_and_gates_one_cost_per_application():
-    assert CELLS.index(STEP1B) < CELLS.index(STEP2)
-    s = squash(STEP1B)
-    assert "FROM parquet.`s3a://openalex-ingest/awards/nih/nih_reporter_costs.parquet` WHERE award_amount > 0;" in s   # $0: not carried
+def test_mapping_reads_the_reporter_file_and_only_a_positive_cost():
+    s = squash(MAP)
+    assert ("FROM read_files('s3://openalex-ingest/awards/nih/nih_reporter_costs.parquet', format => 'parquet') "
+            "WHERE award_amount > 0") in s   # $0: not carried
     assert 'CAST(application_id AS STRING) AS application_id' in s and 'CAST(award_amount AS DOUBLE) AS award_amount' in s
-    assert "raise_error(concat('NIH_REPORTER_COSTS_NOT_UNIQUE: '" in s and 'GROUP BY 1 HAVING count(*) > 1' in s
 
 
-def test_step2_joins_by_application_id_never_for_a_sub_project():
-    s = squash(STEP2)
-    assert ("LEFT JOIN openalex.awards.nih_reporter_costs_raw rc ON rc.application_id = CAST(r.application_id AS STRING) "
+def test_mapping_joins_by_application_id_never_for_a_sub_project():
+    s = squash(MAP)
+    assert ("LEFT JOIN nih_reporter_costs rc ON rc.application_id = CAST(r.application_id AS STRING) "
             "AND (r.subproject_id IS NULL OR TRIM(r.subproject_id) = '')") in s
     assert 'rc.award_amount as reporter_cost,' in s
     assert 'CAST(NULL AS DOUBLE) AS reporter_cost' in s          # the sub-project branch of parsed_grants carries none
-    assert s.count('reporter_cost') == 6, s.count('reporter_cost')
+    assert 'COALESCE(TRY_CAST(g.total_cost AS DOUBLE), g.reporter_cost)' in s
 
 
-def test_openalex_awards_raw_columns_unchanged():
-    """amount_source stays on nih_awards (the backend); the INSERT's explicit column list does not carry it."""
-    assert 'amount_source' not in INSERT and 'reporter' not in INSERT
+def test_the_hand_run_notebook_is_gone():
+    assert not (ROOT / 'notebooks/awards/CreateNIHAwards.ipynb').exists()
 
 
-# ---------------------------------------------------------------- notebook behaviour (the notebook's own SQL, in DuckDB)
+# ---------------------------------------------------------------- mapping behaviour (the mapping's own SQL, in DuckDB)
 
 def run_fill(rows, reporter):
     duckdb = pytest.importorskip('duckdb')
     sqlglot = pytest.importorskip('sqlglot')
-    join = between(STEP2, 'LEFT JOIN openalex.awards.nih_reporter_costs_raw rc', '\n),')
-    amount = between(STEP2, 'CAST(CASE WHEN g.subproject_id IS NULL', ' as amount,')
-    source = between(STEP2, "CASE WHEN g.subproject_id IS NULL OR TRIM(g.subproject_id) = '' THEN\n", ' as amount_source,')
+    join = between(MAP, 'LEFT JOIN nih_reporter_costs rc', '\n),')
+    amount = between(MAP, 'CAST(CASE WHEN g.subproject_id IS NULL', ' as amount,')
     spark = (f"WITH parsed_all AS (SELECT r.*, rc.award_amount as reporter_cost FROM nih_grants_raw r {join}) "
-             f"SELECT g.application_id, {amount} AS amount, {source} AS amount_source FROM parsed_all g ORDER BY g.application_id")
-    q = sqlglot.transpile(spark.replace('openalex.awards.', ''), read='spark', write='duckdb')[0]
+             f"SELECT g.application_id, {amount} AS amount FROM parsed_all g ORDER BY g.application_id")
+    q = sqlglot.transpile(spark, read='spark', write='duckdb')[0]
     c = duckdb.connect()
     c.execute('CREATE TABLE nih_grants_raw(application_id VARCHAR, subproject_id VARCHAR, total_cost VARCHAR)')
-    c.execute('CREATE TABLE nih_reporter_costs_raw(application_id VARCHAR, award_amount DOUBLE)')
+    c.execute('CREATE TABLE nih_reporter_costs(application_id VARCHAR, award_amount DOUBLE)')
     c.executemany('INSERT INTO nih_grants_raw VALUES (?,?,?)', rows)
-    c.executemany('INSERT INTO nih_reporter_costs_raw VALUES (?,?)', reporter)
-    return {a: (amt, src) for a, amt, src in c.execute(q).fetchall()}
+    c.executemany('INSERT INTO nih_reporter_costs VALUES (?,?)', reporter)
+    return {a: amt for a, amt in c.execute(q).fetchall()}
 
 
 def test_exporter_cost_first_reporter_only_where_blank_sub_projects_none():
@@ -79,8 +73,7 @@ def test_exporter_cost_first_reporter_only_where_blank_sub_projects_none():
               ('1004', '0001', None),       # a sub-project row: never an amount
               ('1005', None, '100')],       # ExPORTER's cost wins even if RePORTER says otherwise
         reporter=[('1002', 161807.0), ('1004', 999.0), ('1005', 200.0)])
-    assert got == {'1001': (250000.0, 'nih_exporter'), '1002': (161807.0, 'nih_reporter'), '1003': (None, None),
-                   '1004': (None, None), '1005': (100.0, 'nih_exporter')}, got
+    assert got == {'1001': 250000.0, '1002': 161807.0, '1003': None, '1004': None, '1005': 100.0}, got
 
 
 # ---------------------------------------------------------------- the fetch script

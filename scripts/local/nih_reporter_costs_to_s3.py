@@ -6,7 +6,7 @@ NIH RePORTER costs for ExPORTER's FY1985-1999 years, to S3
 NIH ExPORTER's project files for fiscal years 1985-1999 carry no cost (0 of 647,231 project-year rows on 21 Nov 2026), so an NIH
 project that ran in those years would show only its FY2000-onward money. NIH RePORTER, NIH's own database behind ExPORTER, does
 publish the cost of those applications. This script asks RePORTER for the cost of every FY1985-1999 ExPORTER application that has
-none, by application id, and writes one parquet that CreateNIHAwards (Step 1b) reads. Those fiscal years are closed, so the file is
+none, by application id, and writes one parquet that the Awards job's nih_exporter mapping reads. Those fiscal years are closed, so the file is
 pulled once; re-running it re-uses the cache and asks only for ids it has not asked yet (oxjob #2326, option C).
 
 Input:  nih_projects_combined.parquet, the output of nih_exporter_to_s3.py
