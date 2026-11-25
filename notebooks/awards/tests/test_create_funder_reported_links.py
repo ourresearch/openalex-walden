@@ -29,6 +29,8 @@ OBJECTS = {  # the object each mapping reads: a prefix's newest *.parquet, or on
     'hakai_publications': 's3://openalex-ingest/awards/hakai/hakai_outputs.parquet',
 }
 HAL, KAKEN_OLD = 'openalex.awards.hal_anr_work_links', 'openalex.awards.kaken_work_funders'
+HAL_EU, HAL_LOCS = 's3://openalex-ingest/awards/hal_eu/*.parquet', 'openalex.works.location_work_ids'   # HAL EU links its text confirms (#2594)
+HAL_SOURCES = ('cordis', 'erc')   # European project numbers a HAL deposit declares: grants under these provenances in raw
 COLUMNS = ['award_id', 'funder_id', 'output_key', 'doi', 'pmid', 'work_id', 'title', 'year', 'volume', 'first_page', 'output_type',
            'surnames', 'object']
 
@@ -67,7 +69,7 @@ def test_each_source_has_one_mapping_reading_its_path():
         if OBJECTS[s].endswith('/*.parquet'):   # a prefix: its newest object, the Awards job's pin
             assert f'WHERE _metadata.file_path = (SELECT {PIN} FROM objects)' in mapping, s
         assert f"SELECT '{s}'" in union and f'FROM {s}_listed' in union, s
-    assert code(SQL).count('read_files(') == len(SOURCES)
+    assert code(SQL).count('read_files(') == len(SOURCES) + 1   # and HAL's verified European links, read once for cordis and erc
 
 
 def test_reads_the_newest_object_like_the_awards_job():
@@ -77,8 +79,8 @@ def test_reads_the_newest_object_like_the_awards_job():
 
 
 def test_one_matching_path_with_no_per_source_code():
-    shared = code(SQL.split('CREATE OR REPLACE TEMP VIEW link_listed', 1)[1].split('\n', 7)[-1])
-    for s in SOURCES:
+    shared = code(SQL.split('CREATE OR REPLACE TEMP VIEW link_listed', 1)[1].split('-- COMMAND ----------', 1)[1])   # after the union cell
+    for s in SOURCES + HAL_SOURCES:
         assert s not in shared, s
     assert 'CASE source' not in code(SQL) and 'CASE l.source' not in code(SQL)
 
@@ -86,7 +88,8 @@ def test_one_matching_path_with_no_per_source_code():
 def test_tables_read_and_written():
     tables = set(re.findall(r'\bopenalex\.\w+\.\w+', code(SQL)))
     assert tables == {MATCHES, LINKS, REFMATCH, OVERRIDES, HAL, KAKEN_OLD, 'openalex.awards.openalex_awards_raw', 'openalex.works.openalex_works',
-                      'openalex.works.location_work_match_keys', MERGED}, tables
+                      'openalex.works.location_work_match_keys', MERGED, HAL_LOCS}, tables
+    assert code(SQL).count(f'FROM {HAL_LOCS}') == 1   # one view reads HAL; its two sources read the view
     assert HAL in cell('CREATE OR REPLACE TEMP VIEW anr_opendata_listed')
     assert KAKEN_OLD in cell('CREATE OR REPLACE TEMP VIEW kaken_listed')
     writes = re.findall(r'\b(CREATE TABLE IF NOT EXISTS|CREATE OR REPLACE TABLE|INSERT INTO|MERGE INTO|DELETE FROM|UPDATE)\s+(\w+\.\w+\.\w+)',
@@ -101,6 +104,25 @@ def test_tables_read_and_written():
     assert code(cell('CREATE OR REPLACE TABLE ' + MATCHES + ' USING delta AS\nWITH')).count('openalex.works.openalex_works') == 1
     assert code(cell('CREATE OR REPLACE TEMP VIEW kaken_listed')).count('openalex.works.openalex_works') == 1
     assert code(SQL).count('openalex.works.openalex_works') == 2
+
+
+def test_hal_sources_read_the_text_verified_links_once_and_only_grants_raw_holds():
+    view = squash(code(cell('CREATE OR REPLACE TEMP VIEW hal_eu_listed AS')))
+    assert re.findall(r"read_files\('([^']+)'", view) == [HAL_EU]
+    assert f'WHERE _metadata.file_path = (SELECT {PIN} FROM objects)' in view   # the newest object, as every source
+    assert f'FROM {HAL_LOCS}' in view and "native_id LIKE 'oai:HAL:%'" in view and 'work_id IS NOT NULL' in view
+    assert "FROM openalex.awards.openalex_awards_raw WHERE provenance IN ('cordis', 'erc')" in view
+    sources = squash(code(cell('CREATE OR REPLACE TEMP VIEW link_sources AS')))
+    union = squash(code(cell('CREATE OR REPLACE TEMP VIEW link_listed')))
+    for s in HAL_SOURCES:
+        assert f"('{s}', 'work', 'none')" in sources, s   # the deposit names its work; its text names the grant
+        mapping = squash(code(cell(f'CREATE OR REPLACE TEMP VIEW {s}_listed AS')))
+        assert f"FROM hal_eu_listed WHERE source = '{s}'" in mapping and 'surnames, object FROM' in mapping, s
+        assert f"SELECT '{s}', * FROM {s}_listed" in union, s
+        # refmatch (on for every source) takes any listed row with a title and an output type, ungraded: HAL rows carry the
+        # deposit's work and neither, so a later edit cannot send them to the reference matcher by accident
+        assert 'CAST(NULL AS STRING) AS title' in mapping and 'CAST(NULL AS STRING) AS output_type' in mapping, s
+    assert 'hal_tei' not in SQL   # HAL's declared projects alone are not links (66/100 graded right, 25 Nov)
 
 
 def test_gates_are_frozen_before_the_one_merge_and_the_run_fails_after_it():
@@ -258,6 +280,21 @@ KAKEN_LEGACY = [(301, KAKEN_F, ['K1']),          # also in the API's list: one l
                 (303, KAKEN_F, ['K1']),          # the paper is in OpenAlex with no DOI now: dropped
                 (304, KAKEN_F, ['K1'])]          # merged away or gone: kept as named (Nightly moves it to the survivor)
 HAKAI = ['https://doi.org/10.4000/h.1', 'https://doi.org/10.4000/unindexed']
+EC_F, ERC_F = 4320320300, 4320338335
+
+
+HAL_EU_ROWS = [  # hal_id, grant_number, object (file name), as hal_eu_links_to_s3.py writes them
+    ('hal-e1', '231940', 'hal_eu_links_2026-11-25.parquet'),     # FP7: cordis
+    ('hal-e2', '340770', 'hal_eu_links_2026-11-25.parquet'),     # an ERC grant
+    ('hal-e4', '999999', 'hal_eu_links_2026-11-25.parquet'),     # not an award in raw: not listed, so no coverage loss
+    ('hal-e5', '340770', 'hal_eu_links_2026-11-25.parquet'),     # no OpenAlex work holds this deposit: not linked
+    ('hal-e8', '231940', 'hal_eu_links_2026-11-25.parquet'),     # its only pin has no work yet: not linked
+    ('hal-e2', 'ERC-340770', 'hal_eu_links_2026-11-25.parquet'),  # not a grant agreement number: not read
+    ('hal-e9', '231940', 'hal_eu_links_2026-11-18.parquet')]     # an older object only: not read
+HAL_LOC_ROWS = [('oai:HAL:hal-e1v2', 'repo', 501), ('oai:HAL:hal-e1v1', 'repo_backfill', 501),   # two versions, one work: one link
+                ('oai:HAL:hal-e2v1', 'repo', 502), ('oai:HAL:hal-e4v1', 'repo', 504), ('oai:HAL:hal-e9v1', 'repo', 509),
+                ('oai:HAL:hal-e8v1', 'repo', None),               # a pin with no work yet: never read
+                ('oai:arXiv.org:hal-e5v1', 'repo', 505)]          # another repository's id: not HAL's
 HAL_ROWS = [(205, ANR_F, 'ANR-1', 'hal-01'),       # a work with no DOI, named by HAL
             (99999, ANR_F, 'ANR-2', 'hal-02'),     # a work OpenAlex has merged away: passed through as named
             (201, ANR_F, 'ANR-1', 'hal-03')]       # the link the DOI also gives: one link
@@ -303,9 +340,14 @@ WORKS = [  # id, doi, pmid, type, title, year, volume, first page, author names
     (302, '10.3000/k.2', None, 'article', 'KAKEN two', 2015, None, None, ['A. B']),
     (303, None, None, 'article', 'A record that lost its DOI', 2015, None, None, ['A. B']),
     (401, '10.4000/h.1', None, 'article', 'Hakai paper', 2015, None, None, ['A. B']),
+    (501, None, None, 'conference-paper', 'A HAL talk on robots', 2012, None, None, ['A. B']),
+    (502, None, None, 'article', 'A HAL paper on proteins', 2016, None, None, ['A. B']),
+    (504, None, None, 'article', 'Unknown project', 2016, None, None, ['A. B']),
+    (509, None, None, 'article', 'Listed last week only', 2016, None, None, ['A. B']),
 ]
 RAW = ([('P1', 'nwopen', NWO_F), ('F1', 'fwf_open_api', FWF_F), ('ANR-1', 'anr_opendata', ANR_F), ('ANR-2', 'anr_opendata', ANR_F),
-        ('ANR-X', 'crossref_work', ANR_F), ('K1', 'kaken', KAKEN_F)]   # ANR-X: another source's award
+        ('ANR-X', 'crossref_work', ANR_F), ('K1', 'kaken', KAKEN_F),   # ANR-X: another source's award
+        ('231940', 'cordis', EC_F), ('340770', 'erc', ERC_F)]
        + [(f'ANR-K{k}', 'anr_opendata', ANR_F) for k in range(120)])
 LINKED = {  # source -> {(work_id, funder_id): award_ids}
     'nwopen': {(1, NWO_F): ['P1'], (3, NWO_F): ['P1'], (5, NWO_F): ['P1'], (7, NWO_F): ['P1'], (21, NWO_F): ['P1'], (66, NWO_F): ['P1'],
@@ -316,6 +358,8 @@ LINKED = {  # source -> {(work_id, funder_id): award_ids}
                      (99999, ANR_F): ['ANR-2'], (206, ANR_F): ['ANR-1'], (207, ANR_F): ['ANR-2']},
     'kaken': {(301, KAKEN_F): ['K1'], (302, KAKEN_F): ['K1'], (304, KAKEN_F): ['K1'], (310, KAKEN_F): ['K1']},
     'hakai_publications': {(401, HAKAI_F): []},
+    'cordis': {(501, EC_F): ['231940']},
+    'erc': {(502, ERC_F): ['340770']},
 }
 
 
@@ -368,6 +412,10 @@ def views(spark, raw=RAW):
     spark.createDataFrame([r + ('hal_tei_text_verified', old) for r in HAL_ROWS], 'work_id bigint, funder_id bigint, funder_award_id string, '
                           'hal_id string, provenance string, created_at timestamp').createOrReplaceTempView('t_hal')
     spark.createDataFrame(raw, 'funder_award_id string, provenance string, funder_id bigint').createOrReplaceTempView('t_raw')
+    hal_meta = lambda name: (HAL_EU.replace('*.parquet', name), new if name.endswith('25.parquet') else old)
+    spark.createDataFrame([(h, n, hal_meta(f)) for h, n, f in HAL_EU_ROWS],
+                          f'hal_id string, grant_number string, _metadata {meta}').createOrReplaceTempView('t_hal_eu')
+    spark.createDataFrame(HAL_LOC_ROWS, 'native_id string, provenance string, work_id bigint').createOrReplaceTempView('t_hal_locs')
     spark.createDataFrame([(w[0], w[5], nt(w[4])) for w in WORKS], 'id bigint, yr int, nt string').createOrReplaceTempView('t_keys')
     spark.createDataFrame([(199, 169)], 'loser_work_id bigint, winner_work_id bigint').createOrReplaceTempView('t_merged')
     spark.createDataFrame(
@@ -379,9 +427,9 @@ def views(spark, raw=RAW):
 
 
 def sub(sql, drop_source=None):
-    names = {OBJECTS[s]: v for s, v in zip(SOURCES, ('t_nwopen', 't_fwf', 't_anr', 't_kaken', 't_hakai'))}
+    names = {OBJECTS[s]: v for s, v in zip(SOURCES, ('t_nwopen', 't_fwf', 't_anr', 't_kaken', 't_hakai'))} | {HAL_EU: 't_hal_eu'}
     sql = re.sub(r"read_files\('([^']+)'[^)]*\)", lambda m: names[m.group(1)], sql)
-    for table, name in ((HAL, 't_hal'), (KAKEN_OLD, 't_kaken_old'), ('openalex.awards.openalex_awards_raw', 't_raw'), ('openalex.works.openalex_works', 't_works'),
+    for table, name in ((HAL, 't_hal'), (HAL_LOCS, 't_hal_locs'), (KAKEN_OLD, 't_kaken_old'), ('openalex.awards.openalex_awards_raw', 't_raw'), ('openalex.works.openalex_works', 't_works'),
                         ('openalex.works.location_work_match_keys', 't_keys'), (MATCHES, T_MATCHES), (LINKS, T_LINKS),
                         (REFMATCH, T_REFMATCH), (OVERRIDES, T_OVERRIDES), (MERGED, 't_merged')):
         sql = re.sub(re.escape(table) + r'(?!\w)', name, sql)   # whole names only: LINKS is a prefix of OVERRIDES
@@ -429,8 +477,11 @@ def test_each_tier_and_check_on_fixture_rows_and_a_rerun_writes_nothing(spark):
     views(spark)
     fresh(spark)
     run_notebook(spark)
-    for s in SOURCES:
+    for s in SOURCES + HAL_SOURCES:
         assert spark.table(f'{s}_listed').columns == COLUMNS, s
+    for s in HAL_SOURCES:   # never refmatch's: no title, no output type, decided by the work tier only
+        assert spark.sql(f'SELECT count(*) n FROM {s}_listed WHERE title IS NOT NULL OR output_type IS NOT NULL').first().n == 0, s
+        assert {tier for tier, _, _ in matches(spark, s).values()} <= {'work', None}, s
     assert matches(spark, 'nwopen') == {
         ('P1', '0', 1): ('doi', ['cleaned', 'salvaged'], True),   # DOI salvaged from a link with a space in it
         ('P1', '1', 2): ('doi', ['cleaned', 'salvaged'], False),  # another title, none of the listed authors
@@ -529,6 +580,6 @@ def test_a_dropped_link_is_deleted_and_a_source_removed_from_the_config_loses_it
                  + [('anr_opendata', 207, ANR_F, ['ANR-2'])])
     run_notebook(spark)                                # ANR no longer lists 999, and lists two grants on 201
     assert links(spark) == LINKED
-    assert last_merge(spark) == {'numTargetRowsInserted': 19, 'numTargetRowsUpdated': 1, 'numTargetRowsDeleted': 1}
+    assert last_merge(spark) == {'numTargetRowsInserted': 21, 'numTargetRowsUpdated': 1, 'numTargetRowsDeleted': 1}   # 19 + HAL's CORDIS and ERC links
     run_notebook(spark, drop_source='hakai_publications')
     assert links(spark) == {s: v for s, v in LINKED.items() if s != 'hakai_publications'}

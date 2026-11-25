@@ -95,7 +95,7 @@ def test_imports_caseys_matcher_and_copies_none_of_it():
 
 def test_reads_each_rule_from_its_one_place():
     g = first_cell()
-    assert g['SOURCES'] == ['nwopen', 'fwf_open_api', 'anr_opendata', 'kaken', 'hakai_publications']   # every source;
+    assert g['SOURCES'] == ['nwopen', 'fwf_open_api', 'anr_opendata', 'kaken', 'hakai_publications', 'cordis', 'erc']   # every source;
     # a source that lists only DOIs has no titled publication to select (output_type and title stay NULL)
     assert "CREATE OR REPLACE TABLE {W['unmatched_table']} AS" in SRC and 'WHERE m.output_type IS NOT NULL AND NOT coalesce(m.accepted, false)' in SRC
     assert 'p.text_hash, p.text, p.text AS raw_text' in SRC   # Match References' test_texts columns

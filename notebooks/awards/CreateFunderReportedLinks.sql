@@ -27,6 +27,10 @@
 -- MAGIC abstract record while the funder lists an article, book or thesis: the
 -- MAGIC title guard of the 23 Nov FWF grade (205 of 209 right). A decision made today is read by tomorrow's run.
 -- MAGIC
+-- MAGIC **HAL** (oxjob #2594, ZD 28397): the European grants a HAL deposit declares whose own full text prints the grant
+-- MAGIC number (HAL's full-text index, `scripts/local/hal_eu_links_to_s3.py`; #362's rule for ANR), as `cordis` or `erc` awards.
+-- MAGIC The deposit is its work by HAL location (`oai:HAL:<id>v<n>`; tier `work`, check `none`).
+-- MAGIC
 -- MAGIC **Gates, per source, before the links change:** it lists outputs and at least 99% of its grant ids are awards in raw;
 -- MAGIC its links are at least 95% and (when it holds any) at most 125% of the links it holds now. A source that fails keeps its
 -- MAGIC links, the others are written by one MERGE (deletions mirrored; a source dropped from `link_sources` loses its links),
@@ -98,7 +102,9 @@ CREATE OR REPLACE TEMP VIEW link_sources AS SELECT * FROM VALUES
   ('fwf_open_api', 'doi,pmid', 'title_or_author'),
   ('anr_opendata', 'doi,work', 'none'),
   ('kaken', 'doi,work', 'none'),
-  ('hakai_publications', 'doi', 'none')
+  ('hakai_publications', 'doi', 'none'),
+  ('cordis', 'work', 'none'),
+  ('erc', 'work', 'none')
 AS t(source, tiers, check);
 
 -- COMMAND ----------
@@ -196,12 +202,62 @@ FROM read_files('s3://openalex-ingest/awards/hakai/hakai_outputs.parquet', forma
 
 -- COMMAND ----------
 
+-- HAL (oxjob #2594): the European grants HAL deposits declare whose own full text prints the grant number, from HAL's
+-- full-text index (scripts/local/hal_eu_links_to_s3.py; the rule #362 applies to ANR in hal_anr_work_links: declared links alone
+-- graded 66/100 on 25 Nov). The deposit is its work by HAL location. A number counts only when raw holds it as a cordis or
+-- erc award, so a grant our feeds lack never weighs on a source's coverage.
+CREATE OR REPLACE TEMP VIEW hal_eu_listed AS
+WITH objects AS (
+  SELECT hal_id, grant_number, _metadata FROM read_files('s3://openalex-ingest/awards/hal_eu/*.parquet', format => 'parquet')
+),
+verified AS (
+  SELECT DISTINCT trim(hal_id) AS hal_id, trim(grant_number) AS award_id, _metadata.file_path AS object
+  FROM objects
+  WHERE _metadata.file_path = (SELECT max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) FROM objects)
+    AND trim(grant_number) RLIKE '^([0-9]{6}|101[0-9]{6})$'   -- a European grant agreement number (nih_fold.EU_NUMBER)
+),
+works AS (
+  SELECT DISTINCT regexp_extract(native_id, '^oai:HAL:(.+?)(v[0-9]+)?$', 1) AS hal_id, work_id
+  FROM openalex.works.location_work_ids
+  WHERE provenance IN ('repo', 'repo_backfill') AND native_id LIKE 'oai:HAL:%' AND work_id IS NOT NULL
+),
+awards AS (
+  SELECT DISTINCT provenance AS source, funder_award_id AS award_id FROM openalex.awards.openalex_awards_raw
+  WHERE provenance IN ('cordis', 'erc')
+)
+SELECT a.source, v.award_id, concat(v.hal_id, '/', w.work_id) AS output_key, w.work_id, v.object
+FROM verified v
+JOIN awards a ON a.award_id = v.award_id
+JOIN works w ON w.hal_id = v.hal_id;
+
+-- COMMAND ----------
+
+-- European projects a HAL deposit declares and its text names, as CORDIS grants (FP7, H2020, Horizon Europe outside the ERC).
+CREATE OR REPLACE TEMP VIEW cordis_listed AS
+SELECT award_id, CAST(NULL AS BIGINT) AS funder_id, output_key, CAST(NULL AS STRING) AS doi, CAST(NULL AS STRING) AS pmid, work_id,
+  CAST(NULL AS STRING) AS title, CAST(NULL AS INT) AS year, CAST(NULL AS STRING) AS volume, CAST(NULL AS STRING) AS first_page,
+  CAST(NULL AS STRING) AS output_type, CAST(NULL AS ARRAY<STRING>) AS surnames, object
+FROM hal_eu_listed WHERE source = 'cordis';
+
+-- COMMAND ----------
+
+-- European projects a HAL deposit declares and its text names, as ERC grants.
+CREATE OR REPLACE TEMP VIEW erc_listed AS
+SELECT award_id, CAST(NULL AS BIGINT) AS funder_id, output_key, CAST(NULL AS STRING) AS doi, CAST(NULL AS STRING) AS pmid, work_id,
+  CAST(NULL AS STRING) AS title, CAST(NULL AS INT) AS year, CAST(NULL AS STRING) AS volume, CAST(NULL AS STRING) AS first_page,
+  CAST(NULL AS STRING) AS output_type, CAST(NULL AS ARRAY<STRING>) AS surnames, object
+FROM hal_eu_listed WHERE source = 'erc';
+
+-- COMMAND ----------
+
 CREATE OR REPLACE TEMP VIEW link_listed AS
 SELECT 'nwopen' AS source, * FROM nwopen_listed
 UNION ALL SELECT 'fwf_open_api', * FROM fwf_open_api_listed
 UNION ALL SELECT 'anr_opendata', * FROM anr_opendata_listed
 UNION ALL SELECT 'kaken', * FROM kaken_listed
-UNION ALL SELECT 'hakai_publications', * FROM hakai_publications_listed;
+UNION ALL SELECT 'hakai_publications', * FROM hakai_publications_listed
+UNION ALL SELECT 'cordis', * FROM cordis_listed
+UNION ALL SELECT 'erc', * FROM erc_listed;
 
 -- COMMAND ----------
 
