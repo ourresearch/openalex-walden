@@ -2,7 +2,7 @@
 # items Crossref calls only journal-article: meeting abstracts, letters, errata, contents pages, notices. The 24 Nov 2026
 # build wrote 1,120,113 rows to openalex.works.record_declared_types (platform sciencedirect); this job adds rows, by the
 # same rule, for keys that have none yet (new items, pages crawled for the first time, items that cross a guard later).
-# ~100 rows a normal day. Never writes while the End 2 End runs; stops above max_new_rows. The next End 2 End lays the types on.
+# ~100 rows a normal day (a new work waits 7 days). Never writes while the End 2 End runs; stops above max_new_rows. The next End 2 End lays the types on.
 # Revert one run: DELETE ... WHERE oxjob = 2574 AND harvested_at = '<run ts>'; stop it: pause_status PAUSED here.
 resources:
   jobs:
@@ -43,5 +43,5 @@ resources:
         - name: dry_run
           default: "false"
         - name: max_new_rows
-          default: "10000"
+          default: "2000"
       performance_target: STANDARD
