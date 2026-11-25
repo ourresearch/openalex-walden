@@ -93,6 +93,7 @@ include:
   - jobs/match_references.yaml
   - jobs/work_links.yaml
   - jobs/references_on_works.yaml
+  - jobs/title_second_pass.yaml  # oxjob #2596
   - jobs/location_work_match_vectors.yaml
   - jobs/register_topic_classifier.yaml
   - jobs/sdg_frontfill.yaml
