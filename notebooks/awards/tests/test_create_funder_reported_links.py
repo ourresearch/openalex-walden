@@ -18,6 +18,7 @@ CELLS = SQL.split('-- COMMAND ----------')
 PIN = 'max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path))'
 MATCHES, LINKS = 'openalex.awards.funder_reported_link_matches', 'openalex.awards.funder_reported_links'
 REFMATCH = 'openalex.awards.funder_reported_refmatch_picks'
+OVERRIDES = 'openalex.awards.funder_reported_links_gate_overrides'   # a dated, per-source pass of shrink and growth
 MERGED = 'openalex.works.merged_work_ids'   # a refmatch pick merged away moves to its survivor   # the reference matcher's decisions (MatchListedOutputs.py)
 SOURCES = ('nwopen', 'fwf_open_api', 'anr_opendata', 'kaken', 'hakai_publications')
 OBJECTS = {  # the object each mapping reads: a prefix's newest *.parquet, or one object
@@ -84,14 +85,14 @@ def test_one_matching_path_with_no_per_source_code():
 
 def test_tables_read_and_written():
     tables = set(re.findall(r'\bopenalex\.\w+\.\w+', code(SQL)))
-    assert tables == {MATCHES, LINKS, REFMATCH, HAL, KAKEN_OLD, 'openalex.awards.openalex_awards_raw', 'openalex.works.openalex_works',
+    assert tables == {MATCHES, LINKS, REFMATCH, OVERRIDES, HAL, KAKEN_OLD, 'openalex.awards.openalex_awards_raw', 'openalex.works.openalex_works',
                       'openalex.works.location_work_match_keys', MERGED}, tables
     assert HAL in cell('CREATE OR REPLACE TEMP VIEW anr_opendata_listed')
     assert KAKEN_OLD in cell('CREATE OR REPLACE TEMP VIEW kaken_listed')
     writes = re.findall(r'\b(CREATE TABLE IF NOT EXISTS|CREATE OR REPLACE TABLE|INSERT INTO|MERGE INTO|DELETE FROM|UPDATE)\s+(\w+\.\w+\.\w+)',
                         code(SQL))
     # the matches table holds what each source lists (read once), then those outputs with their candidates; one write to the links
-    assert writes == [('CREATE TABLE IF NOT EXISTS', LINKS), ('CREATE TABLE IF NOT EXISTS', REFMATCH), ('CREATE OR REPLACE TABLE', MATCHES),
+    assert writes == [('CREATE TABLE IF NOT EXISTS', LINKS), ('CREATE TABLE IF NOT EXISTS', OVERRIDES), ('CREATE TABLE IF NOT EXISTS', REFMATCH), ('CREATE OR REPLACE TABLE', MATCHES),
                       ('CREATE OR REPLACE TABLE', MATCHES), ('MERGE INTO', LINKS)], writes
     assert SQL.index(f'CREATE TABLE IF NOT EXISTS {LINKS}') < SQL.index('LINKS_REGEX_MODE')   # its readers always have their input
     assert SQL.index(f'CREATE TABLE IF NOT EXISTS {REFMATCH}') < SQL.index('LINKS_REGEX_MODE')
@@ -113,6 +114,13 @@ def test_gates_are_frozen_before_the_one_merge_and_the_run_fails_after_it():
         assert rule in gates, rule
     merge = squash(code(cell(f'MERGE INTO {LINKS}')))
     assert "WHEN NOT MATCHED BY SOURCE AND NOT exists(session.link_results, r -> r.source = t.source AND r.state <> 'written') THEN DELETE" in merge
+
+
+def test_an_override_row_passes_shrink_and_growth_for_one_source_on_one_day():
+    gates = squash(code(cell('SET VAR link_results')))
+    assert gates.index('WHEN overridden THEN') > gates.index("THEN 'kept: coverage'")   # coverage is never overridden
+    assert gates.index('WHEN overridden THEN') < gates.index("THEN 'kept: shrink'") < gates.index("THEN 'kept: growth'")
+    assert ('SELECT DISTINCT source FROM ' + OVERRIDES + ' WHERE run_date = current_date()') in gates   # that day only
 
 
 def test_refmatch_is_a_last_tier_that_needs_the_title_guard():
@@ -178,12 +186,13 @@ def spark():
     dc = pytest.importorskip('databricks.connect')
     s = dc.DatabricksSession.builder.profile(os.environ['DATABRICKS_CONFIG_PROFILE']).serverless(True).getOrCreate()
     yield s
-    for t in (T_MATCHES, T_LINKS, T_REFMATCH):
+    for t in (T_MATCHES, T_LINKS, T_REFMATCH, T_OVERRIDES):
         s.sql(f'DROP TABLE IF EXISTS {t}')
 
 
 SCHEMA = os.environ.get('LINKS_TEST_SCHEMA', 'scratch')
 T_MATCHES, T_LINKS, T_REFMATCH = f'{SCHEMA}.frl_test_matches', f'{SCHEMA}.frl_test_links', f'{SCHEMA}.frl_test_refmatch'
+T_OVERRIDES = f'{SCHEMA}.frl_test_overrides'   # never the production table
 NWO_F, FWF_F, ANR_F, KAKEN_F, HAKAI_F = 4320321800, 4320321181, 4320320883, 4320334764, 4320334031
 T = lambda k: f'{k} of the colloidal glass transition in long range systems'
 ART, BOOK, PATENT, OTHER = 'Wetenschappelijk artikel', 'Boek', 'Octrooi', 'Overige Output'
@@ -363,8 +372,8 @@ def sub(sql, drop_source=None):
     sql = re.sub(r"read_files\('([^']+)'[^)]*\)", lambda m: names[m.group(1)], sql)
     for table, name in ((HAL, 't_hal'), (KAKEN_OLD, 't_kaken_old'), ('openalex.awards.openalex_awards_raw', 't_raw'), ('openalex.works.openalex_works', 't_works'),
                         ('openalex.works.location_work_match_keys', 't_keys'), (MATCHES, T_MATCHES), (LINKS, T_LINKS),
-                        (REFMATCH, T_REFMATCH), (MERGED, 't_merged')):
-        sql = sql.replace(table, name)
+                        (REFMATCH, T_REFMATCH), (OVERRIDES, T_OVERRIDES), (MERGED, 't_merged')):
+        sql = re.sub(re.escape(table) + r'(?!\w)', name, sql)   # whole names only: LINKS is a prefix of OVERRIDES
     if drop_source:
         sql = re.sub(r",\n  \('%s',[^\n]*\)" % drop_source, '', sql)
     return sql
@@ -378,7 +387,7 @@ def run_notebook(spark, drop_source=None):
 
 
 def fresh(spark, links=(), refmatch=REFMATCH_ROWS):
-    for t in (T_MATCHES, T_LINKS, T_REFMATCH):
+    for t in (T_MATCHES, T_LINKS, T_REFMATCH, T_OVERRIDES):
         spark.sql(f'DROP TABLE IF EXISTS {t}')
     spark.sql(f'CREATE TABLE {T_LINKS} (source STRING, work_id BIGINT, funder_id BIGINT, award_ids ARRAY<STRING>) USING delta')
     spark.createDataFrame(list(refmatch), 'source string, listed_key string, output_key string, title_key string, guard_key string, text string, '
@@ -482,6 +491,23 @@ def test_a_source_failing_a_gate_keeps_its_links_while_the_others_are_written(sp
     assert got['anr_opendata'] == {(201, ANR_F): ['ANR-1']}                  # 8 links against 1: kept as they were
     assert 'nwopen' not in got                                               # none of its grants is an award: none written
     assert {s: got[s] for s in ('kaken', 'hakai_publications')} == {s: LINKED[s] for s in ('kaken', 'hakai_publications')}
+
+
+def test_an_override_row_lets_one_source_through_shrink_for_the_day(spark):
+    views(spark, raw=[r for r in RAW if r[0] != 'P1'])   # as above: FWF shrinks, ANR grows, NWO fails coverage
+    held = [('fwf_open_api', 900 + k, FWF_F, ['F1']) for k in range(10)] + [('anr_opendata', 201, ANR_F, ['ANR-1'])]
+    fresh(spark, links=held)
+    spark.sql(f'DROP TABLE IF EXISTS {T_OVERRIDES}')
+    spark.sql(f'CREATE TABLE {T_OVERRIDES} (source STRING, run_date DATE, reason STRING, by STRING) USING delta')
+    spark.sql(f"INSERT INTO {T_OVERRIDES} VALUES ('fwf_open_api', current_date(), 'an intended undo', 'test'), "
+              f"('nwopen', current_date(), 'coverage is never overridden', 'test'), ('anr_opendata', current_date() - 1, 'yesterday', 'test')")
+    with pytest.raises(Exception, match=r'LINKS_GATES: anr_opendata kept: growth, nwopen kept: coverage'):
+        run_notebook(spark)
+    got = links(spark)
+    assert got['fwf_open_api'] == LINKED['fwf_open_api']                    # today's row: written despite the shrink
+    assert got['anr_opendata'] == {(201, ANR_F): ['ANR-1']}                  # yesterday's row: kept as it was
+    assert 'nwopen' not in got
+    spark.sql(f'DROP TABLE IF EXISTS {T_OVERRIDES}')
 
 
 def test_a_dropped_link_is_deleted_and_a_source_removed_from_the_config_loses_its_links(spark):

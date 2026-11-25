@@ -41,6 +41,13 @@ CREATE TABLE IF NOT EXISTS openalex.awards.funder_reported_links (source STRING,
 
 -- COMMAND ----------
 
+-- An intentional change bigger than the shrink and growth gates allow (a refmatch backfill batch, an undo) is written for one
+-- source on one UTC day by a row here, added by hand with the reason and who said yes. Coverage is never overridden.
+CREATE TABLE IF NOT EXISTS openalex.awards.funder_reported_links_gate_overrides (source STRING, run_date DATE, reason STRING, by STRING)
+USING delta;
+
+-- COMMAND ----------
+
 -- The reference matcher's decisions (MatchListedOutputs.py writes them), one row per source and listed output it decided,
 -- keyed by what the funder lists (listed_key: title and surnames), not its output id, which FWF renumbers between fetches.
 -- The refmatch tier reads them, so the table exists before anything reads it.
@@ -371,11 +378,15 @@ SET VAR link_results = (
   links_now AS (SELECT source, sum(greatest(size(award_ids), 1)) AS links_now FROM openalex.awards.funder_reported_links GROUP BY source),
   counts AS (
     SELECT s.source, m.object, coalesce(m.listed, 0) AS listed, coalesce(m.resolved, 0) AS resolved, coalesce(m.award_ids, 0) AS award_ids,
-      coalesce(m.award_ids_in_raw, 0) AS award_ids_in_raw, coalesce(l.links, 0) AS links, coalesce(n.links_now, 0) AS links_now
+      coalesce(m.award_ids_in_raw, 0) AS award_ids_in_raw, coalesce(l.links, 0) AS links, coalesce(n.links_now, 0) AS links_now,
+      o.source IS NOT NULL AS overridden
     FROM link_sources s LEFT JOIN listed m USING (source) LEFT JOIN links l USING (source) LEFT JOIN links_now n USING (source)
+    LEFT JOIN (SELECT DISTINCT source FROM openalex.awards.funder_reported_links_gate_overrides WHERE run_date = current_date()) o
+      USING (source)
   )
   SELECT array_sort(collect_list(struct(source, object, listed, resolved, award_ids, award_ids_in_raw, links, links_now, CASE
     WHEN listed = 0 OR award_ids_in_raw < 0.99 * award_ids THEN 'kept: coverage'
+    WHEN overridden THEN 'written'
     WHEN links < 0.95 * links_now THEN 'kept: shrink'
     WHEN links_now > 0 AND links > 1.25 * links_now THEN 'kept: growth'
     ELSE 'written' END AS state)))
