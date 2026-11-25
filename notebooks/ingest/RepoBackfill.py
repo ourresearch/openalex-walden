@@ -13,7 +13,7 @@ from pyspark.sql.types import *
 # oxjob #881: the work-type vocabulary and the policy filters used to be copy-pasted here from
 # Repo.py (~1,240 lines). The maps stayed in sync; the filters built on them did not.
 from openalex.dlt.repo_types import best_type_udf
-from openalex.dlt.repo_filters import apply_repo_policy_filters
+from openalex.dlt.repo_filters import apply_repo_policy_filters, MIN_TITLE_LENGTH
 from openalex.dlt.sequencing import dedupe_by_sequence
 from openalex.dlt.repo_ids import extract_ids_udf
 from openalex.dlt.oai_ids import read_endpoint_hosts, with_rekeyed_native_id
@@ -837,16 +837,25 @@ parsed_df = parsed_df.withColumn("license", coalesce(col("_cc_licence"), col("li
 # form: their `.` does not cross a line break), so ~1.27M served abstracts and ~20K titles read "clusteranalyse.\nResultaten",
 # search indexed 'nresultaten', and LaTeX read "$\\Omega$". The title and abstract are decoded here, after the dedupe, so
 # the content-hash tiebreak (which copy of a record wins, #1800's lesson) and the policy filters see exactly what they saw
-# before; normalized_title follows its title. One pass in effect: a real backslash is parked on U+E000 (0 of 621,979
-# sampled api_raw rows hold it) before the escapes are decoded, so "\\nu" stays "\nu". Same expression as the sizing SQL
-# in oxjob #2396 (work/sizing.sql). Revert: delete these lines.
-JSON_ESCAPES_DECODED_SQL = ("replace(replace(replace(replace(replace({c}, concat(chr(92), chr(92)), chr(57344)), "
-                            "concat(chr(92), 'n'), chr(10)), concat(chr(92), 'r'), chr(13)), concat(chr(92), 't'), chr(9)), "
-                            "chr(57344), chr(92))")
-# The UDF sees NULL on unchanged rows (cheap), so only decoded titles are normalized again.
+# before; normalized_title follows its title.
+# The decode splits on escaped backslashes ("\\" -> "\"), so "\\nu" stays "\nu" with no placeholder character, and decodes
+# \n and \t in each piece; \r\n and a lone \r become \n, as an XML parser's end-of-line handling gives the live harvest
+# (repo_parsed: 0 titles or abstracts with a CR). Checked against a full JSON decode of api_raw (from_json) on 155,609
+# sampled records: every title and abstract holding an escape decodes the same, except where cleaned_xml's own '""' -> '"'
+# step differs (unchanged here). A title that would collapse below MIN_TITLE_LENGTH keeps its old text (421 rows), so
+# the decode never empties a title the filters admitted. SQL copy: oxjob #2396 work/decode_expr.sql. Revert: delete these lines.
+JSON_ESCAPES_DECODED_SQL = (
+    "CASE WHEN contains({c}, chr(92)) THEN concat_ws(chr(92), transform("
+    "split({c}, concat(chr(92), chr(92), chr(92), chr(92)), -1), "
+    "p -> replace(replace(replace(replace(p, concat(chr(92), 'r', chr(92), 'n'), chr(10)), concat(chr(92), 'r'), chr(10)), "
+    "concat(chr(92), 'n'), chr(10)), concat(chr(92), 't'), chr(9)))) ELSE {c} END")
+# The UDF sees NULL on unchanged rows, so only decoded titles are normalized again.
 _title_changed = ~col("_title_decoded").eqNullSafe(col("title"))
 parsed_df = parsed_df \
     .withColumn("_title_decoded", expr(JSON_ESCAPES_DECODED_SQL.format(c="title"))) \
+    .withColumn("_title_decoded",
+        when(length(trim(regexp_replace(col("_title_decoded"), r"\s+", " "))) >= MIN_TITLE_LENGTH, col("_title_decoded"))
+        .otherwise(col("title"))) \
     .withColumn("normalized_title",
         when(_title_changed, normalize_title_udf(when(_title_changed, col("_title_decoded"))))
         .otherwise(col("normalized_title"))) \
