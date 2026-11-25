@@ -74,6 +74,15 @@
 # MAGIC   5.5 on fresh random draws, #2575 README § Bars); this notebook copies them so a rebuild keeps them. Pages that hold a real abstract are
 # MAGIC   not flagged: #2575 put the abstract alone into the #807 overlay instead (`openalex.abstracts.backfill_page_text_extracts`,
 # MAGIC   re-applied by CleanAbstractsBackfill). Revert that part: drop the branch below.
+# MAGIC - **Platform citation lines** (oxjob #2604, 25 Nov 2026): a work whose backfill text is a platform's citation line used
+# MAGIC   as the page description is flagged with reason `template`: Cambridge Core's "<title, or the reviewed book's
+# MAGIC   citation> - Volume 87 Issue 1-2", De Gruyter's "<chapter> was published in <book> on page 53.", Érudit's "<citation>.
+# MAGIC   Un article de la revue <journal> diffusée par la plateforme Érudit." (a templated stand-in, not an abstract). The
+# MAGIC   work_ids are #2604's list `CITATION_LINE_TABLE` (built once by #2604 `work/write.sql`: the text is one of its
+# MAGIC   judged keys, or matches its family's rule on a work that showed it; bar: Opus 5.5 read 340 of 340 random flagged
+# MAGIC   texts as no abstract), plus reason `fallback_judged` for a work whose next backfill text, once the line was gone,
+# MAGIC   Opus read as no abstract either; this notebook copies them so a rebuild keeps them. Revert that part: drop the
+# MAGIC   branch below.
 # MAGIC - **Revert:** remove the anti-join from CreateWorksBase (one line), or `TRUNCATE` this table. Never
 # MAGIC   DROP it while CreateWorksBase reads it: a missing table fails the nightly.
 # MAGIC
@@ -105,6 +114,7 @@ PDF_BACKFILL_TABLE = "openalex.abstracts.not_abstract_pdf_backfill"  # oxjob #18
 DIFFERENT_ITEM_TABLE = "openalex.abstracts.different_item_backfill"  # oxjob #1790: works showing another item's abstract
 PAGE_OPENING_TABLE = "openalex.abstracts.page_marked_opening_backfill"  # oxjob #2162 (+ #2575 MUSE / Annals): openings the page marks
 PAGE_TEXT_TABLE = "openalex.abstracts.page_text_backfill"  # oxjob #2575: Literatum landing-page text with no abstract
+CITATION_LINE_TABLE = "openalex.abstracts.citation_line_backfill"  # oxjob #2604: platform citation lines (Cambridge, De Gruyter, Érudit)
 # oxjob #1800 (6 Nov 2026): rule dspace-v1, a SQL predicate on a text column. Keep byte-identical with
 # FlagLocationNotAbstracts.
 DEPOSIT_NOTICE_COMMIT = "dspace-v1: DSpace deposit notice (#1800, 6 Nov 2026)"
@@ -308,10 +318,25 @@ LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e WHERE ACS_CHROME_SQL) acs O
 LEFT ANTI JOIN (SELECT e.work_id FROM (SELECT bf.work_id, CASE WHEN r.work_id IS NOT NULL THEN r.abstract ELSE bf.abstract END AS abstract
                 FROM SOURCE_TABLE bf LEFT JOIN REPAIR_TABLE r ON bf.work_id = r.work_id) e
                 WHERE e.abstract IS NOT NULL AND DEPOSIT_NOTICE_SQL) dn ON dn.work_id = pt.work_id
+UNION ALL
+-- Platform citation lines (see the header). One row per work: skip works another branch flags.
+SELECT cl.work_id, cl.reason, cl.text_len, cl.label_version AS filter_commit, current_timestamp() AS built_at
+FROM CITATION_LINE_TABLE cl
+LEFT ANTI JOIN flagged_backfill f ON f.work_id = cl.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e JOIN SHORT_TABLE st ON st.text = trim(e.abstract)) s ON s.work_id = cl.work_id
+LEFT ANTI JOIN PEER_REVIEW_TABLE p ON p.work_id = cl.work_id
+LEFT ANTI JOIN PDF_BACKFILL_TABLE d ON d.work_id = cl.work_id
+LEFT ANTI JOIN DIFFERENT_ITEM_TABLE di ON di.work_id = cl.work_id
+LEFT ANTI JOIN PAGE_OPENING_TABLE po ON po.work_id = cl.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM eff_backfill e WHERE ACS_CHROME_SQL) acs ON acs.work_id = cl.work_id
+LEFT ANTI JOIN (SELECT e.work_id FROM (SELECT bf.work_id, CASE WHEN r.work_id IS NOT NULL THEN r.abstract ELSE bf.abstract END AS abstract
+                FROM SOURCE_TABLE bf LEFT JOIN REPAIR_TABLE r ON bf.work_id = r.work_id) e
+                WHERE e.abstract IS NOT NULL AND DEPOSIT_NOTICE_SQL) dn ON dn.work_id = cl.work_id
+LEFT ANTI JOIN PAGE_TEXT_TABLE pt ON pt.work_id = cl.work_id
 """.replace("TARGET_TABLE", TARGET_TABLE).replace("FILTER_COMMIT", FILTER_COMMIT).replace("SHORT_TABLE", SHORT_TABLE)
    .replace("PEER_REVIEW_TABLE", PEER_REVIEW_TABLE).replace("PDF_BACKFILL_TABLE", PDF_BACKFILL_TABLE)
    .replace("DIFFERENT_ITEM_TABLE", DIFFERENT_ITEM_TABLE).replace("PAGE_OPENING_TABLE", PAGE_OPENING_TABLE)
-   .replace("PAGE_TEXT_TABLE", PAGE_TEXT_TABLE)
+   .replace("PAGE_TEXT_TABLE", PAGE_TEXT_TABLE).replace("CITATION_LINE_TABLE", CITATION_LINE_TABLE)
    .replace("SOURCE_TABLE", SOURCE_TABLE)
    .replace("REPAIR_TABLE", REPAIR_TABLE).replace("DEPOSIT_NOTICE_COMMIT", DEPOSIT_NOTICE_COMMIT)
    .replace("DEPOSIT_NOTICE_SQL", DEPOSIT_NOTICE.replace("COL", "e.abstract"))
