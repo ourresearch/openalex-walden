@@ -1,0 +1,47 @@
+# oxjob #2574: ScienceDirect's own content-type label (citation_article_type in the stored landing-page crawl) types the
+# items Crossref calls only journal-article: meeting abstracts, letters, errata, contents pages, notices. The 24 Nov 2026
+# build wrote 1,120,113 rows to openalex.works.record_declared_types (platform sciencedirect); this job adds rows, by the
+# same rule, for keys that have none yet (new items, pages crawled for the first time, items that cross a guard later).
+# ~100 rows a normal day. Never writes while the End 2 End runs; stops above max_new_rows. The next End 2 End lays the types on.
+# Revert one run: DELETE ... WHERE oxjob = 2574 AND harvested_at = '<run ts>'; stop it: pause_status PAUSED here.
+resources:
+  jobs:
+    ScienceDirect_Declared_Types:
+      name: ScienceDirect Declared Types (oxjob 2574)
+      description: |
+        Daily: ScienceDirect-labelled works still typed article (Abstract, Correspondence, Erratum, Contents list, Editorial
+        Board, Index, notice labels) whose DOI record has no row in openalex.works.record_declared_types get one, by the rule
+        oxjob #2574 barred on 24 Nov 2026 (notebook header). Only adds rows, never updates or deletes. Skips while the
+        End 2 End runs; stops before writing above max_new_rows. Dry run: dry_run=true.
+      schedule:
+        # 20:00 UTC: after the nightly End 2 End publishes (~12:00-17:00 UTC), before the next one (03:00 UTC).
+        quartz_cron_expression: 0 0 20 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      tasks:
+        - task_key: add_rows
+          environment_key: Default
+          notebook_task:
+            notebook_path: notebooks/maintenance/ScienceDirectDeclaredTypes
+            source: GIT
+            base_parameters:
+              dry_run: "{{job.parameters.dry_run}}"
+              max_new_rows: "{{job.parameters.max_new_rows}}"
+          timeout_seconds: 3600
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
+      parameters:
+        - name: dry_run
+          default: "false"
+        - name: max_new_rows
+          default: "10000"
+      performance_target: STANDARD
