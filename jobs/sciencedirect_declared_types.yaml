@@ -14,8 +14,9 @@ resources:
         oxjob #2574 barred on 24 Nov 2026 (notebook header). Only adds rows, never updates or deletes. Skips while the
         End 2 End runs; stops before writing above max_new_rows. Dry run: dry_run=true.
       schedule:
-        # 20:00 UTC: after the nightly End 2 End publishes (~12:00-17:00 UTC), before the next one (03:00 UTC).
-        quartz_cron_expression: 0 0 20 * * ?
+        # 23:00 UTC: after the nightly End 2 End ends (it publishes ~12:00-17:00 UTC; its Lakebase tail can run to ~22:00 UTC),
+        # before the next one (03:00 UTC). While a run is still active the job skips; the next day catches up.
+        quartz_cron_expression: 0 0 23 * * ?
         timezone_id: UTC
         pause_status: UNPAUSED
       max_concurrent_runs: 1
@@ -43,5 +44,5 @@ resources:
         - name: dry_run
           default: "false"
         - name: max_new_rows
-          default: "2000"
+          default: "3000"
       performance_target: STANDARD

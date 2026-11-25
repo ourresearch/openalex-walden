@@ -50,8 +50,8 @@ END2END_JOB_ID = 616701029470182
 PLATFORM = "sciencedirect"
 OXJOB = 2574
 
-# A normal day adds ~100; the first run (25 Nov) added ~2.5K with max_new_rows raised for that run.
-dbutils.widgets.text("max_new_rows", "2000")
+# A normal day adds ~100; the first run (25 Nov) adds ~2.5K (works a references change moved under a guard).
+dbutils.widgets.text("max_new_rows", "3000")
 MAX_NEW_ROWS = int(dbutils.widgets.get("max_new_rows"))
 dbutils.widgets.text("dry_run", "false")
 DRY_RUN = dbutils.widgets.get("dry_run").strip().lower() == "true"
@@ -66,7 +66,7 @@ def end2end_active():
 
 def write(sql):
     """Run one write; retry a few times when another job writes the same table at the same moment. Never while the
-    End 2 End runs: checked before every attempt (shortcut: a check, not a lock; the run starts at 03:00 UTC, 7 h after
+    End 2 End runs: checked before every attempt (shortcut: a check, not a lock; the run starts at 03:00 UTC, 4 h after
     this job, and a Delta append is atomic, so a run that starts mid-write reads the table before or after it)."""
     for attempt in range(4):
         active = end2end_active()
