@@ -1,7 +1,8 @@
 -- Investigator authors (oxjob #1847): every person named on a grant, one row per (award_id, slot, position) of awards_api (position =
 -- 0 for lead and co-lead, else the index in investigators[]), with the printed names, the cleaned grant ORCID (upper case keeps a
--- lowercase x), name keys, the grant's institutions (awarded + the person's affiliation RORs) and the window: 3 years before the start
--- to 5 after. Excluded funders (the temp view excluded_funders: a funder id, or every funder of a country) are dropped here only.
+-- lowercase x), the person's KAKEN researcher number as the grant lists it (nrid: affiliation id of type nrid, '1000' + 9 digits), name
+-- keys, the grant's institutions (awarded + the person's affiliation RORs) and the window: 3 years before the start to 5 after.
+-- Excluded funders (the temp view excluded_funders: a funder id, or every funder of a country) are dropped here only.
 CREATE OR REPLACE TABLE __P__people CLUSTER BY (award_id) AS
 WITH x AS (
   SELECT funder_id FROM excluded_funders WHERE funder_id IS NOT NULL
@@ -32,6 +33,8 @@ k AS (
 )
 SELECT award_id, funder_id, provenance, funder_award_id, award_doi, slot, CAST(position AS INT) AS position,
   p.given_name, p.family_name, nullif(regexp_extract(upper(coalesce(p.orcid, '')), '([0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X])', 1), '') AS orcid,
+  nullif(regexp_extract(coalesce(get(filter(coalesce(p.affiliation.ids, array()), i -> lower(i.type) = 'nrid'), 0).id, ''),
+    'nrid/([0-9]{13})$', 1), '') AS nrid,
   gt, ft, fam_keys, get(gt, 0) AS given_key, concat(array_join(ft, ''), '|', coalesce(get(gt, 0), '')) AS person_key,
   coalesce(p.given_name, '') RLIKE '[^/ ]+ +[^/ ]+ */' AS multi_name,  -- two people in one field ('John Smith / Mary'): never shortlisted
   p.affiliation.name AS aff_name, insts, start_year, end_year,

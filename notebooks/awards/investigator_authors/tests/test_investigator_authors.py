@@ -578,7 +578,7 @@ def routes_db():
     c.execute("INSERT INTO ia_profile_names VALUES (7, 'subramanian', 'k'), (8, 'wang', 'wei')")   # 8: 王伟, romanised by the parser
     c.execute("""CREATE TABLE ia_people (award_id BIGINT, funder_id BIGINT, provenance VARCHAR, funder_award_id VARCHAR, award_doi VARCHAR,
                  slot VARCHAR, position INT, given_name VARCHAR, family_name VARCHAR, orcid VARCHAR, gt VARCHAR[], ft VARCHAR[],
-                 fam_keys VARCHAR[], given_key VARCHAR, person_key VARCHAR, insts BIGINT[])""")
+                 fam_keys VARCHAR[], given_key VARCHAR, person_key VARCHAR, insts BIGINT[], nrid VARCHAR)""")
     for a, prov, num, given, family, orcid in [(1, "ukri", "X1", "Mark", "Williams", "0000-0002-9884-2614"),
                                                (2, "kaken", "X2", "Ken", "Sato", "0000-0001-1111-1111"),
                                                (3, "nih_exporter", "5r01gm035872-03", "Kiranur", "Subramanian", None),
@@ -592,7 +592,6 @@ def routes_db():
     c.execute("INSERT INTO openalex.works.work_authors VALUES (900, 7)")
     c.execute("CREATE TABLE openalex.awards.nih_grants_raw (core_project_num VARCHAR, pi_ids VARCHAR, pi_names VARCHAR)")
     c.execute("CREATE TABLE openalex.awards.nsf_grants_raw (awd_id VARCHAR, pi_all VARCHAR)")
-    c.execute("CREATE TABLE openalex.awards.kaken_projects_raw (project_id VARCHAR, pi_nrid VARCHAR, pi_given_name VARCHAR, pi_family_name VARCHAR)")
     c.execute(f"CREATE TABLE openalex.works.work_authorships (work_id BIGINT, authorships {AUTHORSHIPS})")
     c.execute("CREATE TABLE openalex.works.openalex_works (id BIGINT, publication_year INT)")
     c.execute("CREATE TABLE openalex.institutions.institution_ancestors (institution_id BIGINT, lineage_ids BIGINT[])")
@@ -606,10 +605,10 @@ def routes_db():
     return d
 
 
-def add_person(c, award, funder, prov, num, given, family, orcid, insts):
-    c.execute("""INSERT INTO ia_people VALUES (?, ?, ?, ?, NULL, 'lead_investigator', 0, ?, ?, ?, ia_name_tokens(?), ia_name_tokens(?),
-                 ia_family_keys(?), ia_name_tokens(?)[1], ?, ?)""", [award, funder, prov, num, given, family, orcid, given, family, family,
-                                                                     given, f"{family.lower()}|{given.lower()}", insts])
+def add_person(c, award, funder, prov, num, given, family, orcid, insts, nrid=None, slot="lead_investigator", position=0):
+    c.execute("""INSERT INTO ia_people VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ia_name_tokens(?), ia_name_tokens(?),
+                 ia_family_keys(?), ia_name_tokens(?)[1], ?, ?, ?)""", [award, funder, prov, num, slot, position, given, family, orcid, given,
+                                                                        family, family, given, f"{family.lower()}|{given.lower()}", insts, nrid])
 
 
 def claims(d):
@@ -683,8 +682,7 @@ def test_an_anchor_the_orcid_guards_refuse_does_not_spread():
         add_person(c, a, 1, "nih_exporter", f"5r01gm0000{a}-01", given, family, orcid, [])
         c.execute("INSERT INTO openalex.awards.nih_grants_raw VALUES (?, ?, ?)", [f"R01GM0000{a}", str(pi), f"{family.upper()}, {given.upper()}"])
     for a, orcid in [(36, "0000-0003-3333-3333"), (37, None)]:
-        add_person(c, a, 4320334764, "kaken", f"K{a}", "Ana", "Costa", orcid, [])
-        c.execute("INSERT INTO openalex.awards.kaken_projects_raw VALUES (?, '1000055555555', 'Ana', 'Costa')", [f"K{a}"])
+        add_person(c, a, 4320334764, "kaken", f"K{a}", "Ana", "Costa", orcid, [], nrid="1000055555555")
     c.execute("INSERT INTO openalex.awards.investigator_jev_links VALUES (43, 'lead_investigator', 0, 'Leo', 'Dias', 81, 0.9), "
               "(45, 'lead_investigator', 0, 'Rita', 'Melo', 83, 0.9)")
     d.run("jev.sql", JEVSEED=SEED)
@@ -707,7 +705,7 @@ def test_crossref_claims_a_slot_only_when_one_person_on_the_award_fits():
     for a, slot, pos, given in [(40, "lead_investigator", 0, "Ann A."), (40, "investigators", 0, "Ann B."),
                                 (42, "lead_investigator", 0, "Ann A."), (42, "investigators", 0, "Ann A.")]:
         c.execute("""INSERT INTO ia_people VALUES (?, 1, 'ukri', ?, ?, ?, ?, ?, 'Lee', NULL, ia_name_tokens(?), ['lee'], ['lee'],
-                     ia_name_tokens(?)[1], 'lee|ann', [])""", [a, f"X{a}", f"10.1234/g{a}", slot, pos, given, given, given])
+                     ia_name_tokens(?)[1], 'lee|ann', [], NULL)""", [a, f"X{a}", f"10.1234/g{a}", slot, pos, given, given, given])
         if slot == "lead_investigator":
             c.execute("""INSERT INTO openalex.awards.crossref_grants_deduplicated VALUES (?, ?, 'p', [{'funding': [],
                          'lead-investigator': [{'given': 'Ann A.', 'family': 'Lee', 'ORCID': 'https://orcid.org/0000-0004-0000-0001'}],
@@ -722,18 +720,15 @@ def test_crossref_claims_a_slot_only_when_one_person_on_the_award_fits():
 def kaken_db(numbers=True):
     """routes_db plus KAKEN leads: Taro Yamada (NRID ...111) is bound by his grant's papers on award 60 and printed in kanji on
     award 61 (no name key); award 62's number no grant binds; number ...333 is bound to two authors (Ken Ito 41 on award 63, Kenji Ito
-    42 on award 64), so award 65 (伊藤 健, the same number) gets nothing. numbers=False: the same people, KAKEN's file empty."""
+    42 on award 64): a tie, so award 65 (伊藤 健, the same number) gets nothing. numbers=False: the same people, no numbers listed."""
     d = routes_db()
     c = d.con
     c.execute("INSERT INTO ia_profile_names VALUES (40, 'yamada', 'taro'), (41, 'ito', 'ken'), (42, 'ito', 'kenji')")
-    for a, given, family in [(60, "Taro", "Yamada"), (61, "太郎", "山田"), (62, "Hanako", "Suzuki"), (63, "Ken", "Ito"),
-                             (64, "Kenji", "Ito"), (65, "健", "伊藤")]:
-        add_person(c, a, 4320334764, "kaken", f"K{a}", given, family, None, [])
+    for a, given, family, nrid in [(60, "Taro", "Yamada", "1000011111111"), (61, "太郎", "山田", "1000011111111"),
+                                   (62, "Hanako", "Suzuki", "1000022222222"), (63, "Ken", "Ito", "1000033333333"),
+                                   (64, "Kenji", "Ito", "1000033333333"), (65, "健", "伊藤", "1000033333333")]:
+        add_person(c, a, 4320334764, "kaken", f"K{a}", given, family, None, [], nrid=nrid if numbers else None)
     c.execute("INSERT INTO ia_paper_authors VALUES (60, 6000, 40), (63, 6300, 41), (64, 6400, 42)")
-    if numbers:
-        c.execute("INSERT INTO openalex.awards.kaken_projects_raw VALUES ('K60', '1000011111111', 'Taro', 'Yamada'), "
-                  "('K61', '1000011111111', '太郎', '山田'), ('K62', '1000022222222', 'Hanako', 'Suzuki'), "
-                  "('K63', '1000033333333', 'Ken', 'Ito'), ('K64', '1000033333333', 'Kenji', 'Ito'), ('K65', '1000033333333', '健', '伊藤')")
     return d
 
 
@@ -743,7 +738,36 @@ def test_kaken_nrid_carries_one_bound_author_by_number_not_name():
     got = [x for x in claims(d) if x[1] == "kaken_nrid"]
     assert got == [(60, "kaken_nrid", 40), (61, "kaken_nrid", 40)]   # the kanji lead too; the anchor claims itself, as NIH/NSF ids do
     ev = json.loads(d.rows("SELECT evidence FROM ia_routes WHERE award_id = 61 AND method = 'kaken_nrid'")[0][0])
-    assert ev == {"nrid": "1000011111111", "ties": 1}
+    assert {k: v for k, v in ev.items() if v is not None} == {"nrid": "1000011111111", "ties": 1}   # Spark's to_json drops the null 'of'
+
+
+def test_kaken_nrid_takes_a_strict_majority_reaches_co_investigators_and_an_orcid_anchor_on_another_author_stops_it():
+    """Makoto Hayashi (...777): his papers on awards 90 and 91 name profile 70, award 92's one paper a split profile 71 of the same name; award 93
+    prints him in kanji and award 94 lists him as a co-investigator. 70 has 2 of 3 anchors, so the number claims 70 on all five slots (92's
+    own paper claim stays a claim; decide.sql ranks the two). Yuki Mori (...888): papers on 95 and 96 name 72, but award 97's grant ORCID
+    is on profile 73: an ORCID anchor is not outvoted, so the number claims nothing."""
+    d = kaken_db()
+    c = d.con
+    c.execute("INSERT INTO ia_profile_names VALUES (70, 'hayashi', 'makoto'), (71, 'hayashi', 'makoto'), (72, 'mori', 'yuki'), (73, 'mori', 'yuki')")
+    c.execute("INSERT INTO ia_profile_orcids VALUES (73, '0000-0007-7777-7777', 1)")
+    for a, given, family, nrid, orcid, slot, pos in [
+            (90, "Makoto", "Hayashi", "1000077777777", None, "lead_investigator", 0),
+            (91, "Makoto", "Hayashi", "1000077777777", None, "lead_investigator", 0),
+            (92, "Makoto", "Hayashi", "1000077777777", None, "lead_investigator", 0),
+            (93, "誠", "林", "1000077777777", None, "lead_investigator", 0),
+            (94, "Makoto", "Hayashi", "1000077777777", None, "investigators", 1),
+            (95, "Yuki", "Mori", "1000088888888", None, "lead_investigator", 0),
+            (96, "Yuki", "Mori", "1000088888888", None, "lead_investigator", 0),
+            (97, "Yuki", "Mori", "1000088888888", "0000-0007-7777-7777", "lead_investigator", 0)]:
+        add_person(c, a, 4320334764, "kaken", f"K{a}", given, family, orcid, [], nrid=nrid, slot=slot, position=pos)
+    c.execute("INSERT INTO ia_paper_authors VALUES (90, 9000, 70), (91, 9100, 70), (92, 9200, 71), (95, 9500, 72), (96, 9600, 72)")
+    d.run("routes.sql")
+    got = [x for x in claims(d) if x[0] >= 90]
+    assert [x for x in got if x[1] == "kaken_nrid"] == [(a, "kaken_nrid", 70) for a in (90, 91, 92, 93, 94)]
+    assert (92, "linked_paper", 71) in got and (97, "orcid", 73) in got
+    ev = json.loads(d.rows("SELECT evidence FROM ia_routes WHERE award_id = 94 AND method = 'kaken_nrid'")[0][0])
+    assert ev == {"nrid": "1000077777777", "ties": 2, "of": 3}
+    assert d.rows("SELECT slot, position FROM ia_routes WHERE award_id = 94") == [("investigators", 1)]
 
 
 def test_a_kaken_lead_needs_the_given_name_or_its_initial_on_the_profile_and_a_dropped_anchor_spreads_nothing():
@@ -764,11 +788,10 @@ def test_a_kaken_lead_needs_the_given_name_or_its_initial_on_the_profile_and_a_d
                                            (69, "kaken", "Shinpei", "Ito", 45), (70, "kaken", "Koji", "Abe", 46),
                                            (71, "kaken", "Koji", "Abe", 47), (72, "ukri", "Koji", "Abe", 43),
                                            (74, "kaken", "Shinichiro", "Ito", 49)]:
-        add_person(c, a, 4320334764 if prov == "kaken" else 1, prov, f"K{a}", given, family, None, [])
+        add_person(c, a, 4320334764 if prov == "kaken" else 1, prov, f"K{a}", given, family, None, [],
+                   nrid="1000044444444" if a in (66, 67, 73) else None)
         if author:
             c.execute("INSERT INTO ia_paper_authors VALUES (?, ?, ?)", [a, a * 100, author])
-    c.execute("INSERT INTO openalex.awards.kaken_projects_raw VALUES ('K66', '1000044444444', 'Koji', 'Abe'), "
-              "('K67', '1000044444444', '康二', '阿部'), ('K73', '1000044444444', 'Koji', 'Abe')")
     d.run("routes.sql")
     got = [x for x in claims(d) if x[0] >= 66]
     assert [x for x in got if x[1] == "linked_paper"] == [(68, "linked_paper", 44), (69, "linked_paper", 45), (70, "linked_paper", 46),
@@ -778,19 +801,21 @@ def test_a_kaken_lead_needs_the_given_name_or_its_initial_on_the_profile_and_a_d
 
 
 # decide.sql with kaken_nrid claims: one award per scenario, the claims, the scored lists, and the layer each must get
-SLOTS3 = [(a, "lead_investigator", 0, f"k{a}|x", None) for a in range(60, 66)]
+SLOTS3 = [(a, "lead_investigator", 0, f"k{a}|x", None) for a in range(60, 67)]
 ROUTES3 = [(60, "lead_investigator", 0, 600, "kaken_nrid"), (61, "lead_investigator", 0, 610, "kaken_nrid"),
            (61, "lead_investigator", 0, 610, "linked_paper"), (62, "lead_investigator", 0, 620, "kaken_nrid"),
            (62, "lead_investigator", 0, 621, "linked_paper"), (63, "lead_investigator", 0, 630, "kaken_nrid"),
            (64, "lead_investigator", 0, 640, "kaken_nrid"), (65, "lead_investigator", 0, 650, "kaken_nrid"),
-           (65, "lead_investigator", 0, 650, "jev_link")]
+           (65, "lead_investigator", 0, 650, "jev_link"), (66, "lead_investigator", 0, 660, "kaken_nrid"),
+           (66, "lead_investigator", 0, 661, "orcid")]
 SCORES3 = {"63|k63|x": [(631, 0.99)], "64|k64|x": [(640, 0.99), (641, 0.6)]}
 WANT3 = {(60, "lead_investigator", 0): "kaken_nrid",      # the number alone
          (61, "lead_investigator", 0): "route_bind",      # with an identifier route on the same author
-         (62, "lead_investigator", 0): "route_conflict",  # against an identifier route
+         (62, "lead_investigator", 0): "kaken_nrid",      # against a linked_paper claim on another author: the number outranks it
          (63, "lead_investigator", 0): "route_conflict",  # the student's servable pick is another author
          (64, "lead_investigator", 0): "kaken_nrid",      # a common name (two plausible): an identifier is not held for it
-         (65, "lead_investigator", 0): "kaken_nrid"}      # with Jev's pick on the same author
+         (65, "lead_investigator", 0): "kaken_nrid",      # with Jev's pick on the same author
+         (66, "lead_investigator", 0): "route_conflict"}  # against an ORCID claim
 
 
 def test_decide_gives_kaken_nrid_its_own_layer_and_conflicts_like_any_route():
@@ -799,7 +824,11 @@ def test_decide_gives_kaken_nrid_its_own_layer_and_conflicts_like_any_route():
     assert got == {**WANT, **WANT3}
     served = d.rows("SELECT award_id, author_id, method, layer FROM to_serve WHERE award_id >= 60 ORDER BY 1")
     assert served == [(60, 600, "kaken_nrid", "kaken_nrid"), (61, 610, "kaken_nrid+linked_paper", "route_bind"),
-                      (64, 640, "kaken_nrid", "kaken_nrid"), (65, 650, "jev_link+kaken_nrid", "kaken_nrid")]
+                      (62, 620, "kaken_nrid", "kaken_nrid"), (64, 640, "kaken_nrid", "kaken_nrid"),
+                      (65, 650, "jev_link+kaken_nrid", "kaken_nrid")]
+    ev = json.loads(d.rows("SELECT evidence FROM ia_decisions WHERE award_id = 62")[0][0])
+    assert [(c["method"], c["author_id"]) for c in ev["claims"]] == [("kaken_nrid", 620)]
+    assert [(c["method"], c["author_id"]) for c in ev["outranked"]] == [("linked_paper", 621)]
 
 
 # ---------- nsfc_name: NSFC's Chinese-only PIs, by pinyin on the grant's own papers ----------

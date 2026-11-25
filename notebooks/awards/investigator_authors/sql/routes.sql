@@ -6,7 +6,8 @@
 --   nih_core_papers   NIH: the only name-agreeing author on the papers work_awards links to the core project
 --   funder_person_id  the NIH / NSF person id -> the one author orcid / linked_paper give that id on any grant
 --   crossref_orcid    the ORCID a funder deposited on its Crossref grant record, on one profile whose name agrees, fitting one slot
---   kaken_nrid        the KAKEN lead's researcher number -> the one author orcid / linked_paper give it on any KAKEN grant
+--   kaken_nrid        a KAKEN person's researcher number (the grant's own listing: lead or co-investigator) -> the author a strict
+--                     majority of the number's anchored slots (orcid / linked_paper, any KAKEN grant) name, with no ORCID anchor on another
 --   nsfc_name         NSFC (Chinese names only): on the grant's own papers, one author printed as the PI's full pinyin at the grant
 --                     institution, and at least half of that profile's other works in the grant window there too
 --   jev_link          Jev's pick among 1-20 same-name profiles (__P__jev: Judge_With_Jev's picks, kept by the job)
@@ -174,7 +175,7 @@ t0 AS (  -- the anchors: an orcid or linked_paper claim that no other claim on t
         UNION ALL SELECT award_id, slot, position, author_id, 'jev', false, NULL FROM r_jev)
   GROUP BY 1, 2, 3 HAVING count(DISTINCT author_id) = 1 AND max(anchor)),
 ta AS (  -- decide.sql's ORCID guards, on the anchors: an author they refuse on its own slot must not spread by person id or NRID
-  SELECT t0.award_id, t0.slot, t0.position, t0.author_id FROM t0 JOIN pe p USING (award_id, slot, position)
+  SELECT t0.award_id, t0.slot, t0.position, t0.author_id, t0.has_orcid FROM t0 JOIN pe p USING (award_id, slot, position)
   LEFT JOIN (SELECT author_id, max(orcid) AS orcid FROM __P__profile_orcids GROUP BY 1) o ON o.author_id = t0.author_id
   LEFT JOIN (SELECT orcid, author_id FROM __P__profile_orcids WHERE n_profiles = 1) g ON g.orcid = p.orcid
   LEFT JOIN (SELECT author_id, max(majority_orcid) AS majority_orcid FROM openalex.authors.orcid_majority_lookup GROUP BY 1) mo
@@ -188,15 +189,18 @@ r_fid AS (
     to_json(named_struct('person_id', s1.person_id, 'ties', ia.ties)) AS evidence
   FROM s1 JOIN ia USING (person_id)
 ),
--- kaken_nrid is by slot, not name: a lead printed in kanji has no name key
-kn AS (SELECT project_id, min(pi_nrid) AS nrid FROM openalex.awards.kaken_projects_raw
-       WHERE pi_nrid RLIKE '^[0-9]+$' GROUP BY 1 HAVING count(DISTINCT pi_nrid) = 1),
-kl AS (SELECT p.award_id, p.slot, p.position, kn.nrid FROM pe p JOIN kn ON kn.project_id = p.funder_award_id
-       WHERE p.provenance = 'kaken' AND p.slot = 'lead_investigator'),
-ka AS (SELECT kl.nrid, min(ta.author_id) AS author_id, count(*) AS ties FROM kl JOIN ta USING (award_id, slot, position)
-       GROUP BY 1 HAVING count(DISTINCT ta.author_id) = 1),
+-- kaken_nrid is by slot, not name: a person printed in kanji has no name key. The number is the grant's own (people.nrid, from the
+-- KAKEN API listing), so every KAKEN project and co-investigator has one; the 07-08 page scrape knew neither.
+kl AS (SELECT award_id, slot, position, nrid FROM pe WHERE provenance = 'kaken' AND nrid IS NOT NULL),
+kv AS (SELECT kl.nrid, ta.author_id, count(*) AS votes, max(ta.has_orcid) AS by_orcid FROM kl JOIN ta USING (award_id, slot, position)
+       GROUP BY 1, 2),
+ka AS (  -- a strict majority: one grant's paper naming a same-name split profile does not cancel the number the person's other grants
+         -- agree on; a tie is no claim, and an ORCID anchor on another author is no claim
+  SELECT nrid, max_by(author_id, votes) AS author_id, max(votes) AS ties, sum(votes) AS anchored FROM kv GROUP BY 1
+  HAVING 2 * max(votes) > sum(votes) AND count_if(by_orcid) <= 1 AND (count_if(by_orcid) = 0 OR max_by(by_orcid, votes))),
 r_kaken AS (  -- a number one of whose anchors kpx dropped spreads nothing (that anchor may have been the one that disagreed)
-  SELECT kl.award_id, kl.slot, kl.position, ka.author_id, 'kaken_nrid' AS method, to_json(named_struct('nrid', kl.nrid, 'ties', ka.ties)) AS evidence
+  SELECT kl.award_id, kl.slot, kl.position, ka.author_id, 'kaken_nrid' AS method,
+    to_json(named_struct('nrid', kl.nrid, 'ties', ka.ties, 'of', CASE WHEN ka.anchored > ka.ties THEN ka.anchored END)) AS evidence
   FROM kl JOIN ka USING (nrid)
   LEFT ANTI JOIN (SELECT DISTINCT kl.nrid FROM kl JOIN kpx ON kpx.award_id = kl.award_id AND kpx.slot = kl.slot AND kpx.position = kl.position) kx
     ON kx.nrid = kl.nrid

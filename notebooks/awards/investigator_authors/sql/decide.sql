@@ -5,7 +5,9 @@
 --                        claim names the author and most of the profile's works carry another person's ORCID (whatever else agrees)
 --   route_bind           one author from identifier routes (orcid, linked_paper, nih_core_papers, funder_person_id, crossref_orcid,
 --                        nsfc_name)
---   kaken_nrid           one author from that route alone (an identifier: not held for common names)
+--   kaken_nrid           one author from that route alone (an identifier: not held for common names). On its own slot it outranks a
+--                        linked_paper claim on another author (that claim moves to the evidence's outranked list): both are name
+--                        evidence, and the number's is the person's other grants agreeing, the paper's one same-name profile
 --   jev_link             Jev's pick alone
 --   guard_shared_author  the model's or Jev's pick is bound to another person on the same award
 --   model_bind           the model alone at its bar: lists of 1-3 at s >= th99, 4-6 at s >= th_4_6, the second < guard_second
@@ -15,10 +17,17 @@
 -- th must equal the registered model version's tags (ScoreCandidates copies them onto every score); a tie goes to the lower author id.
 CREATE OR REPLACE TABLE __P__decisions AS
 WITH th AS (SELECT 0.9649769 AS th99, 0.995 AS th_4_6, 0.5 AS guard_second, 0.95 AS th_1, 0.98 AS th_4_6_lo, 0.2 AS second_lo),
+rq AS (
+  SELECT q.*, coalesce(q.method = 'linked_paper' AND q.author_id <> max(CASE WHEN q.method = 'kaken_nrid' THEN q.author_id END)
+    OVER (PARTITION BY q.award_id, q.slot, q.position), false) AS outranked
+  FROM __P__routes q
+),
 r AS (
-  SELECT award_id, slot, position, array_sort(collect_set(method)) AS methods, array_sort(collect_set(author_id)) AS route_authors,
-    array_sort(collect_list(named_struct('method', method, 'author_id', author_id, 'evidence', evidence))) AS claims
-  FROM __P__routes GROUP BY 1, 2, 3
+  SELECT award_id, slot, position, array_sort(collect_set(CASE WHEN NOT outranked THEN method END)) AS methods,
+    array_sort(collect_set(CASE WHEN NOT outranked THEN author_id END)) AS route_authors,
+    array_sort(collect_list(CASE WHEN NOT outranked THEN named_struct('method', method, 'author_id', author_id, 'evidence', evidence) END)) AS claims,
+    array_sort(collect_list(CASE WHEN outranked THEN named_struct('method', method, 'author_id', author_id, 'evidence', evidence) END)) AS outranked
+  FROM rq GROUP BY 1, 2, 3
 ),
 k AS (SELECT c.entry_id, c.author_id, c.s, c.model_version, row_number() OVER (PARTITION BY c.entry_id ORDER BY c.s DESC, c.author_id) AS rk,
         abs(c.th99 - th.th99) > 1e-6 OR abs(c.th_4_6 - th.th_4_6) > 1e-6 OR abs(c.guard_second - th.guard_second) > 1e-6 AS other_model
@@ -33,7 +42,7 @@ sh AS (SELECT entry_id, max(capped) AS capped, max(n_short) AS n_short FROM __P_
 s AS (
   SELECT p.award_id, p.slot, p.position, p.given_name, p.family_name, p.person_key, p.orcid, size(p.fam_keys) = 0 AS no_key,
     concat(p.person_key, '|', array_join(coalesce(p.gt, array()), ' ')) AS full_key,   -- Ann A. and Ann B. Lee: one entry, two people
-    r.methods, r.route_authors, r.claims,
+    r.methods, r.route_authors, r.claims, r.outranked,
     array_distinct(transform(filter(coalesce(r.claims, array()),
       c -> NOT array_contains(array('kaken_nrid', 'jev_link'), c.method)),
       c -> c.author_id)) AS id_authors,
@@ -88,7 +97,8 @@ d AS (
 SELECT award_id, slot, position, given_name, family_name, orcid, person_key, layer,
   coalesce(bound, CASE WHEN layer = 'model_relaxed' THEN relaxed END) AS author_id, methods, n_cands, m_author AS model_author, m_s AS model_s,
   m_second AS model_second, model_version,
-  to_json(named_struct('claims', claims, 'student', CASE WHEN m_author IS NOT NULL THEN named_struct('author_id', m_author, 's', round(m_s, 4),
+  to_json(named_struct('claims', claims, 'outranked', CASE WHEN size(outranked) > 0 THEN outranked END,
+    'student', CASE WHEN m_author IS NOT NULL THEN named_struct('author_id', m_author, 's', round(m_s, 4),
     'second', round(m_second, 4), 'n_cands', n_cands, 'version', model_version) END)) AS evidence
 FROM d
 ;
