@@ -18,6 +18,7 @@ CELLS = SQL.split('-- COMMAND ----------')
 PIN = 'max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path))'
 MATCHES, LINKS = 'openalex.awards.funder_reported_link_matches', 'openalex.awards.funder_reported_links'
 REFMATCH = 'openalex.awards.funder_reported_refmatch_picks'
+NEARTITLE = 'openalex.awards.funder_reported_neartitle_picks'   # MatchNearTitles.py's decisions (oxjob #2632)
 OVERRIDES = 'openalex.awards.funder_reported_links_gate_overrides'   # a dated, per-source pass of shrink and growth
 MERGED = 'openalex.works.merged_work_ids'   # a refmatch pick merged away moves to its survivor   # the reference matcher's decisions (MatchListedOutputs.py)
 SOURCES = ('nwopen', 'fwf_open_api', 'anr_opendata', 'kaken', 'hakai_publications')
@@ -87,7 +88,7 @@ def test_one_matching_path_with_no_per_source_code():
 
 def test_tables_read_and_written():
     tables = set(re.findall(r'\bopenalex\.\w+\.\w+', code(SQL)))
-    assert tables == {MATCHES, LINKS, REFMATCH, OVERRIDES, HAL, KAKEN_OLD, 'openalex.awards.openalex_awards_raw', 'openalex.works.openalex_works',
+    assert tables == {MATCHES, LINKS, REFMATCH, NEARTITLE, OVERRIDES, HAL, KAKEN_OLD, 'openalex.awards.openalex_awards_raw', 'openalex.works.openalex_works',
                       'openalex.works.location_work_match_keys', MERGED, HAL_LOCS}, tables
     assert code(SQL).count(f'FROM {HAL_LOCS}') == 1   # one view reads HAL; its two sources read the view
     assert HAL in cell('CREATE OR REPLACE TEMP VIEW anr_opendata_listed')
@@ -95,11 +96,13 @@ def test_tables_read_and_written():
     writes = re.findall(r'\b(CREATE TABLE IF NOT EXISTS|CREATE OR REPLACE TABLE|INSERT INTO|MERGE INTO|DELETE FROM|UPDATE)\s+(\w+\.\w+\.\w+)',
                         code(SQL))
     # the matches table holds what each source lists (read once), then those outputs with their candidates; one write to the links
-    assert writes == [('CREATE TABLE IF NOT EXISTS', LINKS), ('CREATE TABLE IF NOT EXISTS', OVERRIDES), ('CREATE TABLE IF NOT EXISTS', REFMATCH), ('CREATE OR REPLACE TABLE', MATCHES),
+    assert writes == [('CREATE TABLE IF NOT EXISTS', LINKS), ('CREATE TABLE IF NOT EXISTS', OVERRIDES), ('CREATE TABLE IF NOT EXISTS', REFMATCH), ('CREATE TABLE IF NOT EXISTS', NEARTITLE), ('CREATE OR REPLACE TABLE', MATCHES),
                       ('CREATE OR REPLACE TABLE', MATCHES), ('MERGE INTO', LINKS)], writes
     assert SQL.index(f'CREATE TABLE IF NOT EXISTS {LINKS}') < SQL.index('LINKS_REGEX_MODE')   # its readers always have their input
     assert SQL.index(f'CREATE TABLE IF NOT EXISTS {REFMATCH}') < SQL.index('LINKS_REGEX_MODE')
     assert code(SQL).count(REFMATCH) == 2   # created if missing, then read once (refmatch_picks); only the matcher writes it
+    assert SQL.index(f'CREATE TABLE IF NOT EXISTS {NEARTITLE}') < SQL.index('LINKS_REGEX_MODE')
+    assert code(SQL).count(NEARTITLE) == 2   # created if missing, then read once (neartitle_picks); only MatchNearTitles writes it
     # one read for every source's candidates, and KAKEN's 8 Jul links dropped on a paper with no DOI now
     assert code(cell('CREATE OR REPLACE TABLE ' + MATCHES + ' USING delta AS\nWITH')).count('openalex.works.openalex_works') == 1
     assert code(cell('CREATE OR REPLACE TEMP VIEW kaken_listed')).count('openalex.works.openalex_works') == 1
@@ -150,7 +153,9 @@ def test_refmatch_is_a_last_tier_that_needs_the_title_guard():
     tiers = {s: t.split(',') for s, t, _ in sources}
     assert not any('refmatch' in t for t in tiers.values())   # one setting, not a per-source list: on for every source,
     step2 = squash(code(cell('CREATE OR REPLACE TABLE ' + MATCHES + ' USING delta AS\nWITH')))
-    assert "concat(split(s.tiers, ','), array('refmatch')) AS tiers" in step2   # last, after every identifier tier
+    # after every identifier tier; only a source's neartitle (oxjob #2632) comes after it
+    assert ("concat(filter(split(s.tiers, ','), t -> t <> 'neartitle'), array('refmatch'), "
+            "filter(split(s.tiers, ','), t -> t = 'neartitle')) AS tiers") in step2
     assert ('refmatch_picks AS ( SELECT p.source, p.listed_key, p.guard_key, coalesce(m.winner_work_id, p.work_id) AS work_id, p.score '
             'FROM (SELECT * FROM ' + REFMATCH + ' WHERE linked QUALIFY row_number() OVER (PARTITION BY source, listed_key ORDER BY '
             'decided_at DESC) = 1) p LEFT JOIN (SELECT loser_work_id, max(winner_work_id) AS winner_work_id FROM ' + MERGED
@@ -168,12 +173,35 @@ def test_refmatch_is_a_last_tier_that_needs_the_title_guard():
     assert "THEN x.refmatch_title_equal AND x.refmatch_year_ok" in step2
     assert ("x.work_id IS NOT NULL AND x.funder_id IS NOT NULL AND CASE WHEN x.tier = 'refmatch' THEN x.refmatch_title_equal AND x.refmatch_year_ok "
             "AND NOT coalesce(array_contains(r.held_work_types, x.work_type) AND x.output_type IN ('article', 'book', 'thesis'), false) "
+            "WHEN x.tier = 'neartitle' THEN NOT coalesce(array_contains(r.held_work_types, x.work_type) AND x.output_type IN "
+            "('article', 'book', 'thesis'), false) "
             "ELSE x.check = 'none' OR coalesce(CASE x.tier") in step2   # the title tier's held records; never NULL
     assert ("AND NOT (array_contains(r.held_work_types, x.work_type) AND coalesce(x.output_type IN ('article', 'book', 'thesis'), "
             "false))") in step2   # the title tier's own rule, unchanged
     # FWF marks its publications, the only outputs the matcher decides
     fwf = squash(code(cell('CREATE OR REPLACE TEMP VIEW fwf_open_api_listed AS')))
     assert "CASE WHEN o.category = 'publications' THEN CASE o.type WHEN 'Journal Article' THEN 'article' WHEN 'Preprint' THEN 'article'" in fwf
+
+
+def test_neartitle_is_after_refmatch_for_a_source_that_sets_it_and_reads_one_pick_per_title_and_year():
+    sources = re.findall(r"\('(\w+)', '([a-z,]+)', '(\w+)'\)", cell('CREATE OR REPLACE TEMP VIEW link_sources'))
+    assert [s for s, t, _ in sources if 'neartitle' in t.split(',')] == ['kaken']
+    assert all(t.split(',')[-1] == 'neartitle' for s, t, _ in sources if 'neartitle' in t)   # a source's last listed tier
+    step2 = squash(code(cell('CREATE OR REPLACE TABLE ' + MATCHES + ' USING delta AS\nWITH')))
+    assert ('neartitle_picks AS ( SELECT p.source, p.title_key, p.year, coalesce(m.winner_work_id, p.work_id) AS work_id '
+            "FROM (SELECT * FROM " + NEARTITLE + " WHERE status = 'linked' QUALIFY row_number() OVER (PARTITION BY source, "
+            'title_key, year ORDER BY decided_at DESC) = 1) p LEFT JOIN (SELECT loser_work_id, max(winner_work_id) AS '
+            'winner_work_id FROM ' + MERGED + ' GROUP BY 1) m ON m.loser_work_id = p.work_id )') in step2
+    assert ("JOIN neartitle_picks p ON p.source = l.source AND p.title_key = l.title_key AND p.year <=> l.year "
+            "WHERE array_contains(l.tiers, 'neartitle')") in step2
+    # the notebook that writes the picks reads its sources and cjk_key from here (one place each)
+    nt = (ROOT / 'notebooks/awards/MatchNearTitles.py').read_text()
+    assert "open(os.path.join(os.getcwd(), 'CreateFunderReportedLinks.sql')" in nt and "if 'neartitle' in t.split(',')" in nt
+    assert 'CREATE OR REPLACE TEMPORARY FUNCTION cjk_key' in nt and 'def cjk_key' not in nt
+    job = (ROOT / 'jobs/funder_reported_work_funders.yaml').read_text()
+    task = job.split('- task_key: match_near_titles', 1)[1].split('\n        - task_key:', 1)[0]   # to the next task
+    assert 'notebook_path: notebooks/awards/MatchNearTitles' in task and '- task_key: create_funder_reported_links' in task
+    assert 'run_if: ALL_DONE' in task   # a failure here never stops the links task
 
 
 def test_match_text_is_location_work_match_keys_nt():

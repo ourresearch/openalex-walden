@@ -27,6 +27,11 @@
 -- MAGIC abstract record while the funder lists an article, book or thesis: the
 -- MAGIC title guard of the 23 Nov FWF grade (205 of 209 right). A decision made today is read by tomorrow's run.
 -- MAGIC
+-- MAGIC **`neartitle`** (draft, oxjob #2632; after refmatch, for a source that sets it: KAKEN): the listed article's title is a
+-- MAGIC near spelling of one work's (a typo, a subtitle or issue note the list leaves off). `MatchNearTitles.py` decides each once,
+-- MAGIC in the task `match_near_titles`, into `openalex.awards.funder_reported_neartitle_picks`; the tier takes the linked pick,
+-- MAGIC held back like a title link when it is a dataset-like or abstract record while the funder lists an article.
+-- MAGIC
 -- MAGIC **HAL** (oxjob #2594, ZD 28397): the European grants a HAL deposit declares whose own full text prints the grant
 -- MAGIC number (HAL's full-text index, `scripts/local/hal_eu_links_to_s3.py`; #362's rule for ANR), as `cordis` or `erc` awards.
 -- MAGIC The deposit is its work by HAL location (`oai:HAL:<id>v<n>`; tier `work`, check `none`).
@@ -58,6 +63,13 @@ USING delta;
 CREATE TABLE IF NOT EXISTS openalex.awards.funder_reported_refmatch_picks (source STRING, listed_key STRING, output_key STRING,
   title_key STRING, guard_key STRING, text STRING, text_hash BIGINT, work_id BIGINT, score DOUBLE, checklist_p DOUBLE,
   in_band BOOLEAN, linked BOOLEAN, n_candidates INT, status STRING, decided_at TIMESTAMP, run_id STRING) USING delta;
+
+-- COMMAND ----------
+
+-- The near-title decisions (MatchNearTitles.py writes them, oxjob #2632), one row per source and listed article title and
+-- year it decided. The neartitle tier reads the linked ones, so the table exists before anything reads it.
+CREATE TABLE IF NOT EXISTS openalex.awards.funder_reported_neartitle_picks (source STRING, title_key STRING, year INT, work_id BIGINT,
+  distance DOUBLE, extends BOOLEAN, n_best BIGINT, status STRING, decided_at TIMESTAMP, run_id STRING) USING delta;
 
 -- COMMAND ----------
 
@@ -101,7 +113,7 @@ CREATE OR REPLACE TEMP VIEW link_sources AS SELECT * FROM VALUES
   ('nwopen', 'doi,title', 'title_or_author'),
   ('fwf_open_api', 'doi,pmid', 'title_or_author'),
   ('anr_opendata', 'doi,work', 'none'),
-  ('kaken', 'doi,work', 'none'),
+  ('kaken', 'doi,work,neartitle', 'none'),
   ('hakai_publications', 'doi', 'none'),
   ('cordis', 'work', 'none'),
   ('erc', 'work', 'none')
@@ -278,7 +290,9 @@ rules AS (
     array('dataset', 'paratext', 'erratum', 'retraction', 'peer-review', 'supplementary-materials', 'conference-abstract') AS held_work_types
 ),
 listed AS (
-  SELECT m.*, s.check, concat(split(s.tiers, ','), array('refmatch')) AS tiers,   -- refmatch: on for every source
+  -- refmatch: on for every source, after its identifier tiers; neartitle (a source that sets it) after refmatch
+  SELECT m.*, s.check, concat(filter(split(s.tiers, ','), t -> t <> 'neartitle'), array('refmatch'),
+    filter(split(s.tiers, ','), t -> t = 'neartitle')) AS tiers,
     nullif(regexp_extract(lower(regexp_replace(m.doi, '\\s+', '')), '(10\\.[0-9]{2,}/[^\\s"<>]+)', 1), '') AS doi_salvaged
   FROM openalex.awards.funder_reported_link_matches m JOIN link_sources s ON s.source = m.source
 ),
@@ -291,6 +305,14 @@ refmatch_picks AS (
   SELECT p.source, p.listed_key, p.guard_key, coalesce(m.winner_work_id, p.work_id) AS work_id, p.score
   FROM (SELECT * FROM openalex.awards.funder_reported_refmatch_picks WHERE linked
         QUALIFY row_number() OVER (PARTITION BY source, listed_key ORDER BY decided_at DESC) = 1) p
+  LEFT JOIN (SELECT loser_work_id, max(winner_work_id) AS winner_work_id FROM openalex.works.merged_work_ids GROUP BY 1) m
+    ON m.loser_work_id = p.work_id
+),
+neartitle_picks AS (
+  -- MatchNearTitles.py's linked pick for each listed article title and year (the latest); a pick merged away moves to its survivor
+  SELECT p.source, p.title_key, p.year, coalesce(m.winner_work_id, p.work_id) AS work_id
+  FROM (SELECT * FROM openalex.awards.funder_reported_neartitle_picks WHERE status = 'linked'
+        QUALIFY row_number() OVER (PARTITION BY source, title_key, year ORDER BY decided_at DESC) = 1) p
   LEFT JOIN (SELECT loser_work_id, max(winner_work_id) AS winner_work_id FROM openalex.works.merged_work_ids GROUP BY 1) m
     ON m.loser_work_id = p.work_id
 ),
@@ -321,6 +343,10 @@ listed_ids AS (
   SELECT l.source, l.award_id, l.output_key, l.check, l.tiers, 'refmatch', CAST(p.work_id AS STRING), array('refmatch')
   FROM listed l JOIN refmatch_picks p ON p.source = l.source AND p.listed_key = listed_key(l.title, l.surnames)
   WHERE array_contains(l.tiers, 'refmatch')
+  UNION ALL
+  SELECT l.source, l.award_id, l.output_key, l.check, l.tiers, 'neartitle', CAST(p.work_id AS STRING), array('neartitle')
+  FROM listed l JOIN neartitle_picks p ON p.source = l.source AND p.title_key = l.title_key AND p.year <=> l.year
+  WHERE array_contains(l.tiers, 'neartitle')
 ),
 works AS (
   -- openalex_works, read once: the works an identifier or title points at, under each key they can be found by
@@ -331,11 +357,11 @@ works AS (
         FROM openalex.works.openalex_works
         WHERE lower(doi) IN (SELECT id FROM listed_ids WHERE tier = 'doi')
            OR regexp_extract(ids['pmid'], '(\\d+)$', 1) IN (SELECT id FROM listed_ids WHERE tier = 'pmid')
-           OR id IN (SELECT CAST(id AS BIGINT) FROM listed_ids WHERE tier IN ('title', 'work', 'refmatch'))) w
+           OR id IN (SELECT CAST(id AS BIGINT) FROM listed_ids WHERE tier IN ('title', 'work', 'refmatch', 'neartitle'))) w
   CROSS JOIN rules r
   LATERAL VIEW explode(array(named_struct('tier', 'doi', 'id', lower(w.doi)), named_struct('tier', 'pmid', 'id', w.pmid),
     named_struct('tier', 'title', 'id', CAST(w.id AS STRING)), named_struct('tier', 'work', 'id', CAST(w.id AS STRING)),
-    named_struct('tier', 'refmatch', 'id', CAST(w.id AS STRING)))) t AS k
+    named_struct('tier', 'refmatch', 'id', CAST(w.id AS STRING)), named_struct('tier', 'neartitle', 'id', CAST(w.id AS STRING)))) t AS k
 ),
 candidates AS (
   -- a work the list names is a candidate even when it is merged away (Nightly moves the link to the survivor)
@@ -414,6 +440,7 @@ SELECT x.source, x.award_id, x.output_key, x.funder_id, x.doi, x.pmid, x.title, 
   -- dataset-like or abstract record while the funder lists an article, book or thesis
   x.work_id IS NOT NULL AND x.funder_id IS NOT NULL AND CASE WHEN x.tier = 'refmatch' THEN x.refmatch_title_equal AND x.refmatch_year_ok
       AND NOT coalesce(array_contains(r.held_work_types, x.work_type) AND x.output_type IN ('article', 'book', 'thesis'), false)
+    WHEN x.tier = 'neartitle' THEN NOT coalesce(array_contains(r.held_work_types, x.work_type) AND x.output_type IN ('article', 'book', 'thesis'), false)
     ELSE x.check = 'none' OR coalesce(CASE x.tier
     WHEN 'title' THEN x.title_equal AND x.author_on_work AND x.year_or_numbers_agree
       AND NOT (array_contains(r.held_work_types, x.work_type) AND coalesce(x.output_type IN ('article', 'book', 'thesis'), false))

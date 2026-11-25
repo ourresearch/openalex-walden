@@ -56,6 +56,22 @@ resources:
           email_notifications:
             on_failure:
               - rohan@openalex.org
+        # The neartitle tier (oxjob #2632, draft): decides each listed article no tier resolved today whose title is a near
+        # spelling of one work's into openalex.awards.funder_reported_neartitle_picks, which tomorrow's
+        # create_funder_reported_links reads. After the links task; a failure writes nothing and stops nothing. A day with
+        # nothing new to decide reads only the matches table.
+        - task_key: match_near_titles
+          depends_on:
+            - task_key: create_funder_reported_links
+          run_if: ALL_DONE
+          notebook_task:
+            notebook_path: notebooks/awards/MatchNearTitles
+            source: GIT
+          environment_key: Matcher
+          timeout_seconds: 3600
+          email_notifications:
+            on_failure:
+              - rohan@openalex.org
         # Every funder's own output list -> openalex.awards.funder_reported_links, one row per (source, work, funder).
         - task_key: create_funder_reported_links
           notebook_task:
