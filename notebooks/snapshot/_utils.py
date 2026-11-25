@@ -66,12 +66,13 @@ def _apply_salting(df_with_count: DataFrame) -> DataFrame:
     ).drop("date_count")
 
 
-def _partition_date_col():
+def _partition_date_col(columns=None):
     # Built lazily (not at module scope) so %run on serverless never constructs
-    # Spark expressions at import time.
-    return F.coalesce(
-        F.to_date("updated_date"), F.to_date("created_date"), F.current_date()
-    )
+    # Spark expressions at import time. An entity without created_date (references, oxjob #2347) skips it.
+    dates = [F.to_date("updated_date")]
+    if columns is None or "created_date" in columns:
+        dates.append(F.to_date("created_date"))
+    return F.coalesce(*dates, F.current_date())
 
 
 def _collect_date_counts(df: DataFrame):
@@ -81,7 +82,7 @@ def _collect_date_counts(df: DataFrame):
     format writers, so the 500M-row aggregation runs once instead of twice.
     Uses the `_partition_date` column when the caller already added it.
     """
-    part = F.col("_partition_date") if "_partition_date" in df.columns else _partition_date_col()
+    part = F.col("_partition_date") if "_partition_date" in df.columns else _partition_date_col(df.columns)
     rows = (df.groupBy(part.alias("_partition_date"))
               .count().collect())
     return [(r["_partition_date"], r["count"]) for r in rows]
@@ -115,7 +116,7 @@ PLAIN_PARTITION_ENTITIES = {"works"}
 
 def _with_partition_date(spark, df: DataFrame, entity: str, date_str: str) -> DataFrame:
     """Return `df` with a `_partition_date` column (see the block comment above)."""
-    plain = _partition_date_col()
+    plain = _partition_date_col(df.columns)
     if entity in PLAIN_PARTITION_ENTITIES:
         return df.withColumn("_partition_date", plain)
     try:
@@ -403,7 +404,7 @@ def export_partitioned_jsonl(spark, dbutils, df: DataFrame, date_str: str, entit
     except Exception:
         pass
 
-    df_p = df if "_partition_date" in df.columns else df.withColumn("_partition_date", _partition_date_col())
+    df_p = df if "_partition_date" in df.columns else df.withColumn("_partition_date", _partition_date_col(df.columns))
 
     if salt:
         if date_counts is None:
@@ -482,7 +483,7 @@ def export_partitioned_parquet(spark, dbutils, df: DataFrame, date_str: str, ent
     except Exception:
         pass
 
-    df_p = df if "_partition_date" in df.columns else df.withColumn("_partition_date", _partition_date_col())
+    df_p = df if "_partition_date" in df.columns else df.withColumn("_partition_date", _partition_date_col(df.columns))
 
     if salt:
         if date_counts is None:

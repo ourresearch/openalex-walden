@@ -84,6 +84,7 @@ DELETE_BATCH = 1000
 
 ENTITIES = [
     "works",
+    "references",
     "authors",
     "institutions",
     "sources",
