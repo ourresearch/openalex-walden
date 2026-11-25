@@ -80,12 +80,22 @@ CREATE OR REPLACE TEMPORARY FUNCTION listed_key(title STRING, surnames ARRAY<STR
 
 -- COMMAND ----------
 
+-- A title key that compares Japanese (and Chinese) titles as written either way: full-width digits and letters read as
+-- ASCII, and no space next to a kanji or kana ('ICTを用いた' = 'ICT を用いた', '（２）' = '(2)'). A key without such a character
+-- is unchanged, so no other source's key moves. The refmatch title guard compares it (MatchListedOutputs.py reads it too).
+CREATE OR REPLACE TEMPORARY FUNCTION cjk_key(k STRING) RETURNS STRING RETURN
+  CASE WHEN k RLIKE '[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}]' THEN regexp_replace(translate(k, '０１２３４５６７８９ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ', '0123456789abcdefghijklmnopqrstuvwxyz'),
+    ' (?=[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}])|(?<=[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}]) ', '') ELSE k END;
+
+-- COMMAND ----------
+
 -- One row per source. source: the provenance of its awards in openalex_awards_raw (sources.csv), or of its file when it
--- lists no grants. tiers: identifiers tried, in order (refmatch: the reference matcher, for publications nothing else
--- names). check: title_or_author, the work must look like the listed output; none, the funder's identifiers are trusted.
+-- lists no grants. tiers: identifiers tried, in order; the reference matcher (refmatch) comes last for every source, for
+-- the publications with a title that nothing else names (a source that lists only DOIs never reaches it).
+-- check: title_or_author, the work must look like the listed output; none, the funder's identifiers are trusted.
 CREATE OR REPLACE TEMP VIEW link_sources AS SELECT * FROM VALUES
   ('nwopen', 'doi,title', 'title_or_author'),
-  ('fwf_open_api', 'doi,pmid,refmatch', 'title_or_author'),
+  ('fwf_open_api', 'doi,pmid', 'title_or_author'),
   ('anr_opendata', 'doi,work', 'none'),
   ('kaken', 'doi,work', 'none'),
   ('hakai_publications', 'doi', 'none')
@@ -150,8 +160,9 @@ FROM openalex.awards.hal_anr_work_links;
 
 -- COMMAND ----------
 
--- KAKEN: products_json lists each project's research products (the KAKEN API fetch). Only the DOI is read: no rule compares
--- the rest. Until the version-DOI fallback, the 8 Jul links are kept (their scrape is gone) except on a paper with no DOI now.
+-- KAKEN: products_json lists each project's research products (the KAKEN API fetch): the DOI, and for the refmatch tier a
+-- journal article's title and year (KAKEN lists no authors; other product types stay without output_type, so are never
+-- matched). Until the version-DOI fallback, the 8 Jul links are kept (their scrape is gone) except on a paper with no DOI now.
 CREATE OR REPLACE TEMP VIEW kaken_listed AS
 WITH objects AS (
   SELECT project_id, products_json, _metadata FROM read_files('s3://openalex-ingest/awards/kaken_api/*.parquet', format => 'parquet')
@@ -162,9 +173,10 @@ products AS (
   WHERE _metadata.file_path = (SELECT max_by(_metadata.file_path, struct(_metadata.file_modification_time, _metadata.file_path)) FROM objects)
 )
 SELECT project_id AS award_id, CAST(NULL AS BIGINT) AS funder_id, CAST(i AS STRING) AS output_key, p['doi'] AS doi,
-  CAST(NULL AS STRING) AS pmid, CAST(NULL AS BIGINT) AS work_id, CAST(NULL AS STRING) AS title, CAST(NULL AS INT) AS year,
-  CAST(NULL AS STRING) AS volume, CAST(NULL AS STRING) AS first_page, CAST(NULL AS STRING) AS output_type,
-  CAST(NULL AS ARRAY<STRING>) AS surnames, object
+  CAST(NULL AS STRING) AS pmid, CAST(NULL AS BIGINT) AS work_id,
+  CASE WHEN p['type'] = 'journal_article' THEN nullif(trim(p['title']), '') END AS title, try_cast(p['year'] AS INT) AS year,
+  CAST(NULL AS STRING) AS volume, CAST(NULL AS STRING) AS first_page,
+  CASE WHEN p['type'] = 'journal_article' THEN 'article' END AS output_type, CAST(array() AS ARRAY<STRING>) AS surnames, object
 FROM products
 UNION ALL
 SELECT award_id, CAST(NULL AS BIGINT), concat('W', k.work_id), CAST(NULL AS STRING), CAST(NULL AS STRING), k.work_id, CAST(NULL AS STRING),
@@ -210,7 +222,7 @@ rules AS (
     array('dataset', 'paratext', 'erratum', 'retraction', 'peer-review', 'supplementary-materials', 'conference-abstract') AS held_work_types
 ),
 listed AS (
-  SELECT m.*, s.check, split(s.tiers, ',') AS tiers,
+  SELECT m.*, s.check, concat(split(s.tiers, ','), array('refmatch')) AS tiers,   -- refmatch: on for every source
     nullif(regexp_extract(lower(regexp_replace(m.doi, '\\s+', '')), '(10\\.[0-9]{2,}/[^\\s"<>]+)', 1), '') AS doi_salvaged
   FROM openalex.awards.funder_reported_link_matches m JOIN link_sources s ON s.source = m.source
 ),
@@ -319,7 +331,10 @@ judged AS (
     coalesce(d.title_key = l.title_key, false) AS title_equal,
     a.work_id IS NOT NULL AS author_on_work,
     coalesce(d.year = l.year OR d.volume = l.volume OR d.first_page = l.first_page, false) AS year_or_numbers_agree,
-    p.score AS refmatch_score, coalesce(d.title_key = p.guard_key, false) AS refmatch_title_equal
+    p.score AS refmatch_score, coalesce(cjk_key(d.title_key) = cjk_key(p.guard_key), false) AS refmatch_title_equal,
+    -- a list without authors (KAKEN) keys a pick on the title alone: two papers with one title in two projects share it,
+    -- so such a pick also needs the listed year (where both are known)
+    size(coalesce(l.surnames, array())) > 0 OR l.year IS NULL OR d.year IS NULL OR abs(d.year - l.year) <= 1 AS refmatch_year_ok
   FROM listed l
   LEFT JOIN decided d ON d.source = l.source AND d.award_id <=> l.award_id AND d.output_key = l.output_key
   LEFT JOIN author_matches a ON a.source = d.source AND a.award_id <=> d.award_id AND a.output_key = d.output_key AND a.work_id = d.work_id
@@ -341,7 +356,7 @@ SELECT x.source, x.award_id, x.output_key, x.funder_id, x.doi, x.pmid, x.title, 
   x.author_on_work, x.year_or_numbers_agree, x.refmatch_score, x.refmatch_title_equal,
   -- a refmatch pick needs the title guard, whatever the source's check, and is held back like a title link when it is a
   -- dataset-like or abstract record while the funder lists an article, book or thesis
-  x.work_id IS NOT NULL AND x.funder_id IS NOT NULL AND CASE WHEN x.tier = 'refmatch' THEN x.refmatch_title_equal
+  x.work_id IS NOT NULL AND x.funder_id IS NOT NULL AND CASE WHEN x.tier = 'refmatch' THEN x.refmatch_title_equal AND x.refmatch_year_ok
       AND NOT coalesce(array_contains(r.held_work_types, x.work_type) AND x.output_type IN ('article', 'book', 'thesis'), false)
     ELSE x.check = 'none' OR coalesce(CASE x.tier
     WHEN 'title' THEN x.title_equal AND x.author_on_work AND x.year_or_numbers_agree

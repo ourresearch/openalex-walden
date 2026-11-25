@@ -2,8 +2,8 @@
 # MAGIC %md
 # MAGIC # Match listed outputs: Casey's reference matcher for the publications funders list without an identifier
 # MAGIC
-# MAGIC Funders' own output lists (FWF first; a source joins by naming `refmatch` in its tier list in
-# MAGIC `CreateFunderReportedLinks.sql`'s `link_sources`) hold publications that no DOI or PMID names. This task writes each such
+# MAGIC Funders' own output lists (every source in `CreateFunderReportedLinks.sql`'s `link_sources`: refmatch is its last tier for
+# MAGIC all of them, and a source that lists only DOIs never reaches it) hold publications that no DOI or PMID names. This task writes each such
 # MAGIC output like a reference and lets Casey's reference matcher (`notebooks/references/matcher/refmatch.py`, imported, not
 # MAGIC copied) pick the work it is, the way the nightly matcher decides a reference (#2000, #2296). It runs after
 # MAGIC `create_funder_reported_links` and keeps its picks in `openalex.awards.funder_reported_refmatch_picks`; the next run of that
@@ -52,14 +52,17 @@ import refmatch as RM  # noqa: E402
 
 for name, default in [('matches_table', 'openalex.awards.funder_reported_link_matches'),
                       ('decisions_table', 'openalex.awards.funder_reported_refmatch_picks'),
+                      ('unmatched_table', 'openalex.awards.listed_outputs_unmatched'),
                       ('keys_table', 'openalex.works.location_work_match_keys'), ('works_table', 'openalex.works.openalex_works'),
                       ('model_dir', '/Volumes/openalex/works/data/reference_matcher/model'),
                       ('min_title_chars', '20'), ('max_same_title', '50'), ('max_new', '5000'), ('max_usd', '5'),
-                      ('usd_per_million_texts', '3.4'), ('retry_days', '7'), ('run_id', '')]:
+                      ('usd_per_million_texts', '3.4'), ('retry_days', '7'), ('max_per_run', '5000'),
+                      ('allow_backlog_jump', 'false'), ('runs_table', 'openalex.awards.funder_reported_refmatch_runs'), ('run_id', '')]:
     dbutils.widgets.text(name, default)
-W = {k: dbutils.widgets.get(k).strip() for k in ('matches_table', 'decisions_table', 'keys_table', 'works_table', 'model_dir',
+W = {k: dbutils.widgets.get(k).strip() for k in ('matches_table', 'decisions_table', 'unmatched_table', 'keys_table', 'works_table', 'model_dir',
                                                   'min_title_chars', 'max_same_title', 'max_new', 'max_usd',
-                                                  'usd_per_million_texts', 'retry_days', 'run_id')}
+                                                  'usd_per_million_texts', 'retry_days', 'max_per_run', 'allow_backlog_jump',
+                                                  'runs_table', 'run_id')}
 RUN_ID = W['run_id'] or dt.datetime.utcnow().strftime('refmatch-%Y-%m-%dT%H:%M:%S')
 T0 = time.time()
 
@@ -73,10 +76,11 @@ def log(msg):
 LINKS_SQL = open(os.path.join(HERE, 'CreateFunderReportedLinks.sql'), encoding='utf-8').read()
 SOURCES_CELL = re.search(r'CREATE OR REPLACE TEMP VIEW link_sources AS SELECT \* FROM VALUES(.*?)AS t\(source, tiers, check\)',
                          LINKS_SQL, re.S).group(1)
-SOURCES = [s for s, tiers in re.findall(r"\('(\w+)', '([a-z,]+)', '\w+'\)", SOURCES_CELL) if 'refmatch' in tiers.split(',')]
+SOURCES = [s for s, _ in re.findall(r"\('(\w+)', '([a-z,]+)', '\w+'\)", SOURCES_CELL)]   # every source: refmatch is on for all
 MATCH_TEXT = re.search(r'CREATE OR REPLACE TEMPORARY FUNCTION match_text\(s STRING\) RETURNS STRING RETURN.*?;', LINKS_SQL,
                        re.S).group(0).rstrip(';')
 LISTED_KEY = re.search(r'CREATE OR REPLACE TEMPORARY FUNCTION listed_key\(.*?;', LINKS_SQL, re.S).group(0).rstrip(';')
+CJK_KEY = re.search(r'CREATE OR REPLACE TEMPORARY FUNCTION cjk_key\(.*?;', LINKS_SQL, re.S).group(0).rstrip(';')
 
 
 def sql_part(text, key):
@@ -99,6 +103,7 @@ ENDPOINT = re.search(r'^ENDPOINT = "([^"]+)"', EMBED_PY, re.M).group(1)
 log(f'sources {SOURCES}, endpoint {ENDPOINT}, run {RUN_ID}')
 spark.sql(MATCH_TEXT)
 spark.sql(LISTED_KEY)
+spark.sql(CJK_KEY)
 spark.sql(f"""CREATE TABLE IF NOT EXISTS {W['decisions_table']} (source STRING, listed_key STRING, output_key STRING,
   title_key STRING, guard_key STRING, text STRING, text_hash BIGINT, work_id BIGINT, score DOUBLE, checklist_p DOUBLE,
   in_band BOOLEAN, linked BOOLEAN, n_candidates INT, status STRING, decided_at TIMESTAMP, run_id STRING) USING delta""")
@@ -115,24 +120,61 @@ def guard_title(title):
 
 
 src_list = ', '.join(f"'{s}'" for s in SOURCES) or "''"
-new = spark.sql(f"""
+SELECTABLE = f"""
 WITH unresolved AS (
   -- one row per output as listed (FWF lists one output under several projects, and renumbers its ids between fetches)
   SELECT source, listed_key(title, surnames) AS listed_key, min(output_key) AS output_key, any_value(title_key) AS title_key,
     any_value(title) AS title, any_value(surnames) AS surnames, any_value(year) AS year
   FROM {W['matches_table']}
   WHERE source IN ({src_list}) AND (work_id IS NULL OR tier = 'refmatch') AND output_type IS NOT NULL
-    AND length(title_key) >= {int(W['min_title_chars'])}
+    AND length(regexp_replace(title_key, '[\\\\p{{IsHan}}\\\\p{{IsHiragana}}\\\\p{{IsKatakana}}]', 'xxx')) >= {int(W['min_title_chars'])}   -- a kanji or kana counts 3
   GROUP BY 1, 2
 )
 SELECT u.*, d.listed_key IS NOT NULL AS retry FROM unresolved u
 LEFT JOIN {W['decisions_table']} d ON d.source = u.source AND d.listed_key = u.listed_key
 WHERE d.listed_key IS NULL
-   OR (d.status = 'no_candidates' AND d.decided_at < current_timestamp() - INTERVAL {int(W['retry_days'])} DAYS)
-""").toPandas()
-log(f"{int((~new.retry).sum()):,} new outputs, {int(new.retry.sum()):,} looked at again (no same-title work {W['retry_days']}+ days ago)")
+   OR (d.status = 'no_candidates' AND d.decided_at < current_timestamp() - INTERVAL {int(W['retry_days'])} DAYS)"""
+# The backlog: the outputs never decided (retries are not counted). A night decides at most max_per_run outputs, new before
+# retries and the oldest retries first, so a backlog drains over the nights instead of failing one. Its alarm: more never-
+# decided outputs than the last run left (its backlog less what it decided) plus max_new (a lost picks table, a broken
+# identifier tier) stops the task, unless allow_backlog_jump is set on purpose (a new source, a backfill's first run).
+spark.sql(f"CREATE TABLE IF NOT EXISTS {W['runs_table']} (run_id STRING, at TIMESTAMP, backlog BIGINT, decided BIGINT) USING delta")
+b = spark.sql(f"SELECT count_if(NOT retry) AS fresh, count(*) AS n FROM ({SELECTABLE})").first()
+backlog = b.fresh
+left = spark.sql(f"SELECT max_by(backlog - decided, at) AS left FROM {W['runs_table']}").first().left
+if left is not None and backlog > left + int(W['max_new']) and W['allow_backlog_jump'].lower() != 'true':
+    raise RuntimeError(f"backlog {backlog:,} never-decided outputs, over the {left:,} the last run left plus max_new {W['max_new']}: "
+                       "if it is meant (a new source, a backfill), rerun with allow_backlog_jump true")
+mpr = int(W['max_per_run'])
+new = spark.sql(SELECTABLE + (f"\nORDER BY retry, d.decided_at, u.listed_key LIMIT {mpr}" if mpr > 0 else '')).toPandas()
+log(f"{int((~new.retry).sum()):,} new outputs, {int(new.retry.sum()):,} looked at again (no same-title work {W['retry_days']}+ days ago);"
+    f" backlog {backlog:,} never decided, {b.n - len(new):,} left for the next runs (max_per_run {mpr})")
+
+
+def write_unmatched():
+    """What is still unmatched: every listed publication decided and not accepted, as the funder lists it, for Casey's Match
+    References to read in its list mode (text_hash, text, raw_text: the input its test path reads). Rebuilt every run."""
+    spark.sql(f"""CREATE OR REPLACE TABLE {W['unmatched_table']} AS
+SELECT p.source, p.listed_key, p.text_hash, p.text, p.text AS raw_text, p.status, p.decided_at, any_value(m.title) AS title,
+  any_value(m.surnames) AS surnames, any_value(m.year) AS year, any_value(m.output_type) AS output_type,
+  CASE WHEN any_value(m.title) RLIKE '[\\\\p{{IsHiragana}}\\\\p{{IsKatakana}}]' THEN 'ja'
+       WHEN any_value(m.title) RLIKE '\\\\p{{IsHan}}' THEN 'cjk' END AS script,
+  array_sort(collect_set(m.award_id)) AS award_ids, array_sort(collect_set(m.output_key)) AS output_keys
+FROM {W['decisions_table']} p
+JOIN {W['matches_table']} m ON m.source = p.source AND listed_key(m.title, m.surnames) = p.listed_key
+WHERE m.output_type IS NOT NULL AND NOT coalesce(m.accepted, false)
+  AND (NOT p.linked OR m.tier = 'refmatch')   -- a pick linked today counts once the links notebook has turned it down
+GROUP BY p.source, p.listed_key, p.text_hash, p.text, p.status, p.decided_at""")
+
+
+def record_run(decided):
+    spark.sql(f"INSERT INTO {W['runs_table']} VALUES ('{RUN_ID}', current_timestamp(), {backlog}, {decided})")
+
+
 if new.empty:
-    dbutils.notebook.exit(json.dumps({'run_id': RUN_ID, 'new': 0}))
+    write_unmatched()
+    record_run(0)
+    dbutils.notebook.exit(json.dumps({'run_id': RUN_ID, 'new': 0, 'backlog': backlog}))
 
 # COMMAND ----------
 
@@ -157,15 +199,24 @@ r AS (
 ),
 k AS (
   -- Casey's text key reads the columns raw, authors, year and title (raw is never empty here)
-  SELECT source, listed_key, output_key, title_key, retry, raw, match_text(guard_title) AS guard_key, {TEXT_SQL} AS text
+  SELECT source, listed_key, output_key, title_key, retry, raw, match_text(guard_title) AS title_match_key,
+    cjk_key(match_text(guard_title)) AS guard_key, {TEXT_SQL} AS text
   FROM (SELECT source, listed_key, output_key, title_key, retry, guard_title, raw, CAST(NULL AS STRING) AS authors,
           CAST(year AS STRING) AS year, title FROM r) t
 )
 SELECT *, xxhash64(text) AS qi FROM k""")
 spark.sql(f"""CREATE OR REPLACE TEMP VIEW rm_cands AS
-SELECT q.qi, k.id AS cand
-FROM (SELECT DISTINCT qi, guard_key FROM rm_new) q JOIN {W['keys_table']} k ON k.nt = q.guard_key
-QUALIFY count(*) OVER (PARTITION BY q.qi) <= {int(W['max_same_title'])}""")
+WITH q AS (SELECT DISTINCT qi, title_match_key AS t, guard_key AS g FROM rm_new),
+v AS (
+  -- the title as keyed, and for a Japanese or Chinese title the forms an OpenAlex title key may take: full- or half-width
+  -- digits and letters, with or without a space where kanji or kana meet ASCII (cjk_key compares them all equal)
+  SELECT qi, explode(CASE WHEN g RLIKE '[\\\\p{{IsHan}}\\\\p{{IsHiragana}}\\\\p{{IsKatakana}}]' THEN array_distinct(array(t, g,
+      regexp_replace(g, '(?<=[a-z0-9])(?=[\\\\p{{IsHan}}\\\\p{{IsHiragana}}\\\\p{{IsKatakana}}])|(?<=[\\\\p{{IsHan}}\\\\p{{IsHiragana}}\\\\p{{IsKatakana}}])(?=[a-z0-9])', ' '),
+      translate(t, '0123456789abcdefghijklmnopqrstuvwxyz', '０１２３４５６７８９ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ'), translate(g, '0123456789abcdefghijklmnopqrstuvwxyz', '０１２３４５６７８９ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ'))) ELSE array(t) END) AS key
+  FROM q
+),
+p AS (SELECT DISTINCT v.qi, k.id AS cand FROM v JOIN {W['keys_table']} k ON k.nt = v.key)
+SELECT * FROM p QUALIFY count(*) OVER (PARTITION BY qi) <= {int(W['max_same_title'])}""")
 c = spark.sql("""SELECT count(DISTINCT qi) texts, count(*) pairs, count(DISTINCT cand) works,
   (SELECT count(DISTINCT qi) FROM rm_new) all_texts FROM rm_cands""").first()
 est = (c.texts + c.works) * float(W['usd_per_million_texts']) / 1e6   # only texts with a candidate are embedded
@@ -189,7 +240,7 @@ wv AS (SELECT w.id, ai_query('{ENDPOINT}', {WORK_TEXT}) AS v FROM w)
 SELECT p.qi, p.cand, w.title, w.publication_year AS year, w.type, CAST(w.doi IS NOT NULL AS STRING) AS has_doi,
   slice(transform(w.authorships, a -> a.author.display_name), 1, 5) AS au, size(w.authorships) AS n_au,
   w.primary_location.source.display_name AS venue, w.biblio.volume AS vol, w.biblio.issue AS iss, w.biblio.first_page AS fp,
-  w.biblio.last_page AS lp, match_text(w.title) AS work_title_key,
+  w.biblio.last_page AS lp, cjk_key(match_text(w.title)) AS work_title_key,
   aggregate(zip_with(qv.v, wv.v, (x, y) -> CAST(x AS DOUBLE) * y), 0D, (s, x) -> s + x)
     / sqrt(aggregate(qv.v, 0D, (s, x) -> s + CAST(x AS DOUBLE) * x)) / sqrt(aggregate(wv.v, 0D, (s, x) -> s + CAST(x AS DOUBLE) * x)) AS score
 FROM rm_cands p JOIN qv ON qv.qi = p.qi JOIN wv ON wv.id = p.cand JOIN w ON w.id = p.cand""")
@@ -276,8 +327,10 @@ USING (SELECT *, current_timestamp() AS decided_at, '{RUN_ID}' AS run_id FROM rm
 ON t.source = s.source AND t.listed_key = s.listed_key
 WHEN MATCHED AND t.status = 'no_candidates' THEN UPDATE SET *
 WHEN NOT MATCHED THEN INSERT *""")
+write_unmatched()
+record_run(int((~new.retry).sum()))   # the never-decided outputs this run decided
 summary = spark.sql(f"SELECT status, count(*) n FROM {W['decisions_table']} WHERE run_id = '{RUN_ID}' GROUP BY 1").toPandas()
-info = {'run_id': RUN_ID, 'new': len(new), 'texts_with_candidates': int(c.texts), 'pairs': int(c.pairs), 'embed_usd_est': round(est, 2),
+info = {'run_id': RUN_ID, 'new': len(new), 'backlog': backlog, 'texts_with_candidates': int(c.texts), 'pairs': int(c.pairs), 'embed_usd_est': round(est, 2),
         'statuses': dict(zip(summary.status, summary.n.astype(int))), 'seconds': round(time.time() - T0, 1)}
 log(json.dumps(info))
 dbutils.notebook.exit(json.dumps(info))

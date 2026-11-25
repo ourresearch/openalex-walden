@@ -95,7 +95,11 @@ def test_imports_caseys_matcher_and_copies_none_of_it():
 
 def test_reads_each_rule_from_its_one_place():
     g = first_cell()
-    assert g['SOURCES'] == ['fwf_open_api']   # the sources whose tier list names refmatch in CreateFunderReportedLinks.sql
+    assert g['SOURCES'] == ['nwopen', 'fwf_open_api', 'anr_opendata', 'kaken', 'hakai_publications']   # every source;
+    # a source that lists only DOIs has no titled publication to select (output_type and title stay NULL)
+    assert "CREATE OR REPLACE TABLE {W['unmatched_table']} AS" in SRC and 'WHERE m.output_type IS NOT NULL AND NOT coalesce(m.accepted, false)' in SRC
+    assert 'p.text_hash, p.text, p.text AS raw_text' in SRC   # Match References' test_texts columns
+    assert SRC.count('write_unmatched()') == 3   # defined, and run on both exits (nothing new, decided)
     assert g['MATCH_TEXT'] == re.search(r'CREATE OR REPLACE TEMPORARY FUNCTION match_text.*?;', LINKS_SQL, re.S).group(0).rstrip(';')
     key = (MATCHER / 'sql/ref_text_key.sql').read_text()
     assert g['TEXT_SQL'].startswith('left(trim(regexp_replace(regexp_replace(coalesce(nullif(trim(raw)') and g['TEXT_SQL'] in key.replace('\n', ' ')
@@ -139,8 +143,14 @@ def test_decides_only_new_unresolved_publications_and_writes_each_once():
 
 def test_candidates_are_the_works_the_title_guard_admits():
     c = ' '.join(SRC.split())
-    assert "JOIN {W['keys_table']} k ON k.nt = q.guard_key" in c
-    assert "QUALIFY count(*) OVER (PARTITION BY q.qi) <= {int(W['max_same_title'])}" in c
+    assert "p AS (SELECT DISTINCT v.qi, k.id AS cand FROM v JOIN {W['keys_table']} k ON k.nt = v.key)" in c
+    assert 'ELSE array(t) END) AS key' in c   # a title without kanji or kana is looked up as keyed, nothing else
+    assert "cjk_key(match_text(guard_title)) AS guard_key" in c and "cjk_key(match_text(w.title)) AS work_title_key" in c
+    assert 'ORDER BY retry, d.decided_at, u.listed_key LIMIT {mpr}' in c   # new first, then the oldest retries: none starve
+    assert "if left is not None and backlog > left + int(W['max_new']) and W['allow_backlog_jump'].lower() != 'true':" in c
+    assert "count_if(NOT retry) AS fresh" in c and 'record_run(int((~new.retry).sum()))' in c   # retries never trip the alarm
+    assert "RLIKE '[\\\\\\\\p{{IsHiragana}}\\\\\\\\p{{IsKatakana}}]' THEN 'ja'" in c   # escaped for the f-string and the SQL literal
+    assert "QUALIFY count(*) OVER (PARTITION BY qi) <= {int(W['max_same_title'])}" in c
     assert "('keys_table', 'openalex.works.location_work_match_keys')" in SRC   # the title tier's table, location_work_match_keys.nt
 
 
@@ -228,29 +238,47 @@ def spark():
     s = dc.DatabricksSession.builder.profile(os.environ['DATABRICKS_CONFIG_PROFILE']).serverless(True).getOrCreate()
     yield s
     s.sql(f'DROP TABLE IF EXISTS {PICKS}')
+    s.sql(f'DROP TABLE IF EXISTS {UNMATCHED}')
+    s.sql(f'DROP TABLE IF EXISTS {RUNS}')
 
 
 PICKS = f"{os.environ.get('LINKS_TEST_SCHEMA', 'scratch')}.mlo_test_picks"
+UNMATCHED = f"{os.environ.get('LINKS_TEST_SCHEMA', 'scratch')}.mlo_test_unmatched"   # never the production table
+RUNS = f"{os.environ.get('LINKS_TEST_SCHEMA', 'scratch')}.mlo_test_runs"
 TITLE = 'Polarizable molecular dynamics simulations of ionic liquids at charged interfaces'
 LATER = 'A thesis on the glass transition of colloids that OpenAlex gains later'
+JA_FULL, JA_HALF = '小学校社会科指導法に関する遠隔学修教材の作成（２）', '小学校社会科指導法に関する遠隔学修教材の作成 (2)'
+JA_SHORT = 'たばこ訴訟の論点と課題'
+JA_NONE = '日本語教育の現状と課題についての一考察'
+
+
+def nt(t):   # match_text: letters and digits of any script
+    return ' '.join(re.sub(r'[\W_]+', ' ', t.lower()).split())
 
 
 class Exit(Exception):
     pass
 
 
-def views(spark, later_work=False):
+def views(spark, later_work=False, extra=0):
     """Today's matches (FWF: two unresolved publications, a talk, a DOI-resolved article), the title keys and the works."""
-    nt = lambda t: ' '.join(re.sub(r'[^a-z0-9]+', ' ', t.lower()).split())
     m = [('fwf_open_api', 'P1', 'o-1', TITLE, nt(TITLE), ['Heid', 'Schroeder'], None, None, None, 'article'),
          ('fwf_open_api', 'P2', 'o-1', TITLE, nt(TITLE), ['Heid', 'Schroeder'], None, None, None, 'article'),  # under two grants
          ('fwf_open_api', 'P1', 'o-2', LATER, nt(LATER), ['Heid'], None, None, None, 'thesis'),
          ('fwf_open_api', 'P1', 'o-3', TITLE, nt(TITLE), ['Heid'], None, None, None, None),                     # a talk
-         ('fwf_open_api', 'P1', 'o-4', 'A paper its DOI names', nt('A paper its DOI names'), ['Heid'], None, 7, 'doi', 'article')]
+         ('fwf_open_api', 'P1', 'o-4', 'A paper its DOI names', nt('A paper its DOI names'), ['Heid'], None, 7, 'doi', 'article'),
+         ('kaken', 'K1', 'k-1', JA_FULL, nt(JA_FULL), [], 2023, None, None, 'article'),    # full-width (２); OpenAlex keys ' 2'
+         ('kaken', 'K1', 'k-2', JA_SHORT, nt(JA_SHORT), [], 2009, None, None, 'article'),  # 11 kanji/kana: kept (counts 33)
+         ('kaken', 'K1', 'k-3', JA_NONE, nt(JA_NONE), [], 2012, None, None, 'article')]     # no such work: stays unmatched
+    m += [('fwf_open_api', 'P9', f'x-{i}', f'An output nobody expected number {i}', nt(f'An output nobody expected number {i}'),
+           ['Heid'], None, None, None, 'article') for i in range(extra)]   # a sudden backlog (the alarm)
+    m = [r + (r[8] is not None,) for r in m]   # accepted: as the links notebook left it (a DOI link here)
     spark.createDataFrame(m, 'source string, award_id string, output_key string, title string, title_key string, '
-                          'surnames array<string>, year int, work_id bigint, tier string, output_type string').createOrReplaceTempView('t_mlo_matches')
+                          'surnames array<string>, year int, work_id bigint, tier string, output_type string, accepted boolean'
+                          ).createOrReplaceTempView('t_mlo_matches')
     works = [(501, TITLE, 2019, 'article', '10.1/a', ['Elisa Heid', 'Christian Schroeder'], 'The Journal of Chemical Physics'),
-             (502, TITLE, 2019, 'dataset', None, ['Zenodo Uploader'], 'Zenodo')]
+             (502, TITLE, 2019, 'dataset', None, ['Zenodo Uploader'], 'Zenodo'),
+             (505, JA_HALF, 2023, 'article', None, ['吉永 潤'], '教育科学論集'), (506, JA_SHORT, 2009, 'article', None, ['田中 謙'], '法学論集')]
     if later_work:
         works.append((503, LATER, 2022, 'dissertation', None, ['Elisa Heid'], 'University of Vienna'))
     spark.createDataFrame([(w[0], nt(w[1])) for w in works], 'id bigint, nt string').createOrReplaceTempView('t_mlo_keys')
@@ -260,11 +288,15 @@ def views(spark, later_work=False):
                           'biblio struct<volume:string,issue:string,first_page:string,last_page:string>').createOrReplaceTempView('t_mlo_works')
 
 
-def run(spark, run_id, max_new='10'):
-    w = {'matches_table': 't_mlo_matches', 'decisions_table': PICKS, 'keys_table': 't_mlo_keys', 'works_table': 't_mlo_works',
+def run(spark, run_id, max_new='10', allow='false', max_per_run=None):
+    w = {'matches_table': 't_mlo_matches', 'decisions_table': PICKS, 'unmatched_table': UNMATCHED, 'runs_table': RUNS, 'keys_table': 't_mlo_keys',
+         'works_table': 't_mlo_works',
          'model_dir': os.environ['REFMATCH_MODEL_DIR'], 'max_new': max_new, 'max_usd': '1', 'run_id': run_id}
     widgets = Widgets()
     widgets.v.update(w)
+    widgets.v['allow_backlog_jump'] = allow
+    if max_per_run is not None:
+        widgets.v['max_per_run'] = max_per_run
     out = {}
 
     def exit_(s):
@@ -295,17 +327,32 @@ def test_the_notebook_decides_each_output_once_and_looks_again_at_one_without_a_
     first = run(spark, 't1')
     got = picks(spark)
     # o-1 once (two grants, one listing); o-2 has no same-title work; the talk and the DOI-resolved article are not decided
-    assert set(got) == {'o-1', 'o-2'} and first['new'] == 2, (got, first)
+    assert set(got) == {'o-1', 'o-2', 'k-1', 'k-2', 'k-3'} and first['new'] == 5 and first['backlog'] == 5, (got, first)
+    um = {r.listed_key: (r.status, r.script) for r in spark.table(UNMATCHED).collect()}   # what Casey's list mode would read
+    assert um[nt(LATER) + '|heid'] == ('no_candidates', None) and um[nt(JA_NONE)] == ('no_candidates', 'ja'), um   # listed_key
+    assert not any(k.startswith(nt(TITLE)) for k in um)   # linked today: not unmatched (the links run has not judged it yet)
+    for k in ('k-1', 'k-2'):   # found under the key OpenAlex holds, and the title guard reads them as the same title
+        assert got[k][2] == 1 and got[k][0] != 'linked_other_title', (k, got[k])
     assert got['o-1'][1] == 501 and got['o-1'][2] == 2           # of the two same-title records, the article with its authors
     assert got['o-2'] == ('no_candidates', None, 0)
-    with pytest.raises(Exception, match='max_new'):              # the cost guard stops before anything is embedded
+    with pytest.raises(Exception, match='texts to embed'):       # the cost guard stops before anything is embedded
         spark.sql(f"DELETE FROM {PICKS} WHERE output_key = 'o-1'")
-        run(spark, 't2', max_new='0')
+        run(spark, 't2', max_new='0', allow='true')               # (past the backlog alarm on purpose: this is the cost guard)
     run(spark, 't3')                                             # o-1 decided again, nothing else
     assert picks(spark) == got
-    assert run(spark, 't4') == {'run_id': 't4', 'new': 0}        # decided once: nothing new
+    assert run(spark, 't4') == {'run_id': 't4', 'new': 0, 'backlog': 0}   # decided once: nothing new, no backlog
     views(spark, later_work=True)                               # OpenAlex gains the thesis o-2 is
     spark.sql(f"UPDATE {PICKS} SET decided_at = current_timestamp() - INTERVAL 8 DAYS WHERE output_key = 'o-2'")
-    run(spark, 't5')
+    assert run(spark, 't5')['backlog'] == 0   # a retry is not backlog: looking at o-2 again never trips the alarm
     after = picks(spark)
     assert after['o-2'][1] == 503 and after['o-2'][0] != 'no_candidates' and after['o-1'] == got['o-1']
+    views(spark, later_work=True, extra=11)                      # 11 never-decided outputs appear: over max_new (10)
+    with pytest.raises(Exception, match='allow_backlog_jump'):
+        run(spark, 't6')
+    assert run(spark, 't7', allow='true')['new'] == 11            # meant: decided, and the next run's baseline
+    # retries go oldest first, so none starve: x-7 (9 days) before x-3 (8 days), though x-3's key sorts first
+    spark.sql(f"UPDATE {PICKS} SET decided_at = current_timestamp() - INTERVAL 9 DAYS WHERE output_key = 'x-7'")
+    spark.sql(f"UPDATE {PICKS} SET decided_at = current_timestamp() - INTERVAL 8 DAYS WHERE output_key = 'x-3'")
+    run(spark, 't8', max_per_run='1')
+    at = {r.output_key: r.run_id for r in spark.table(PICKS).where("output_key IN ('x-3', 'x-7')").collect()}
+    assert at == {'x-7': 't8', 'x-3': 't7'}, at

@@ -126,9 +126,9 @@ def test_an_override_row_passes_shrink_and_growth_for_one_source_on_one_day():
 def test_refmatch_is_a_last_tier_that_needs_the_title_guard():
     sources = re.findall(r"\('(\w+)', '([a-z,]+)', '(\w+)'\)", cell('CREATE OR REPLACE TEMP VIEW link_sources'))
     tiers = {s: t.split(',') for s, t, _ in sources}
-    assert tiers['fwf_open_api'] == ['doi', 'pmid', 'refmatch']   # FWF first (23 Nov grade); NWO after its own grade
-    assert all(t[-1] == 'refmatch' for t in tiers.values() if 'refmatch' in t)   # never ahead of an identifier
+    assert not any('refmatch' in t for t in tiers.values())   # one setting, not a per-source list: on for every source,
     step2 = squash(code(cell('CREATE OR REPLACE TABLE ' + MATCHES + ' USING delta AS\nWITH')))
+    assert "concat(split(s.tiers, ','), array('refmatch')) AS tiers" in step2   # last, after every identifier tier
     assert ('refmatch_picks AS ( SELECT p.source, p.listed_key, p.guard_key, coalesce(m.winner_work_id, p.work_id) AS work_id, p.score '
             'FROM (SELECT * FROM ' + REFMATCH + ' WHERE linked QUALIFY row_number() OVER (PARTITION BY source, listed_key ORDER BY '
             'decided_at DESC) = 1) p LEFT JOIN (SELECT loser_work_id, max(winner_work_id) AS winner_work_id FROM ' + MERGED
@@ -140,8 +140,11 @@ def test_refmatch_is_a_last_tier_that_needs_the_title_guard():
     assert key == ("CREATE OR REPLACE TEMPORARY FUNCTION listed_key(title STRING, surnames ARRAY<STRING>) RETURNS STRING RETURN "
                    "concat_ws('|', match_text(title), match_text(array_join(array_sort(array_distinct(transform(coalesce(surnames, array()), "
                    "x -> lower(x)))), ' ')));")
-    assert 'coalesce(d.title_key = p.guard_key, false) AS refmatch_title_equal' in step2
-    assert ("x.work_id IS NOT NULL AND x.funder_id IS NOT NULL AND CASE WHEN x.tier = 'refmatch' THEN x.refmatch_title_equal "
+    assert 'coalesce(cjk_key(d.title_key) = cjk_key(p.guard_key), false) AS refmatch_title_equal' in step2   # either width, both sides
+    assert ('size(coalesce(l.surnames, array())) > 0 OR l.year IS NULL OR d.year IS NULL OR abs(d.year - l.year) <= 1 '
+            'AS refmatch_year_ok') in step2   # a title-only pick (no surnames) also needs the year
+    assert "THEN x.refmatch_title_equal AND x.refmatch_year_ok" in step2
+    assert ("x.work_id IS NOT NULL AND x.funder_id IS NOT NULL AND CASE WHEN x.tier = 'refmatch' THEN x.refmatch_title_equal AND x.refmatch_year_ok "
             "AND NOT coalesce(array_contains(r.held_work_types, x.work_type) AND x.output_type IN ('article', 'book', 'thesis'), false) "
             "ELSE x.check = 'none' OR coalesce(CASE x.tier") in step2   # the title tier's held records; never NULL
     assert ("AND NOT (array_contains(r.held_work_types, x.work_type) AND coalesce(x.output_type IN ('article', 'book', 'thesis'), "
@@ -156,7 +159,8 @@ def test_match_text_is_location_work_match_keys_nt():
     nt = re.search(r"trim\(regexp_replace\(lower\(translate\(regexp_replace\(coalesce\(title, ''\).*?' '\)\) AS nt", keys).group(0)[:-len(' AS nt')]
     fn = squash(code(cell('CREATE OR REPLACE TEMPORARY FUNCTION match_text')))
     assert fn == f"CREATE OR REPLACE TEMPORARY FUNCTION match_text(s STRING) RETURNS STRING RETURN nullif({nt.replace('coalesce(title', 'coalesce(s')}, '');"
-    assert code(SQL).count('translate(') == 1   # titles and names are folded only there
+    cjk = re.search(r'CREATE OR REPLACE TEMPORARY FUNCTION cjk_key\(.*?;', SQL, re.S).group(0)
+    assert code(SQL.replace(cjk, '')).count('translate(') == 1   # titles and names are folded only there (cjk_key: widths)
 
 
 def test_one_statement_per_cell_double_escaped_regex_and_no_semicolon_in_strings():
@@ -245,7 +249,10 @@ ANR = ([('10.2000/a.1', ['ANR-2', 'ANR-1']),                # two grants: award_
         (' 10.2000/D.4 ', ['ANR-1']),                       # spaces and capitals around the DOI
         ('https://doi.org/10.2000/e.5', ['ANR-2'])]         # the DOI as a resolver URL
        + [(f'10.2000/none.{k}', [f'ANR-K{k}']) for k in range(120)])   # grants with unindexed papers: 122 of 123 grants are awards
-KAKEN = {'K1': [{'type': 'Journal Article', 'doi': '10.3000/k.1'}, {'type': 'Presentation', 'title': 'A talk'}]}
+JA_FULL, JA_HALF = '小学校社会科指導法に関する遠隔学修教材の作成（２）', '小学校社会科指導法に関する遠隔学修教材の作成 (2)'
+KAKEN = {'K1': [{'type': 'journal_article', 'doi': '10.3000/k.1'}, {'type': 'presentation', 'title': 'A talk'},
+                {'type': 'journal_article', 'title': JA_FULL, 'year': '2023'},    # its pick's work keys the title half-width
+                {'type': 'journal_article', 'title': JA_FULL, 'year': '2015'}]}   # the same title, another year: not that paper
 KAKEN_LEGACY = [(301, KAKEN_F, ['K1']),          # also in the API's list: one link
                 (302, KAKEN_F, ['K1']),          # the paper still has a DOI: kept
                 (303, KAKEN_F, ['K1']),          # the paper is in OpenAlex with no DOI now: dropped
@@ -283,6 +290,7 @@ WORKS = [  # id, doi, pmid, type, title, year, volume, first page, author names
     (164, None, None, 'article', T('Creep'), 2021, None, None, ['Elisa Heid']),
     (166, None, None, 'dataset', T('Femtoscopy'), 2021, None, None, ['Elisa Heid']),
     (167, None, None, 'conference-abstract', T('Shear banding'), 2021, None, None, ['Elisa Heid']),
+    (310, None, None, 'article', JA_HALF, 2023, None, None, ['吉永 潤']),   # KAKEN's paper, keyed half-width with a space
     (169, None, None, 'article', T('Sol-gel transition'), 2021, None, None, ['Elisa Heid']),   # 199 was merged into it
     (201, '10.2000/a.1', None, 'article', 'ANR paper', 2015, None, None, ['A. B']),
     (202, '10.2000/shared', None, 'article', 'Shared one', 2015, None, None, ['A. B']),
@@ -306,20 +314,21 @@ LINKED = {  # source -> {(work_id, funder_id): award_ids}
                      (169, FWF_F): ['F1']},
     'anr_opendata': {(201, ANR_F): ['ANR-1', 'ANR-2'], (202, ANR_F): ['ANR-1'], (203, ANR_F): ['ANR-1'], (205, ANR_F): ['ANR-1'],
                      (99999, ANR_F): ['ANR-2'], (206, ANR_F): ['ANR-1'], (207, ANR_F): ['ANR-2']},
-    'kaken': {(301, KAKEN_F): ['K1'], (302, KAKEN_F): ['K1'], (304, KAKEN_F): ['K1']},
+    'kaken': {(301, KAKEN_F): ['K1'], (302, KAKEN_F): ['K1'], (304, KAKEN_F): ['K1'], (310, KAKEN_F): ['K1']},
     'hakai_publications': {(401, HAKAI_F): []},
 }
 
 
-def nt(title):
-    return ' '.join(re.sub(r'[^a-z0-9]+', ' ', title.lower()).split())
+def nt(title):   # match_text: letters and digits of any script (\\p{L}\\p{N})
+    return ' '.join(re.sub(r'[\W_]+', ' ', title.lower()).split())
 
 
-def pick(oid, title, work, linked=True, guard=None, at='2026-12-01 03:00:00', surnames=('Heid',)):
+def pick(oid, title, work, linked=True, guard=None, at='2026-12-01 03:00:00', surnames=('Heid',), source='fwf_open_api', guard_key=None):
     # one decision of MatchListedOutputs: (source, listed_key, output_key, title_key, guard_key, ..., work_id, ..., linked, ...)
     import datetime
-    listed = nt(title) + '|' + nt(' '.join(sorted({x.lower() for x in surnames})))
-    return ('fwf_open_api', listed, oid, nt(title), nt(guard or title), 'a text', 1, work, 0.99, 0.99, not linked, linked, 2,
+    names = nt(' '.join(sorted({x.lower() for x in surnames})))
+    listed = nt(title) + ('|' + names if names else '')   # listed_key: concat_ws skips the NULL of no surnames
+    return (source, listed, oid, nt(title), guard_key or nt(guard or title), 'a text', 1, work, 0.99, 0.99, not linked, linked, 2,
             'linked' if linked else 'band', datetime.datetime.fromisoformat(at), 'r1')
 
 
@@ -333,7 +342,9 @@ REFMATCH_ROWS = [pick('o-6', T('Glass relaxation'), 165, at='2026-11-30 03:00:00
                  pick('o-14', T('Gelation'), 160),   # decided for the surnames ['Heid']; o-14 lists ['Other']
                  pick('o-15', T('Femtoscopy'), 166),
                  pick('o-16', T('Shear banding'), 167),
-                 pick('o-17', T('Sol-gel transition'), 199)]   # decided as 'Heid' on work 199, since merged into 169
+                 pick('o-17', T('Sol-gel transition'), 199),
+                 # KAKEN: no surnames, so the title alone; stored the way MatchListedOutputs stores it, cjk_key'd ('作成2')
+                 pick('2', JA_FULL, 310, surnames=(), source='kaken', guard_key='小学校社会科指導法に関する遠隔学修教材の作成2')]   # decided as 'Heid' on work 199, since merged into 169
 
 
 def views(spark, raw=RAW):
@@ -470,7 +481,9 @@ def test_each_tier_and_check_on_fixture_rows_and_a_rerun_writes_nothing(spark):
     assert matches(spark, 'kaken') == {   # the API's list, and the 8 Jul links except on a paper with no DOI now (303)
         ('K1', '0', 301): ('doi', ['cleaned', 'salvaged'], True), ('K1', '1', None): (None, None, False),
         ('K1', 'W301', 301): ('work', ['work'], True), ('K1', 'W302', 302): ('work', ['work'], True),
-        ('K1', 'W304', 304): ('work', ['work'], True)}
+        ('K1', 'W304', 304): ('work', ['work'], True),
+        ('K1', '2', 310): ('refmatch', ['refmatch'], True),     # full-width listed, half-width keyed: cjk_key reads them equal
+        ('K1', '3', 310): ('refmatch', ['refmatch'], False)}    # one title, no surnames, the year 8 years off: not accepted
     assert links(spark) == LINKED
     assert spark.sql("SELECT state FROM (SELECT inline(session.link_results)) WHERE state <> 'written'").collect() == []
 
@@ -516,6 +529,6 @@ def test_a_dropped_link_is_deleted_and_a_source_removed_from_the_config_loses_it
                  + [('anr_opendata', 207, ANR_F, ['ANR-2'])])
     run_notebook(spark)                                # ANR no longer lists 999, and lists two grants on 201
     assert links(spark) == LINKED
-    assert last_merge(spark) == {'numTargetRowsInserted': 18, 'numTargetRowsUpdated': 1, 'numTargetRowsDeleted': 1}
+    assert last_merge(spark) == {'numTargetRowsInserted': 19, 'numTargetRowsUpdated': 1, 'numTargetRowsDeleted': 1}
     run_notebook(spark, drop_source='hakai_publications')
     assert links(spark) == {s: v for s, v in LINKED.items() if s != 'hakai_publications'}
