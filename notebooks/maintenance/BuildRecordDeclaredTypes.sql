@@ -9,6 +9,8 @@
 --   platforms 'ads', 'aps', 'eric', 'osti', 'ntrs', 'inis', 'worldbank' (oxjob #2243): MAG crawls of report servers,
 --   catalogues and meeting-abstract hosts (NASA ADS, APS, ERIC, OSTI, NASA NTRS, INIS, World Bank documents)
 --   platform 'cinii' (oxjob #1160): MAG crawls of CiNii Books catalogue pages whose CiNii note says the item is a thesis
+--   platforms 'gallica', 'hispana' (oxjob #2611): digitized old print the holder itself calls a book (Gallica's own type set
+--   gallica:typedoc:monographies; Hispana records whose raw type is 'Impresos')
 -- Revert one platform: DELETE FROM openalex.works.record_declared_types WHERE platform = '<platform>' (the next night types
 -- its works back). Revert the mechanism: drop the rdt join and its WHEN in CreateWorksBase first (its LEFT JOIN fails on a
 -- missing table), then this table.
@@ -312,6 +314,51 @@ FROM one o
 -- one row per record across every platform: the End 2 End's LEFT JOIN would otherwise repeat the work
 LEFT ANTI JOIN openalex.works.record_declared_types t ON t.provenance = o.provenance AND t.native_id = o.native_id
 WHERE o.n_thesis >= 1 AND o.n_thesis = o.n_ncid
+
+-- COMMAND ----------
+
+-- platforms 'gallica' and 'hispana' (oxjob #2611, heritage wave 2). Digitized old books stay in OpenAlex (heritage decision
+-- of 6 Nov 2026, oxjob #1647) and take type book by the holder's own declaration:
+--   gallica: records whose current version sits in Gallica's type set gallica:typedoc:monographies (and not in
+--            gallica:typedoc:manuscrits, whose records no longer become works). Gallica's first dc:type is often 'text',
+--            which the parser types article. declared_code = the set.
+--   hispana: Hispana records whose own raw type is 'Impresos' (printed matter).
+-- Bar (25 Nov 2026): a fresh seeded 30 + 30 visible works typed article that these rows make book, judged by #1647's
+-- heritage rubric: 30/30 and 30/30 published books. Revert: DELETE ... WHERE platform IN ('gallica', 'hispana').
+DELETE FROM openalex.works.record_declared_types WHERE platform IN ('gallica', 'hispana');
+
+-- COMMAND ----------
+
+INSERT INTO openalex.works.record_declared_types
+WITH ver AS (
+  SELECT native_id, endpoint_id, set_spec, raw_native_type, _sequence FROM openalex.repo.repo_enriched
+  WHERE endpoint_id IN ('b6f3a90f96528af2baa', '0ef9aa4cd18142685bb') AND coalesce(_change_type, '') <> 'delete'
+  UNION ALL
+  SELECT native_id, endpoint_id, set_spec, raw_native_type, _sequence FROM openalex.repo.repo_enriched_reparse
+  WHERE endpoint_id IN ('b6f3a90f96528af2baa', '0ef9aa4cd18142685bb') AND coalesce(_change_type, '') <> 'delete'
+),
+latest AS (  -- each record's current version, as apply_changes keeps it
+  SELECT native_id, max_by(named_struct('endpoint_id', endpoint_id, 'set_spec', set_spec, 'rt', raw_native_type), _sequence) AS v
+  FROM ver GROUP BY native_id
+),
+rec AS (
+  SELECT native_id,
+         CASE WHEN v.endpoint_id = 'b6f3a90f96528af2baa' THEN 'gallica' ELSE 'hispana' END AS platform,
+         CASE WHEN v.endpoint_id = 'b6f3a90f96528af2baa' THEN 'gallica:typedoc:monographies' ELSE v.rt END AS declared_code
+  FROM latest
+  WHERE (v.endpoint_id = 'b6f3a90f96528af2baa' AND array_contains(coalesce(v.set_spec, array()), 'gallica:typedoc:monographies')
+         AND NOT array_contains(coalesce(v.set_spec, array()), 'gallica:typedoc:manuscrits'))
+     OR (v.endpoint_id = '0ef9aa4cd18142685bb' AND lower(trim(v.rt)) = 'impresos')
+),
+keyed AS (
+  SELECT DISTINCT l.provenance, r.native_id, r.platform, r.declared_code
+  FROM rec r JOIN openalex.works.locations_mapped l ON l.native_id = r.native_id AND l.provenance IN ('repo', 'repo_backfill')
+)
+SELECT k.provenance, k.native_id, 'book' AS type, k.platform, k.native_id AS record_key, k.declared_code, 2611 AS oxjob,
+       current_timestamp() AS harvested_at
+FROM keyed k
+-- one row per record across every platform: the End 2 End's LEFT JOIN would otherwise repeat the work
+LEFT ANTI JOIN openalex.works.record_declared_types t ON t.provenance = k.provenance AND t.native_id = k.native_id
 
 -- COMMAND ----------
 

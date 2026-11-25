@@ -1,17 +1,18 @@
 """Cultural-heritage feeds OpenAlex no longer harvests (oxjob #1647).
 
-Jason + Kyle, 6 Nov 2026: stop harvesting the heritage collections their holders already split off -- whole
+Decision of 6 Nov 2026 (#1647): stop harvesting the heritage collections their holders already split off -- whole
 OAI-PMH endpoints, OAI-PMH sets inside endpoints we keep, and DataCite clients (repositories). Each unit was
 sample-checked before it was listed. 'Harvest less', not a per-record rule.
 
-GENERATED -- do not edit by hand. Source: openalex.works.oxjob1647_heritage_drop_units (snapshot openalex.works.oxjob1647_heritage_units_shipped, 2026-11-07T13:56:45.264Z),
-written by oxjobs #1647 work/heritage/build/gen_lists.py at 2026-11-07 07:59 CT.
-88 endpoints, 2249 sets on 270 endpoints, 8 DataCite clients.
+GENERATED -- do not edit by hand. Source: openalex.works.oxjob1647_heritage_drop_units (snapshot openalex.works.oxjob1647_heritage_units_shipped, 2026-11-25T09:53:00.425Z),
+written by oxjobs #2611 work/build/gen_lists.py (wave 2; #1647's generator) at 2026-11-25 03:54 CT.
+88 endpoints, 2538 sets on 277 endpoints, 8 DataCite clients.
 
 Readers: repo_filters.apply_endpoint_filters (endpoints + sets; sets match the setSpec EXACTLY, unlike the
 prefix carves in ENDPOINT_SETSPEC_DELETE) and notebooks/ingest/DataCite.py (clients). Records harvested before
 the change leave through CreateSuperLocations' anti-join on openalex.works.oxjob1647_heritage_removed.
-Revert: empty these three structures (or revert the commit); oxjobs #1647 work/heritage/build/REVERT.md.
+Revert: empty these three structures (or revert the commit); oxjobs #1647 work/heritage/build/REVERT.md,
+wave 2 (oxjob #2611, 25 Nov 2026): #2611 work/build/REVERT.md.
 """
 
 HERITAGE_ENDPOINTS_TO_DELETE = frozenset({
@@ -199,7 +200,7 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
     ),
     '0ef9aa4cd18142685bb': (  # abogados
         'abogados', 'arganda', 'badajoz', 'bvandalucia', 'caceres', 'elektra', 'historico_castellon',
-        'realbiblioteca', 'reino_valencia',
+        'realbiblioteca', 'reino_valencia', 'toledo',
     ),
     '10b3da7b0fc1948e5c5': (  # Archives
         'publication:archives', 'publication:communications', 'publication:component2c', 'publication:criterion1',
@@ -255,6 +256,14 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
     ),
     '1a1ba1332fafe36c86f': (  # publication:law_archives
         'publication:law_archives', 'publication:law_archives_life',
+    ),
+    '1bb45e4fb022f42ef31': (  # BYU
+        '19CMNI', 'BYUICampus', 'BYUIOralHist', 'BYUIScroll', 'BYUIScroll2', 'BYUPhotos', 'ByuiHistPho', 'DE1',
+        'DE2', 'DUP', 'EdithIrvine', 'GEA', 'GeorgeBeard', 'GermanyMaps', 'HuntBag', 'JMHes', 'Jackson', 'MMD',
+        'Philip2Corr', 'ProvoPhoto', 'RexburgNews', 'RigbyStar', 'SRVIdaho3', 'Savage', 'Savage2', 'artlibrary',
+        'desnews1', 'desnews2', 'desnews3', 'desnews4', 'desnews5', 'desnews6', 'desnews9', 'p15999coll11',
+        'p15999coll12', 'p15999coll17', 'p15999coll19', 'p15999coll23', 'p15999coll24', 'p15999coll25',
+        'p15999coll27', 'p15999coll28', 'p15999coll4', 'p15999coll5', 'p15999coll6', 'univarch', 'yellowstone',
     ),
     '1df8d3867a196e491e3': (  # com_10784_1336
         'com_10784_1336',
@@ -334,6 +343,10 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
     ),
     '26e7c3329bf6daa5d69': (  # Al Sharq Newspaper
         'col_10576_29072', 'col_10576_33241', 'col_10576_51521', 'col_10576_5866', 'com_10576_29071',
+    ),
+    '26f736a69f31cf8b217': (  # USMA
+        'aogreunion', 'assembly', 'cdtltrs', 'cdtltrs1', 'clalbums', 'clrings', 'howitzers', 'p16919coll16',
+        'ptview', 'superep',
     ),
     '27c2ffae14f1e3ba729': (  # publication:boardminutes
         'publication:boardminutes',
@@ -500,6 +513,36 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
     '4c02da7184e49eb0058': (  # com_10391_41
         'com_10391_41', 'com_10391_42', 'com_10391_5377',
     ),
+    '4c3c0d4c422b7f8c3fc': (  # Portal to Texas
+        'collection:AAFP', 'collection:ABCHR', 'collection:ABCM', 'collection:ACUC', 'collection:ACUHMC',
+        'collection:AGE', 'collection:BCDPA', 'collection:BLACKA', 'collection:BTAP', 'collection:BTXBP',
+        'collection:CARSC', 'collection:CBCMTN', 'collection:CCRCC', 'collection:CCRDIA', 'collection:CHPC',
+        'collection:CNBC', 'collection:CORR', 'collection:CWADP', 'collection:DARTHS', 'collection:DCPR',
+        'collection:DENCNP', 'collection:DLSWAY', 'collection:DNCCC', 'collection:DONSP', 'collection:DVDCAD',
+        'collection:DWAY', 'collection:DWJEGH', 'collection:DWTCC', 'collection:FKQ', 'collection:FRUPAC',
+        'collection:GALL', 'collection:GLOHCM', 'collection:GRSBR', 'collection:GTHSP', 'collection:HAAA',
+        'collection:HCUSA', 'collection:HDCC', 'collection:HPUC', 'collection:HPUY', 'collection:HSUC',
+        'collection:HSUY', 'collection:JCCHR', 'collection:JFGHR', 'collection:JFKAM', 'collection:JFKDP',
+        'collection:JJCC', 'collection:JTOWER', 'collection:JTP', 'collection:JWWMC', 'collection:KXAS',
+        'collection:LCOH', 'collection:LGBTC', 'collection:LINK', 'collection:LSHJ', 'collection:LTMR',
+        'collection:LWOLF', 'collection:MJC', 'collection:MMCH', 'collection:MMUC', 'collection:NCLH',
+        'collection:NFC', 'collection:NILES', 'collection:NMPW', 'collection:NMPWA', 'collection:OKHPB',
+        'collection:PARTY', 'collection:PEARCE', 'collection:PSLIP', 'collection:RANGE', 'collection:SAYLES',
+        'collection:SFHC', 'collection:SG09', 'collection:SG13', 'collection:SG14', 'collection:SG18',
+        'collection:STDMPO', 'collection:SUDHRC', 'collection:TBMC', 'collection:TCO', 'collection:TDNA',
+        'collection:TDSR', 'collection:TOHC', 'collection:TPATCH', 'collection:TRCPR', 'collection:TSSAR',
+        'collection:TXFC', 'collection:TXHRFC', 'collection:TXSDCP', 'collection:UNTCP', 'collection:UNTCT',
+        'collection:UNTMC', 'collection:UNTOH', 'collection:UNTRD', 'collection:UNTSC', 'collection:USCMC',
+        'collection:USTOPO', 'collection:UTAM', 'collection:VOESH', 'collection:WMNC', 'collection:WWAR',
+        'partner:ABPL', 'partner:ABPM', 'partner:ACOD', 'partner:AHS', 'partner:ASSSC', 'partner:CCCOX',
+        'partner:CCLC', 'partner:DART', 'partner:DSMA', 'partner:GLO', 'partner:GTHS', 'partner:HCDC',
+        'partner:HSSHP', 'partner:HSUL', 'partner:LAMU', 'partner:LCBT', 'partner:LCMD', 'partner:LCVG',
+        'partner:LPIL', 'partner:MHSI', 'partner:MMLUT', 'partner:MRPCA', 'partner:MWHFG', 'partner:NMPW',
+        'partner:NTKHPA', 'partner:PAPL', 'partner:PCDWF', 'partner:PCJM', 'partner:PCMM', 'partner:PMNC',
+        'partner:PRSD', 'partner:RICE', 'partner:SAPL', 'partner:SOUTHUN', 'partner:STEDU', 'partner:SVHS',
+        'partner:TCA', 'partner:TCCO', 'partner:TLPSC', 'partner:TXLU', 'partner:UNTA', 'partner:UNTCVA',
+        'partner:UTA', 'partner:UTD', 'partner:UTSA',
+    ),
     '4cb5a362a0d9c61c6a7': (  # tuflood
         'tuflood',
     ),
@@ -649,6 +692,12 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
         'publication:hot', 'publication:hot_audio', 'publication:on_campus', 'publication:prentice_meador_papers',
         'publication:prentice_meador_papers_audio', 'publication:saunders', 'publication:saunders_audio',
         'publication:theophilus_brown_larimore_papers', 'publication:univ_arch',
+    ),
+    '62a6f53f392a8f2899c': (  # Staatsbibliothek
+        'adelbert.von.chamisso', 'alexander.von.humboldt', 'aussereuropaeische.handschriften',
+        'christlich.orientalische.handschriften', 'gerhart.hauptmann', 'hebraeische.handschriften',
+        'islamische.handschriften', 'jean.paul', 'karten', 'musikhandschriften', 'nachlaesse.und.autographe',
+        'schluesselseiten', 'singakademie', 'suedasiatische.handschriften', 'suedostasiatische.handschriften',
     ),
     '62e00d5bc847f5b23ac': (  # col_10919_11385
         'col_10919_11385', 'com_10919_11335',
@@ -812,7 +861,7 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
     '7e3912749987b05091b': (  # Fairleigh Dickinson University History
         'p15157coll5', 'p16322coll2', 'p16322coll7',
     ),
-    '7e6e1c45f2d79ce40b7': (  # "Утро" (1906–1916 гг.)
+    '7e6e1c45f2d79ce40b7': (  # Утро (1906–1916 гг.)
         'col_1237075002_1282', 'col_1237075002_3148', 'com_1237075002_1281',
     ),
     '7e84e0930583c59995b': (  # First World War Central Power POW Camps
@@ -821,7 +870,7 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
     '7f3ec14947b885ee7a8': (  # com_10797_246
         'com_10797_246',
     ),
-    '7xztnyxjckrm9psuhf9n': (  # "Medical Bulletin"
+    '7xztnyxjckrm9psuhf9n': (  # Medical Bulletin
         'col_11299_121985', 'col_11299_1308', 'col_11299_161593', 'col_11299_172724', 'col_11299_176896',
         'col_11299_189868', 'col_11299_2000', 'col_11299_212312', 'col_11299_219626', 'col_11299_220446',
         'col_11299_242978', 'col_11299_250572', 'col_11299_252827', 'col_11299_254583', 'col_11299_257723',
@@ -909,6 +958,26 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
     ),
     '8a5b7ee7f0a72affa38': (  # ammft
         'ammft',
+    ),
+    '8c64b154bf711a855c1': (  # Digital Kenyon
+        'publication:1856-1900', 'publication:1901-1910', 'publication:1930-1940', 'publication:1940-1950',
+        'publication:1950-1960', 'publication:1960-1970', 'publication:1970-1980', 'publication:1980-1990',
+        'publication:1990-2000', 'publication:2000-2010', 'publication:2010-2020', 'publication:2020-2030',
+        'publication:alfredblakesermons', 'publication:arthistorystudycollection', 'publication:banner1901',
+        'publication:banner1905', 'publication:blakefamily', 'publication:blakeletters', 'publication:bnpc',
+        'publication:bookplates', 'publication:bulmash', 'publication:bulmash_concentration',
+        'publication:bulmash_early', 'publication:bulmash_ghettos', 'publication:bulmash_philatelic',
+        'publication:bulmash_post', 'publication:cel', 'publication:chase_letters', 'publication:collegian',
+        'publication:collegiate', 'publication:commencement', 'publication:communitywithin',
+        'publication:coursecatalogs', 'publication:covid19', 'publication:covid19photos', 'publication:familyfarm',
+        'publication:fortnightly', 'publication:fortnightly1990s', 'publication:hika', 'publication:kcab',
+        'publication:kcbhanews', 'publication:knoxcobha', 'publication:lbis', 'publication:mcilvaine_letters',
+        'publication:newscope', 'publication:newscope1970s', 'publication:newscope1980s',
+        'publication:newscope1990s', 'publication:newscope2000s', 'publication:piranesi', 'publication:ps_images',
+        'publication:resources', 'publication:reveille', 'publication:ruraliss', 'publication:rurallife_ffp',
+        'publication:rurallife_ps', 'publication:scrapbooks', 'publication:specialcollections',
+        'publication:thecommunitywithin', 'publication:watson_france', 'publication:watson_gallery',
+        'publication:watson_italy', 'publication:watson_postcards', 'publication:watson_us', 'publication:zhou',
     ),
     '8dd761399de033ebd74': (  # Film Segment
         'film-segment',
@@ -1096,6 +1165,9 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
         'publication:arbn', 'publication:archives', 'publication:obu_alum', 'publication:ouachitalk',
         'publication:press_releases', 'publication:sam_and_jesse', 'publication:univ_offices',
         'publication:universityarchives', 'publication:vaught_archive', 'publication:wiley_records',
+    ),
+    'b6f3a90f96528af2baa': (  # Gallica
+        'gallica:typedoc:manuscrits',
     ),
     'b9f46f272dbd19a67d0': (  # Campus Chronicle
         'publication:campus_chronicle',
@@ -1407,6 +1479,10 @@ HERITAGE_ENDPOINT_SETSPEC_DELETE = {
     ),
     'oyinbcgfkwujnatagwpr': (  # col_20.500.12525_57
         'col_20.500.12525_57',
+    ),
+    'rfajfyuccys2mxq9mjwg': (  # StFX
+        'col_20.500.14648_64', 'col_20.500.14648_65', 'col_20.500.14648_70', 'com_20.500.14648_47',
+        'com_20.500.14648_65944',
     ),
     'rxkvk85cjbozxgurx7si': (  # University Archives Photograph Collection
         'publication:archive-photos', 'publication:dakota-student', 'publication:daumier-prints',

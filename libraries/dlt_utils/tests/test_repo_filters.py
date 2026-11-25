@@ -247,12 +247,15 @@ def test_heritage_lists_shape():
 
 
 def test_heritage_never_touches_digitized_print():
-    # Jason + Kyle, 6 Nov 2026: Gallica, the University of Michigan Library Repository and the Biodiversity
-    # Heritage Library stay whole. None of their sets may be listed either.
+    # Heritage decision of 6 Nov 2026 (oxjob #1647): digitized old books and journals stay. Gallica, the University of
+    # Michigan Library Repository and the Biodiversity Heritage Library are never listed whole. Michigan and BHL list no
+    # set; Gallica lists only its own manuscripts type set (oxjob #2611), never its monographs or periodicals.
     from openalex.dlt import heritage_feeds as hf
-    protected = {"b6f3a90f96528af2baa", "b54a0400f7544929302", "q6caunfjwsunh6wiqwpg"}
+    gallica = "b6f3a90f96528af2baa"
+    protected = {gallica, "b54a0400f7544929302", "q6caunfjwsunh6wiqwpg"}
     assert not protected & hf.HERITAGE_ENDPOINTS_TO_DELETE
-    assert not protected & set(hf.HERITAGE_ENDPOINT_SETSPEC_DELETE)
+    assert not (protected - {gallica}) & set(hf.HERITAGE_ENDPOINT_SETSPEC_DELETE)
+    assert set(hf.HERITAGE_ENDPOINT_SETSPEC_DELETE.get(gallica, ())) <= {"gallica:typedoc:manuscrits"}
 
 
 def test_heritage_whole_endpoints_join_the_denylist_without_changing_it():
