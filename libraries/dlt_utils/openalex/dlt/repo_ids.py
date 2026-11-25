@@ -14,6 +14,21 @@ import re
 import pyspark.sql.functions as F
 from pyspark.sql.types import ArrayType, StringType, StructField, StructType
 
+# oxjob #2514: a deposit that breaks a DOI with whitespace ("https://doi.org/10.1371/journal. pone.0226553" in a citation
+# line, "10.21831/jig cope.v20i1.10793") leaves the pattern a stub whose suffix holds no digit. Taken as the record's DOI,
+# 10.1371/journal gave 892 records from 216 repositories one merge key and pooled them onto W4392145873. A stub cut at
+# whitespace is not taken: the record keys on its next DOI or its title. Rejoining the pieces finds the real DOI too
+# rarely outside PLOS (measured 25 Nov 2026, #2514), and a digitless DOI that stands alone is left as it was: real ones
+# exist (GBIF downloads, herbarium specimens).
+DOI_CUT_STUB = re.compile(r"^10\.\d{4,9}/[^\d]+$")
+DOI_CUT_AFTER = re.compile(r"^\.?\s+\S")
+
+
+def _cut_stub(doi, rest):
+    """True when the matched DOI has no digit in its suffix and the deposit's text goes on after whitespace."""
+    return bool(DOI_CUT_STUB.match(doi)) and bool(DOI_CUT_AFTER.match(rest))
+
+
 id_struct_type = StructType([
     StructField("id", StringType(), True),
     StructField("namespace", StringType(), True),
@@ -78,6 +93,8 @@ def extract_ids(identifiers, native_id):
                                if arxiv_id_from_native:
                                    if id_value == f"arXiv:{arxiv_id_from_native}" or f"oai:arXiv.org:{match.group(group)}" == native_id:
                                        relationship = 'self'
+                           elif namespace == 'doi' and _cut_stub(match.group(group), identifier[match.end():]):
+                               continue   # oxjob #2514: a DOI cut at whitespace is no DOI; the string may hold another id
                            else:
                                id_value = match.group(group)
                            

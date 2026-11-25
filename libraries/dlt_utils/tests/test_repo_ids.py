@@ -96,3 +96,42 @@ def test_other_ncbi_and_europepmc_urls_are_not_read_as_pmc():
                      "https://europepmc.org/article/PMC/PMC99"], "oai:x:1")
     assert _ids(r, "pmcid") == []
     assert _ids(r, "pmid") == []
+
+
+# ---- oxjob #2514: a DOI cut at whitespace is no DOI ----
+
+def test_plos_doi_cut_in_a_citation_line_is_not_read():
+    # repository.arizona.edu 10150/641004: PLOS's citation line breaks after "journal."
+    cite = ("Danilov SM, Metzger R (2019) Tissue ACE phenotyping in lung cancer. PLoS ONE 14(12): e0226553. "
+            "https://doi.org/10.1371/journal. pone.0226553")
+    r = extract_ids([cite, "1932-6203", "10.1371/journal.pone.0226553"], "oai:repository.arizona.edu:10150/641004")
+    assert _ids(r, "doi") == ["10.1371/journal.pone.0226553"]
+
+
+def test_cut_stub_alone_leaves_no_doi_and_keeps_other_ids():
+    r = extract_ids(["https://doi.org/10.1371/journal. pone.0339471", "https://arca.fiocruz.br/handle/icict/77440"],
+                    "oai:arca.fiocruz.br:icict/77440")
+    assert _ids(r, "doi") == []
+    assert _ids(r, "pmh") == ["oai:arca.fiocruz.br:icict/77440"]
+
+
+def test_doi_split_by_a_space_inside_the_suffix_is_not_read():
+    # Indonesian OJS: "10.21831/jig cope.v20i1.10793" (the DOI is 10.21831/jigcope...)
+    r = extract_ids(["10.21831/jig cope.v20i1.10793"], "oai:journal.uny.ac.id:article/1")
+    assert _ids(r, "doi") == []
+
+
+def test_a_stub_that_stands_alone_is_left_as_it_was():
+    # real DOIs can have no digit in their suffix (GBIF downloads, herbarium specimens): only a visible cut is refused
+    assert _ids(extract_ids(["https://doi.org/10.15468/dl.afzgvu"], "oai:x:1"), "doi") == ["10.15468/dl.afzgvu"]
+    assert _ids(extract_ids(["DOI: 10.1371/journal"], "oai:HAL:hal-01331462v1"), "doi") == ["10.1371/journal"]
+
+
+def test_a_full_doi_followed_by_text_is_unchanged():
+    r = extract_ids(["https://doi.org/10.1016/j.cell.2020.01.001 (accessed 2024)"], "oai:x:2")
+    assert _ids(r, "doi") == ["10.1016/j.cell.2020.01.001"]
+
+
+def test_doi_prefixed_native_id_rule_is_unchanged_by_the_cut_rule():
+    r = extract_ids([], "doi:10.57451/lhd.a.cxsmap7_nustar.101329.1")
+    assert _ids(r, "doi") == ["10.57451/lhd.a.cxsmap7_nustar.101329.1"]
