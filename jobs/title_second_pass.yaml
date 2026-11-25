@@ -1,0 +1,36 @@
+resources:
+  jobs:
+    Title_Second_Pass:
+      name: Title Second Pass
+      description: |
+        oxjob #2596 fix 2: links printed reference lines the matcher left unlinked on works with an arXiv location, when the
+        cited work's full title is printed, the line starts with its first author and a printed year is within one
+        (notebooks/references/title_second_pass/TitleSecondPass; rule v7, judged per type on fresh draws). Covers lists
+        filed since the last run (3 to 14 days back) that the nightly matcher has already seen; writes a run
+        title-daily-<UTC timestamp> into openalex.works.reference_matcher_links and registers it in reference_matcher_runs
+        once its links are written; the next End 2 End's parse_referenced_works applies it. Fails loudly, writing nothing,
+        when no matcher run applied in 3 days or when one run would link over 300,000 lines.
+        Revert: pause this job (UI, then here), check neither it nor End 2 End is running, then
+        notebooks/references/title_second_pass/title_daily_revert.sql.
+      schedule:
+        # 16:30 UTC: the night's End 2 End and its matcher are normally done; lists the matcher hasn't seen wait a day.
+        quartz_cron_expression: 0 30 16 * * ?
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      # failures reach Sentry through the Databricks bridge (ox-errors databricks); no email
+      timeout_seconds: 12600  # two task attempts of up to 5400 s, 600 s apart
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: Title_Second_Pass
+          timeout_seconds: 5400
+          # a retry mints a new run id and first deletes the failed attempt's unregistered links
+          max_retries: 1
+          min_retry_interval_millis: 600000
+          notebook_task:
+            notebook_path: notebooks/references/title_second_pass/TitleSecondPass
+            source: GIT
+            warehouse_id: 3996dc0a9b183ce3  # jobs-xl, like References On Works (desk test on an X-Large: 261 s)
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main
