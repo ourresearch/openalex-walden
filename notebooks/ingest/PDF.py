@@ -79,6 +79,44 @@ def clean_xml(xml_content):
     # XML 1.0 valid: #x9 | #xA | #xD | #x20-#xD7FF | #xE000-#xFFFD | #x10000-#x10FFFF
     return re.sub('[^\\x09\\x0A\\x0D\\u0020-\\uD7FF\\uE000-\\uFFFD\\U00010000-\\U0010FFFF]', '', xml_content)
 
+# TEI elements that sit inside running text (a citation <ref>, a funder or grant <rs>, highlighting): their edges are
+# not word boundaries, so 'disease<ref>1</ref>' and '(Smith 2010;</ref><ref>Lee 2012)' read as before. In 295 GROBID
+# 0.8/0.9 files (26 Nov 2026) only <ref> and <rs> occurred inside running text; the rest are TEI's other inline
+# elements, listed so a future GROBID that emits them doesn't split words.
+TEI_INLINE = {
+    "ref", "rs", "hi", "emph", "ptr", "lb", "pb", "sup", "sub", "num", "measure", "unit", "quantity", "foreign", "term",
+    "mentioned", "q", "said", "seg", "c", "w", "pc", "g", "orig", "reg", "abbr", "expan", "choice", "sic", "corr",
+    "add", "del", "unclear", "gap", "anchor",
+}
+
+def tei_text(element):
+    """Text of a TEI element, with a space at the edge of every element that is not inline (oxjob #2655).
+
+    GROBID writes adjacent units with nothing between them (<s>One.</s><s>Two.</s>, <head>Introduction</head><p>Over),
+    and ''.join(itertext()) glued them into one search token ('One.Two', 'IntroductionOver'): the first word of almost
+    every sentence, paragraph and caption could not be found by full-text search. Sentences, paragraphs, headings,
+    captions, table cells, notes, formulas and each field of a reference are units; whitespace is collapsed after.
+    """
+    parts = []
+
+    def walk(el):
+        if not isinstance(el.tag, str):
+            return  # a comment or processing instruction: no text, as in itertext() (its tail is the parent's)
+        unit = el.tag.rsplit("}", 1)[-1] not in TEI_INLINE
+        if unit:
+            parts.append(" ")
+        if el.text:
+            parts.append(el.text)
+        for child in el:
+            walk(child)
+            if child.tail:
+                parts.append(child.tail)
+        if unit:
+            parts.append(" ")
+
+    walk(element)
+    return " ".join("".join(parts).split())
+
 def _safe_extract(fn, default=None):
     """Run a field extraction function, returning default on failure. Re-raises MemoryError."""
     try:
@@ -274,12 +312,11 @@ def extract_fields(xml_content):
     def _fulltext():
         text_element = root.find(".//tei:text", namespaces=ns)
         if text_element is not None:
-            fulltext = ''.join(text_element.itertext()).strip()
+            fulltext = tei_text(text_element)
 
             if fulltext:
                 fulltext = re.sub(r'<[^>]+>', '', fulltext)
                 fulltext = ' '.join(fulltext.split())
-                fulltext = '\n'.join([line.strip() for line in fulltext.splitlines() if line.strip()])
                 if len(fulltext) > MAX_FULLTEXT_LENGTH:
                     fulltext = fulltext[:MAX_FULLTEXT_LENGTH]
                 return fulltext
