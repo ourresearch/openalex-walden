@@ -15,7 +15,7 @@
 # MAGIC | mode | does | writes when dry_run=false |
 # MAGIC |---|---|---|
 # MAGIC | `plan` | parameter sheet: old index size and tombstones, cluster disk, projected size and peak disk, pinned Delta version V, its commit time T, count at V; the load chunks' id ranges at V (published as task values `range_k`) | nothing |
-# MAGIC | `create_index` | new index body = old index's LIVE mapping verbatim (plus only `source_excludes` / `drop_subfields` when set) + its settings minus internal keys + build overrides (0 replicas, refresh -1, total_shards_per_node); saves the body to a Volume; reports what the matching templates would add (simulated) and refuses template aliases or extra fields; after the PUT the mapping must equal the planned one | PUT new index |
+# MAGIC | `create_index` | new index body = old index's LIVE mapping verbatim (plus only `source_excludes` / `drop_subfields` / `mapping_patch` when set) + its settings minus internal keys + build overrides (0 replicas, refresh -1, total_shards_per_node); saves the body to a Volume; reports what the matching templates would add (simulated) and refuses template aliases or extra fields; after the PUT the mapping must equal the planned one | PUT new index |
 # MAGIC | `watchdog` | runs beside the load chunks; cancels the job run when a data node's search queue or cluster disk breaks the stop rules; logs the indexing rate | cancel the run |
 # MAGIC | `close_load` | refresh; count within `close_tolerance` (default 10) of the source at V; `_mget` of random source ids | refresh new index |
 # MAGIC | `add_replicas` | raises recovery speed (transient), sets replicas, waits for green, restores the recorded recovery settings | cluster settings, new index settings |
@@ -79,8 +79,14 @@ dbutils.widgets.text("close_tolerance", "10")                # close_load: |new 
 # the stored _source. Any partial _update must then carry those fields; sync_work_metrics doesn't (on hold, #2492,
 # docs/ES_INDEX_REBUILD.md Step 2), so leave it empty for works.
 # drop_subfields: dotted sub-field paths to leave out (works: authorships.raw_author_name.autocomplete).
+# mapping_patch: JSON {"<dotted field>": {"<key>": <value>, "fields": {"<sub-field>": {<mapping>}}}}: keys set on the
+# field and sub-fields added or replaced (oxjob #2645, works-v42: `.thai` / `.thai_exact` sub-fields on display_name,
+# alternate_titles, abstract and fulltext, and full text's own analyzers). A patch naming a new analyzer needs that
+# analyzer in the index's settings: create such an index by hand with the new analysis, then run create_index with
+# if_exists=reuse and the same patch.
 dbutils.widgets.text("source_excludes", "")
 dbutils.widgets.text("drop_subfields", "")
+dbutils.widgets.text("mapping_patch", "")
 
 MODE = dbutils.widgets.get("mode").strip()
 OLD = dbutils.widgets.get("old_index").strip()
@@ -114,6 +120,7 @@ DELTA_MISMATCH_PCT = float(dbutils.widgets.get("delta_mismatch_pct"))
 CLOSE_TOLERANCE = int(dbutils.widgets.get("close_tolerance"))
 SOURCE_EXCLUDES = [f.strip() for f in dbutils.widgets.get("source_excludes").split(",") if f.strip()]
 DROP_SUBFIELDS = [f.strip() for f in dbutils.widgets.get("drop_subfields").split(",") if f.strip()]
+MAPPING_PATCH = json.loads(dbutils.widgets.get("mapping_patch").strip() or "{}")
 
 NAME_RE = r"[a-z0-9][a-z0-9._-]*"
 if MODE not in MODES:
@@ -349,11 +356,24 @@ def mapping_drift(template_mappings, live_mappings):
     }
 
 
-def planned_mapping(live, source_excludes, drop_subfields):
+def planned_mapping(live, source_excludes, drop_subfields, mapping_patch=None):
     """The old index's live mapping plus the asked-for changes; anything that doesn't resolve is an error."""
     m = json.loads(json.dumps(live))
     if source_excludes:
         m["_source"] = {"excludes": list(source_excludes)}
+    for path, change in (mapping_patch or {}).items():
+        node = {"properties": m.get("properties", {})}
+        for p in path.split("."):
+            node = (node.get("properties") or {}).get(p)
+            if node is None:
+                raise ValueError(f"mapping_patch {path!r}: no field {path!r} in the mapping")
+        for key, value in change.items():
+            if key == "fields":
+                if not isinstance(value, dict):
+                    raise ValueError(f"mapping_patch {path!r}: fields must be an object")
+                node.setdefault("fields", {}).update(json.loads(json.dumps(value)))
+            else:
+                node[key] = json.loads(json.dumps(value))
     for path in drop_subfields:
         *parts, sub = path.split(".")
         node = {"properties": m.get("properties", {})}
@@ -459,9 +479,10 @@ elif MODE == "create_index":
         log(f"source pinned at version {v} ({op}, {t} UTC); the load chunks read {src(v)}")
     old_settings = flat_settings(c, OLD)
     old_mapping = get_mapping(c, OLD)
-    new_mapping_planned = planned_mapping(old_mapping, SOURCE_EXCLUDES, DROP_SUBFIELDS)
-    if SOURCE_EXCLUDES or DROP_SUBFIELDS:
-        log(f"mapping changes vs {OLD}: _source.excludes {SOURCE_EXCLUDES or '-'}; sub-fields dropped {DROP_SUBFIELDS or '-'}")
+    new_mapping_planned = planned_mapping(old_mapping, SOURCE_EXCLUDES, DROP_SUBFIELDS, MAPPING_PATCH)
+    if SOURCE_EXCLUDES or DROP_SUBFIELDS or MAPPING_PATCH:
+        log(f"mapping changes vs {OLD}: _source.excludes {SOURCE_EXCLUDES or '-'}; sub-fields dropped {DROP_SUBFIELDS or '-'}; "
+            f"patch {json.dumps(MAPPING_PATCH, ensure_ascii=False) if MAPPING_PATCH else '-'}")
     nodes = data_nodes(c)
     settings, dropped, overrides = build_settings(old_settings, len(nodes))
     body = {"settings": settings, "mappings": new_mapping_planned}
