@@ -43,13 +43,19 @@ HEAD = _head_lib()
 needs_head = pytest.mark.skipif(HEAD is None, reason="git base of this branch not found")
 
 
+B = "B"   # sub-class B rows (a doi in evidence_json) listed: the probe nih_fold.eu_b_active makes
+
+
 class C(RecordingC):
-    """RecordingC whose manifest probe answers per class."""
+    """RecordingC whose manifest probe answers per class (B: EU rows with a doi)."""
     def __init__(self, listed=(), **kw):
         super().__init__(**kw)
         self.listed = set(listed)
 
     def sql(self, statement, params=None):
+        if "'$.doi') IS NOT NULL" in statement and " LIMIT 1" in statement:
+            self.statements.append(("sql", " ".join(statement.split())))
+            return Frame([types.SimpleNamespace(x=1)] if B in self.listed else [])
         for cls in (NIH, EU):
             if f"evidence_class='{cls}' LIMIT 1" in statement:
                 self.statements.append(("sql", " ".join(statement.split())))
@@ -251,3 +257,107 @@ def test_flag_reads_strict():
     """A stand-in context that answers any attribute (like RecordingC) never reads as EU pairs listed."""
     c = RecordingC()
     assert nih_fold._eu(c) is False and nih_fold.on(c) is False and nih_fold.with_class(c, ("X",)) == ("X",)
+
+
+# ---------- sub-class B (oxjob #690 step 5): the EU's own grant-DOI record retires into its CORDIS record ----------
+@needs_head
+@pytest.mark.parametrize("listed", [(EU,), (NIH, EU)])
+def test_without_b_rows_build_renders_as_head(listed):
+    """EU rows listed, none with a doi (production since night 2026-11-24): every statement is the one main renders (the probes
+    aside), so the B code changes nothing until a B batch loads."""
+    old = _render(HEAD / "build_awards.py", _head_fold(), listed)
+    new = _render(ROOT / "lib" / "build_awards.py", nih_fold, listed)
+    own = lambda c: [s for s in _four_tier_free(c) if s[0] not in NIH_AMOUNT_STATEMENTS | DATE_GUARD_STATEMENTS]
+    assert own(new) == own(old)
+    assert new.checks.keys() == old.checks.keys() and new.eu_b is False
+
+
+def test_b_probe_runs_only_with_eu_rows():
+    probe = lambda c: [s for n, s in c.statements if n == "sql" and "'$.doi') IS NOT NULL" in s]
+    assert probe(_render(ROOT / "lib" / "build_awards.py", nih_fold, ())) == []
+    assert probe(_render(ROOT / "lib" / "build_awards.py", nih_fold, (NIH,))) == []
+    assert len(probe(eu_build())) == 1 and f"evidence_class='{EU}' LIMIT 1" in probe(eu_build())[0]
+
+
+def test_without_b_rows_no_b_statement():
+    c = eu_build()
+    q = dict(c.statements)
+    assert "doi" not in q["eu_pairs"] and "doi" not in q["eu_listed"] and "target_doi" not in q["eu_pair_numbers"]
+    assert "$.doi" not in q["MIGRATION_LOSER_NO_NATIVE"] and "eu_rule_into_survivor" not in q["RETIREMENT_SAME_FUNDER"]
+    assert "eu_rule_into_survivor" not in q and "eu_b_pending_pairs" not in c.counts
+    for reason in nih_fold.EU_B_HELD_REASONS:
+        assert reason not in q["eu_held"]
+
+
+def b_build(listed=(EU, B)):
+    return _render(ROOT / "lib" / "build_awards.py", nih_fold, listed)
+
+
+@pytest.mark.parametrize("reason", nih_fold.EU_HELD_REASONS + nih_fold.EU_B_HELD_REASONS)
+def test_b_rows_every_held_reason_is_in_the_proof(reason):
+    assert f"'{reason}'" in dict(b_build().statements)["eu_held"]
+
+
+def test_b_rows_proof():
+    c = b_build()
+    q = dict(c.statements)
+    assert c.eu_b is True
+    assert "get_json_object(m.evidence_json,'$.doi') doi" in q["eu_pairs"]
+    assert "get_json_object(evidence_json,'$.doi') doi FROM migration_manifest_v" in q["eu_listed"]
+    # a B row's doi is 10.3030/<its number> and its registry is cordis; an A row (no doi) as before
+    assert "(doi IS NULL OR (doi=concat('10.3030/',number) AND registry='cordis'))" in q["EU_LISTED_SHAPE"]
+    held = q["eu_held"]
+    # the paper-side-copy reasons are for A rows only
+    assert "eu_direct d JOIN dev.lab.ngr_s_eu_pairs p ON p.loser_id=d.stable_id WHERE p.doi IS NULL" in held
+    assert "k.key_type='NATIVE' WHERE p.doi IS NULL" in held
+    # B: one NATIVE key, the crossref_grant DOI that is the listed doi (read from award_keys, any origin)
+    assert "LEFT JOIN dev.lab.ngr_award_keys k ON k.stable_id=p.loser_id AND k.key_type='NATIVE'" in held
+    assert "count(k.stable_id)=1 AND min(k.namespace)='crossref_grant'" in held and "=p.doi,false)" in held
+    # B: nothing better than a grant DOI binds to the loser, so the registry's rank-1 row wins after the redirect
+    assert "LEFT JOIN dev.lab.ngr_s_bindings b ON b.stable_id=p.loser_id" in held and "min(b.source_rank)>=2" in held
+    # B: the target serves the listed doi
+    assert "ta.doi target_doi" in q["eu_pair_numbers"] and "target_doi" in held
+    assert "eu_b_pending_pairs" in c.counts
+
+
+def test_b_rows_may_have_their_native_key():
+    q = dict(b_build().statements)
+    gate = q["MIGRATION_LOSER_NO_NATIVE"]
+    assert ("AND NOT (m.evidence_class='EU_GRANT_FAMILY_FOLD' AND get_json_object(m.evidence_json,'$.doi') IS NOT NULL)") in gate
+    # the other classes' gates are unchanged: DOI proof only for the DOI classes, the EU class still never public-shell exempt
+    assert EU not in q["MIGRATION_DOI_PROOF"] and EU not in q["MIGRATION_TARGET_DIRECT"] and EU not in q["RETIREMENT_DIRECT_TARGET"]
+
+
+def test_b_rows_new_shell_into_survivor_is_exempt_narrowly():
+    c = b_build()
+    q = dict(c.statements)
+    gate = q["RETIREMENT_SAME_FUNDER"]
+    assert "NOT EXISTS (SELECT 1 FROM dev.lab.ngr_s_eu_rule_into_survivor e WHERE e.old_id=t.old_id AND e.canonical_id=t.canonical_id)" in gate
+    shells = q["eu_rule_shell_obs"]
+    # only into an EU survivor, only a shell observation under another EU programme funder than the survivor's
+    assert f"nih_survivors s ON s.stable_id=t.canonical_id AND s.family_class='{EU}'" in shells
+    # only into a listed B row's target (its grant-DOI record's observation is the one that binds there), never any EU survivor
+    assert (f"SELECT DISTINCT target_id FROM migration_manifest_v WHERE evidence_class='{EU}' AND "
+            "get_json_object(evidence_json,'$.doi') IS NOT NULL) bt ON bt.target_id=t.canonical_id") in shells
+    assert "NOT so.is_direct AND so.nk IS NOT NULL AND so.funder_id IN (4320314745," in shells
+    assert "so.funder_id<>s.pinned_funder_id" in shells and "nih_obs_funder" in shells   # each observation's own funder
+    # matched by a direct observation the survivor holds under that funder with that number; the join reads one earlier relation
+    into = q["eu_rule_into_survivor"]
+    assert "d.stable_id=x.canonical_id AND d.funder_id=x.funder_id AND d.nk=x.nk WHERE d.is_direct" in into
+    assert "eu_rule_into_survivor" in c.counts
+
+
+def test_b_rows_with_nih_rows():
+    c = b_build((NIH, EU, B))
+    q = dict(c.statements)
+    assert f"nm.evidence_class IN ('{NIH}','{EU}')" in q["RETIREMENT_SAME_FUNDER"] and "eu_rule_into_survivor" in q["RETIREMENT_SAME_FUNDER"]
+    assert "awards_candidate_before_nih" in q and "B_LOSER_KEYS" in q["eu_held"]
+    # NIH proof untouched by B
+    assert "doi" not in q["nih_pairs"]
+
+
+def test_b_flag_reads_strict():
+    c = RecordingC()
+    assert nih_fold._eu_b(c) is False and nih_fold.native_loser_exempt(c, "m") == ""
+    c.eu, c.eu_b = False, True
+    assert nih_fold._eu_b(c) is False   # never without EU rows

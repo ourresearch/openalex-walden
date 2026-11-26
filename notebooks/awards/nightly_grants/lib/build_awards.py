@@ -349,7 +349,7 @@ def plan(c):
           WHERE m.evidence_class NOT IN {tuple_sql(nih_fold.with_class(c,PUBLIC_TWIN_CLASSES))} AND (e.stable_id IS NULL OR m.loser_id<9000000000 OR NOT COALESCE(e.origin='NEW',false) OR e.first_published_release IS NOT NULL OR e.first_published_at IS NOT NULL)""")
         c.zero('MIGRATION_LOSER_ACTIVE_ENTITY',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}entities_allocated e ON e.stable_id=m.loser_id AND e.status='ACTIVE'")
         c.zero('MIGRATION_LOSER_BOUND',f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}bindings b ON b.stable_id=m.loser_id")
-        c.zero('MIGRATION_LOSER_NO_NATIVE',f"SELECT m.* FROM {mm} m JOIN {p}award_keys k ON k.stable_id=m.loser_id AND k.key_type='NATIVE' WHERE m.evidence_class NOT IN ({literal(DOI_CLASS)},{literal(PUBLIC_DOI_CLASS)},{literal(uk_lineage.LINEAGE_TWIN_CLASS)})")
+        c.zero('MIGRATION_LOSER_NO_NATIVE',f"SELECT m.* FROM {mm} m JOIN {p}award_keys k ON k.stable_id=m.loser_id AND k.key_type='NATIVE' WHERE m.evidence_class NOT IN ({literal(DOI_CLASS)},{literal(PUBLIC_DOI_CLASS)},{literal(uk_lineage.LINEAGE_TWIN_CLASS)}){nih_fold.native_loser_exempt(c,'m')}")
         # DOI class proof: loser born NATIVE in crossref_grant, origin NEW; target carries a doi; EVERY native key of the loser normalizes to that doi.
         c.zero('MIGRATION_DOI_PROOF',f"""SELECT m.* FROM {mm} m JOIN {r}entities_allocated l ON l.stable_id=m.loser_id JOIN {r}entities_allocated t ON t.stable_id=m.target_id
           WHERE m.evidence_class IN {doi_classes} AND NOT COALESCE((l.origin='NEW' OR (m.evidence_class={literal(PUBLIC_DOI_CLASS)} AND l.origin='COLLISION_RECOVERY')) AND l.birth_key:type='NATIVE' AND l.birth_key:namespace='crossref_grant' AND t.doi IS NOT NULL

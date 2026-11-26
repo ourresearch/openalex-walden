@@ -22,11 +22,17 @@ funder (the registry's; no project_funder_id) and its registry row (the copies h
 the election); the pin, the exemptions, the own-funder lookups and link conservation are shared with the NIH class; the proof
 (_eu_filter) and the published-row checks are its own. With no EU pair listed every statement renders exactly as before.
 The nih_* artifact names are kept for both classes (survivors, own-funder lookups); EU-only artifacts are eu_*.
+Sub-class B (oxjob #690 step 5; design: that job's sub-class B design note in work/): the EU registers a DOI for every grant agreement
+(10.3030/<number>); Crossref's grant record of it is a direct grant-DOI record (rank 2, one NATIVE crossref_grant key) under a programme
+funder, while CORDIS (rank 1) files the same grant under another EU funder and serves the same DOI. A B row carries the DOI:
+{"number": "101000790", "registry": "cordis", "doi": "10.3030/101000790"}; it retires the grant-DOI record into the CORDIS record (the
+funder's own data overwrites its grant DOI; the merged grant keeps every link). Its proof replaces the A
+rows' paper-side-copy reasons (no direct, no NATIVE key) with B_*; with no B row listed every statement renders exactly as before.
 """
 import json
 
 import list_legs
-from stable_award_ids import literal
+from stable_award_ids import literal, norm_doi_sql
 
 EU_CLASS = "EU_GRANT_FAMILY_FOLD"
 # The 86 EU programme funders: openalex.funders.funders whose display_name matches EU_FAMILY_RLIKE (frozen 2026-11-23, the same
@@ -48,6 +54,10 @@ EU_NUMBER = "^([0-9]{6}|101[0-9]{6})$"   # an EU grant agreement number: FP7/H20
 EU_REGISTRIES = ("erc", "cordis")
 EU_HELD_REASONS = ("NUMBER", "NOT_IN_FAMILY", "TARGET_NOT_REGISTRY", "TARGET_NOT_UNIQUE", "LOSER_DIRECT", "LOSER_NATIVE",
                    "LOSER_IS_TARGET", "LOSER_RULE_RETIRING", "LOSER_RULE_TARGET", "TARGET_RETIRING", "NOT_BOUND", "NOT_ACTIVE")
+EU_GRANT_DOI_PREFIX = "10.3030/"   # the EU's grant-agreement DOIs (Publications Office of the EU): 10.3030/<grant number>
+EU_B_REGISTRY = "cordis"           # the registry that serves those DOIs
+# sub-class B (a row with a doi) instead of LOSER_DIRECT and LOSER_NATIVE:
+EU_B_HELD_REASONS = ("B_LOSER_KEYS", "B_LOSER_GRANT_DOI", "B_TARGET_DOI")
 
 NIH_CLASS = "NIH_PROJECT_YEAR_FOLD"
 NIH_FAMILY = (4320332161, 4320337611, 4320337356, 4320337376, 4320337472, 4320337358, 4320337593, 4320337375, 4320337355, 4320337362,
@@ -142,6 +152,16 @@ def _eu(c):
     return getattr(c, "eu", False) is True
 
 
+def _eu_b(c):
+    """EU sub-class B rows (a grant-DOI record retiring into its CORDIS record) listed tonight, applied ones included."""
+    return _eu(c) and getattr(c, "eu_b", False) is True
+
+
+def eu_b_active(c):
+    return bool(c.sql(f"SELECT 1 FROM migration_manifest_v WHERE get_json_object(evidence_json,'$.doi') IS NOT NULL"
+                      f" AND evidence_class={literal(EU_CLASS)} LIMIT 1").collect())
+
+
 def on(c):
     """True when either family class is listed: the hooks both classes share (survivor pin, exemptions, own-funder lookups)."""
     return getattr(c, "nih", False) or _eu(c)
@@ -176,6 +196,7 @@ def pin_ownership(c):
     direct), else their recorded funder made canonical. So the copies' observations that bind to them through the redirect (ERC
     parent, H2020 FP ...) never move the record off its registry funder, and a registry refiling the grant still moves it."""
     c.nih = active(c); c.eu = eu_active(c)
+    c.eu_b = c.eu and eu_b_active(c)
     if not on(c):
         return
     r = c.r; cls = class_is(c, "m.evidence_class")
@@ -335,15 +356,21 @@ def _eu_filter(c, mm):
     row's loser is already a stop (MIGRATION_ACYCLIC reads the whole manifest). Returns the pending relation with held EU pairs removed."""
     r, reg_prefix = c.r, c.p; cls = literal(EU_CLASS); fam = EU_FAMILY_SQL
     registries = "(" + ",".join(literal(x) for x in EU_REGISTRIES) + ")"
+    b = _eu_b(c)
+    # sub-class B: the row's doi (NULL on an A row); without a B row listed these render as before
+    doi_m, doi, a_only = (",get_json_object(m.evidence_json,'$.doi') doi", ",get_json_object(evidence_json,'$.doi') doi",
+                          " WHERE p.doi IS NULL") if b else ("", "", "")
     c.artifact("eu_pairs", f"""SELECT m.loser_id,m.target_id,get_json_object(m.evidence_json,'$.number') number,
-        get_json_object(m.evidence_json,'$.registry') registry FROM {mm} m WHERE m.evidence_class={cls}""")
+        get_json_object(m.evidence_json,'$.registry') registry{doi_m} FROM {mm} m WHERE m.evidence_class={cls}""")
     c.artifact("eu_listed", f"""SELECT loser_id,target_id,get_json_object(evidence_json,'$.number') number,
-        get_json_object(evidence_json,'$.registry') registry FROM migration_manifest_v WHERE evidence_class={cls}""")
-    c.zero("EU_LISTED_SHAPE", f"SELECT * FROM {r}eu_listed WHERE NOT COALESCE(number RLIKE '{EU_NUMBER}' AND registry IN {registries},false)")
+        get_json_object(evidence_json,'$.registry') registry{doi} FROM migration_manifest_v WHERE evidence_class={cls}""")
+    # a B row's doi is the EU's own DOI of the listed number, and only CORDIS serves those
+    b_shape = (f" AND (doi IS NULL OR (doi=concat('{EU_GRANT_DOI_PREFIX}',number) AND registry='{EU_B_REGISTRY}'))" if b else "")
+    c.zero("EU_LISTED_SHAPE", f"SELECT * FROM {r}eu_listed WHERE NOT COALESCE(number RLIKE '{EU_NUMBER}' AND registry IN {registries}{b_shape},false)")
     c.zero("EU_ONE_NUMBER_PER_TARGET", f"""SELECT target_id FROM {r}eu_listed GROUP BY target_id
       HAVING count(DISTINCT number)<>1 OR count(DISTINCT registry)<>1""")
     c.artifact("eu_pair_numbers", f"""SELECT p.*,lo.funder_award_id loser_number,ta.funder_award_id target_number,
-        lo.funder_id loser_funder_id,ta.funder_id target_funder_id,ta.provenance target_provenance,
+        lo.funder_id loser_funder_id,ta.funder_id target_funder_id,ta.provenance target_provenance,{'ta.doi target_doi,' if b else ''}
         ul.funder_id loser_plan_funder_id,ut.funder_id target_plan_funder_id
       FROM {r}eu_pairs p LEFT JOIN awards_v lo ON lo.id=p.loser_id LEFT JOIN awards_v ta ON ta.id=p.target_id
       LEFT JOIN {r}ownership_plan_unpinned ul ON ul.stable_id=p.loser_id LEFT JOIN {r}ownership_plan_unpinned ut ON ut.stable_id=p.target_id""")
@@ -365,8 +392,8 @@ def _eu_filter(c, mm):
         UNION ALL SELECT loser_id,'TARGET_NOT_REGISTRY' FROM {r}eu_pair_numbers WHERE NOT COALESCE(target_provenance=registry,false)
         UNION ALL SELECT p.loser_id,'TARGET_NOT_UNIQUE' FROM {r}eu_pairs p LEFT JOIN {r}eu_number_owners n USING(loser_id)
           WHERE NOT COALESCE(n.owners=1 AND n.owner_id=p.target_id,false)
-        UNION ALL SELECT stable_id,'LOSER_DIRECT' FROM {r}eu_direct
-        UNION ALL SELECT p.loser_id,'LOSER_NATIVE' FROM {r}eu_pairs p JOIN {reg_prefix}award_keys k ON k.stable_id=p.loser_id AND k.key_type='NATIVE'
+        UNION ALL SELECT {'p.loser_id' if b else 'stable_id'},'LOSER_DIRECT' FROM {r}eu_direct{f' d JOIN {r}eu_pairs p ON p.loser_id=d.stable_id' + a_only if b else ''}
+        UNION ALL SELECT p.loser_id,'LOSER_NATIVE' FROM {r}eu_pairs p JOIN {reg_prefix}award_keys k ON k.stable_id=p.loser_id AND k.key_type='NATIVE'{a_only}{_eu_b_held(c) if b else ''}
         UNION ALL SELECT p.loser_id,'LOSER_IS_TARGET' FROM {r}eu_pairs p JOIN {r}migration_pending x ON x.target_id=p.loser_id
         UNION ALL SELECT p.loser_id,'LOSER_RULE_RETIRING' FROM {r}eu_pairs p JOIN {r}retirements_rule_proposed t ON t.old_id=p.loser_id
         UNION ALL SELECT p.loser_id,'LOSER_RULE_TARGET' FROM {r}eu_pairs p JOIN {r}retirements_rule t ON t.canonical_id=p.loser_id
@@ -376,11 +403,62 @@ def _eu_filter(c, mm):
         UNION ALL SELECT p.loser_id,'NOT_ACTIVE' FROM {r}eu_pairs p LEFT JOIN {r}entities_allocated l ON l.stable_id=p.loser_id
           LEFT JOIN {r}entities_allocated t ON t.stable_id=p.target_id WHERE NOT COALESCE(l.status='ACTIVE' AND t.status='ACTIVE',false))""")
     c.count("eu_pending_pairs", r + "eu_pairs"); c.count("eu_held", f"(SELECT DISTINCT loser_id FROM {r}eu_held) x")
+    if b:
+        c.count("eu_b_pending_pairs", f"(SELECT loser_id FROM {r}eu_pairs WHERE doi IS NOT NULL) x")
     for row in c.sql(f"SELECT reason,count(DISTINCT loser_id) n FROM {r}eu_held GROUP BY 1").collect():
         c.counts["eu_held_" + row.reason.lower()] = int(row.n)
     listed = c.count("eu_listed_pairs", r + "eu_listed")
     c.zero("EU_HELD_FUSE", f"SELECT count(DISTINCT loser_id) n FROM {r}eu_held HAVING n>greatest(100,0.01*{listed})")
     return c.artifact("migration_proven_eu", f"SELECT m.* FROM {mm} m LEFT ANTI JOIN {r}eu_held h ON h.loser_id=m.loser_id")
+
+
+def _eu_b_held(c):
+    """The B rows' proof, in place of LOSER_DIRECT and LOSER_NATIVE (a grant-DOI record is direct and has a NATIVE key):
+      B_LOSER_KEYS       the loser's NATIVE keys are exactly one, a crossref_grant key whose DOI is the listed doi (MIGRATION_DOI_KEYS' test,
+                         read from award_keys, so a SEED-born record qualifies);
+      B_LOSER_GRANT_DOI  every observation bound to the loser tonight is rank 2 or lower (award_source_rank: no funder's own row binds
+                         to it), so once they bind to the survivor through the redirect the registry's rank-1 row still wins the election;
+      B_TARGET_DOI       the target serves the listed doi (a CORDIS record without its DOI yet waits)."""
+    r, p = c.r, c.p
+    return (f"""
+        UNION ALL SELECT p.loser_id,'B_LOSER_KEYS' FROM {r}eu_pairs p LEFT JOIN {p}award_keys k ON k.stable_id=p.loser_id AND k.key_type='NATIVE'
+          WHERE p.doi IS NOT NULL GROUP BY p.loser_id,p.doi
+          HAVING NOT COALESCE(count(k.stable_id)=1 AND min(k.namespace)='crossref_grant' AND min({norm_doi_sql('k.source_record_id')})=p.doi,false)
+        UNION ALL SELECT p.loser_id,'B_LOSER_GRANT_DOI' FROM {r}eu_pairs p LEFT JOIN {r}bindings b ON b.stable_id=p.loser_id
+          WHERE p.doi IS NOT NULL GROUP BY p.loser_id HAVING NOT COALESCE(min(b.source_rank)>=2,false)
+        UNION ALL SELECT loser_id,'B_TARGET_DOI' FROM {r}eu_pair_numbers
+          WHERE doi IS NOT NULL AND NOT COALESCE({norm_doi_sql('target_doi')}=doi,false)""")
+
+
+def _eu_b_shell_exempt(c, retirements_alias):
+    """After a B row applied, the grant-DOI record's direct observation binds to the CORDIS survivor under its own programme funder
+    (unpinned()), so a new paper-side shell under that funder with the same number matches it in shell_targets and the shell rule
+    retires the shell into the survivor, whose plan funder is the registry's: RETIREMENT_SAME_FUNDER would stop the night. Exempt
+    exactly that: a retirement into the target of a listed B row (never any other EU survivor) of a shell under another EU programme
+    funder than the survivor's, matched by a direct observation the survivor holds tonight under the shell's funder with the shell's
+    number (the match the rule made). A same-funder retirement needs no exemption. Counted as eu_rule_into_survivor."""
+    r = c.r; cls = literal(EU_CLASS); ro = unpinned(c, "resolved_observations")
+    # two steps (op21: a join predicate never references two earlier relations): the shells' observations, then the survivor's
+    c.artifact("eu_rule_shell_obs", f"""SELECT DISTINCT t.old_id,t.canonical_id,so.funder_id,so.nk FROM {r}retirements t
+      JOIN {r}nih_survivors s ON s.stable_id=t.canonical_id AND s.family_class={cls}
+      JOIN (SELECT DISTINCT target_id FROM migration_manifest_v WHERE evidence_class={cls}
+            AND get_json_object(evidence_json,'$.doi') IS NOT NULL) bt ON bt.target_id=t.canonical_id
+      JOIN {ro} so ON so.stable_id=t.old_id WHERE NOT so.is_direct AND so.nk IS NOT NULL AND so.funder_id IN {EU_FAMILY_SQL}
+        AND so.funder_id<>s.pinned_funder_id""")
+    c.artifact("eu_rule_into_survivor", f"""SELECT DISTINCT x.old_id,x.canonical_id FROM {r}eu_rule_shell_obs x
+      JOIN {ro} d ON d.stable_id=x.canonical_id AND d.funder_id=x.funder_id AND d.nk=x.nk WHERE d.is_direct""")
+    c.count("eu_rule_into_survivor", r + "eu_rule_into_survivor")
+    return (f" AND NOT EXISTS (SELECT 1 FROM {r}eu_rule_into_survivor e WHERE e.old_id={retirements_alias}.old_id"
+            f" AND e.canonical_id={retirements_alias}.canonical_id)")
+
+
+def native_loser_exempt(c, manifest_alias):
+    """MIGRATION_LOSER_NO_NATIVE: a B row's loser is a grant-DOI record and has its one NATIVE key (_eu_b_held proves it). Empty
+    without a B row listed."""
+    if not _eu_b(c):
+        return ""
+    return (f" AND NOT ({manifest_alias}.evidence_class={literal(EU_CLASS)}"
+            f" AND get_json_object({manifest_alias}.evidence_json,'$.doi') IS NOT NULL)")
 
 
 def same_funder_exempt(c, retirements_alias):
@@ -398,7 +476,8 @@ def same_funder_exempt(c, retirements_alias):
     return (f" AND NOT EXISTS (SELECT 1 FROM migration_manifest_v nm WHERE {class_is(c, 'nm.evidence_class')}"
             f" AND nm.loser_id={retirements_alias}.old_id AND nm.target_id={retirements_alias}.canonical_id)"
             f" AND NOT EXISTS (SELECT 1 FROM {r}nih_unpinned_same_funder x WHERE x.old_id={retirements_alias}.old_id"
-            f" AND x.canonical_id={retirements_alias}.canonical_id)")
+            f" AND x.canonical_id={retirements_alias}.canonical_id)"
+            + (_eu_b_shell_exempt(c, retirements_alias) if _eu_b(c) else ""))
 
 
 def with_class(c, base, shell_target=False):
