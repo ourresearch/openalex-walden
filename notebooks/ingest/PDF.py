@@ -423,15 +423,21 @@ def normalize_license_udf(license_series: pd.Series) -> pd.Series:
 # COMMAND ----------
 
 def _invalid_pdf_filter():
-    # Filter source for grobid_raw + pdf_backfill — source_pdf_ids classified as
-    # invalid by scan_pdf_bytes (HTML stored as PDF, error text, R2-missing, etc.).
-    # See notebooks/scraping/create_invalid_pdfs.py and oxjob #185.
+    # source_pdf_ids classified as invalid by scan_pdf_bytes (HTML stored as PDF, error text, R2-missing, etc.;
+    # notebooks/scraping/create_invalid_pdfs.py, oxjob #185) or by #981's R2 scan, one row per file.
+    # _damaged_copy: every label of the file says the harvester got a real PDF that our stored copy damaged
+    # (decoded as text, cut off). That record keeps the publisher's link as a shell, without the file or a
+    # parse; any other label means no PDF was fetched, and the record stays out. Oxjob #981.
     # Defensive read: if the table doesn't exist yet (first deploy / fresh env),
     # fall back to an empty filter so the pipeline still runs.
     try:
-        return spark.read.table("openalex.pdf.invalid_pdfs").select("source_pdf_id")
+        return (
+            spark.read.table("openalex.pdf.invalid_pdfs")
+            .groupBy("source_pdf_id")
+            .agg(expr("bool_and(label IN ('UTF8_DECODED', 'NO_EOF'))").alias("_damaged_copy"))
+        )
     except Exception:
-        return spark.createDataFrame([], "source_pdf_id STRING")
+        return spark.createDataFrame([], "source_pdf_id STRING, _damaged_copy BOOLEAN")
 
 
 def _invalid_grobids_filter():
@@ -465,8 +471,9 @@ def grobid_raw():
     # Bad-parse rows are NOT dropped: a real fetched PDF that grobid could not
     # parse still attests the file (pdf_url + is_oa), so it passes as a shell
     # with xml_content nulled — empty extraction, no docs.parsed-pdf reference
-    # (#202 deleted those XMLs from R2). Only junk FILES (invalid_pdfs) and
-    # non-success rows (no proven file, e.g. 404) are excluded. Oxjob #789.
+    # (#202 deleted those XMLs from R2). A damaged copy of a real PDF passes the
+    # same way, also without its docs.pdf reference (#981). Only junk FILES
+    # (invalid_pdfs) and non-success rows (no proven file, e.g. 404) are excluded. Oxjob #789.
     xml_ok = expr("""
         xml_content IS NOT NULL
         AND xml_content NOT LIKE '%[BAD_INPUT_DATA]%'
@@ -482,11 +489,14 @@ def grobid_raw():
         .table("openalex.pdf.grobid_processing_results")
         .where("source_pdf_id IS NOT NULL")
         .where("status LIKE 'success%'")
-        .join(_invalid_pdf_filter(), on="source_pdf_id", how="left_anti")
+        .join(_invalid_pdf_filter(), on="source_pdf_id", how="left")
+        .where(col("_damaged_copy").isNull() | col("_damaged_copy"))
+        .withColumn("_damaged_copy", coalesce(col("_damaged_copy"), lit(False)))
         .join(invalid_grobids, col("id") == col("_invalid_grobid_uuid"), how="left")
         .withColumn(
             "xml_content",
-            when(xml_ok & col("_invalid_grobid_uuid").isNull() & ~_front_matter_url("url"), col("xml_content"))
+            when(xml_ok & col("_invalid_grobid_uuid").isNull() & ~col("_damaged_copy") & ~_front_matter_url("url"),
+                 col("xml_content"))
             .otherwise(lit(None).cast("string"))
         )
         .drop("_invalid_grobid_uuid")
@@ -542,8 +552,9 @@ def pdf_parse():
                    struct(concat(source_pdf_id, '.pdf') AS id, 'docs.pdf' AS namespace, CAST(NULL AS STRING) AS relationship),
                    struct(concat(id, '.xml.gz') AS id, 'docs.parsed-pdf' AS namespace, CAST(NULL AS STRING) AS relationship)
                ),
-               -- shells (null xml) carry no parse reference
+               -- shells (null xml) carry no parse reference; a damaged copy carries no file reference (#981)
                x -> NOT (x.namespace = 'docs.parsed-pdf' AND xml_content IS NULL)
+                    AND NOT (x.namespace = 'docs.pdf' AND _damaged_copy)
            )
        """).alias("ids"),
        substring(col("fields.title"), 0, MAX_TITLE_LENGTH).alias("title"),
@@ -624,19 +635,31 @@ def pdf_backfill():
     )
     invalid_pdfs = _invalid_pdf_filter().withColumnRenamed("source_pdf_id", "_invalid_source_pdf_id")
     invalid_grobids = _invalid_grobids_filter().withColumnRenamed("grobid_uuid", "_invalid_grobid_uuid")
+    damaged = col("_damaged_copy")
+    # a damaged copy of a real PDF keeps the link and nothing read from the file, as grobid_raw's shells (#981)
+    shell_fields = {c: when(damaged, lit(None).cast(base.schema[c].dataType)).otherwise(col(c))
+                    for c in ("title", "language", "abstract", "source_name", "volume", "issue", "first_page",
+                              "last_page", "publisher", "license", "fulltext")}
+    shell_fields.update({c: when(damaged, expr(f"filter({c}, x -> false)")).otherwise(col(c))
+                         for c in ("authors", "references", "funders")})
     return (
-        base.join(invalid_pdfs, base._source_pdf_id_for_filter == invalid_pdfs._invalid_source_pdf_id, "left_anti")
+        base.join(invalid_pdfs, base._source_pdf_id_for_filter == invalid_pdfs._invalid_source_pdf_id, "left")
+            .where(damaged.isNull() | damaged)
+            .withColumn("_damaged_copy", coalesce(damaged, lit(False)))
+            .withColumns(shell_fields)
             # invalid-grobid rows stay (the FILE is real) but shed the parse
             # reference — same shell semantics as grobid_raw (oxjob #789)
             .join(invalid_grobids, base._grobid_uuid_for_filter == invalid_grobids._invalid_grobid_uuid, "left")
             .withColumn(
                 "ids",
-                when(
+                when(damaged, expr("filter(ids, x -> x.namespace NOT IN ('docs.pdf', 'docs.parsed-pdf'))"))
+                .when(
                     col("_invalid_grobid_uuid").isNotNull(),
                     expr("filter(ids, x -> x.namespace != 'docs.parsed-pdf')")
                 ).otherwise(col("ids"))
             )
-            .drop("_source_pdf_id_for_filter", "_grobid_uuid_for_filter", "_invalid_grobid_uuid")
+            .drop("_source_pdf_id_for_filter", "_grobid_uuid_for_filter", "_invalid_grobid_uuid",
+                  "_invalid_source_pdf_id", "_damaged_copy")
     )
 
 def _removed_pdf_urls():
