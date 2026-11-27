@@ -1,0 +1,30 @@
+resources:
+  jobs:
+    OpenAPC:
+      name: OpenAPC
+      description: "Loads OpenAPC's article fees (apc_de.csv plus the transformative-agreements file's per-article euro amounts) into openalex.mid.work_openapc every Monday before Walden End 2 End; CreateWorksBase serves them as apc_paid. Replaces the one-off Sep 2025 snapshot. A failed run or guard leaves the table as it was. oxjob #1231."
+      email_notifications:
+        on_failure:
+          - kyle@ourresearch.org
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 30 1 ? * MON"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: load
+          notebook_task:
+            notebook_path: notebooks/ingest/OpenAPC
+            source: GIT
+          environment_key: Default
+          timeout_seconds: 3600
+          max_retries: 2
+          min_retry_interval_millis: 600000
+      environments:
+        - environment_key: Default
+          spec:
+            client: "3"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main

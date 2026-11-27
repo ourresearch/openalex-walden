@@ -30,6 +30,7 @@ include:
   - jobs/institutions_frontfill.yaml
   - jobs/hal_api_affiliations.yaml
   - jobs/retraction_watch.yaml
+  - jobs/openapc.yaml  # oxjob #1231
   - jobs/affiliation_matcher_nightly.yaml
   - jobs/affiliation_matcher_sweep.yaml
   - jobs/affiliation_matcher_backlog.yaml
