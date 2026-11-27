@@ -184,7 +184,9 @@ def pubmed_markup_abstract_sql(markup):
     """SQL: the abstract from <Abstract>'s raw inner XML, the struct path's rule on whole texts: each AbstractText body,
     'Label: ' in front (else 'NlmCategory: ' unless UNASSIGNED), joined by a space; empty bodies skipped. Pure SQL, so
     the same text backfills pubmed_works (#1052 work/backfill)."""
-    body = r"'(?s)<AbstractText((?:\\s[^>]*)?)(?<!/)>(.*?)</AbstractText>'"  # (?<!/): <AbstractText .../> is empty
+    # Attributes: quoted values whole, so a decoded '>' in a label (Label=">Conclusion", 8 of 5.27M versions) doesn't end
+    # the tag; (?<!/): <AbstractText .../> is empty.
+    body = r"""'(?s)<AbstractText((?:\\s(?:[^>"]|"[^"]*")*)?)(?<!/)>(.*?)</AbstractText>'"""
     label = r"""regexp_extract(a, '\\sLabel="([^"]*)"', 1)"""
     category = r"""regexp_extract(a, '\\sNlmCategory="([^"]*)"', 1)"""
     return (f"nullif(concat_ws(' ', zip_with("
@@ -207,15 +209,19 @@ def pubmed_abstract_markup():
   # reach pubmed_items only. A static read of pubmed_items makes DLT run this flow after pubmed_items' flow in every
   # update (and pubmed_parsed after both), so this listing is the later one and holds every file pubmed_items read.
   # Proved on a dev copy (#1052, 27 Nov 2026): with the read, this flow started after the items flow completed; without
-  # it, at the same moment. limit(0) reads no rows. Files land at 18:00-18:30 CT, outside the scheduled updates.
+  # it, at the same moment. limit(0) reads no rows. It holds for triggered updates of the whole pipeline (how it runs);
+  # a selective refresh that leaves this table out, or continuous mode, loses it. Files land at 18:00-18:30 CT, outside
+  # the scheduled updates. The weekly check monitoring/checks/pubmed_markup_abstract_check.py catches any record that
+  # still took the struct path while its markup exists, and prints the repair.
   # dropDuplicates keeps every (pmid, revised_date) key in state for good, as pubmed_exploded's does: ~5K keys a day,
-  # ~5M on the day of an annual baseline (which this reader reads once, like pubmed_items).
+  # ~5M on the day of an annual baseline (which this reader reads once, like pubmed_items). No maxFilesPerTrigger:
+  # Auto Loader ignores pubmed_items' unprefixed one, so both read 1,000 files a batch (the 27 Apr 2026 full refresh
+  # of pubmed_items took 30,000,000 rows, 1,000 baseline files, per batch).
   after_items = dlt.read("pubmed_items").select(F.lit(1).alias("_after_items")).limit(0)
   return (spark.readStream
       .format("cloudFiles")
       .option("cloudFiles.format", "xml")
       .option("rowTag", "PubmedArticle")
-      .option("maxFilesPerTrigger", "10")
       .option("modifiedAfter", PUBMED_ABSTRACT_MARKUP_SINCE)
       .option("ignoreCorruptFiles", "true")
       .option("mode", "PERMISSIVE")

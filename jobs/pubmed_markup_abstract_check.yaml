@@ -1,0 +1,30 @@
+# Weekly alarm for PubMed abstracts cut at inline markup (oxjob #1052): pubmed_parsed rows of the last 8 days that took
+# the old, cut struct text although their version's raw markup exists. Fails (-> Sentry databricks-jobs) on any; the
+# failure prints the repair (#1052 work/backfill/06 + 07). Read-only. Mondays 14:00 UTC, after the End 2 End's PubMed
+# task (03:00 UTC) and the PubMed job's 13:00 UTC update.
+resources:
+  jobs:
+    PubMed_Markup_Abstract_Check:
+      name: PubMed markup abstract check
+      schedule:
+        quartz_cron_expression: "0 0 14 ? * MON"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      timeout_seconds: 1800
+      tasks:
+        - task_key: check
+          spark_python_task:
+            python_file: monitoring/checks/pubmed_markup_abstract_check.py
+            source: GIT
+          environment_key: Default
+          max_retries: 1
+          min_retry_interval_millis: 300000
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "4"
+      git_source:
+        git_url: https://github.com/ourresearch/openalex-walden.git
+        git_provider: gitHub
+        git_branch: main

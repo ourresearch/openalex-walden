@@ -46,6 +46,11 @@ CASES = [
     ('<AbstractText Label="AIMS">line one\n<i>two</i>\nthree</AbstractText>', 'AIMS: line one\n<i>two</i>\nthree'),
     ('<AbstractText>  <i>Whole abstract in italics.</i>  </AbstractText>', '<i>Whole abstract in italics.</i>'),
     ('<AbstractText Label="BACKGROUND"/><AbstractText Label="RESULTS">r<i>x</i></AbstractText>', 'RESULTS: r<i>x</i>'),
+    # a decoded '>' or '<' inside a label (PMIDs 28881593, 42246395) neither ends the tag nor leaks attributes
+    ('<AbstractText Label="METHODS">m<i>x</i></AbstractText><AbstractText Label=">CONCLUSIONS" NlmCategory="UNASSIGNED">'
+     'c.</AbstractText>', 'METHODS: m<i>x</i> >CONCLUSIONS: c.'),
+    ('<AbstractText Label="PD-L1 < 50%">a<sub>2</sub></AbstractText>', 'PD-L1 < 50%: a<sub>2</sub>'),
+    ('<AbstractText Label="X"/><AbstractText Label="Y">y<i>z</i></AbstractText>', 'Y: y<i>z</i>'),
 ]
 
 # (<Abstract> inner XML, takes the markup path?)
