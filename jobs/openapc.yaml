@@ -2,13 +2,13 @@ resources:
   jobs:
     OpenAPC:
       name: OpenAPC
-      description: "Loads OpenAPC's article fees (apc_de.csv plus the transformative-agreements file's per-article euro amounts) into openalex.mid.work_openapc every Monday before Walden End 2 End; CreateWorksBase serves them as apc_paid. Replaces the one-off Sep 2025 snapshot. A failed run or guard leaves the table as it was. oxjob #1231."
+      description: "Loads OpenAPC's article fees (apc_de.csv plus the transformative-agreements file's per-article euro amounts) into openalex.mid.work_openapc every day before Walden End 2 End; CreateWorksBase serves them as apc_paid. Replaces the one-off Sep 2025 snapshot. A failed run or guard leaves the table as it was. oxjob #1231."
       email_notifications:
         on_failure:
           - kyle@ourresearch.org
       max_concurrent_runs: 1
       schedule:
-        quartz_cron_expression: "0 30 1 ? * MON"
+        quartz_cron_expression: "0 30 1 * * ?"
         timezone_id: UTC
         pause_status: UNPAUSED
       tasks:
