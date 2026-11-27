@@ -202,6 +202,15 @@ def pubmed_markup_abstract_sql(markup):
   cluster_by=["pmid"]
 )
 def pubmed_abstract_markup():
+  # Readiness barrier: pubmed_parsed must never meet a record whose markup row is still to come (its stream-static join
+  # never revisits a row). Both readers list the same prefix, so a file that landed between their listings would
+  # reach pubmed_items only. A static read of pubmed_items makes DLT run this flow after pubmed_items' flow in every
+  # update (and pubmed_parsed after both), so this listing is the later one and holds every file pubmed_items read.
+  # Proved on a dev copy (#1052, 27 Nov 2026): with the read, this flow started after the items flow completed; without
+  # it, at the same moment. limit(0) reads no rows. Files land at 18:00-18:30 CT, outside the scheduled updates.
+  # dropDuplicates keeps every (pmid, revised_date) key in state for good, as pubmed_exploded's does: ~5K keys a day,
+  # ~5M on the day of an annual baseline (which this reader reads once, like pubmed_items).
+  after_items = dlt.read("pubmed_items").select(F.lit(1).alias("_after_items")).limit(0)
   return (spark.readStream
       .format("cloudFiles")
       .option("cloudFiles.format", "xml")
@@ -221,6 +230,8 @@ def pubmed_abstract_markup():
       )
       .where(F.col("abstract_markup").rlike(PUBMED_ABSTRACT_CHILD_RE))
       .dropDuplicates(["pmid", "revised_date"])
+      .join(after_items, on=F.lit(False), how="left")
+      .drop("_after_items")
   )
 
 # COMMAND ----------
@@ -373,7 +384,8 @@ def pubmed_parsed():
   # oxjob #1052: a record whose AbstractText has a child element takes its abstract from its version's raw markup
   # (PMID + DateRevised): the stream's table first, else the history table. Stream-static joins: DLT refreshes
   # pubmed_abstract_markup before this table. Each side is unique on the key, so neither join adds rows.
-  # shortcut: every micro-batch shuffles the whole history table (~10M rows); fine at one or two update files a day.
+  # shortcut: every micro-batch shuffles the whole history table (5.3M rows, 3.2 GB; ~20 s on a dev copy); fine at one
+  # or two update files a day. Once an annual baseline has run through pubmed_abstract_markup, drop the history join.
   exploded = dlt.read_stream("pubmed_exploded").withColumn("_markup_pmid", F.col("pmid").cast("string"))
   for i, markup in enumerate([dlt.read("pubmed_abstract_markup"), spark.read.table(PUBMED_ABSTRACT_MARKUP_HISTORY)]):
       exploded = exploded.join(
