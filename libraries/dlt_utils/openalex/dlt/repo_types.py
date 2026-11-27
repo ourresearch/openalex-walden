@@ -1190,19 +1190,32 @@ RAW_TYPE_RANKING_MAP = {
 
 # COAR resource type codes (official COAR vocabulary) -> OpenAlex type.
 # Source of truth = COAR_RESOURCE_TYPE_MAP (mirror in RepoBackfill.py).
+# Ranking only (see RAW_TYPE_RANKING_MAP): the final type comes from CreateLocationsWithTypes' dict_map, which reads the
+# raw string this ranking picks. A code missing here resolves to 'other', so a record's version marker (a COAR version
+# URI or 'info:eu-repo/semantics/publishedVersion', both ranked 'article') beats it, the version string becomes
+# raw_native_type and the record falls to the cascade's article default. oxjob #758 (27 Nov 2026): UARM's DSpace 7
+# feed sends ['.../resource_type/c_7a1f', '.../version/c_970fb48d4fbd8a85'] on its bachelor theses; on 27 Nov about
+# 22,000 records on 68 endpoints (about 20,000 works, nearly all theses) were typed article that way. Labels checked against
+# https://vocabularies.coar-repositories.org/resource_types/<code>/ on 27 Nov 2026.
+# Left out on purpose (still 'other' here, so a text type on the same record decides): c_dcae04bc 'review article'
+# (Oxford ORA sends it on ~108,000 ordinary journal articles), c_ba08 'book review' (dict_map types it review, which
+# would turn ~2,900 book-review records into review), c_beb9 'data paper'.
 COAR_RESOURCE_TYPE_MAP = {
     "c_6501": "article",             # journal article
-    "c_bdcc": "article",             # research article
-    "c_93fc": "article",             # contribution to journal
+    "c_bdcc": "dissertation",        # master thesis (oxjob #758; was 'article', labelled 'research article', which is c_2df8fbb1)
+    "c_93fc": "report",              # report (oxjob #758; was 'article', labelled 'contribution to journal', which is c_3e5a)
     "r60j-j5bd": "article",          # article
     "c_5794": "conference-paper",    # conference paper  (FIX: legacy mapped this to 'article')
     "c_2f33": "book",                # book              (FIX: legacy mapped this to 'article')
     "c_3248": "book-chapter",        # book part
-    "c_efa0": "conference-abstract", # conference poster
+    "c_efa0": "conference-abstract", # COAR's label is 'review'; dict_map types it conference-abstract
     "c_db06": "dissertation",        # doctoral thesis
     "c_46ec": "dissertation",        # thesis
+    "c_7a1f": "dissertation",        # bachelor thesis (oxjob #758)
     "c_816b": "preprint",            # preprint
     "c_8042": "report",              # working paper
+    "c_18gh": "report",              # technical report (oxjob #758)
+    "c_18ws": "report",              # research report (oxjob #758)
 }
 
 # --- oxjob #537: best dc:type element selection over the full array ---
@@ -1242,7 +1255,10 @@ _TYPE_RANK = {t: i for i, t in enumerate(_TYPE_PRIORITY)}
 def _source_quality(raw):
     low = raw.lower()
     if "coar/resource_type/" in low or "coar-repositories.org/resource_types/" in low:
-        return 2
+        # oxjob #758: only a bare URI outranks an eu-repo or text type of the same rank. dict_map matches the raw string
+        # whole, so a padded or annotated one ('.../c_7a1f\xa0', 'ttp://...', '<dc:type>http://...') would miss it
+        # there and fall to the article default.
+        return 2 if re.fullmatch(r"https?://\S+", raw) else 0
     if "info:eu-repo/semantics/" in low:
         return 1
     return 0
