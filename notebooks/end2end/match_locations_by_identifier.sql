@@ -11,6 +11,8 @@
 -- doi matching is on the CLEANED form ([^a-zA-Z0-9./-] stripped) on both sides; keys are scrubbed of degenerate values here, once.
 -- oxjob #2169: a notice about a work (retraction, correction, erratum, expression of concern, comment) never lands on that work's
 -- id, whichever answer put it there; it mints or joins the notice's own work instead.
+-- oxjob #1161: a repository record whose DOI field names another item (its book's or proceedings' DOI, a DOI it cites) binds
+-- and registers without that DOI (__PENDING__.doi_withheld keeps it for the night).
 --
 -- oxjob #2169: notice -> the work it is about, as its record declares it. The help page's "Separate works" notices (Casey
 -- 2026-11-11): Crossref `update-to` / `updated-by` of those types, PubMed CommentsCorrections from the notice's side. One
@@ -103,7 +105,8 @@ SELECT t.provenance, t.native_id_namespace, t.native_id,
                    x -> regexp_replace(regexp_replace(LOWER(TRIM(x.id)), '^(https?://(dx[.])?doi[.]org/|doi:)', ''), '[^a-zA-Z0-9\./-]', '')))[0] END AS has_version_doi_clean,
        -- oxjob #1099: a Crossref preprint's declared article DOI(s), or an article's declared preprint DOI(s), cleaned like doi_clean
        cp.dois AS preprint_link_dois,
-       COALESCE(cp.is_pre, FALSE) AS preprint_link_is_pre
+       COALESCE(cp.is_pre, FALSE) AS preprint_link_is_pre,
+       CAST(NULL AS STRING) AS doi_withheld
 FROM t
 LEFT JOIN (SELECT DISTINCT TRIM(title) AS title FROM openalex.system.bad_titles) bt ON bt.title = TRIM(t.title)
 LEFT JOIN cr_partners cp ON t.provenance = 'crossref' AND cp.d = regexp_replace(t.merge_key.doi, '[^a-zA-Z0-9\./-]', '')
@@ -116,6 +119,53 @@ LEFT JOIN old o
   AND t.native_id_namespace = o.native_id_namespace
   AND t.native_id = o.native_id
 WHERE r.native_id IS NULL OR r.work_id IS NULL
+;
+-- oxjob #1161 (step 4b): a pending repository record whose DOI field names ANOTHER item binds and registers without it: its DOI's
+-- Crossref / DataCite record has a different title (both Latin-script normalized titles, similarity < 0.5, neither containing
+-- the other), both list authors and no name word (3+ letters; containment for 4+) is shared, and either the two records share a
+-- language or the repository record is 2+ years newer (a thesis citing an older work). Its doi / doi_clean become NULL, so it
+-- neither binds by that DOI nor mints a work carrying it (the location matcher, the title key or its other ids decide); the DOI
+-- stays in doi_withheld for the night. Bylines that name a collaboration or consortium and Lirias 'DO NOT RECLAIM' placeholder
+-- titles are left alone (the same item). Dry run on nights 2026-11-23..27 (first-sight repository records with a DOI): 1,176 /
+-- 869 / 121 / 114 / 26 a night, every one bound to the DOI's own work before; hand samples 18/18, 25/25, 41/41 and 15/15
+-- different items (chapters and abstracts on their book's DOI, theses on works they cite). Pinned records are never re-resolved:
+-- the records already bound this way need a repair. Corpus sizing and samples: oxjob 1161 work/guardb_binding_sizing_2026-11-26.md.
+MERGE INTO __PENDING__ AS t
+USING (
+  WITH pr AS (
+    SELECT provenance, native_id_namespace, native_id, lower(doi_clean) AS d
+    FROM __PENDING__
+    WHERE provenance IN ('repo', 'repo_backfill') AND doi_clean IS NOT NULL
+  ),
+  rec AS (
+    SELECT pr.provenance, pr.native_id_namespace, pr.native_id, pr.d, l.title, l.normalized_title AS nt, l.language AS lang,
+           year(l.published_date) AS yr,
+           array_distinct(flatten(transform(l.authors, a -> filter(split(regexp_replace(lower(coalesce(a.name, concat_ws(' ', a.given, a.family))), '[^a-z ]', ' '), ' +'), x -> length(x) >= 3)))) AS names
+    FROM __LOCATIONS__ l
+    JOIN pr ON l.provenance = pr.provenance AND l.native_id_namespace = pr.native_id_namespace AND l.native_id = pr.native_id
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY l.provenance, l.native_id_namespace, l.native_id ORDER BY l.updated_date DESC) = 1
+  ),
+  reg AS (
+    SELECT k.d, l.normalized_title AS nt, l.language AS lang, year(l.published_date) AS yr,
+           array_distinct(flatten(transform(l.authors, a -> filter(split(regexp_replace(lower(coalesce(a.name, concat_ws(' ', a.given, a.family))), '[^a-z ]', ' '), ' +'), x -> length(x) >= 3)))) AS names
+    FROM __LOCATIONS__ l
+    JOIN (SELECT DISTINCT d FROM pr) k ON lower(regexp_replace(l.merge_key.doi, '[^a-zA-Z0-9\./-]', '')) = k.d
+    WHERE l.provenance IN ('crossref', 'datacite')
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY k.d ORDER BY l.provenance, l.updated_date DESC) = 1
+  )
+  SELECT rec.provenance, rec.native_id_namespace, rec.native_id
+  FROM rec JOIN reg ON reg.d = rec.d
+  WHERE rec.nt RLIKE '^[a-z0-9]+$' AND reg.nt RLIKE '^[a-z0-9]+$' AND rec.nt <> reg.nt
+    AND instr(rec.nt, reg.nt) = 0 AND instr(reg.nt, rec.nt) = 0
+    AND 1.0 - levenshtein(left(rec.nt, 200), left(reg.nt, 200)) / greatest(length(left(rec.nt, 200)), length(left(reg.nt, 200))) < 0.5
+    AND (rec.lang = reg.lang OR rec.yr >= reg.yr + 2)
+    AND coalesce(size(rec.names), 0) > 0 AND coalesce(size(reg.names), 0) > 0
+    AND NOT exists(rec.names, x -> exists(reg.names, y -> x = y OR (length(x) >= 4 AND length(y) >= 4 AND (instr(x, y) > 0 OR instr(y, x) > 0))))
+    AND NOT exists(concat(rec.names, reg.names), x -> x RLIKE '^(collaborat|consorti)')
+    AND coalesce(lower(rec.title), '') NOT LIKE 'do not reclaim%'
+) AS g
+ON t.provenance = g.provenance AND t.native_id_namespace = g.native_id_namespace AND t.native_id = g.native_id
+WHEN MATCHED THEN UPDATE SET t.doi_withheld = t.doi, t.doi = NULL, t.doi_clean = NULL
 ;
 -- The first-pass answer. `established_conflict` marks strong-tier disagreement between existing works (the bridge class);
 -- `routing_key_unseen` marks records whose strongest key is new to the map (resolved ones become alias rows in AssignWorkIds).

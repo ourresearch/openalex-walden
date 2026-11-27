@@ -7,7 +7,8 @@
 # MAGIC that already holds its DOI, PMID or arXiv id, the work it declares itself a version or preprint of, the winner its old
 # MAGIC work was merged into (a record a merge job unpinned since the previous nightly pinned), or its legacy MAG / PMH id. A
 # MAGIC first-sight record (never pinned before) that none of these matches is left for the location matcher, with the title rule's
-# MAGIC pick kept as one of the matcher's inputs; the title rule decides nothing. SQL: `match_locations_by_identifier.sql` +
+# MAGIC pick kept as one of the matcher's inputs; the title rule decides nothing. A repository record whose DOI field names another
+# MAGIC item (its book's DOI, a DOI it cites) is matched without that DOI (oxjob #1161). SQL: `match_locations_by_identifier.sql` +
 # MAGIC `work_id_lookups.sql`, on PROD-WH.
 # MAGIC The widgets name the tables so the step can run against copies; End 2 End uses the defaults.
 
