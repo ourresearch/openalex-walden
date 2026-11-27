@@ -8,10 +8,10 @@ import ast
 import os
 import re
 
-from openalex.dlt.text_clean import clean_text, drop_wrap_whitespace, strip_abstract_heading
+from openalex.dlt.text_clean import clean_text, drop_wrap_whitespace, space_sentence_joins, strip_abstract_heading
 
 _SRC = open(os.path.join(os.path.dirname(__file__), "..", "openalex", "dlt", "transform.py")).read()
-_ns = {"clean_text": clean_text, "drop_wrap_whitespace": drop_wrap_whitespace,
+_ns = {"clean_text": clean_text, "drop_wrap_whitespace": drop_wrap_whitespace, "space_sentence_joins": space_sentence_joins,
        "strip_abstract_heading": strip_abstract_heading, "re": re}
 for _node in ast.parse(_SRC).body:
     if isinstance(_node, ast.FunctionDef) and _node.name in (
@@ -92,3 +92,28 @@ def test_text_and_index_agree_after_line_break_drop():
         assert clean_abstract_text(cleaned) == cleaned, raw
         assert f_generate_inverted_index(raw) == _inverted_index_from_cleaned(cleaned), raw
         assert '"Nāpōwawā‘enakaulua,"' in f_generate_inverted_index(AAS)
+
+
+# oxjob #2689: GROBID's <s> units and legacy parses joined sentences with no space
+GLUED_JATS = "<jats:p>Fast anodes need a quick response.Starting from oxides we built cells.</jats:p>"
+
+
+def test_glued_sentence_join_spaced_in_text_and_index():
+    cleaned = clean_abstract_text(GLUED_JATS)
+    assert cleaned == "Fast anodes need a quick response. Starting from oxides we built cells."
+    assert clean_abstract_text(cleaned) == cleaned
+    index = f_generate_inverted_index(GLUED_JATS)
+    assert index == _inverted_index_from_cleaned(cleaned)
+    assert '"Starting"' in index and "response.Starting" not in index
+
+
+def test_heading_strip_and_join_rule_compose_idempotently():
+    for raw in ("Abstract.The study found a fast response.Starting from oxides we built cells and more.",
+                "ABSTRACT:Background:The aim was to measure it.Methods were standard and well known here.",
+                "Abstract algebra.The rings we study are commutative and the results.Hold in general here.",
+                "Abstract BackgroundThe cohort had 300 people.MethodsWe followed them up for ten years."):
+        once = clean_abstract_text(raw)
+        assert clean_abstract_text(once) == once, raw
+        assert f_generate_inverted_index(raw) == _inverted_index_from_cleaned(once), raw
+    assert clean_abstract_text("Abstract.The study found a fast response.Starting from oxides here.") == \
+        "The study found a fast response. Starting from oxides here."

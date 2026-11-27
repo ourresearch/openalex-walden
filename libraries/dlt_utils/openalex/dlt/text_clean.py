@@ -569,6 +569,200 @@ def strip_abstract_heading(s):
     return _ABSTRACT_HEADING_RE.sub("", s, count=1)
 
 
+# oxjob #2689: many sources join an abstract's sentences, paragraphs and section headings with nothing between them
+# (GROBID's <s> and <p> units, legacy landing-page and PDF parses, some deposits): "response.Starting", "tijden.Maar",
+# "limitations?Data", "(P<0.05).The", "widespread.Objective:The", "carcinoma.MethodsThe". The glued pair is one search
+# token, so the word after the join could not be found, and abstract_inverted_index carried "response.Starting" as a
+# key. A sentence mark between a sentence end (two lowercase letters, a digit, a closing bracket, quote or %) and a
+# capitalised word is a boundary that lost its space; the space goes back. Identifiers keep their dots, and every rule
+# below leaves a whitespace-delimited run alone when it holds '@', '/', '\', '=', '_', '#' or 'www.', or is
+# over 200 characters. The sentence rule also skips a run with a second letter.letter dot ('J.Am.Chem.Soc.',
+# 'java.lang.String', 'Contr.Min.Pet.'; a capitalised heading between two sentences, 'tissues.Conclusion.This', is no
+# identifier), a file or domain ending ('Data.Pdf', 'Github.Io'), a module name before the dot ('np.Array',
+# 'torch.Tensor'), a CamelCase word after a short lowercase word ('pd.DataFrame'), a method call ('nn.Linear(') and a
+# version ('v2.0.Beta'). A text with almost no spaces is another defect: left alone.
+# Section headings: a capitalised listed heading glued to a colon ('Objective:The' -> 'Objective: The'), and, in a
+# structured abstract (two or more headings), a few title-case headings glued to the next word at the start of the text
+# or of a sentence ('. MethodsThe' -> '. Methods The'); never mid-sentence or alone ('BackgroundWorker', 'AimHigher').
+_JOIN_RE = re.compile(r"(?:(?<=[^\W_])|(?<=[)\]%\"”’»]))([.?!])([\"”’»)]?)(?=[^\W\d_])")
+_LETTER_DOT_LETTER_RE = re.compile(r"(?<=[^\W\d_])\.(?=[^\W\d_])")
+_IDENTIFIER_CHARS = frozenset("@/\\=_#")
+_MAX_RUN = 200
+_FILE_OR_DOMAIN_ENDINGS = frozenset("""
+    com org net edu gov int info biz io uk eu cn jp pdf html htm php asp aspx jsp jpg jpeg png gif tif tiff bmp svg webp
+    doc docx xls xlsx ppt pptx csv tsv txt rtf xml json yaml yml toml sql ipynb zip gz tar rar exe dll py js jsx tsx
+    java cpp mp3 mp4 wav avi mov onnx pth tex bib
+""".split())
+_MODULE_NAMES = frozenset("""
+    np pd nn tf plt sns sk sklearn torch numpy pandas scipy keras java javax std cv cv2 sys os math gl ui ng js dt df
+""".split())
+_HEADING_WORDS = """
+    Abstract Background Backgrounds Objective Objectives Aim Aims Purpose Purposes Method Methods Methodology Result Results
+    Conclusion Conclusions Introduction Discussion Findings Design Setting Settings Participants Patients
+    Intervention Interventions Measurements Significance Limitations Implications Context Highlights Summary Keywords
+    Resumen Resumo Objetivo Objetivos Metodología Metodologia Método Métodos Resultados Conclusión Conclusiones
+    Conclusão Conclusões Introducción Introdução Contexte Méthodes Résultats Hintergrund Methoden Ergebnisse
+    Schlussfolgerung Schlussfolgerungen Zusammenfassung Fazit Résumé
+""".split()
+# A heading counts in title case or in capitals, never in lower case ('keywords:stroke', 'background:white' stay).
+_HEADINGS_ANY_CASE = frozenset(_HEADING_WORDS) | frozenset(w.upper() for w in _HEADING_WORDS)
+_UPPER_HEADINGS = frozenset(w.upper() for w in _HEADING_WORDS)
+# Headings that stand between two sentences ('tissues.Conclusion.This'); not words that also name classes or modules
+# ('app.Context.Loader', 'org.Summary.Builder').
+_STRONG_HEADING_WORDS = """
+    Abstract Background Objective Objectives Aim Aims Purpose Method Methods Methodology Result Results Conclusion
+    Conclusions Introduction Discussion Findings Highlights Resumen Resumo Objetivo Objetivos Metodología Metodologia
+    Método Métodos Resultados Conclusión Conclusiones Conclusão Conclusões Introducción Introdução
+""".split()
+_STRONG_HEADINGS = frozenset(_STRONG_HEADING_WORDS) | frozenset(w.upper() for w in _STRONG_HEADING_WORDS)
+_COLON_LETTER_RE = re.compile(r"(?<=[^\W\d_]):(?=[^\W\d_])")
+# Only the commonest structured-abstract headings, in title case, glued to a capitalised word ('ResultsThe'); words
+# that also start CamelCase names (Design, Setting, Context, Summary) are left out.
+_GLUED_HEADING_RE = re.compile(
+    r"(Background|Objectives?|Aims?|Purpose|Methods|Methodology|Results|Conclusions?|Introduction|Discussion|Findings|"
+    r"Highlights)(?=[A-Z][a-z])")
+_STRUCTURE_RE = re.compile(
+    r"(?<![^\W_])(Background|Objectives?|Aims?|Purpose|Methods?|Methodology|Results?|Conclusions?|Introduction|"
+    r"Discussion|Findings|Highlights|BACKGROUND|OBJECTIVES?|AIMS?|PURPOSE|METHODS?|RESULTS?|CONCLUSIONS?|"
+    r"INTRODUCTION|DISCUSSION|FINDINGS)(?=[A-Z][a-z]|[:.]|\s[A-Z])")
+_SENTENCE_START_RE = re.compile(r"[.?!][\"”’»)]? $")
+_MAX_JOIN_ROUNDS = 32
+
+
+def _run_bounds(s, i):
+    """Bounds of the whitespace-delimited run around s[i], or None when it is longer than _MAX_RUN (not prose; also
+    keeps the scan linear on a long run full of candidates)."""
+    start = i
+    while start > 0 and not s[start - 1].isspace():
+        start -= 1
+        if i - start > _MAX_RUN:
+            return None
+    end = i
+    while end < len(s) and not s[end].isspace():
+        end += 1
+        if end - start > _MAX_RUN:
+            return None
+    return start, end
+
+
+def _plain_run(s, i):
+    """The run around s[i] when no rule may touch it as an identifier, else None."""
+    bounds = _run_bounds(s, i)
+    if bounds is None:
+        return None
+    run = s[bounds[0]:bounds[1]]
+    if any(c in _IDENTIFIER_CHARS for c in run) or "www." in run.lower():
+        return None
+    return run, bounds[0]
+
+
+def _join_needs_space(m):
+    s, i, j = m.string, m.start(1), m.end()
+    p1 = s[i - 1]
+    letter_join = p1.isalpha()
+    if letter_join and not (p1.islower() and i >= 2 and s[i - 2].isalpha() and s[i - 2].islower()):
+        return False
+    k = j
+    while k < len(s) and s[k].isalpha():
+        k += 1
+    word = s[j:k]
+    if not ((len(word) >= 2 and word[0].isupper() and word[1].islower()) or word in _UPPER_HEADINGS):
+        return False
+    # The whole name after the mark, digits included ('Conv2D', 'Mp3'), for the identifier checks.
+    k2 = k
+    while k2 < len(s) and s[k2].isalnum():
+        k2 += 1
+    name = s[j:k2]
+    if name.lower() in _FILE_OR_DOMAIN_ENDINGS:
+        return False
+    if k2 < len(s) and (s[k2] in "([" or (s[k2] == "." and s[k2 + 1:k2 + 2].islower())):  # 'Conv2D(', 'a.Module.forward'
+        return False
+    plain = _plain_run(s, i)
+    if plain is None:
+        return False
+    run, run_start = plain
+    before = s[run_start:i]
+    if before.count("(") > before.count(")") or before.count("[") > before.count("]"):  # 'd(ga.Ga)n', '[Cu.Zn]'
+        return False
+    if before[:1] in "vV" and before[1:2].isdigit():  # 'v2.0.Beta'
+        return False
+    if p1.isalnum():
+        b = i
+        while b > run_start and s[b - 1].isalnum():
+            b -= 1
+        before_word = s[b:i]
+        if before_word.lower() in _MODULE_NAMES:  # 'np.Array', 'cv2.Canny'
+            return False
+        if m.group(1) == "!" and before_word[:1].isupper():  # 'Yahoo!Japan', 'Pop!World'
+            return False
+        if (len(before_word) <= 3 and any(c.isalpha() for c in before_word) and any(c.isupper() for c in name[1:])
+                and not _GLUED_HEADING_RE.match(name)):  # 'pd.DataFrame', 'tf2.GradientTape'; not 'al.MethodsThe'
+            return False
+    parts = _LETTER_DOT_LETTER_RE.split(run)
+    own = 1 if (letter_join and m.group(1) == "." and not m.group(2)) else 0
+    if len(parts) - 1 <= own:
+        return True
+    # A section heading between two sentences ('tissues.Conclusion.This', 'humanos.Resumo.Este') is no identifier.
+    interior = parts[1:-1]
+    return bool(interior) and all(p in _STRONG_HEADINGS for p in interior)
+
+
+def _colon_after_heading(m):
+    s, i = m.string, m.start()
+    start = i
+    while start > 0 and s[start - 1].isalpha():
+        start -= 1
+    if ((start == 0 or not s[start - 1].isalnum()) and s[start:i] in _HEADINGS_ANY_CASE
+            and _plain_run(s, i) is not None):
+        return ": "
+    return ":"
+
+
+def _glued_heading(m):
+    s, i = m.string, m.start()
+    if (i == 0 or _SENTENCE_START_RE.search(s, max(0, i - 3), i)) and _plain_run(s, i) is not None:
+        return m.group(1) + " "
+    return m.group(1)
+
+
+def _space_joins_once(s):
+    out, last = [], 0
+    for m in _JOIN_RE.finditer(s):
+        if _join_needs_space(m):
+            out.append(s[last:m.end()])
+            out.append(" ")
+            last = m.end()
+    if out:
+        out.append(s[last:])
+        s = "".join(out)
+    s = _COLON_LETTER_RE.sub(_colon_after_heading, s)
+    # A heading glued to the next word only in a structured abstract, so a class or programme name that opens a
+    # sentence ('BackgroundWorker executes ...', 'AimHigher funded ...') stays: three or more distinct headings, or two
+    # when one of them is marked as a heading by a colon or full stop.
+    heads = {(m.group(1), s[m.end():m.end() + 1] in ":.") for m in _STRUCTURE_RE.finditer(s)}
+    names = {h for h, _ in heads}
+    if len(names) >= 3 or (len(names) >= 2 and any(marked for _, marked in heads)):
+        s = _GLUED_HEADING_RE.sub(_glued_heading, s)
+    return s
+
+
+def space_sentence_joins(s):
+    """Put back the space a source dropped between two sentences or after a section heading (oxjob #2689).
+
+    Runs on whitespace-collapsed text. Iterated to a fixpoint (a space can split a run whose other dot the identifier
+    check counted); a text that does not settle within _MAX_JOIN_ROUNDS comes back unchanged, so the result is always
+    idempotent."""
+    if not s or not isinstance(s, str) or s.count(" ") * 40 < len(s):
+        return s
+    cur = s
+    for _ in range(_MAX_JOIN_ROUNDS):
+        nxt = _space_joins_once(cur)
+        if nxt == cur:
+            return cur
+        cur = nxt
+    return s
+
+
 # oxjob #2570: a pretty-printed deposit starts a new indented line after an inline tag
 # ("<i>Cyprinus carpio</i>\n      , to"), and collapsing that whitespace to one space served "carpio , to".
 # Whitespace holding a line break goes before closing punctuation (not a "." that starts a spaced ellipsis

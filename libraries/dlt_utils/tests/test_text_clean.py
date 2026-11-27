@@ -381,6 +381,106 @@ def test_none_and_nonstr_passthrough():
     assert tc.clean_title(123) == 123  # non-str untouched
 
 
+
+# --- oxjob #2689: a space back at glued sentence and heading joins ----------- #
+
+GLUED = [
+    ("Batteries need a fast response.Starting from oxides we built anodes.",
+     "Batteries need a fast response. Starting from oxides we built anodes."),
+    ("Het was moeilijk in die tijden.Maar ook toen werd er veel gewerkt.",
+     "Het was moeilijk in die tijden. Maar ook toen werd er veel gewerkt."),
+    ("The study had some limitations?Data were scarce for most regions.",
+     "The study had some limitations? Data were scarce for most regions."),
+    ("Values differed between groups (P<0.05).The groups were matched.",
+     "Values differed between groups (P<0.05). The groups were matched."),
+    ("The rate was 12.5%.Therefore the authors called it high.",
+     "The rate was 12.5%. Therefore the authors called it high."),
+    ("Used in many settings [19].Technologies like these are common now.",
+     "Used in many settings [19]. Technologies like these are common now."),
+    ("He said \u201cstop.\u201dThen he left the building for good.",
+     "He said \u201cstop.\u201d Then he left the building for good."),
+    ("Значение было высоким.Новое исследование показало иное.",
+     "Значение было высоким. Новое исследование показало иное."),
+    ("Cancer is widespread.Objective:The aim was to measure it here.",
+     "Cancer is widespread. Objective: The aim was to measure it here."),
+    ("We studied squamous carcinoma.MethodsThe cohort had 300 people.ResultsMost were well.ConclusionsIt works.",
+     "We studied squamous carcinoma. Methods The cohort had 300 people. Results Most were well. Conclusions It works."),
+    ("BackgroundThe cohort had 300 people.Methods:We followed them up for years.",
+     "Background The cohort had 300 people. Methods: We followed them up for years."),
+    ("Some were low.MethodsThe cohort was small.ResultsMost improved over time.Conclusion:It helps.",
+     "Some were low. Methods The cohort was small. Results Most improved over time. Conclusion: It helps."),
+    ("Differences were significant.CONCLUSIONS:The drug works in patients.",
+     "Differences were significant. CONCLUSIONS: The drug works in patients."),
+    ("Riders in road cycling.HighlightsNormative values given.Results:Most were fit.",
+     "Riders in road cycling. Highlights Normative values given. Results: Most were fit."),
+    ("Smith et al.The results held across all of the tested cases.",
+     "Smith et al. The results held across all of the tested cases."),
+    ("Compared to the normal tissues.Conclusion.This study found more cells.",
+     "Compared to the normal tissues. Conclusion. This study found more cells."),
+    ("Usado em diversos contextos humanos.Resumo.Este trabalho apresenta dados.",
+     "Usado em diversos contextos humanos. Resumo. Este trabalho apresenta dados."),
+]
+
+KEPT = [
+    "Write to mailto:Julian.Gutt@awi.de for details about the cruise data.",
+    "Data in Andedkar et al. (2016) Contr.Min.Pet. 171:71. for this region.",
+    "Follow https://www.facebook.com/Surya.Citra.TV for the latest news here.",
+    "We call java.lang.String from the parser in the code base for this.",
+    "The supplement is report.Pdf with all the data for every reader here.",
+    "Keep e.g.The and i.e.Results as written; U.S.A. stays as it is here.",
+    "Ratios Ser:Thr and 10:30 and doi:10.1000/xyz stay as they are here.",
+    "Effectual.Theanswertotheproblemisthatnoonehasaspaceatallhere.Whyisthat",
+    "Values of 0.5 and 3.14 and v2.0 and pH 7.4 are not joins in this text.",
+    "As in Anales Jard.Bot.Madrid 39(2): 495 and the other floras listed here.",
+    # code, packages, versions, domains
+    "We used pd.DataFrame and np.Array with torch.Tensor in the model here.",
+    "Layers were nn.Linear(512) and app.context.Loader in this code base.",
+    "Version v2.0.Beta of the tool and the docs at Example.Github.Io here.",
+    "Our sys.settings.Config and my.abstract.Class keep their dots in this text.",
+    # headings mid-sentence, in URLs and identifiers, or in lower case
+    "The BackgroundWorker class and the ObjectiveFunction are used in it.",
+    "Students in the AimHigher programme took part in the study last year.",
+    "See https://example.org/MethodsTheStudy and https://example.org/Objective:The today.",
+    "We searched title/abstract:diabetes with keywords:stroke and background:white.",
+    "Call get_BackgroundColor and plot_ResultsTable in the analysis code here.",
+    "BackgroundWorker executes tasks on a separate thread in this framework.",
+    "Available components: BackgroundWorker handles events. ObjectiveFunction returns the score.",
+    "Edges came from cv2.Canny and cv2.GaussianBlur in the image pipeline here.",
+    "The model used model.Conv2D(32) and tf2.GradientTape with audio.Mp3 files here.",
+    "Mientras que en el duplex d(ga.Ga)n se forman pares de bases de tipo Hoogsteen.",
+    "The enzyme [Cu.Zn] superoxide dismutase was measured in all of the samples here.",
+    "Our app.Context.Loader and org.Summary.Builder keep their dots in this text here.",
+    "We used the stand-alone Pop!World app and Yahoo!Japan answers for this study here.",
+]
+
+
+def test_glued_joins_get_a_space():
+    for raw, want in GLUED:
+        assert tc.space_sentence_joins(raw) == want, raw
+
+
+def test_identifiers_and_spaceless_texts_kept():
+    for raw in KEPT:
+        assert tc.space_sentence_joins(raw) == raw, raw
+
+
+def test_space_sentence_joins_idempotent():
+    chained = "BackgroundObjectiveMethodsResultsConclusionsThe study. " * 3
+    for raw in [g for g, _ in GLUED] + KEPT + [chained, "(1).The.Next one is odd but must settle in rounds here."]:
+        once = tc.space_sentence_joins(raw)
+        assert tc.space_sentence_joins(once) == once, raw
+
+
+def test_space_sentence_joins_passes_none_and_empty():
+    assert tc.space_sentence_joins(None) is None
+    assert tc.space_sentence_joins("") == ""
+
+
+def test_long_run_left_alone():
+    run = "a" * 150 + ".The" + "b" * 150
+    text = ("word " * 40) + run + " and more words follow here."
+    assert tc.space_sentence_joins(text) == text
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
