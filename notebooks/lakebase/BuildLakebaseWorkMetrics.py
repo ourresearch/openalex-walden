@@ -23,14 +23,16 @@
 # MAGIC the docs tables (`mode=seed_docs`) and kept current from their change feed at the start of every run. Works re-stamped
 # MAGIC tonight then cost no row (their new doc already serves tonight's values), and a doc that drifted past the lines gets
 # MAGIC a row. Before, the cap went to rows the doc had already replaced, while the drifted docs were never looked at.
-# MAGIC `compare_to=row` restores the old comparison (with the row alone).
+# MAGIC A work with a doc and no row is compared on its doc too. `compare_to=row` restores the old comparison (row alone).
+# MAGIC The mirror follows the docs' Delta tables; the API reads their synced copies, so for the hour or two a docs refresh
+# MAGIC takes after the run, a work this run left to its new doc still serves its previous doc (accepted lag).
 # MAGIC
 # MAGIC - `mode=full_build`: (re)create the table from `openalex_works` (one-time; then create the synced table, TRIGGERED,
 # MAGIC   primary key `work_id`, and `GRANT SELECT ON lakebase.lakebase_work_metrics TO openalex_api_ro`).
 # MAGIC - `mode=seed_docs`: (re)build `lakebase_work_doc_metrics` from the docs tables (one-time, or to recover).
 # MAGIC - `mode=nightly`: one MERGE of the rows to change, then trigger the synced table's refresh (`trigger_sync=true`).
-# MAGIC - `mode=dry_run`: what nightly would change, capped, in `lakebase_work_metrics_changes_dry`; no MERGE, no refresh.
-# MAGIC   It does bring `lakebase_work_doc_metrics` up to date (a mirror of the docs, read by nothing else).
+# MAGIC - `mode=dry_run`: what nightly would change, capped, in `lakebase_work_metrics_changes_dry`; no MERGE, no refresh,
+# MAGIC   and `lakebase_work_doc_metrics` is read, never written (tonight's doc changes join it as a view).
 # MAGIC
 # MAGIC **Revert:** set `METRICS_OVERLAY = False` in the API (or config var `LAKEBASE_METRICS_OVERLAY=0`, no deploy);
 # MAGIC docs answer alone, as before. Then drop the synced table and this task.
@@ -94,17 +96,23 @@ SELECT id AS work_id, fwci,
 FROM {WORKS_TABLE} WHERE id IS NOT NULL
 """
 
-# What a single GET serves for each work with a row: the row, unless the doc was written after it (openalex-elastic-api
-# works/lakebase.py joins the row only when m.updated_at >= d.updated_at). Works with no row are `is_new` below.
-SERVED = f"""
-SELECT m.work_id, {', '.join(f'IF(d.work_id IS NULL OR m.updated_at >= d.doc_updated_at, m.{c}, d.{c}) AS {c}' for c in VALUE_COLS)}
-FROM {METRICS_TABLE} m LEFT JOIN {DOC_METRICS_TABLE} d ON d.work_id = m.work_id
-"""
-TARGET = f"({SERVED})" if COMPARE_TO == "served" else METRICS_TABLE
 
-# One full outer join of Delta with what is served: each row's kind (new / gone / moved) and, for moved rows, how far
-# past the line it is (for the cap).
-COMPARED = f"""
+
+def served_sql(doc_src):
+    """What a single GET serves per work: its row, unless its doc was written after the row (openalex-elastic-api
+    works/lakebase.py joins the row only when m.updated_at >= d.updated_at), or the doc when there is no row. A work
+    with a doc and no row is compared on its doc and gets a row only when that drifted past the lines."""
+    use_row = "m.work_id IS NOT NULL AND (d.work_id IS NULL OR m.updated_at >= d.doc_updated_at)"
+    return f"""
+SELECT coalesce(m.work_id, d.work_id) AS work_id, {', '.join(f'IF({use_row}, m.{c}, d.{c}) AS {c}' for c in VALUE_COLS)}
+FROM {METRICS_TABLE} m FULL OUTER JOIN {doc_src} d ON d.work_id = m.work_id
+"""
+
+
+# One full outer join of Delta with what is served (`target`: a table or a subquery in parentheses): each row's kind
+# (new = neither row nor doc / gone / moved) and, for moved rows, how far past the line it is (for the cap).
+def compared_sql(target):
+    return f"""
 WITH j AS (
   SELECT c.*, coalesce(c.work_id, t.work_id) AS id, c.work_id IS NULL AS gone, t.work_id IS NULL AS is_new,
     NOT (t.has_cnp <=> c.has_cnp) OR NOT (t.has_pct <=> c.has_pct)
@@ -114,7 +122,7 @@ WITH j AS (
     coalesce(abs(t.fwci - c.fwci) / greatest(abs(c.fwci), 0.0001) / {FWCI_REL}, 0) AS fwci_x,
     coalesce(abs(t.cnp_value - c.cnp_value) / {CNP_ABS}, 0) AS cnp_x,
     coalesce(greatest(abs(t.pct_min - c.pct_min), abs(t.pct_max - c.pct_max)), 0) AS pct_d
-  FROM ({CURRENT}) c FULL OUTER JOIN {TARGET} t ON t.work_id = c.work_id
+  FROM ({CURRENT}) c FULL OUTER JOIN {target} t ON t.work_id = c.work_id
 )
 SELECT *, CASE WHEN gone OR is_new OR flagged THEN 1e9 ELSE greatest(fwci_x, cnp_x, pct_d / {PCT_POINTS}) END AS score
 FROM j
@@ -146,78 +154,101 @@ def _latest_version(table):
     return spark.sql(f"DESCRIBE HISTORY {table} LIMIT 1").collect()[0].version
 
 
-def _save_versions(versions):
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {DOC_STATE_TABLE} (shard INT, version BIGINT, read_at TIMESTAMP)")
-    rows = ", ".join(f"({s}, {v})" for s, v in versions.items())
+def _docs_heads():
+    """{shard: (Delta table id, latest version)} of the docs tables. The id tells a recreated table from the one read."""
+    return {s: (spark.sql(f"DESCRIBE DETAIL {DOCS_TABLE(s)}").collect()[0].id, _latest_version(DOCS_TABLE(s)))
+            for s in range(N_DOC_SHARDS)}
+
+
+def _save_heads(heads):
+    spark.sql(f"CREATE TABLE IF NOT EXISTS {DOC_STATE_TABLE} (shard INT, table_id STRING, version BIGINT, read_at TIMESTAMP)")
+    rows = ", ".join(f"({s}, '{tid}', {v})" for s, (tid, v) in heads.items())
     spark.sql(f"""
         MERGE INTO {DOC_STATE_TABLE} AS t
-        USING (SELECT * FROM VALUES {rows} AS v(shard, version)) AS s ON t.shard = s.shard
-        WHEN MATCHED THEN UPDATE SET t.version = s.version, t.read_at = current_timestamp()
-        WHEN NOT MATCHED THEN INSERT (shard, version, read_at) VALUES (s.shard, s.version, current_timestamp())
+        USING (SELECT * FROM VALUES {rows} AS v(shard, table_id, version)) AS s ON t.shard = s.shard
+        WHEN MATCHED THEN UPDATE SET t.table_id = s.table_id, t.version = s.version, t.read_at = current_timestamp()
+        WHEN NOT MATCHED THEN INSERT (shard, table_id, version, read_at)
+          VALUES (s.shard, s.table_id, s.version, current_timestamp())
     """)
-
-
-def _shard_at(s, v):
-    return f"(SELECT work_id, doc, updated_at FROM {DOCS_TABLE(s)} VERSION AS OF {v})"
 
 
 def seed_doc_metrics():
-    """(Re)build DOC_METRICS_TABLE from every docs shard as of its current version, and record those versions."""
-    versions = {s: _latest_version(DOCS_TABLE(s)) for s in range(N_DOC_SHARDS)}
-    src = "(" + " UNION ALL ".join(f"SELECT * FROM {_shard_at(s, v)}" for s, v in versions.items()) + ")"
+    """(Re)build DOC_METRICS_TABLE from every docs shard as of its current version (one atomic CREATE OR REPLACE), and
+    record those versions. ~720 GB of docs: minutes on 8 workers; avoid on the nightly 2-worker cluster."""
+    heads = _docs_heads()
+    src = "(" + " UNION ALL ".join(f"SELECT work_id, doc, updated_at FROM {DOCS_TABLE(s)} VERSION AS OF {v}"
+                                   for s, (_, v) in heads.items()) + ")"
     spark.sql(f"""
         CREATE OR REPLACE TABLE {DOC_METRICS_TABLE} CLUSTER BY (work_id)
         COMMENT 'oxjob #2659: fwci and percentiles each Lakebase works doc carries (notebooks/lakebase/BuildLakebaseWorkMetrics)'
+        TBLPROPERTIES ('delta.enableDeletionVectors' = 'true')
         AS {doc_values(src)}
     """)
-    _save_versions(versions)
-    print(f"seed_docs: {spark.table(DOC_METRICS_TABLE).count():,} doc rows at versions {versions}")
+    _save_heads(heads)
+    print(f"seed_docs: {spark.table(DOC_METRICS_TABLE).count():,} doc rows at versions "
+          f"{ {s: v for s, (_, v) in heads.items()} }")
 
 
-def refresh_doc_metrics():
-    """Bring DOC_METRICS_TABLE up to the docs tables' current versions from their change feed: the latest insert or
-    update per work since the version last read, and deletes. A shard whose feed can't be read from there (vacuumed
-    after a long gap) is re-read whole. Seeds the table when it doesn't exist yet."""
-    if not spark.catalog.tableExists(DOC_STATE_TABLE) or not spark.catalog.tableExists(DOC_METRICS_TABLE):
-        print(f"{DOC_METRICS_TABLE} not seeded yet: seeding")
-        return seed_doc_metrics()
-    done = {r.shard: r.version for r in spark.table(DOC_STATE_TABLE).collect()}
-    staging = "openalex.works._lakebase_doc_metrics_incr"
-    versions, report = {}, {}
-    for s in range(N_DOC_SHARDS):
-        last, v = done.get(s), _latest_version(DOCS_TABLE(s))
-        versions[s] = v
-        if last is not None and v <= last:
-            report[s] = "no new versions"
-            continue
-        try:
-            if last is None:
-                raise ValueError("no version recorded")
-            latest = f"""(SELECT work_id, doc, updated_at, _change_type = 'delete' AS is_delete FROM (
-                SELECT *, row_number() OVER (PARTITION BY work_id ORDER BY _commit_version DESC) AS rn
-                FROM table_changes('{DOCS_TABLE(s)}', {last + 1}, {v}) WHERE _change_type <> 'update_preimage') WHERE rn = 1)"""
-            spark.sql(f"CREATE OR REPLACE TABLE {staging} AS {doc_values(latest, ', is_delete')}")
-        except Exception as e:  # the feed from `last` is gone (or none recorded): read the shard whole
-            print(f"shard {s}: change feed {last}..{v} unreadable ({str(e)[:300]}); re-reading the shard at {v}")
-            spark.sql(f"DELETE FROM {DOC_METRICS_TABLE} WHERE pmod(work_id, {N_DOC_SHARDS}) = {s}")
-            spark.sql(f"INSERT INTO {DOC_METRICS_TABLE} {doc_values(_shard_at(s, v))}")
-            report[s] = f"re-read whole at {v}"
-            continue
-        up = spark.sql(f"""
-            MERGE INTO {DOC_METRICS_TABLE} AS t
-            USING (SELECT * EXCEPT (is_delete) FROM {staging} WHERE NOT is_delete) AS c ON t.work_id = c.work_id
-            WHEN MATCHED AND c.doc_updated_at >= t.doc_updated_at THEN UPDATE SET *
-            WHEN NOT MATCHED THEN INSERT *
-        """).collect()[0].asDict()
-        dl = spark.sql(f"""
-            MERGE INTO {DOC_METRICS_TABLE} AS t USING (SELECT work_id FROM {staging} WHERE is_delete) AS c
-            ON t.work_id = c.work_id WHEN MATCHED THEN DELETE
-        """).collect()[0].asDict()
-        report[s] = (f"versions {last + 1}..{v}: {up.get('num_updated_rows', 0):,} updated, "
-                     f"{up.get('num_inserted_rows', 0):,} new, {dl.get('num_deleted_rows', 0):,} deleted")
-    _save_versions(versions)
-    for s, msg in report.items():
-        print(f"doc metrics shard {s}: {msg}")
+def refresh_doc_metrics(write):
+    """The docs' values as of the docs tables' current versions; returns the table (or view) holding them.
+
+    Reads only what changed since the versions last read: the docs tables' change feed, parsed to the narrow values
+    first, then the latest change per work (a delete loses to an insert or update in the same commit). write=True
+    MERGEs it into DOC_METRICS_TABLE and records the versions (one writer at a time: the nightly task, or a hand run
+    while the End 2 End is not in this task). write=False (dry runs) leaves both tables alone and returns a view.
+    A shard that can't be followed by its feed (never read, recreated, version gone backwards, or last read 6+ days ago,
+    past the 7-day VACUUM that drops old change files) makes write=True re-seed in full and write=False refuse."""
+    state = ({r.shard: r for r in spark.table(DOC_STATE_TABLE).collect()}
+             if spark.catalog.tableExists(DOC_STATE_TABLE) and spark.catalog.tableExists(DOC_METRICS_TABLE) else {})
+    heads = _docs_heads()
+    now = spark.sql("SELECT current_timestamp() AS t").collect()[0].t
+    lost = [s for s, (tid, v) in heads.items()
+            if s not in state or state[s].table_id != tid or v < state[s].version
+            or (now - state[s].read_at).total_seconds() > 6 * 86400]
+    if lost:
+        if not write:
+            raise Exception(f"{DOC_METRICS_TABLE} can't follow docs shards {lost} by their change feed: run mode=seed_docs")
+        print(f"docs shards {lost} can't be followed by their change feed: re-seeding {DOC_METRICS_TABLE} in full")
+        seed_doc_metrics()
+        return DOC_METRICS_TABLE
+    ranges = [(s, state[s].version + 1, v) for s, (_, v) in heads.items() if v > state[s].version]
+    if not ranges:
+        if write:
+            _save_heads(heads)
+        print("doc metrics: no new docs versions")
+        return DOC_METRICS_TABLE
+    feed = " UNION ALL ".join(
+        f"SELECT work_id, doc, updated_at, _commit_version, _change_type FROM table_changes('{DOCS_TABLE(s)}', {a}, {b}) "
+        f"WHERE _change_type <> 'update_preimage'" for s, a, b in ranges)
+    parsed = doc_values(f"({feed})", ", _commit_version, _change_type = 'delete' AS is_delete, "
+                                     "(j IS NULL AND doc IS NOT NULL) AS unparsed")
+    staging = "openalex.works._lakebase_doc_metrics_incr" + ("" if write else "_dry")
+    spark.sql(f"""
+        CREATE OR REPLACE TABLE {staging} AS
+        SELECT * EXCEPT (rn, _commit_version) FROM (
+          SELECT *, row_number() OVER (PARTITION BY work_id ORDER BY _commit_version DESC, is_delete, doc_updated_at DESC) AS rn
+          FROM ({parsed})) WHERE rn = 1
+    """)
+    st = spark.sql(f"SELECT count(*) AS n, count_if(is_delete) AS dels, count_if(unparsed) AS unparsed FROM {staging}").collect()[0]
+    print(f"doc metrics: versions {[(s, a, b) for s, a, b in ranges]}: {st.n:,} works changed ({st.dels:,} deleted, "
+          f"{st.unparsed:,} docs unparsed: their nulls compare as flagged, so they get a row)")
+    cols = ["work_id"] + VALUE_COLS + ["doc_updated_at"]
+    if not write:
+        spark.sql(f"""
+            CREATE OR REPLACE TEMP VIEW doc_metrics_now AS
+            SELECT d.* FROM {DOC_METRICS_TABLE} d LEFT ANTI JOIN {staging} c ON c.work_id = d.work_id
+            UNION ALL SELECT {', '.join(cols)} FROM {staging} WHERE NOT is_delete
+        """)
+        return "doc_metrics_now"
+    m = spark.sql(f"""
+        MERGE INTO {DOC_METRICS_TABLE} AS t USING {staging} AS c ON t.work_id = c.work_id
+        WHEN MATCHED AND c.is_delete THEN DELETE
+        WHEN MATCHED THEN UPDATE SET {', '.join(f't.{c} = c.{c}' for c in cols[1:])}
+        WHEN NOT MATCHED AND NOT c.is_delete THEN INSERT ({', '.join(cols)}) VALUES ({', '.join(f'c.{c}' for c in cols)})
+    """).collect()[0].asDict()
+    _save_heads(heads)
+    print(f"doc metrics MERGE {m}")
+    return DOC_METRICS_TABLE
 
 # COMMAND ----------
 
@@ -236,12 +267,12 @@ if MODE == "full_build":
 elif MODE == "seed_docs":
     seed_doc_metrics()
 else:
-    if COMPARE_TO == "served":
-        refresh_doc_metrics()
+    target = (f"({served_sql(refresh_doc_metrics(write=MODE == 'nightly'))})" if COMPARE_TO == "served"
+              else METRICS_TABLE)
     # Gone, new and flagged works first; then fwci / percentile-year moves, then CNP-only moves, each largest first; at
     # most about MAX_ROWS in all.
     changes = CHANGES_TABLE + ("_dry" if MODE == "dry_run" else "")
-    spark.sql(f"CREATE OR REPLACE TABLE {changes} AS {COMPARED}")
+    spark.sql(f"CREATE OR REPLACE TABLE {changes} AS {compared_sql(target)}")
     FP_MOVED = f"NOT (gone OR is_new OR flagged) AND (fwci_x > 1 OR pct_d >= {PCT_POINTS})"
     n, n_fp = spark.sql(f"SELECT count(*), count_if({FP_MOVED}) FROM {changes}").collect()[0]
     if MAX_ROWS and n > MAX_ROWS:
