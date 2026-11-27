@@ -923,7 +923,7 @@ def feed_twin_class_sql():
       LEFT JOIN by_title t ON f.dk IS NULL AND length(f.nt) >= 40 AND t.nt = f.nt AND t.yr = f.yr),
     pairs AS (SELECT target AS a, work_id AS b, MIN(twin_rank) AS twin_rank, MAX(default_host) AS default_host
               FROM tw WHERE target IS NOT NULL AND target <> work_id GROUP BY target, work_id),
-    pr AS (SELECT DISTINCT work_id FROM {LM} WHERE provenance IN ('crossref', 'datacite') AND work_id IS NOT NULL),
+    pr AS (SELECT DISTINCT work_id FROM {LM} WHERE provenance IN (/*DOI_RA*/ 'crossref', 'datacite') AND work_id IS NOT NULL),
     wf AS (SELECT id, lower(doi) AS d, publication_year AS yr, type, primary_location.source.id AS src, COALESCE(cited_by_count, 0) AS cites,
                   (title IS NULL OR trim(title) = '') AS no_title FROM live),
     r1 AS (
@@ -1030,7 +1030,7 @@ def build_version_group_tables():
     SELECT gw.grp, gw.work_id, l.provenance, l.type, lower(l.native_id) AS nid, {norm.format(c='l.title')} AS tn, l.authors,
            gi.doi IS NOT NULL AS in_grp, lower(COALESCE(l.abstract, '')) RLIKE '{VERSION_GROUP_NOT_ARTICLE_ABSTRACT}' AS talk_like
     FROM (SELECT DISTINCT g.grp, g.work_id FROM {vg}_g g JOIN {vg}_anc0 anc0 ON anc0.grp = g.grp) gw
-    JOIN {LM} l ON l.work_id = gw.work_id AND l.provenance IN ('crossref', 'datacite')
+    JOIN {LM} l ON l.work_id = gw.work_id AND l.provenance IN (/*DOI_RA*/ 'crossref', 'datacite')
     LEFT JOIN (SELECT DISTINCT grp, doi FROM {vg}_g) gi ON gi.grp = gw.grp AND gi.doi = lower(l.native_id)""")
     # article anchor (oxjob #1581 round 2, 2026-10-09): when one member holds the deposit's published article (one Crossref record
     # outside the group, titled as a group DataCite record, its first author among the group records' authors) and the concept
@@ -1080,7 +1080,7 @@ def build_version_group_tables():
     -- the same registration twice: ICPSR registers its studies with both, oxjob #1581 round 2)
     mp AS (SELECT m.grp, m.member FROM mem m JOIN {LM} l ON l.work_id = m.member
            LEFT JOIN g ON g.grp = m.grp AND g.doi = lower(l.native_id)
-           WHERE l.provenance IN ('crossref', 'datacite') AND g.doi IS NULL GROUP BY m.grp, m.member),
+           WHERE l.provenance IN (/*DOI_RA*/ 'crossref', 'datacite') AND g.doi IS NULL GROUP BY m.grp, m.member),
     -- the loser carries a MAG / PubMed record titled unlike all its DataCite records: a legacy paper glued to a deposit
     -- (oxjob #1581 cited review: a 1979 PubMed paper with 1,340 cites under a 2026 Zenodo preprint)
     lg AS (SELECT m.grp, m.member FROM mem m JOIN {LM} l ON l.work_id = m.member

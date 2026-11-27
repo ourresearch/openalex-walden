@@ -44,6 +44,6 @@ SELECT id, yr, nullif(nt, '') AS nt,
       WHEN lower(l.landing_page_url) RLIKE '^https?://(dx\\.)?doi\\.org/' THEN concat('d:', regexp_replace(lower(l.landing_page_url), '^https?://(dx\\.)?doi\\.org/', ''))
       ELSE concat('u:', regexp_replace(regexp_replace(lower(l.landing_page_url), '^https?://(www\\.)?', ''), '/+$', '')) END),
     transform(locations, l -> concat('u:', regexp_replace(regexp_replace(lower(l.pdf_url), '^https?://(www\\.)?', ''), '/+$', ''))),
-    transform(locations, l -> CASE WHEN l.provenance NOT IN ('crossref', 'datacite') THEN concat('n:', lower(l.native_id)) END)
+    transform(locations, l -> CASE WHEN l.provenance NOT IN (/*DOI_RA*/ 'crossref', 'datacite') THEN concat('n:', lower(l.native_id)) END)
   ), x -> x IS NOT NULL AND x NOT IN ('d:', 'p:', 'u:', 'n:'))) AS keys
 FROM h

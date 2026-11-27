@@ -41,7 +41,7 @@ def records_by_work(record_rows, tags: dict) -> dict[int, list[dict]]:
         if r is None:
             raise ValueError(f"record {j.get('provenance')}:{j.get('native_id')} came back without fields")
         prov, nid = j["provenance"], j["native_id"]
-        t = tags.get((nid.lower() if prov in ("crossref", "datacite") else nid, NS_OF.get(prov)))
+        t = tags.get((nid.lower() if prov in ("crossref", "datacite") else nid, NS_OF.get(prov)))  # DOI_RA
         recs.setdefault(int(j["work_id"]), []).append({
             "pos": j["pos"], "provenance": prov, "native_id": nid, "title": r.get("title"),
             "raw_type": None if prov == "pubmed" else r.get("raw_type"), "cr_subtype": j.get("cr_subtype"),

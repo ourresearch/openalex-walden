@@ -13,7 +13,7 @@ B = '\\'  # one backslash, as chr(92) is in the SQL
 
 # The rule exactly as the notebook must carry it (Python mirror below; Java and Python regex agree on this subset).
 RULE_LINES = [
-    "     WHEN t.provenance NOT IN ('crossref', 'datacite')",
+    "     WHEN t.provenance NOT IN (/*DOI_RA*/ 'crossref', 'datacite')",
     "          AND (t.best_doi RLIKE '(?i)^10[.]13039/|%(?![0-9a-f]{2})'",
     "               OR (t.best_doi RLIKE '^10[.][0-9]+/10[.][0-9]+/?$'",
     "                   AND substring_index(t.best_doi, '/', 1) = regexp_extract(t.best_doi, '^10[.][0-9]+/(10[.][0-9]+)/?$', 1))",

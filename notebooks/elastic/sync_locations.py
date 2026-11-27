@@ -252,7 +252,7 @@ SELECT concat(lm.native_id_namespace, ':', lm.native_id) AS id, min(w.doi) AS do
 FROM (
   SELECT ow.id AS work_id, l.provenance, l.native_id, l.doi
   FROM openalex.works.openalex_works ow LATERAL VIEW explode(ow.locations) t AS l
-  WHERE l.doi IS NOT NULL AND l.provenance NOT IN ('crossref', 'datacite')
+  WHERE l.doi IS NOT NULL AND l.provenance NOT IN (/*DOI_RA*/ 'crossref', 'datacite')
 ) w
 JOIN {CONFIG['table_name']} lm
   ON lm.work_id = w.work_id AND lm.provenance = w.provenance AND lm.native_id = w.native_id
@@ -305,7 +305,7 @@ df = (df
     .join(non_ra_doi, "id", "left")
     # oxjob #1651: same rule as CreateWorksBase's Crossref/DataCite branch (#1573)
     .withColumn("doi", F.when(
-        F.col("provenance").isin("crossref", "datacite") & (F.col("native_id_namespace") == "doi"),
+        F.col("provenance").isin("crossref", "datacite") & (F.col("native_id_namespace") == "doi"),  # DOI_RA
         F.concat(F.lit("https://doi.org/"), F.lower(F.col("native_id")))).otherwise(F.col("non_ra_doi")))
     .withColumn("work_id", F.concat(F.lit("https://openalex.org/W"), F.col("work_id").cast("string")))
     .withColumn("source_id", F.when(F.col("source_id").isNotNull(),

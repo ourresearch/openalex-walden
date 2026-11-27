@@ -526,7 +526,7 @@ print(f"Staged {staged:,} docs into {STAGING}")
 EXT_ID_CLAIMS = f"""
 SELECT l.doi AS ext_id, w.id AS work_id, 0 AS rk
 FROM {WORKS_TABLE} w LATERAL VIEW explode(w.locations) x AS l
-WHERE w.id IS NOT NULL AND l.doi IS NOT NULL AND (l.provenance IN ('crossref', 'datacite')
+WHERE w.id IS NOT NULL AND l.doi IS NOT NULL AND (l.provenance IN (/*DOI_RA*/ 'crossref', 'datacite')
   OR (l.source.id = 'https://openalex.org/S4306400194' AND LOWER(l.doi) LIKE 'https://doi.org/10.48550/arxiv.%'))
 UNION ALL
 SELECT CONCAT('https://doi.org/', ids['doi']) AS ext_id, id AS work_id, 1 AS rk

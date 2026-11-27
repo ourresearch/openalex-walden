@@ -54,7 +54,7 @@ def _to_int(v) -> int | None:
 def key(prov, nid) -> tuple[str, str]:
     p = str(prov or "")
     n = str(nid or "")
-    return (p, n.lower() if p in ("crossref", "datacite") else n)
+    return (p, n.lower() if p in ("crossref", "datacite") else n)  # DOI_RA
 
 
 def enrich(pack: dict, bmap: dict) -> dict:

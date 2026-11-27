@@ -50,7 +50,7 @@ rec AS (
 ),
 kq AS (
   SELECT DISTINCT work_id,
-         CASE WHEN provenance IN ('crossref', 'datacite') THEN lower(native_id) ELSE native_id END AS m_key,
+         CASE WHEN provenance IN (/*DOI_RA*/ 'crossref', 'datacite') THEN lower(native_id) ELSE native_id END AS m_key,
          CASE provenance WHEN 'crossref' THEN 'doi' WHEN 'datacite' THEN 'doi' WHEN 'pubmed' THEN 'pmid'
                          WHEN 'repo' THEN 'pmh' WHEN 'mag' THEN 'mag' END AS m_ns
   FROM k
