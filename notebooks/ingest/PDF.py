@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.47-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.50-py3-none-any.whl
 
 # COMMAND ----------
 
@@ -175,7 +175,9 @@ def extract_fields(xml_content):
     def _abstract():
         abstract_element = root.find(".//tei:profileDesc/tei:abstract", namespaces=ns)
         if abstract_element is not None:
-            return ''.join(abstract_element.itertext()).strip()
+            # oxjob #2689: a space between GROBID's sentences, paragraphs and headings, as the full text (#2655);
+            # ''.join(itertext()) served 'response.Starting' and 'IntroductionOver' as one search token
+            return tei_text(abstract_element)
         return None
     abstract = _safe_extract(_abstract)
 

@@ -38,7 +38,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.47-py3-none-any.whl
+# MAGIC %pip install /Volumes/openalex/default/libraries/openalex_dlt_utils-0.3.50-py3-none-any.whl
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -66,6 +66,14 @@ STAGE_TABLE = "openalex.abstracts.abstracts_backfill_corrupt_stage"
 LEDGER_TABLE = "openalex.abstracts.abstracts_backfill_repair_chunks"
 TARGET_TABLE = "openalex.abstracts.abstracts_backfill_repair"
 
+# oxjob #2689: build into another table (its own stage and ledger beside it), so a rebuild never leaves the live overlay
+# half-empty: diff the build against the live overlay, then swap it in with one INSERT OVERWRITE (one Delta commit;
+# revert = RESTORE TABLE ... TO VERSION AS OF the version before). Empty = the live overlay, as before.
+dbutils.widgets.text("build_table", "", "Build into this table instead of the live overlay")
+BUILD_TABLE = dbutils.widgets.get("build_table").strip()
+if BUILD_TABLE and BUILD_TABLE != TARGET_TABLE:
+    STAGE_TABLE, LEDGER_TABLE, TARGET_TABLE = f"{BUILD_TABLE}_stage", f"{BUILD_TABLE}_chunks", BUILD_TABLE
+
 # Number of work_id-modulo chunks. Each is an independent clean+append with a ledger row,
 # so a killed run resumes without redoing finished chunks (workspace batch-job rule 2).
 N_CHUNKS = 8
@@ -85,7 +93,15 @@ GATE_MOJIBAKE = (
 GATE_HEADING = r"^\s*(?i:a ?bstract)"
 # oxjob #2570: a line break before closing punctuation or after an opening bracket (the cleaner decides)
 GATE_WRAP = r"\n[\s\p{Z}\x{85}\x{1C}-\x{1F}]*[,:;.?!)\]]|[(\[][\s\p{Z}\x{85}\x{1C}-\x{1F}]*\n"
-GATE = f"({GATE_ENTITY})|({GATE_TAG})|({GATE_MOJIBAKE})|({GATE_HEADING})|({GATE_WRAP})"
+# oxjob #2689: a sentence or heading join with no space ("response.Starting", "Objective:The", "MethodsThe"). Broader than
+# what text_clean.space_sentence_joins changes, on purpose (any letter or a combining mark before the mark; the heading
+# words in any case): the cleaner decides, and a broad gate only costs a few more staged rows.
+GATE_GLUE = (
+    r'[\p{L}\p{N})\]%"”’»]\p{M}*[.?!]["”’»)]?\p{Lu}'
+    r'|(?iu:Abstract|Background|Backgrounds|Objective|Objectives|Aim|Aims|Purpose|Purposes|Method|Methods|Methodology|Result|Results|Conclusion|Conclusions|Introduction|Discussion|Findings|Design|Setting|Settings|Participants|Patients|Intervention|Interventions|Measurements|Significance|Limitations|Implications|Context|Highlights|Summary|Keywords|Resumen|Resumo|Objetivo|Objetivos|Metodología|Metodologia|Método|Métodos|Resultados|Conclusión|Conclusiones|Conclusão|Conclusões|Introducción|Introdução|Contexte|Méthodes|Résultats|Hintergrund|Methoden|Ergebnisse|Schlussfolgerung|Schlussfolgerungen|Zusammenfassung|Fazit|Résumé)\p{M}*:\p{L}'
+    r'|(Background|Objectives?|Aims?|Purpose|Methods|Methodology|Results|Conclusions?|Introduction|Discussion|Findings|Highlights)[A-Z][a-z]'
+)
+GATE = f"({GATE_ENTITY})|({GATE_TAG})|({GATE_MOJIBAKE})|({GATE_HEADING})|({GATE_WRAP})|({GATE_GLUE})"
 
 print(f"source  : {SOURCE_TABLE}")
 print(f"stage   : {STAGE_TABLE}")
@@ -223,11 +239,37 @@ for chunk in range(N_CHUNKS):
 
 # COMMAND ----------
 
+from openalex.dlt.text_clean import space_sentence_joins
+from openalex.dlt.transform import _inverted_index_from_cleaned, abstract_features_struct_type
+import pandas as pd
+
+
+@F.pandas_udf(abstract_features_struct_type)
+def _spaced_features(abstract: pd.Series, index: pd.Series) -> pd.DataFrame:
+    """oxjob #2689: only the sentence-join rule, never the whole cleaner again: a row it changes gets its index rebuilt
+    from the new text (#191.1); every other row keeps its text and index as they are, and no row is dropped."""
+    rows = []
+    for a, i in zip(abstract, index):
+        n = space_sentence_joins(a) if isinstance(a, str) else a
+        rows.append((n, _inverted_index_from_cleaned(n)) if isinstance(a, str) and n != a else (a, i))
+    return pd.DataFrame(rows, columns=["abstract", "abstract_inverted_index"])
+
+
+def _recleaned_view(table, where, view):
+    """The restored / extracted texts get the space back at glued sentence joins too (oxjob #2689)."""
+    (spark.table(table).where(where)
+     .withColumn("_f", _spaced_features(F.col("abstract"), F.col("abstract_inverted_index")))
+     .select("work_id", F.col("_f.abstract").alias("abstract"),
+             F.col("_f.abstract_inverted_index").alias("abstract_inverted_index"))
+     .createOrReplaceTempView(view))
+
+
 ACCENTS_TABLE = "openalex.abstracts.backfill_accent_restores"
 if spark.catalog.tableExists(ACCENTS_TABLE):
+    _recleaned_view(ACCENTS_TABLE, "true", "accent_restores_recleaned")
     spark.sql(f"""
         MERGE INTO {TARGET_TABLE} t
-        USING (SELECT work_id, abstract, abstract_inverted_index FROM {ACCENTS_TABLE}) a
+        USING (SELECT work_id, abstract, abstract_inverted_index FROM accent_restores_recleaned) a
         ON t.work_id = a.work_id
         WHEN MATCHED THEN UPDATE SET t.abstract = a.abstract, t.abstract_inverted_index = a.abstract_inverted_index
         WHEN NOT MATCHED THEN INSERT (work_id, abstract, abstract_inverted_index)
@@ -251,10 +293,10 @@ if spark.catalog.tableExists(ACCENTS_TABLE):
 
 EXTRACTS_TABLE = "openalex.abstracts.backfill_page_text_extracts"
 if spark.catalog.tableExists(EXTRACTS_TABLE):
+    _recleaned_view(EXTRACTS_TABLE, "label_version NOT LIKE 'reverted:%'", "page_text_extracts_recleaned")
     spark.sql(f"""
         MERGE INTO {TARGET_TABLE} t
-        USING (SELECT work_id, abstract, abstract_inverted_index FROM {EXTRACTS_TABLE}
-               WHERE label_version NOT LIKE 'reverted:%') a
+        USING (SELECT work_id, abstract, abstract_inverted_index FROM page_text_extracts_recleaned) a
         ON t.work_id = a.work_id
         WHEN MATCHED THEN UPDATE SET t.abstract = a.abstract, t.abstract_inverted_index = a.abstract_inverted_index
         WHEN NOT MATCHED THEN INSERT (work_id, abstract, abstract_inverted_index)
