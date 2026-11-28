@@ -111,15 +111,8 @@ means the swap takes effect for the API the instant the `_aliases` call lands.
    they ride whichever rebuild comes next; create the index by hand with the live mapping minus these, as for an
    analyzer change below): `sustainable_development_goals_aurora` (removed from the API and walden 2026-11-02, oxjob
    #1300; ~174M works-v40 docs still carry it in `_source`, which the API excludes) and `x_sdgs` (the shadow field
-   dropped 2026-10-04, oxjob #1300; 0 docs). Delete this note once a rebuild has dropped them.
-   **Waiting on the next works rebuild: the six author-position fields** (oxjob #1474: `first_author_ids`,
-   `first_author_institution_ids`, `first_author_countries` and the same three for `last_`). Once the one-off
-   `notebooks/elastic/PatchWorksAuthorPositionMapping.py` (walden branch `oxjob-1474-position-fields-v2`, a desk run)
-   has added them to the live mapping (check `GET works/_mapping`, or oxjob #1474's Log), the verbatim copy carries
-   them and `sync_works` fills every document during the load; nothing to do by hand. If the live mapping lacks them,
-   `sync_works` leaves them out: run the patch on the new index before the load. Only works the nightly re-sent carry
-   them before that rebuild, so `verify` needs all six in `expect_diff`, and the API can't filter on them until the
-   swap. After the swap, write a Log row on oxjob #1474 (its API filters ship next), then delete this note.
+   dropped 2026-10-04, oxjob #1300; 0 docs). works-v42 (26 Nov) still maps both: the v41 -> v42 rebuild copied the
+   live mapping verbatim. Delete this note once a rebuild has dropped them.
 5. **Settings.** Copy the old index's settings (analysis, sort, codec, merge policy, translog). Build-time overrides:
    `number_of_replicas: 0`, `refresh_interval: "-1"`, `index.routing.allocation.total_shards_per_node:
    ceil(shards / data nodes)` so primaries spread evenly. Record the old index's live values for step 6.
@@ -295,6 +288,7 @@ compares Delta with the old index's values and sends extra updates (up to its 10
 |---|---|---|---|---|---|---|---|---|---|---|
 | 2026-10-01 | works | v34 → v35 | new keywords (#1322) | 472.4M | 38 (then back to 22) | 256 → **128** (256 cancelled by the watchdog after 34 min) | ≈ 25–29K docs/s | 5 h 12 min | 21:02 UTC same day | replicas 16 min at 250 MB/s; close_load −2 (tolerance 10); verify diff explained by stale old index; swap-before-replicas order used once; dropped 127M tombstones + 140K stale works; old index deleted after 16 h |
 | 2026-10-28 | works | v39 → v40 | analyzer: apostrophe glyphs one token, accents folded, possessives stripped (oxjob #1882); carried #1873 created_date + #1648 related_works | 463.3M | 36 | 128 | ≈ 24–28K docs/s (35K for the last chunk alone) | 7 h 18 min wall incl. two pauses (≈ 5.5 h writing), 07:58–15:16 CT | 15:59 CT same day | new index created by hand with the new `analysis` + live mapping, then `create_index` reuse; paused 45 min for a manual authors ES sync running beside it; one watchdog cancel at a midday search burst; a repair that dropped the run's parameters (lesson below); close_load −2; replicas 25 min for 7.1 TB; verify 6/1,000 display_name diffs (sanitize_name bug); old index write-blocked + 0 replicas at swap, deleted next morning |
+| 2026-11-26 | works | v41 → v42 | analyzer: sub/superscript digits read as digits (CO₂ = CO2), decomposed Thai SARA AM normalized, sparse `.thai` / `.thai_exact` sub-fields with the `thai` tokenizer (oxjob #2645); carried #1474's six author-position fields onto every doc | 446.5M | 48 | 128 | ≈ 23K docs/s | 5 h 40 min, 06:18–11:58 CT | 12:58 CT same day | new index created by hand (`IndexRebuild` `mapping_patch`: live mapping + the sub-fields), then `create_index` reuse; load started right after the nightly's Sync_Work_Metrics, so catch-up was empty; close_load exact (446,521,832 = Delta at V 18509); replicas ≈ 15 min; verify 0/1,000 differ from Delta at V; closed and reopened once before the swap (12 s, not serving) to add search analyzers (lesson below); 6.4 TB primaries vs v41's 9.2 TB (v41 held 122.6M deleted docs); old index write-blocked at swap, 0 replicas after one clean night, deleted after the second (05:04 CT 28 Nov) |
 
 ## 9. Lessons
 
@@ -320,6 +314,15 @@ compares Delta with the old index's values and sends extra updates (up to its 10
 - **The plan's chunk ranges are only in its notebook output.** The Jobs API does not expose task values; `databricks jobs export-run <plan task run id> --views-to-export ALL` holds the printed `range_k` lines (neighbors' bounds give any one range exactly).
 - **Disk is per node, not just per cluster.** The watchdog checks cluster disk; a 75%-per-node line (the E2E shepherd's) can bind first. To free the fullest node, move another index's big shard off it with an index setting (`index.routing.allocation.exclude._name: <node>`); the desired-balance allocator honors it, while a one-off reroute can be undone.
 - **An analyzer change is a settings change, not a mapping change.** Create the new index by hand: the old index's live settings minus internal keys and its `analysis`, plus the new `analysis`, plus the build overrides, with the old live mapping verbatim; `create_index if_exists=reuse` then accepts it. Update the index template's `analysis` after the swap, or the next template-created index gets the old analyzer.
+- **`cross_fields` groups fields by analyzer** (2026-11-25, oxjob #2645). A `multi_match` `cross_fields` query (search=)
+  scores fields with different search analyzers as separate groups. Giving `fulltext` its own analyzer cost 116 losses
+  in the search= battery. Keep title, abstract and full text on one analyzer; put script-specific tokenizing on a
+  sub-field the API queries alongside (as `.thai` is), never on the main field.
+- **A sparse sub-field's guard must not run at search time** (2026-11-26, oxjob #2645). The `.thai` sub-fields index
+  nothing for text without a Thai letter (a guard char filter in the index analyzer). Used as the search analyzer
+  too, it emptied each Latin term (`query_string` analyzes terms one by one), so 'การศึกษา COVID-19' searched only
+  'การศึกษา'. Give such a sub-field a `search_analyzer` without the guard. Adding an analyzer to an index that isn't
+  serving yet is a close, `PUT _settings` (analysis), open, `PUT _mapping` (search_analyzer): seconds, no rebuild.
 - **Close before delete** (step 12). A closed index is a tripwire for forgotten callers; a deleted one is silent.
 - **Watch scripts need timeouts.** A laptop network blip made a watcher print blank lines for 15 minutes; `curl -m`
   on every call, and measure latency server-side.
