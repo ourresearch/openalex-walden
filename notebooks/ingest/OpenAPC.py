@@ -127,7 +127,9 @@ if old_exists:
     old_rows = old.count()
 else:
     old_rows = 0
-matched = matched.select("paper_id", "doi", "year", "apc_in_euro", "apc_in_usd", "openapc_file").cache()
+# No .cache(): the job runs on serverless, which refuses PERSIST TABLE (first run 27 Nov 2026 failed on it). The join is
+# deterministic (local OpenAPC rows against openalex_works), so recomputing it for each count and the write is safe.
+matched = matched.select("paper_id", "doi", "year", "apc_in_euro", "apc_in_usd", "openapc_file")
 n_new = matched.count()
 n_works = matched.select("paper_id").distinct().count()
 print(f"{n_new:,} OpenAPC articles matched to {n_works:,} works ({len(rows) - n_new:,} DOIs not in {WORKS}); "
